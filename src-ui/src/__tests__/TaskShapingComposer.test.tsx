@@ -10,7 +10,10 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { TaskShapingHost } from '../components/chat/TaskShapingComposer';
 import { toastStore } from '../contexts/ToastContext';
 import { useLaunchChat } from '../hooks/useActiveChatSessionLifecycle';
-import { requestTaskShaping } from '../lib/task-shaping';
+import {
+  requestTaskShaping,
+  TASK_SHAPING_INSTRUCTION,
+} from '../lib/task-shaping';
 
 const host = vi.hoisted(() => ({
   init: vi.fn(),
@@ -49,7 +52,7 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 vi.mock('../contexts/active-chats-store', () => ({
-  activeChatsStore: { getSnapshot: () => host.chats },
+  activeChatsStore: { getSnapshot: () => host.chats, updateChat: host.update },
 }));
 vi.mock('../hooks/useActiveChatSessionMessaging', () => ({
   useSendMessage: () => host.send,
@@ -174,4 +177,23 @@ test('a failed shaping entry uses the dismissible app toast', async () => {
   );
   expect(screen.queryByRole('alert')).toBeNull();
   toastStore.dismissAll();
+});
+
+test('a promptless shaping launch retains mode for the first typed turn', async () => {
+  const { result } = renderHook(() => useLaunchChat('http://station.test'));
+  await act(async () => {
+    await result.current(
+      'station',
+      'Station',
+      undefined,
+      'alpha',
+      'Alpha',
+      undefined,
+      TASK_SHAPING_INSTRUCTION,
+    );
+  });
+  expect(host.update).toHaveBeenCalledWith(expect.any(String), {
+    taskShaping: true,
+  });
+  expect(host.send).not.toHaveBeenCalled();
 });

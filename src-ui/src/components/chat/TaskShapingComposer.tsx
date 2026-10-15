@@ -83,7 +83,7 @@ export function TaskShapingHost() {
           source.turnId
             ? message.role === 'assistant' && message.turnId === source.turnId
             : source.eventId
-              ? message.id === source.eventId
+              ? message.sourceEventId === source.eventId
               : false,
         );
         const excerpt =

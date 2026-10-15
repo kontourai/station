@@ -30,6 +30,7 @@ export interface AttachAnswerToTaskButtonProps {
   sessionId: string;
   turnId: string;
   projectId?: string;
+  excerpt?: string;
   adapter: AttachAnswerToTaskAdapter;
   onOpen?: () => void;
   onClose?: () => void;
@@ -55,6 +56,7 @@ export function AttachAnswerToTaskButton({
   sessionId,
   turnId,
   projectId,
+  excerpt,
   adapter,
   onOpen,
   onClose,
@@ -71,7 +73,10 @@ export function AttachAnswerToTaskButton({
       projectId={projectId}
       adapter={adapter}
       onNewTask={(source) =>
-        requestTaskShaping({ projectSlug: projectId, source })
+        requestTaskShaping({
+          projectSlug: projectId,
+          source: { ...source, excerpt },
+        })
       }
       onOpen={onOpen}
       onClose={onClose}
@@ -100,6 +105,7 @@ export function ConnectedAttachAnswerToTaskButton({
   sessionId,
   turnId,
   projectId,
+  excerpt,
   menuItem,
   onOpen,
   onClose,
@@ -109,6 +115,7 @@ export function ConnectedAttachAnswerToTaskButton({
   | 'sessionId'
   | 'turnId'
   | 'projectId'
+  | 'excerpt'
   | 'menuItem'
   | 'onOpen'
   | 'onClose'
@@ -139,6 +146,7 @@ export function ConnectedAttachAnswerToTaskButton({
       sessionId={sessionId}
       turnId={turnId}
       projectId={projectId}
+      excerpt={excerpt}
       menuItem={menuItem}
       onOpen={onOpen}
       onClose={onClose}
@@ -152,12 +160,14 @@ export function AttachUserInputToTaskButton({
   sessionId,
   eventId,
   projectId,
+  excerpt,
   adapter,
   onOpen,
 }: {
   sessionId: string;
   eventId: string;
   projectId?: string;
+  excerpt?: string;
   adapter: AttachUserInputToTaskAdapter;
   onOpen?: () => void;
 }) {
@@ -170,7 +180,10 @@ export function AttachUserInputToTaskButton({
       projectId={projectId}
       adapter={adapter}
       onNewTask={(source) =>
-        requestTaskShaping({ projectSlug: projectId, source })
+        requestTaskShaping({
+          projectSlug: projectId,
+          source: { ...source, excerpt },
+        })
       }
       onOpen={onOpen}
       attach={(taskId, target) =>
@@ -191,10 +204,12 @@ export function ConnectedAttachUserInputToTaskButton({
   sessionId,
   eventId,
   projectId,
+  excerpt,
 }: {
   sessionId: string;
   eventId: string;
   projectId?: string;
+  excerpt?: string;
 }) {
   const { tasksQuery } = useTaskPickerAdapter(projectId);
   const attachMutation = useAttachTaskUserInputReferenceMutation();
@@ -221,6 +236,7 @@ export function ConnectedAttachUserInputToTaskButton({
       sessionId={sessionId}
       eventId={eventId}
       projectId={projectId}
+      excerpt={excerpt}
       adapter={adapter}
     />
   );

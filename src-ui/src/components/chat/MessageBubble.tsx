@@ -525,6 +525,7 @@ function MessageBubbleComponent({
           componentProps={{
             sessionId: msg.sessionId,
             eventId: msg.sourceEventId,
+            excerpt: textContent,
             projectId: activeSession.projectSlug,
           }}
           pending={
@@ -669,6 +670,7 @@ function MessageBubbleComponent({
                 ? {
                     sessionId: answerSessionId,
                     turnId: msg.turnId,
+                    excerpt: textContent,
                     projectId: activeSession.projectSlug,
                   }
                 : undefined,

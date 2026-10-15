@@ -43,6 +43,7 @@ function renderUserInput() {
     <ConnectedAttachUserInputToTaskButton
       sessionId="session-1"
       eventId="event-1"
+      excerpt="Selected input"
     />,
   );
 }
@@ -52,6 +53,7 @@ function renderAnswer(projectId?: string) {
     <ConnectedAttachAnswerToTaskButton
       sessionId="session-1"
       turnId="turn-1"
+      excerpt="Selected answer"
       projectId={projectId}
     />,
   );
@@ -70,7 +72,11 @@ describe('Task attachment affordances follow the Task catalog', () => {
     };
     render(
       <TurnActionsMenu
-        taskTarget={{ sessionId: 'session-1', turnId: 'turn-1' }}
+        taskTarget={{
+          sessionId: 'session-1',
+          turnId: 'turn-1',
+          excerpt: 'Selected answer',
+        }}
       />,
     );
     const trigger = screen.getByRole('button', { name: 'More answer actions' });
@@ -120,8 +126,16 @@ describe('Task attachment affordances follow the Task catalog', () => {
       expect(listener).toHaveBeenCalledTimes(1);
       expect(listener.mock.calls[0][0].detail.source).toEqual(
         kind === 'answer'
-          ? { sessionId: 'session-1', turnId: 'turn-1' }
-          : { sessionId: 'session-1', eventId: 'event-1' },
+          ? {
+              sessionId: 'session-1',
+              turnId: 'turn-1',
+              excerpt: 'Selected answer',
+            }
+          : {
+              sessionId: 'session-1',
+              eventId: 'event-1',
+              excerpt: 'Selected input',
+            },
       );
       expect(screen.queryByRole('dialog')).toBeNull();
       window.removeEventListener('station:shape-task', listener);
