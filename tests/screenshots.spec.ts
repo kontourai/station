@@ -1095,6 +1095,28 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({
+    path: join(GALLERY_DIR, `freshness-failed-${width}.png`),
+  });
+  if (width > 600) {
+    const row = page
+      .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+      .filter({ hasText: 'Mismatch demo chat' });
+    await expect(row.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+  } else {
+    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await expect(picker.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await page.screenshot({
+      path: join(GALLERY_DIR, `freshness-failed-picker-${width}.png`),
+    });
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+  }
   await mockRuntimeConversation(page, {
     id: 'gallery-mismatch-conversation',
     agentSlug: 'demo-agent',
@@ -1232,6 +1254,31 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         }),
       ).toBeHidden();
       await expect(resync).toBeHidden();
+      // The inventory is still unavailable until its own explicit recovery;
+      // the successful conversation read independently verifies this row.
+      if (width > 600) {
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+      }
+      await page.screenshot({
+        path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+      });
+      if (width === 390) {
+        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-picker-${width}.png`),
+        });
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+      }
       expect(historyReads - failedHistoryReads).toBe(1);
       console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
         width,

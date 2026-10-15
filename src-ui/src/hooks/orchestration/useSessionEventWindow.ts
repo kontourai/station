@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useWorkObservation } from '../../contexts/work-observation';
 import {
   publishHistoryForCapture,
   removeHistoryForCapture,
@@ -115,6 +116,7 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
+  const observation = useWorkObservation(apiBase);
   const readerKey = threadId
     ? JSON.stringify([apiBase, threadId, legacySessionId])
     : undefined;
@@ -152,6 +154,7 @@ export function useSessionEventWindow(
 
   const reload = useCallback(async () => {
     if (!threadId) return;
+    const observationStart = observation?.begin();
     const revisionAtStart = reconcileRevisionRef.current;
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
@@ -168,6 +171,7 @@ export function useSessionEventWindow(
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
+        observation?.failed(threadId, observationStart);
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(
@@ -202,6 +206,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      observation?.observed(threadId, page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
       activeChatsStore.applyConversationActivity(
@@ -234,6 +239,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      observation?.failed(threadId, observationStart);
       const failure = cause instanceof Error ? cause : new Error(String(cause));
       setError(failure);
       setUpgradeRequired(false);
@@ -250,9 +256,10 @@ export function useSessionEventWindow(
         setSettledRevision(revisionAtStart);
       }
     }
-  }, [apiBase, legacySessionId, threadId]);
+  }, [apiBase, legacySessionId, observation, threadId]);
 
   const loadOlder = useCallback(async () => {
+    const observationStart = observation?.begin();
     const pageCursor = cursorRef.current;
     if (!threadId || !pageCursor) return;
     const requestGeneration = generation.current;
@@ -291,6 +298,7 @@ export function useSessionEventWindow(
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (requestGeneration !== generation.current) return;
+      observation?.failed(threadId, observationStart);
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     } finally {
       if (
@@ -299,7 +307,7 @@ export function useSessionEventWindow(
       )
         setLoading(false);
     }
-  }, [apiBase, legacySessionId, reload, threadId]);
+  }, [apiBase, legacySessionId, observation, reload, threadId]);
 
   useEffect(() => {
     if (readerKeyRef.current === readerKey) return;

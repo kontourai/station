@@ -61,6 +61,14 @@ Example: “Explain this function” can be a direct chat. “Refactor this modu
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.
 
+When a conversation status/history read or an inbox read fails, retained
+conversation rows say **Last known:** before their computed status. The status
+uses a muted style without a pulsing indicator or running clock. The transcript's
+background-work indicator also says **Last known**. A successful read or a newer
+stream observation verifies the affected conversation again; other conversations
+and Station authorities retain their own observations. Use **Resync** on the
+conversation or **Refresh inbox** to request fresh observations.
+
 ## Gates, Evidence, And Receipts
 
 - A **gate** decides whether work may advance.

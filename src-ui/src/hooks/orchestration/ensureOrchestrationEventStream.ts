@@ -6,6 +6,7 @@ import {
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
@@ -425,6 +426,15 @@ export function ensureOrchestrationEventStream(
             isReconnectFallback: hasReceivedSnapshot,
             queryClient: currentStreamQueryClient(apiBase),
           });
+          const client = currentStreamQueryClient(apiBase);
+          if (client)
+            for (const session of payload.sessions) {
+              if (session.conversationActivity)
+                workObservation(client, apiBase).observed(
+                  session.conversationActivity.conversationId,
+                  session.conversationActivity.asOfSequence,
+                );
+            }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
         }
@@ -456,6 +466,15 @@ export function ensureOrchestrationEventStream(
           isReconnectFallback: hasReceivedSnapshot,
           queryClient: currentStreamQueryClient(apiBase),
         });
+        const client = currentStreamQueryClient(apiBase);
+        if (client)
+          for (const session of payload.sessions) {
+            if (session.conversationActivity)
+              workObservation(client, apiBase).observed(
+                session.conversationActivity.conversationId,
+                session.conversationActivity.asOfSequence,
+              );
+          }
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
       } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
@@ -465,6 +484,11 @@ export function ensureOrchestrationEventStream(
         activeChatsStore.applyConversationActivity(
           payload.conversation?.activity,
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client, apiBase).streamObserved(
+            payload.conversation.activity,
+          );
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         if (parseStreamSequence(raw.id) !== undefined)
@@ -486,6 +510,11 @@ export function ensureOrchestrationEventStream(
           payload.conversation,
           parseStreamSequence(raw.id),
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client, apiBase).streamObserved(
+            payload.conversation.activity,
+          );
         refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED

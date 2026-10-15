@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useWorkObservation } from '../../contexts/work-observation';
 import { resumeHeldQueueDrain } from '../../hooks/orchestration/queueDrain';
 import {
   type SelectableModel,
@@ -42,7 +43,9 @@ export function ConversationOpenRevalidator({
   agents,
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
+  const observation = useWorkObservation(apiBase);
   useEffect(() => {
+    const observationStart = observation?.begin();
     let cancelled = false;
     void import('./conversationOpenController')
       .then(async (controller) => {
@@ -52,6 +55,14 @@ export function ConversationOpenRevalidator({
             apiBase,
           );
         if (cancelled) return;
+        if (resolution.status === 'unavailable')
+          observation?.failed(conversationId, observationStart);
+        else
+          observation?.observed(
+            conversationId,
+            (resolution.status === 'resolved' ? resolution.activity : undefined)
+              ?.asOfSequence ?? resolution.conversation.activity?.asOfSequence,
+          );
         const previous = activeChatsStore.getSnapshot()[sessionId];
         const sameChild = !controller.conversationExecutionChanged(
           resolution,
@@ -128,6 +139,7 @@ export function ConversationOpenRevalidator({
       })
       .catch(() => {
         if (cancelled) return;
+        observation?.failed(conversationId, observationStart);
         updateChat(sessionId, {
           conversationOpenPending: false,
           conversationOpenFailed: true,
@@ -139,6 +151,7 @@ export function ConversationOpenRevalidator({
       cancelled = true;
     };
   }, [
+    observation,
     apiBase,
     conversationId,
     sessionId,

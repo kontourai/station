@@ -24,7 +24,14 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createRef, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -114,8 +121,34 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
 }));
 // The sessions the sidebar reads, and the sidebar footer's and Boards
 // section's reads, answered the way `ProjectSidebar.test.tsx` answers them.
+const historyRead = vi.hoisted(() => vi.fn());
+const streams = vi.hoisted(
+  () =>
+    new Map<
+      string,
+      (raw: { event: string; data: string; id?: string }) => void
+    >(),
+);
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSessionEventWindowCapability: async () => true,
+  fetchOrchestrationConversationEventWindow: (...args: unknown[]) =>
+    historyRead(...args),
+  fetchSSE: (
+    url: string,
+    options: {
+      onMessage: (raw: { event: string; data: string; id?: string }) => void;
+    },
+  ) => {
+    streams.set(new URL(url).origin, options.onMessage);
+    const controller = new AbortController();
+    return {
+      close: () => controller.abort(),
+      signal: controller.signal,
+      completed: new Promise<void>(() => {}),
+      retry: vi.fn(),
+    };
+  },
   useOrchestrationSessionsQuery: () => ({ data: SESSIONS }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
@@ -137,15 +170,22 @@ import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { workObservation } from '../contexts/work-observation';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { useSessionEventWindow } from '../hooks/orchestration/useSessionEventWindow';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { useInboxWorkItems } from '../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../views/home/useWorkFacts';
 
 /** The dock inbox the way `ChatDock.tsx` mounts it: the shared items and
  *  the facts derived beside them. */
-function DockInbox() {
-  const items = useInboxWorkItems(AGENTS, SESSIONS);
-  const workFacts = useWorkFacts(items, SESSIONS);
+function DockInbox({
+  sessions = SESSIONS,
+}: {
+  sessions?: OrchestrationSessionSummary[];
+}) {
+  const items = useInboxWorkItems(AGENTS, sessions);
+  const workFacts = useWorkFacts(items, sessions);
   return (
     <ChatDockInboxPanel
       items={items}
@@ -187,10 +227,12 @@ function MobileSwitcher() {
   );
 }
 
-function renderWithProviders(ui: ReactElement) {
-  const queryClient = new QueryClient({
+function renderWithProviders(
+  ui: ReactElement,
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <KeyboardShortcutsProvider>{ui}</KeyboardShortcutsProvider>
@@ -208,6 +250,7 @@ function statusTextIn(root: HTMLElement): string {
 }
 
 beforeEach(() => {
+  historyRead.mockReset();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   window.localStorage.clear();
@@ -215,6 +258,7 @@ beforeEach(() => {
   // ONE store state: the chat this tab holds open, on the folded session's
   // conversation. On its own the chat store says nothing about the open
   // approval; only the session does.
+  activeChatsStore.clearConversationActivity();
   activeChatsStore.initChat(CHAT_TAB, {
     agentSlug: 'demo-agent',
     agentName: 'Demo agent',
@@ -300,4 +344,189 @@ describe('a chat open in this tab reads the same status in the sidebar and the d
       items.filter((item) => item.chatSessionId === CHAT_TAB),
     ).toHaveLength(1);
   });
+});
+
+function HistoryReader({
+  station = 'http://test.local',
+  conversation = 'T',
+}: {
+  station?: string;
+  conversation?: string;
+}) {
+  const history = useSessionEventWindow(station, conversation);
+  return (
+    <button type="button" onClick={() => void history.reload()}>
+      Read history
+    </button>
+  );
+}
+
+const historyPage = { events: [], watermark: 0, session: undefined };
+
+// These assertions cross the failed reader, shared items, and actual row renderer.
+describe('inbox observation freshness', () => {
+  it('a failed history read marks dock and sidebar rows last known, and a successful read restores them', async () => {
+    historyRead
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(historyPage);
+    renderWithProviders(
+      <>
+        <HistoryReader />
+        <ProjectSidebar />
+        <DockInbox />
+      </>,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText('Last known: Needs approval')).toHaveLength(2),
+    );
+    for (const row of screen.getAllByTestId('inbox-row-status')) {
+      const tone =
+        row.getAttribute('data-tone') ??
+        row.parentElement?.getAttribute('data-tone');
+      expect(tone).toBe('neutral');
+      expect(row.querySelector('.inbox-row__elapsed')).toBeNull();
+    }
+    await act(async () => screen.getByText('Read history').click());
+    await waitFor(() =>
+      expect(screen.queryByText('Last known: Needs approval')).toBeNull(),
+    );
+    expect(screen.getAllByText('Needs approval')).toHaveLength(2);
+  });
+
+  it('a newer stream activity clears the failed read and stays current when an older pending read fails', async () => {
+    historyRead.mockRejectedValueOnce(new Error('offline'));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const release = ensureOrchestrationEventStream('http://test.local', client);
+    const deliver = (sequence: number) =>
+      streams.get('http://test.local')!({
+        event: 'orchestration:activity',
+        data: JSON.stringify({
+          conversation: {
+            conversationId: 'T',
+            currentSessionId: 'T',
+            activity: {
+              ...SESSIONS[0]!.conversationActivity,
+              asOfSequence: sequence,
+            },
+          },
+        }),
+      });
+    deliver(3);
+    renderWithProviders(
+      <>
+        <HistoryReader />
+        <DockInbox />
+      </>,
+      client,
+    );
+    await screen.findByText('Last known: Needs approval');
+    act(() => deliver(3));
+    expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    let rejectRead!: (reason: Error) => void;
+    historyRead.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRead = reject;
+        }),
+    );
+    await act(async () => screen.getByText('Read history').click());
+    try {
+      act(() => deliver(4));
+      await waitFor(() =>
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull(),
+      );
+      await act(async () => rejectRead(new Error('late failure')));
+      expect(screen.getByText('Needs approval')).toBeTruthy();
+    } finally {
+      release();
+    }
+  });
+
+  it('another conversation and another Station authority remain current', async () => {
+    historyRead.mockRejectedValue(new Error('offline'));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const first = renderWithProviders(
+      <>
+        <HistoryReader conversation="other" />
+        <DockInbox />
+      </>,
+      client,
+    );
+    await waitFor(() =>
+      expect(
+        workObservation(client, 'http://test.local').unavailable('other'),
+      ).toBe(true),
+    );
+    // The failed reader belongs to another conversation, so T stays live.
+    expect(within(first.container).getByText('Needs approval')).toBeTruthy();
+    first.unmount();
+    const second = renderWithProviders(
+      <>
+        <HistoryReader station="http://other-station.test" />
+        <DockInbox />
+      </>,
+      client,
+    );
+    await waitFor(() =>
+      expect(
+        workObservation(client, 'http://other-station.test').unavailable('T'),
+      ).toBe(true),
+    );
+    expect(within(second.container).getByText('Needs approval')).toBeTruthy();
+    const otherAuthority = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const third = renderWithProviders(<DockInbox />, otherAuthority);
+    expect(within(third.container).getByText('Needs approval')).toBeTruthy();
+  });
+
+  it('a failed inbox read marks retained rows and a successful read clears it', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderWithProviders(<DockInbox />, client);
+    await act(async () => {
+      await client
+        .fetchQuery({
+          queryKey: ['conversation-inventory'],
+          queryFn: async () => {
+            throw new Error('offline');
+          },
+        })
+        .catch(() => {});
+    });
+    expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    await act(async () => {
+      await client.fetchQuery({
+        queryKey: ['conversation-inventory'],
+        queryFn: async () => ({ pages: [], pageParams: [] }),
+      });
+    });
+    expect(screen.getByText('Needs approval')).toBeTruthy();
+  });
+});
+
+it('a failed history read removes the running row clock until recovery', async () => {
+  historyRead
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue(historyPage);
+  const sessions = [{ ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary }];
+  const view = renderWithProviders(
+    <>
+      <HistoryReader />
+      <DockInbox sessions={sessions} />
+    </>,
+  );
+  await screen.findByText('Last known: Running');
+  expect(view.container.querySelector('.inbox-row__elapsed')).toBeNull();
+  expect(screen.getByTestId('inbox-row-status').getAttribute('data-tone')).toBe(
+    'neutral',
+  );
+  await act(async () => screen.getByText('Read history').click());
+  await within(screen.getByTestId('inbox-row-status')).findByText('Running');
+  expect(view.container.querySelector('.inbox-row__elapsed')).not.toBeNull();
 });
