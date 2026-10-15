@@ -289,6 +289,7 @@ describe('session-terminal boundary ordering', () => {
               ...base,
               method: 'turn.aborted',
               turnId: 'turn',
+              reason: 'Interrupted turn recovery',
               recoveryTerminal: true,
             }
           : mode === 'admission-error'
