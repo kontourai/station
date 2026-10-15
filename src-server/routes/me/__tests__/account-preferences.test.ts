@@ -113,7 +113,7 @@ describe('account preference HTTP persistence', () => {
       interactiveApprovalModes: null,
     });
     expect((await f.call({ theme: null })).status).toBe(200);
-    expect(await (await f.call()).json()).toEqual({
+    expect(await (await f.call()).json()).toMatchObject({
       success: true,
       data: { schemaVersion: 1, values: { diffWrap: true } },
     });
@@ -139,6 +139,33 @@ describe('account preference HTTP persistence', () => {
       });
     },
   );
+
+  test('a stale composite replacement is refused instead of losing another device’s favorites', async () => {
+    const f = await fixture();
+    const first = (await (await f.call()).json()) as {
+      data: { revision: string };
+    };
+    const picker = { favorites: ['a'], recents: [], hidden: [], order: [] };
+    expect(
+      (
+        await f.call(
+          { modelPickerPreferences: picker },
+          { 'If-Match': first.data.revision },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await f.call(
+          { modelPickerPreferences: { ...picker, favorites: ['b'] } },
+          { 'If-Match': first.data.revision },
+        )
+      ).status,
+    ).toBe(409);
+    expect(await (await f.call()).json()).toMatchObject({
+      data: { values: { modelPickerPreferences: { favorites: ['a'] } } },
+    });
+  });
 
   test('unbound devices and internal callers cannot store personal preferences', async () => {
     const f = await fixture();

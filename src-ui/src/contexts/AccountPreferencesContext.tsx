@@ -1,4 +1,5 @@
 import type {
+  AccountPreferences,
   AccountPreferencesPatch,
   AccountPreferencesUpdate,
   AccountPreferencesView,
@@ -14,9 +15,13 @@ import {
   useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
 } from 'react';
 import { StartupScreen } from '../components/StartupScreen';
 import { applyAccentColor } from '../lib/accent-contrast';
+import { applyAccountPreferencePatch } from '../lib/account-preference-values';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { useApiBase, useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
@@ -29,6 +34,7 @@ interface PreferenceState {
   data?: AccountPreferencesView;
   save: (patch: AccountPreferencesPatch, onlyMissing?: boolean) => void;
   retry: () => void;
+  requestScope?: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 }
 const AccountPreferencesContext = createContext<PreferenceState>({
   status: 'device',
@@ -53,7 +59,31 @@ export function AccountPreferencesProvider({
     authority.status === 'verified' &&
     principal?.kind === 'human' &&
     !principal.id.startsWith('human:device:');
-  const queryKey = ['account-preferences', authority.namespace] as const;
+  const queryKey = useMemo(
+    () =>
+      [
+        'account-preferences',
+        authority.namespace,
+        scope?.authorityKey,
+      ] as const,
+    [authority.namespace, scope?.authorityKey],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each request authority owns a separate pending-write queue.
+  const pending = useMemo(() => new Map<number, PendingWrite>(), [queryKey]);
+  const nextWrite = useRef(0);
+  const [pendingVersion, publishPending] = useReducer(
+    (value: number) => value + 1,
+    0,
+  );
+  type PendingWrite = AccountPreferencesUpdate & {
+    apiBase: string;
+    scope: NonNullable<typeof scope>;
+    queryKey: typeof queryKey;
+    client: typeof queryClient;
+    pending: Map<number, PendingWrite>;
+    id: number;
+    revision?: string;
+  };
   const query = useQuery({
     queryKey,
     enabled: eligible && !!scope,
@@ -61,50 +91,104 @@ export function AccountPreferencesProvider({
       getAccountPreferences(apiBase, { signal, requestScope: scope }),
     staleTime: 0,
     refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
     retry: false,
   });
   const mutation = useMutation({
-    scope: { id: `account-preferences:${authority.namespace}` },
-    mutationFn: ({ patch, onlyMissing }: AccountPreferencesUpdate) => {
-      if (!scope?.isCurrent() || !eligible)
-        throw new Error('Account access changed.');
+    mutationKey: queryKey,
+    scope: { id: JSON.stringify(queryKey) },
+    mutationFn: (write: PendingWrite) => {
+      if (!write.scope.isCurrent()) throw new Error('Account access changed.');
       return patchAccountPreferences(
-        apiBase,
-        patch,
-        { requestScope: scope },
-        onlyMissing,
+        write.apiBase,
+        write.patch,
+        {
+          requestScope: write.scope,
+          ...(write.revision
+            ? { headers: { 'If-Match': write.revision } }
+            : {}),
+        },
+        write.onlyMissing,
       );
     },
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey });
+    onMutate: async (write) => {
+      await write.client.cancelQueries({ queryKey: write.queryKey });
     },
-    onSuccess: async (data) => {
-      await queryClient.cancelQueries({ queryKey });
-      if (scope?.isCurrent()) queryClient.setQueryData(queryKey, data);
+    onSuccess: async (data, write) => {
+      write.pending.delete(write.id);
+      if (Object.hasOwn(write.patch, 'modelPickerPreferences'))
+        for (const queued of write.pending.values())
+          if (queued.revision === write.revision) queued.revision = data.revision;
+      await write.client.cancelQueries({ queryKey: write.queryKey });
+      if (write.scope.isCurrent()) {
+        write.client.setQueryData(write.queryKey, data);
+        publishPending();
+      }
     },
-    onError: () => {
-      if (scope?.isCurrent())
+    onError: (_error, write) => {
+      write.pending.delete(write.id);
+      if (write.scope.isCurrent()) {
+        publishPending();
         toastStore.show(
-          'Account preferences were not saved. Your previous choices are still active. Open Settings to reload and try again.',
+          'Couldn’t confirm the preference was saved. Reload it in Settings.',
           undefined,
           0,
           undefined,
           undefined,
           'error',
         );
+      }
     },
   });
   const mutate = mutation.mutate;
+  const available = eligible && query.isSuccess && query.isFetchedAfterMount;
   const save = useCallback(
-    (patch: AccountPreferencesPatch, onlyMissing = false) =>
-      mutate({ patch, onlyMissing }),
-    [mutate],
+    (patch: AccountPreferencesPatch, onlyMissing = false) => {
+      if (!eligible || !scope?.isCurrent()) return;
+      const id = ++nextWrite.current;
+      const write: PendingWrite = {
+        patch,
+        onlyMissing,
+        apiBase,
+        scope,
+        queryKey,
+        client: queryClient,
+        pending,
+        id,
+        revision: [...pending.values()].find((item) => Object.hasOwn(item.patch, 'modelPickerPreferences'))?.revision ?? query.data?.revision,
+      };
+      pending.set(id, write);
+      publishPending();
+      mutate(write);
+    },
+    [
+      eligible,
+      scope,
+      apiBase,
+      queryKey,
+      queryClient,
+      pending,
+      query.data?.revision,
+      mutate,
+    ],
   );
-  const available = eligible && query.isSuccess;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pendingVersion invalidates this projection after in-place queue mutations.
+  const projected = useMemo(() => {
+    if (!query.data) return undefined;
+    let values: AccountPreferences = query.data.values;
+    for (const write of pending.values())
+      values = applyAccountPreferencePatch(
+        values,
+        write.patch,
+        write.onlyMissing,
+      );
+    return { ...query.data, values };
+  }, [query.data, pending, pendingVersion]);
   useLayoutEffect(() => {
     if (!eligible || !scope?.isCurrent()) return;
     return deviceSettingsStore.bindAccountPreferences(
-      query.data?.values,
+      query.isFetchedAfterMount ? projected?.values : undefined,
       available
         ? save
         : () => {
@@ -117,8 +201,9 @@ export function AccountPreferencesProvider({
               'error',
             );
           },
+      available,
     );
-  }, [eligible, available, query.data, save, scope]);
+  }, [eligible, available, projected, query.isFetchedAfterMount, save, scope]);
   useLayoutEffect(() => {
     let failureShown = false;
     const apply = () => {
@@ -155,10 +240,11 @@ export function AccountPreferencesProvider({
             : available
               ? 'account'
               : 'loading',
-        saving: mutation.isPending,
+        saving: pending.size > 0,
         error: mutation.isError,
-        data: available ? query.data : undefined,
+        data: available ? projected : undefined,
         save,
+        requestScope: scope,
         retry: () => {
           mutation.reset();
           void query.refetch();

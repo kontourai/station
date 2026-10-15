@@ -8,7 +8,7 @@ published, first launch, connection setup, and routine lifecycle.
 
 Open **Settings → General → Your account** to set the approval default for your
 new Codex, Claude or Muse chats. You can also use the chat's approval picker and
-choose **Also save for my new … chats**. Full access requires an explicit
+choose **Save as my … default**. Full access requires an explicit
 confirmation. An Agent's own default takes precedence over your personal
 preference; an explicit chat choice takes precedence over both. Existing chats
 and unattended jobs keep their settings. Device grants and Station policy still

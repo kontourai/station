@@ -1,6 +1,7 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { type Context, Hono } from 'hono';
 import {
+  AccountPreferencesConflictError,
   AccountPreferencesStore,
   InvalidAccountPreferencesError,
 } from '../../services/identity/account-preferences.js';
@@ -48,9 +49,12 @@ export function createAccountPreferencesRoutes(deps: {
         owner,
         body,
         c.req.query('onlyMissing') === 'true',
+        c.req.header('If-Match'),
       );
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof AccountPreferencesConflictError)
+        return c.json({ error: { code: 'account_preferences_changed' } }, 409);
       if (error instanceof InvalidAccountPreferencesError)
         return c.json({ error: { code: 'invalid_account_preferences' } }, 400);
       return c.json(

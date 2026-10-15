@@ -117,13 +117,14 @@ export function ComposerModeSheet({
         closeLabel="Close mode picker"
         onClose={onClose}
       />
+      <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
       <p className="composer-mode-sheet__confirm-body">
-        {sourceNote}.{' '}
-        {pendingNote ??
-          (isNewSession
-            ? 'Applies when this chat starts.'
-            : 'Changes are requested for the next turn; the engine confirms application.')}
-        {activeMode && <> Active: {activeMode}.</>}
+        {pendingNote?.includes('restart')
+          ? 'Restart required'
+          : isNewSession
+            ? 'Applies on start'
+            : 'Applies next turn'}
+        {activeMode ? ` · Active: ${activeMode}` : ''}
       </p>
       {account.status === 'account' && (
         <label className="composer-mode-sheet__confirm-body">
@@ -132,14 +133,8 @@ export function ComposerModeSheet({
             checked={saveAsDefault}
             onChange={(event) => setSaveAsDefault(event.target.checked)}
           />{' '}
-          Also save for my new {engineConnectionId} chats on this Station
+          Save as my {engineConnectionId} default
         </label>
-      )}
-      {saveAsDefault && (
-        <p className="composer-mode-sheet__confirm-body">
-          Existing chats and unattended jobs keep their settings. Agent defaults
-          take precedence.
-        </p>
       )}
       {saveAsDefault && (
         <Button onClick={() => choose(effectiveMode)}>

@@ -78,6 +78,17 @@ const patchSchema = z
   .strict();
 const limits = { maxBytes: 128 * 1024, label: 'account preferences' };
 export class InvalidAccountPreferencesError extends Error {}
+export class AccountPreferencesConflictError extends Error {}
+function withRevision(
+  document: AccountPreferencesView,
+): AccountPreferencesView {
+  return {
+    ...document,
+    revision: createHash('sha256')
+      .update(JSON.stringify(document.values.modelPickerPreferences ?? null))
+      .digest('hex'),
+  };
+}
 
 export class AccountPreferencesStore {
   constructor(private readonly home: string) {}
@@ -99,8 +110,14 @@ export class AccountPreferencesStore {
     principalId: string;
     tenantId?: string;
   }): AccountPreferencesView {
-    return documentSchema.parse(
-      readJsonFile(this.path(owner), { schemaVersion: 1, values: {} }, limits),
+    return withRevision(
+      documentSchema.parse(
+        readJsonFile(
+          this.path(owner),
+          { schemaVersion: 1, values: {} },
+          limits,
+        ),
+      ),
     );
   }
 
@@ -108,15 +125,22 @@ export class AccountPreferencesStore {
     owner: { principalId: string; tenantId?: string },
     input: unknown,
     onlyMissing = false,
+    expectedRevision?: string,
   ): Promise<AccountPreferencesView> {
     const parsed = patchSchema.safeParse(input);
     if (!parsed.success) throw new InvalidAccountPreferencesError();
     const patch: AccountPreferencesPatch = parsed.data;
-    return mutateJsonFile(
+    const saved = await mutateJsonFile(
       this.path(owner),
       { schemaVersion: 1, values: {} } as AccountPreferencesView,
       (raw) => {
         const current = documentSchema.parse(raw);
+        if (
+          !onlyMissing &&
+          Object.hasOwn(patch, 'modelPickerPreferences') &&
+          expectedRevision !== withRevision(current).revision
+        )
+          throw new AccountPreferencesConflictError();
         const values = { ...current.values };
         for (const key of Object.keys(
           patch,
@@ -140,5 +164,6 @@ export class AccountPreferencesStore {
       },
       limits,
     );
+    return withRevision(saved);
   }
 }

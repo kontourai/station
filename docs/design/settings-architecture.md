@@ -69,7 +69,10 @@ principal owner. A verified local operator has operator preferences; an unbound
 paired Device or a tenant without a person keeps device-local preferences.
 Storage partitions the exact principal by the trusted tenant boundary, uses
 bounded schema validation and serialized atomic field patches, and reads fresh
-on requests. The client refreshes on activation, focus and reconnect. It reports
+on requests. Composite model-picker replacements require the revision returned by
+the latest read; conflicting changes return 409 rather than overwrite another
+device. The client projects pending actions locally and rolls them back on
+failure. The client refreshes on activation, focus and reconnect. It reports
 loading and save failure separately from saved values. Account changes retire
 the in-memory overlay; late responses cannot populate the replacement authority.
 There is no cross-Station cloud synchronization.
@@ -90,7 +93,7 @@ unattended starts and remote-Station execution do not inherit the initiating
 Station's personal preference. Engine capability and device authorization still
 apply. The composer distinguishes startup intent, confirmed engine mode,
 next-turn requests and restart-required refusal. Its picker changes this chat;
-**Also save for my new … chats** is a separate explicit action.
+**Save as my … default** is a separate explicit action.
 
 Implementation owners: [account store](../../src-server/services/identity/account-preferences.ts),
 [personal route](../../src-server/routes/me/account-preferences.ts),

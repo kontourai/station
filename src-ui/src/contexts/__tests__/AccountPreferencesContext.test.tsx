@@ -13,6 +13,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import {
+  readModelPickerPreferences,
+  updateModelPickerPreferences,
+} from '../../settings/modelPickerPreferences';
 import { AccountPreferencesSection } from '../../views/settings/AccountPreferencesSection';
 import { AccountPreferencesProvider } from '../AccountPreferencesContext';
 import {
@@ -170,4 +174,76 @@ test('previous preferences import is explicit and cannot overwrite a saved accou
   view.unmount();
   expect(deviceSettingsStore.get('chatDockWidth')).toBe(600);
   expect(deviceSettingsStore.get('ttsProvider')).toBe('device-voice');
+});
+
+test('rapid favorite actions compose while the first save is pending', async () => {
+  const empty = { favorites: [], recents: [], hidden: [], order: [] };
+  fixture.get.mockResolvedValueOnce({
+    schemaVersion: 1,
+    values: { modelPickerPreferences: empty },
+    revision: 'initial',
+  });
+  let finishFirst!: (value: AccountPreferencesView) => void;
+  fixture.patch.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishFirst = resolve;
+      }),
+  );
+  fixture.patch.mockImplementationOnce(async (_base, patch) => ({
+    schemaVersion: 1,
+    values: patch as AccountPreferencesView['values'],
+    revision: 'second',
+  }));
+  const view = render(tree(client()));
+  await screen.findByRole('button', { name: 'Choose light' });
+  act(() => {
+    updateModelPickerPreferences((value) => ({
+      ...value,
+      favorites: [...value.favorites, 'a'],
+    }));
+    updateModelPickerPreferences((value) => ({
+      ...value,
+      favorites: [...value.favorites, 'b'],
+    }));
+  });
+  await waitFor(() => expect(fixture.patch).toHaveBeenCalledTimes(1));
+  expect(readModelPickerPreferences().favorites).toEqual(['a', 'b']);
+  await act(async () =>
+    finishFirst({
+      schemaVersion: 1,
+      values: { modelPickerPreferences: { ...empty, favorites: ['a'] } },
+      revision: 'first',
+    }),
+  );
+  await waitFor(() => expect(fixture.patch).toHaveBeenCalledTimes(2));
+  expect(fixture.patch.mock.calls[1]?.[1]).toMatchObject({
+    modelPickerPreferences: { favorites: ['a', 'b'] },
+  });
+  expect(fixture.patch.mock.calls[1]?.[2]).toMatchObject({
+    headers: { 'If-Match': 'first' },
+  });
+  await waitFor(() =>
+    expect(readModelPickerPreferences().favorites).toEqual(['a', 'b']),
+  );
+  view.unmount();
+});
+
+test('a cached mount re-reads saved preferences even when the app default disables refetchOnMount', async () => {
+  const qc = client();
+  qc.setDefaultOptions({ queries: { retry: false, refetchOnMount: false } });
+  qc.setQueryData(['account-preferences', 'person-a', undefined], {
+    schemaVersion: 1,
+    values: { theme: 'light' },
+  });
+  fixture.get.mockResolvedValueOnce({
+    schemaVersion: 1,
+    values: { theme: 'dark' },
+  });
+  const view = render(tree(qc));
+  await waitFor(() => expect(fixture.get).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(screen.getByLabelText('Current theme').textContent).toBe('dark'),
+  );
+  view.unmount();
 });

@@ -755,6 +755,11 @@ export function useSendMessage(
           ? options.executionSnapshot.executionOnCurrentStation
           : currentState?.executionOnCurrentStation) !== false
       ) {
+        if (
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          return false;
         const catalog = queryClient.getQueryData<ObservedAgentCatalog>([
           'agents',
         ]);
@@ -1050,7 +1055,7 @@ export function useSendMessage(
             experienceDraft?.attachmentAssignments,
           requestScope: sourceStart
             ? options?.experienceRequestScope
-            : undefined,
+            : accountPreferences.requestScope,
         });
 
         stopDeliveryWatch?.();
@@ -1723,6 +1728,7 @@ export function useSendMessage(
     [
       addEphemeralMessage,
       accountPreferences.data,
+      accountPreferences.requestScope,
       accountPreferences.status,
       accountPreferences.saving,
       experienceNamespace,

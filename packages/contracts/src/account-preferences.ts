@@ -44,6 +44,8 @@ export type AccountPreferencesPatch = {
 export interface AccountPreferencesView {
   schemaVersion: 1;
   values: AccountPreferences;
+  /** Opaque compare-and-set revision for composite replacements. */
+  revision?: string;
 }
 
 export interface AccountPreferencesUpdate {

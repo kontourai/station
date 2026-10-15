@@ -4375,7 +4375,8 @@ The React-free client entry exports `getAccountPreferences(apiBase, options)`
 and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
 `/api/me/preferences`. Use captured request authority in `options.requestScope`.
 The server derives the owner; callers never supply an account or tenant id.
-Omitted fields stay unchanged; null resets a field. Engine defaults merge by
+The returned `revision` is supplied as `If-Match` when replacing model-picker
+preferences. A stale composite update returns 409. Omitted fields stay unchanged; null resets a field. Engine defaults merge by
 engine, and null for one engine removes only that engine's default. Import uses
 `onlyMissing: true` (the fourth argument) to fill unset fields atomically.
 

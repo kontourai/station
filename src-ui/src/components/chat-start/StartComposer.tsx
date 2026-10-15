@@ -409,10 +409,7 @@ export function StartComposer({
             )}
             {agent.status === 'ready' &&
               (!agent.environmentId || agent.environmentId === 'current') &&
-              agent.agent &&
-              (agent.agent.execution?.agentConnectionId === 'codex' ||
-                agent.agent.execution?.agentConnectionId === 'claude' ||
-                agent.agent.execution?.agentConnectionId === 'muse') && (
+              agent.agent && (
                 <StartApprovalSummary
                   agent={agent.agent}
                   executionAgentId={agent.executionAgentId}

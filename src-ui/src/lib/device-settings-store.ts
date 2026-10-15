@@ -47,6 +47,7 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
+import { applyAccountPreferencePatch } from './account-preference-values';
 import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
@@ -689,6 +690,7 @@ class DeviceSettingsStore {
     | {
         values: AccountPreferences | undefined;
         write: (patch: AccountPreferencesPatch) => void;
+        writable: boolean;
       }
     | undefined;
   private envelope: DeviceSettingsEnvelope;
@@ -934,8 +936,9 @@ class DeviceSettingsStore {
   bindAccountPreferences = (
     values: AccountPreferences | undefined,
     write: (patch: AccountPreferencesPatch) => void,
+    writable = true,
   ): (() => void) => {
-    const binding = { values, write };
+    const binding = { values, write, writable };
     this.account = binding;
     this.snapshot = this.resolve();
     this.notify();
@@ -946,6 +949,17 @@ class DeviceSettingsStore {
       this.notify();
     };
   };
+
+  private writeAccountPatch(patch: AccountPreferencesPatch): void {
+    const account = this.account;
+    if (!account) return;
+    if (account.writable && account.values) {
+      account.values = applyAccountPreferencePatch(account.values, patch);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
+    account.write(patch);
+  }
 
   /**
    * Adopts an imported envelope wholesale: throws
@@ -980,7 +994,7 @@ class DeviceSettingsStore {
         Object.assign(patch, { [key]: device[key] });
         delete device[key];
       }
-      if (Object.keys(patch).length > 0) this.account.write(patch);
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
       if (Object.keys(device).length === 0) return;
       partial = device;
     }
@@ -1004,7 +1018,7 @@ class DeviceSettingsStore {
       ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
     ) {
       if (!valuesEqual(this.snapshot[key], value))
-        this.account.write({ [key]: value });
+        this.writeAccountPatch({ [key]: value });
       return;
     }
     if (this.account && key === 'featureSettings') {
@@ -1014,7 +1028,7 @@ class DeviceSettingsStore {
         if (features[field] !== this.snapshot.featureSettings[field])
           patch[field] = features[field] ?? null;
       }
-      if (Object.keys(patch).length > 0) this.account.write(patch);
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
       value = {
         ...features,
         smoothReveal: this.resolveValue(this.envelope, 'featureSettings')
@@ -1053,7 +1067,7 @@ class DeviceSettingsStore {
       const patch: AccountPreferencesPatch = {};
       for (const key of ACCOUNT_PREFERENCE_KEYS)
         if (keys.includes(key)) patch[key] = null;
-      if (Object.keys(patch).length > 0) this.account.write(patch);
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
       keys = keys.filter(
         (key) =>
           !ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key),

@@ -62,29 +62,38 @@ export function AccountPreferencesSection() {
       title="Your account preferences"
       id="section-account-preferences"
     >
-      <p>
+      <p role="status">
         {account.status === 'account'
-          ? 'Saved to your account on this Station and used by your other signed-in devices. Changes to display preferences apply after saving.'
+          ? 'Synced across your devices on this Station.'
           : account.status === 'loading'
-            ? 'Loading your account preferences. Saved preferences have not been confirmed yet.'
+            ? 'Loading preferences…'
             : account.status === 'error'
-              ? 'Account preferences could not be loaded. Account settings are unavailable; this device keeps its local preferences.'
-              : 'Using preferences saved on this device. Sign in as the same person on each device to share preferences on this Station.'}
+              ? 'Sync unavailable. Reload to try again.'
+              : 'Saved on this device. Sign in to sync.'}
       </p>
-      <p>
-        Microphone and output providers, push permission, haptics, keyboard
-        behavior, shortcuts, panel sizes, and device access stay on this device.
-        Project and Station settings remain shared configuration.
-      </p>
-      <p>
-        Your interactive chats only. An explicit chat choice wins, then the
-        Agent’s default, then your preference. Changes apply to new chats;
-        existing chats and unattended jobs keep their settings.
-      </p>
+      <details>
+        <summary>What syncs?</summary>
+        <p>
+          <strong>Account:</strong> appearance, chat display, diff preferences,
+          model favorites, and new-chat defaults.
+        </p>
+        <p>
+          <strong>Device:</strong> microphone, speakers, push permission,
+          haptics, keyboard, layout, and access grants.
+        </p>
+      </details>
+      <p>Approval defaults · new chats only</p>
+      <details>
+        <summary>Which default wins?</summary>
+        <p>
+          Chat choice → Agent → your default → Station → engine. Existing chats
+          and unattended jobs keep their settings.
+        </p>
+      </details>
       <>
         <PageRow
           {...settingsRow('account-preference-sync')}
-          description="Imports only choices your account has not saved. The local copy is kept; permission defaults are never imported."
+          description="Fills account choices you haven’t saved yet."
           control={
             <Button
               disabled={account.saving || account.status !== 'account'}
@@ -101,7 +110,7 @@ export function AccountPreferencesSection() {
             description={
               defaults[engine]
                 ? approvalModeDescription(defaults[engine]!, engine)
-                : 'Uses the Agent, then Station, then engine default.'
+                : undefined
             }
             control={
               <select
@@ -118,7 +127,7 @@ export function AccountPreferencesSection() {
                 {APPROVAL_MODE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.value === 'connection-default'
-                      ? 'Follow Agent / Station / engine'
+                      ? 'Use existing defaults'
                       : option.label}
                   </option>
                 ))}
@@ -129,7 +138,7 @@ export function AccountPreferencesSection() {
         <ConfirmModal
           isOpen={confirmEngine !== null}
           title="Save full access default?"
-          message={`${approvalModeDescription('never', confirmEngine)} This becomes the saved default for your new ${confirmEngine ?? ''} chats, subject to device access and Station policy.`}
+          message={`$New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
           confirmLabel="Save full access default"
           cancelLabel="Cancel"
           variant="danger"
@@ -143,7 +152,7 @@ export function AccountPreferencesSection() {
       {account.saving && <p role="status">Saving account preferences…</p>}
       {(account.error || account.status === 'error') && (
         <p role="alert">
-          Preferences were not saved or refreshed.{' '}
+          Couldn’t confirm the save.{' '}
           <Button onClick={account.retry}>Reload saved preferences</Button>
         </p>
       )}

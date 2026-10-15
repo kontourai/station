@@ -24,6 +24,9 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
 const accountPreferenceFixture = vi.hoisted(() => ({
   status: 'account',
   saving: false,
+  requestScope: undefined as
+    | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+    | undefined,
   data: {
     schemaVersion: 1,
     values: { interactiveApprovalModes: {} as Record<string, string> },
@@ -235,6 +238,7 @@ const stagedSnapshot = {
 
 describe('useSendMessage canonical ExecutionTarget path', () => {
   beforeEach(() => {
+    accountPreferenceFixture.requestScope = undefined;
     accountPreferenceFixture.data.values.interactiveApprovalModes = {};
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
@@ -759,6 +763,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
       accountPreferenceFixture.data.values.interactiveApprovalModes = {
         codex: 'never',
       };
@@ -771,6 +781,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           setApprovalMode: 'never',
           setApprovalModeBasedOn: null,
         });
+        expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
+          requestScope,
+        );
         activeChatsStore.updateChat(sessionId, {
           queuedApprovalMode: undefined,
           orchestrationSessionStarted: true,
