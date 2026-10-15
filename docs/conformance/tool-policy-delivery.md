@@ -103,7 +103,7 @@ intercepts or blocks all of that engine's tool calls.
 `tools.askBeforeUse` is delivered by Station and Claude. New picker choices
 use `mcp/<server>/<action>` approval keys and source defaults use
 `mcp/<server>/*`. Station derives these from loader provenance; Claude uses
-an unambiguous SDK-owned MCP identity. Ambiguous SDK names with additional
+an unambiguous SDK-owned MCP identity. Ambiguous SDK names with additional or overlapping
 double-underscore separators require approval when the Agent has Ask rules.
 Both key components are percent-encoded, including literal `*` as `%2A`; only
 a source default's terminal `*` is a wildcard. Legacy flattened Always rules cannot override a

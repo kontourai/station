@@ -3244,9 +3244,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
-            authoredApproval === 'always' && sourceApproval.key
-              ? [...(input.agent?.autoApprove ?? []), toolName]
-              : input.agent?.autoApprove,
+            input.agent?.autoApprove,
             input.agent?.toolServers,
             // The Agent SDK generates this name from the actual mcpServers
             // config key, in Station's own process — authentically bound to

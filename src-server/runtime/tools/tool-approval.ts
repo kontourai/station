@@ -1,4 +1,5 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
+import { externalMcpToolApprovalIdentity } from '@kontourai/station-shared/mcp-tool-selection';
 import {
   classifyStationBrowserTool,
   STATION_BROWSER_MCP_SERVER_ID,
@@ -285,10 +286,24 @@ export function isAutoApprovedExternalTool(
   )
     return true;
   if (!patterns || patterns.length === 0) return false;
+  const qualified =
+    toolNameProvenance === 'authentic'
+      ? externalMcpToolApprovalIdentity(toolName).key
+      : undefined;
+  const qualifiedGrant =
+    qualified !== undefined &&
+    isAutoApproved(
+      qualified,
+      patterns.filter((pattern) => pattern.startsWith('mcp/')),
+    );
+  const legacyPatterns = patterns.filter(
+    (pattern) => !pattern.startsWith('mcp/'),
+  );
   const canonical = canonicalizeExternalToolName(toolName);
   const matched =
-    isAutoApproved(toolName, patterns) ||
-    (canonical !== toolName && isAutoApproved(canonical, patterns));
+    qualifiedGrant ||
+    isAutoApproved(toolName, legacyPatterns) ||
+    (canonical !== toolName && isAutoApproved(canonical, legacyPatterns));
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
@@ -300,7 +315,15 @@ export function isAutoApprovedExternalTool(
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
-      patterns,
+      qualified !== undefined &&
+        qualifiedGrant &&
+        patterns.some(
+          (pattern) =>
+            pattern.startsWith('mcp/station-browser/') &&
+            isAutoApproved(qualified, [pattern]),
+        )
+        ? [...legacyPatterns, toolName]
+        : legacyPatterns,
       resolvedToolServers,
       toolNameProvenance,
     );

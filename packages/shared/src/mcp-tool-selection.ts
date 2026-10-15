@@ -173,8 +173,9 @@ export function externalMcpToolApprovalIdentity(toolName: string): {
   ambiguous: boolean;
 } {
   if (!toolName.startsWith('mcp__')) return { ambiguous: false };
-  const parts = toolName.slice(5).split('__');
-  if (parts.length !== 2) return { ambiguous: true };
+  const suffix = toolName.slice(5);
+  const parts = suffix.split('__');
+  if (parts.length !== 2 || suffix.includes('___')) return { ambiguous: true };
   return { key: mcpToolApprovalKey(parts[0], parts[1]), ambiguous: false };
 }
 

@@ -134,15 +134,7 @@ async function requestMcpElicitation(
  */
 export function createElicitationCallback(
   agentSpec: AgentSpec,
-  toolNameMapping: Map<
-    string,
-    {
-      original: string;
-      normalized: string;
-      server: string | null;
-      tool: string;
-    }
-  >,
+  toolNameMapping: Map<string, MCPToolNameMappingEntry>,
   approvalRegistry: ApprovalRegistry,
   injectableStream: InjectableStream,
   logger: any,
@@ -196,7 +188,7 @@ export function createElicitationCallback(
       // #2584: the built-in's bounded-write tools, by exact loader identity.
       const isIntrinsic = isIntrinsicStationEngineGrant(
         toolName,
-        toolNameMapping as ReadonlyMap<string, MCPToolNameMappingEntry>,
+        toolNameMapping,
       );
 
       const explicitAsk =

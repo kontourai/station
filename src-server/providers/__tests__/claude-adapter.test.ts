@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import {
   CredentialProfileEnvironmentError,
@@ -4995,9 +4996,19 @@ describe('ClaudeAdapter', () => {
         asks: ['reports_write'],
       },
       {
+        toolName: 'mcp__fooBar__read',
+        allows: ['*'],
+        asks: ['mcp/fooBar/read'],
+      },
+      {
         toolName: 'mcp__mcp___reports__read',
         allows: ['mcp/reports/read', 'mcp__reports__read'],
         asks: ['mcp/mcp/*'],
+      },
+      {
+        toolName: 'mcp__reports___read',
+        allows: ['mcp/reports/_read'],
+        asks: ['mcp/reports_/*'],
       },
       {
         toolName: 'mcp__reports__safe__read',
@@ -5019,7 +5030,23 @@ describe('ClaudeAdapter', () => {
             prompt: 'Review tool calls',
             tools: { mcpServers: [], autoApprove: allows, askBeforeUse: asks },
           },
-          toolNameMapping: new Map(),
+          toolNameMapping: new Map([
+            [
+              'fooBar_read',
+              {
+                original: 'foo-bar_read',
+                normalized: 'fooBar_read',
+                server: 'foo-bar',
+                tool: 'read',
+                provenance: new MCPToolProvenanceGeneration().mint({
+                  serverId: 'foo-bar',
+                  integrationId: 'foo-bar',
+                  originalToolName: 'read',
+                  runtimeName: 'fooBar_read',
+                }),
+              },
+            ],
+          ]),
           isGranted: () => true,
           logger: { info: vi.fn(), warn: vi.fn() },
         });
@@ -5098,51 +5125,57 @@ describe('ClaudeAdapter', () => {
       ]);
     }
 
-    test('auto-approves an mcp__server__tool call matching the agent server_* pattern, with no approval request surfaced', async () => {
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter();
-      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    test.each(['station-control_*', 'mcp/station-control/list_agents'])(
+      'auto-approves a plain call under %s without surfacing a request',
+      async (pattern) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-auto-approve',
-        agent: {
-          slug: 'engine-lab',
-          // station-voice's actual pattern (agent-hooks.ts), authored
-          // against the Station-engine <server>_<tool> tool-name shape.
-          autoApprove: ['station-control_*'],
-          toolServers: [GENUINE_STATION_CONTROL_TOOLSERVER],
-        },
-      });
-      await iterator.next(); // session.started
-      await iterator.next(); // session.configured
-
-      const queryArgs = mockQuery.mock.calls[0][0];
-      // The Claude SDK's actual MCP tool-name format for a station-control
-      // tool call.
-      const result = await withTimeout(
-        queryArgs.options.canUseTool(
-          'mcp__station-control__list_agents',
-          { foo: 'bar' },
-          {
-            signal: new AbortController().signal,
-            toolUseID: 'tool-use-auto',
-            suggestions: [],
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-auto-approve',
+          agent: {
+            slug: 'engine-lab',
+            // station-voice's actual pattern (agent-hooks.ts), authored
+            // against the Station-engine <server>_<tool> tool-name shape.
+            autoApprove: [pattern],
+            askBeforeUse: pattern.startsWith('mcp/')
+              ? ['mcp/station-control/*']
+              : [],
+            toolServers: [GENUINE_STATION_CONTROL_TOOLSERVER],
           },
-        ),
-        200,
-      );
+        });
+        await iterator.next(); // session.started
+        await iterator.next(); // session.configured
 
-      expect(result).toEqual({
-        behavior: 'allow',
-        updatedInput: { foo: 'bar' },
-      });
+        const queryArgs = mockQuery.mock.calls[0][0];
+        // The Claude SDK's actual MCP tool-name format for a station-control
+        // tool call.
+        const result = await withTimeout(
+          queryArgs.options.canUseTool(
+            'mcp__station-control__list_agents',
+            { foo: 'bar' },
+            {
+              signal: new AbortController().signal,
+              toolUseID: 'tool-use-auto',
+              suggestions: [],
+            },
+          ),
+          200,
+        );
 
-      // No request.opened ever reaches the stream for this call — pumping
-      // the iterator again must time out rather than yield an event.
-      const nextEvent = await withTimeout(iterator.next(), 200);
-      expect(nextEvent).toBe('TIMED_OUT');
-    });
+        expect(result).toEqual({
+          behavior: 'allow',
+          updatedInput: { foo: 'bar' },
+        });
+
+        // No request.opened ever reaches the stream for this call — pumping
+        // the iterator again must time out rather than yield an event.
+        const nextEvent = await withTimeout(iterator.next(), 200);
+        expect(nextEvent).toBe('TIMED_OUT');
+      },
+    );
 
     test('still requests approval through the ApprovalRegistry for a tool NOT matching the pattern', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));

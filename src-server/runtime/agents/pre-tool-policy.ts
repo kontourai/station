@@ -456,12 +456,15 @@ export function createStagedPreToolPolicyEvaluator(
       options.interaction === 'external'
         ? externalMcpToolApprovalIdentity(tool.toolName)
         : { ambiguous: false, key: undefined };
-    const sourceKey = mapping?.provenance
-      ? mcpToolApprovalKey(
-          mapping.provenance.integrationId,
-          mapping.provenance.originalToolName,
-        )
-      : external.key;
+    const sourceKey =
+      options.interaction === 'external'
+        ? external.key
+        : mapping?.provenance
+          ? mcpToolApprovalKey(
+              mapping.provenance.integrationId,
+              mapping.provenance.originalToolName,
+            )
+          : external.key;
     const explicitAsk =
       (external.ambiguous && !!deps.spec.tools?.askBeforeUse?.length) ||
       resolveAuthoredToolApproval(
