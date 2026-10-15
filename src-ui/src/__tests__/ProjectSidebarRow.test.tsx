@@ -2,7 +2,14 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
@@ -375,7 +382,21 @@ describe('collapsed project view navigation', () => {
     expect(layoutsQueryMock).toHaveBeenLastCalledWith('demo', {
       enabled: true,
     });
-    fireEvent.keyDown(popup, { key: 'Escape' });
+    const press = createEvent.pointerDown(trigger, {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(trigger, press);
+    if (!press.defaultPrevented) act(() => trigger.focus());
+    fireEvent.click(trigger);
+    expect(
+      screen.queryByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(
+      screen.getByRole('dialog', { name: 'Demo Project views' }),
+      { key: 'Escape' },
+    );
     expect(
       screen.queryByRole('dialog', { name: 'Demo Project views' }),
     ).toBeNull();

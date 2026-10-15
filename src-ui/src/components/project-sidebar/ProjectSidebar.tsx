@@ -342,7 +342,7 @@ function ProjectSidebarImpl() {
             const liveLanes = liveLanesByProject.get(project.slug) ?? [];
             return (
               <ProjectSidebarRow
-                key={`${durableAuthorityNamespace ?? ''}:${project.slug}`}
+                key={`${durableAuthorityNamespace ?? ''}:${isMobile}:${project.slug}`}
                 reorder={rowReorderProps(index)}
                 project={project}
                 isActive={isActive}
@@ -383,7 +383,7 @@ function ProjectSidebarImpl() {
         </div>
 
         <LazyBoundary
-          key={durableAuthorityNamespace}
+          key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
           load={loadProjectSidebarFooter}
           componentProps={{
             activePath: pathname,

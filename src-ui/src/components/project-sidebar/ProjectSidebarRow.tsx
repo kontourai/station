@@ -186,6 +186,9 @@ export function ProjectSidebarRow({
           aria-label={collapsed ? `${project.name} views` : undefined}
           aria-haspopup={collapsed ? 'dialog' : undefined}
           aria-expanded={collapsed ? menuOpen : undefined}
+          onPointerDown={(event) => {
+            if (collapsed && menuOpen) event.preventDefault();
+          }}
           onClick={handleClick}
           title={
             collapsed

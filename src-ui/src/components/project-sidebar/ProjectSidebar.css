@@ -436,12 +436,13 @@
     inset: -13px;
   }
 
-  .sidebar__project-disclosure {
+  .sidebar .sidebar__project-disclosure {
     width: 44px;
     height: 44px;
   }
 
-  .sidebar__project-row-main:has(.sidebar__project-disclosure)
+  .sidebar
+    .sidebar__project-row-main:has(.sidebar__project-disclosure)
     .sidebar__project-btn {
     padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
   }
@@ -778,12 +779,13 @@
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }
 
-  .sidebar__project-disclosure {
+  .sidebar .sidebar__project-disclosure {
     width: 44px;
     height: 44px;
   }
 
-  .sidebar__project-row-main:has(.sidebar__project-disclosure)
+  .sidebar
+    .sidebar__project-row-main:has(.sidebar__project-disclosure)
     .sidebar__project-btn {
     padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
   }

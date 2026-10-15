@@ -174,9 +174,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
  * `ProjectSidebarBoards` reads since #2158 — the section then threw on mount
  * and this file's lazy-boundary case saw the error alert it exists to refuse.
  */
+const presentation = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
-  useIsMobile: () => false,
+  useIsMobile: () => presentation.isMobile,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
@@ -252,6 +253,7 @@ function renderSidebar(ui: ReactElement) {
 }
 
 function resetState() {
+  presentation.isMobile = false;
   sidebarRegion.mainOccupant = undefined;
   for (const key of Object.keys(chats)) delete chats[key];
   agents.length = 0;
@@ -986,4 +988,40 @@ test('the header toggle event switches the desktop map and remembers the rail', 
       .getByRole('navigation', { name: 'Primary navigation' })
       .classList.contains('sidebar--collapsed'),
   ).toBe(true);
+});
+
+test('an open project popup is retired when the rail becomes a closed mobile drawer', () => {
+  resetState();
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
+  try {
+    projects.push({ id: 'p1', slug: 'station', name: 'Station' });
+    deviceSettingsStore.set('projectSidebarCollapsed', true);
+    renderSidebar(<ProjectSidebar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Station views' }));
+    expect(screen.getByRole('dialog', { name: 'Station views' })).toBeTruthy();
+    act(() => {
+      presentation.isMobile = true;
+      deviceSettingsStore.set('theme', 'light');
+    });
+    expect(screen.queryByRole('dialog', { name: 'Station views' })).toBeNull();
+    act(() => {
+      presentation.isMobile = false;
+      deviceSettingsStore.set('theme', 'dark');
+    });
+    expect(
+      screen
+        .getByRole('button', { name: 'Station views' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  } finally {
+    presentation.isMobile = false;
+    vi.unstubAllGlobals();
+  }
 });

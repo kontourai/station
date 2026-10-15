@@ -4,6 +4,7 @@
 
 import {
   act,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -720,6 +721,17 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
     expect(
       screen.getByRole('dialog', { name: 'Sidebar utilities' }),
     ).toBeTruthy();
+    const press = createEvent.pointerDown(more, {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(more, press);
+    if (!press.defaultPrevented) act(() => more.focus());
+    fireEvent.click(more);
+    expect(
+      screen.queryByRole('dialog', { name: 'Sidebar utilities' }),
+    ).toBeNull();
+    fireEvent.click(more);
     fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     expect(navigate).toHaveBeenCalledWith('/schedule');
     expect(

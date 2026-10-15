@@ -119,6 +119,9 @@ export function ProjectSidebarFooter({
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
             title="Live work, Schedule, Customize and Settings"
+            onPointerDown={(event) => {
+              if (moreOpen) event.preventDefault();
+            }}
             onClick={() => setMoreOpen((value) => !value)}
           >
             <span aria-hidden="true">•••</span>
