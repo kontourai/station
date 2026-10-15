@@ -576,13 +576,14 @@ export class ThreadInboxDelivery {
     }
   >();
   /**
-   * Keys whose start was abandoned at its deadline but has not answered yet,
-   * per conversation. While one is here the ledger cannot be trusted: a cold
-   * start claims the key only once its Session exists, so `not-received`
-   * would re-queue a start that is still running. A restart empties it, and
-   * the old process is gone with its start, so the ledger is trusted then.
+   * Keys this process is starting, per conversation, from before the start
+   * begins until it answers, including past its deadline. While one is here
+   * the ledger cannot be trusted: a cold start claims the key only once its
+   * Session exists, so `not-received` would let a second send of it run (a
+   * re-queue, or a live send). A restart empties it, and the old process is
+   * gone with its start, so the ledger is trusted then.
    */
-  private readonly abandoned = new Map<string, Set<string>>();
+  private readonly startsInProgress = new Map<string, Set<string>>();
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
 
@@ -739,14 +740,15 @@ export class ThreadInboxDelivery {
   }
 
   /**
-   * Whether a start of `clientTurnId` this process abandoned at its deadline
-   * is still running. The ledger may not hold the key yet, so a live send
-   * under it, by anyone, would be a second send; `/chat` refuses it.
+   * Whether this process is starting `clientTurnId` now, before or after its
+   * deadline. The ledger may not hold the key yet, so a live send under it
+   * would be a second send; `/chat` and `/chat/:id/continue` refuse it.
    */
   inFlight(conversationId: string, clientTurnId: string): boolean {
     return (
-      this.abandoned.get(this.inboxOf(conversationId))?.has(clientTurnId) ===
-      true
+      this.startsInProgress
+        .get(this.inboxOf(conversationId))
+        ?.has(clientTurnId) === true
     );
   }
 
@@ -910,36 +912,42 @@ export class ThreadInboxDelivery {
   private async startWithin(
     conversationId: string,
     clientTurnId: string,
-    work: Promise<SessionStartResult>,
+    begin: () => Promise<SessionStartResult>,
   ): Promise<SessionStartResult | typeof DEADLINE> {
+    // In progress from before it begins until it answers: a cold start
+    // claims the key only once its Session exists, so until then only this
+    // set knows a send of it is under way.
+    const keys = this.startsInProgress.get(conversationId) ?? new Set<string>();
+    keys.add(clientTurnId);
+    this.startsInProgress.set(conversationId, keys);
+    let abandoned = false;
+    const answered = () => {
+      keys.delete(clientTurnId);
+      if (keys.size === 0 && this.startsInProgress.get(conversationId) === keys)
+        this.startsInProgress.delete(conversationId);
+      // Abandoned at its deadline: now that it answered, read the ledger.
+      if (abandoned) this.drive(conversationId, false);
+    };
+    let work: Promise<SessionStartResult>;
+    try {
+      work = begin();
+    } catch (error) {
+      answered();
+      throw error;
+    }
+    const tracked = work.finally(answered);
+    // An abandoned start may still settle; its answer is the ledger's now.
+    tracked.catch(() => undefined);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<typeof DEADLINE>((resolve) => {
-      timer = setTimeout(
-        () => resolve(DEADLINE),
-        this.ports.placementDeadlineMs ?? PLACEMENT_DEADLINE_MS,
-      );
+      timer = setTimeout(() => {
+        abandoned = true;
+        resolve(DEADLINE);
+      }, this.ports.placementDeadlineMs ?? PLACEMENT_DEADLINE_MS);
       timer.unref?.();
     });
-    // An abandoned start may still settle; its answer is the ledger's now.
-    work.catch(() => undefined);
     try {
-      const answer = await Promise.race([work, deadline]);
-      // Abandoned at its deadline but still running: no Session holding the
-      // key does not mean it may be queued again until it answers; then the
-      // ledger is read again.
-      if (answer === DEADLINE) {
-        const keys = this.abandoned.get(conversationId) ?? new Set<string>();
-        keys.add(clientTurnId);
-        this.abandoned.set(conversationId, keys);
-        const answered = () => {
-          keys.delete(clientTurnId);
-          if (keys.size === 0 && this.abandoned.get(conversationId) === keys)
-            this.abandoned.delete(conversationId);
-          this.drive(conversationId, false);
-        };
-        void work.then(answered, answered);
-      }
-      return answer;
+      return await Promise.race([tracked, deadline]);
     } finally {
       clearTimeout(timer);
     }
@@ -973,7 +981,7 @@ export class ThreadInboxDelivery {
     // exists): queuing it again would start it a second time alongside it.
     if (
       held?.outcome === 'not-received' &&
-      !this.abandoned.get(conversationId)?.has(head.key)
+      !this.startsInProgress.get(conversationId)?.has(head.key)
     ) {
       this.ports.store.resolveUnconfirmed(head, 'queued', {}, this.now());
       return true;
@@ -1048,9 +1056,7 @@ export class ThreadInboxDelivery {
         // The whole conversation's ledger first (D1): a key an earlier
         // attempt took on any Session is answered from there, never sent
         // again into a successor Session.
-        started = await this.startWithin(
-          conversationId,
-          entry.key,
+        started = await this.startWithin(conversationId, entry.key, () =>
           startUnlessDelivered({
             conversationId,
             inspect: () =>

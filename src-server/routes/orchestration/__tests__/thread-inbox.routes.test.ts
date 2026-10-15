@@ -271,6 +271,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       }),
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    /**
+     * Set to hold the inbox's next start before it reaches the continuation,
+     * on a Session that is already running (a warm start).
+     */
+    const inboxStartGate: { wait?: Promise<void> } = {};
+    /**
+     * Set to hold the next Session start, as a cold start does: until the new
+     * Session exists, no turn claim holds the send's key.
+     */
+    const coldStartGate: { wait?: Promise<void>; entered: number } = {
+      entered: 0,
+    };
     const deps: ExecutionTargetExecutionDependencies = {
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
@@ -308,6 +320,12 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           requested,
         ),
       startSession: async (_access, input) => {
+        const gate = coldStartGate.wait;
+        coldStartGate.wait = undefined;
+        if (gate) {
+          coldStartGate.entered += 1;
+          await gate;
+        }
         const started = await service.startSessionInternal(
           { type: 'start-session', input },
           { userId: OWNER },
@@ -336,11 +354,6 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         return { turnId: dispatched.result.turnId };
       },
     };
-    /**
-     * Set to hold the inbox's next start before it reaches the continuation,
-     * as a cold start does before any Session holds the key.
-     */
-    const inboxStartGate: { wait?: Promise<void> } = {};
     /** Set to lose the inbox's answer after the engine took the turn (a crash). */
     const crashAfterStart: { armed: boolean; release?: () => void } = {
       armed: false,
@@ -530,6 +543,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       );
     return {
       inboxStartGate,
+      coldStartGate,
       continuations,
       continueSend,
       root,
@@ -1000,55 +1014,122 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     ]);
   });
 
-  test('R4-1: while an abandoned start still runs, its own sender cannot send its key live on either route', async () => {
-    const world = station({ placementDeadlineMs: 50 });
+  test.each([
+    ['before its start deadline', 60_000],
+    ['after its start deadline', 50],
+  ])(
+    'R5-1: while the inbox cold-starts a key (%s), its own sender cannot send it live, and it is sent once',
+    async (window, deadline) => {
+      const world = station({ placementDeadlineMs: deadline });
+      await world.busy();
+      const held = await world.send('owner-key', 'then summarize', {
+        whenBusy: 'queue',
+      });
+      expect(held.status).toBe(202);
+      // The Session ends, so the inbox's start has to start a successor: a
+      // cold start, with no turn claim on the key until that Session exists.
+      let release!: () => void;
+      world.coldStartGate.wait = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const session = world.service.currentConversationSessionId(CONVERSATION);
+      world.adapter.holdTurns = false;
+      world.adapter.events.push({
+        eventId: `${session}:exited`,
+        provider: 'claude',
+        threadId: session,
+        sessionId: session,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        exitKind: 'error',
+      } as unknown as CanonicalRuntimeEvent);
+      await eventually(() => expect(world.coldStartGate.entered).toBe(1));
+      if (window === 'after its start deadline')
+        await eventually(() =>
+          expect(world.inbox.list(CONVERSATION)).toMatchObject([
+            { clientTurnId: 'owner-key', state: 'unconfirmed' },
+          ]),
+        );
+      else
+        expect(world.inbox.list(CONVERSATION)).toMatchObject([
+          { clientTurnId: 'owner-key', state: 'sending' },
+        ]);
+      expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(true);
+      const refusals = [
+        // `/chat` with `whenBusy` and the same body: while the successor is
+        // reserved the inbox cannot hold a follow-up (its binding is not
+        // known yet), so this too would take the live path.
+        await world.send('owner-key', 'then summarize', { whenBusy: 'queue' }),
+        // `/chat` without `whenBusy`.
+        await world.send('owner-key', 'then summarize'),
+        // `/chat` with `whenBusy`, but naming another Agent: the live path.
+        await world.send('owner-key', 'then summarize', {
+          whenBusy: 'queue',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('writer'),
+          },
+        }),
+        // The composer's continue route.
+        await world.continueSend('owner-key', 'then summarize'),
+      ];
+      for (const refused of refusals) {
+        expect(refused.status, await refused.clone().text()).toBe(409);
+        expect(await refused.json()).toMatchObject({
+          code: 'client_turn_in_flight',
+          retryable: true,
+        });
+      }
+      expect(world.continuations).toEqual([]);
+      // The cold start completes: the follow-up reaches the engine once.
+      release();
+      await eventually(() =>
+        expect(world.inbox.list(CONVERSATION)).toMatchObject([
+          { clientTurnId: 'owner-key', state: 'sent' },
+        ]),
+      );
+      expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      // A start into a successor carries the transcript before the message.
+      expect(
+        world.prompts().filter((prompt) => prompt.endsWith('then summarize')),
+      ).toHaveLength(1);
+    },
+  );
+
+  test("R5-3: while the inbox starts a key on a running Session, its sender's own held resend is answered 202, and a live send is refused", async () => {
+    const world = station();
     await world.busy();
-    const held = await world.send('owner-key', 'then summarize', {
-      whenBusy: 'queue',
-    });
-    expect(held.status).toBe(202);
+    expect(
+      (await world.send('owner-key', 'then summarize', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
     let release!: () => void;
     world.inboxStartGate.wait = new Promise<void>((resolve) => {
       release = resolve;
     });
     world.adapter.holdTurns = false;
     world.adapter.complete();
-    // Abandoned at its deadline, still held before any Session took the key.
     await eventually(() =>
-      expect(world.inbox.list(CONVERSATION)).toMatchObject([
-        { clientTurnId: 'owner-key', state: 'unconfirmed' },
-      ]),
+      expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(true),
     );
-    expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(true);
-    const refusals = [
-      // `/chat` without `whenBusy`.
-      await world.send('owner-key', 'then summarize'),
-      // `/chat` with `whenBusy`, but naming another Agent: the live path.
-      await world.send('owner-key', 'then summarize', {
-        whenBusy: 'queue',
-        target: { environment: { kind: 'current' }, agent: agentId('writer') },
-      }),
-      // The composer's continue route.
-      await world.continueSend('owner-key', 'then summarize'),
-    ];
-    for (const refused of refusals) {
-      expect(refused.status, await refused.clone().text()).toBe(409);
-      expect(await refused.json()).toMatchObject({
-        code: 'client_turn_in_flight',
-        retryable: true,
-      });
-    }
-    expect(world.continuations).toEqual([]);
-    expect(world.prompts()).toEqual(['read the file']);
-    // The abandoned start answers: it is sent once, and nothing else is.
+    // The hold step comes first: the same submission is its own entry.
+    const resend = await world.send('owner-key', 'then summarize', {
+      whenBusy: 'queue',
+    });
+    expect(resend.status, await resend.clone().text()).toBe(202);
+    expect(await resend.json()).toMatchObject({
+      data: { outcome: 'queued', entry: { state: 'sending' } },
+    });
+    const live = await world.send('owner-key', 'then summarize');
+    expect(live.status).toBe(409);
+    expect(await live.json()).toMatchObject({ code: 'client_turn_in_flight' });
     release();
     await eventually(() =>
       expect(world.inbox.list(CONVERSATION)).toMatchObject([
         { clientTurnId: 'owner-key', state: 'sent' },
       ]),
     );
-    expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 200));
     expect(world.prompts()).toEqual(['read the file', 'then summarize']);
   });
 });
