@@ -27,7 +27,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
-| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `packages/monument/src/session-message-delivery.ts` |
 | [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
@@ -1283,17 +1283,23 @@ restrictions and caller binding.
 
 An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
-[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
-is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and for delegated task result delivery.
+[SessionMessageDelivery](../../packages/monument/src/session-message-delivery.ts)
+in `@kontourai/monument` owns the decision and record-before-effect sequence.
+Station Control's `send_to_session` and delegated task result delivery import
+it through the package's public root entry point; no server copy remains.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
 decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
 refuses a running one, and `steer` refuses an idle one. The module performs
-nothing itself: the caller supplies the ports for the busy check, a turn start,
-and a receipted steer, each already authorized.
+no engine invocation itself: the caller supplies the ports for the busy check,
+a turn start, and a receipted steer, each already authorized. Monument calls
+those ports only after recording a new branch and maps their outcomes without
+retrying another branch. Station retains the lifecycle fold, invocation,
+authorization, key storage, steer receipts and result consumption. This
+primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
+extraction remain open under #3565.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt
@@ -1312,7 +1318,7 @@ before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
 which never acts on the Session. Source tests are the
-[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+[delivery decision table](../../packages/monument/src/__tests__/session-message-delivery.test.ts),
 the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
 and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
 Their presence is not an executed receipt against a real engine. See

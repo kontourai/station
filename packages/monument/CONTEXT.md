@@ -25,7 +25,18 @@ takes no model dependency.
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
-Each operation is one command, executed as one atomic transaction by an
+The package also owns the message-delivery decision table, persisted decision
+parser and record-before-effect sequence (`deliverSessionMessage`), exported
+from its public root entry point. It records a new branch before invoking a
+host-supplied start or steer port, preserves a pinned branch on re-drive and
+maps the result without switching branches. It owns no engine invocation,
+message schema, authorization, key store or receipt store. Station's Session
+Control route and delegated-result service supply those ports and retain their
+existing durable request-key and consumption rows. This sequence is not a
+storage command and creates no new state or inbox. Recovery-ledger core and
+steer receipts remain open extraction work in #3565.
+
+Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
 reads. Host projections join that transaction as synchronous participants: a
 participant can refuse a command before it writes, or abort it after.

@@ -25,9 +25,17 @@
  *
  * Every mutating call carries a `requestKey`. The key table
  * (`session-control-request-keys.ts`) makes a retry deliver once, and the
- * delivery seam (`session-message-delivery.ts`) decides whether the message
+ * delivery seam (`@kontourai/monument`) decides whether the message
  * starts a turn or steers the running one.
  */
+
+import {
+  deliverSessionMessage,
+  parseSessionDeliveryDecision,
+  type SessionMessageDelivery,
+  type SessionMessageDeliveryPorts,
+  type SessionSendMode,
+} from '@kontourai/monument';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type HostedTenantRegistry,
@@ -53,13 +61,6 @@ import {
   sessionControlRequestDigest,
 } from '../../services/orchestration/session-control-request-keys.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
-import {
-  deliverSessionMessage,
-  parseSessionDeliveryDecision,
-  type SessionMessageDelivery,
-  type SessionMessageDeliveryPorts,
-  type SessionSendMode,
-} from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import {
   evaluateSessionWait,
