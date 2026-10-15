@@ -38,6 +38,7 @@ describe('cold-launch presentation in the browser', () => {
           import {flushSync} from 'react-dom';
           import {StartupHandoff} from './src-ui/src/components/StartupHandoff';
           import {StartupScreen} from './src-ui/src/components/StartupScreen';
+          import {SplitPaneLayout} from './src-ui/src/components/SplitPaneLayout';
           import {observeInitialStartupVisibility} from './src-ui/src/platform/native/startupPresentation';
           let admitted = new URL(location.href).searchParams.get('native') !== 'covered';
           const fixture = window.startupFixture = {nativeReads: 0, glyphs: [], admit(){admitted = true}};
@@ -57,7 +58,7 @@ describe('cold-launch presentation in the browser', () => {
             fixture.ready = () => flushSync(() => setPhase('ready'));
             fixture.wait = () => flushSync(() => setPhase('waiting'));
             fixture.fail = () => flushSync(() => setPhase('failed'));
-            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : <><button onClick={fixture.wait}>Ready workspace</button>{createPortal(<button id="portal-action" style={{position:'fixed',inset:0,zIndex:10000}} onClick={fixture.wait}>Portal action</button>,document.body)}</>}</>;
+            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : new URL(location.href).searchParams.has('sheet') ? <SplitPaneLayout label="agents" title="Agents" items={[]} selectedId="new" onSelect={()=>{}} onSearch={()=>{}} onDeselect={fixture.wait} unselectedDetailOpen><h1>New agent</h1></SplitPaneLayout> : <><button onClick={fixture.wait}>Ready workspace</button>{createPortal(<button id="portal-action" style={{position:'fixed',inset:0,zIndex:10000}} onClick={fixture.wait}>Portal action</button>,document.body)}</>}</>;
           }
           flushSync(() => createRoot(document.getElementById('root')).render(<StrictMode><App/></StrictMode>));
         `,
@@ -72,15 +73,32 @@ describe('cold-launch presentation in the browser', () => {
         {
           name: 'native-host-fixture',
           setup(builder) {
+            builder.onResolve(
+              { filter: /\/contexts\/NavigationContext$/ },
+              () => ({
+                path: 'navigation',
+                namespace: 'fixture',
+              }),
+            );
             builder.onResolve({ filter: /^\.\/index$/ }, (args) =>
               args.importer.endsWith('/native/startupPresentation.ts')
                 ? { path: 'native-host', namespace: 'fixture' }
                 : undefined,
             );
-            builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-              contents:
-                'export const nativePlatformPromise = Promise.resolve().then(() => window.fixtureAdapter);',
-            }));
+            builder.onLoad(
+              { filter: /^navigation$/, namespace: 'fixture' },
+              () => ({
+                contents:
+                  'export const useNavigationActions = () => ({navigate(){}});',
+              }),
+            );
+            builder.onLoad(
+              { filter: /^native-host$/, namespace: 'fixture' },
+              () => ({
+                contents:
+                  'export const nativePlatformPromise = Promise.resolve().then(() => window.fixtureAdapter);',
+              }),
+            );
           },
         },
       ],
@@ -93,15 +111,17 @@ describe('cold-launch presentation in the browser', () => {
         resolve(ROOT, 'src-ui/src/components/startup-screen.css'),
       ) +
       (bundled.outputFiles.find((file) => file.path.endsWith('.css'))?.text ??
-        '');
+        '') +
+      '#root {display:flex;height:100vh;}';
   });
   afterAll(async () => {
     await browser?.close();
   });
 
-  async function open({ query = '', reduced = false } = {}) {
+  async function open({ query = '', reduced = false, mobile = false } = {}) {
     const page = await browser.newPage({
       reducedMotion: reduced ? 'reduce' : 'no-preference',
+      viewport: mobile ? { width: 390, height: 844 } : undefined,
     });
     const epoch = new Date('2026-10-15T00:00:00Z');
     await page.clock.install({ time: epoch });
@@ -147,6 +167,32 @@ describe('cold-launch presentation in the browser', () => {
 
   const intro = (page: Page) =>
     page.locator('.station-startup-frame[open] > .station-startup');
+
+  test('a mobile detail opened behind the intro receives its initial keyboard focus after handoff', async () => {
+    const page = await open({ query: '?sheet', mobile: true });
+    try {
+      await page.clock.runFor(100);
+      await page.evaluate(() => window.startupFixture.ready());
+      await page.clock.runFor(1100);
+      expect(await intro(page).count()).toBe(0);
+      expect(
+        await page.getByRole('heading', { name: 'New agent' }).count(),
+      ).toBe(1);
+      const back = page.getByRole('button', { name: '← Back to list' });
+      expect(await back.count()).toBe(1);
+      expect(
+        await back.evaluate((button) => button === document.activeElement),
+      ).toBe(true);
+      await page.keyboard.press('Enter');
+      expect(
+        await page
+          .getByRole('status', { name: 'Preparing this device' })
+          .count(),
+      ).toBe(1);
+    } finally {
+      await page.close();
+    }
+  });
 
   test('a visible intro completes the word before a brief fade, without waiting for loading effects', async () => {
     const page = await open();

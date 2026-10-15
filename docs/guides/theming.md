@@ -90,8 +90,10 @@ continues to own window reveal and its Restart/Quit recovery.
 Startup failures dismiss branding immediately. While the intro covers the app,
 the modal top layer covers dock/dialog stacking and makes body portals inert;
 the underlying root is also hidden from assistive technology. Handoff
-restores access and removes the animation and observers. Later connection,
-authority and route waits use state primitives and do not replay the launch
+restores access and removes the animation and observers.
+The mobile detail view retains its initial Back-button focus request until
+handoff restores interaction; unmounting the view cancels that request.
+Later connection, authority and route waits use state primitives and do not replay the launch
 intro. Warm resume of the same document does not recreate it. Route-level waits still use the state
 primitives. The imagery remains the committed Station mark, in the install's channel
 colours: the host reports the channel only after the app loads, so

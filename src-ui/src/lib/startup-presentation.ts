@@ -4,6 +4,7 @@ const surface = document.querySelector<HTMLElement>('#root .station-startup');
 const root = document.getElementById('root');
 const frame = surface ? document.createElement('dialog') : undefined;
 const pending = new Map<symbol, string>();
+const completionListeners = new Set<() => void>();
 const FADE_MS = 150;
 let mounted = false;
 let visible = false;
@@ -29,6 +30,8 @@ function finish() {
   document.removeEventListener('visibilitychange', reconsider);
   motion?.removeEventListener('change', reconsider);
   recoveryObserver?.disconnect();
+  for (const listener of completionListeners) listener();
+  completionListeners.clear();
 }
 
 const motion = surface
@@ -91,6 +94,14 @@ export function allowInitialStartupAnimation() {
 
 export function initialStartupIsActive() {
   return surface?.isConnected === true;
+}
+
+/** Retain initial focus intent while the launch dialog makes the app inert. */
+export function afterInitialStartup(listener: () => void) {
+  completionListeners.add(listener);
+  return () => {
+    completionListeners.delete(listener);
+  };
 }
 
 /** Recovery must never wait for branding or an animation asset. */
