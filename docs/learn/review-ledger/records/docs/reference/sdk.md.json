@@ -602,7 +602,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/sdk/src/client/http.ts"
   ],
 
   "checks": [
