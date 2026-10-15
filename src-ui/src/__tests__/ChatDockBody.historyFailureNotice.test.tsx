@@ -85,7 +85,8 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
 }));
 
-vi.mock('../contexts/ActiveChatsContext', () => ({
+vi.mock('../contexts/ActiveChatsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ActiveChatsContext')>()),
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
     clearEphemeralMessages: vi.fn(),
