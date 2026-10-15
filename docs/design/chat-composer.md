@@ -222,7 +222,10 @@ tokens while retaining unresolved failures until a new-epoch observation.
 Response publishers use the read token's `current()` check before applying
 history activity or an open-resolution chat patch (option B). This covers
 initial history, older pages, picker opens, retries, and binding revalidation,
-including an epoch replacement while an open is awaiting focus. The same
+including an epoch replacement while an open is awaiting focus. Imperative
+picker opens and active retries retain the observation until the command
+settles, so an unrelated inventory refresh cannot retire an in-flight read.
+Mounted revalidators and history readers retain it through their subscription. The same
 boundary resets and cancels cached inventory and sessions queries; their
 activity feed accepts only rows still held by the current query cache. Stream
 and snapshot activity remain synchronous publishers in the current epoch.

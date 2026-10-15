@@ -306,6 +306,8 @@ export async function openConversationForDock(
 ): Promise<boolean> {
   const conversationId =
     typeof conversation === 'string' ? conversation : conversation.id;
+  // Inventory pagination must not retire an imperative open before it publishes.
+  const releaseRead = effects.observation?.subscribe(conversationId, () => {});
   const read = effects.observation?.read(
     conversationId,
     'open',
@@ -344,6 +346,8 @@ export async function openConversationForDock(
     if (typeof conversation === 'string') return false;
     effects.setRecovery({ conversation, status: 'error' });
     return true;
+  } finally {
+    releaseRead?.();
   }
 }
 
@@ -356,6 +360,7 @@ export async function retryActiveConversationForDock(
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
   observation?: ReturnType<typeof workObservation>,
 ): Promise<void> {
+  const releaseRead = observation?.subscribe(conversationId, () => {});
   const read = observation?.read(conversationId, 'open');
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
@@ -372,6 +377,8 @@ export async function retryActiveConversationForDock(
   } catch {
     if (read?.current() === false) return;
     onUnavailable();
+  } finally {
+    releaseRead?.();
   }
 }
 

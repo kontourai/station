@@ -1114,7 +1114,7 @@ it('stream evidence supersedes each failed reader at its own watermark', async (
 
 it('a released open reader cannot recreate a record after dock and picker release', async () => {
   const client = new QueryClient();
-  const o = workObservation(client);
+  const observation = workObservation(client);
   let rejectOpen!: (e: Error) => void;
   openRead.mockImplementationOnce(
     () =>
@@ -1184,7 +1184,7 @@ it('pending history and partial stream produce the same current status in both c
         conversationActivity: undefined,
       });
       const client = new QueryClient();
-      const o = workObservation(client);
+      const observation = workObservation(client);
       function OlderReader() {
         const history = useSessionEventWindow('http://test.local', 'T');
         return (
@@ -1736,4 +1736,154 @@ describe('stream epoch changes', () => {
       }
     },
   );
+});
+
+function delta6Page(seq: number) {
+  return {
+    ...historyPage,
+    watermark: seq,
+    nextCursor: 'older',
+    session: {
+      ...SESSIONS[0]!,
+      conversationActivity: {
+        ...SESSIONS[0]!.conversationActivity!,
+        asOfSequence: seq,
+      },
+    },
+  };
+}
+function delta6Resolution(seq: number): ConversationOpenResolution {
+  return {
+    status: 'resolved',
+    conversation: {
+      id: 'T',
+      source: 'runtime',
+      agentSlug: agentId('demo-agent'),
+      title: 'Mismatch demo chat',
+      createdAt: FOLD_SESSION_CREATED_AT,
+      updatedAt: FOLD_SESSION_CREATED_AT,
+      messageCount: 1,
+      mutable: false,
+      answerability: { answerable: true },
+    },
+    currentSessionId: 'T',
+    activity: delta6Page(seq).session.conversationActivity,
+    transcript: { available: true, owner: 'runtime', messageCount: 1 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  };
+}
+it('DELTA6 same-epoch picker survives an unrelated inventory first-page refresh while opening an unmounted conversation', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  activeChatsStore.removeChat(CHAT_TAB);
+  client.setQueryData(['conversation-inventory'], {
+    pages: [
+      {
+        items: [delta6Resolution(1).conversation],
+        hasMore: true,
+        nextCursor: 'page2',
+      },
+    ],
+    pageParams: [undefined],
+  });
+  const open = vi.fn(async () => true);
+  const update = vi.fn();
+  let finish!: (resolution: ConversationOpenResolution) => void;
+  openRead.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  try {
+    const opening = openConversationForDock(delta6Resolution(1).conversation, {
+      apiBase: 'http://test.local',
+      observation,
+      open,
+      projectName: () => undefined,
+      findTab: () => CHAT_TAB,
+      updateChat: update,
+      setRecovery: vi.fn(),
+    });
+    await waitFor(() => expect(openRead).toHaveBeenCalledOnce());
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({
+        pages: [
+          {
+            items: [
+              { ...delta6Resolution(1).conversation, id: 'newer-conversation' },
+            ],
+            hasMore: true,
+            nextCursor: 'page2',
+          },
+        ],
+        pageParams: [undefined],
+      }),
+    });
+    finish(delta6Resolution(2));
+    const opened = await opening;
+    expect.soft(opened).toBe(true);
+    expect.soft(open).toHaveBeenCalledOnce();
+    expect.soft(update).toHaveBeenCalledOnce();
+    expect(observation.unavailable('T')).toBeUndefined();
+  } finally {
+    client.clear();
+  }
+});
+
+it('same-epoch active retry survives an unrelated inventory first-page refresh without a mounted reader', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  client.setQueryData(['conversation-inventory'], {
+    pages: [{ items: [delta6Resolution(1).conversation], hasMore: true }],
+    pageParams: [undefined],
+  });
+  let finish!: (resolution: ConversationOpenResolution) => void;
+  openRead.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const onUnavailable = vi.fn();
+  try {
+    const retrying = retryActiveConversationForDock(
+      CHAT_TAB,
+      'T',
+      'http://test.local',
+      (id, patch) => activeChatsStore.updateChat(id, patch),
+      onUnavailable,
+      (id) => activeChatsStore.getSnapshot()[id],
+      observation,
+    );
+    await waitFor(() => expect(openRead).toHaveBeenCalledOnce());
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({
+        pages: [
+          {
+            items: [
+              { ...delta6Resolution(1).conversation, id: 'newer-conversation' },
+            ],
+            hasMore: true,
+          },
+        ],
+        pageParams: [undefined],
+      }),
+    });
+    finish(delta6Resolution(2));
+    await retrying;
+    expect(
+      activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(2);
+    expect(onUnavailable).not.toHaveBeenCalled();
+    // Once the command settles, an unlisted conversation is eligible for pruning again.
+    expect(observation.unavailable('T')).toBeUndefined();
+  } finally {
+    client.clear();
+  }
 });
