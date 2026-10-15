@@ -1219,7 +1219,15 @@ export function HostDevicePairingPanel({
       ? personalApprovalSelection.requests
       : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const errorOwner = useRef<'poll' | 'action' | null>(null);
+  const setError = useCallback(
+    (message: string | null, owner: 'poll' | 'action' = 'action') => {
+      errorOwner.current = message ? owner : null;
+      setErrorState(message);
+    },
+    [],
+  );
   // #1796 (G3): what the last access change or revoke did to full access.
   const [revocation, setRevocation] =
     useState<FullAccessRevocationOutcome | null>(null);
@@ -1256,7 +1264,6 @@ export function HostDevicePairingPanel({
   const [now, setNow] = useState(Date.now());
   const refreshGeneration = useRef(0);
   const pollingPaused = useRef(false);
-  const pollingFailure = useRef<string | null>(null);
   const requestActionIdsRef = useRef(new Set<string>());
   const deviceActionIdsRef = useRef(new Set<string>());
   const payload = useMemo(
@@ -1326,21 +1333,26 @@ export function HostDevicePairingPanel({
         pollingPaused.current = true;
         setRequests([]);
         setDevices([]);
-        const authenticationFailed =
-          requestResponse.status === 401 || deviceResponse.status === 401;
-        setAuthBlocked(authenticationFailed);
-        setOperatorHandoff(!authenticationFailed);
-        const message = authenticationFailed
-          ? "This device's access to this Station needs review. Reconnect it, then try again."
-          : 'This device cannot manage pairing requests. Continue on the computer running Station.';
-        pollingFailure.current = message;
-        setError(message);
+        if (errorOwner.current !== 'action') {
+          const authenticationFailed =
+            requestResponse.status === 401 || deviceResponse.status === 401;
+          setAuthBlocked(authenticationFailed);
+          setOperatorHandoff(!authenticationFailed);
+          setError(
+            authenticationFailed
+              ? "This device's access to this Station needs review. Reconnect it, then try again."
+              : 'This device cannot manage pairing requests. Continue on the computer running Station.',
+            'poll',
+          );
+        }
         return;
       }
-      if (pollingFailure.current) {
-        const failure = pollingFailure.current;
-        pollingFailure.current = null;
-        setError((current) => (current === failure ? null : current));
+      if (
+        requestResponse.ok &&
+        deviceResponse.ok &&
+        errorOwner.current === 'poll'
+      ) {
+        setError(null);
         setAuthBlocked(false);
         setOperatorHandoff(false);
       }
@@ -1350,7 +1362,7 @@ export function HostDevicePairingPanel({
       // Polling is best-effort. A later generation retries without allowing a
       // slow or failed response to overwrite newer inbox state.
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, setError]);
 
   useEffect(() => {
     pollingPaused.current = false;

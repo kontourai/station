@@ -37,14 +37,19 @@ function response(body: unknown, status = 200) {
 test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
   vi.useFakeTimers();
   let recovered = false;
+  let unavailable = false;
   const request = vi.fn(async (input: RequestInfo | URL) =>
-    recovered
-      ? response(
-          new URL(String(input)).pathname.endsWith('/requests')
-            ? { requests: [] }
-            : { devices: [] },
-        )
-      : response({ error: { code: 'authentication_required' } }, 401),
+    new URL(String(input)).pathname.endsWith('/offers')
+      ? response({ error: { code: 'insufficient_scope' } }, 403)
+      : unavailable
+        ? response({ error: 'unavailable' }, 503)
+        : recovered
+          ? response(
+              new URL(String(input)).pathname.endsWith('/requests')
+                ? { requests: [] }
+                : { devices: [] },
+            )
+          : response({ error: { code: 'authentication_required' } }, 401),
   );
   try {
     render(
@@ -63,15 +68,40 @@ test('a polling authentication refusal is visible, pauses automatic retries, and
     expect(request).toHaveBeenCalledTimes(2);
     await act(async () => vi.advanceTimersByTimeAsync(3000));
     expect(request).toHaveBeenCalledTimes(2);
+    unavailable = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    unavailable = false;
     recovered = true;
     fireEvent.click(
       screen.getByRole('button', { name: 'Check connection again' }),
     );
     await act(async () => undefined);
-    expect(request).toHaveBeenCalledTimes(4);
+    expect(request).toHaveBeenCalledTimes(6);
     expect(screen.queryByRole('alert')).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(1000));
-    expect(request).toHaveBeenCalledTimes(6);
+    expect(request).toHaveBeenCalledTimes(8);
+    recovered = false;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await act(async () => undefined);
+    recovered = true;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      screen.getByRole('region', {
+        name: 'Create an invitation on your computer',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'This device cannot create pairing codes.',
+    );
   } finally {
     vi.useRealTimers();
   }
