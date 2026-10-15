@@ -360,8 +360,16 @@ test.describe('Android — Mobile Layout', () => {
           '.sidebar--collapsed, [style*="display: none"]',
         );
         if (parent) return false;
-        // Hidden from assistive tech and unreachable by focus: not an interactive target.
-        if (el.closest('[aria-hidden="true"]') && el.tabIndex < 0) return false;
+        // A visually hidden control (clipped to 1px, hidden from assistive
+        // tech, out of the focus order) is not a touch target; a visible
+        // aria-hidden control that can still be tapped is measured.
+        if (
+          el.closest('[aria-hidden="true"]') &&
+          el.tabIndex < 0 &&
+          rect.width <= 1 &&
+          rect.height <= 1
+        )
+          return false;
         if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
         if (rect.right < 0 || rect.left > window.innerWidth) return false;
         return true;
