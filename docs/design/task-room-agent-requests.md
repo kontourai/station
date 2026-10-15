@@ -76,6 +76,16 @@ continuation authority still owns provider effects. Follow-up errors retain an
 uncertain draft for full-run inspection instead of retrying automatically.
 The latest saved brief is attached by default; the thread checkbox can opt out.
 
+The shared Task document is the canonical brief. The Chat rail reads its `Goal`
+and `Done when` Markdown sections; the Task description is only a short Goal
+fallback. A document excerpt remains readable when the structured sections are
+missing. The Brief display renders Markdown and explicitly enters the same
+live editor; edits autosave through the existing CRDT plan/batch protocol.
+
+Current canonical lifecycle ends an agent's live presence after each completed
+turn, including a follow-up on a Session with an older finish receipt. The
+private agent answer retains the exact Session, turn and canonical run identity.
+
 The first recorded room request starts a todo/ready Task through an atomic
 TaskGraph transition. Header and slash-command status changes use the existing
 status route and its allowed transitions. Confirmed changes append quiet room
@@ -129,8 +139,9 @@ Options are represented by their digest, not persisted raw values. New servers
 read prior v1/v2 journals; old readers refuse v3 rather than dropping its intent.
 
 A document over 16,000 characters produces a shortened snapshot with an explicit
-notice in its markdown and composer preview. Room answers over 16 KiB likewise
-include a shortening notice. The four-MiB/256-request journal bound remains. Context is not provider authority or an accepted result.
+notice in its markdown and composer preview. Room answers honor the existing
+8,192-code-unit string bound and 16 KiB encoded-body bound, with a shortening
+notice and a full-run action when needed. The four-MiB/256-request journal bound remains. Context is not provider authority or an accepted result.
 
 Controlled transport, storage and mounted/UI tests cover retained context,
 stale references, substituted snapshots, metadata edits and late refreshes.
