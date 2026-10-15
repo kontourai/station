@@ -119,15 +119,13 @@ function ThrowingDocumentConsumer() {
 }
 
 beforeEach(() => {
-  mocks.command
-    .mockReset()
-    .mockImplementation(async (command) => ({
-      kind: 'available',
-      snapshot: {
-        ...snapshot('Alice'),
-        result: { outcome: command.command === 'join' ? 'joined' : 'updated' },
-      },
-    }));
+  mocks.command.mockReset().mockImplementation(async (command) => ({
+    kind: 'available',
+    snapshot: {
+      ...snapshot('Alice'),
+      result: { outcome: command.command === 'join' ? 'joined' : 'updated' },
+    },
+  }));
   mocks.restart.mockReset();
   mocks.stream = undefined;
   mocks.streamGeneration = 0;
