@@ -24,6 +24,16 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
 interface ContendedMutation {
   imports: string;
   lock: string;
@@ -133,12 +143,12 @@ async function runContendedMutation({
   let mutation: Promise<unknown> | undefined;
   let progress: NodeJS.Immediate | undefined;
   let progressError: Error | null = null;
-  const closed = Promise.withResolvers<{
+  const closed = deferred<{
     code: number | null;
     signal: NodeJS.Signals | null;
   }>();
-  const ready = Promise.withResolvers<void>();
-  const failed = Promise.withResolvers<never>();
+  const ready = deferred<void>();
+  const failed = deferred<never>();
   let locked = false;
   child.once('error', failed.reject);
   child.once('close', (code, signal) => {
