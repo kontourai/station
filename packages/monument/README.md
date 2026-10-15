@@ -7,11 +7,11 @@ and what it leaves to other packages.
 
 The API may change in any release until a second consumer exists.
 
-It is `private: true` in this checkout. `publish-packages.yml` exchanges an
-OIDC token for every public workspace, and npm can attach a trusted publisher
-only to a name that already exists, so a public manifest would fail every
-release until the first version is published another way. Publishing is an
-owner decision.
+It remains `private: true` in this checkout until its first functional release
+is qualified and the manifest is changed in a reviewed PR. CI publishing uses
+npm Trusted Publisher for `kontourai/station`, workflow `publish-packages.yml`.
+A registry bootstrap or placeholder enables setup; it does not qualify a
+functional package release.
 
 The published package is compiled ES modules (`dist/*.js`) with type
 declarations (`dist/*.d.ts`), built by `npm run build`. It runs on plain Node 24
