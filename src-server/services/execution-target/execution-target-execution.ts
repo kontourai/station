@@ -41,6 +41,11 @@ import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
+import {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
+  keyInFlightError,
+} from '../orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -372,6 +377,16 @@ export interface ExecutionTargetExecutionDependencies
    * remote compatibility until every Station speaks lineage, but the current
    * runtime composes it for all local foreground entries.
    */
+  /**
+   * #3568: the turn ledger's answer for a key across every Session of the
+   * conversation. Read before a continuation may reserve a successor, since
+   * deduplication is per Session. Optional for remote compatibility.
+   */
+  inspectConversationTurnKey?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    clientTurnId: string,
+  ) => ConversationKeyInspection;
   resolveConversationSession?: (
     access: EnvironmentAccess,
     conversationId: string,
@@ -717,6 +732,39 @@ export async function executeForegroundMessage(
         },
       };
     }
+  }
+  // #3568: a key some Session of the conversation already holds is answered
+  // from there, before the continuation can reserve a successor: that
+  // successor's own per-Session claim would take it again (a same-key retry
+  // with a model change, or after its Session ended). A handoff turn carries
+  // a key of its own, derived from its intent, and is not checked here.
+  if (binding && !validHandoff && !requestedHandoff && input.clientTurnId) {
+    const decision = conversationKeyDecision(
+      deps.inspectConversationTurnKey?.(
+        resolved.access,
+        conversationId,
+        input.clientTurnId,
+      ),
+    );
+    if (decision.kind === 'started')
+      return {
+        conversationId,
+        sessionId: decision.sessionId,
+        providerTurnId: decision.turnId,
+        target: { kind: 'agent', id: resolved.agentId },
+        resolution: resolved.receipt,
+      };
+    if (decision.kind === 'may-have-been-sent')
+      throw Object.assign(
+        new Error(
+          'An earlier attempt of this message may have reached the agent.',
+        ),
+        {
+          code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+          outcome: 'indeterminate',
+        },
+      );
+    if (decision.kind === 'in-flight') throw keyInFlightError();
   }
   // Validate every durable binding before a continuation can reserve its next
   // child. A rejected Agent/Environment/user/workspace request is read-only.

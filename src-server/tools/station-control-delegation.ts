@@ -54,6 +54,7 @@ import {
   sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -6476,6 +6477,18 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    inspectConversationTurnKey: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+    ) =>
+      typeof orchestrationService.inspectTurnDelivery === 'function'
+        ? orchestrationService.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        : undefined,
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,

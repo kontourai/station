@@ -201,40 +201,67 @@ export type ConversationKeyInspection =
 /** `client_turn_in_flight`: another attempt still holds the key. */
 const KEY_IN_FLIGHT_CODE = 'client_turn_in_flight';
 
+/** Refused as retryable: another attempt still holds the key; nothing sent. */
+export function keyInFlightError(): Error {
+  return Object.assign(
+    new Error('An earlier attempt of this message still holds its key.'),
+    { code: KEY_IN_FLIGHT_CODE },
+  );
+}
+
 /**
- * #3568 fix round (D1): start a re-drivable delivery only when no Session of
- * the conversation holds its key. Turn deduplication is per Session, and a
- * continuation reserves a successor Session when the one an earlier attempt
- * used has ended, so a re-drive that went straight to `start` could send the
- * same text again into the successor under a claim of its own. Reading the
- * whole conversation's ledger first closes that:
+ * #3568: what the whole conversation's turn ledger says about a key, as the
+ * one rule every start that may land in a new Session applies before it
+ * starts. Turn deduplication is per Session, and a continuation reserves a
+ * successor Session when the one an earlier attempt used has ended, or the
+ * requested model needs a restart, so a start that went straight to its
+ * Session could send the same text again under a claim of its own:
  *
  * - `started`: an earlier attempt's turn; answered without sending;
- * - `indeterminate` or `expired`: it may have been sent; never sent again;
- * - `received`: a live attempt still holds the key; refused as retryable
- *   (`client_turn_in_flight`), nothing sent;
- * - `not-received`, or nothing materialized yet: no Session took it, so it
- *   is safe to start in whichever Session the continuation picks.
+ * - `may-have-been-sent` (`indeterminate` or `expired`): never sent again;
+ * - `in-flight` (`received`): a live attempt still holds the key; refused as
+ *   retryable, nothing sent;
+ * - `start` (`not-received`, or nothing materialized yet): no Session took
+ *   it, so it is safe to start in whichever Session the continuation picks.
+ */
+export function conversationKeyDecision(held: ConversationKeyInspection):
+  | {
+      readonly kind: 'started';
+      readonly sessionId: string;
+      readonly turnId: string;
+    }
+  | { readonly kind: 'may-have-been-sent' | 'in-flight' | 'start' } {
+  if (held?.outcome === 'started')
+    return { kind: 'started', sessionId: held.sessionId, turnId: held.turnId };
+  if (held?.outcome === 'indeterminate' || held?.outcome === 'expired')
+    return { kind: 'may-have-been-sent' };
+  if (held?.outcome === 'received') return { kind: 'in-flight' };
+  return { kind: 'start' };
+}
+
+/**
+ * #3568 fix round (D1): start a re-drivable delivery only when no Session of
+ * the conversation holds its key (`conversationKeyDecision`).
  */
 export async function startUnlessDelivered(input: {
   readonly conversationId: string;
   readonly inspect: () => ConversationKeyInspection;
   readonly start: () => Promise<SessionStartResult>;
 }): Promise<SessionStartResult> {
-  const held = input.inspect();
-  if (held?.outcome === 'started')
-    return {
-      outcome: 'started',
-      conversationId: input.conversationId,
-      sessionId: held.sessionId,
-      turnId: held.turnId,
-    };
-  if (held?.outcome === 'indeterminate' || held?.outcome === 'expired')
-    return { outcome: 'indeterminate' };
-  if (held?.outcome === 'received')
-    throw Object.assign(
-      new Error('An earlier attempt of this delivery still holds its key.'),
-      { code: KEY_IN_FLIGHT_CODE },
-    );
-  return input.start();
+  const decision = conversationKeyDecision(input.inspect());
+  switch (decision.kind) {
+    case 'started':
+      return {
+        outcome: 'started',
+        conversationId: input.conversationId,
+        sessionId: decision.sessionId,
+        turnId: decision.turnId,
+      };
+    case 'may-have-been-sent':
+      return { outcome: 'indeterminate' };
+    case 'in-flight':
+      throw keyInFlightError();
+    case 'start':
+      return input.start();
+  }
 }

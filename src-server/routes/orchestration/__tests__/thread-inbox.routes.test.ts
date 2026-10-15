@@ -10,9 +10,10 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type {
-  ConversationInboxEntry,
-  TurnDeliveryInspection,
+import {
+  type ConversationInboxEntry,
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -41,6 +42,7 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
+import type { ConversationKeyInspection } from '../../../services/orchestration/session-message-delivery.js';
 import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
 import {
   createOrchestrationRoutes,
@@ -221,6 +223,11 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       birth?: string;
       /** The inbox's start deadline (default: production's). */
       placementDeadlineMs?: number;
+      /**
+       * An engine that cannot change model per turn: a send naming another
+       * model continues in a new Session (`needsModelRestart`).
+       */
+      modelPerTurn?: false;
     } = {},
   ) {
     const root = options.root ?? tempDir('station-inbox-');
@@ -241,6 +248,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         : []),
     );
     const adapter = new ScriptedAdapter();
+    if (options.modelPerTurn === false && adapter.metadata.modelLaunch)
+      (
+        adapter.metadata.modelLaunch as { overridePerTurn: boolean }
+      ).overridePerTurn = false;
     const bus = new EventBus();
     const service = new OrchestrationService({
       adapterRegistry: {
@@ -283,7 +294,23 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     const coldStartGate: { wait?: Promise<void>; entered: number } = {
       entered: 0,
     };
+    /**
+     * Set to hold the next turn send before the service claims its key, the
+     * window in which no Session's ledger holds it yet.
+     */
+    const sendTurnGate: { wait?: Promise<void>; entered: number } = {
+      entered: 0,
+    };
+    /** Set to answer the conversation-wide ledger read with this instead. */
+    const ledger: { answer?: ConversationKeyInspection } = {};
     const deps: ExecutionTargetExecutionDependencies = {
+      inspectConversationTurnKey: (_access, conversationId, clientTurnId) =>
+        ledger.answer ??
+        service.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
         environmentId: ENVIRONMENT,
@@ -345,6 +372,12 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         return undefined;
       },
       sendTurn: async (_access, input) => {
+        const gate = sendTurnGate.wait;
+        sendTurnGate.wait = undefined;
+        if (gate) {
+          sendTurnGate.entered += 1;
+          await gate;
+        }
         const dispatched = await service.dispatchWithReceipt(
           { type: 'sendTurn', input },
           { userId: OWNER },
@@ -542,6 +575,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         },
       );
     return {
+      sendTurnGate,
+      ledger,
       inboxStartGate,
       coldStartGate,
       continuations,
@@ -1139,5 +1174,102 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       ]),
     );
     expect(world.prompts()).toEqual(['read the file', 'then summarize']);
+  });
+
+  /** Engine sends whose prompt ends with `message` (a successor's start carries the transcript first). */
+  const sendsOf = (world: ReturnType<typeof station>, message: string) =>
+    world.adapter.turns.filter((turn) => turn.input.endsWith(message));
+  const otherModel = {
+    environment: { kind: 'current' },
+    agent: AGENT,
+    model: { override: 'claude-other-model' },
+  };
+
+  test('R6-1: a live send that changes the model while the inbox starts the key is refused, and a retry after it lands answers its turn; one engine send', async () => {
+    const world = station({ modelPerTurn: false });
+    await world.busy();
+    expect(
+      (await world.send('owner-key', 'then summarize', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    // The inbox's send is held before the service claims the key on S1.
+    let release!: () => void;
+    world.sendTurnGate.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() => expect(world.sendTurnGate.entered).toBe(1));
+    expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(true);
+    // A model this engine cannot switch to per turn: a live send would
+    // continue in a new Session, under a claim of its own.
+    const live = await world.send('owner-key', 'then summarize', {
+      target: otherModel,
+    });
+    const liveAnswer = { status: live.status, body: await live.json() };
+    release();
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { clientTurnId: 'owner-key', state: 'sent' },
+      ]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(sendsOf(world, 'then summarize')).toHaveLength(1);
+    expect(liveAnswer).toMatchObject({
+      status: 409,
+      body: { code: 'client_turn_in_flight' },
+    });
+    // The client retries as told, same key and the changed model: the
+    // ledger already holds its turn on S1, so nothing is sent again.
+    const sentTurn = world.inbox.list(CONVERSATION)[0]?.turnId;
+    const retry = await world.send('owner-key', 'then summarize', {
+      target: otherModel,
+    });
+    const retryAnswer = { status: retry.status, body: await retry.json() };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(sendsOf(world, 'then summarize')).toHaveLength(1);
+    expect(retryAnswer).toMatchObject({
+      status: 200,
+      body: { data: { providerTurnId: sentTurn } },
+    });
+  });
+
+  test('R6-2: with no inbox involved, a same-key retry that changes the model answers the first turn; one engine send', async () => {
+    const world = station({ modelPerTurn: false });
+    const first = await world.send('k1', 'read the file');
+    expect(first.status, await first.clone().text()).toBe(200);
+    const firstTurn = (
+      (await first.json()) as { data: { providerTurnId: string } }
+    ).data.providerTurnId;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const retry = await world.send('k1', 'read the file', {
+      target: otherModel,
+    });
+    const retryAnswer = { status: retry.status, body: await retry.json() };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(sendsOf(world, 'read the file')).toHaveLength(1);
+    expect(retryAnswer).toMatchObject({
+      status: 200,
+      body: { data: { providerTurnId: firstTurn } },
+    });
+    expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(1);
+  });
+
+  test('R6-2: a key the ledger reads as possibly sent or in flight elsewhere is refused before any Session is reserved', async () => {
+    const world = station({ modelPerTurn: false });
+    expect((await world.send('first', 'read the file')).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    world.ledger.answer = { outcome: 'expired' };
+    const maybe = await world.send('k2', 'again', { target: otherModel });
+    expect(maybe.status).toBe(409);
+    expect(await maybe.json()).toMatchObject({
+      code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+      outcome: 'indeterminate',
+    });
+    world.ledger.answer = { outcome: 'received' };
+    const busy = await world.send('k3', 'again', { target: otherModel });
+    expect(await busy.json()).toMatchObject({ code: 'client_turn_in_flight' });
+    expect(world.prompts()).toEqual(['read the file']);
+    expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(1);
   });
 });
