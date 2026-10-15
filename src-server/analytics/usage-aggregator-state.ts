@@ -344,6 +344,8 @@ export function applyMessageToUsageStats(
   const agent = stats.byAgent[agentSlug];
   agent.messages += 1;
   agent.cost += cost;
+  if (usableFigure(usage?.estimatedCost) !== undefined)
+    agent.estimatedCostUsd = (agent.estimatedCostUsd ?? 0) + cost;
   const timestamp = message.metadata?.timestamp;
   applyObservationAttribution(
     stats,
@@ -400,6 +402,9 @@ export function applyOrchestrationUsageToUsageStats(
     agent.conversations += 1;
     agent.messages += usage.turns;
     agent.cost += usage.reportedCostUsd ?? 0;
+    if (usage.reportedCostUsd !== undefined)
+      agent.reportedCostUsd =
+        (agent.reportedCostUsd ?? 0) + usage.reportedCostUsd;
     if (
       usage.inputTokens !== undefined ||
       usage.outputTokens !== undefined ||

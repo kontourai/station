@@ -10,16 +10,14 @@
  *   station environment access remove <device> [--force]
  *
  * Everything here speaks to Station through a {@link DeviceAccessOperatorChannel}
- * and never learns how the operator was authenticated. Today the only channel
- * is the Station host's own (`openLocalOperatorChannel` in environment.ts:
- * loopback proof, then the home's operator credential), so a paired remote
- * CLI cannot reach these verbs. A later remote operator session would supply
- * a different channel and reuse this module unchanged.
+ * without owning authentication. environment.ts selects the proved local
+ * operator channel or a paired principal explicitly granted access:devices.
+ * The server authorizes the selected principal on every request.
  *
  * The routes are the existing ones: `GET /api/pairing/devices`,
  * `POST /api/pairing/devices/:id/scope`, `DELETE /api/pairing/devices/:id`
  * (revoke) and `DELETE /api/pairing/devices/:id/record` (remove a revoked
- * record), all operator only. A scope change is
+ * record). A scope change is
  * computed from the device's current scope and sent with `expectedScope`, so
  * a change another operator made meanwhile is refused, not overwritten.
  */

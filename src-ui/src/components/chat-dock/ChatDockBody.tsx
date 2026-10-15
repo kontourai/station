@@ -92,7 +92,7 @@ import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
-import { ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -227,6 +227,8 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
 
 /** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
 const LOADING_ESCAPE_DELAY_MS = 6_000;
+const LOADING_LONG_MESSAGE =
+  'This conversation is taking longer to load. Waiting for Station.';
 
 interface ChatDockBodyProps {
   activeSession: ChatSession;
@@ -818,6 +820,31 @@ export function ChatDockBody({
   // The empty filler's loading wait (the filler names the wait itself).
   const showLoadingSkeleton = conversationLoading && !historyFailureNotice;
   const loadingLabel = transcript.catchingUp ? 'Catching up' : 'Loading chat';
+  /*
+   * What assistive tech hears about the wait. Screen readers announce a CHANGE
+   * to a live region that already exists; a region inserted together with its
+   * words, or one that names the wait only through `aria-label`, is mostly
+   * not read. So one region lives for the dock body's whole life, starts
+   * empty, and receives the words in an effect after it has been committed.
+   * It goes quiet when the load ends: the rows arriving are the news, and
+   * "loaded" is not a convention this app announces anywhere else. React
+   * writes the text only when it changes, so re-renders announce nothing.
+   *
+   * The long-wait sentence uses the visible long-wait row's own condition, so
+   * the two cannot disagree (a history failure hides the skeleton, not the
+   * row).
+   */
+  const showLoadingLongRow =
+    conversationLoading && loadingLong && !recoveryOpen;
+  const loadingAnnouncement = showLoadingLongRow
+    ? LOADING_LONG_MESSAGE
+    : showLoadingSkeleton
+      ? loadingLabel
+      : '';
+  const [announcedLoading, setAnnouncedLoading] = useState('');
+  useEffect(() => {
+    setAnnouncedLoading(loadingAnnouncement);
+  }, [loadingAnnouncement]);
 
   // Wire STT transcript into chat input
   const inputRef = useRef(chatInput.input);
@@ -1854,18 +1881,23 @@ export function ChatDockBody({
         id, so this is the ordinary path (#1582 E3/B6).
 
         With messages on screen the wait is shown by the disabled composer,
-        whose placeholder reads "Loading chat…" (`loadingConversation`), and
-        announced here through the loading vocabulary, visually hidden. (The
-        skeleton primitives announce through `aria-label` alone; making their
-        label readable text is a change to the shared primitive.) An
-        in-flow block under the newest message used to shrink the transcript
-        while the open read was pending and hand the space back when it landed
-        ("space appears below while the conversation loads"). With an empty
-        transcript the filler above carries the same wait.
+        whose placeholder reads "Loading chat…" (`loadingConversation`); with
+        an empty transcript the filler above shows it. Either way it is
+        announced by this one persistent, visually hidden region (see
+        `loadingAnnouncement`). An in-flow block under the newest message used
+        to shrink the transcript while the open read was pending and hand the
+        space back when it landed ("space appears below while the conversation
+        loads").
       */}
-      {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading chat" className="sr-only" />
-      ) : null}
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="chat-dock-loading-announcement"
+      >
+        {announcedLoading}
+      </div>
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
         existing control row (archive#3386 already widened it past "buttons
@@ -1877,11 +1909,10 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && loadingLong && !recoveryOpen ? (
+      {showLoadingLongRow ? (
         <div className="session-history-controls">
-          <span role="status">
-            This conversation is taking longer to load. Waiting for Station.
-          </span>
+          {/* Announced by the persistent region above, not by this span. */}
+          <span>{LOADING_LONG_MESSAGE}</span>
           {onNewChat ? (
             <button
               type="button"

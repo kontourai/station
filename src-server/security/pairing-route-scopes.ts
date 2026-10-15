@@ -57,6 +57,7 @@
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -131,6 +132,24 @@ export function isPairingApprovalLeaf(request: {
   const path = request.path.split('?')[0] ?? request.path;
   return PAIRING_APPROVAL_LEAVES.some(
     (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+/** Exact existing-device administration leaves; new pairing routes stay closed. */
+export function isDeviceAccessManagementLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (method === 'GET' && path === '/api/pairing/devices') ||
+    (method === 'POST' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}\/scope$/u.test(path)) ||
+    (method === 'DELETE' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}(?:\/record)?$/u.test(
+        path,
+      ))
   );
 }
 
@@ -212,7 +231,10 @@ export function pairingScopeSatisfiesHttpRoute(
       isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
-      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE)) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isDeviceAccessManagementLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_DEVICES))
   );
 }
 

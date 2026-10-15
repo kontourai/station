@@ -13,11 +13,13 @@
  * The operator (Owner) is implicit and never capped, and neither is a
  * device tied to no person (the operator's own), the operator credential,
  * a home-possession credential or a peer Station delegation. No group ever
- * includes `access:manage`: a paired device never becomes an administrator.
+ * includes legacy `access:manage`. Device administration instead requires
+ * the operator explicitly granting `access:devices`, and an Admin ceiling.
  */
 import {
   DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPES,
@@ -37,6 +39,7 @@ const GOVERNED: readonly PairingScope[] = [
   ...PAIRING_SCOPE_PRESETS.standard,
   ...DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_CONSENT_DECIDE,
 ];
 export const STATION_GROUP_GOVERNED_SCOPES: readonly PairingScope[] =
@@ -56,7 +59,7 @@ export const STATION_GROUP_LABELS: Readonly<
   admin: {
     label: 'Admin',
     summary:
-      'Devices may have full device access, approve other devices and decide consent requests. Managing devices and accounts stays with the operator.',
+      'Devices may have full device access, approve other devices, decide consent requests and manage device access when explicitly granted. Accounts stay with the operator.',
   },
   member: {
     label: 'Member',
