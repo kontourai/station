@@ -10,7 +10,7 @@ If Codex is installed and signed in on this computer, you can use that account
 without adding a model API key:
 
 1. Start Station using one of the paths below. For a source checkout, follow
-   the [README commands](../../README.md#run-from-source-macos-linux) and open
+   the [README commands](https://github.com/kontourai/station/blob/main/README.md#run-from-source-macos-linux) and open
    the single-use sign-in link printed by `./station start`.
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
@@ -31,7 +31,7 @@ AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
 Codex does not receive the editor's System Instructions from Station; the editor
-shows that capability limit. See the [Agents guide](../guides/agents.md#mcp-tool-configuration)
+shows that capability limit. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
