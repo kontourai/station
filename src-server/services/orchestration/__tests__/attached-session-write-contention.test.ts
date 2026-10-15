@@ -16,7 +16,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { ClaudeTranscriptSessionSource } from '../../../providers/sessions/claude-transcript-session-source.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
@@ -146,6 +146,11 @@ test.each(['envelope', 'session'] as const)(
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     let poll: Promise<PromiseSettledResult<void>[]> | undefined;
+    const append = events.appendEventIfAbsent.bind(events);
+    const upsert = events.upsertSession.bind(events);
+    const appendSpy = vi.spyOn(events, 'appendEventIfAbsent');
+    const upsertSpy = vi.spyOn(events, 'upsertSession');
+    let attempted = false;
     try {
       if (phase === 'session')
         expect(await room.open({ grant: grant('discover') })).toMatchObject({
@@ -165,11 +170,29 @@ test.each(['envelope', 'session'] as const)(
             });
       await locked;
       const started = performance.now();
+      const beforeWrite = () => {
+        if (attempted) return;
+        attempted = true;
+        // Schedule authorization only when the actual SQLite writer is about
+        // to collide, after discovery/path I/O has finished. Keep the real
+        // synchronous implementation, including its lock acquisition.
+        timer = setTimeout(release, 10);
+      };
+      if (phase === 'envelope')
+        appendSpy.mockImplementation((input) => {
+          beforeWrite();
+          return append(input);
+        });
+      else
+        upsertSpy.mockImplementation((input) => {
+          beforeWrite();
+          return upsert(input);
+        });
       poll = Promise.allSettled([service.pollNow()]);
-      timer = setTimeout(release, 10);
       expect(await writing).toMatchObject({
         kind: phase === 'envelope' ? 'opened' : 'committed',
       });
+      expect(attempted).toBe(true);
       expect(performance.now() - started).toBeLessThan(1_500);
       expect(await poll).toEqual([{ status: 'fulfilled', value: undefined }]);
       expect(events.listEvents(threadId).map((row) => row.id)).toContain(
@@ -193,6 +216,8 @@ test.each(['envelope', 'session'] as const)(
       clearTimeout(timer);
       release();
       await poll;
+      appendSpy.mockRestore();
+      upsertSpy.mockRestore();
       await service.stop();
       await room.close();
     }
