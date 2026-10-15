@@ -99,6 +99,8 @@ class ScriptedAdapter implements ProviderAdapterShape {
     return {
       provider: this.provider,
       threadId: input.threadId,
+      // The model it started with, as an engine that confirms it reports.
+      ...(input.modelId ? { model: input.modelId } : {}),
       status: 'ready' as const,
       createdAt: now,
       updatedAt: now,
