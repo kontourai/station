@@ -6489,6 +6489,14 @@ export async function executeExecutionTargetMessage(
             INTERNAL_SESSION_READ_SCOPE,
           )
         : undefined,
+    joinConversationTurnKey: async (
+      _access: EnvironmentAccess,
+      sessionId: string,
+      clientTurnId: string,
+    ) =>
+      typeof orchestrationService.joinHeldTurnKey === 'function'
+        ? await orchestrationService.joinHeldTurnKey(sessionId, clientTurnId)
+        : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,

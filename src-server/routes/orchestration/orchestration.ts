@@ -2862,7 +2862,10 @@ export function createOrchestrationRoutes(
           ? 503
           : // The caller's view of the Agent is stale: a conflict with the
             // current binding, not malformed input.
-            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE
+            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+              // Another attempt still holds the key: a conflict to retry,
+              // as the inbox's own in-flight refusal answers it.
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE
             ? 409
             : 400,
       );
@@ -3027,8 +3030,20 @@ export function createOrchestrationRoutes(
         readAuthorityFor(c),
       );
       // A turn the ledger settled outranks the request still being answered.
+      // Only the public fields: the ledger also names the Session a live
+      // claim is on (for a resend to join), which this answer never shows.
       if (durable && durable.outcome !== 'not-received')
-        return answer({ ...durable, conversationId, clientTurnId });
+        return answer(
+          durable.outcome === 'started'
+            ? {
+                outcome: 'started',
+                sessionId: durable.sessionId,
+                turnId: durable.turnId,
+                conversationId,
+                clientTurnId,
+              }
+            : { outcome: durable.outcome, conversationId, clientTurnId },
+        );
       // #3568: a follow-up the conversation's inbox holds for this caller.
       const held = deps.threadInbox?.deliveryOutcome(
         conversationId,
@@ -3399,7 +3414,9 @@ export function createOrchestrationRoutes(
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
           },
-          400,
+          // Another attempt still holds the key: a conflict to retry, as
+          // the inbox's own in-flight refusal answers it.
+          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ? 409 : 400,
         );
       }
     },

@@ -80,6 +80,9 @@ class ScriptedAdapter implements ProviderAdapterShape {
   refuseNextAsBusy = false;
   /** Take the next send and never answer it (the engine may have it). */
   hangNextSend = false;
+  /** Take the next send and answer it only once `releaseHeldSend` runs. */
+  holdNextSend = false;
+  releaseHeldSend: (() => void) | undefined;
   private readonly sessions = new Set<string>();
   private open: { threadId: string; turnId: string } | undefined;
 
@@ -116,6 +119,12 @@ class ScriptedAdapter implements ProviderAdapterShape {
     if (this.hangNextSend) {
       this.hangNextSend = false;
       return new Promise<never>(() => {});
+    }
+    if (this.holdNextSend) {
+      this.holdNextSend = false;
+      await new Promise<void>((resolve) => {
+        this.releaseHeldSend = resolve;
+      });
     }
     const turnId = `inbox-turn-${this.turns.length}`;
     this.events.push({
@@ -313,6 +322,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           clientTurnId,
           INTERNAL_SESSION_READ_SCOPE,
         ),
+      // As production composes it (station-control-delegation.ts).
+      joinConversationTurnKey: (_access, sessionId, clientTurnId) =>
+        service.joinHeldTurnKey(sessionId, clientTurnId),
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
         environmentId: ENVIRONMENT,
@@ -493,6 +505,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
      * recorder: what is tested there is what the route lets through.
      */
     const continuations: Array<{ clientTurnId?: string; userId: string }> = [];
+    /** Set to make the recorder refuse with this code, as a continuation can. */
+    const continueRefusal: { code?: string } = {};
     const app = new Hono();
     app.route(
       '/api/orchestration',
@@ -507,6 +521,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
             userId: input.userId,
           });
+          if (continueRefusal.code)
+            throw Object.assign(new Error('refused'), {
+              code: continueRefusal.code,
+            });
           return {} as never;
         },
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
@@ -576,7 +594,17 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           body: JSON.stringify({ message, clientTurnId }),
         },
       );
+    const lookupData = async (clientTurnId: string) =>
+      (
+        (await (
+          await app.request(
+            `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/turn-deliveries/${encodeURIComponent(clientTurnId)}`,
+          )
+        ).json()) as { data: Record<string, unknown> }
+      ).data;
     return {
+      continueRefusal,
+      lookupData,
       sendTurnGate,
       ledger,
       inboxStartGate,
@@ -1273,8 +1301,98 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     });
     world.ledger.answer = { outcome: 'received' };
     const busy = await world.send('k3', 'again', { target: otherModel });
+    // A conflict to retry, as the inbox's own in-flight refusal answers it.
+    expect(busy.status).toBe(409);
     expect(await busy.json()).toMatchObject({ code: 'client_turn_in_flight' });
+    world.ledger.answer = undefined;
+    // The continue route answers the same code the same way.
+    world.continueRefusal.code = 'client_turn_in_flight';
+    const continued = await world.continueSend('k4', 'again');
+    expect(continued.status).toBe(409);
+    expect(await continued.json()).toMatchObject({
+      code: 'client_turn_in_flight',
+    });
     expect(world.prompts()).toEqual(['read the file']);
     expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(1);
+  });
+
+  test.each([
+    ['a fresh claim', 0],
+    ['a claim older than 15 minutes, whose owner is alive', 16 * 60_000],
+  ])(
+    'R7-1/2: a same-key retry while another attempt holds the key on its Session (%s) joins that turn, never indeterminate',
+    async (_claim, ageMs) => {
+      const world = station({ modelPerTurn: false });
+      expect((await world.send('first', 'read the file')).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The first attempt's engine call is under way: the service holds a live
+      // claim on the key (owner alive, invoking) that has not resolved.
+      world.adapter.holdNextSend = true;
+      const firstAttempt = world.send('k1', 'and then this');
+      await eventually(() =>
+        expect(world.adapter.releaseHeldSend).toBeDefined(),
+      );
+      const realNow = Date.now.bind(Date);
+      const clock = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(() => realNow() + ageMs);
+      try {
+        // The lookup shows only its public fields: never the Session a live
+        // claim is on. #3660: a claim this old reads indeterminate there.
+        expect(await world.lookupData('k1')).toEqual({
+          outcome: ageMs > 0 ? 'indeterminate' : 'received',
+          conversationId: CONVERSATION,
+          clientTurnId: 'k1',
+        });
+        // The client retries with the same key (and a model change, so a
+        // continuation would otherwise move to a new Session).
+        const retry = world.send('k1', 'and then this', { target: otherModel });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        world.adapter.releaseHeldSend?.();
+        const [first, again] = await Promise.all([firstAttempt, retry]);
+        const firstTurn = (
+          (await first.json()) as { data: { providerTurnId: string } }
+        ).data.providerTurnId;
+        const retryAnswer = { status: again.status, body: await again.json() };
+        expect(sendsOf(world, 'and then this')).toHaveLength(1);
+        expect(retryAnswer).toMatchObject({
+          status: 200,
+          body: { data: { providerTurnId: firstTurn } },
+        });
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
+
+  test('R7-0: a plain same-key retry after its Session ended answers the first turn; one engine send', async () => {
+    const world = station();
+    const first = await world.send('k1', 'read the file');
+    expect(first.status, await first.clone().text()).toBe(200);
+    const firstTurn = (
+      (await first.json()) as { data: { providerTurnId: string } }
+    ).data.providerTurnId;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // The Session's engine binding ends (`error`), so a continuation now
+    // reserves a successor Session with a claim of its own.
+    const session = world.service.currentConversationSessionId(CONVERSATION);
+    world.adapter.events.push({
+      eventId: `${session}:exited`,
+      provider: 'claude',
+      threadId: session,
+      sessionId: session,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      exitKind: 'error',
+    } as unknown as CanonicalRuntimeEvent);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const retry = await world.send('k1', 'read the file');
+    const retryAnswer = { status: retry.status, body: await retry.json() };
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(sendsOf(world, 'read the file')).toHaveLength(1);
+    expect(retryAnswer).toMatchObject({
+      status: 200,
+      body: { data: { providerTurnId: firstTurn } },
+    });
   });
 });

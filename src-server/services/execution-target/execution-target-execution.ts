@@ -373,11 +373,6 @@ export interface ExecutionTargetExecutionDependencies
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
   /**
-   * Server-owned durable conversation/session resolution. It is optional for
-   * remote compatibility until every Station speaks lineage, but the current
-   * runtime composes it for all local foreground entries.
-   */
-  /**
    * #3568: the turn ledger's answer for a key across every Session of the
    * conversation. Read before a continuation may reserve a successor, since
    * deduplication is per Session. Optional for remote compatibility.
@@ -387,6 +382,23 @@ export interface ExecutionTargetExecutionDependencies
     conversationId: string,
     clientTurnId: string,
   ) => ConversationKeyInspection;
+  /**
+   * #3568: join the turn a live claim holds `clientTurnId` for on
+   * `sessionId` (bounded), as a same-key send meeting that claim does.
+   */
+  joinConversationTurnKey?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+    clientTurnId: string,
+  ) => Promise<
+    | { outcome: 'started'; turnId: string }
+    | { outcome: 'indeterminate' | 'in-flight' }
+  >;
+  /**
+   * Server-owned durable conversation/session resolution. It is optional for
+   * remote compatibility until every Station speaks lineage, but the current
+   * runtime composes it for all local foreground entries.
+   */
   resolveConversationSession?: (
     access: EnvironmentAccess,
     conversationId: string,
@@ -739,14 +751,42 @@ export async function executeForegroundMessage(
   // with a model change, or after its Session ended). A handoff turn carries
   // a key of its own, derived from its intent, and is not checked here.
   if (binding && !validHandoff && !requestedHandoff && input.clientTurnId) {
-    const decision = conversationKeyDecision(
+    const clientTurnId = input.clientTurnId;
+    let decision = conversationKeyDecision(
       deps.inspectConversationTurnKey?.(
         resolved.access,
         conversationId,
-        input.clientTurnId,
+        clientTurnId,
       ),
     );
-    if (decision.kind === 'started')
+    // A live claim on a known Session: join its turn (bounded), as a
+    // same-key send meeting that claim in its own Session does.
+    if (
+      decision.kind === 'in-flight' &&
+      decision.sessionId &&
+      deps.joinConversationTurnKey
+    ) {
+      const holder = decision.sessionId;
+      const joined = await deps.joinConversationTurnKey(
+        resolved.access,
+        holder,
+        clientTurnId,
+      );
+      decision =
+        joined.outcome === 'started'
+          ? { kind: 'started', sessionId: holder, turnId: joined.turnId }
+          : joined.outcome === 'indeterminate'
+            ? { kind: 'may-have-been-sent' }
+            : decision;
+    }
+    if (decision.kind === 'started') {
+      // Staged attachments are bound to the turn that took them, as for a
+      // send that went through, so the route accepts (rather than strands)
+      // the references this retry carries.
+      input.resolveAttachments?.({
+        threadId: decision.sessionId,
+        clientTurnId,
+      });
       return {
         conversationId,
         sessionId: decision.sessionId,
@@ -754,6 +794,7 @@ export async function executeForegroundMessage(
         target: { kind: 'agent', id: resolved.agentId },
         resolution: resolved.receipt,
       };
+    }
     if (decision.kind === 'may-have-been-sent')
       throw Object.assign(
         new Error(

@@ -183,12 +183,16 @@ export async function deliverSessionMessage(
 
 /** What the turn ledger holds for a key across every Session of a conversation. */
 export type ConversationKeyInspection =
+  | { readonly outcome: 'not-received' | 'expired' }
   | {
-      readonly outcome:
-        | 'not-received'
-        | 'received'
-        | 'indeterminate'
-        | 'expired';
+      readonly outcome: 'received' | 'indeterminate';
+      /** The Session whose live claim holds it, when known. */
+      readonly sessionId?: string;
+      /**
+       * Indeterminate only by age: a live or unknown owner's claim past the
+       * in-flight bound, which may still resolve (#3660).
+       */
+      readonly ageOnly?: true;
     }
   | {
       readonly outcome: 'started';
@@ -218,9 +222,12 @@ export function keyInFlightError(): Error {
  * Session could send the same text again under a claim of its own:
  *
  * - `started`: an earlier attempt's turn; answered without sending;
- * - `may-have-been-sent` (`indeterminate` or `expired`): never sent again;
- * - `in-flight` (`received`): a live attempt still holds the key; refused as
- *   retryable, nothing sent;
+ * - `may-have-been-sent` (`indeterminate` or `expired`): never sent again.
+ *   Only a claim given up after a possible effect, a dead owner's, or an
+ *   expired one: an unresolved claim that is only old (`ageOnly`) is
+ *   `in-flight`, since a live owner may still deliver it (#3660);
+ * - `in-flight` (`received`): a live attempt still holds the key, on
+ *   `sessionId` when known; nothing sent, and a caller may join that turn;
  * - `start` (`not-received`, or nothing materialized yet): no Session took
  *   it, so it is safe to start in whichever Session the continuation picks.
  */
@@ -230,12 +237,20 @@ export function conversationKeyDecision(held: ConversationKeyInspection):
       readonly sessionId: string;
       readonly turnId: string;
     }
-  | { readonly kind: 'may-have-been-sent' | 'in-flight' | 'start' } {
+  | { readonly kind: 'in-flight'; readonly sessionId?: string }
+  | { readonly kind: 'may-have-been-sent' | 'start' } {
   if (held?.outcome === 'started')
     return { kind: 'started', sessionId: held.sessionId, turnId: held.turnId };
+  if (
+    held?.outcome === 'received' ||
+    (held?.outcome === 'indeterminate' && held.ageOnly)
+  )
+    return {
+      kind: 'in-flight',
+      ...(held.sessionId ? { sessionId: held.sessionId } : {}),
+    };
   if (held?.outcome === 'indeterminate' || held?.outcome === 'expired')
     return { kind: 'may-have-been-sent' };
-  if (held?.outcome === 'received') return { kind: 'in-flight' };
   return { kind: 'start' };
 }
 
