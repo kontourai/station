@@ -1,0 +1,7 @@
+{
+  "revision": "f6ea09aadaf7405fdd3cce8933258cf4a497d708",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after fix round 3 (cross-window and visibility re-read of finished keys, confirmed queued Discard…, shared delivery wording, the phone sheet's in-place actions, neutral tone for another window's send, the outbox list action group and its responsive inventory entry); searched for delivery, outbox, queue, discard and sheet claims; none in this document changes. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/chat.css","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

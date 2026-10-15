@@ -26,18 +26,20 @@ export interface ChatStatus {
   clockFrom?: number;
   /** Pending approvals, shown as a badge when more than one. */
   count?: number;
+  pending?: boolean;
   /**
    * Lines shown when the pill is expanded. A line with `since` is followed by
    * the time elapsed since then, kept current while the details are open.
    */
   details: Array<{ text: string; since?: number }>;
   /** What a tap does. */
-  action: 'reveal-approval' | 'repair' | 'details' | undefined;
+  action: 'reveal-approval' | 'repair' | 'resync' | 'details' | undefined;
 }
 
 export interface ChatStatusInput {
   /** A history or continuation read failed; cached activity is not current proof. */
   observationUnavailable?: boolean;
+  resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
   stream?: ChatStreamStatus;
@@ -69,10 +71,9 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 /**
- * The one status a chat pane shows, by priority: a decision the user owes
- * (approval) outranks the transport (blocked, reconnecting, catching up),
- * which outranks the brief "restored" confirmation, which outranks what the
- * turn is doing (waiting on the user, working). Nothing live → undefined.
+ * The one status a chat pane shows: transport recovery, then failed-read
+ * recovery, then approvals, connection confirmation and turn activity.
+ * Cached approvals cannot hide repair while their observation is unverified.
  *
  * Pure; times are carried as epoch starts, never as rendered durations, so
  * the result does not go stale between renders. Every fact comes from the chat's own record or
@@ -82,30 +83,6 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
-  if (input.observationUnavailable)
-    return {
-      kind: 'blocked',
-      tone: 'broken',
-      glyph: 'attention',
-      label: 'Status unavailable',
-      details: [
-        {
-          text: 'Station could not verify this conversation. The remote turn may still be running.',
-        },
-      ],
-      action: 'repair',
-    };
-  if (input.approvalCount > 0) {
-    return {
-      kind: 'approval',
-      tone: 'attention',
-      glyph: 'approval',
-      label: 'Needs approval',
-      count: input.approvalCount > 1 ? input.approvalCount : undefined,
-      details: [],
-      action: 'reveal-approval',
-    };
-  }
   if (stream?.kind === 'blocked') {
     return {
       kind: 'blocked',
@@ -124,6 +101,35 @@ export function deriveChatStatus(
       label: stream.kind === 'reconnecting' ? 'Reconnecting' : 'Catching up',
       details: [{ text: STREAM_DETAIL }],
       action: 'details',
+    };
+  }
+  // Auth and reconnect status take priority over failed reads: Resync is
+  // offered again once transport recovery has settled.
+  if (input.observationUnavailable)
+    return {
+      kind: 'blocked',
+      tone: 'broken',
+      glyph: 'attention',
+      label: input.resyncPending
+        ? 'Resyncing conversation'
+        : 'Status unavailable',
+      pending: input.resyncPending,
+      details: [
+        {
+          text: 'Station could not verify this conversation. The remote turn may still be running.',
+        },
+      ],
+      action: 'resync',
+    };
+  if (input.approvalCount > 0) {
+    return {
+      kind: 'approval',
+      tone: 'attention',
+      glyph: 'approval',
+      label: 'Needs approval',
+      count: input.approvalCount > 1 ? input.approvalCount : undefined,
+      details: [],
+      action: 'reveal-approval',
     };
   }
   if (stream?.kind === 'restored') {

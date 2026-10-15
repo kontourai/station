@@ -123,6 +123,15 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   }
 }
 
+/** Explicit resync restarts a live stream; auth-refused streams keep the
+ * same retry floor and single deferred retry as focus/online recovery.
+ */
+export function resyncOrchestrationEventStream(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (owned?.parked) ensureOrchestrationEventStream(apiBase);
+  else notifyOrchestrationAuthorityChanged(apiBase);
+}
+
 function reensureRequestedStreams(): void {
   if (
     (globalThis as { document?: { hidden?: boolean } }).document?.hidden ===

@@ -40,3 +40,8 @@
 .message.user:has(.turn-footer__overflow-trigger) {
   padding-inline-end: calc(44px + var(--k-space-3));
 }
+
+/* A destructive row (Discard unsent message) reads as one. */
+.turn-footer__overflow-menu .turn-footer__overflow-item--danger {
+  color: var(--error-text, var(--k-negative));
+}

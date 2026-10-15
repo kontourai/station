@@ -1,0 +1,7 @@
+{
+  "revision": "79299ec40528ba0fcd6ce501eb698817fe09a78e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed round-3 Resync completion against ChatStatusPill, its conversation-keyed mount in useChatStatusPill, ChatDockBody composer focus callback and real-composer regression tests. Recovery survives reconnect/catch-up; completion is consumed once; actual focus and open-dialog guards preserve user focus. Local Chromium captures passed at 1440 and 390 pixels; OS screen reader output remains unverified.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

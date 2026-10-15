@@ -195,8 +195,25 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. Its Resync action
+reconnects the Station's orchestration stream and re-runs the failed history or
+conversation-open read. Resync is disabled and announces “Resyncing conversation”
+until those reads settle. History reads abort after 120 seconds and show a
+retryable error; the JSON reader exposes no progress signal. This bound allows
+slow remote reads beyond 30 seconds. Successful recovery announces “Conversation
+resynced” once, including after reconnecting or catching up. It moves focus to
+the composer (textarea when writable, otherwise its labelled composer group)
+only while this conversation is active, no dialog is open, and focus is still
+on Resync or was orphaned on the document body. Focus moved elsewhere stays there.
+Connection recovery and failed-read recovery outrank retained approvals, whose
+current state has not been verified. Check connection, Reconnecting, and Catching up take
+priority while the transport needs recovery; explicit stream resync respects
+the 30-second auth-refusal retry floor. Background work the session record last reported
+reads as "Last known: …" without animated dots until a read succeeds. History
+Retry refreshes the capability observation before reloading. The desktop
+inbox footer offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; when the last read failed, the footer
+says the rows are the last known list.
 
 The pill uses compact state labels such as Sending, Working, Thinking, and
 Reconnecting; it does not expand to display tool names. **Sending** covers the
@@ -204,7 +221,15 @@ chat's own send until the agent has its turn (no turn open on the server yet);
 once Station's delivery lookup says it has the message, its detail says Station
 has it and is starting the agent, and that the app may be closed only when
 that Station keeps running without the app (not the desktop's own Station when
-it stops with the app, nor while the desktop has not reported it). State changes animate its width with
+it stops with the app, nor while the desktop has not reported it). The user's
+own bubble carries the same state until the agent has the message
+(`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
+solid when not sent or when it may have reached the agent; only a send under
+way keeps the accent colour, and a send with no answer reads as a caution), with a short label that says whether it goes if the app
+closes (including waiting behind an unsent message, waiting for its own
+Station, and "Not confirmed" for this window's send with no answer), plus Retry
+and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
+Discard… when it may have reached the agent. State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
@@ -490,8 +515,13 @@ simple per-device preference rather than claiming to detect an attached keyboard
   still queued and the dock gives the composer priority, the controls row
   repeats a labelled **Discard**: a 44px touch target that adds no height (the
   row is already a touch row), described by the notice's words, doing what the
-  transcript's Discard does. Both controls leave the same state: the turn is
-  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard does. When the message may already have reached
+  Station, that control reads **Discard…** and asks first, with the shared
+  risk statement. The composer clips what overflows it in such a dock, so the
+  question opens as the composer's own popover (a sheet on a phone) rather
+  than inside it: focus moves to **Keep it**, and Keep it, Escape or a tap
+  outside returns focus to Discard…. Both controls leave the same state: the
+  turn is discarded and, when none remains, the stale notice is dropped. The
   transcript's Discard, like every transcript notice action, is also 44px on a
   phone or touch screen. The queued turn and its Retry stay in
   the dock body), the chip strip drops to one scrolling row, and only then does

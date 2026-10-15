@@ -44,6 +44,8 @@ export interface TurnBoundaryRecord {
   /** ISO-8601 timestamps, compared as strings like the store compares them. */
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Host event-sequence fence; absent/NULL rows retain timestamp ordering. */
+  readonly createdSequence?: number | null;
 }
 
 export interface RequestKeyId {
