@@ -26,6 +26,12 @@ This avoids showing a usable-looking window before its protected local surface
 is ready. The original native-startup work is recorded in
 [archive#3808](https://github.com/kontourai/station-archive/issues/3808).
 
+The short Station intro is separate from native readiness. If it has already
+started visibly, a ready app finishes the name reveal and fades into the
+workspace. It does not wait for a loading-animation cycle. Fast starts can skip
+an unseen intro; reduced motion and recovery screens do not wait for it. Bringing
+an existing window back or changing Stations does not replay the intro.
+
 ## When the window does not appear
 
 A cold start can take longer than 30 seconds on a slow or busy computer. If
