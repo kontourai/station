@@ -55,6 +55,9 @@ describe('built-in adapter durability conformance', () => {
       expect(Object.keys(profile ?? {}).sort()).toEqual(
         Object.keys(fields).sort(),
       );
+      expect(['station', 'engine', 'unknown']).toContain(
+        profile?.compaction.owner,
+      );
       for (const cell of Object.values(profile ?? {})) {
         expect(['native', 'emulated', 'none']).toContain(cell.state);
         expect(cell.detail.trim().length).toBeGreaterThan(0);

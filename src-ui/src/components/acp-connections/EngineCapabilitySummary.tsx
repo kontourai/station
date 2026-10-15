@@ -180,6 +180,15 @@ export function EngineCapabilitySummary({
       <details className="engine-capability-summary__recovery">
         <summary>Recovery and delivery</summary>
         <span className="engine-capability-summary__body">
+          <span className="engine-capability-summary__tools">
+            <strong>Compaction owner</strong>
+            {' — '}
+            {
+              { station: 'Station', engine: 'Engine', unknown: 'Unknown' }[
+                matrix.durability.compaction.owner
+              ]
+            }
+          </span>
           {RECOVERY_LABELS.map(({ key, label }) => {
             const cell = matrix.durability[key];
             return (

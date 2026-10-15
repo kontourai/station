@@ -877,7 +877,9 @@ per-room old-writer fence and permanent duplicate identity behavior.
 `ProviderDurabilityProfile` in the provider contract declares nine required cells:
 steering placement, crash continuation, tool replay, pending approvals, context
 carriage, fork, compaction, partial output and usage. Each cell identifies current
-fidelity (`native`, `emulated` or `none`) and its user-facing limit. These are
+fidelity (`native`, `emulated` or `none`) and its user-facing limit. Compaction
+also declares its owner (`station`, `engine` or `unknown`) independently of
+Station's crash-recovery support. These are
 delivery declarations, not permission to replay an effect with an unknown outcome.
 
 Built-in adapters expose the profile in their metadata. The engine capability

@@ -225,3 +225,23 @@ it('the rendered steering claim follows the profile when the legacy flag disagre
       ?.textContent,
   ).toContain('Steering — Unavailable:');
 });
+
+it('discloses compaction ownership independently of recovery support', () => {
+  const matrix = {
+    ...ENGINE_CAPABILITY_MATRICES.claude,
+    durability: {
+      ...ENGINE_CAPABILITY_MATRICES.claude.durability,
+      compaction: {
+        ...ENGINE_CAPABILITY_MATRICES.claude.durability.compaction,
+        owner: 'unknown' as const,
+      },
+    },
+  };
+  const { container } = render(
+    <EngineCapabilitySummary matrix={matrix} connectionName="Custom" />,
+  );
+  expect(
+    container.querySelector('.engine-capability-summary__recovery')
+      ?.textContent,
+  ).toContain('Compaction owner — Unknown');
+});

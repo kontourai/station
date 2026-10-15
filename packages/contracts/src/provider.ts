@@ -48,7 +48,10 @@ export interface ProviderDurabilityProfile {
   pendingApprovals: DurabilityCapability;
   contextCarriage: DurabilityCapability;
   fork: DurabilityCapability;
-  compaction: DurabilityCapability;
+  /** State describes Station's recovery support; ownership is independent. */
+  compaction: DurabilityCapability & {
+    owner: 'station' | 'engine' | 'unknown';
+  };
   partialOutput: DurabilityCapability;
   usage: DurabilityCapability;
 }

@@ -359,7 +359,9 @@ export const EXTERNAL_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   fork: { state: 'none', detail: 'No native conversation fork is declared.' },
   compaction: {
     state: 'none',
-    detail: 'Station does not control this engine’s context compaction.',
+    owner: 'engine',
+    detail:
+      'The engine owns compaction; Station does not checkpoint it for recovery.',
   },
   partialOutput: {
     state: 'emulated',
@@ -395,6 +397,7 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   compaction: {
     state: 'none',
+    owner: 'station',
     detail:
       'Station owns context management, but compaction is not a crash-recovery checkpoint.',
   },
@@ -412,6 +415,12 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
 
 export const UNKNOWN_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
+  compaction: {
+    state: 'none',
+    owner: 'unknown',
+    detail:
+      'Compaction ownership and recovery have not been established for this engine.',
+  },
   contextCarriage: {
     state: 'none',
     detail: 'Context delivery has not been established for this engine.',
