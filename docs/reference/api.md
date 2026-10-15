@@ -1372,7 +1372,7 @@ submission under the same key with HTTP `409` and
 `code: client_turn_input_conflict`, before any additional engine send. This
 bounded contract retains legacy unknown-input rows and optional-key behavior;
 it does not cover the private Station-engine stream ledger. See
-[keyed send identity](session-api.md#delivery-lookup-for-a-keyed-send) and the
+[keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
 
 `POST /api/orchestration/chat` carries model selection under
