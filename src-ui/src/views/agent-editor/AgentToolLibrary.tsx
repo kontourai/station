@@ -30,6 +30,17 @@ const Registry = lazy(() =>
   })),
 );
 
+function sourceCatalog(source: ToolLibrarySource) {
+  if (source.origin?.registryId)
+    return {
+      id: `registry:${source.origin.registryId}`,
+      name: source.origin.registryName || source.from,
+    };
+  if (source.origin?.kind === 'station')
+    return { id: 'station', name: 'Station tools' };
+  return undefined;
+}
+
 export function AgentToolLibrary({
   form,
   setForm,
@@ -45,6 +56,7 @@ export function AgentToolLibrary({
   const change = useToolLibraryChange(client);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string>();
+  const [catalog, setCatalog] = useState<{ id: string; name: string }>();
   const [setup, setSetup] = useState<string>();
   const [plugin, setPlugin] = useState<ToolLibrarySource>();
   const [notice, setNotice] = useState<string>();
@@ -130,11 +142,32 @@ export function AgentToolLibrary({
     (source) => `${source.kind}:${source.id}` === selected,
   );
   const query = search.toLowerCase().trim();
-  const matching = sources.filter((source) =>
-    `${source.name} ${source.from} ${source.description ?? ''} ${source.tools.map((tool) => `${tool.name} ${tool.description ?? ''}`).join(' ')}`
-      .toLowerCase()
-      .includes(query),
+  const matching = sources.filter(
+    (source) =>
+      (!catalog || sourceCatalog(source)?.id === catalog.id) &&
+      `${source.name} ${source.from} ${source.description ?? ''} ${source.tools.map((tool) => `${tool.name} ${tool.description ?? ''}`).join(' ')}`
+        .toLowerCase()
+        .includes(query),
   );
+  function origin(source: ToolLibrarySource) {
+    const target = sourceCatalog(source);
+    return target ? (
+      <button
+        type="button"
+        className="agent-tool-library__origin"
+        aria-label={`Browse ${target.name}`}
+        onClick={() => {
+          setCatalog(target);
+          setSelected(undefined);
+          setSearch('');
+        }}
+      >
+        {source.from}
+      </button>
+    ) : (
+      <small className="agent-tool-library__origin">{source.from}</small>
+    );
+  }
   function attach(source: ToolLibrarySource) {
     if (source.personalAccount && engineId !== 'station') return;
     const tools = source.tools.map((tool) => ({
@@ -229,7 +262,7 @@ export function AgentToolLibrary({
         </Button>
         <div className="agent-tool-library__identity">
           <strong>{source.name}</strong>
-          <small>{source.from}</small>
+          {origin(source)}
         </div>
         {source.description && (
           <p className="editor-hint">{source.description}</p>
@@ -316,6 +349,20 @@ export function AgentToolLibrary({
               >
                 {tool.title || tool.name.replaceAll('_', ' ')}
               </Checkbox>
+              <span
+                className="agent-tool-library__classification"
+                title={
+                  tool.classificationSource === 'publisher'
+                    ? 'Reported by the source; approval still defaults to Ask me.'
+                    : undefined
+                }
+              >
+                {tool.readOnly === true
+                  ? 'Read'
+                  : tool.readOnly === false
+                    ? 'Write'
+                    : 'Unclassified'}
+              </span>
               <details>
                 <summary aria-label={`Details for ${tool.name}`}>
                   Details
@@ -329,6 +376,7 @@ export function AgentToolLibrary({
                     tool={tool as Tool}
                     tools={tools}
                     engineId={engineId}
+                    disabled={!view.canManageAgents || !source.permitted}
                   />
                 )}
               </details>
@@ -340,6 +388,7 @@ export function AgentToolLibrary({
             <summary>Advanced</summary>
             <Checkbox
               checked={patterns.includes(`${source.id}_*`)}
+              disabled={!view.canManageAgents || !source.permitted}
               onChange={(include) =>
                 setForm((current) =>
                   applyNewToolApprovalDefaults(
@@ -383,6 +432,12 @@ export function AgentToolLibrary({
               </>
             )}
           </dl>
+          {(!source.origin || source.origin.kind === 'unavailable') && (
+            <p>
+              Origin metadata is missing, invalid, or no longer matches this
+              connection.
+            </p>
+          )}
           {source.installed && source.kind === 'integration' && (
             <Button
               variant="ghost"
@@ -427,6 +482,14 @@ export function AgentToolLibrary({
   }
   return (
     <div className="agent-tool-library">
+      {catalog && (
+        <div className="agent-tool-library__catalog-heading">
+          <Button variant="ghost" onClick={() => setCatalog(undefined)}>
+            All sources
+          </Button>
+          <strong>{catalog.name}</strong>
+        </div>
+      )}
       <input
         type="search"
         className="editor-input"
@@ -447,14 +510,17 @@ export function AgentToolLibrary({
             className="agent-tool-library__row"
             key={`${source.kind}:${source.id}`}
           >
-            <button
-              type="button"
-              className="agent-tool-library__source"
-              onClick={() => setSelected(`${source.kind}:${source.id}`)}
-            >
-              <strong>{source.name}</strong>
-              <small>{source.from}</small>
-            </button>
+            <div className="agent-tool-library__entry">
+              <button
+                type="button"
+                className="agent-tool-library__source"
+                aria-label={`View ${source.name} tools`}
+                onClick={() => setSelected(`${source.kind}:${source.id}`)}
+              >
+                <strong>{source.name}</strong>
+              </button>
+              {origin(source)}
+            </div>
             {!source.permitted ? (
               <span className="editor-hint">
                 {source.operatorOnly ? 'Operator only' : 'Not allowed'}

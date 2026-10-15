@@ -11,6 +11,7 @@ import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { PageHeaderScope } from '../page-frame';
 import { SkeletonList } from '../state';
+import './ToolRequestsPanel.css';
 
 const Registry = lazy(() =>
   import('../../views/RegistryView').then((module) => ({
@@ -53,11 +54,11 @@ export function ToolRequestsPanel({ requestId }: { requestId?: string }) {
     }
   }
   return (
-    <section aria-label="Tool requests" className="agent-tool-library">
+    <section aria-label="Tool requests" className="tool-requests-panel">
       {requests.isError && <p role="alert">Tool requests unavailable.</p>}
       {!requestId && pending.length > 0 && <h2>Tool requests</h2>}
       {pending.map((request) => (
-        <div className="agent-tool-picker__source" key={request.id}>
+        <div className="tool-requests-panel__request" key={request.id}>
           {!requestId && (
             <>
               <strong>{request.sourceName}</strong>
@@ -66,8 +67,9 @@ export function ToolRequestsPanel({ requestId }: { requestId?: string }) {
               </small>
             </>
           )}
-          <div className="agent-tool-library__row">
+          <div className="tool-requests-panel__actions">
             <Button
+              variant="primary"
               pending={change.isPending}
               onClick={() =>
                 void act(

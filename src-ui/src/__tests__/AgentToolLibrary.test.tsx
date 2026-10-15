@@ -231,3 +231,62 @@ test('whole-source engines do not offer unsupported individual or future-tool se
     (screen.getByLabelText('Read a guide') as HTMLInputElement).disabled,
   ).toBe(true);
 });
+
+test('clicking a source opens individual actions without attaching; its catalog link keeps registry identity and the agent draft', async () => {
+  const h = fixture(false);
+  h.source.from = 'Team catalog';
+  h.source.origin = {
+    kind: 'registry',
+    registryId: 'team-one',
+    registryName: 'Team catalog',
+  };
+  h.view.sources.push(
+    {
+      ...h.source,
+      id: 'notes',
+      name: 'Team notes',
+      installed: false,
+      enabled: false,
+      tools: [],
+    },
+    {
+      ...h.source,
+      id: 'other',
+      name: 'Other registry tool',
+      origin: {
+        kind: 'registry',
+        registryId: 'team-two',
+        registryName: 'Team catalog',
+      },
+    },
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'View Station Docs tools' }),
+  );
+  expect(screen.getByLabelText('Read a guide')).toBeTruthy();
+  expect(
+    screen.getByText('Read', {
+      selector: '.agent-tool-library__classification',
+    }),
+  ).toBeTruthy();
+  expect(
+    screen.getByText('Write', {
+      selector: '.agent-tool-library__classification',
+    }),
+  ).toBeTruthy();
+  expect(h.latest().tools.mcpServers).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Browse Team catalog' }));
+  expect(
+    screen.getByRole('button', { name: 'View Team notes tools' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'View Other registry tool tools' }),
+  ).toBeNull();
+  expect(screen.getByRole('button', { name: 'Request' })).toBeTruthy();
+  expect(h.latest().name).toBe('Unsaved analyst');
+  expect(h.latest().tools.mcpServers).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'All sources' }));
+  expect(
+    screen.getByRole('button', { name: 'View Other registry tool tools' }),
+  ).toBeTruthy();
+});

@@ -128,14 +128,16 @@ export function AttentionCard({
           {formatNotificationTime(item.updatedAt)}
         </time>
       </header>
-      <AttentionAction item={item} />
-      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+      <div className="attention-item__footer">
+        <AttentionAction item={item} />
+        {/* #1536 D8: a standing notice is not dismissible — acknowledging the
           only row that says why chat cannot start would leave the inbox
           claiming nothing needs you while it still does. One predicate, shared
           with "Dismiss all" and with the server's own refusal. */}
-      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
-        <DismissAttentionItem item={item} />
-      )}
+        {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+          <DismissAttentionItem item={item} />
+        )}
+      </div>
     </article>
   );
 }

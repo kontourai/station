@@ -53,7 +53,10 @@ settings. Each row shows its
 source: Station, a registry, a plugin, or a connection on this Station. Open a
 source for its description and actions. **Details** holds each action's
 description and approval choice; **About this source** holds provenance and
-connection settings. Unknown provenance stays unknown.
+connection settings. Click a registry name to browse its tools without leaving
+the draft. Catalog browsing retains Project permissions and approval defaults.
+**Origin not recorded** means provenance is missing, invalid, or no longer
+matches the saved connection; it does not describe connection health.
 
 On Station and Claude, newly added Station-classified reads default to **Always
 allow**. Changes, unknown actions and publisher-classified reads default to

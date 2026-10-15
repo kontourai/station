@@ -36,7 +36,7 @@ export async function toolLibraryCatalog(
           source.origin?.registryName ||
           (source.origin?.kind === 'manual'
             ? 'Connected on this Station'
-            : 'Source unavailable'),
+            : 'Origin not recorded'),
       origin: builtin.has(source.id)
         ? { kind: 'station', registryName: 'Station' }
         : source.origin,

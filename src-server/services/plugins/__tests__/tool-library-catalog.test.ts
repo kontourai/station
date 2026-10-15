@@ -56,4 +56,8 @@ test('the MCP library never offers engine-native tools as installable MCP source
   });
   expect(sources.map((source) => source.id)).toEqual(['reports', 'remote']);
   expect(sources[0]?.tools.map((tool) => tool.name)).toEqual(['read']);
+  expect(sources[0]).toMatchObject({
+    from: 'Origin not recorded',
+    enabled: true,
+  });
 });
