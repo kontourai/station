@@ -45,7 +45,7 @@ CLI capture supplies an OPEN issue with `status:in_progress` and receives
 the ready-queue read does not provide a resolved mutation target for a chosen
 neutral status. Station must not implement either adapter mapping itself.
 
-**Upstream request:** publish a settings-aware exact-item observe/target-resolve
+**Upstream request ([kontourai/flow-agents#1508](https://github.com/kontourai/flow-agents/issues/1508); label read/write mismatch: [#1507](https://github.com/kontourai/flow-agents/issues/1507)):** publish a settings-aware exact-item observe/target-resolve
 CLI or root export for supported mutation surfaces. Return identity, current
 mutation base, resolved target and supported-operation policy; distinguish
 missing/unavailable/unsupported results. Its read status must agree with its
@@ -77,7 +77,7 @@ not supply that binding, and importing its internal path fails with
 would perform a different, unauthorized action. `publish-change reconcile-final-state`
 checks local trust/release artifacts; it is not a live PR reader.
 
-**Upstream request:** publish a read-only provider-neutral change observation
+**Upstream request ([kontourai/flow-agents#1509](https://github.com/kontourai/flow-agents/issues/1509)):** publish a read-only provider-neutral change observation
 operation accepting an exact provider/host/repository/ref/native-ID identity.
 Return observed identity and normalized open/merged/closed-without-merge or
 unavailable state, preserving the distinction that only merged can complete a
@@ -89,7 +89,7 @@ Station retains its current exact-identity PR reader and conversation refresh.
 Even after an observation contract ships, conversation listing, reviews and
 checks may still need Station's PR provider: the current Flow Agents contract
 does not offer those operations. A short comment at the close-out import names
-the current gap. Jira and Linear adapters remain upstream and outside this lane.
+the current gap. Jira and Linear adapters remain upstream ([kontourai/flow-agents#1510](https://github.com/kontourai/flow-agents/issues/1510)) and outside this lane.
 
 ## Executed contract captures
 
