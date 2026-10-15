@@ -564,12 +564,12 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-The September 2026 revision kept project and conversation switching directly
-in the phone header. The October onboarding round separates their meanings:
-conversation switching and New chat stay direct, with 44px targets;
-**Chat actions → Project for new chats** changes future chat context. It does
-not move or rebind the current conversation. The title and assistant remain
-readable without competing with that future-project control.
+Project and conversation switching remain direct phone-header actions with
+readable current context and 44px targets at 320px, 390px and 412px. The
+October audit proposed moving the future-project choice into Chat actions;
+that remains a proposal because the product contract requires direct access.
+The current implementation keeps the project control and simplifies title
+wrapping and assistant context without removing either primary action.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
@@ -629,9 +629,10 @@ Discovered Codex rollouts continue through app-server `thread/fork`, returning a
 The desktop chat title leads, with assistant and reported engine/model context
 on a second line. Coding keeps the title in its own breadcrumb and retains the
 assistant context in the shared bar. Working chats open a keyboard-operable
-menu. On mobile, the title is one line with assistant context beneath it; the
-**Project for new chats** choice lives in **Chat actions** so it does not imply
-that picking a project moves the current conversation.
+menu. On mobile, the title is one line with assistant context beneath it. The direct
+Project control retains its New chats caption: it sets future chat context,
+not the current conversation’s binding. Moving that control into Chat actions
+remains an unimplemented proposal requiring a product-contract decision.
 
 Earlier Project before/after illustrations on this page are historical
 comparisons. Their duplicate callout and older dock chrome are not current

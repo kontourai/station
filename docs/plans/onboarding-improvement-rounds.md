@@ -23,7 +23,7 @@ must not be confused with permission to run a local service.
 | Codex Instructions locks after one character | Validate authored instructions against system or first-message delivery; keep warnings editable | Stateful editor typing/clearing, real new Codex chat, first-turn runtime receipt |
 | Phone Coding splits chat from an empty work area | Keep chat in the central workbench; preserve ambient dock and app toolbar ownership | Single-controller integration and actual Safari keyboard captures |
 | Coding composer falls below viewport | Bound layout route height, preserve flowing page scroll | Long transcript browser geometry and app at 1280 × 800; Settings remains scrollable |
-| Header mixes conversation, assistant and future-project context | Title above assistant/model; running chats use a real menu; mobile future-project choice moves to actions | 280–850px real CSS, keyboard menu, phone title/actions |
+| Header mixes conversation, assistant and future-project context | Title above assistant/model; running chats use a real menu; direct mobile project switching retained under the product contract | 280–850px real CSS, keyboard menu, phone title/actions |
 | Agent Chat action forgets the clicked Agent | Use typed selection including its owning Project | Real rail action through production parser; baseline red, fixed and mutation/restoration |
 | Project setup sends users to management | Open the server-returned applied layout through canonical navigation | Selected layout only, create-once retry, no-layout fallback |
 | Redundant project chat callout | Remove callout/helper and their obsolete tests | Project-bound HomeStartComposer handoff keeper |
@@ -79,3 +79,14 @@ Keep these findings open until their own behavior and failure paths are proven:
 
 Each round should end with actual before/after captures, independent critique,
 focused regressions for real failures, and a separate list of unverified claims.
+
+The October audit proposed moving the mobile future-project control into Chat
+actions. The repository’s mobile primary-context contract requires direct
+Project and conversation switching, so that removal is not implemented. Review
+the mental-model proposal separately; retain the direct action meanwhile.
+
+Code-health review found no new dead exports or duplication. GuidedConnect’s
+role-specific branches introduced an advisory complexity finding (cyclomatic
+32). The desktop/native/mobile access paths remain explicit in their existing
+owner; a later decomposition should preserve the shared connection ceremonies
+and the tested narrow-desktop recovery route.

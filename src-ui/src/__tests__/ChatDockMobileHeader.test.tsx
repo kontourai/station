@@ -188,7 +188,7 @@ async function openActions() {
 }
 
 describe('mobile conversation focus', () => {
-  test('keeps conversation switching direct and project setup in actions', async () => {
+  test('keeps project and conversation switching directly reachable with readable context', () => {
     const onOpenTaskSwitcher = vi.fn();
     renderHeader({
       onOpenTaskSwitcher,
@@ -205,14 +205,13 @@ describe('mobile conversation focus', () => {
     ).toBe('New chat');
     fireEvent.click(identity);
     expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
-    await openActions();
     expect(
-      screen.getByRole('menuitem', { name: /^Project for new chats/ })
+      screen.getByRole('button', { name: 'Switch project — Kontour AI' })
         .textContent,
     ).toContain('Kontour AI');
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
     expect(
-      screen.getByRole('menuitem', { name: /^Project for new chats/ }),
+      screen.getByRole('button', { name: /^Switch project/ }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /^Chats and tasks/ }),
@@ -255,9 +254,10 @@ describe('mobile conversation focus', () => {
           onSwitchProject: vi.fn(),
         },
       });
-      await openActions();
       fireEvent.click(
-        screen.getByRole('menuitem', { name: /^Project for new chats/ }),
+        screen.getByRole('button', {
+          name: 'Switch project — Choose a project',
+        }),
       );
       fireEvent.click(
         await screen.findByRole('button', {
@@ -312,10 +312,7 @@ describe('mobile conversation focus', () => {
         onSwitchProject,
       },
     });
-    await openActions();
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: /^Project for new chats/ }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
     await screen.findByRole('dialog', { name: 'Projects' });
     fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
@@ -372,6 +369,7 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     renderHeader();
     for (const name of [
       'Collapse chat',
+      'Switch project — Kontour AI',
       'Chats and tasks — Codex',
       'Chat actions',
     ]) {

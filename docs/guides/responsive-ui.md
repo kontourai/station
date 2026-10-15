@@ -186,8 +186,9 @@ maximized chat or a detail sheet fills the screen. Use it only for creating
 something; Connections is the first adopter.
 
 The mobile chat header keeps the conversation title on one line with the
-assistant beneath it. **Chat actions → Project for new chats** changes the
-context for a future chat; it does not move the open conversation. A disconnected
+assistant beneath it. Project and conversation switching remain directly
+reachable. The Project control’s New chats caption names future context;
+it does not move the open conversation. A disconnected
 phone starts with pairing and a computer-setup handoff. Host addresses and broker
 routes are under **Other ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to
