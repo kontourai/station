@@ -102,7 +102,7 @@ import { getTenantRequestContext } from './runtime-tenant-context.js';
 
 type RuntimeApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
-export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
+const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
