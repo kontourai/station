@@ -48,6 +48,8 @@ The phone-width captures compare the baseline and redesigned controls in the
 same isolated sample home and light theme. They show appearance, not task
 execution or native-shell qualification. Capture revisions and limits are in
 [the media manifest](../learn/media.json).
+These historical comparisons predate the paperclip and mic added to the start
+composer; they are not current references for its attachment controls.
 
 | Surface | Before | After |
 | --- | --- | --- |
@@ -307,7 +309,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 - Agent and Model selectors show their selected values without repeating the field labels.
   Their accessible names and tooltips retain the field name, exact Provider/model identity,
-  selection source, and any unavailable reason. The picker distinguishes duplicate model
+  selection source, and any unavailable reason. A long value ends in an ellipsis inside
+  its chip. When the Agent is reached through a model route ("via model-proxy
+  (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
+  chip's accessible name and tooltip keep it. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start
@@ -355,7 +360,9 @@ sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
 composer holds text, an attachment or quoted context; their geometry stays
 reserved while hidden, so editing does not move Stop or the other toolbar
-controls. Names and the selected mode remain accessible, and the opened picker
+controls. On mobile, Stop therefore follows them, at the row's trailing edge;
+before them it sat beside an empty reserved gap. At 390px a running turn's full
+row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Queue**, which starts a new turn after the entire current
 turn finishes. **Steer** uses native mid-turn input only where the selected
@@ -389,7 +396,12 @@ a turn. Pending rows retain their selected mode. **Send now** is an explicit imm
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
 cannot be confirmed. Queued follow-ups currently accept text and quoted context;
-attachments remain in the composer until the turn finishes.
+attachments remain in the composer until the turn finishes. Steering carries
+text only (`steerTurn` takes an input string), and the mid-turn queue holds
+text only. The paperclip and mic stay usable during a turn, so the next
+message can be prepared: a file added then waits in the draft, and the line
+above the draft says that Steer and Queue carry text only, with **Remove
+attachments**. Send stays disabled until the turn ends or the files go.
 
 Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
 with a bounded reason category; Codex's `willRetry` reports retry intent without
@@ -415,6 +427,22 @@ simple per-device preference rather than claiming to detect an attached keyboard
 
 ### 3.2 Attachments
 
+- A new chat's start composer attaches through its paperclip and paste, and
+  dictates through its mic, like a reply. It cannot know what the new chat's
+  engine accepts, so Start hands the files to the chat it opens, which runs
+  them through its own intake and staging before its first send. If that
+  engine refuses a file or a file does not stage, the message waits in the
+  chat's composer with the reason instead of going out without it. A task
+  started on another Station takes text only, so Start with files attached
+  refuses that and says why. Each composer owns its own dictation: a transcript goes only to
+  the composer whose mic started it, and a composer that closes stops its
+  dictation and takes the transcript with it. An unavailable mic stays focusable;
+  tapping or activating it opens its reason, including when the composer cannot
+  accept dictation.
+  Paste requires the browser to deliver clipboard files. Android keyboard
+  image insertion into the native WebView is not qualified by the browser
+  clipboard tests; use the paperclip's file picker when the keyboard refuses
+  image paste.
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the

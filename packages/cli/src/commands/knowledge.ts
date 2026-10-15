@@ -14,7 +14,7 @@
 import {
   migratePreIndexKnowledge,
   rebuildKnowledgeIndex,
-  searchKnowledgeIndex,
+  searchKnowledgeIndexWithReport,
 } from '@kontourai/station-sdk/client';
 import type { ParsedCoreArgs } from './core-api.js';
 
@@ -130,11 +130,27 @@ export async function runKnowledgeSearch(
     }
   }
 
-  const results = await searchKnowledgeIndex(apiBase, {
-    query,
-    ...(rootIds && rootIds.length > 0 ? { rootIds } : {}),
-    ...(topK !== undefined ? { topK } : {}),
-  });
+  const { results, index: report } = await searchKnowledgeIndexWithReport(
+    apiBase,
+    {
+      query,
+      ...(rootIds && rootIds.length > 0 ? { rootIds } : {}),
+      ...(topK !== undefined ? { topK } : {}),
+    },
+  );
+  // On stderr, so `--json` output keeps its shape.
+  for (const stale of report?.staleRoots ?? []) {
+    console.error(
+      stale.reason === 'embedding-changed'
+        ? `Warning: ${stale.rootId} was indexed with a different embedding model and was not searched. Run: station knowledge reindex --root=${stale.rootId}`
+        : `Warning: ${stale.rootId} has an index from an older Station and was not searched. Run: station knowledge reindex --root=${stale.rootId}`,
+    );
+  }
+  if (report && report.staleRecords > 0) {
+    console.error(
+      `Warning: ${report.staleRecords} record(s) changed since they were indexed; their excerpts were withheld. Reindex to search them.`,
+    );
+  }
 
   if (parsed.flags.json === true) {
     console.log(JSON.stringify(results, null, 2));

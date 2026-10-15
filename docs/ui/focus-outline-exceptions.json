@@ -2,6 +2,11 @@
   "policy": "Legacy outline suppressions remain keyboard-visible through the global :focus-visible floor. New suppressions require explicit review and inventory.",
   "exceptions": [
     {
+      "path": "src-ui/src/components/chat-start/StartComposer.css",
+      "selector": ".start-composer[data-coarse-pointer] .start-composer__box .start-composer__input:focus-visible",
+      "reason": "On coarse-pointer devices the containing start-composer__box keeps its visible focus-within border. The touch browser journey verifies the focused field has no second inner outline; fine-pointer keyboard focus keeps the global outline."
+    },
+    {
       "path": "packages/connect/src/react/ConnectionManagerModal.css",
       "selector": ".station-connect-input",
       "reason": "Custom focus border remains supplemented by the global keyboard-focus floor."

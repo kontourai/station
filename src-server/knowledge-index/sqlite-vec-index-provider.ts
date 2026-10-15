@@ -1,8 +1,11 @@
 /**
  * Derived sqlite-vec index, partitioned by Knowledge root. Rebuild explicitly
  * from the root adapters; this database is never the record authority.
- * See docs/guides/knowledge.md#changing-the-embedding-model for width changes
- * and the lack of embedding-model identity tracking.
+ * Every chunk records the embedding generation that produced it (#2727), and
+ * an identity-scoped search admits only that generation. A width change drops
+ * the whole table; an index file written before generations existed is
+ * reported as unknown and replaced on its first write. See
+ * docs/guides/knowledge.md#changing-the-embedding-model.
  *
  * vec0 checks INSERT value types rather than applying ordinary SQLite affinity.
  * Bind integer auxiliaries as BigInt: node:sqlite binds JS numbers as FLOAT,
@@ -14,6 +17,7 @@ import { dirname, join } from 'node:path';
 import type {
   IEmbeddingProvider,
   KnowledgeIndexEntry,
+  KnowledgeIndexGeneration,
   KnowledgeIndexHit,
   KnowledgeIndexProvider,
 } from '@kontourai/station-contracts/knowledge-index';
@@ -30,6 +34,7 @@ import {
 } from '../telemetry/metrics.js';
 import { resolveHomeDir } from '../utils/paths.js';
 import { applyWalJournalMode } from '../utils/sqlite-wal.js';
+import { knowledgeEmbeddingIdentity } from './embedding-identity.js';
 import { KeyedInFlightGuard } from './inflight-guard.js';
 
 const require = createRequire(import.meta.url);
@@ -67,6 +72,14 @@ const VEC_TABLE = 'vec_items';
 const META_TABLE = 'index_meta';
 const DIMENSION_KEY = 'dimension';
 const REBUILT_AT_PREFIX = 'lastRebuiltAt:';
+const SCHEMA_VERSION_KEY = 'schemaVersion';
+/** 2 added the filterable `embeddingIdentity` metadata column (#2727). A table
+ * without this marker predates it, so none of its chunks has a generation. */
+const INDEX_SCHEMA_VERSION = '2';
+/** vec0 metadata columns refuse NULL, so an unknown generation is stored as ''. */
+const UNKNOWN_EMBEDDING_IDENTITY = '';
+/** sqlite-vec refuses a KNN `k` above this. */
+export const MAX_KNOWLEDGE_INDEX_SEARCH_K = 4096;
 
 /** Global lock key (SEC-2) for the shared `vec0` table's dimension-change
  * drop+recreate — this action is shared across every root's partition, so it must
@@ -181,6 +194,13 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     return row ? Number(row.value) : null;
   }
 
+  private hasCurrentSchema(): boolean {
+    const row = this.open()
+      .prepare(`SELECT value FROM ${META_TABLE} WHERE key = ?`)
+      .get(SCHEMA_VERSION_KEY) as { value: string } | undefined;
+    return row?.value === INDEX_SCHEMA_VERSION;
+  }
+
   private setConfiguredDimension(dim: number): void {
     this.open()
       .prepare(
@@ -202,12 +222,16 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       db.exec(`CREATE VIRTUAL TABLE ${VEC_TABLE} USING vec0(
         store TEXT partition key,
         embedding float[${dim}] distance_metric=cosine,
+        embeddingIdentity TEXT,
         +recordId TEXT,
         +chunkOrdinal INTEGER,
         +text TEXT,
         +metadata TEXT
       )`);
       this.setConfiguredDimension(dim);
+      db.prepare(
+        `INSERT INTO ${META_TABLE}(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ).run(SCHEMA_VERSION_KEY, INDEX_SCHEMA_VERSION);
       // Every existing root's partition was just dropped along with the table — its
       // "last rebuilt" marker is no longer honest until that root calls rebuildRoot
       // again, so clear all of them rather than leaving stale timestamps behind.
@@ -229,11 +253,16 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
    * risk: never silently reject or corrupt mismatched vectors. Other roots become
    * empty until they, too, call `rebuildRoot` — an accepted consequence of the
    * index being disposable/derived (ADR-0009), not a data-loss bug (nothing here
-   * is authoritative).
+   * is authoritative). A table that predates embedding generations is
+   * replaced the same way: none of its chunks could ever match a generation.
    */
   private ensureDimension(dim: number): void {
     const configured = this.getConfiguredDimension();
-    if (configured === null || !this.tableExists(VEC_TABLE)) {
+    if (
+      configured === null ||
+      !this.tableExists(VEC_TABLE) ||
+      !this.hasCurrentSchema()
+    ) {
       this.createVecTable(dim);
       return;
     }
@@ -288,13 +317,14 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       `DELETE FROM ${VEC_TABLE} WHERE store = ? AND recordId = ? AND chunkOrdinal = ?`,
     );
     const insert = db.prepare(
-      `INSERT INTO ${VEC_TABLE}(rowid, store, embedding, recordId, chunkOrdinal, text, metadata) VALUES (null, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${VEC_TABLE}(rowid, store, embedding, embeddingIdentity, recordId, chunkOrdinal, text, metadata) VALUES (null, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const entry of entries) {
       del.run(entry.rootId, entry.recordId, entry.chunkOrdinal);
       insert.run(
         entry.rootId,
         toVectorBuffer(entry.vector),
+        entry.embeddingIdentity || UNKNOWN_EMBEDDING_IDENTITY,
         entry.recordId,
         BigInt(entry.chunkOrdinal),
         entry.text,
@@ -344,6 +374,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       rootIds?: string[];
       threshold?: number;
       filter?: Record<string, unknown>;
+      embeddingIdentity?: string;
     },
   ): Promise<KnowledgeIndexHit[]> {
     knowledgeIndexOps.add(1, {
@@ -351,7 +382,20 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       rootId: opts.rootIds?.join(',') ?? 'all',
     });
 
+    if (
+      !Number.isInteger(opts.topK) ||
+      opts.topK <= 0 ||
+      opts.topK > MAX_KNOWLEDGE_INDEX_SEARCH_K
+    ) {
+      throw new RangeError(
+        `sqlite-vec search: topK must be an integer from 1 to ${MAX_KNOWLEDGE_INDEX_SEARCH_K}, got ${opts.topK}`,
+      );
+    }
+
     if (!this.tableExists(VEC_TABLE)) return [];
+    // A table from before embedding generations holds only chunks of unknown
+    // generation; `generations()` reports them, and no search may admit them.
+    if (!this.hasCurrentSchema()) return [];
 
     const configured = this.getConfiguredDimension();
     if (configured !== null && configured !== query.length) {
@@ -368,6 +412,11 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       params.push(...opts.rootIds);
     }
 
+    if (opts.embeddingIdentity !== undefined) {
+      conditions.push('embeddingIdentity = ?');
+      params.push(opts.embeddingIdentity || UNKNOWN_EMBEDDING_IDENTITY);
+    }
+
     if (opts.filter) {
       for (const [key, value] of Object.entries(opts.filter)) {
         conditions.push(`json_extract(metadata, ?) = ?`);
@@ -380,7 +429,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     // which can return fewer than `topK` matches for a small `k`. Over-fetch a
     // generous, fixed `k` and re-rank/truncate to `topK` in JS so threshold/filter
     // predicates never silently starve real results for a small corpus.
-    const k = Math.max(opts.topK, 200);
+    const k = Math.min(Math.max(opts.topK, 200), MAX_KNOWLEDGE_INDEX_SEARCH_K);
     conditions.push('k = ?');
     params.push(k);
 
@@ -442,6 +491,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
       records.push(...forType);
     }
 
+    const embeddingIdentity = knowledgeEmbeddingIdentity(deps.embedder);
     const pending: Array<{
       recordId: string;
       chunkOrdinal: number;
@@ -483,6 +533,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
         text: p.text,
         vector: vectors[i],
         metadata: p.metadata,
+        embeddingIdentity,
       }));
       this.writeEntries(entries);
     }
@@ -494,6 +545,33 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     knowledgeIndexOps.add(1, { op: 'rebuildRoot', rootId });
 
     return { records: records.length, chunks: pending.length };
+  }
+
+  async generations(rootIds?: string[]): Promise<KnowledgeIndexGeneration[]> {
+    if (!this.tableExists(VEC_TABLE)) return [];
+    const current = this.hasCurrentSchema();
+    const rows = this.open()
+      .prepare(
+        current
+          ? `SELECT store, embeddingIdentity, COUNT(*) AS c FROM ${VEC_TABLE} GROUP BY store, embeddingIdentity`
+          : `SELECT store, NULL AS embeddingIdentity, COUNT(*) AS c FROM ${VEC_TABLE} GROUP BY store`,
+      )
+      .all() as Array<{
+      store: string;
+      embeddingIdentity: string | null;
+      c: number;
+    }>;
+    const scope = rootIds && rootIds.length > 0 ? new Set(rootIds) : null;
+    return rows
+      .filter((row) => !scope || scope.has(row.store))
+      .map((row) => ({
+        rootId: row.store,
+        embeddingIdentity:
+          row.embeddingIdentity && row.embeddingIdentity.length > 0
+            ? row.embeddingIdentity
+            : null,
+        chunks: Number(row.c),
+      }));
   }
 
   async stats(rootId?: string): Promise<{
