@@ -1,6 +1,6 @@
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
 import { AuthStatusBadge } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ActivityTimeline } from '../components/ActivityTimeline';
 import { Button } from '../components/Button';
 import { AchievementsBadge } from '../components/badges/AchievementsBadge';
@@ -82,29 +82,58 @@ function ProfileUsageGraph({
           label="Daily activity not recorded in the last 14 days"
         />
       ) : (
-        <div className="profile-usage-graph__bars">
-          {points.map((point) => (
-            <div key={point.date} className="profile-usage-graph__column">
-              <div
-                className="profile-usage-graph__bar"
-                style={{
-                  height:
-                    point.value > 0
-                      ? `${(point.value / maxValue) * 6}rem`
-                      : '2px',
-                }}
-                title={
-                  point.recorded
-                    ? `${point.label}: ${point.value.toLocaleString()} recorded messages`
-                    : `${point.label}: no daily record`
-                }
-              />
-              <span className="profile-usage-graph__label">{point.label}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="profile-usage-graph__bars">
+            {points.map((point) => (
+              <div key={point.date} className="profile-usage-graph__column">
+                <div
+                  className="profile-usage-graph__bar"
+                  style={{
+                    height:
+                      point.value > 0
+                        ? `${(point.value / maxValue) * 6}rem`
+                        : '2px',
+                  }}
+                  title={
+                    point.recorded
+                      ? `${point.label}: ${point.value.toLocaleString()} recorded messages`
+                      : `${point.label}: no daily record`
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <div className="profile-usage-graph__axis" aria-hidden="true">
+            <span>{points[0].label}</span>
+            <span>{points[points.length - 1].label}</span>
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+function ProfileDisclosure({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="profile-disclosure"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        {title}
+        {hint && <span>{hint}</span>}
+      </summary>
+      {open && children}
+    </details>
   );
 }
 
@@ -115,7 +144,6 @@ export function ProfilePage() {
   const achievementLinks = pluginRegistry.getLinks('achievements');
   const userName = user?.name || user?.alias || 'User';
   const totalMessages = usageStats?.lifetime.totalMessages || 0;
-  const totalCost = usageStats?.lifetime.totalCost || 0;
   const [showUserLookup, setShowUserLookup] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildError, setRebuildError] = useState<Error | null>(null);
@@ -285,16 +313,8 @@ export function ProfilePage() {
                 </div>
               </div>
               <p className="profile-hero-subtitle">
-                {totalMessages.toLocaleString()} recorded messages / turns
+                Your identity · usage below covers the connected Station
               </p>
-              {totalCost > 0 && (
-                <div className="profile-hero-badges">
-                  <div className="profile-badge profile-badge-primary">
-                    ${totalCost.toFixed(2)} recorded cost
-                  </div>
-                </div>
-              )}
-              <ProfileUsageGraph usageStats={usageStats ?? null} />
               <details className="profile-disclosure profile-disclosure--inline">
                 <summary>About these totals</summary>
                 <p>
@@ -311,46 +331,41 @@ export function ProfilePage() {
               {historyGap && <p>{historyGap}</p>}
             </div>
           </div>
-        </div>
-
-        <div className="profile-card">
-          <StationPeoplePanel />
-        </div>
-
-        <div className="profile-card">
-          <StationUsagePanel />
+          <ProfileUsageGraph usageStats={usageStats ?? null} />
         </div>
 
         <div className="profile-card profile-usage-summary">
           <UsageStatsPanel />
         </div>
 
-        <details className="profile-disclosure">
-          <summary>
-            Usage across Stations <span>Receipts & peer totals</span>
-          </summary>
+        <ProfileDisclosure
+          title="Paired people"
+          hint="Approved profiles & devices"
+        >
+          <StationPeoplePanel />
+        </ProfileDisclosure>
+        <ProfileDisclosure
+          title="Operator breakdown"
+          hint="Providers, models & recorded people"
+        >
+          <StationUsagePanel initiallyExpanded />
+        </ProfileDisclosure>
+        <ProfileDisclosure
+          title="Usage across Stations"
+          hint="Receipts & peer totals"
+        >
           <UsageRollupPanel />
-        </details>
-
-        <details className="profile-disclosure">
-          <summary>Milestones</summary>
+        </ProfileDisclosure>
+        <ProfileDisclosure title="Milestones">
           <AchievementsBadge links={achievementLinks} />
-        </details>
-
-        <details className="profile-disclosure">
-          <summary>
-            Diagnostics <span>Tools, errors & activity</span>
-          </summary>
+        </ProfileDisclosure>
+        <ProfileDisclosure title="Diagnostics" hint="Tools, errors & activity">
           <InsightsDashboard />
-        </details>
-
+        </ProfileDisclosure>
         {totalMessages > 0 && (
-          <details className="profile-disclosure">
-            <summary>
-              Activity history <span>Daily records</span>
-            </summary>
+          <ProfileDisclosure title="Activity history" hint="Daily records">
             <ActivityTimeline />
-          </details>
+          </ProfileDisclosure>
         )}
       </div>
       {showUserLookup && user?.alias && (
