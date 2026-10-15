@@ -3405,11 +3405,11 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
 **Chat proposal acceptance.** The [shaping prompt and parser](../../src-ui/src/lib/task-shaping.ts),
-[shared composer](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
+[entry host](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn; `TaskGraphService.createTask`
-commits the approved description and source Session link in one store mutation.
+commits the Goal sentence and source Session link in one store mutation. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
 `TaskShapingComposer.test.tsx` cover those separate boundaries. This Station

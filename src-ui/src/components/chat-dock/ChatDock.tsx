@@ -471,6 +471,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: string;
     /** Absent: only stage `files` into the new chat's composer. */
     prompt?: string;
+    ambientContext?: string;
     authority: typeof requestAuthority;
     /** Start's files: staged by this chat's own intake before the send. */
     files?: File[];
@@ -821,6 +822,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     onOpenInboxSession,
     newChatRequestEpoch,
     newChatStartWithDefault,
+    newChatTaskShaping,
     newChatInitialPrompt,
     newChatInitialFiles,
     newChatSelection,
@@ -1150,7 +1152,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (chatInput.sendBlockedReason) return;
     setPendingGoalSend(null);
     if (chatInput.input !== pendingGoalSend.prompt) return;
-    void chatInput.handleSend(pendingGoalSend.prompt);
+    void chatInput.handleSend(pendingGoalSend.prompt, undefined, {
+      ambientContext: pendingGoalSend.ambientContext,
+    });
   }, [
     activeSessionId,
     pendingGoalSend,
@@ -3085,6 +3089,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           showNewChatModal,
           newChatRequestEpoch,
           newChatStartWithDefault,
+          newChatTaskShaping,
           newChatInitialPrompt,
           newChatInitialFiles,
           newChatSelection,
@@ -3173,6 +3178,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             expectedDefinitionFingerprint,
             executionOnCurrentStation,
             initialFiles,
+            ambientContext,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3230,6 +3236,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? initialMessage
                   : newChatInitialPrompt)!,
                 authority: requestAuthority,
+                ambientContext,
                 files,
               });
             } else if (sessionId && files) {
@@ -3238,6 +3245,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               setPendingGoalSend({
                 sessionId,
                 authority: requestAuthority,
+                ambientContext,
                 files,
               });
             }

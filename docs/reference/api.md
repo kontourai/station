@@ -94,12 +94,12 @@ or the grant.
 ## Create a Task from a chat proposal
 
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
-when a person accepts a chat proposal. The normal `title` and `description`
-carry the approved brief. Station requires an authorized, normally completed
+when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
+carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
 assistant turn in the same Project (or a conversation without a Project),
 then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; changing its destination Project is
-refused. This is Station proposal acceptance, not a Builder Kit gate receipt.
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
 ## Personal Task room agent requests
 

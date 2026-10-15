@@ -41,7 +41,8 @@ export function TaskProposalCard({
       const task = await create.mutateAsync({
         projectId: selectedProject,
         title: proposal.title,
-        description: taskProposalBrief(proposal),
+        description: proposal.goal,
+        proposalBrief: taskProposalBrief(proposal),
         agentId,
         createdBy: 'user',
         shapingSource: { sessionId, turnId },
@@ -96,7 +97,8 @@ export function TaskProposalCard({
       </p>
       {failed && (
         <p role="alert">
-          The Task could not be created. Your proposal is kept; try again.
+          Task creation or brief saving did not finish. Your proposal is kept.
+          Retry Create Task to finish saving; an existing Task will be reused.
         </p>
       )}
       <Button

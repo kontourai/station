@@ -86,6 +86,7 @@ import {
 } from './approval-authority.js';
 
 const taskCreateSchema = z.object({
+  proposalBrief: z.string().trim().min(1).max(12000).optional(),
   shapingSource: z
     .object({
       sessionId: z.string().trim().min(1).max(4096),
@@ -349,6 +350,11 @@ export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
     taskDispatcher: TaskDispatcher;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean>;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
      * essential: a route singleton must never retain one tenant's authority.
@@ -437,6 +443,11 @@ export function createTaskRoutes(
     answerNarrativeBindingModule?: AnswerNarrativeBindingModule;
   } = {} as {
     taskDispatcher: TaskDispatcher;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean>;
     canReadSession?: (
       sessionId: string,
       authority: SessionReadAuthority,
@@ -640,6 +651,11 @@ export function createTaskRoutes(
       const input: z.infer<typeof taskCreateSchema> = getBody(c);
       let authorize: (() => boolean) | undefined;
       if (input.shapingSource) {
+        if (!input.proposalBrief || !options.seedProposalBrief)
+          return c.json(
+            { success: false, error: 'Task brief saving is unavailable' },
+            503,
+          );
         const authority = options.readAuthorityForRequest?.(c.req.raw);
         if (!authority || !options.readAssistantTurn) return hostedNotFound(c);
         const { sessionId, turnId } = input.shapingSource;
@@ -674,6 +690,27 @@ export function createTaskRoutes(
         undefined,
         authorize,
       );
+      if (input.shapingSource) {
+        let seeded = false;
+        try {
+          seeded = await options.seedProposalBrief!({
+            taskId: data.id,
+            request: c.req.raw,
+            text: input.proposalBrief!,
+          });
+        } catch {
+          /* Retry retains the exact source identity. */
+        }
+        if (!seeded)
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task created, but its brief could not be saved. Retry Create Task to finish saving the same Task.',
+            },
+            503,
+          );
+      }
       return c.json({ success: true, data }, 201);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

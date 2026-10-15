@@ -1,3 +1,4 @@
+import './TaskChatStart.css';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
@@ -37,6 +38,7 @@ import type {
   NewChatStartSelection,
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
+import { TASK_SHAPING_INSTRUCTION } from '../../lib/task-shaping';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
@@ -172,6 +174,7 @@ interface NewChatModalProps {
     executionOnCurrentStation?: boolean,
     /** Files for the first message (passed only when there are some). */
     initialFiles?: File[],
+    ambientContext?: string,
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -183,6 +186,7 @@ interface NewChatModalProps {
   /** Files Home's composer attached with its prompt. */
   initialFiles?: File[];
   startSurface?: boolean;
+  taskShaping?: boolean;
   recentChats?: Omit<ComponentProps<typeof RecentList>, 'context' | 'agents'>;
   /**
    * What Home's composer chose (its chips), carried with a start or a
@@ -236,6 +240,7 @@ export function NewChatModal({
   initialPrompt,
   initialFiles,
   startSurface = false,
+  taskShaping = false,
   recentChats,
   startSelection,
   handoff,
@@ -284,6 +289,7 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [shaping, setShaping] = useState(taskShaping);
   const [startFiles, setStartFiles] = useState<File[]>(initialFiles ?? []);
   const startVoice = useStartDictation((text) =>
     setPrompt((current) => appendDictation(current, text)),
@@ -940,17 +946,10 @@ export function NewChatModal({
         string?,
         boolean?,
         File[]?,
-      ] =
-        startFiles.length > 0
-          ? [
-              startOptions[0],
-              startOptions[1],
-              startOptions[2],
-              startOptions[3],
-              startOptions[4],
-              startFiles,
-            ]
-          : startOptions;
+        string?,
+      ] = [...startOptions];
+      if (startFiles.length) selectTail[5] = startFiles;
+      if (shaping) selectTail[6] = TASK_SHAPING_INSTRUCTION;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -1468,8 +1467,11 @@ export function NewChatModal({
     );
   }
 
+  const StartSurface = taskShaping
+    ? TaskChatStartSurface
+    : ResponsiveDialogSurface;
   return (
-    <ResponsiveDialogSurface
+    <StartSurface
       layer="dialog"
       ariaLabel={
         mode?.kind === 'fork'
@@ -1481,7 +1483,7 @@ export function NewChatModal({
       overlayClassName="new-chat-modal__overlay"
       panelClassName="new-chat-modal"
       initialFocusRef={showStart ? promptRef : agentInputRef}
-      initialFocusPolicy="desktop"
+      initialFocusPolicy={taskShaping ? 'always' : 'desktop'}
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
@@ -1742,7 +1744,19 @@ export function NewChatModal({
               Choose an Agent to continue.
             </p>
           )}
+          {shaping && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              onClick={() => setShaping(false)}
+              aria-label="Remove New Task mode"
+            >
+              New Task ×
+            </Button>
+          )}
           <StartComposer
+            compact={taskShaping}
+            placeholder={shaping ? 'Describe the idea…' : undefined}
             prompt={prompt}
             onPromptChange={setPrompt}
             textareaRef={promptRef}
@@ -2275,6 +2289,20 @@ export function NewChatModal({
           </div>
         </div>
       )}
-    </ResponsiveDialogSurface>
+    </StartSurface>
+  );
+}
+
+function TaskChatStartSurface({
+  children,
+  initialFocusRef,
+}: ComponentProps<typeof ResponsiveDialogSurface>) {
+  useEffect(() => {
+    initialFocusRef?.current?.focus();
+  }, [initialFocusRef]);
+  return (
+    <section className="new-chat-modal task-chat-start" aria-label="New chat">
+      {children}
+    </section>
   );
 }

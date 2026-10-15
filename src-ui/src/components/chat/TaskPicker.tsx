@@ -236,7 +236,9 @@ export function TaskPicker<TTarget>({
                   variant="compact"
                   label={
                     tasks.length === 0
-                      ? 'Tasks are not available'
+                      ? projectId
+                        ? 'No Tasks in this project yet.'
+                        : 'No Tasks yet.'
                       : 'Task search has no matches'
                   }
                   description={

@@ -1866,3 +1866,35 @@ describe('the start composer in the dock', () => {
     expect(onSelect.mock.calls[0][3]).toBe('Just this');
   });
 });
+
+test.each([false, true])(
+  'New Task uses the shared composer and the first send carries shaping context unless removed (%s)',
+  async (remove) => {
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startSurface
+        taskShaping
+      />,
+    );
+    const input = screen.getByPlaceholderText('Describe the idea…');
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(input, { target: { value: 'Show installer progress' } });
+    if (remove)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove New Task mode' }),
+      );
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][3]).toBe('Show installer progress');
+    expect(onSelect.mock.calls[0][17]).toEqual(
+      remove ? undefined : expect.stringContaining('station-task-proposal'),
+    );
+  },
+);

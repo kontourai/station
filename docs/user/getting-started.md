@@ -536,13 +536,15 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and choose **New Task**. Describe your idea and choose an Agent.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its Sessions, files, artifacts, and evidence.
 
 An existing chat can become a Task through **Turn into Task** in its More menu.
 The **Add to Task** picker also offers **New Task from this…** for an answer or input.
-Nothing is created by opening either shaping entry point; acceptance is explicit.
+**Turn into Task** starts shaping immediately; type any focus or refinement as your next message. New Task mode can be removed before sending. No Task is created until acceptance.
+
+The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station

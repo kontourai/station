@@ -80,7 +80,8 @@ test('a proposal stays provisional until Create Task, then submits its brief and
     agentId: 'station',
     createdBy: 'user',
     shapingSource: { sessionId: 'shape-session', turnId: 'shape-turn' },
-    description: approvedBrief,
+    description: proposal.goal,
+    proposalBrief: approvedBrief,
   });
   expect(host.navigate).toHaveBeenCalledWith('/tasks/accepted-task');
   expect(queryClient.getQueryData(taskQueries.list('alpha').queryKey)).toEqual([

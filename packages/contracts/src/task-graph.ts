@@ -557,6 +557,8 @@ export interface TaskRecord {
 export interface TaskCreateInput {
   /** Explicitly accepted chat proposal; creation atomically retains its source Session. */
   shapingSource?: { sessionId: string; turnId: string };
+  /** Accepted markdown for the shared Task document, not its summary. */
+  proposalBrief?: string;
   projectId: string;
   title: string;
   description?: string;

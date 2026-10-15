@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import {
   act,
-  fireEvent,
   render,
   renderHook,
   screen,
@@ -76,25 +75,25 @@ beforeEach(() => {
   host.chats = {};
 });
 
-test('a clear one-liner starts a project chat with the selected agent and proposal instructions, without a title form', async () => {
-  render(<TaskShapingHost />);
-  act(() => requestTaskShaping({ projectSlug: 'alpha', agentSlug: 'station' }));
-  expect(screen.queryByLabelText('Task title')).toBeNull();
-  fireEvent.change(screen.getByRole('textbox'), {
-    target: { value: 'Show installer step counts' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start shaping' }));
-  await waitFor(() => expect(host.launch).toHaveBeenCalledTimes(1));
-  expect(host.launch).toHaveBeenCalledWith(
-    'station',
-    'Station',
-    'Show installer step counts',
-    'alpha',
-    'Alpha',
-    { provider: 'station' },
-    expect.stringContaining('station-task-proposal'),
-  );
-});
+test.each(['alpha', undefined])(
+  'New Task hands the current context to the normal composer (%s), without opening a form',
+  (projectSlug) => {
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener('station:open-new-chat', listener);
+    render(<TaskShapingHost />);
+    act(() => requestTaskShaping({ projectSlug }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toMatchObject({
+      detail: {
+        taskShaping: true,
+        selection: { context: projectSlug ?? '__global__' },
+      },
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    window.removeEventListener('station:open-new-chat', listener);
+  },
+);
 
 test('Turn into Task shapes the same conversation and preserves an unsent draft', async () => {
   host.chats = {
@@ -118,9 +117,6 @@ test('Turn into Task shapes the same conversation and preserves an unsent draft'
     requestTaskShaping({
       source: { sessionId: 'session-source', turnId: 'answer-source' },
     }),
-  );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Shape this conversation' }),
   );
   await waitFor(() => expect(host.send).toHaveBeenCalledTimes(1));
   expect(host.send).toHaveBeenCalledWith(

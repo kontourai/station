@@ -104,6 +104,8 @@ describe('Task attachment affordances follow the Task catalog', () => {
           name: kind === 'answer' ? /Add this answer/ : 'Add input to Task',
         }),
       );
+      expect(await screen.findByText('No Tasks yet.')).toBeTruthy();
+      expect(screen.queryByText('Tasks are not available')).toBeNull();
       fireEvent.click(
         await screen.findByRole('button', { name: 'New Task from this…' }),
       );

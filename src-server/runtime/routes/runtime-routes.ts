@@ -3795,6 +3795,9 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      seedProposalBrief: (input) =>
+        projectTaskRoomRuntime?.seedProposalBrief(input) ??
+        Promise.resolve(false),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
