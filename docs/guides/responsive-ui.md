@@ -186,7 +186,8 @@ maximized chat or a detail sheet fills the screen. Use it only for creating
 something; Connections is the first adopter.
 
 The mobile chat header keeps the conversation title on one line with the
-assistant beneath it. Project and conversation switching remain directly
+assistant beneath it. Coding omits the repeated conversation crumb on its chat
+page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
 reachable. The Project control’s New chats caption names future context;
 it does not move the open conversation. A disconnected
 phone starts with pairing and a computer-setup handoff. Host addresses and broker

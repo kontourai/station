@@ -2,7 +2,7 @@
 
 Status: local implementation and verification, 2026-10-15. This is an execution plan,
 not release qualification. Evidence and comparisons live in
-[the round-two audit report](../strategy/onboarding-20261015/round-two.html).
+[the round-three report](../strategy/onboarding-20261015/round-three.html).
 
 ## Product direction
 
@@ -35,37 +35,46 @@ must not be confused with permission to run a local service.
 | Source checkout is the first install instruction | Put desktop downloads and signed archive command first | Public archive install + launch in isolated roots; no change to existing installation |
 | Installer stops on Finder metadata | Clean owned extraction stage after moving verified files | Signed archive fixture with injected .DS_Store and real macOS install |
 
-## Terminal epic
+## Round three
 
-Do not call Terminal fixed because a shell starts or `pwd` returns. Retain the
-current reproducible evidence and evaluate these behaviors as one workstream:
+Implemented after the second review:
 
-- Type and paste multiline commands; Enter, Backspace, arrows, Ctrl-C and Ctrl-D
-  reach the PTY; focus is visible and recoverable after opening other panes.
-- Fit rows/columns after pane open, resize, drag, collapse, restore, and font
-  changes; output does not overwrite, disappear, or scroll the entire workspace.
-- Explain which computer, Project, folder, shell and process own the session.
-  An unavailable PTY or transport has an actionable reason and retry.
-- Reconnect without duplicating commands or silently creating a different shell.
-  Define whether close hides a pane or terminates its process; expose both actions.
-- Test at least macOS and Windows PTY boundaries. On phones, define deliberate
-  keyboard controls or offer command/result review; a desktop terminal squeezed
-  into a narrow pane is not mobile acceptance.
+- Station chooser → **Pair phone** opens the existing invitation screen directly.
+- Phone setup has one heading and one instruction; advanced setup stays collapsed.
+- CLI invitations include the short manual code. Browser and iOS Safari simulator
+  completed code → request → exact operator approval → cookie exchange.
+- Fresh launcher links work in an existing tab. Older pairing responses cannot
+  replace a newer sign-in result.
+- New cookies are namespaced by Station identity. A real two-Station HTTP test
+  proves coexistence, separate revocation, and refusal of ambiguous credentials.
+- Terminal keeps its renderer across routine status updates, reconnects on real
+  credential changes, preserves output while disconnected, and never replays input.
+  Phones get Ctrl+C, Tab and history buttons.
+- Coding header labels truncate before overlapping actions; layout loading uses
+  one plain status with a working Back action.
+- Phone Coding shows the title once. The first-chat guide makes Projects and
+  custom Agents optional instead of requiring them before chat.
+
+Independent review found and corrected cookie-adoption ambiguity, native proof
+cookie-name whitespace, a stale pairing response, and polling recovery state.
+Independent mutation changed the unique-current credential rule: the real HTTP
+ambiguity assertion failed as intended; exact source restoration passed 121 tests.
+
+Terminal still needs packaged Windows PTY, physical phone keyboard, and long
+running-process recovery qualification. Browser/simulator checks do not prove
+those boundaries. Closing a terminal ends its session; hiding the pane does not.
 
 ## Subsequent rounds
 
 Keep these findings open until their own behavior and failure paths are proven:
 
-1. Same-host multi-instance browser cookie collision: scope credentials to the
-   intended Station while preserving HttpOnly, Secure, SameSite, revocation and
-   migration semantics. Reproduce sign-in to two ports in one profile, then
-   restart/revoke each independently. Separate profiles are a development workaround.
-2. Mobile pairing: browser launcher sessions currently cannot create offers; the
-   UI must provide a trusted operator handoff without requiring someone to
-   understand credentials or weaken permissions. Shorten the desktop path to a visible Pair phone action;
-   verify physical iOS/Android QR, manual code, expired code, unreachable host,
-   background/resume, revoke and reconnect. Simulator camera failure is not
-   physical camera proof. A code must never imply that a network route exists.
+1. Qualify two simultaneous browser Stations across updates and credential
+   rotation. Source isolation and revocation have route-level regression proof;
+   retain real browser receipts separately.
+2. Pairing still needs physical iOS/Android QR, native shells, unreachable-host
+   recovery, expiration and background/resume qualification. Browser launcher
+   grants remain unable to administer other devices; use the trusted desktop
+   session or the matching host CLI. Pairing never creates a network route.
 3. Installer experience: verify Windows and Linux on fresh machines without
    development tools, PATH recovery, update/rollback, and browser sign-in.
    Double-click desktop should be the primary novice route when signing and

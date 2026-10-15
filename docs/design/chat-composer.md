@@ -628,7 +628,9 @@ Discovered Codex rollouts continue through app-server `thread/fork`, returning a
 
 The desktop chat title leads, with assistant and reported engine/model context
 on a second line. Coding keeps the title in its own breadcrumb and retains the
-assistant context in the shared bar. Working chats open a keyboard-operable
+assistant context in the shared bar. Phone Coding leaves the conversation
+title in the chat header and uses its breadcrumb for Inbox and pane navigation.
+Working chats open a keyboard-operable
 menu. On mobile, the title is one line with assistant context beneath it. The direct
 Project control retains its New chats caption: it sets future chat context,
 not the current conversation’s binding. Moving that control into Chat actions

@@ -1618,7 +1618,8 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 
 For a browser already signed in on the Station's same HTTPS origin, call
 `accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
-browser sends its existing `__Host-station-device` and provider cookies through
+browser sends its existing secure `__Host-station-device-<station-id-hash>`
+(legacy `__Host-station-device` is also accepted) and provider cookies through
 `credentials: 'same-origin'`; the SDK never reads or copies cookie values into
 JavaScript. Adoption returns a short-lived account continuation and a bounded,
 read-only alias for that same approved Device. Keep the alias with its

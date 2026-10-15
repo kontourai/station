@@ -123,7 +123,7 @@ const descriptorSchema = z
           .regex(/^[A-Za-z0-9_.-]{1,128}$/)
           .refine(
             (name) =>
-              !['station-device', '__Host-station-device'].includes(name),
+              !/^(?:__Host-)?station-device(?:-|$)/.test(name),
           ),
       )
       .min(1)
