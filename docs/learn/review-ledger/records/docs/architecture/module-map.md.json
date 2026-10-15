@@ -980,7 +980,19 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
 
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/index.ts",
+
+    "src-server/routes/orchestration/session-agent-control.ts",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
   ],
 
   "checks": [
