@@ -306,7 +306,9 @@ describe('monument pack smoke: bounds and credentials', () => {
     expect(fine.timedOut).toBe(false);
   });
 
-  it('settles a timed-out launcher and its live descendant before returning', async () => {
+  it('settles a timed-out launcher and its live descendant before returning', async ({
+    task,
+  }) => {
     const launcherPath = join(scratch, 'timeout-launcher.pid');
     const descendantPath = join(scratch, 'timeout-descendant.pid');
     const heartbeat = join(scratch, 'timeout-heartbeat');
@@ -319,9 +321,10 @@ describe('monument pack smoke: bounds and credentials', () => {
         { stdio: 'inherit', windowsHide: true });
       setInterval(() => {}, 1000);`;
     const pids: number[] = [];
+    const cleanupErrors: unknown[] = [];
     try {
       const step = await runStep(process.execPath, ['-e', launcher], {
-        timeoutMs: 2_000,
+        timeoutMs: Math.min(10_000, Math.floor(task.timeout / 6)),
       });
       for (const path of [launcherPath, descendantPath])
         pids.push(Number(readFileSync(path, 'utf8')));
@@ -355,10 +358,12 @@ describe('monument pack smoke: bounds and credentials', () => {
         try {
           process.kill(pid, 'SIGKILL');
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
+            cleanupErrors.push(error);
         }
       }
     }
+    expect(cleanupErrors, 'owned negative-control cleanup').toEqual([]);
   });
 
   it('removes publish credentials and loaders, and keeps ordinary variables', () => {

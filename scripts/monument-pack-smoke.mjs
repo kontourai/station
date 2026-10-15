@@ -206,7 +206,7 @@ export async function run(command, args, options = {}) {
       terminationGraceMs: 1_000,
       terminationForceMs: 1_000,
       waitForSuiteSettlement,
-    }));
+    }).catch((error) => ({ settled: false, errors: [error] })));
   let cancellation;
   let cancelled;
   const cancellationSettled = new Promise((resolve) => {
