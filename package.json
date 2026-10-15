@@ -346,7 +346,7 @@
     "@kontourai/ui": "^1.18.0",
     "@kontourai/veritas": "1.11.2",
     "@modelcontextprotocol/client": "2.2.0",
-    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@modelcontextprotocol/sdk": "1.31.0",
     "@modelcontextprotocol/server": "^2.3.0",
     "@opentelemetry/api": "^1.9.1",
