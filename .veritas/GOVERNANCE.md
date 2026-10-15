@@ -1,8 +1,8 @@
 # Veritas Governance Surface
 
-Station governs itself with the pinned Veritas package (Repo Map + Repo Standards + readiness). The gate is `npm run veritas:shadow` (an alias for `veritas readiness --working-tree`); use `veritas explain <ruleId|--file path>` for targeted guidance.
+Station governs itself with the pinned Veritas package (Repo Map + Repo Standards + readiness). The gate is `npm run veritas:shadow` (runs the installed Veritas `readiness --working-tree`); use `npx --no @kontourai/veritas explain <ruleId|--file path>` for targeted guidance.
 
-Zone 1 is human-owned Protected Standards and must not be weakened without review and a `veritas attest policy-change` record:
+Zone 1 is human-owned Protected Standards and must not be weakened without review and a `npx --no @kontourai/veritas attest policy-change` record:
 
 - `.veritas/repo-map.json`
 - `.veritas/repo-standards/`

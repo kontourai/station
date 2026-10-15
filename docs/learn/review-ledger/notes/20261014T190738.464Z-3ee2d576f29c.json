@@ -1,0 +1,7 @@
+{
+  "revision": "1d4390b4147ce90bf8660bba658ea390b3f512b6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Second fix round: after an unresolved wait, only a claim this process retained is refused as foreground_message_indeterminate; any other, including a live owner's claim older than 15 minutes, stays client_turn_in_flight. A waiting retry is refused at its next poll, not instantly. The held-key sentence now says the wait comes first.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

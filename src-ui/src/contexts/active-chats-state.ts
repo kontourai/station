@@ -345,6 +345,15 @@ export type ChatUIState = {
     lastError?: string;
     /** Preserved by the durable queue projection for pre-send merge undo. */
     mergedTurns?: Array<{ content: string }>;
+    /** Station's newest delivery-lookup answer for this row's key. */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;
@@ -395,6 +404,19 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * What Station said about this chat's own sends, by send key: the delivery
+   * lookup's answer while a request is slow, and `started` once Station
+   * answered with the turn. Read by `messageDeliveryStateFor`. Observations,
+   * not state to restore: session-scoped and not persisted (a send outliving
+   * its page is the outbox's, which keeps its own answer).
+   */
+  deliveryChecks?: Readonly<
+    Record<
+      string,
+      import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome
+    >
+  >;
   /**
    * #2309: this composer submitted a turn and the server has not reported it
    * open yet. Set by the send paths together with `status: 'sending'`, and
@@ -777,9 +799,12 @@ export type PersistedActiveChat = {
   // sessionStorage payloads that still carry the old field.
   inputHistory?: string[];
   /**
-   * a follow-up the user typed and Station accepted into the
-   * queue is user-authored content that Station is holding on their behalf —
-   * losing it on reload is data loss, not state cleanup. Persisted with the
+   * Follow-ups the user typed while a turn was running, held on THIS DEVICE
+   * (Station has not seen them) until that turn ends and the drain sends
+   * them; the delivery state calls them held-on-device. They live in this
+   * tab's session storage, so they survive a reload but not the app or tab
+   * closing. User-authored content all the same — losing it on reload is
+   * data loss, not state cleanup. Persisted with the
    * reason the last drain failed so the queue can explain itself and offer a
    * retry after a reload. Deliberately unlike `ephemeralMessages`
    * (archive#1292): those are transient notices ABOUT a turn, this is the

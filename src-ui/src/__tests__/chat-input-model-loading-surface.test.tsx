@@ -83,7 +83,6 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     attachments: [],
     textareaRef: { current: null },
     disabled: false,
-    isSending: false,
     turnInFlight: false,
     modelSupportsAttachments: true,
     fontSize: 14,

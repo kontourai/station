@@ -20,7 +20,7 @@ export interface ApprovalAnswerReference {
   requestEventId?: string;
 }
 interface ApprovalAnswerState {
-  phase: 'sending' | 'unconfirmed' | 'already-settled';
+  phase: 'sending' | 'sent' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
   sessionGrantScope?: 'server';
   error?: Error;
@@ -142,7 +142,12 @@ export function answerOrchestrationRequest(
         );
   if (pendingAnswers.size >= 256) {
     for (const [settledKey, entry] of pendingAnswers) {
-      if (entry.state.phase !== 'already-settled') continue;
+      // Confirmed receipts may age out; uncertain decisions must stay locked.
+      if (
+        entry.state.phase !== 'already-settled' &&
+        entry.state.phase !== 'sent'
+      )
+        continue;
       pendingAnswers.delete(settledKey);
       if (pendingAnswers.size < 256) break;
     }
@@ -174,7 +179,11 @@ export function answerOrchestrationRequest(
   };
   void result.then(
     (outcome) => {
-      if (outcome !== 'already-settled') release();
+      const current = pendingAnswers.get(key);
+      if (current?.result === result && outcome === 'answered') {
+        current.state = { ...current.state, phase: 'sent' };
+        notifyAnswers();
+      }
     },
     (error: unknown) => {
       if (error instanceof ApprovalDeliveryUnconfirmedError) {

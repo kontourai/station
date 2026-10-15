@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {

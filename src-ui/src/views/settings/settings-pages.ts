@@ -15,7 +15,11 @@ export const SETTINGS_PAGES = [
     title: 'Keyboard shortcuts',
     sections: ['keyboard-shortcuts'],
   },
-  { id: 'devices', title: 'Devices', sections: ['pairing', 'device-hosts'] },
+  {
+    id: 'devices',
+    title: 'Devices',
+    sections: ['pairing', 'device-hosts', 'people'],
+  },
   {
     id: 'privacy',
     title: 'Privacy & sharing',

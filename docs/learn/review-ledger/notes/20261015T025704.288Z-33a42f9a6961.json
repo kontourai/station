@@ -1,0 +1,7 @@
+{
+  "revision": "794f0d9ba813786936af041b65b037955ea10831",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Fix round 2: reviewed Dialog and ResponsiveDialogSurface focus ownership and both Tab directions from panel/non-control focus. Initial-focus policies, history, viewport, styling and return focus are unchanged. Existing Tab-boundary ownership prose remains accurate; focused dialog suites passed 40 tests with one existing skip. Browser and fault-injection results are recorded in PR #3673.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

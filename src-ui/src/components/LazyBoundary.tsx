@@ -9,6 +9,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { markTranscriptPhase } from './chat/transcriptLayoutTrace';
 
 type AnyLoad = () => Promise<{ default: ComponentType<any> }>;
 type AnyLazy = LazyExoticComponent<ComponentType<any>>;
@@ -27,10 +28,24 @@ type AnyLazy = LazyExoticComponent<ComponentType<any>>;
  */
 const sharedLazy = new WeakMap<AnyLoad, AnyLazy>();
 
+/** Lazy component whose chunk resolution is a transcript tracer phase. */
+function traced(load: AnyLoad): AnyLazy {
+  return lazy(() =>
+    load().then((module) => {
+      // A production build minifies `load.name`; it names the loader only
+      // in development.
+      markTranscriptPhase('lazy-chunk-resolved', {
+        loader: load.name || 'anonymous',
+      });
+      return module;
+    }),
+  );
+}
+
 function lazyFor(load: AnyLoad): AnyLazy {
   let component = sharedLazy.get(load);
   if (!component) {
-    component = lazy(load);
+    component = traced(load);
     sharedLazy.set(load, component);
   }
   return component;
@@ -146,7 +161,7 @@ export function LazyBoundary<Props extends object>({
   // shared, look up again after forgetting the failed one) a new component.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   const component = useMemo(
-    () => (shareAcrossMounts ? lazyFor(load) : lazy(load)),
+    () => (shareAcrossMounts ? lazyFor(load) : traced(load)),
     [load, attempt, shareAcrossMounts],
   );
 

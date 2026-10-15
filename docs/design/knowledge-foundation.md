@@ -353,8 +353,8 @@ Migration path (K3, one-time, **explicit command — never automatic on startup*
 
 1. `./station knowledge migrate [--project <slug>]` reads, per project namespace: the document
    metadata + `files/` content (canonical text, with stored chunk text as a fallback)
-   and the old `vectors.json`. The current importer checks vector width, not model
-   identity: matching dimensions can permit reuse from a different embedding model.
+   and the old `vectors.json`. The importer never reuses those vectors: they record no
+   model, so it rebuilds each migrated root with the current embedder (#2727).
 2. Each project's namespace is re-expressed as a project-scoped K2 store root: documents become Kit
    `raw` records (provenance noting the migration) via the root's adapter — written only through
    the §8 contract.

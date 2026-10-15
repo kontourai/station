@@ -120,7 +120,7 @@ describe('September 8 visual feedback regressions', () => {
         await expect
           .poll(() =>
             page
-              .getByRole('button', { name: 'Copy message' })
+              .getByRole('button', { name: 'Copy answer' })
               .evaluate((node) => node === document.activeElement),
           )
           .toBe(true);

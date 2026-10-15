@@ -523,8 +523,16 @@ match. A per-tool choice and a server-wide choice remain distinct. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
-Check status reads the request before another decision can be sent. Errors
-keep a short summary beside the controls and technical details in a disclosure.
+Check status reads the request before another decision can be sent. An accepted
+decision stays locked across hiding or remounting the controls while its
+confirmed receipt is retained, until the request resolves or inspection
+confirms it is still answerable. The shared cache holds at most 256 decisions;
+confirmed receipts may age out to admit a new request, while uncertain
+deliveries stay locked. The controls show
+sending and accepted state; an accepted decision also offers Check status while
+waiting for the tool to continue. Desktop controls and delivery feedback follow
+the command preview, with technical details in a disclosure. A failed status
+read keeps the decision locked and does not resend it.
 While delivery is unconfirmed, all further decisions remain locked regardless
 of their decision or grant scope until inspection settles the uncertainty.
 The shared state retains the chosen server scope while delivery is unconfirmed

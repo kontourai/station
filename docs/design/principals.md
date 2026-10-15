@@ -133,6 +133,15 @@ acts as and the person whose group caps it cannot disagree. Groups never
 grant Project membership; Project roles stay per Project. See the
 [threat model](../security/remote-access-threat-model.md#scope-model).
 
+A personal access token (#3557) carries a copy of the minting person's
+binding, so it resolves to the same principal as their devices and sits
+under the same group. It is a credential of that person, not a principal of
+its own. A token tied to a Station local account (#3586) resolves to that
+account's deployment principal (`human:deployment:…`) without an account
+session, the same principal its owner's account session resolves to; the
+pairing service accepts it only while the account's standing is current
+(see the [threat model](../security/remote-access-threat-model.md#scope-model)).
+
 ## 3. The four contradictions this resolves
 
 Recorded because each will otherwise be rediscovered by whoever picks up an

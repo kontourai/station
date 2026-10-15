@@ -471,6 +471,22 @@ Returns a query whose data is the current inbound paired-device registry from
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
+#### `useStationPeopleQuery(apiBase?)` and personal access tokens
+
+`useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
+`useSetStationPersonGroupMutation`, `useMintStationPersonTokenMutation` and
+`useRevokeStationPersonTokenMutation` make the operator's changes. A person's
+own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
+`useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
+`StationAccessError` with the HTTP `status` and the server's `code`:
+`isOperatorCredentialRequired` is the 401 a change without the operator
+credential gets, and `isStationAccessUnavailable` is a read refused as not for
+this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+answers the secret once. The mint mutation holds that answer while observed, so
+call its `reset()` once the secret is captured; the settled mutation is then
+evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
+where `revocations` is keyed by each device whose full access was reset.
+
 #### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
@@ -1826,7 +1842,8 @@ apart. Member pages read history and document only after that publication
 matches the listed item.
 
 These reads require the current account-bound Device, account session and active
-Project membership. Station rechecks the exact Project, publication and Task
+Project membership; an account-tied personal access token (#3586) stands in
+for the Device and session while its account is current. Station rechecks the exact Project, publication and Task
 incarnation during admission and before response delivery, so membership,
 Device or publication revocation closes an in-flight read. A Project membership
 does not publish every Task. Project owner/admin publication remains pending;
@@ -3375,6 +3392,13 @@ Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
 Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
+`getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
+asks Station what became of one send by its `clientTurnId`, for example after
+the connection dropped before the answer arrived. It is read-only and returns a
+`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+again. A Station without the lookup answers `404`, which throws a refusal
+rather than reading as `not-received`. The
+[Session API](session-api.md) defines each outcome.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
@@ -4178,6 +4202,24 @@ uncertain dispatched mutation must not be retried automatically.
 The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
+
+## Session read-model deadline
+
+`fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
+explicit 30-second timeout for receiving headers, then a 30-second inactivity
+timeout while consuming the JSON body. Each nonempty chunk resets the inactivity
+timeout, so a slow response can take longer than 30 seconds while progressing.
+A five-minute total cap also bounds responses that keep trickling bytes. This
+allows over seven times the observed ~41-second healthy read on a slow tailnet
+link. Either bound rejects with
+`StationRequestTimeoutError`, allowing the stream's owed refresh to run after the query settles; existing cached sessions remain available
+during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+supersedes the configured total request deadline for this call, while retaining
+the five-minute cap. Both timeout paths preserve cancellation from a `Request`
+input and an explicit `init.signal`. This per-read bound does not
+enable a global browser deadline for uploads or installs. See the
+[fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
+[deadline transport](../../packages/sdk/src/client/http.ts).
 
 ## Orchestration approval deadlines
 

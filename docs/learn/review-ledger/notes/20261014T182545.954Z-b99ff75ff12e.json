@@ -1,0 +1,7 @@
+{
+  "revision": "18aa67b4446ff99d72ecf442e4c1d47039c1d3b4",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix round: a resend already waiting stops when this owner retains the claim and is refused as foreground_message_indeterminate; a fresh claim clears the retained marker. The contract now says the immediate refusal holds only in the process that retained the claim; another process still waits and gets client_turn_in_flight.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

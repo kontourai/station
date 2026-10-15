@@ -1161,6 +1161,11 @@ export async function executeForegroundMessage(
           }
         : {}),
       ...(effectiveClientTurnId ? { clientTurnId: effectiveClientTurnId } : {}),
+      // A handoff is deduplicated under a key derived from its conversation;
+      // its turn.started carries the key the client actually sent with it.
+      ...(requestedHandoff
+        ? { clientKey: `handoff:${input.handoffIntent!.idempotencyKey}` }
+        : {}),
       // Only an override the CALLER sent for this turn goes on a sendTurn. The
       // Agent's declared model is applied once, at session start, where the
       // adapter declares it can apply one; engines describe their per-turn
