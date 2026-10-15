@@ -1,0 +1,313 @@
+{
+  "package": "@kontourai/flow-agents",
+  "version": "6.5.1",
+  "stationBase": "6b4e443ae26",
+  "mutation": {
+    "unobserved": {
+      "exitCode": 0,
+      "stdout": {
+        "schema_version": "1.0",
+        "operation": "status_transition",
+        "work_item_ref": {
+          "id": "github:example/project#123",
+          "owner": "example",
+          "repo": "project",
+          "number": 123
+        },
+        "base_ref": "example/project#123",
+        "status": "not_verified",
+        "reason": "no current provider observation was supplied to compare against the mutation's declared base"
+      },
+      "stderr": ""
+    },
+    "rendered": {
+      "exitCode": 0,
+      "stdout": {
+        "schema_version": "1.0",
+        "operation": "status_transition",
+        "work_item_ref": {
+          "id": "github:example/project#123",
+          "owner": "example",
+          "repo": "project",
+          "number": 123
+        },
+        "base_ref": "example/project#123",
+        "status": "rendered",
+        "advisory": true,
+        "gh_commands": [
+          [
+            "issue",
+            "edit",
+            "123",
+            "--repo",
+            "example/project",
+            "--remove-label",
+            "status:ready"
+          ],
+          [
+            "issue",
+            "edit",
+            "123",
+            "--repo",
+            "example/project",
+            "--add-label",
+            "status:in_progress"
+          ]
+        ]
+      },
+      "stderr": ""
+    },
+    "conflict": {
+      "exitCode": 0,
+      "stdout": {
+        "schema_version": "1.0",
+        "operation": "status_transition",
+        "work_item_ref": {
+          "id": "github:example/project#123",
+          "owner": "example",
+          "repo": "project",
+          "number": 123
+        },
+        "base_ref": "example/project#123",
+        "status": "conflict",
+        "conflict": {
+          "field": "status",
+          "base_value": "ready",
+          "observed_value": "review"
+        },
+        "advisory": true
+      },
+      "stderr": ""
+    },
+    "request": {
+      "schema_version": "1.0",
+      "operation": "status_transition",
+      "work_item_ref": {
+        "id": "github:example/project#123",
+        "owner": "example",
+        "repo": "project",
+        "number": 123
+      },
+      "base": {
+        "status": "ready"
+      },
+      "payload": {
+        "to_status": "in_progress"
+      }
+    },
+    "target": {
+      "repo": {
+        "owner": "example",
+        "name": "project"
+      },
+      "number": 123
+    }
+  },
+  "read": {
+    "labels": {
+      "exitCode": 0,
+      "stdout": {
+        "items": [
+          {
+            "id": "github:example/project#123",
+            "title": "Example",
+            "body": "",
+            "status": "todo",
+            "labels": [
+              "status:in_progress"
+            ],
+            "assignees": [],
+            "priority": null,
+            "size": null,
+            "risk": null,
+            "blockers": [],
+            "related_links": [],
+            "source_provider": {
+              "role": "WorkItemProvider",
+              "kind": "github",
+              "owner": "example",
+              "repo": "project",
+              "number": 123,
+              "state": "OPEN",
+              "capabilities": [
+                "issues",
+                "labels",
+                "assignees",
+                "pr_links",
+                "comments"
+              ]
+            },
+            "board_membership": {
+              "role": "BoardProvider",
+              "kind": "github",
+              "board": {
+                "type": "github_project",
+                "owner": "example",
+                "number": 1,
+                "url": "https://github.com/orgs/example/projects/1"
+              },
+              "items": [],
+              "capabilities": [
+                "projects_boards",
+                "status_fields",
+                "custom_fields"
+              ]
+            },
+            "pr_links": [],
+            "artifact_refs": [],
+            "dependency_impacts": [],
+            "revision_freshness": {
+              "planned_base_sha": null,
+              "current_sha": null,
+              "planned_age_days": null,
+              "changed_files": [],
+              "planning_scope_refs": [],
+              "planning_scope_intersections": [],
+              "commits_since_planned_base": null,
+              "classification": "not_verified",
+              "reasons": [
+                {
+                  "code": "missing_planned_base_sha",
+                  "message": "Work item has no planned_base_sha; freshness cannot be verified without inventing certainty."
+                }
+              ]
+            },
+            "readiness": {
+              "classification": "stale",
+              "reasons": [
+                {
+                  "code": "insufficient_readiness",
+                  "message": "Status \"todo\" is not ready and no pickup contract was found."
+                }
+              ]
+            }
+          }
+        ],
+        "warnings": [
+          {
+            "code": "board_provider_bypassed",
+            "message": "A BoardProvider is configured but this pass used WorkItemProvider issue-level listing; board-driven selection is the canonical readiness source. Surface this bypass in the pull-work artifact instead of treating issue listing as a silent fallback."
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "filtered_board": {
+      "exitCode": 0,
+      "stdout": {
+        "ready_queue": [],
+        "intake_gaps": [],
+        "warnings": [
+          {
+            "code": "zero_ready_items",
+            "message": "Configured BoardProvider yielded zero ready items; treat this as a dead readiness source and do not silently fall back to WorkItemProvider issue listing."
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "settings": {
+      "schema_version": "1.0",
+      "defaults": {
+        "work_item_provider": {
+          "role": "WorkItemProvider",
+          "kind": "github",
+          "repo": {
+            "owner": "example",
+            "name": "project",
+            "url": "https://github.com/example/project"
+          },
+          "capabilities": [
+            "issues",
+            "labels",
+            "assignees",
+            "pr_links",
+            "comments"
+          ]
+        },
+        "board_provider": {
+          "role": "BoardProvider",
+          "kind": "github",
+          "repo": {
+            "owner": "example",
+            "name": "project",
+            "url": "https://github.com/example/project"
+          },
+          "board": {
+            "type": "github_project",
+            "owner": "example",
+            "number": 1,
+            "url": "https://github.com/orgs/example/projects/1"
+          },
+          "capabilities": [
+            "projects_boards",
+            "status_fields",
+            "custom_fields"
+          ]
+        },
+        "selection": {
+          "filters": {
+            "issue_state": "open",
+            "include_labels": [],
+            "ready_statuses": [
+              "ready"
+            ],
+            "exclude_statuses": [
+              "triage",
+              "in_progress",
+              "blocked",
+              "review",
+              "verification",
+              "done"
+            ]
+          },
+          "wip_policy": {
+            "prefer_finishing_active_work": true,
+            "active_statuses": [
+              "in_progress",
+              "review",
+              "verification"
+            ],
+            "block_new_work_when_active_count_exceeds": 0
+          }
+        },
+        "mutation_policy": {
+          "conflict_policy": "provider_wins_with_staleness_detection",
+          "supported_operations": [
+            "status_transition"
+          ],
+          "status_transition_target": "labels"
+        }
+      }
+    },
+    "issues": [
+      {
+        "number": 123,
+        "title": "Example",
+        "state": "OPEN",
+        "labels": [
+          {
+            "name": "status:in_progress"
+          }
+        ]
+      }
+    ],
+    "board": {
+      "items": [
+        {
+          "status": "in_progress",
+          "issue": {
+            "number": 123,
+            "title": "Example",
+            "state": "OPEN",
+            "labels": [
+              {
+                "name": "status:in_progress"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

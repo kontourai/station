@@ -42,6 +42,7 @@ import {
 } from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
+import { StartupHandoff } from './components/StartupHandoff';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
@@ -71,7 +72,6 @@ import {
   resolveBootTheme,
 } from './lib/device-settings-store';
 import { stationQueryDefaults } from './lib/queryDefaults';
-import { releaseInitialStartupAnimation } from './lib/startup-animation';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -232,10 +232,10 @@ if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
 
 function renderApp(): void {
-  releaseInitialStartupAnimation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <LazyBoundary
           load={loadAccountEntry}
@@ -245,6 +245,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : isSharedAnswerPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         {/* The boundary is eager (it must exist to catch the page's own chunk
           failing to load) and carries no stylesheet, so the entry cost is a
@@ -255,6 +256,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <PlatformBootstrap>
           <NativeRelayLinkIntake>

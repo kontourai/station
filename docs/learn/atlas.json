@@ -224,6 +224,7 @@
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",
+        "CanonicalUsageExport",
         "Native notification feed"
       ],
       "questions": [

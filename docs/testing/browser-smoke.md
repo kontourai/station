@@ -26,6 +26,11 @@ The last journey tests Station's request and rendering path; the fixture returns
 fixed text and does not run a model or contact a provider. A phone-sized browser
 viewport is not physical-phone evidence.
 
+The project-creation journey waits for the initial **Starting Station** dialog
+to leave before filling the form. The form can mount behind the cold-launch
+presentation while that modal still blocks input; its heading alone does not
+establish interaction readiness.
+
 [`monitorBrowserHealth`](../../tests/helpers/browser-health.ts) catches page
 errors, application console errors, HTTP 5xx responses, and selected failed
 resource requests where a test installs it and calls `assertHealthy()`. It

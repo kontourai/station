@@ -100,6 +100,7 @@ import {
   settingsSectionsForView,
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
+import { TelemetryDelivery } from './settings/TelemetryDelivery';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -1137,6 +1138,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       })()}
                     />
                     <UsageTelemetryDisclosure />
+                    <TelemetryDelivery />
                   </Section>
                 )}
 

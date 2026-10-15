@@ -60,7 +60,15 @@
 
     "src-ui/src/views/settings/AccountPreferencesSection.tsx",
 
-    "src-ui/src/views/settings/AccentColorPicker.tsx"
+    "src-ui/src/views/settings/AccentColorPicker.tsx",
+
+    "src-server/domain/settings-environment.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx"
   ],
 
   "checks": [

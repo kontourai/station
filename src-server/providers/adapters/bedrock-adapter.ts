@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   acceptModelLaunchPlan,
   type EngineId,
@@ -67,6 +68,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       'tool-calls',
       'interrupt',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),

@@ -13,6 +13,10 @@ import React, {
 import { createPortal } from 'react-dom';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  afterInitialStartup,
+  initialStartupIsActive,
+} from '../lib/startup-presentation';
 import { activatable } from '../utils/activatable';
 import { Button } from './Button';
 import { DetailPaneContext } from './detail-pane-context';
@@ -727,8 +731,12 @@ export function SplitPaneLayout({
       // pending request until the Back control exists; otherwise a commit
       // would clear it before the portal's child has mounted.
       if (!mobileBackButtonRef.current) return;
-      mobileBackButtonRef.current.focus();
-      pendingMobileFocusRef.current = null;
+      const focusBack = () => {
+        mobileBackButtonRef.current?.focus();
+        pendingMobileFocusRef.current = null;
+      };
+      if (initialStartupIsActive()) return afterInitialStartup(focusBack);
+      focusBack();
     } else if (
       pendingFocus === 'return' &&
       isMobile &&
