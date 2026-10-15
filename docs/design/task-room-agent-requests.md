@@ -28,9 +28,9 @@ client: an older server can strip unknown delegation fields, so a client
 must not assume durable request support without this versioned response.
 This path is mounted in the personal runtime. GET retains the existing
 orchestration read grant and POST the existing operate/admission gates. The
-request cards poll the journal read every five seconds and offer refresh;
-request changes are not yet room-SSE events. Existing document/history updates
-continue using SSE and HTTP; no WebSocket is added.
+composer refreshes the journal before a fresh request. Room SSE invalidations
+refresh the request view and Task status; there is no five-second polling card.
+Existing document/history updates continue using SSE and HTTP.
 
 ## Independent room contributions
 
@@ -58,7 +58,28 @@ only the final canonical Project check committed a stale agent record. Restoring
 the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
-This publishes lifecycle facts and agent presence, not an accepted result. Agent
+Completed canonical turns also publish their answer text through the existing
+agent-publish append path. The private principal binds the exact Session; the
+envelope retains the turn ID. Browser history exposes that tuple and the
+canonical run identity when available. Answer text over the room body limit is
+shortened with an explicit notice and an Open full run action. Publication
+rechecks the immutable request binding, Task incarnation, Project and owner;
+reconciliation repeats publication idempotently, never provider execution.
+
+The Chat view groups replies to an agent answer by its Session. A reply uses
+`POST /api/orchestration/delegations/:sessionId/continue` with `taskRoomReply`
+(Task identity, creation time and operation ID). The server verifies the exact
+journal and execution binding before appending the human reply. Existing
+continuation authority still owns provider effects. Follow-up errors retain an
+uncertain draft for full-run inspection instead of retrying automatically.
+The latest saved brief is attached by default; the thread checkbox can opt out.
+
+The first recorded room request starts a todo/ready Task through an atomic
+TaskGraph transition. Header and slash-command status changes use the existing
+status route and its allowed transitions. Confirmed changes append quiet room
+lines. Engine completion does not mark the Task done.
+
+These publications are conversation contributions, not accepted results. Agent
 document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below. Personal
 output previews and human review statements are implemented in the
 [Task-room history contract](project-task-room-history.md); these local slices do
@@ -76,11 +97,14 @@ Its digest binds those values to canonical Project identity, Task identity and
 Task incarnation. Capture rechecks authority, scope and Task metadata after
 worker I/O; incomplete projections and metadata changes do not become a brief.
 
-The composer pins the preview when choosing an agent. Background edits do not
-replace it. **Use latest brief** is an explicit refresh; late responses cannot
-replace a newer recipient/mode selection or a frozen request. Unchecking
-**Include Task brief** explicitly sends the request text alone. Saved request
-details show the retained brief rather than the current document.
+The composer refreshes the latest saved brief immediately before a fresh Send.
+The attachment checkbox explicitly opts out. Connection or recipient changes
+retire an in-flight preflight; unknown acknowledgements retain the exact saved
+operation and context for retry. The agent receives readable markdown rather
+than serialized snapshot JSON. The Brief tab autosaves through the existing
+server edit-plan/batch protocol, keeps its draft mounted across tabs and retains
+new typing while an older commit settles. Navigation guards protect unsaved or
+uncertain edits.
 
 A context-bearing create sends only `{ version, digest }` beside its operation.
 The server resolves that reference under the journal's mutation lock before
@@ -102,8 +126,9 @@ model or canonical options digest conflicts rather than reusing an old result.
 Options are represented by their digest, not persisted raw values. New servers
 read prior v1/v2 journals; old readers refuse v3 rather than dropping its intent.
 
-No text is silently truncated to fit; the existing four-MiB/256-request journal
-bound remains. Context is not provider authority or an accepted result.
+A document over 16,000 characters produces a shortened snapshot with an explicit
+notice in its markdown and composer preview. Room answers over 16 KiB likewise
+include a shortening notice. The four-MiB/256-request journal bound remains. Context is not provider authority or an accepted result.
 
 Controlled transport, storage and mounted/UI tests cover retained context,
 stale references, substituted snapshots, metadata edits and late refreshes.
@@ -172,8 +197,10 @@ the history grant rereads that incarnation and scope after principal resolution,
 immediately before returning commit admission. A late response
 cannot clear the draft after its captured authority expires. Unsaved navigation and
 close guards protect local drafts. Draft/operation recovery across a tab reload
-is not implemented yet. The cards display acknowledged request state and link
-to existing execution inspection; they do not invent live progress or results.
+is not implemented yet. The room shows one inline status for each published running agent, with Watch
+and Stop through the existing dock and interruption commands. Completed answers
+and same-session thread replies remain in the room; no tool-step progress is
+inferred from narration.
 
 ## Current evidence and remaining proof
 

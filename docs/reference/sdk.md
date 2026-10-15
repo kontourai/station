@@ -173,8 +173,10 @@ The server also checks the expected Task incarnation.
 The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
 or stale scope never falls back to the ambient connection. Request caches
 include connection authority, Task identity and incarnation. Request cards
-poll every five seconds and can be refreshed explicitly; journal changes are
-not currently published through room SSE. Mutation retries are disabled.
+refresh before fresh submission and on room SSE invalidation. Mutation retries
+are disabled. The composer uses the latest saved brief by default; uncertain
+retries retain their original context. Briefs over 16,000 characters include an
+explicit shortening notice in the snapshot markdown.
 Send refreshes Project-scoped delegation options and requires the selected
 agent to be ready before the version negotiation and create.
 

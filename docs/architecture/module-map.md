@@ -2269,8 +2269,11 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
-mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
-and `ProjectTaskRoomConversation` through `WorkspacePaneHost`.
+mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
+`ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
+`TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
+`ProjectTaskRoomConversation` shows named, timed messages and agent threads.
+`WorkspacePaneHost` remains in Details for Basis and other inspection panes.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -2291,10 +2294,18 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 [composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
-Task incarnation that the history grant rechecks before commit. Request cards
-currently poll the journal read and link to existing execution
-inspection; they are not room-SSE lifecycle events. Invited/public result
-projection and actual-provider acceptance remain unfinished.
+Task incarnation that the history grant rechecks before commit.
+[TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
+composes request publication, todo/ready to in_progress transitions, exact-session
+thread replies, and canonical completed-answer reads. Turn events and startup
+reconcile the existing agent-publish text append path; no new history body or
+storage worker is needed. Browser records add optional timestamps, opaque actor
+identity and execution/thread correlation. Older records remain readable;
+older closed DTO readers reject the additive fields. Full runs open in the dock.
+The request journal uses room SSE invalidations instead of five-second polling.
+Shared Task projection continues to publish human messages and the document;
+it excludes agent answers and private execution metadata. Invited/public agent
+results and actual-provider acceptance remain separate qualification scopes.
 
 Immutable output review uses the same room history, rather than a second
 feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
