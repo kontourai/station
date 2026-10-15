@@ -153,8 +153,8 @@ importers:
         specifier: ^0.8.0
         version: link:packages/shared
       '@kontourai/surface':
-        specifier: 3.2.0
-        version: 3.2.0(supports-color@7.2.0)
+        specifier: 6.0.1
+        version: 6.0.1(supports-color@7.2.0)
       '@kontourai/survey':
         specifier: 3.0.0
         version: 3.0.0(supports-color@7.2.0)(typescript@7.0.2)
@@ -520,8 +520,8 @@ importers:
         specifier: '*'
         version: link:../../packages/sdk
       '@kontourai/surface':
-        specifier: ^3.2.0
-        version: 3.2.0(supports-color@7.2.0)
+        specifier: ^6.0.1
+        version: 6.0.1(supports-color@7.2.0)
       ajv:
         specifier: ^8.12.0
         version: 8.20.0
@@ -579,8 +579,8 @@ importers:
         specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/surface':
-        specifier: ^3.2.0
-        version: 3.2.0(supports-color@7.2.0)
+        specifier: ^6.0.1
+        version: 6.0.1(supports-color@7.2.0)
       '@kontourai/ui':
         specifier: ^1.18.0
         version: 1.18.0(react@19.3.0)
@@ -727,8 +727,8 @@ importers:
         specifier: 6.5.1
         version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/surface':
-        specifier: ^3.2.0
-        version: 3.2.0(supports-color@7.2.0)
+        specifier: ^6.0.1
+        version: 6.0.1(supports-color@7.2.0)
       '@kontourai/thread':
         specifier: 0.5.0
         version: 0.5.0
@@ -753,8 +753,8 @@ importers:
         specifier: ^0.8.0
         version: link:../shared
       '@kontourai/surface':
-        specifier: ^3.2.0
-        version: 3.2.0(supports-color@7.2.0)
+        specifier: ^6.0.1
+        version: 6.0.1(supports-color@7.2.0)
       '@kontourai/thread':
         specifier: 0.5.0
         version: 0.5.0
@@ -2431,13 +2431,13 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/surface@3.2.0':
-    resolution: {integrity: sha512-6Ju1nZyweSH6teovVv8ULdVQr8R3sgY+QTXvWtphlF8HZJwh5ntPyXvN+yfdTdv2YJ6d0zQPLcTRCz8C0fH1Ug==}
+  '@kontourai/surface@4.4.1':
+    resolution: {integrity: sha512-XuOmO3ZIoyxQCyofcjfj32sNsJ5YlzEiBqheYnnEq/XaB1oPeWRLjnLzFnWz5QUE2vJXg8yTxuCiF5nriYfT3A==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/surface@4.4.1':
-    resolution: {integrity: sha512-XuOmO3ZIoyxQCyofcjfj32sNsJ5YlzEiBqheYnnEq/XaB1oPeWRLjnLzFnWz5QUE2vJXg8yTxuCiF5nriYfT3A==}
+  '@kontourai/surface@6.0.1':
+    resolution: {integrity: sha512-R2HB94v40lvDU3uD+60RSh29L5mdIdE2xif/u2+qHDv3LE56v7D4eAH0ZjTzhs5qnL3getZOIO0u9VQzDPR8lQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10041,15 +10041,16 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/surface@3.2.0(supports-color@7.2.0)':
+  '@kontourai/surface@4.4.1(supports-color@7.2.0)':
     optionalDependencies:
+      '@sigstore/bundle': 5.0.0
       '@sigstore/sign': 5.0.0(supports-color@7.2.0)
       '@sigstore/verify': 4.1.2
     transitivePeerDependencies:
       - kerberos
       - supports-color
 
-  '@kontourai/surface@4.4.1(supports-color@7.2.0)':
+  '@kontourai/surface@6.0.1(supports-color@7.2.0)':
     optionalDependencies:
       '@sigstore/bundle': 5.0.0
       '@sigstore/sign': 5.0.0(supports-color@7.2.0)
@@ -10080,7 +10081,7 @@ snapshots:
 
   '@kontourai/survey@8.0.0(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
-      '@kontourai/surface': 3.2.0(supports-color@7.2.0)
+      '@kontourai/surface': 4.4.1(supports-color@7.2.0)
       '@modelcontextprotocol/server': 2.0.0
       zod: 4.4.3
     optionalDependencies:

@@ -340,7 +340,7 @@
     "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/station-sdk": "^0.8.0",
     "@kontourai/station-shared": "^0.8.0",
-    "@kontourai/surface": "3.2.0",
+    "@kontourai/surface": "6.0.1",
     "@kontourai/survey": "3.0.0",
     "@kontourai/thread": "0.5.0",
     "@kontourai/ui": "^1.18.0",
