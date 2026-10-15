@@ -1,7 +1,0 @@
-{
-  "revision": "1a54c7d084cb4d51fa36b3a8d0344834320ad3fb",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Fix round 10: reread Conversation Hooks and Chat Hooks against lifecycle and SDK adapter. Public create/open/send signatures and authority limits remain accurate; optional host hydration ownership is internal and does not change ordinary SDK callers. No prose change needed.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]}
-  ]
-}

@@ -31,7 +31,6 @@ export type ConversationsContextType = {
     apiBase: string,
     agentSlug: string,
     conversationId: string,
-    isCurrent?: () => boolean,
   ) => Promise<boolean>;
   refreshMessages: (
     apiBase: string,

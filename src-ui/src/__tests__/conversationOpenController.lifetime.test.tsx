@@ -91,23 +91,14 @@ function mountOpen(id: string) {
     </QueryClientProvider>
   );
   const hook = renderHook(
-    ({ sessions }) =>
+    () =>
       useChatDockActions({
-        sessions,
+        sessions: [],
         agents: [{ slug: agentId('demo-agent'), name: 'Demo agent' }],
         activeSessionId: null,
         setActiveSessionId: focus,
       }),
-    {
-      wrapper,
-      initialProps: {
-        sessions: [] as Array<{
-          id: string;
-          conversationId: string;
-          agentSlug: string;
-        }>,
-      },
-    },
+    { wrapper },
   );
   const effects: Parameters<typeof openConversationForDock>[1] = {
     apiBase: 'http://test.local',
@@ -135,7 +126,6 @@ function mountOpen(id: string) {
     recovery,
     effects,
     id,
-    rerender: hook.rerender,
     close: () => {
       hook.unmount();
       client.clear();
@@ -389,87 +379,3 @@ it('a healthy progressive 1 MiB hydration completes after 36 seconds without rec
     h.close();
   }
 });
-
-it.each([true, false])(
-  'old hydration cannot publish after epoch replacement (tab adopted: %s)',
-  async (adopted) => {
-    const h = mountOpen(`epoch-hydration-${adopted}`);
-    let finish!: (response: Response) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: unknown) => {
-        if (String(url).endsWith('/open'))
-          return Response.json({ success: true, data: resolution(h.id) });
-        if (String(url).endsWith('/messages'))
-          return new Promise<Response>((resolve) => {
-            finish = resolve;
-          });
-        throw new Error(`Unexpected request ${url}`);
-      }),
-    );
-    try {
-      const opening = openConversationForDock(
-        resolution(h.id).conversation,
-        h.effects,
-      );
-      await waitFor(() => expect(finish).toBeDefined());
-      const [createdId, createdChat] = actions.initChat.mock.calls[0]!;
-      h.rerender({
-        sessions: [
-          {
-            id: createdId,
-            conversationId: createdChat.conversationId,
-            agentSlug: createdChat.agentSlug,
-          },
-        ],
-      });
-      h.observation.resetStreamEpoch();
-      if (adopted) {
-        await act(async () => {
-          expect(
-            await openConversationForDock(
-              resolution(h.id).conversation,
-              h.effects,
-            ),
-          ).toBe(true);
-        });
-        expect(h.focus).toHaveBeenCalledExactlyOnceWith(createdId);
-        expect(h.patch).toHaveBeenCalledOnce();
-      }
-      await act(async () => {
-        finish(
-          Response.json({
-            success: true,
-            data: [
-              {
-                id: 'old-epoch-message',
-                role: 'assistant',
-                parts: [{ type: 'text', text: 'Old database transcript' }],
-              },
-            ],
-          }),
-        );
-        expect(await opening).toBe(false);
-      });
-      expect(
-        conversationsStore.getSnapshot().messages[
-          `messages:demo-agent:${h.id}`
-        ],
-      ).toBeUndefined();
-      expect(actions.updateChat).not.toHaveBeenCalledWith(
-        createdId,
-        expect.objectContaining({ messages: expect.any(Array) }),
-      );
-      if (adopted) {
-        expect(actions.removeChat).not.toHaveBeenCalled();
-        expect(h.recovery).toHaveBeenCalledExactlyOnceWith(null);
-      } else {
-        expect(actions.removeChat).toHaveBeenCalledExactlyOnceWith(createdId);
-        expect(h.focus).not.toHaveBeenCalled();
-        expect(h.recovery).not.toHaveBeenCalled();
-      }
-    } finally {
-      h.close();
-    }
-  },
-);

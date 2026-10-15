@@ -12,13 +12,12 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   const fetchMessages = useCallback<ConversationsContextType['fetchMessages']>(
-    (apiBase, agentSlug, conversationId, isCurrent) =>
+    (apiBase, agentSlug, conversationId) =>
       conversationsStore.fetchMessages(
         apiBase,
         agentSlug,
         conversationId,
         queryClient,
-        isCurrent,
       ),
     [queryClient],
   );

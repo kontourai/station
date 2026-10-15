@@ -1,7 +1,0 @@
-{
-  "revision": "1a54c7d084cb4d51fa36b3a8d0344834320ad3fb",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Fix round 10: reread failed-read, epoch retirement and watermark claims. Adopted-tab regression proves stale hydration cannot publish messages or remove the reopened tab; committed older-read fence regression catches watermarkRef regression. Existing concepts remain accurate.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
-  ]
-}
