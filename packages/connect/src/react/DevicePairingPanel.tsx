@@ -1053,11 +1053,25 @@ async function pairingOfferError(response: Response): Promise<{
         "This device's access to this Station needs review. Reconnect it, then try again.",
     };
   }
-  if (response.status === 403 || code === 'origin_forbidden') {
+  if (code === 'insufficient_scope') {
+    return {
+      auth: false,
+      message:
+        'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run station environment offer.',
+    };
+  }
+  if (code === 'origin_forbidden') {
     return {
       auth: false,
       message:
         'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
+    };
+  }
+  if (response.status === 403) {
+    return {
+      auth: false,
+      message:
+        'This Station refused to create a pairing code. Ask its operator to review this device’s access.',
     };
   }
   if (response.status === 429 || code === 'rate_limited') {

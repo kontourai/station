@@ -66,7 +66,7 @@ describe.skipIf(!chromiumAvailable)(
       await browser?.close();
     });
 
-    test('a long conversation scrolls inside Coding and leaves the composer in the viewport', async () => {
+    test('a conversation beside a tall file pane keeps its composer inside the Coding viewport', async () => {
       const css =
         resolveCssImports(INDEX_CSS_PATH) +
         '\n' +
@@ -83,7 +83,7 @@ describe.skipIf(!chromiumAvailable)(
         </style></head><body>${railMarkup()}</body></html>`);
         await page.evaluate(() => {
           const pages = document.querySelector('.coding-workbench__pages')!;
-          pages.innerHTML = `<section class="coding-workbench__page coding-workbench__page--chat"><div class="chat-dock chat-workspace-pane--fullscreen"><div class="chat-dock__workspace"><div class="chat-dock__conversation-surface"><div class="chat-dock__content-area"><div class="chat-dock__body"><div class="chat-messages"><p style="min-height:1800px;flex-shrink:0">A long conversation</p></div><div class="chat-input-container"><div class="chat-input"><textarea aria-label="Message"></textarea><button>Send</button></div></div></div></div></div></div></div></section>`;
+          pages.innerHTML = `<div class="coding-workbench__row" data-side="open"><section class="coding-workbench__page coding-workbench__page--chat"><div class="chat-dock chat-workspace-pane--fullscreen"><div class="chat-dock__workspace"><div class="chat-dock__conversation-surface"><div class="chat-dock__content-area"><div class="chat-dock__body"><div class="chat-messages"><p style="min-height:1800px;flex-shrink:0">A long conversation</p></div><div class="chat-input-container"><div class="chat-input"><textarea aria-label="Message"></textarea><button>Send</button></div></div></div></div></div></div></div></section><section class="coding-workbench__page coding-workbench__page--drill-in"><div class="workspace-file-preview"><div style="min-height:800px">A tall file preview</div></div></section></div>`;
         });
         await page.evaluate(() =>
           Promise.all(document.getAnimations().map((a) => a.finished)),

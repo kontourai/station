@@ -2585,6 +2585,18 @@ describe('device pairing panels', () => {
     ],
     [
       403,
+      { error: { code: 'insufficient_scope' } },
+      {},
+      'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run station environment offer.',
+    ],
+    [
+      403,
+      { error: { code: 'policy_denied' } },
+      {},
+      'This Station refused to create a pairing code. Ask its operator to review this device’s access.',
+    ],
+    [
+      403,
       { error: { code: 'origin_forbidden' } },
       {},
       'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',

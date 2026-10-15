@@ -27,6 +27,7 @@ must not be confused with permission to run a local service.
 | Redundant project chat callout | Remove callout/helper and their obsolete tests | Project-bound HomeStartComposer handoff keeper |
 | Location chip silently changes chat into task | Label the action Run a task | Task launch remains explicit; remote admission unchanged |
 | Station assistant setup sends users to model accounts | Open existing engine chooser from setup | Explicit account/engine choice; no arbitrary engine selection |
+| Pairing permission errors blame the address | Distinguish insufficient scope from origin rejection; give the host operator route | Executed web denial plus shared pairing-panel refusal cases |
 | Mobile setup exposes desktop and transport internals | Pairing first, computer setup handoff, advanced alternatives | Safari simulator connect/manual fallback and narrow desktop request-access path |
 | Fresh home imports unrelated history | Seed out-of-project following off only for new homes | Explicit opt-in works; existing absent/explicit settings and copied history preserved |
 | Source checkout is the first install instruction | Put desktop downloads and signed archive command first | Public archive install + launch in isolated roots; no change to existing installation |
@@ -57,7 +58,9 @@ Keep these findings open until their own behavior and failure paths are proven:
    intended Station while preserving HttpOnly, Secure, SameSite, revocation and
    migration semantics. Reproduce sign-in to two ports in one profile, then
    restart/revoke each independently. Separate profiles are a development workaround.
-2. Mobile pairing: shorten the desktop path to a visible Pair phone action;
+2. Mobile pairing: browser launcher sessions currently cannot create offers; the
+   UI must provide a trusted operator handoff without requiring someone to
+   understand credentials or weaken permissions. Shorten the desktop path to a visible Pair phone action;
    verify physical iOS/Android QR, manual code, expired code, unreachable host,
    background/resume, revoke and reconnect. Simulator camera failure is not
    physical camera proof. A code must never imply that a network route exists.

@@ -969,7 +969,7 @@ describe('one-line Station installer', {
     executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
     const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
     const command =
-      /^#{2,3} (?:Install|Verified installer).*?\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
+      /^### Verified installer[^\n]*\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
         readme,
       )?.[1];
     expect(command).toBeTruthy();

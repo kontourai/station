@@ -55,6 +55,15 @@ replies, continue chats, and review work. Start on your computer:
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 
+Creating an invitation requires an operator session. A browser opened through a
+launcher sign-in link may use Station without being allowed to pair other
+Devices. If it says this device cannot create pairing codes, run
+`station-nightly environment offer` on the computer running your Nightly install
+(or `./station environment offer` from a source checkout). Approve the phone’s
+request there with `station-nightly environment access approve --latest --force`.
+Use the launcher and home for the same Station throughout. The regular browser
+sign-in link does not grant pairing-administration authority.
+
 The address in that invitation must be reachable from your phone. `localhost`
 means the device you are using, so a computer’s localhost address does not reach
 it from a physical phone. Use the reachable address shown in the pairing flow;
