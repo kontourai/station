@@ -575,9 +575,9 @@ export function ChatDockBody({
   ]);
   const focusRecoveredComposer = useCallback(() => {
     const textarea = chatInput.textareaRef.current;
-    if (!textarea || textarea.disabled) return false;
-    textarea.focus();
-    return document.activeElement === textarea;
+    const target = textarea?.disabled ? textarea.closest('fieldset') : textarea;
+    target?.focus();
+    return Boolean(target && document.activeElement === target);
   }, [chatInput.textareaRef]);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({

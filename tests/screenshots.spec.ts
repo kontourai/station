@@ -1232,7 +1232,9 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         }),
       ).toBeHidden();
       await expect(resync).toBeHidden();
-      await expect(page.locator('.chat-input textarea')).toBeFocused();
+      await expect(
+        page.getByRole('group', { name: 'Message composer', exact: true }),
+      ).toBeFocused();
       await expect(
         page.getByRole('status').filter({ hasText: 'Conversation resynced.' }),
       ).toBeAttached();

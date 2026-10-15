@@ -19,7 +19,7 @@ export function ChatStatusPillView({
   onRepair: () => void;
   /** Re-reads the conversation; absent leaves an unobservable pill inert. */
   onResync?: () => void;
-  /** Focus the recovered composer when it is writable. */
+  /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
   /** The pill is on screen: its host may hand it the chat's status. */
   onMounted: () => void;

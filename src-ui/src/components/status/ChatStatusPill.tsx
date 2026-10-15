@@ -94,7 +94,7 @@ export function ChatStatusPill({
   onRepair?: () => void;
   /** Re-reads this conversation's status and history from the Station. */
   onResync?: () => void;
-  /** Focus the recovered composer when it is writable. */
+  /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);

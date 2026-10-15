@@ -67,7 +67,7 @@ export function useChatStatusPill({
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
   onResync?: () => void;
-  /** Focus the recovered composer when it is writable. */
+  /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
