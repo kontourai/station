@@ -192,7 +192,9 @@
 
     "package.json#/engines",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    "scripts/lib/vitest-error-reporter.mjs"
   ],
 
   "checks": [
