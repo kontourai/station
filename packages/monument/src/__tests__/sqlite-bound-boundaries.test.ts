@@ -44,9 +44,9 @@ function tables(
       ...(terminalFacts === 'host'
         ? {
             terminalSeen: (db, thread, turn) =>
-              context(db).terminalSeen(thread, turn),
+              facts(db).terminalSeen(thread, turn),
             terminalSequence: (db, thread, id) =>
-              context(db).terminalSequence(thread, id),
+              facts(db).terminalSequence(thread, id),
             creationSequence: {
               column: 'created_sequence',
               read: (db) =>
@@ -63,9 +63,8 @@ function tables(
     },
   };
 }
-function context(db: SqliteKernelDatabase) {
+function facts(db: SqliteKernelDatabase) {
   return {
-    liveness: () => 'unknown' as const,
     terminalSeen: (thread: string, turn: string) => {
       expect(db.isTransaction).toBe(true);
       return !!db
@@ -83,6 +82,9 @@ function context(db: SqliteKernelDatabase) {
       )?.sequence;
     },
   };
+}
+function context() {
+  return { liveness: () => 'unknown' as const };
 }
 const create = (boundaryId = 'b') =>
   ({
@@ -102,7 +104,7 @@ function fixture(path = ':memory:', encoding: 'json' | 'columns' = 'columns') {
     database: db,
     tables: tables(encoding),
   });
-  const ctx = context(db);
+  const ctx = context();
   return {
     db,
     storage,
@@ -288,11 +290,67 @@ it('bound-table configuration refuses missing columns, unsafe names and invalid 
     'ALTER TABLE host_boundaries RENAME COLUMN missing TO created_sequence; UPDATE host_head SET value = -1',
   );
   const k = openSqliteKernelStorage({ database: db, tables: tables() });
-  expect(() => k.executeSync(create(), context(db))).toThrow(
+  expect(() => k.executeSync(create(), context())).toThrow(
     'Invalid boundary creation sequence',
   );
   expect(db.prepare('SELECT * FROM host_boundaries').all()).toEqual([]);
 });
+
+it.each(['host', 'kernel'] as const)(
+  'the %s terminal authority is fixed at open even with stray JavaScript context fields',
+  async (mode) => {
+    const db = new DatabaseSync(':memory:');
+    callbacks.push(() => db.close());
+    db.exec(schema);
+    const defaults = openSqliteKernelStorage({ database: db });
+    defaults.executeSync(
+      {
+        type: 'turnBoundary.observeTerminal',
+        threadId: 't',
+        providerTurnId: 'p',
+        sessionTerminal: false,
+        terminalCreatedAt: '2020',
+      },
+      context(),
+    );
+    await defaults.close();
+    const storage = openSqliteKernelStorage({
+      database: db,
+      tables: tables('columns', mode),
+    });
+    storage.executeSync(create(), context());
+    storage.executeSync(
+      {
+        type: 'turnBoundary.transition',
+        boundaryId: 'b',
+        ownerId: owner.id,
+        from: ['prepared'],
+        to: 'invoking',
+        now: '2031',
+      },
+      context(),
+    );
+    const strayContext = {
+      ...context(),
+      terminalSeen: () => mode === 'host',
+      terminalSequence: () => 999,
+    };
+    expect(
+      storage.executeSync(
+        {
+          type: 'turnBoundary.transition',
+          boundaryId: 'b',
+          ownerId: owner.id,
+          from: ['invoking'],
+          to: 'accepted',
+          providerTurnId: 'p',
+          now: '2032',
+        },
+        strayContext,
+      ),
+    ).toEqual({ kind: mode === 'kernel' ? 'ambiguous' : 'applied' });
+  },
+);
 
 it.each([
   'host without terminalSeen',
@@ -339,7 +397,7 @@ it('accepts a standalone unique boundary identity and supports its upsert', () =
     'CREATE UNIQUE INDEX boundary_identity ON host_boundaries(boundary_id)',
   );
   const storage = openSqliteKernelStorage({ database: db, tables: tables() });
-  storage.executeSync(create(), context(db));
+  storage.executeSync(create(), context());
   expect(
     storage.executeSync(
       {
@@ -350,7 +408,7 @@ it('accepts a standalone unique boundary identity and supports its upsert', () =
         to: 'invoking',
         now: '2031',
       },
-      context(db),
+      context(),
     ),
   ).toEqual({ kind: 'applied' });
   expect(db.prepare('SELECT state FROM host_boundaries').get()).toMatchObject({
@@ -477,17 +535,17 @@ it('WAL reads skip participants and the write lock, while a nested insert reserv
   peer.exec('BEGIN IMMEDIATE');
   try {
     expect(
-      storage.executeSync({ type: 'turnBoundary.list' }, context(db)),
+      storage.executeSync({ type: 'turnBoundary.list' }, context()),
     ).toMatchObject({ kind: 'records', records: [{ boundaryId: 'b' }] });
     expect(
       ordinary.executeSync(
         { type: 'turnBoundary.hasPossibleEffect', threadId: 't' },
-        context(db),
+        context(),
       ),
     ).toEqual({ kind: 'available', active: true });
     expect(calls).toEqual([]);
     expect(() =>
-      observing.executeSync({ type: 'turnBoundary.list' }, context(db)),
+      observing.executeSync({ type: 'turnBoundary.list' }, context()),
     ).toThrow(/locked/);
   } finally {
     peer.exec('ROLLBACK');
@@ -513,11 +571,9 @@ it('WAL reads skip participants and the write lock, while a nested insert reserv
   });
   db.exec('SAVEPOINT host_append');
   expect(
-    nested.executeSync(
-      { ...create('nested'), threadId: 'other' },
-      context(db),
-      { withinHostTransaction: true },
-    ),
+    nested.executeSync({ ...create('nested'), threadId: 'other' }, context(), {
+      withinHostTransaction: true,
+    }),
   ).toEqual({ kind: 'applied' });
   expect(db.isTransaction).toBe(true);
   expect(
@@ -675,11 +731,11 @@ it('column owners round-trip exactly and a legacy birthless owner is not rewritt
     identityKind: 'exact',
     birth: 'process-birth',
   } as const;
+  expect(storage.executeSync({ ...create(), owner: exact }, context())).toEqual(
+    { kind: 'applied' },
+  );
   expect(
-    storage.executeSync({ ...create(), owner: exact }, context(db)),
-  ).toEqual({ kind: 'applied' });
-  expect(
-    storage.executeSync({ type: 'turnBoundary.list' }, context(db)),
+    storage.executeSync({ type: 'turnBoundary.list' }, context()),
   ).toMatchObject({
     kind: 'records',
     records: [{ owner: exact, createdSequence: 17 }],
@@ -697,7 +753,7 @@ it('column owners round-trip exactly and a legacy birthless owner is not rewritt
         to: 'invoking',
         now: '2031',
       },
-      context(db),
+      context(),
     ),
   ).toEqual({ kind: 'applied' });
   expect(
@@ -713,7 +769,7 @@ it('column owners round-trip exactly and a legacy birthless owner is not rewritt
     created_at: '2030',
   });
   expect(
-    storage.executeSync({ type: 'turnBoundary.list' }, context(db)),
+    storage.executeSync({ type: 'turnBoundary.list' }, context()),
   ).toMatchObject({
     kind: 'records',
     records: [{ owner: { id: exact.id, pid: 27, identityKind: 'unverified' } }],

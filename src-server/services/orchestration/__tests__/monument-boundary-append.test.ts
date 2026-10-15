@@ -163,7 +163,7 @@ for (const failOuter of [false, true]) {
           owner,
           now: at(1),
         },
-        context(db),
+        context(),
         { withinHostTransaction: true },
       );
       expect(result).toEqual({ kind: 'applied' });

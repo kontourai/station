@@ -357,9 +357,9 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
       if (step % 19 === 0 && command.type !== 'turnBoundary.list') {
         crash.failNextCommit(new Error('injected boundary commit'));
         const before = rows(current!['db']);
-        await expect(
-          crash.storage.execute(command, context(current!['db'])),
-        ).rejects.toThrow('injected boundary commit');
+        await expect(crash.storage.execute(command, context())).rejects.toThrow(
+          'injected boundary commit',
+        );
         expect(rows(current!['db'])).toEqual(before);
         await crash.reopen();
         old.close();
@@ -371,7 +371,7 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
       if (step % 23 === 0) {
         const held = crash.holdNextCommit();
         const lost = expect(
-          crash.storage.execute(command, context(current!['db'])),
+          crash.storage.execute(command, context()),
         ).rejects.toBeInstanceOf(KernelCrashError);
         await held.entered;
         await crash.crash();
@@ -383,10 +383,7 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
         if (!coordinator)
           throw new Error('Expected restarted reference coordinator');
       }
-      const answer = await crash.storage.execute(
-        command,
-        context(current!['db']),
-      );
+      const answer = await crash.storage.execute(command, context());
       const observable =
         answer.kind === 'records'
           ? {
@@ -419,7 +416,7 @@ test('a backward transition out of accepted violates the host constraint without
     current.close();
   });
   const kernel = openSqliteKernelStorage({ database: current['db'], tables });
-  const ctx = context(current['db']);
+  const ctx = context();
   const setup: BoundaryCommand[] = [
     {
       type: 'turnBoundary.create',
@@ -482,7 +479,7 @@ test('alternating old SQL and new kernel writers share one database for 400 turn
     const answer =
       ordinal++ % 2 === 0
         ? legacy(oldWriter, command)
-        : await kernel.execute(command, context(peer));
+        : await kernel.execute(command, context());
     expect(answer).toEqual(legacy(referenceCoordinator, command));
     expect(rows(peer)).toEqual(rows(reference['db']));
   };

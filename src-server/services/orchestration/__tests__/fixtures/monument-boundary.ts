@@ -36,15 +36,14 @@ export const tables: SqliteKernelTables = {
     table: 'orchestration_turn_boundaries',
     ownerEncoding: 'columns',
     terminalFacts: 'host',
-    terminalSeen: (db, thread, turn) => context(db).terminalSeen(thread, turn),
+    terminalSeen: (db, thread, turn) => facts(db).terminalSeen(thread, turn),
     terminalSequence: (db, thread, id) =>
-      context(db).terminalSequence(thread, id),
+      facts(db).terminalSequence(thread, id),
     creationSequence: { column: 'created_sequence', read: head },
   },
 };
-export function context(db: SqliteKernelDatabase) {
+function facts(db: SqliteKernelDatabase) {
   return {
-    liveness: () => 'unknown' as const,
     terminalSeen: (thread: string, turn: string) => {
       expect(db.isTransaction).toBe(true);
       return !!db
@@ -64,6 +63,9 @@ export function context(db: SqliteKernelDatabase) {
       )?.global_sequence;
     },
   };
+}
+export function context() {
+  return { liveness: () => 'unknown' as const };
 }
 
 export const at = (n: number) =>

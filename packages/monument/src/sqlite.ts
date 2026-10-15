@@ -1118,7 +1118,6 @@ export function openSqliteKernelStorage(
     executeOptions: SqliteExecuteOptions = {},
   ): KernelResult<C> => {
     if (closed) throw new KernelStorageClosedError();
-    if (boundFacts) context = { ...context, ...boundFacts };
     const area = command.type.slice(0, command.type.indexOf('.')) as
       | 'turnDedup'
       | 'turnBoundary'
@@ -1151,6 +1150,7 @@ export function openSqliteKernelStorage(
             tx,
             participants,
             db,
+            boundFacts,
           );
         },
         // A refusal keeps nothing, not even an earlier participant's admission.
@@ -1159,7 +1159,15 @@ export function openSqliteKernelStorage(
     }
     return inTransaction(
       db,
-      () => runKernelTransactionStep(command, context, tx, participants, db),
+      () =>
+        runKernelTransactionStep(
+          command,
+          context,
+          tx,
+          participants,
+          db,
+          boundFacts,
+        ),
       isReadOnlyKernelCommand(command) && !readsTakeWriteLock
         ? 'DEFERRED'
         : 'IMMEDIATE',

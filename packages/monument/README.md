@@ -132,15 +132,16 @@ const context = { liveness };
 ```
 
 The fence and terminal callbacks run synchronously inside the command
-transaction. Terminal
-callbacks only read facts; a host with an event log uses that log as its sole
+transaction. Terminal callbacks only read facts; a host with an event log uses that log as its sole
 terminal authority. `terminalSeen` replaces, rather than supplements, the
 kernel's default terminal table. Observing a terminal or forgetting boundaries
 does not add or delete default terminal facts when that callback is present.
-Bound callbacks are fixed at open and override per-command context callbacks.
+Terminal callbacks are fixed at open. Command context carries only liveness
+and limits; it cannot change the terminal authority. Adapter authors pass
+`KernelTerminalFacts` as the final argument to `runKernelTransactionStep`
+(`./adapter`), from their storage-open configuration.
 Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with either
-host callback, is rejected before any command. Host mode creates no terminal table. With every area
-bound or unused, the adapter creates no `monument_*` tables.
+host callback, is rejected before any command. Host mode creates no terminal table. With every area bound or unused, the adapter creates no `monument_*` tables.
 
 `creationSequence` is optional and specific to a bound SQLite table. Its
 column must already exist. The adapter captures its durable head under the
@@ -166,7 +167,8 @@ reads would take the write lock and does not satisfy that requirement.
 that bind a creation fence. Its harness supplies a durable creation-sequence
 source and terminal callbacks, without exposing SQL to the cases. It verifies
 capture and preservation across transition/reopen, terminal lookup, missing
-facts, and strict ordering (earlier, equal, later). The default-table suite
+facts, strict ordering (earlier, equal, later), and acceptance against the fixed
+host terminal authority. The default-table suite
 remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart

@@ -57,9 +57,13 @@ export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
 export interface KernelContext {
   readonly liveness: OwnerLiveness;
   readonly limits?: Partial<KernelLimits>;
+}
+
+/** A host terminal authority fixed when its adapter opens storage. */
+export interface KernelTerminalFacts {
   /** Read-only host facts, called synchronously inside the command transaction.
    * When supplied, the host replaces the kernel's terminal table entirely. */
-  readonly terminalSeen?: (threadId: string, providerTurnId: string) => boolean;
+  readonly terminalSeen: (threadId: string, providerTurnId: string) => boolean;
   /** Persisted ordering for session terminals. Missing facts keep fenced rows. */
   readonly terminalSequence?: (
     threadId: string,

@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import type { KernelContext, KernelStorage } from '../port.js';
+import type { KernelStorage, KernelTerminalFacts } from '../port.js';
 import type { KernelStorageLocation } from './crash-point-store.js';
 
 /** A host supplies its durable head independently of the kernel commands. */
 export interface HostBoundaryConformanceHarness {
-  createLocation(
-    facts: Required<Pick<KernelContext, 'terminalSeen' | 'terminalSequence'>>,
-  ): Promise<
+  createLocation(facts: Required<KernelTerminalFacts>): Promise<
     KernelStorageLocation & {
       setCreationSequence(sequence: number): Promise<void>;
     }
@@ -113,3 +111,85 @@ export const hostBoundaryConformanceCases = [
     }
   },
 }));
+
+hostBoundaryConformanceCases.push({
+  name: 'host boundary facts: acceptance reads the fixed authority and observation never needs a default terminal table',
+  async run(harness: HostBoundaryConformanceHarness): Promise<void> {
+    const location = await harness.createLocation({
+      terminalSeen: (thread, turn) =>
+        thread === 'other' && turn === 'host-terminal',
+      terminalSequence: () => undefined,
+    });
+    let storage: KernelStorage | undefined;
+    try {
+      await location.setCreationSequence(0);
+      storage = await location.open();
+      const owner = {
+        id: 'owner',
+        pid: 123,
+        identityKind: 'unverified',
+      } as const;
+      const context = { liveness: () => 'unknown' as const };
+      for (const [threadId, turn] of [
+        ['thread', 'observed'],
+        ['other', 'host-terminal'],
+      ]) {
+        const boundaryId = threadId;
+        await storage.execute(
+          {
+            type: 'turnBoundary.observeTerminal',
+            threadId,
+            providerTurnId: turn,
+            sessionTerminal: false,
+            terminalCreatedAt: '2020',
+          },
+          context,
+        );
+        assert.deepEqual(
+          await storage.execute(
+            {
+              type: 'turnBoundary.create',
+              boundaryId,
+              threadId,
+              state: 'prepared',
+              purpose: 'turn',
+              owner,
+              now: '2030',
+            },
+            context,
+          ),
+          { kind: 'applied' },
+        );
+        await storage.execute(
+          {
+            type: 'turnBoundary.transition',
+            boundaryId,
+            ownerId: owner.id,
+            from: ['prepared'],
+            to: 'invoking',
+            now: '2031',
+          },
+          context,
+        );
+        assert.deepEqual(
+          await storage.execute(
+            {
+              type: 'turnBoundary.transition',
+              boundaryId,
+              ownerId: owner.id,
+              from: ['invoking'],
+              to: 'accepted',
+              providerTurnId: turn,
+              now: '2032',
+            },
+            context,
+          ),
+          { kind: threadId === 'other' ? 'ambiguous' : 'applied' },
+        );
+      }
+    } finally {
+      await storage?.close();
+      await location.dispose();
+    }
+  },
+});
