@@ -230,21 +230,23 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
             now,
           };
           break;
-        case 1:
+        case 1: {
+          const from = pick(2) ? 'prepared' : 'invoking';
           command = {
             type: 'turnBoundary.transition',
             boundaryId: id,
             ownerId: pick(5) ? owner.id : 'other',
-            from: [
-              (['prepared', 'invoking', 'accepted', 'indeterminate'] as const)[
-                pick(4)
-              ],
-            ],
-            to: (['invoking', 'accepted', 'indeterminate'] as const)[pick(3)],
+            from: [from],
+            to: pick(2)
+              ? 'indeterminate'
+              : from === 'prepared'
+                ? 'invoking'
+                : 'accepted',
             providerTurnId,
             now,
           };
           break;
+        }
         case 2:
           command = {
             type: 'turnBoundary.remove',
@@ -394,6 +396,56 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
     }
   },
 );
+
+test('a backward transition out of accepted violates the host constraint without changing either database', async () => {
+  const root = makeTempDir('monument-invalid-boundary-transition-');
+  const old = open(join(root, 'old.sqlite'));
+  closes.push(() => old.close());
+  const coordinator = captured.current;
+  if (!coordinator) throw new Error('Expected production SQL coordinator');
+  const current = open(join(root, 'new.sqlite'));
+  closes.push(() => current.close());
+  const kernel = openSqliteKernelStorage({ database: current['db'], tables });
+  const ctx = context(current['db']);
+  const setup: BoundaryCommand[] = [
+    {
+      type: 'turnBoundary.create',
+      boundaryId: 'pending',
+      threadId: 'thread',
+      state: 'prepared',
+      purpose: 'turn',
+      owner,
+      now: at(0),
+    },
+    {
+      type: 'turnBoundary.recordAccepted',
+      boundaryId: 'accepted',
+      threadId: 'thread',
+      providerTurnId: 'turn',
+      owner,
+      now: at(1),
+    },
+  ];
+  for (const command of setup)
+    expect(await kernel.execute(command, ctx)).toEqual(
+      legacy(coordinator, command),
+    );
+  const before = rows(current['db']);
+  const invalid: BoundaryCommand = {
+    type: 'turnBoundary.transition',
+    boundaryId: 'accepted',
+    ownerId: owner.id,
+    from: ['accepted'],
+    to: 'invoking',
+    now: at(2),
+  };
+  await expect(kernel.execute(invalid, ctx)).rejects.toThrow(
+    'UNIQUE constraint failed',
+  );
+  expect(legacy(coordinator, invalid)).toEqual({ kind: 'unavailable' });
+  expect(rows(current['db'])).toEqual(before);
+  expect(rows(old['db'])).toEqual(before);
+});
 
 test('alternating old SQL and new kernel writers share one database for 400 turns', async () => {
   const root = makeTempDir('monument-mixed-boundaries-');
