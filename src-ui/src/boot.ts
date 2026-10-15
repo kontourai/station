@@ -1,13 +1,7 @@
 import { dismissInitialStartup } from './lib/startup-presentation';
+import { observeInitialStartupVisibility } from './platform/native/startupPresentation';
 
-void import('./platform/native/startupPresentation')
-  .then(({ observeInitialStartupVisibility }) =>
-    observeInitialStartupVisibility(),
-  )
-  .catch(() => {
-    // A missing presentation adapter leaves the static mark until the app
-    // commits; it cannot hold readiness or replace the startup recovery path.
-  });
+observeInitialStartupVisibility();
 
 void import('./main').catch(() => {
   dismissInitialStartup();
@@ -16,9 +10,9 @@ void import('./main').catch(() => {
   const screen = document.createElement('div');
   screen.className = 'station-startup';
   root.replaceChildren(screen);
-  screen?.setAttribute('aria-busy', 'false');
-  screen?.setAttribute('role', 'alert');
-  screen?.setAttribute('aria-label', 'Station could not start');
+  screen.setAttribute('aria-busy', 'false');
+  screen.setAttribute('role', 'alert');
+  screen.setAttribute('aria-label', 'Station could not start');
   const recovery = document.createElement('div');
   recovery.className = 'station-startup__recovery';
   const message = document.createElement('p');
@@ -28,5 +22,5 @@ void import('./main').catch(() => {
   reload.textContent = 'Reload Station';
   reload.addEventListener('click', () => window.location.reload());
   recovery.append(message, reload);
-  screen?.append(recovery);
+  screen.append(recovery);
 });
