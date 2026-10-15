@@ -429,7 +429,11 @@ test('room requests start the Task and publish canonical answers and continued t
             label: 'researcher',
           }),
           occurredAt: expect.any(String),
-          execution: { sessionId, turnId: 'turn-1', runId: expect.any(String) },
+          execution: {
+            sessionId,
+            turnId: 'turn-1',
+            runId: `orchestration:claude:${encodeURIComponent(sessionId)}`,
+          },
         }),
         expect.objectContaining({
           actor: expect.objectContaining({ kind: 'human', label: 'Alice' }),
