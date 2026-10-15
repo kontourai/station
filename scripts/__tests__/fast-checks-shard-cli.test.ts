@@ -619,14 +619,24 @@ describe('fast-checks shard execution verdicts', () => {
         },
       ],
     });
-    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
-      root,
-      run: fakeRun(1, contents),
-      vitestPath: 'vitest.mjs',
-      prepareExecution: boundExecution,
-      failedReportDir: failing,
-    });
-    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    const failed = await runChangedVerificationShard(
+      { deferredLanes: [] },
+      slice,
+      {
+        root,
+        run: fakeRun(1, contents),
+        vitestPath: 'vitest.mjs',
+        prepareExecution: boundExecution,
+        failedReportDir: failing,
+      },
+    );
+    const retained = failed.executions[0].retainedReports.find(
+      (artifact: { path: string; sha256: string }) =>
+        !artifact.path.endsWith('.errors.json'),
+    );
+    expect(retained).toBeDefined();
+    const kept = readFileSync(resolve(root, retained!.path), 'utf8');
+    expect(digestText(kept)).toBe(retained!.sha256);
     expect(kept).toContain('numFailedTests');
     expect(kept).toContain('[REDACTED]');
     expect(kept).not.toContain('ghp_');
