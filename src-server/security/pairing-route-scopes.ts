@@ -675,6 +675,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/usage-telemetry/connection-checks:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/connection-checks',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // The preview request uses POST only so the selected file path and line
   // range stay out of URLs and proxies. It is nevertheless a bounded,
   // project-owned read: no mutation, caller-supplied root, or cross-project
@@ -1109,6 +1116,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Local canonical facts only; runtime also enforces verified person and owner/tenant scope.
+  {
+    id: '/api/analytics/usage-export:person-read',
+    method: 'GET',
+    prefix: '/api/analytics/usage-export',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The usage rollup normally reads this Station's own receipts, but its
   // default path also queries configured peer Stations with their stored
   // bearer credentials and returns their environment identities, models, and

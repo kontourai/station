@@ -145,6 +145,16 @@ With authentication unconfigured, that router reports unavailable (`501`),
 not a Device-gate authentication failure. This matrix does not extend the
 LAN/private-tailnet qualification above to a production OIDC deployment.
 
+Telemetry delivery status is an `orchestration:read` current-process
+observation. Explicit connection checks and secret-binding administration
+require `access:manage`; saving destination/reference fields also refuses
+internal-agent requests. Account-bound collaborator admission remains narrower
+and does not expose these instance-management surfaces merely because a Device
+has a broad scope. Saved product and collector key references require separate
+exact instance destination grants, never account, Project or peer inference grants.
+See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
+for the status/probe boundary and failure limits.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
@@ -701,6 +711,25 @@ for an outbound provider request. An engine-login grant alone admits neither
 quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
 reads; its engine filter does not lower that floor, grant access to another
 principal's receipts or make them per-account billing.
+
+### Canonical usage export
+
+`GET /api/analytics/usage-export` has an exact `orchestration:read` leaf and adds
+its canonical verified-person/read-authority checks. Unbound Device attribution
+and the shared local operator are refused as individual people. Explicit
+personal-account selection requires the existing current membership owner set;
+hosted reads retain exact owner+tenant. The response rechecks current
+credential/account and owner/source facts before queued chunks leave. Cursor
+fields and request-supplied identifiers confer no authority.
+
+This source path is not a companion analytics grant. It does not reuse a peer,
+provider, product or OTel credential for private sync. Grants and person-scoped
+destination custody, deletion/restore invalidation and receiver indexing remain
+open under #3459/#3460. Focused mounted-route and runtime-composition controls
+have exercised scope, queued revocation and cumulative-history refusal with
+controlled identity fixtures. They do not establish live enrollment, deployment,
+measured query performance or new person-identity assurance. See
+[the API reference](../reference/api.md#export-retained-canonical-usage-observations).
 
 ### Coding routes: command execution and client paths (#2412)
 
