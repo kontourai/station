@@ -421,7 +421,6 @@ describe('ProjectTasksSection', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail).toEqual({
       projectSlug: 'project-alpha',
-      agentSlug: 'agent-one',
     });
     expect(createTask).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('Task title')).toBeNull();

@@ -1,10 +1,11 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { toastStore } from '../../contexts/ToastContext';
 import {
   useOpenConversation,
   useSendMessage,
@@ -24,11 +25,10 @@ export function TaskShapingHost() {
   const openConversation = useOpenConversation(apiBase);
   const { updateChat } = useActiveChatActions();
   const navigation = useNavigation();
-  const [failed, setFailed] = useState<string>();
+
   const pending = useRef(false);
   const start = useEffectEvent(async (request: TaskShapingRequest) => {
     if (pending.current) return;
-    setFailed(undefined);
     if (!request.source) {
       showChatPageOrDock(() => navigation.setDockState(true));
       if (
@@ -37,7 +37,7 @@ export function TaskShapingHost() {
           selection: { context: request.projectSlug ?? '__global__' },
         })
       )
-        setFailed('Open Chat, then choose New Task again.');
+        toastStore.show('Open Chat, then choose New Task again.');
       return;
     }
     pending.current = true;
@@ -78,6 +78,19 @@ export function TaskShapingHost() {
         navigation.setActiveChat(key);
         showChatPageOrDock(() => navigation.setDockState(true));
         // An explicit promotion sends a new turn, without consuming a person's unsent draft or files.
+        updateChat(key, { taskShaping: true });
+        const focusedMessage = chat.messages?.find((message) =>
+          source.turnId
+            ? message.role === 'assistant' && message.turnId === source.turnId
+            : source.eventId
+              ? message.id === source.eventId
+              : false,
+        );
+        const excerpt =
+          source.excerpt ??
+          (typeof focusedMessage?.content === 'string'
+            ? focusedMessage.content
+            : undefined);
         const savedInput = chat.input;
         const savedAttachments = chat.attachments;
         const sent = await send(
@@ -86,7 +99,7 @@ export function TaskShapingHost() {
           chat.conversationId,
           'Shape this conversation into a Task.',
           [],
-          `${TASK_SHAPING_INSTRUCTION}${source.turnId ? `\nFocus on the answer in turn ${source.turnId}.` : source.eventId ? `\nFocus on input event ${source.eventId}.` : ''}`,
+          `${TASK_SHAPING_INSTRUCTION}${excerpt ? `\nFocus on this excerpt from the conversation:\n> ${excerpt.slice(0, 2000).replaceAll('\n', '\n> ')}` : ''}`,
         );
         const latest = activeChatsStore.getSnapshot()[key];
         if (latest && !latest.input)
@@ -100,7 +113,7 @@ export function TaskShapingHost() {
           );
       }
     } catch (error) {
-      setFailed(
+      toastStore.show(
         error instanceof Error
           ? error.message
           : 'The shaping message could not be sent. Try again.',
@@ -116,5 +129,5 @@ export function TaskShapingHost() {
     window.addEventListener(TASK_SHAPING_EVENT, open);
     return () => window.removeEventListener(TASK_SHAPING_EVENT, open);
   }, []);
-  return failed ? <p role="alert">{failed}</p> : null;
+  return null;
 }

@@ -48,6 +48,7 @@ import type {
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
+import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeChipLabel,
@@ -451,6 +452,13 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       const currentState = allChats[sessionId];
+      if (
+        currentState?.taskShaping &&
+        !ambientContext?.includes(TASK_SHAPING_INSTRUCTION)
+      )
+        ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
+          .filter(Boolean)
+          .join('\n\n');
       const submittedDraft = content;
       const experienceDraft = options?.dispatch
         ? undefined

@@ -389,20 +389,16 @@ export function ProjectTasksSection({
       {starterId !== 'start-task' ? (
         <Button
           variant="primary"
-          onClick={() =>
-            requestTaskShaping({ projectSlug: slug, agentSlug: agents?.[0] })
-          }
+          onClick={() => requestTaskShaping({ projectSlug: slug })}
         >
           New Task
         </Button>
       ) : (
         <form className="project-page__task-form" onSubmit={createTask}>
-          {starterId === 'start-task' && (
-            <p role="status">
-              Create a focused starter task. Station will link the exact task
-              after it is created.
-            </p>
-          )}
+          <p role="status">
+            Create a focused starter task. Station will link the exact task
+            after it is created.
+          </p>
           <input
             className="project-page__task-input"
             value={title}

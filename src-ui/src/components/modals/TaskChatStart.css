@@ -20,3 +20,14 @@
 .chat-dock:has(.task-chat-start) {
   max-height: 100dvh;
 }
+
+.task-chat-start__chip {
+  min-height: 44px;
+  min-width: 44px;
+}
+@media (max-width: 640px) {
+  .chat-dock:has(.task-chat-start) {
+    min-height: calc(100dvh - var(--app-toolbar-total-height));
+    max-height: calc(100dvh - var(--app-toolbar-total-height));
+  }
+}

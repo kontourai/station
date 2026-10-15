@@ -16,6 +16,14 @@ const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanups.splice(0)) await close();
 });
+const proposal = {
+  title: 'Installer progress',
+  goal: 'Show progress.',
+  doneWhen: ['Steps have counts.'],
+  firstStep: 'Find the installer.',
+};
+const proposalAnswer =
+  '```station-task-proposal\n' + JSON.stringify(proposal) + '\n```';
 const brief =
   '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.';
 const input = {
@@ -34,7 +42,7 @@ async function fixture(
     message: {
       id: 'answer',
       role: 'assistant',
-      parts: [{ type: 'text', text: 'Shaped idea' }],
+      parts: [{ type: 'text', text: proposalAnswer }],
     },
   },
 ) {
@@ -91,11 +99,11 @@ async function fixture(
     readAssistantTurn: read,
     seedProposalBrief: (input) => room.seedProposalBrief(input),
   });
-  const accept = () =>
+  const accept = (changes: Partial<typeof input> = {}) =>
     app.request('/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...changes }),
     });
   return {
     directory,
@@ -126,15 +134,16 @@ test('acceptance durably commits the brief and first Session link, and retries k
   expect(task).toMatchObject({
     title: 'Installer progress',
     description: 'Show progress.',
-    sessionId: 'shaping-session',
   });
+  expect(task.sessionId).toBeUndefined();
+  expect(task.agentId).toBeUndefined();
   expect(reopened.readSessionRelations('shaping-session').links).toEqual([
     expect.objectContaining({
       sourceId: task.id,
       targetId: 'shaping-session',
       relationType: 'spawned_session',
       source: 'user',
-      metadata: { shapingTurnId: 'shaping-turn' },
+      metadata: { shapingTurnId: 'shaping-turn', proposalBriefSaved: true },
     }),
   ]);
   const request = new Request('http://station.test');
@@ -235,6 +244,10 @@ test('a failed document write reports recoverable creation and retry seeds the s
   });
   const [task] = service.listTasks();
   expect(task.description).toBe('Show progress.');
+  expect(
+    service.readSessionRelations('shaping-session').links[0].metadata
+      ?.proposalBriefSaved,
+  ).toBeUndefined();
   fault.mockRestore();
   expect((await accept()).status).toBe(201);
   expect(service.listTasks().map((task) => task.id)).toEqual([task.id]);
@@ -252,4 +265,80 @@ test('document authority loss reports a recoverable failure without writing unde
   expect((await accept()).status).toBe(503);
   expect(service.listTasks()).toHaveLength(1);
   expect(settle).not.toHaveBeenCalled();
+});
+
+test('accepted proposals remain unassigned work and reconciliation publishes no agent activity', async () => {
+  const { service, accept, room } = await fixture();
+  expect((await accept()).status).toBe(201);
+  const [task] = service.listTasks();
+  expect(task.sessionId).toBeUndefined();
+  expect(task.agentId).toBeUndefined();
+  await room.reconcileAgentLifecycles([task.id]);
+  const history = await room.history({
+    taskId: task.id,
+    request: new Request('http://station.test'),
+  });
+  expect(history.kind).toBe('available');
+  if (history.kind !== 'available')
+    throw new Error('Expected readable history');
+  expect(
+    history.records.filter(
+      (record) => record.body.kind === 'live-work-started',
+    ),
+  ).toEqual([]);
+});
+
+test('concurrent acceptance saves one brief and both callers succeed', async () => {
+  const { accept, room, service } = await fixture();
+  // Both plans observe the empty document before either submission commits.
+  const submit = room.submitBatch.bind(room);
+  let release!: () => void;
+  const bothPlanned = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let arrivals = 0;
+  vi.spyOn(room, 'submitBatch').mockImplementation(async (input) => {
+    if (++arrivals === 2) release();
+    await bothPlanned;
+    return submit(input);
+  });
+  const responses = await Promise.all([accept(), accept()]);
+  expect(responses.map((response) => response.status)).toEqual([201, 201]);
+  expect(service.listTasks()).toHaveLength(1);
+  expect(
+    await room.document({
+      taskId: service.listTasks()[0].id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
+});
+
+test.each([
+  { title: 'Invented title' },
+  { description: 'Invented goal' },
+  { proposalBrief: 'Invented brief' },
+])(
+  'rejects client proposal edits before creating any Task: %j',
+  async (changes) => {
+    const { accept, service } = await fixture();
+    expect((await accept(changes)).status).toBe(409);
+    expect(service.listTasks()).toEqual([]);
+  },
+);
+
+test('a readable ordinary answer cannot attest a proposal', async () => {
+  const { read, accept, service } = await fixture();
+  read.mockResolvedValue({
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'ordinary',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Plain answer' }],
+    },
+  });
+  expect((await accept()).status).toBe(409);
+  expect(service.listTasks()).toEqual([]);
 });

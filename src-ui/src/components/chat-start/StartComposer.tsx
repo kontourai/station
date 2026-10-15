@@ -183,6 +183,7 @@ export function StartComposer({
   onPromptChange,
   textareaRef,
   compact = false,
+  heading,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -208,6 +209,7 @@ export function StartComposer({
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
+  heading?: string;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -260,7 +262,9 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>{compact ? 'Start work' : 'What would you like to do?'}</h2>
+        <h2>
+          {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
+        </h2>
         {project.status === 'ready' && (
           <button
             type="button"

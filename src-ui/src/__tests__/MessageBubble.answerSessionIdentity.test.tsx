@@ -56,6 +56,7 @@ vi.mock('@kontourai/station-sdk', async (original) => ({
   useQueryClient: () => ({
     invalidateQueries: vi.fn().mockResolvedValue(undefined),
   }),
+  useSessionRelationsQuery: () => ({ data: { links: [] } }),
   useCreateTaskMutation: () => ({
     mutateAsync: createProposalTask,
     isPending: false,
@@ -79,6 +80,7 @@ function row(message: ChatMessage, conversationId?: string) {
         id: 'replacement-session',
         ...(conversationId ? { conversationId } : {}),
         agentSlug: 'station',
+        projectSlug: 'alpha',
         messageCount: 1,
       }}
       agents={[]}

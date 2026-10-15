@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { TaskShapingHost } from '../components/chat/TaskShapingComposer';
+import { toastStore } from '../contexts/ToastContext';
 import { useLaunchChat } from '../hooks/useActiveChatSessionLifecycle';
 import { requestTaskShaping } from '../lib/task-shaping';
 
@@ -115,7 +116,11 @@ test('Turn into Task shapes the same conversation and preserves an unsent draft'
   render(<TaskShapingHost />);
   act(() =>
     requestTaskShaping({
-      source: { sessionId: 'session-source', turnId: 'answer-source' },
+      source: {
+        sessionId: 'session-source',
+        turnId: 'answer-source',
+        excerpt: 'Installer progress matters.',
+      },
     }),
   );
   await waitFor(() => expect(host.send).toHaveBeenCalledTimes(1));
@@ -125,7 +130,9 @@ test('Turn into Task shapes the same conversation and preserves an unsent draft'
     'conversation-source',
     'Shape this conversation into a Task.',
     [],
-    expect.stringContaining('Focus on the answer in turn answer-source.'),
+    expect.stringContaining(
+      'Focus on this excerpt from the conversation:\n> Installer progress matters.',
+    ),
   );
   expect(host.launch).not.toHaveBeenCalled();
   expect(host.update).toHaveBeenCalledWith('chat-key', {
@@ -155,4 +162,16 @@ test('the chat launch owner sends shaping instructions as model context while re
     undefined,
     'Hidden shaping instructions',
   );
+});
+
+test('a failed shaping entry uses the dismissible app toast', async () => {
+  toastStore.dismissAll();
+  render(<TaskShapingHost />);
+  act(() => requestTaskShaping({ source: { sessionId: 'missing' } }));
+  await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
+  expect(toastStore.getSnapshot()[0].message).toContain(
+    'Open this conversation',
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
+  toastStore.dismissAll();
 });

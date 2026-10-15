@@ -1352,7 +1352,13 @@ export class ProjectTaskRoomRuntime {
       intentId: plan.intentId,
       intentDigest: plan.digest,
     });
-    return result.kind === 'committed' || result.kind === 'duplicate';
+    if (result.kind === 'committed' || result.kind === 'duplicate') return true;
+    // A concurrent accept may have committed the same brief after our plan.
+    const document = await this.document({
+      taskId: input.taskId,
+      request: input.request,
+    });
+    return document.kind === 'snapshot' && document.text === input.text;
   }
 
   async editPlan(input: {

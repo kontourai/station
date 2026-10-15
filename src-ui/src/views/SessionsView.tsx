@@ -1093,19 +1093,19 @@ export function SessionsView({
         listEmptyDescription={
           resultsEmpty
             ? 'Try another search, or clear the search and filters.'
-            : 'Start a task with New task, or open a chat. What runs shows up here.'
+            : 'Start a task with New Task, or open a chat. What runs shows up here.'
         }
         /* Always the plain empty state: Activity's filtered-empty copy and
            its reset ("Clear search and filters", in the filter bar just
            above) cover filters as well as the query, which the layout's own
            search-only FilteredEmpty cannot. */
         collectionEmpty
-        /* "New task" is the header's primary action in every placement:
+        /* "New Task" is the header's primary action in every placement:
            framed (Activity as the main page) the layout puts `onAdd` in the
            page header; unframed (a dock pane) the layout would put it in the
            list FOOTER, so it renders at the top of the list instead. */
         {...(framed
-          ? { onAdd: openTopLevelDelegation, addLabel: 'New task' }
+          ? { onAdd: openTopLevelDelegation, addLabel: 'New Task' }
           : {})}
         listIntro={(selectItem) => {
           selectItemRef.current = selectItem;
@@ -1118,7 +1118,7 @@ export function SessionsView({
                     size="sm"
                     onClick={openTopLevelDelegation}
                   >
-                    New task
+                    New Task
                   </Button>
                 </div>
               )}

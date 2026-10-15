@@ -1477,7 +1477,9 @@ export function NewChatModal({
         mode?.kind === 'fork'
           ? 'Fork from here'
           : showStart
-            ? 'New chat'
+            ? shaping
+              ? 'New Task'
+              : 'New chat'
             : 'New Chat'
       }
       overlayClassName="new-chat-modal__overlay"
@@ -1489,7 +1491,11 @@ export function NewChatModal({
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
           <h3 className="new-chat-modal__title">
-            {mode?.kind === 'fork' ? 'Fork from here' : 'New chat'}
+            {mode?.kind === 'fork'
+              ? 'Fork from here'
+              : shaping
+                ? 'New Task'
+                : 'New chat'}
           </h3>
           {shaping && (
             <Button
@@ -1756,6 +1762,7 @@ export function NewChatModal({
           )}
           <StartComposer
             compact={taskShaping}
+            heading={shaping ? 'Shape a Task' : undefined}
             placeholder={shaping ? 'Describe the idea…' : undefined}
             prompt={prompt}
             onPromptChange={setPrompt}
@@ -2296,12 +2303,23 @@ export function NewChatModal({
 function TaskChatStartSurface({
   children,
   initialFocusRef,
+  ariaLabel,
+  onClose,
 }: ComponentProps<typeof ResponsiveDialogSurface>) {
   useEffect(() => {
     initialFocusRef?.current?.focus();
   }, [initialFocusRef]);
   return (
-    <section className="new-chat-modal task-chat-start" aria-label="New chat">
+    <section
+      className="new-chat-modal task-chat-start"
+      aria-label={ariaLabel}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onClose?.();
+        }
+      }}
+    >
       {children}
     </section>
   );

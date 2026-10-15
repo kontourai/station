@@ -177,7 +177,7 @@ A Task is a durable, user-addressable work identity belonging to a Project. It s
 chat in the normal composer, with a removable **New Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
 Agent can ask questions or return a proposal with a title, goal, **Done when**
 checklist and suggested first step. Only **Create Task** on that card accepts
-it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
+it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session without assigning an Agent or execution Session. Shaping mode persists through clarifying questions until acceptance or mode removal. A reloaded accepted card offers **Open Task**. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
 
 Choose **Turn into Task** in a chat's More menu to shape that conversation immediately. Add any focus as your next chat message.
 **Add to Task** offers **New Task from this…** even when no Tasks exist;

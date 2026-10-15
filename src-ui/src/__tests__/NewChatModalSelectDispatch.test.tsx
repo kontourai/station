@@ -1898,3 +1898,24 @@ test.each([false, true])(
     );
   },
 );
+
+test('New Task start surface retains its label and Escape closes it', () => {
+  const onClose = vi.fn();
+  render(
+    <NewChatModal
+      projectIconBySlug={new Map()}
+      agents={[AGENT]}
+      projects={[]}
+      onSelect={vi.fn()}
+      onClose={onClose}
+      startSurface
+      taskShaping
+    />,
+  );
+  expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
+    key: 'Escape',
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

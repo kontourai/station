@@ -1,18 +1,34 @@
 /** @vitest-environment jsdom */
 
-import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskProposal,
+  TaskRecord,
+} from '@kontourai/station-contracts/task-graph';
 import { taskQueries } from '@kontourai/station-sdk';
 import { QueryClient } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { TaskProposalCard } from '../components/chat/TaskProposalCard';
-import type { TaskProposal } from '../lib/task-shaping';
+import { activeChatsStore } from '../contexts/active-chats-store';
 
 const queryClient = new QueryClient();
-const host = vi.hoisted(() => ({ create: vi.fn(), navigate: vi.fn() }));
+const host = vi.hoisted(() => ({
+  create: vi.fn(),
+  navigate: vi.fn(),
+  links: [] as {
+    sourceType: string;
+    targetType: string;
+    targetId: string;
+    source: string;
+    relationType: string;
+    sourceId: string;
+    metadata: { shapingTurnId: string; proposalBriefSaved?: boolean };
+  }[],
+}));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useQueryClient: () => queryClient,
+  useSessionRelationsQuery: () => ({ data: { links: host.links } }),
   useCreateTaskMutation: () => ({ mutateAsync: host.create, isPending: false }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
@@ -37,7 +53,7 @@ const acceptedTask: TaskRecord = {
   id: 'accepted-task',
   projectId: 'alpha',
   title: 'Show installer progress',
-  description: approvedBrief,
+  description: proposal.goal,
   priority: 'normal',
   status: 'todo',
   createdBy: 'user',
@@ -46,6 +62,7 @@ const acceptedTask: TaskRecord = {
 };
 let remoteCatalog: TaskRecord[] = [];
 beforeEach(() => {
+  host.links = [];
   remoteCatalog = [];
 
   queryClient.clear();
@@ -62,13 +79,18 @@ beforeEach(() => {
 });
 
 test('a proposal stays provisional until Create Task, then submits its brief and exact source and opens the Task', async () => {
+  activeChatsStore.initChat('shape-session', {
+    agentSlug: 'station',
+    agentName: 'Station',
+    title: 'Shaping',
+  });
+  activeChatsStore.updateChat('shape-session', { taskShaping: true });
   render(
     <TaskProposalCard
       proposal={proposal}
       sessionId="shape-session"
       turnId="shape-turn"
       projectId="alpha"
-      agentId="station"
     />,
   );
   expect(host.create).not.toHaveBeenCalled();
@@ -77,13 +99,16 @@ test('a proposal stays provisional until Create Task, then submits its brief and
   expect(host.create).toHaveBeenCalledWith({
     projectId: 'alpha',
     title: 'Show installer progress',
-    agentId: 'station',
     createdBy: 'user',
     shapingSource: { sessionId: 'shape-session', turnId: 'shape-turn' },
     description: proposal.goal,
     proposalBrief: approvedBrief,
   });
   expect(host.navigate).toHaveBeenCalledWith('/tasks/accepted-task');
+  expect(activeChatsStore.getSnapshot()['shape-session'].taskShaping).toBe(
+    false,
+  );
+  activeChatsStore.removeChat('shape-session');
   expect(queryClient.getQueryData(taskQueries.list('alpha').queryKey)).toEqual([
     acceptedTask,
   ]);
@@ -136,4 +161,31 @@ test('opening a proposal creates no Task before acceptance', () => {
   );
   expect(host.create).not.toHaveBeenCalled();
   expect(host.navigate).not.toHaveBeenCalled();
+});
+
+test('a reloaded accepted card opens its linked Task without accepting again', () => {
+  host.links = [
+    {
+      sourceType: 'task',
+      targetType: 'session',
+      targetId: 'shape-session',
+      source: 'user',
+      relationType: 'spawned_session',
+      sourceId: 'accepted-task',
+      metadata: { shapingTurnId: 'shape-turn', proposalBriefSaved: true },
+    },
+  ];
+  render(
+    <TaskProposalCard
+      proposal={proposal}
+      sessionId="shape-session"
+      turnId="shape-turn"
+      projectId="alpha"
+    />,
+  );
+  expect(screen.getByText('Task proposal · Accepted')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
+  expect(host.navigate).toHaveBeenCalledWith('/tasks/accepted-task');
+  expect(host.create).not.toHaveBeenCalled();
 });

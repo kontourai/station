@@ -1694,11 +1694,10 @@ export class TaskGraphService {
       description: normalizeText(input.description),
       priority: input.priority ?? 'normal',
       status: 'todo',
-      ...(input.shapingSource
-        ? { sessionId: input.shapingSource.sessionId }
-        : {}),
       skillName: normalizeText(input.skillName) || undefined,
-      agentId: normalizeText(input.agentId) || undefined,
+      agentId: input.shapingSource
+        ? undefined
+        : normalizeText(input.agentId) || undefined,
       createdBy: normalizeText(input.createdBy) || 'user',
       createdAt: now,
       updatedAt: now,
@@ -2030,6 +2029,32 @@ export class TaskGraphService {
     if (moved)
       await this.releaseClaimForTask(input.taskId, 'task status -> done');
     return moved;
+  }
+
+  async completeProposalAcceptance(
+    taskId: string,
+    source: { sessionId: string; turnId: string },
+  ): Promise<void> {
+    await this.mutateStore((data) => ({
+      data: {
+        ...data,
+        links: data.links.map((link) =>
+          link.sourceType === 'task' &&
+          link.sourceId === taskId &&
+          link.targetType === 'session' &&
+          link.targetId === source.sessionId &&
+          link.relationType === 'spawned_session' &&
+          link.source === 'user' &&
+          link.metadata?.shapingTurnId === source.turnId
+            ? {
+                ...link,
+                metadata: { ...link.metadata, proposalBriefSaved: true },
+              }
+            : link,
+        ),
+      },
+      result: undefined,
+    }));
   }
 
   async createLink(input: RelationGraphLinkInput): Promise<RelationGraphLink> {

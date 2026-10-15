@@ -37,6 +37,10 @@ import {
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
 import {
+  readTaskProposal,
+  taskProposalBrief,
+} from '@kontourai/station-contracts/task-graph';
+import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
@@ -350,6 +354,7 @@ export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
     taskDispatcher: TaskDispatcher;
+    proposalBriefAvailable?: () => boolean;
     seedProposalBrief?: (input: {
       taskId: string;
       request: Request;
@@ -443,6 +448,7 @@ export function createTaskRoutes(
     answerNarrativeBindingModule?: AnswerNarrativeBindingModule;
   } = {} as {
     taskDispatcher: TaskDispatcher;
+    proposalBriefAvailable?: () => boolean;
     seedProposalBrief?: (input: {
       taskId: string;
       request: Request;
@@ -651,7 +657,11 @@ export function createTaskRoutes(
       const input: z.infer<typeof taskCreateSchema> = getBody(c);
       let authorize: (() => boolean) | undefined;
       if (input.shapingSource) {
-        if (!input.proposalBrief || !options.seedProposalBrief)
+        if (
+          !input.proposalBrief ||
+          !options.seedProposalBrief ||
+          options.proposalBriefAvailable?.() === false
+        )
           return c.json(
             { success: false, error: 'Task brief saving is unavailable' },
             503,
@@ -683,6 +693,27 @@ export function createTaskRoutes(
           !authorize()
         )
           return hostedNotFound(c);
+        const proposal = readTaskProposal(
+          answer.message.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n'),
+        );
+        if (
+          !proposal ||
+          input.title !== proposal.title ||
+          input.description !== proposal.goal ||
+          input.proposalBrief !== taskProposalBrief(proposal) ||
+          input.agentId
+        ) {
+          return c.json(
+            {
+              success: false,
+              error: 'Accepted proposal must match the shaping answer',
+            },
+            409,
+          );
+        }
       }
       const data = await service.createTask(
         input,
@@ -710,6 +741,7 @@ export function createTaskRoutes(
             },
             503,
           );
+        await service.completeProposalAcceptance(data.id, input.shapingSource);
       }
       return c.json({ success: true, data }, 201);
     } catch (error) {

@@ -1,12 +1,17 @@
 import {
+  type TaskProposal,
+  taskProposalBrief,
+} from '@kontourai/station-contracts/task-graph';
+import {
   taskQueries,
   useCreateTaskMutation,
   useQueryClient,
+  useSessionRelationsQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
-import { type TaskProposal, taskProposalBrief } from '../../lib/task-shaping';
 import { Button } from '../Button';
 import './TaskShaping.css';
 
@@ -15,13 +20,11 @@ export function TaskProposalCard({
   sessionId,
   turnId,
   projectId,
-  agentId,
 }: {
   proposal: TaskProposal;
   sessionId: string;
   turnId: string;
   projectId?: string;
-  agentId?: string;
 }) {
   const create = useCreateTaskMutation();
   const queryClient = useQueryClient();
@@ -29,13 +32,26 @@ export function TaskProposalCard({
   const { projects } = useProjects();
   const [selectedProject, setSelectedProject] = useState(projectId ?? '');
   const [acceptedId, setAcceptedId] = useState<string>();
+  const relations = useSessionRelationsQuery(sessionId);
+  const priorId = relations.data?.links.find(
+    (link) =>
+      link.sourceType === 'task' &&
+      link.targetType === 'session' &&
+      link.targetId === sessionId &&
+      link.source === 'user' &&
+      link.relationType === 'spawned_session' &&
+      link.metadata?.shapingTurnId === turnId &&
+      link.metadata?.proposalBriefSaved === true,
+  )?.sourceId;
+  const taskId = acceptedId ?? priorId;
   const [failed, setFailed] = useState(false);
   async function accept() {
-    if (!selectedProject || create.isPending) return;
-    if (acceptedId) {
-      navigate(`/tasks/${encodeURIComponent(acceptedId)}`);
+    if (create.isPending) return;
+    if (taskId) {
+      navigate(`/tasks/${encodeURIComponent(taskId)}`);
       return;
     }
+    if (!selectedProject) return;
     setFailed(false);
     try {
       const task = await create.mutateAsync({
@@ -43,11 +59,19 @@ export function TaskProposalCard({
         title: proposal.title,
         description: proposal.goal,
         proposalBrief: taskProposalBrief(proposal),
-        agentId,
         createdBy: 'user',
         shapingSource: { sessionId, turnId },
       });
       setAcceptedId(task.id);
+      for (const [key, chat] of Object.entries(
+        activeChatsStore.getSnapshot(),
+      )) {
+        if (key === sessionId || chat.currentSessionId === sessionId)
+          activeChatsStore.updateChat(key, { taskShaping: false });
+      }
+      await queryClient.invalidateQueries({
+        queryKey: taskQueries.sessionRelations(sessionId).queryKey,
+      });
       await queryClient.invalidateQueries({
         queryKey: taskQueries.list(selectedProject).queryKey,
         exact: true,
@@ -61,7 +85,9 @@ export function TaskProposalCard({
   return (
     <section className="task-proposal" aria-label="Task proposal">
       <span className="task-proposal__eyebrow">
-        Task proposal · Review before creating
+        {taskId
+          ? 'Task proposal · Accepted'
+          : 'Task proposal · Review before creating'}
       </span>
       <h3>{proposal.title}</h3>
       <h4>Goal</h4>
@@ -103,12 +129,12 @@ export function TaskProposalCard({
       )}
       <Button
         variant="primary"
-        disabled={!selectedProject}
+        disabled={!selectedProject && !taskId}
         pending={create.isPending}
         pendingLabel="Creating Task…"
         onClick={() => void accept()}
       >
-        {acceptedId ? 'Open Task' : 'Create Task'}
+        {taskId ? 'Open Task' : 'Create Task'}
       </Button>
     </section>
   );

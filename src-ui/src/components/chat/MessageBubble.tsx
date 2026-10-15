@@ -1,3 +1,4 @@
+import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
@@ -5,7 +6,6 @@ import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
-import { readTaskProposal } from '../../lib/task-shaping';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -975,7 +975,6 @@ function MessageBubbleComponent({
               sessionId={answerSessionId}
               turnId={msg.turnId}
               projectId={activeSession.projectSlug}
-              agentId={rowAgentSlug}
             />
           )}
         </div>

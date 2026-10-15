@@ -84,7 +84,10 @@ import {
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
-import { requestTaskShaping } from '../../lib/task-shaping';
+import {
+  requestTaskShaping,
+  TASK_SHAPING_INSTRUCTION,
+} from '../../lib/task-shaping';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -102,6 +105,7 @@ import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
+import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
@@ -2630,6 +2634,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               }
             />
           )}
+          {activeSession?.taskShaping && isPaneOpen && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              aria-label="Remove New Task mode"
+              onClick={() =>
+                updateChat(activeSessionId!, { taskShaping: false })
+              }
+            >
+              New Task ×
+            </Button>
+          )}
 
           {(isPaneOpen || isCollapsedDragPreview) && (
             <>
@@ -3217,6 +3233,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               expectedDefinitionFingerprint,
               executionOnCurrentStation,
             );
+            if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
+              updateChat(sessionId, { taskShaping: true });
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,

@@ -131,6 +131,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     deviceCredential: string,
     deviceScope = 'pairing-v7',
     beforeCompose?: (store: EventStore) => void,
+    withEventStore = true,
   ) {
     const directory = mkdtempSync(join(tmpdir(), 'station-room-principal-'));
     directories.push(directory);
@@ -194,7 +195,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
-      orchestrationEventStore: store,
+      orchestrationEventStore: withEventStore ? store : undefined,
       taskGraphService: {
         readTaskView: (id: string) =>
           id === taskRecord.id ? taskRecord : null,
@@ -210,7 +211,17 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     // (`runtime-routes-hosted-mcp-composition.test.ts` documents the same
     // seam) — self-reference the same stub context so that resolves back to
     // the real `store` above.
-    Reflect.set(context as object, 'buildRuntimeContext', () => context);
+    Reflect.set(
+      context as object,
+      'buildRuntimeContext',
+      () =>
+        new Proxy(context, {
+          get: (target, key) =>
+            key === 'orchestrationEventStore'
+              ? store
+              : Reflect.get(target, key),
+        }),
+    );
     // The stub is deliberately partial (deepStub proxies every unlisted
     // member); cast at the boundary like
     // `runtime-system-route-deps-live-config.test.ts` does — upstream growth
@@ -239,6 +250,42 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     };
   }
 
+  test('without an event store proposal acceptance refuses before Task creation', async () => {
+    const { app, store, context, setCaller } = await setup(
+      'unavailable-device',
+      undefined,
+      undefined,
+      false,
+    );
+    setCaller({
+      credential: 'unavailable-device',
+      authority: 'device-credential',
+      source: 'bearer',
+      locality: 'home-possession',
+    });
+    const create = vi.fn();
+    Reflect.set(context.taskGraphService, 'createTask', create);
+    try {
+      const response = await app.request('/api/tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId: 'project-1',
+          title: 'Accepted idea',
+          description: 'Show progress.',
+          proposalBrief: 'brief',
+          shapingSource: { sessionId: 's', turnId: 't' },
+        }),
+      });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: 'Task brief saving is unavailable',
+      });
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      store.close();
+    }
+  });
   test('proposal creation primes the accepting principal before seeding its shared document', async () => {
     const { app, store, roomRuntime, context, taskRecord, setCaller } =
       await setup('proposal-device');
@@ -262,13 +309,31 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
             message: {
               id: 'answer',
               role: 'assistant',
-              parts: [{ type: 'text', text: 'Accepted proposal' }],
+              parts: [
+                {
+                  type: 'text',
+                  text:
+                    '```station-task-proposal\n' +
+                    JSON.stringify({
+                      title: 'Accepted idea',
+                      goal: 'Show progress.',
+                      doneWhen: ['Steps have counts.'],
+                      firstStep: 'Find the installer.',
+                    }) +
+                    '\n```',
+                },
+              ],
             },
           }),
         },
       }),
     );
     Reflect.set(context.taskGraphService, 'createTask', async () => taskRecord);
+    Reflect.set(
+      context.taskGraphService,
+      'completeProposalAcceptance',
+      async () => undefined,
+    );
     const request = new Request('http://station/api/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -276,7 +341,8 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         projectId: taskRecord.projectId,
         title: 'Accepted idea',
         description: 'Show progress.',
-        proposalBrief: '## Goal\n\nShow progress.',
+        proposalBrief:
+          '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.',
         shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     });
@@ -285,7 +351,10 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       expect(response.status, await response.text()).toBe(201);
       expect(
         await roomRuntime.document({ taskId: taskRecord.id, request }),
-      ).toMatchObject({ kind: 'snapshot', text: '## Goal\n\nShow progress.' });
+      ).toMatchObject({
+        kind: 'snapshot',
+        text: '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.',
+      });
       expect(
         await roomRuntime.discover({ taskId: taskRecord.id, request }),
       ).toMatchObject({ kind: 'opened' });

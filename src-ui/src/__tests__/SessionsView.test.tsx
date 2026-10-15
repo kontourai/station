@@ -1261,12 +1261,12 @@ describe('SessionsView', () => {
     );
   });
 
-  test('New task requests a shaping chat before any sessions exist', () => {
+  test('New Task requests a shaping chat before any sessions exist', () => {
     sessions = [];
     const listener = vi.fn();
     window.addEventListener('station:shape-task', listener);
     renderView();
-    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
     expect(listener).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByRole('dialog', { name: 'Delegate a task' }),
@@ -4831,7 +4831,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
       screen.getByText(
-        'Start a task with New task, or open a chat. What runs shows up here.',
+        'Start a task with New Task, or open a chat. What runs shows up here.',
       ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);

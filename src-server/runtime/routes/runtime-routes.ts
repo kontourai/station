@@ -3815,6 +3815,7 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
         projectTaskRoomRuntime?.seedProposalBrief(input) ??
         Promise.resolve(false),
