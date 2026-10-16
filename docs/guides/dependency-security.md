@@ -41,7 +41,8 @@ the gate, requiring cleanup rather than silently retaining an allowance.
 [Issue #3122](https://github.com/kontourai/station/issues/3122) tracks replacement
 with an independently verified official release. Recheck after every Forge,
 VoltAgent, SAP/JKS, patch, or provider-boundary change. Optional provider
-packaging is separate work; this patch preserves SAP functionality and makes
+packaging is tracked by [issue #3745](https://github.com/kontourai/station/issues/3745);
+this patch preserves SAP functionality and makes
 no universal nonreachability claim.
 
 ## Proxy, copy, and numeric formatter advisories (2026-10)
