@@ -873,8 +873,6 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
-      '.github/workflows/main-qualification.yml':
-        'qualifies combined main source after integration; PR: CI and the merge queue own pre-merge feedback',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -3977,12 +3975,8 @@ describe('hosted qualification workflow covers the full regression', () => {
       expect(text).not.toContain('--exclude-quarantined');
   });
 
-  it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
-    // Nightly calls the hosted full-regression workflow, which runs the
-    // canonical `npm run full:regression`; that resolves to the package
-    // scripts behind FULL_REGRESSION_PHASES. None of them may carry the
-    // queue-only flag, so a quarantined file still runs every night.
-    expect(workflow('nightly.yml')).toContain(
+  it('keeps scheduled full qualification canonical, including quarantined files', () => {
+    expect(workflow('main-qualification.yml')).toContain(
       'uses: ./.github/workflows/full-regression.yml',
     );
     const hosted = workflow('full-regression.yml');

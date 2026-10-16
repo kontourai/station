@@ -375,6 +375,8 @@ const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'pr-title',
+  'delivery-plan',
+  'delivery-validation',
   'fast-checks',
   'fast-checks-plan',
   'fast-checks-shard',
@@ -579,6 +581,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
+  '.github/workflows/delivery-validation.yml',
   '.github/workflows/docs-kit.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/gallery-pr-check.yml',
@@ -1392,8 +1395,66 @@ function skipsAutomaticPullRequest(condition) {
   );
 }
 
+function prCapableWorkflowFiles(workflows) {
+  const byFile = new Map(
+    workflows.map(({ file, document }) => [file, document]),
+  );
+  const capable = new Set(
+    workflows
+      .filter(
+        ({ file, document }) =>
+          workflowHasTrigger(document, PULL_REQUEST_TARGET) ||
+          (BASE_CONTROLLED_PR_WORKFLOWS.has(file) &&
+            workflowHasTrigger(document, 'workflow_call')),
+      )
+      .map(({ file }) => file),
+  );
+  const pending = [...capable];
+  while (pending.length) {
+    const file = pending.pop();
+    for (const job of Object.values(byFile.get(file)?.jobs ?? {})) {
+      const callee = localReusableWorkflowFile(job?.uses ?? '');
+      if (
+        !callee ||
+        capable.has(callee) ||
+        !byFile.has(callee) ||
+        restrictEventsByCondition(new Set([PULL_REQUEST_TARGET]), job.if)
+          .size === 0
+      )
+        continue;
+      capable.add(callee);
+      pending.push(callee);
+    }
+  }
+  return capable;
+}
+
+function isReviewedDeliveryCall(file, jobId, job) {
+  const calls = {
+    '.github/workflows/ci.yml': {
+      'delivery-validation': 'delivery-validation',
+    },
+    '.github/workflows/delivery-validation.yml': {
+      install: 'install-smoke',
+      portable: 'portable-server-archives',
+      native: 'desktop-rust',
+      desktop: 'desktop-clean-checkout',
+      ecosystem: 'ecosystem-packaging',
+    },
+  };
+  const callee = calls[file]?.[jobId];
+  return Boolean(
+    callee &&
+      job.uses === `./.github/workflows/${callee}.yml` &&
+      job.steps === undefined &&
+      job.secrets === undefined &&
+      !containsSecretReference(job),
+  );
+}
+
 export function persistentRunnerPolicyFindings(workflows) {
   const findings = [];
+  const prCapable = prCapableWorkflowFiles(workflows);
   const workflowsByFile = new Map(
     workflows.map(({ file, document }) => [file, document]),
   );
@@ -1409,7 +1470,9 @@ export function persistentRunnerPolicyFindings(workflows) {
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
     findings.push(...fullRegressionActionlintFindings(file, document));
-    findings.push(...baseControlledPrWorkflowFindings(file, document));
+    findings.push(
+      ...baseControlledPrWorkflowFindings(file, document, prCapable.has(file)),
+    );
     findings.push(...mergeQueueWorkflowFindings(file, document));
     findings.push(...untrustedCacheFindings(file, document, workflowsByFile));
   }
@@ -2522,6 +2585,23 @@ function primaryCiRouterFindings(file, document) {
         message: 'ci.yml pull_request_target router is missing a reviewed job',
       });
   }
+  // These jobs read base policy before any candidate execution. Bind the
+  // checkout, complete diff, permissions, admission and local callee together.
+  const deliveryJobs = Object.fromEntries(
+    ['delivery-plan', 'delivery-validation'].map((id) => [id, jobs[id]]),
+  );
+  if (
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(deliveryJobs)))
+      .digest('hex') !==
+    '80a310512c12badf6774d99a5693d32dfb9915531ec9df4c2d77901cd82ecf0a'
+  )
+    findings.push({
+      file,
+      jobId: 'delivery-plan',
+      message:
+        'delivery routing must retain its exact reviewed trusted-policy checkout, diff and admission topology',
+    });
   for (const jobId of Object.keys(jobs)) {
     if (!PRIMARY_ROUTER_JOBS.has(jobId))
       findings.push({
@@ -2846,7 +2926,7 @@ function orderedPolicy(value) {
     );
   return value;
 }
-function baseControlledPrWorkflowFindings(file, document) {
+function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === '.github/workflows/landing-automation.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(orderedPolicy(document)))
@@ -2864,6 +2944,7 @@ function baseControlledPrWorkflowFindings(file, document) {
   }
   if (file === '.github/workflows/ci.yml') return [];
   if (
+    !prCapable &&
     !workflowHasTrigger(document, PULL_REQUEST_TARGET) &&
     file !== SECURITY_ANALYSIS_WORKFLOW
   )
@@ -2933,11 +3014,17 @@ function baseControlledPrWorkflowFindings(file, document) {
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
     const exactDocsGateCall = isExactDocsGateCall(file, jobId, job);
+    const exactDeliveryCall = isReviewedDeliveryCall(file, jobId, job);
     const runner = classifyRunner(job);
     // The exact calls have no runner of their own. This rule does not follow
     // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
     // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
-    if (!runner.hosted && !exactFullRegressionCall && !exactDocsGateCall)
+    if (
+      !runner.hosted &&
+      !exactFullRegressionCall &&
+      !exactDocsGateCall &&
+      !exactDeliveryCall
+    )
       findings.push({
         file,
         jobId,
@@ -2955,6 +3042,7 @@ function baseControlledPrWorkflowFindings(file, document) {
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
               exactFullRegressionCall ||
               exactDocsGateCall ||
+              exactDeliveryCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,
@@ -3049,8 +3137,12 @@ function isReviewedCacheRestore(file, jobId, step) {
 function untrustedCacheFindings(file, document, workflowsByFile) {
   const findings = [];
   const events = new Set(
-    UNTRUSTED_CACHE_TRIGGERS.filter((trigger) =>
-      workflowHasTrigger(document, trigger),
+    UNTRUSTED_CACHE_TRIGGERS.filter(
+      (trigger) =>
+        workflowHasTrigger(document, trigger) ||
+        (trigger === PULL_REQUEST_TARGET &&
+          BASE_CONTROLLED_PR_WORKFLOWS.has(file) &&
+          workflowHasTrigger(document, 'workflow_call')),
     ),
   );
   const isCallee = workflowHasTrigger(document, 'workflow_call');

@@ -754,3 +754,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(exposed).toEqual([]);
   });
 });
+
+describe('delivery work waits for required PR feedback', () => {
+  const jobs = readJobs();
+  const outputs = { 'delivery-plan': { install: 'true' } };
+  test.each(['success', 'failure', 'cancelled', 'skipped'] as const)(
+    'same-repository fast-checks %s controls expensive delivery work',
+    (result) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'fast-checks': result },
+        outputs,
+      });
+      expect(state.results.get('delivery-validation')).toBe(
+        result === 'success' ? 'success' : 'skipped',
+      );
+    },
+  );
+  test('a successful fork smoke still admits affected delivery proof', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('fast-checks')).toBe('skipped');
+    expect(state.results.get('delivery-validation')).toBe('success');
+  });
+  test('metadata changes and an empty affected plan allocate no delivery workers', () => {
+    expect(
+      simulate(
+        jobs,
+        { ...sameRepositoryPr, action: 'edited' },
+        { outputs },
+      ).results.get('delivery-validation'),
+    ).toBe('skipped');
+    expect(
+      simulate(jobs, sameRepositoryPr).results.get('delivery-validation'),
+    ).toBe('skipped');
+  });
+  test('failed delivery planning does not become an empty successful result', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'delivery-plan': 'failure' },
+      outputs,
+    });
+    expect(state.results.get('delivery-plan')).toBe('failure');
+    expect(state.results.get('delivery-validation')).toBe('skipped');
+  });
+});

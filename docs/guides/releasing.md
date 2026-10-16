@@ -1,26 +1,28 @@
 # Integration, qualification, and releases
 
 Station integrates small changes quickly, qualifies the combined application
-after meaningful main changes and on a schedule, and publishes deliberate releases from an immutable source.
+on a six-hour schedule, and publishes deliberate releases from an immutable source.
 A merged PR is integration evidence. It does not establish release readiness.
 
 ## Release flow
 
-This diagram shows the implemented process. Preview is the Beta channel.
-Nightly and Preview select qualified source independently; a Nightly build is
-not a prerequisite for a Preview release.
+Preview is the Beta channel. Nightly publishes usable main-edge builds after
+its source and artifact gates. Scheduled full qualification tests the combined
+merged changes; Beta and Stable require its exact-source evidence.
 
 ```mermaid
 flowchart TD
-    PR["PR: affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
+    PR["PR: required affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
+    PR --> OPTIONAL["After core checks: affected delivery families in sequence"]
     MQ --> MAIN["Changes land on main"]
-    MAIN --> Q["Qualification: one active main SHA, newest pending candidate, hourly fallback"]
+    MAIN --> Q["Every six hours or manual: full source qualification"]
     Q -->|Failure| REPAIR["Bounded repair episode and normal repair PR"]
     REPAIR --> PR
-    Q -->|Pass| RECEIPT["Exact-source qualification receipt"]
-    RECEIPT --> DECIDE["Nightly admission: source receipt, configured cadence, bounded terminal recovery"]
-    DECIDE -->|Eligible| NIGHTLY["Build, sign, verify and publish Nightly"]
-    DECIDE -->|Deferred| WAIT["Keep original receipt; revisit admission on the hourly fallback"]
+    Q -->|Pass| RECEIPT["Exact-source full qualification receipt"]
+    Q -->|Pass| DELIVERY["All delivery validation families in sequence"]
+    MAIN --> DECIDE["Hourly Nightly decision: six-hour minimum publication interval"]
+    DECIDE -->|Eligible| SMOKE["Exact-source lint, typecheck, native boundary and browser smoke"]
+    SMOKE --> NIGHTLY["Build, sign, verify and publish Nightly"]
     RECEIPT --> PREVIEW["Owner selects frozen source and signed Preview tag"]
     PREVIEW --> STAGE["Stage Beta artifacts: qualification, signing and inventory"]
     STAGE --> ACCEPT["Installation, startup, critical journeys, upgrade and rollback acceptance"]
@@ -30,46 +32,13 @@ flowchart TD
 ```
 
 The [qualification workflow](../../.github/workflows/main-qualification.yml),
-[Nightly decision](../../scripts/nightly-qualification-decide.mjs),
+[Nightly workflow](../../.github/workflows/nightly.yml),
+[delivery validation](../../.github/workflows/delivery-validation.yml),
 [release staging](../../.github/workflows/release.yml) and
 [release publication](../../.github/workflows/publish-release.yml) own these
-edges. Qualification receipts can be reused only under the exact-source and
-age rules below. Platform or provider failures block their delivery; a passing
-source qualification is not a publication or installed-device receipt.
-
-### Proposed faster Nightly flow
-
-**Status: scheduling, capacity caps, delivery lease separation, cadence and bounded native recovery implemented; installed delivery still requires provider receipts.** The goal is to reduce feature
-merge-to-installed-Nightly time while preserving qualification and promotion
-boundaries. Main pushes trigger qualification, with an hourly scheduled fallback. A running
-qualification finishes; GitHub retains only the newest pending main candidate.
-Qualification has its own job lease, so serialized Nightly delivery cannot hold
-the qualification slot. The configured native publication interval defaults to
-six hours and is a minimum interval, not a delivery latency guarantee.
-
-```mermaid
-flowchart TD
-    MAIN["Features merge into main"] --> SNAPSHOT["After a short quiet interval, freeze one candidate SHA"]
-    SNAPSHOT --> QUALIFY["Run full source qualification"]
-    SNAPSHOT --> BUILD["Build private artifacts alongside qualification"]
-    QUALIFY -->|Failure| REPAIR["Retain causal diagnostics, repair through a PR, qualify a new candidate"]
-    QUALIFY -->|Pass| ADMIT["Admit exact-SHA receipt and signed artifact inventory"]
-    BUILD --> ADMIT
-    ADMIT --> DELIVERY["Serialized Nightly publication at a shorter configured interval"]
-    DELIVERY --> VERIFY["Verify delivery and installed startup"]
-    VERIFY --> NEXT["Latest qualified features available for dogfooding"]
-```
-
-Qualification would release its scheduling slot before delivery finishes.
-Delivery would retain its own locks, source binding, trusted publisher identity
-and bounded recovery for failed reservations. New merges would become a later
-candidate rather than restarting an active one. Beta and Stable would keep the
-owner-approved frozen-source promotion process in the implemented diagram.
-
-Maintain both diagrams with the owning workflows and decision code. Review each
-edge when cadence, receipt admission, staging, recovery or promotion changes;
-move a proposed edge into the implemented diagram only after it lands. Keep
-transient run status in GitHub rather than embedding it here.
+edges. Nightly's source gate never emits a full qualification receipt. Source,
+signed artifact, provider publication and installed-device evidence remain
+separate claims.
 
 ## Delivery stages
 
@@ -77,9 +46,10 @@ transient run status in GitHub rather than embedding it here.
 | --- | --- | --- |
 | Pull request | Affected tests, all typecheck lanes, lint, governance, security, critical browser smoke, and relevant platform checks | Blocks that PR |
 | Merge queue | Required checks against the synthesized combined candidate; the full regression when its fast-checks plan defers to a lane | Blocks incompatible integration |
-| Main qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
+| Main source qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
+| Scheduled delivery validation | All five packaging/platform families after successful source qualification | Retains delivery failure; does not turn the source receipt into artifact proof |
 | Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
-| Nightly | Daily signed dogfood delivery after exact-source qualification and existing platform/provider gates | No publication without qualification |
+| Nightly | Exact-source lint, typecheck, native boundary and critical browser smoke, then signed artifact and platform/provider gates | Failed source or artifact admission blocks publication |
 | Preview | Frozen qualified source, signed/staged inventory, installation and update evidence, owner-approved publication | Blocks publication |
 | Stable | The reviewed Preview source, qualified evidence and channel-specific packaging/provider checks | Blocks publication |
 
@@ -108,6 +78,24 @@ receipt, one JSON line per observation, when diagnosing a dequeue. A genuine
 capacity change needs a fresh assessment before another attempt, rather than a
 blind rerun.
 
+### Delivery validation after core checks
+
+Required PR contexts remain unchanged. After core fast checks succeed, the
+trusted base-owned [delivery planner](../../scripts/pr-delivery-plan.mjs)
+selects optional packaging/platform families from the PR diff. The reusable
+[delivery workflow](../../.github/workflows/delivery-validation.yml) sequences
+install → portable archives → native checks → desktop clean checkout → ecosystem
+packaging. A failed family does not cancel later selected families. Scheduled
+qualification runs every family after the full corpus succeeds.
+
+The five families use 15 jobs instead of 20: installer checks combine stable
+and preview exercises into six jobs instead of eight; native Rust/Kotlin checks
+share one job instead of four; all five portable targets remain, capped at two
+concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
+and ecosystem one. Thus one delivery-validation invocation uses at most two
+runners at once. This is a per-invocation bound, not an organization-wide
+reservation; unrelated workflows and repositories still share hosted capacity.
+
 ## Qualification cadence and evidence reuse
 
 Require the mutable commit-status context `PR title policy` alongside all six
@@ -120,7 +108,7 @@ source success. Queue publication acknowledges title enforcement at admission,
 not revalidation of constituent titles after enqueue.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
-after main source changes and at minute 17 of every UTC hour. It tests one exact workflow-event SHA from
+minute 17 every six UTC hours, or by manual dispatch. It tests one exact workflow-event SHA from
 `main`, independently of platform publishing. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
 failure, missing job or cancelled job remains incomplete evidence, never a pass.
@@ -130,8 +118,9 @@ Qualification emits `source-qualification-<sha>-<run-id>` with a JSON receipt
 only after every planned job succeeds. The receipt names source, producer run,
 runner/Node environment, job results and any reused producer.
 The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
-successful run for the same exact source from an admitted main, Nightly,
-release or manual `PR: CI` workflow, within 24 hours. It requires the successful
+successful run for the same exact source from an admitted main, release or
+manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
+completed full qualification remain eligible; the new usability gate is not. It requires the successful
 qualification job, all four ordinary corpus jobs and an unexpired receipt
 artifact. A reused run cannot become another reuse source and extend the
 original evidence's age. The same source binds the checked-in workflow,
@@ -159,16 +148,15 @@ checks hourly and after a qualification run completes, without launching tests
 or retries. It maintains one P1 issue owned by repository release maintainers
 when no qualification job started within eight hours, no source qualification
 passed within fourteen hours, or the latest unqualified run has remained queued
-or running for more than three hours. These limits allow two hours of schedule
-the conservative eight-hour start and fourteen-hour success freshness bounds. It also reports a
-failed Nightly decision or publication after source qualification passed. The
+or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
+execution delay. It also reports a
+failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
 Delivery failures remain in the tracker beyond its 48-hour run lookback until
 the failed leg has terminal evidence: a later native ledger job or the CLI
-registry-provenance step, including manual Nightly recovery. A green qualification that skips delivery because the source
-is already reserved cannot clear the failure. The tracker closes only when
+registry-provenance step, including manual Nightly recovery. A later skipped Nightly or green qualification cannot clear the failure. The tracker closes only when
 all observed conditions are healthy. A missing or
 skipped qualification gate is not a success, even if the overall run is green.
 API errors fail the watchdog without clearing its issue; Main pipeline health
@@ -211,23 +199,24 @@ of the `nightly` delivery lock. Native staging uses two platform build slots and
 one macOS slot by ordering iOS after macOS and Windows after Android.
 
 `STATION_NIGHTLY_INTERVAL_HOURS` defaults to 6 and accepts integers 1–168.
-Admission under the Nightly delivery lock rechecks this interval, current
-exact-source qualification (including newer failure invalidation and original
-age), published-source ancestry and the owner recovery lock before provider
-writes. The caller remains `main-qualification.yml`; the workflow identity and
-qualified event SHA remain unchanged, so the existing GCP/npm admission still
-applies. An older or divergent source cannot move rolling pointers backwards.
+Admission under the Nightly delivery lock rechecks this interval, the
+current trusted Nightly run and its successful exact-source usability
+gate, published-source ancestry and the owner recovery lock before provider
+writes. The top-level workflow is `nightly.yml`, preserving its existing GCP/npm
+trusted publisher identity. Its hourly decision checks cadence before source
+tests or builds; manual dispatch permits recovery, while final provider
+admission still enforces cadence and ancestry. An older or divergent source cannot move rolling pointers backwards.
 
 A reservation alone never establishes a live run or a failed run. Recovery
-requires actual trusted terminal failed producers, a successful qualification
-gate, no remaining live producer, and at most two failed producer runs for the
+requires actual trusted terminal failed producers, a successful source
+gate (full qualification for historical qualification-driven runs), no remaining live producer, and at most two failed producer runs for the
 source. It retains old reservation tags and receipts and allocates a new immutable
 identity. Successful Android or desktop publication at that exact source is kept;
 only missing native providers are written. Previously published providers are
 reported as not attempted in the new cohort, rather than lending their older
 receipt to new staged bytes. Finality and provider observations remain independent
 per platform. An explicit manual rebuild can request new native versions, while
-source qualification, ancestry, recovery-lock and fence checks remain mandatory.
+source usability, ancestry, recovery-lock and fence checks remain mandatory.
 
 ## One repair sweep per failure episode
 
@@ -282,7 +271,7 @@ integration incidents. The owner can set repository variable
 `STATION_INTEGRATION_PAUSED=true` to fail subsequent merge-integration candidates,
 coordinate a repair PR, and clear it after verification. A repair deadline that
 passes without green qualification requires owner escalation; the tracker
-remains P1 and publication still requires source qualification. Broader failures
+remains P1; Beta and Stable publication still require full source qualification. Broader failures
 receive the repair sweep while unrelated fast-green work can continue.
 
 ## Landing without agent monitoring
@@ -360,45 +349,30 @@ trigger admission is not check success or publication proof.
    Source qualification can reuse the same valid receipt; artifact, installation,
    update and external-provider evidence still has to match the Stable outputs.
 
-Nightly has two entry points, and both serialize on one `nightly` concurrency
-group:
+Nightly has two entry points, both serialized on the `nightly` concurrency group:
 
-- **From qualification** (enabled when the owner sets the repository variable
-  `STATION_QUALIFIED_NIGHTLY` to `enabled`, after admitting
-  `main-qualification.yml@refs/heads/main` to the GCP workload identity
-  condition that Android staging uses). When a main qualification run passes, it calls
-  [Nightly](../../.github/workflows/nightly.yml) from inside the same run for
-  the commit it just qualified. That run's triggering commit is the qualified
-  commit, and attestations, provenance and the cohort verifiers all bind to it.
-  A Nightly started on a later `main` cannot publish an older qualified
-  commit. The qualification result stands in for Nightly's own
-  full-regression call. A
-  [decide step](../../scripts/nightly-qualification-decide.mjs) skips the call
-  when both native providers already have verified rows for the source or
-  the configured native publication interval has not elapsed. A reserved source
-  with a live or unknown producer remains held. Trusted terminal delivery failures
-  permit bounded recovery with a new immutable reservation; successful native
-  providers remain untouched. Configure `STATION_NIGHTLY_INTERVAL_HOURS` for the
-  minimum interval (six hours by default). npm trusted publishing matches the
-  top-level workflow: configure `main-qualification.yml` as a trusted publisher
-  for the CLI before enabling
-  this entry. A rejected OIDC exchange fails the job; it is not a successful
-  skip.
-- **Manual recovery.** Nightly has no independent schedule. Its dispatch
-  qualifies the workflow-event SHA, reusing valid exact-source evidence or
-  running fresh qualification when necessary. It cannot silently select an
-  older green ancestor. Before relying on CLI delivery from the qualified
-  entry, confirm npm trusts the top-level `main-qualification.yml` workflow;
-  the OIDC preflight fails publication when that trust is absent.
+- **Scheduled eligibility.** At minute 47 of each UTC hour, the
+  [decision](../../scripts/nightly-qualification-decide.mjs) checks verified
+  native ledger rows, reservations and the minimum publication interval
+  (`STATION_NIGHTLY_INTERVAL_HOURS`, six hours by default). Recent or unchanged
+  ships skip before tests or builds. Live or unknown reservation producers stay
+  held; trusted terminal delivery failures permit bounded recovery with a new
+  identity. Successful native providers remain untouched.
+- **Manual recovery.** Dispatch `nightly.yml` on main. It uses the current
+  workflow-event SHA and runs the same source usability and artifact gates.
+  An optional `source_sha` can only echo that SHA, never choose an older green
+  ancestor. Final native provider admission still checks cadence, ancestry,
+  the owner recovery lock and the source gate through GitHub's API.
 
-The native cohort refuses a source its published markers already contain, so a
-Nightly that waited behind a newer one cannot move the markers back. A failed
-Nightly started from qualification leaves that qualification run red. Repair
-judges the run by its `Full source qualification` job, so the failure does not
-open a repair episode, and source-qualification reuse also judges that run by
-the same gate job, so the passing qualification still counts. `Main qualification health` reports that publication failure separately from
-failed-source repair. Read the run and provider receipts for the failed delivery
-leg. Manual delivery remains available. Preview
+Both paths run under `nightly.yml`'s existing trusted publisher identity. They
+require lint, all typecheck lanes, the native boundary ratchet and deterministic
+browser smoke; neither emits full-corpus evidence. A failed Nightly does not
+invalidate a separate full qualification. Health monitoring retains failed
+publication incidents until actual native-ledger or CLI registry-provenance
+recovery, independently of source-qualification repair. Read provider receipts
+for the failed leg; a green or skipped later job does not prove recovery.
+
+Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance still runs on main pushes; the manual package-publish operation
