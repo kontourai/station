@@ -105,6 +105,7 @@ for (const width of [1280, 390]) {
       );
       await page.screenshot({
         path: testInfo.outputPath(`daily-light-${width}.png`),
+        animations: 'disabled',
         fullPage: true,
       });
       await page.evaluate(() =>
