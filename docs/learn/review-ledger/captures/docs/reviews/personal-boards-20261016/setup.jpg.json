@@ -1,0 +1,15 @@
+{
+  "path": "docs/reviews/personal-boards-20261016/setup.jpg",
+
+  "sources": [
+    "src-ui/src/views/personal-board/PersonalBoard.css",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/BoardToolbar.tsx",
+
+    "src-ui/src/views/personal-board/BoardSetup.tsx"
+  ],
+
+  "reviewNotes": []
+}

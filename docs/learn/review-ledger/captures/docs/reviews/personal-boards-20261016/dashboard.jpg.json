@@ -1,0 +1,17 @@
+{
+  "path": "docs/reviews/personal-boards-20261016/dashboard.jpg",
+
+  "sources": [
+    "src-ui/src/views/personal-board/PersonalBoard.css",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/BoardToolbar.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardSections.tsx"
+  ],
+
+  "reviewNotes": []
+}
