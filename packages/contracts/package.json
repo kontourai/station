@@ -27,6 +27,7 @@
   "exports": {
     "./tool-library": "./src/tool-library.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
+    "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./insights": "./src/insights.ts",
@@ -170,6 +171,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./usage-export": "./src/usage-export.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",

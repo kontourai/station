@@ -40,6 +40,14 @@ The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
 
+`parseProductTelemetryCommitReceipt` additionally requires the exact requested
+event-ID set, valid timestamp and matching inserted/duplicate counts before a
+sender can remove that batch. `parseProductTelemetryProbeRequest` and
+`parseProductTelemetryProbeReceipt` validate the separate content-free
+source/schema check. A compatible probe does not acknowledge disclosure,
+create an installation identity or establish an accepted observation. These
+parsers remain Node-only; the browser status SDK uses its own response boundary.
+
 ## Native relay link codec
 
 `@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,

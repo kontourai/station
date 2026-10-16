@@ -104,7 +104,8 @@ vite or vitest configs are accepted limits, left to review.
   supplying `KernelTerminalFacts` to its transaction step): observation and forgetting do not maintain a second
   terminal source. Session-terminal ordering can use the host's persisted
   sequence and an existing boundary creation-fence column; NULL legacy fences
-  and turn-scoped generations retain timestamps. The binding API is available,
-  but Station's turn-boundary coordinator remains on its existing SQL until
-  the separate integration change. Its runtime terminal reconciliation still
-  needs a read view that does not acquire the write lock.
+  and turn-scoped generations retain timestamps. Station now uses the binding
+  for boundary writes and listing, on its existing tables and connection.
+  Its host adapter retains admission and storage-error classification.
+  Physical terminal reconciliation still uses host SQL; a read-only
+  event-authoritative projection remains a separate integration step.

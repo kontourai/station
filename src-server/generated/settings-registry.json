@@ -190,6 +190,56 @@
       "route": "/settings?view=telemetry&highlight=telemetry-destination"
     },
     {
+      "id": "product-telemetry-delivery",
+      "label": "Product delivery",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=product-telemetry-delivery"
+    },
+    {
+      "id": "productTelemetryEndpoint",
+      "label": "Product receiver address",
+      "help": "Station sends disclosed product observations to this full POST address.",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=productTelemetryEndpoint",
+      "configKey": "productTelemetryEndpoint"
+    },
+    {
+      "id": "productTelemetryKeyRef",
+      "label": "Product receiver key reference",
+      "help": "Station resolves this instance secret binding for the configured product receiver.",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=productTelemetryKeyRef",
+      "configKey": "productTelemetryKeyRef"
+    },
+    {
+      "id": "otel-delivery",
+      "label": "Metrics and traces",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=otel-delivery"
+    },
+    {
+      "id": "otelTelemetryEndpoint",
+      "label": "Collector address",
+      "help": "Station uses this collector for metrics and traces after restart.",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=otelTelemetryEndpoint",
+      "configKey": "otelTelemetryEndpoint"
+    },
+    {
+      "id": "otelTelemetryKeyRef",
+      "label": "Collector key reference",
+      "help": "Station resolves this instance secret binding for its collector after restart.",
+      "scope": "station",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=otelTelemetryKeyRef",
+      "configKey": "otelTelemetryKeyRef"
+    },
+    {
       "id": "diagnostics-bundle",
       "label": "Diagnostics bundle",
       "scope": "informational",

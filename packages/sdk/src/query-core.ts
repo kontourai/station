@@ -194,7 +194,7 @@ function useApiQueryWithMountPolicy<T>(
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
   const intervalForError = config?.refetchIntervalForError;
-  const query = useQuery({
+  const query = useQuery<T>({
     queryKey,
     queryFn: ({ signal }) => queryFn(signal),
     staleTime: config?.staleTime ?? 5 * 60 * 1000,
