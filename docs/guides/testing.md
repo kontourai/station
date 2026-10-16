@@ -658,7 +658,7 @@ unless the push is a pure merge of main (below).
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel, Veritas readiness and typecheck; biome, the governance proof and the
+barrel; biome, the governance proof and the
 commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
@@ -1307,14 +1307,15 @@ and its share of available CPUs across the host's compiler slots. It writes no
 build metadata or declaration output. Run `npm run dist:freshness` first when
 the selected project consumes package builds.
 
-This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+This command is diagnostic; `ci:fast` and required hosted checks use
 TypeScript 7. Bun has no persistent incremental cache, and a single project
 check does not replace the typecheck aggregate or the scripts coverage gate.
 Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
 Compare diagnostics before treating a disagreement as a Station defect.
 
 
-The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+Required hosted `fast-checks-statics` owns Veritas readiness and the full
+typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
