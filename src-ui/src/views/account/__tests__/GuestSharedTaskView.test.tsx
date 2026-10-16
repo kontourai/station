@@ -98,7 +98,7 @@ test('opens only the clicked shared Task human history and document', async () =
                 ),
               }
             : {
-                ...history('Visible message'),
+                ...history('**@Planner** Visible message'),
                 hasMore: true,
                 nextCursor: 'page-two',
               },
@@ -120,6 +120,8 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
+  expect(screen.getByText('@Planner')).toBeTruthy();
+  expect(screen.queryByText(/\*\*@Planner/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
   expect(await screen.findByText('Second page message')).toBeTruthy();
   expect(screen.getByText('Visible message')).toBeTruthy();

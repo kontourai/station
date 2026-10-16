@@ -55,6 +55,22 @@ async function authorizedRead<Value>(
   }
 }
 
+function SharedMessageText({ text }: { text: string }) {
+  const mention = /^\*\*@(.+?)\*\*\s+/.exec(text);
+  return (
+    <p>
+      {mention ? (
+        <>
+          <span className="task-room-mention">@{mention[1]}</span>{' '}
+          {text.slice(mention[0].length)}
+        </>
+      ) : (
+        text
+      )}
+    </p>
+  );
+}
+
 function historyState(kind: string) {
   if (kind === 'too-large') return 'Shared history is too large to display.';
   if (kind === 'unavailable') return 'Shared history is unavailable.';
@@ -408,7 +424,7 @@ export function GuestSharedTaskView({
                     <li key={record.sequence}>
                       <RoomAvatar name={record.actor.label} />
                       <strong>{record.actor.label}</strong>
-                      <p>{record.body.text}</p>
+                      <SharedMessageText text={record.body.text} />
                     </li>
                   ))}
                 </ol>
