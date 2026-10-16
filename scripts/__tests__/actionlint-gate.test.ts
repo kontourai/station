@@ -284,7 +284,12 @@ describe('persistent runner policy', () => {
       jobs: Record<string, Record<string, unknown>>;
     };
     mutate(document.jobs[jobId]);
-    return [{ file: workflow.file, document }];
+    return [
+      { file: workflow.file, document },
+      ...readWorkflowDocuments().filter(
+        ({ file }) => file === '.github/workflows/full-regression.yml',
+      ),
+    ];
   }
 
   function portableArchiveWorkflowFixture(
@@ -1333,7 +1338,6 @@ describe('persistent runner policy', () => {
       '.github/workflows/desktop-rust.yml',
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
-      '.github/workflows/merge-queue-regression.yml',
       '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
@@ -1732,7 +1736,6 @@ describe('persistent runner policy', () => {
     '.github/workflows/security-analysis.yml',
     '.github/workflows/windows-pr-verification.yml',
     '.github/workflows/build-ios.yml',
-    '.github/workflows/merge-queue-regression.yml',
   ])('rejects %s without merge_group queue evaluation', (file) => {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -3372,7 +3375,7 @@ describe('the real workflow corpus', () => {
 });
 
 describe('merge-queue regression workflow policy', () => {
-  const file = '.github/workflows/merge-queue-regression.yml';
+  const file = '.github/workflows/ci.yml';
   function mergeQueueRegressionDocument() {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -3429,7 +3432,9 @@ describe('merge-queue regression workflow policy', () => {
       persistentRunnerPolicyFindings([
         { file, document },
         ...fullRegression(),
-      ]).filter((finding) => finding.jobId === 'full-regression'),
+      ]).filter(
+        (finding) => finding.jobId === 'merge-integration-full-regression',
+      ),
     ).toEqual([]);
   });
 
@@ -3467,11 +3472,18 @@ describe('merge-queue regression workflow policy', () => {
     ],
   ])('removes the full-regression call exemption from %s', (_name, mutate) => {
     const document = mergeQueueRegressionDocument();
-    mutate(document.jobs['full-regression'] as Record<string, unknown>);
+    mutate(
+      document.jobs['merge-integration-full-regression'] as Record<
+        string,
+        unknown
+      >,
+    );
     const findings = persistentRunnerPolicyFindings([
       { file, document },
       ...fullRegression(),
-    ]).filter((finding) => finding.jobId === 'full-regression');
+    ]).filter(
+      (finding) => finding.jobId === 'merge-integration-full-regression',
+    );
     expect(
       findings.some(
         (finding) =>
@@ -3895,8 +3907,8 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       node.with.cache = 'pnpm';
       delete node.with['package-manager-cache'];
       const queueJobId = calledFrom(
-        '.github/workflows/merge-queue-regression.yml',
-        'full-regression',
+        '.github/workflows/ci.yml',
+        'merge-integration-full-regression',
         'static',
       );
       expect(cacheFindings(workflows)).toEqual([
@@ -4123,8 +4135,8 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       const workflows = real().filter(({ file }) => file !== FULL);
       // The merge queue's deferred-candidate call is reachable as written.
       const queueMissing = {
-        file: '.github/workflows/merge-queue-regression.yml',
-        jobId: 'full-regression',
+        file: '.github/workflows/ci.yml',
+        jobId: 'merge-integration-full-regression',
         message: MISSING_CALLEE,
       };
       expect(cacheFindings(workflows)).toEqual([queueMissing]);

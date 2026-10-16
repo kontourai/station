@@ -47,6 +47,7 @@ import {
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
+  MERGE_INTEGRATION_DECISION_STEP,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
@@ -382,6 +383,9 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'full-regression',
   'manual-completion-diagnostics',
   'repo-scans',
+  'diff',
+  'merge-integration-full-regression',
+  'merge-queue-regression',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
@@ -767,8 +771,7 @@ const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
-const MERGE_QUEUE_REGRESSION_WORKFLOW =
-  '.github/workflows/merge-queue-regression.yml';
+const MERGE_QUEUE_REGRESSION_WORKFLOW = '.github/workflows/ci.yml';
 /**
  * #2428: the PR gallery check uploads its captures and pixel diffs, which are
  * the only source a PR author may refresh the exact baseline from. The
@@ -826,11 +829,11 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -r 'if .plan.outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["full-regression"].result)" end'
-echo "$NEEDS" | jq -e '.diff.result == "success" and (.["full-regression"].result == "success" or (.plan.result == "success" and .plan.outputs["full-regression"] == "false" and .["full-regression"].result == "skipped"))' > /dev/null
+echo "$NEEDS" | jq -r 'if .["fast-checks-plan"].outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["merge-integration-full-regression"].result)" end'
+echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and (.["merge-integration-full-regression"].result == "success" or (.["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["full-regression"] == "false" and .["merge-integration-full-regression"].result == "skipped"))' > /dev/null
 `;
-const MERGE_QUEUE_FULL_REGRESSION_JOB = 'full-regression';
-const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false' }}`;
+const MERGE_QUEUE_FULL_REGRESSION_JOB = 'merge-integration-full-regression';
+const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false') }}`;
 
 /**
  * The merge queue's one reusable call: the hosted full regression of this
@@ -844,7 +847,7 @@ function isExactMergeQueueFullRegressionCall(file, jobId, job) {
     file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
     jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
     hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
-    job.needs === 'plan' &&
+    job.needs === 'fast-checks-plan' &&
     job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
     job.uses === './.github/workflows/full-regression.yml' &&
     hasExactKeys(job.permissions, ['contents', 'actions']) &&
@@ -2390,6 +2393,7 @@ function fastChecksShardingFindings(file, jobs) {
         CHANGED_SET_CHROMIUM_STEP,
         { name: 'Run legacy unsharded ci:fast', run: 'npm run ci:fast' },
         { name: 'Plan the affected-test selection', run: FAST_CHECKS_PLAN_RUN },
+        MERGE_INTEGRATION_DECISION_STEP,
       ],
     );
     if (!hasPinnedActionlintProvision(plan, 'Run legacy unsharded ci:fast'))
@@ -2505,6 +2509,7 @@ function primaryCiRouterFindings(file, document) {
     if (
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
+      !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'full-regression' &&
         job.if === EXACT_TARGET_SKIP_GUARDS['full-regression'] &&
@@ -2546,6 +2551,57 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
+  const integration = jobs['merge-integration-full-regression'];
+  if (
+    integration &&
+    !isExactMergeQueueFullRegressionCall(
+      file,
+      'merge-integration-full-regression',
+      integration,
+    )
+  )
+    findings.push({
+      file,
+      jobId: 'merge-integration-full-regression',
+      message:
+        'merge integration must retain the exact fail-closed full-regression call',
+    });
+  const aggregate = jobs['merge-queue-regression'];
+  if (
+    aggregate &&
+    (!isExactMergeQueueRegressionAggregate(
+      file,
+      'merge-queue-regression',
+      aggregate,
+    ) ||
+      aggregate.if !== "always() && github.event_name == 'merge_group'" ||
+      JSON.stringify(aggregate.needs) !==
+        JSON.stringify([
+          'diff',
+          'fast-checks-plan',
+          'merge-integration-full-regression',
+          'fast-checks',
+        ]))
+  )
+    findings.push({
+      file,
+      jobId: 'merge-queue-regression',
+      message:
+        'merge integration must require fast-checks and the planned regression',
+    });
+  const diff = jobs.diff;
+  if (
+    diff &&
+    (!hasExplicitCheckout(diff, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF) ||
+      diff['runs-on'] !== 'ubuntu-22.04' ||
+      diff.if !== "github.event_name == 'merge_group'")
+  )
+    findings.push({
+      file,
+      jobId: 'diff',
+      message:
+        'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+    });
   findings.push(...ciCredentialFindings(file, jobs));
   // #2709 re-land: a job with `needs` and no status function in its `if`
   // gets an implicit success(), which ANY skipped ancestor makes false.
