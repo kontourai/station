@@ -34,6 +34,7 @@ import { describe, expect, test } from 'vitest';
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
 type Job = {
+  name?: string;
   needs?: string | string[];
   if?: string;
   uses?: string;
@@ -455,7 +456,7 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   );
 
   test.each(['title', 'body'])(
-    'a metadata-only %s edit admits only the required verdict',
+    'a metadata-only %s edit admits only the independent title check',
     () => {
       const state = simulate(readJobs(), {
         ...sameRepositoryPr,
@@ -465,10 +466,62 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
         [...state.results]
           .filter(([, result]) => result !== 'skipped')
           .map(([id]) => id),
-      ).toEqual(['pr-verdict']);
+      ).toEqual(['pr-title']);
       expect(state.shards.size).toBe(0);
     },
   );
+
+  test.each([
+    [
+      'metadata edit',
+      'pull_request_target',
+      'edited',
+      false,
+      'fast-checks (metadata only)',
+    ],
+    ['base retarget', 'pull_request_target', 'edited', true, 'fast-checks'],
+    [
+      'source update',
+      'pull_request_target',
+      'synchronize',
+      false,
+      'fast-checks',
+    ],
+    ['merge queue', 'merge_group', 'checks_requested', false, 'fast-checks'],
+  ])(
+    '%s emits the correct source check context',
+    (_label, event, action, retarget, expected) => {
+      const expression = String(readJobs()['fast-checks'].name)
+        .replace(/^\$\{\{\s*/, '')
+        .replace(/\s*\}\}$/, '');
+      const name = evaluate(
+        expression,
+        (path) => {
+          switch (path.join('.')) {
+            case 'github.event_name':
+              return event;
+            case 'github.event.action':
+              return action;
+            case 'github.event.changes.base':
+              return retarget ? { ref: { from: 'release' } } : undefined;
+            default:
+              throw new Error(`Unexpected name context: ${path.join('.')}`);
+          }
+        },
+        {},
+      );
+      expect(name).toBe(expected);
+    },
+  );
+
+  test('merge queue emits the independent title context without source dependencies', () => {
+    const state = simulate(readJobs(), {
+      ...sameRepositoryPr,
+      event: 'merge_group',
+    });
+    expect(state.results.get('pr-title')).toBe('success');
+    expect(needsOf(readJobs()['pr-title'])).toEqual([]);
+  });
 
   test('base retarget keeps the complete source graph', () => {
     const state = simulate(
@@ -481,7 +534,7 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     for (const id of [
       ...PARTS,
       'fast-checks',
-      'pr-verdict',
+      'pr-title',
       'repo-scans',
       'ui-bundle-delta',
     ])

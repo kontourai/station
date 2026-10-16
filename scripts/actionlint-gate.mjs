@@ -373,7 +373,7 @@ const UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head
 const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
-  'pr-verdict',
+  'pr-title',
   'fast-checks',
   'fast-checks-plan',
   'fast-checks-shard',
@@ -1594,18 +1594,16 @@ function referencesCredential(job) {
  * `baseControlledPrWorkflowFindings` exempts ci.yml, so its generic "must not
  * expose secrets" rule never covered this workflow, several of whose jobs run
  * pull-request head code under pull_request_target. Only the exact pinned
- * base-only PR verdict topology may read the token; its full shape is
+ * base-only PR title topology may read the token; its full shape is
  * independently checked by primaryCiRouterFindings.
  */
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
-      if (jobId !== 'pr-verdict') return referencesCredential(job);
+      if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       const step = withoutReadToken.steps?.find(
-        (entry) =>
-          entry.name ===
-          'Require exact source checks and live pull-request title',
+        (entry) => entry.name === 'Validate live pull-request title',
       );
       if (step?.env?.GH_TOKEN === `\${{ github.token }}`)
         delete step.env.GH_TOKEN;
@@ -2474,11 +2472,10 @@ function primaryCiRouterFindings(file, document) {
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
       !(
-        jobId === 'pr-verdict' &&
+        jobId === 'pr-title' &&
         JSON.stringify(job.permissions) ===
           JSON.stringify({
             contents: 'read',
-            actions: 'read',
             'pull-requests': 'read',
           })
       ) &&
@@ -2523,21 +2520,21 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
-  const verdict = jobs['pr-verdict'];
-  const expectedVerdict = {
-    name: `\${{ github.event_name == 'pull_request_target' && 'fast-checks' || 'PR metadata (not applicable)' }}`,
-    needs: ['fast-checks', 'fork-smoke'],
-    if: `\${{ always() && github.event_name == 'pull_request_target' }}`,
-    permissions: { contents: 'read', actions: 'read', 'pull-requests': 'read' },
+  const title = jobs['pr-title'];
+  const expectedTitle = {
+    name: 'PR title',
+    if: `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`,
+    permissions: { contents: 'read', 'pull-requests': 'read' },
     concurrency: {
-      group: `ci-pr-verdict-\${{ github.event.pull_request.number }}-\${{ github.event.pull_request.head.sha }}`,
+      group: `ci-pr-title-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
       'cancel-in-progress': true,
     },
     'runs-on': 'ubuntu-22.04',
-    'timeout-minutes': 90,
+    'timeout-minutes': 3,
     steps: [
       {
-        name: 'Check out base policy for pull-request verdict',
+        name: 'Check out base policy for pull-request title',
+        if: `\${{ github.event_name == 'pull_request_target' }}`,
         uses: CHECKOUT_ACTION,
         with: {
           'fetch-depth': 1,
@@ -2548,39 +2545,38 @@ function primaryCiRouterFindings(file, document) {
       },
       {
         uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        if: `\${{ github.event_name == 'pull_request_target' }}`,
         with: { 'node-version-file': '.nvmrc', 'package-manager-cache': false },
       },
       {
-        name: 'Require exact source checks and live pull-request title',
+        name: 'Validate live pull-request title',
+        if: `\${{ github.event_name == 'pull_request_target' }}`,
         env: { GH_TOKEN: `\${{ github.token }}` },
-        run: 'node scripts/pr-ci-verdict.mjs',
+        run: 'node scripts/pr-title-check.mjs',
+      },
+      {
+        name: 'Acknowledge title checks at queue admission',
+        if: `\${{ github.event_name == 'merge_group' }}`,
+        run: 'echo "PR titles are required before merge-queue admission."',
       },
     ],
   };
-  if (JSON.stringify(verdict) !== JSON.stringify(expectedVerdict))
+  if (JSON.stringify(title) !== JSON.stringify(expectedTitle))
     findings.push({
       file,
-      jobId: 'pr-verdict',
+      jobId: 'pr-title',
       message:
-        'Required PR verdict must use the exact base-only read-only topology',
+        'Required PR title check must use the exact base-only read-only topology',
     });
   if (
     jobs['fast-checks']?.name !==
-    `\${{ github.event_name == 'pull_request_target' && 'fast-checks source' || 'fast-checks' }}`
+    `\${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}`
   )
     findings.push({
       file,
       jobId: 'fast-checks',
       message:
-        'Source aggregate must not replace the required PR verdict check',
-    });
-  const identity = `ci-pr-\${{ github.event.pull_request.number }}-\${{ github.event.pull_request.head.sha }}-\${{ github.event.pull_request.base.ref }}-\${{ github.event.pull_request.base.sha }}-\${{ github.event.action != 'edited' && 'source' || github.event.changes.base && 'source' || 'metadata' }}`;
-  if (document['run-name'] !== identity)
-    findings.push({
-      file,
-      jobId: 'workflow',
-      message:
-        'CI run identity must bind PR, exact head/base and source admission',
+        'Metadata source aggregate must not replace the required fast-checks context',
     });
 
   findings.push(...ciCredentialFindings(file, jobs));

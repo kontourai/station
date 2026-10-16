@@ -1777,16 +1777,15 @@ describe('CI verification workflow contracts', () => {
     };
     const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
       .jobs;
-    // The PR verdict owns the required context; the source aggregate retains
-    // the same required name on non-PR events (including the merge queue).
-    expect(jobs['pr-verdict'].name).toBe(
-      "${{ github.event_name == 'pull_request_target' && 'fast-checks' || 'PR metadata (not applicable)' }}",
-    );
+    // Metadata-only skipped aggregates have a distinct context. Title checks
+    // independently gate PR admission; source and merge-group receipts stay
+    // under the existing required fast-checks context.
+    expect(jobs['pr-title'].name).toBe('PR title');
     expect(jobs['fast-checks'].name).toBe(
-      "${{ github.event_name == 'pull_request_target' && 'fast-checks source' || 'fast-checks' }}",
+      `\${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}`,
     );
     for (const [id, job] of Object.entries(jobs))
-      if (!['fast-checks', 'pr-verdict'].includes(id))
+      if (id !== 'fast-checks')
         expect(job.name ?? id, id).not.toBe('fast-checks');
     expect(jobs['fast-checks'].needs).toEqual([
       'classify',

@@ -545,19 +545,19 @@ describe('persistent runner policy', () => {
 
   test.each([
     [
-      'pr-verdict',
+      'pr-title',
       (job: Record<string, unknown>) => {
         job.permissions = { contents: 'write' };
       },
     ],
     [
-      'pr-verdict',
+      'pr-title',
       (job: Record<string, unknown>) => {
         job.name = 'optional title';
       },
     ],
     [
-      'pr-verdict',
+      'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
         (steps[0].with as Record<string, unknown>).ref =
@@ -565,7 +565,7 @@ describe('persistent runner policy', () => {
       },
     ],
     [
-      'pr-verdict',
+      'pr-title',
       (job: Record<string, unknown>) => {
         job.if = '${{ success() }}';
       },
@@ -582,7 +582,22 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId,
       message:
-        'Required PR verdict must use the exact base-only read-only topology',
+        'Required PR title check must use the exact base-only read-only topology',
+    });
+  });
+
+  test('rejects a skipped metadata source aggregate using the required fast-checks name', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          job.name = 'fast-checks';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Metadata source aggregate must not replace the required fast-checks context',
     });
   });
 

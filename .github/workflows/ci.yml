@@ -1,8 +1,4 @@
 name: "PR: CI"
-# Immutable routing identity lets the cheap verdict find source work without
-# trusting candidate artifacts or treating a metadata run as source evidence.
-run-name: ci-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.ref }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action != 'edited' && 'source' || github.event.changes.base && 'source' || 'metadata' }}
-
 on:
   push:
     branches: [main]
@@ -527,10 +523,11 @@ jobs:
           retention-days: 14
 
   fast-checks:
-    name: ${{ github.event_name == 'pull_request_target' && 'fast-checks source' || 'fast-checks' }}
+    name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
-    # Source aggregate (the required check on non-PR events). `always()`
-    # without `!cancelled()`, deliberately: a
+    # Required source aggregate. Metadata-only events use another check name
+    # even when skipped, so they cannot replace a failed source verdict.
+    # `always()` without `!cancelled()`, deliberately: a
     # skipped required check reports success, so an aggregator that skipped
     # itself when a run was cancelled would let a cancelled run read green.
     # Running on cancellation instead fails it on the cancelled parts. The
@@ -616,23 +613,21 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
 
-  pr-verdict:
-    name: ${{ github.event_name == 'pull_request_target' && 'fast-checks' || 'PR metadata (not applicable)' }}
-    needs: [fast-checks, fork-smoke]
-    if: ${{ always() && github.event_name == 'pull_request_target' }}
+  pr-title:
+    name: PR title
+    if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
     permissions:
       contents: read
-      actions: read
       pull-requests: read
     concurrency:
-      # Event arrival order is not title recency. Every replacement reads live
-      # metadata, and never cancels source work in a different group.
-      group: ci-pr-verdict-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      # Delayed edits validate the live title, never their stale payload.
+      group: ci-pr-title-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 3
     steps:
-      - name: Check out base policy for pull-request verdict
+      - name: Check out base policy for pull-request title
+        if: ${{ github.event_name == 'pull_request_target' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -641,14 +636,22 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ github.event_name == 'pull_request_target' }}
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      - name: Require exact source checks and live pull-request title
+      - name: Validate live pull-request title
+        if: ${{ github.event_name == 'pull_request_target' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/pr-ci-verdict.mjs
+        run: node scripts/pr-title-check.mjs
+
+      # The required title check gates each PR before queue admission. The
+      # synthesized merge group has no PR title; source checks still run.
+      - name: Acknowledge title checks at queue admission
+        if: ${{ github.event_name == 'merge_group' }}
+        run: echo "PR titles are required before merge-queue admission."
 
   ui-bundle-delta:
     name: UI entry bundle delta (report only)
