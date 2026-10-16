@@ -269,3 +269,32 @@ header collapse action rather than requiring a removed control's source text.
 Application, capture and reference bytes are unchanged by this repair; earlier
 hosted results retain their exact-head attribution. Fresh hosted/queue
 qualification is still required for the new head.
+
+## Account-preferences integration
+
+Merge `2eccebaf096` integrates main `672aa69b0532` into `8ede7c75d394`
+without rebasing. Three conflicts were resolved: the exhaustive settings
+scope test keeps upstream account scopes for Diff style, Diff wrap and Theme,
+while retaining removal of `sidebar-sections`; the screenshot manifest and
+Settings PNG retain main's newer reviewed Settings reference and branch-only
+references elsewhere. All 55 nonvolatile hashes/dimensions match the selected
+images; the volatile entry is unchanged. The settings registry regenerates
+70 settings without additional changes.
+
+Sidebar/header source and the queue guardrail repair remain unchanged.
+Independent conflict review found no blocker and confirmed that account
+preferences, workspace-map instructions and historical media notes from both
+parents survive. Eight focused files pass 213 tests, including account
+preferences, settings scopes, sidebar/header and the fail-closed proof. The
+executable guardrail proof passes. Fixture guards pass 33 tests; E2E types pass.
+
+The initial browser run passed three geometry cases and sampled the rail's
+and icon's bounds 13ms apart during collapse animation, producing a false
+centering failure. The fixture now waits for the documented 52px rail width
+before comparing bounds. The final four-case run passes. On clean
+`c8c37aca598`, a temporary 56px width mutation fails that assertion with
+expected 52px/received 56px; byte-identical restoration returns the case to
+green. No injected edits remain. A local Home/Settings/mobile-Settings capture
+passes and was visually inspected; it is not used for reference generation.
+All hosted qualification claims above remain bound to their recorded heads;
+the new integration still needs hosted and merge-queue qualification.
