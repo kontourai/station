@@ -70,7 +70,6 @@ export {
   decideSessionDelivery,
   deliverSessionMessage,
   keyInFlightError,
-  keyInFlightError,
   parseSessionDeliveryDecision,
   type SessionDeliveryBranch,
   type SessionDeliveryDecision,
@@ -79,7 +78,6 @@ export {
   type SessionSendMode,
   type SessionStartResult,
   type SessionSteerResult,
-  startUnlessDelivered,
   startUnlessDelivered,
 } from './session-message-delivery.js';
 export { resolveKernelLimits } from './step.js';
