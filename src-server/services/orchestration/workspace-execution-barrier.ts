@@ -32,8 +32,7 @@ export class WorkspaceExecutionBarrier {
       if (retain()) {
         state.activeThreads.add(threadId);
         this.workspaceByThread.set(threadId, workspaceKey);
-      }
-      else {
+      } else {
         state.activeThreads.delete(threadId);
         this.workspaceByThread.delete(threadId);
       }
