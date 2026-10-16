@@ -4,7 +4,10 @@ import {
   SessionExecutionCoordinator,
   SessionLifecycleClaimRefusedError,
 } from '../session-execution-coordinator.js';
-import type { SessionTurnBoundaryAuthority } from '../session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  type SessionTurnBoundaryAuthority,
+} from '../session-turn-boundary.js';
 import { WorkspaceExecutionBusyError } from '../workspace-execution-barrier.js';
 
 function deferred() {
@@ -125,6 +128,72 @@ describe('SessionExecutionCoordinator', () => {
       );
       coordinator.observe(event(terminal, 'turn-a'));
       await expect(restore()).resolves.toBe('restore');
+    },
+  );
+
+  test.each(['ordinary', 'prepared'] as const)(
+    'an uncertain %s start keeps exclusive workspace work fenced until the Session exits',
+    async (kind) => {
+      const boundaries = createInMemorySessionTurnBoundaryAuthority();
+      const coordinator = new SessionExecutionCoordinator(boundaries);
+      if (kind === 'prepared') {
+        const existing = boundaries.claim('thread-1', new Date().toISOString());
+        if (existing.kind !== 'owner')
+          throw new Error('Expected actual boundary ownership.');
+        expect(
+          existing.claim.beginInvocation(new Date().toISOString()),
+        ).toEqual({ kind: 'applied' });
+        expect(existing.claim.indeterminate(new Date().toISOString())).toEqual({
+          kind: 'applied',
+        });
+      }
+      const failed =
+        kind === 'ordinary'
+          ? coordinator.runTurnStart(
+              'thread-1',
+              async (claim) => {
+                expect(claim.beginInvocation(new Date().toISOString())).toEqual(
+                  { kind: 'applied' },
+                );
+                expect(claim.indeterminate(new Date().toISOString())).toEqual({
+                  kind: 'applied',
+                });
+                throw new Error('Provider acknowledgement unavailable.');
+              },
+              '/repo',
+            )
+          : coordinator.runPreparedTurnStart(
+              'thread-1',
+              async () => {
+                throw new Error('Provider acknowledgement unavailable.');
+              },
+              '/repo',
+            );
+      await expect(failed).rejects.toThrow(
+        'Provider acknowledgement unavailable.',
+      );
+      expect(coordinator.hasActiveTurn('thread-1')).toBe(true);
+      await expect(
+        coordinator.runWorkspaceExclusive(
+          '/repo',
+          async () => 'unsafe restore',
+        ),
+      ).rejects.toBeInstanceOf(WorkspaceExecutionBusyError);
+      await expect(
+        coordinator.runWorkspaceExclusive('/other', async () => 'independent'),
+      ).resolves.toBe('independent');
+      coordinator.observe({
+        method: 'session.exited',
+        eventId: `exit-uncertain-${kind}`,
+        provider: 'claude',
+        threadId: 'thread-1',
+        sessionId: 'thread-1',
+        createdAt: new Date().toISOString(),
+      });
+      expect(coordinator.hasActiveTurn('thread-1')).toBe(false);
+      await expect(
+        coordinator.runWorkspaceExclusive('/repo', async () => 'restore'),
+      ).resolves.toBe('restore');
     },
   );
 
