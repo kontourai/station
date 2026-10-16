@@ -131,12 +131,17 @@ describe('SessionExecutionCoordinator', () => {
     },
   );
 
-  test.each(['ordinary', 'prepared'] as const)(
-    'an uncertain %s start keeps exclusive workspace work fenced until the Session exits',
-    async (kind) => {
+  test.each([
+    { kind: 'ordinary', effect: true },
+    { kind: 'prepared', effect: true },
+    { kind: 'ordinary', effect: false },
+    { kind: 'prepared', effect: false },
+  ])(
+    'a failed $kind start retains workspace custody only with an effect fence ($effect)',
+    async ({ kind, effect }) => {
       const boundaries = createInMemorySessionTurnBoundaryAuthority();
       const coordinator = new SessionExecutionCoordinator(boundaries);
-      if (kind === 'prepared') {
+      if (kind === 'prepared' && effect) {
         const existing = boundaries.claim('thread-1', new Date().toISOString());
         if (existing.kind !== 'owner')
           throw new Error('Expected actual boundary ownership.');
@@ -152,12 +157,14 @@ describe('SessionExecutionCoordinator', () => {
           ? coordinator.runTurnStart(
               'thread-1',
               async (claim) => {
-                expect(claim.beginInvocation(new Date().toISOString())).toEqual(
-                  { kind: 'applied' },
-                );
-                expect(claim.indeterminate(new Date().toISOString())).toEqual({
-                  kind: 'applied',
-                });
+                if (effect) {
+                  expect(
+                    claim.beginInvocation(new Date().toISOString()),
+                  ).toEqual({ kind: 'applied' });
+                  expect(claim.indeterminate(new Date().toISOString())).toEqual(
+                    { kind: 'applied' },
+                  );
+                }
                 throw new Error('Provider acknowledgement unavailable.');
               },
               '/repo',
@@ -172,13 +179,16 @@ describe('SessionExecutionCoordinator', () => {
       await expect(failed).rejects.toThrow(
         'Provider acknowledgement unavailable.',
       );
-      expect(coordinator.hasActiveTurn('thread-1')).toBe(true);
-      await expect(
-        coordinator.runWorkspaceExclusive(
-          '/repo',
-          async () => 'unsafe restore',
-        ),
-      ).rejects.toBeInstanceOf(WorkspaceExecutionBusyError);
+      expect(coordinator.hasActiveTurn('thread-1')).toBe(effect);
+      const exclusive = coordinator.runWorkspaceExclusive(
+        '/repo',
+        async () => 'restore',
+      );
+      if (effect)
+        await expect(exclusive).rejects.toBeInstanceOf(
+          WorkspaceExecutionBusyError,
+        );
+      else await expect(exclusive).resolves.toBe('restore');
       await expect(
         coordinator.runWorkspaceExclusive('/other', async () => 'independent'),
       ).resolves.toBe('independent');
