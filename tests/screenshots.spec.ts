@@ -1050,7 +1050,7 @@ function seedActiveChatSession(
  * `fulfillSessionsFilteredEmptyFixture`'s doc comment for the established
  * per-screen `page.route`-override-then-unroute idiom this generalizes).
  * Every screen below that registers a route MUST call the returned cleanup
- * in `afterGoto`'s `finally`, or its fixture — a project list, a durable
+ * in `afterCapture` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
  * run (a stray "Demo Project" can survive three screens later
  * and change Home's guidance-card content under an unrelated screen name).
@@ -1568,6 +1568,10 @@ function overlayDockProjectMismatchHooks(
             ),
         )
         .toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight),
+        'settled conversation status must not extend the document',
+      ).toBe(page.viewportSize()?.height);
     },
     afterCapture: async () => {
       for (const cleanup of cleanups) await cleanup();
