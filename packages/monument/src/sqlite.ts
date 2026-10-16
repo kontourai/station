@@ -749,6 +749,8 @@ function decodeDedupOwner(
     const fields = (parsed ?? {}) as Record<string, unknown>;
     const link = fields.preparedInvocationId;
     const revision = fields.preparedUpdatedAt;
+    if ((link === undefined) !== (revision === undefined))
+      throw new Error('Incomplete prepared invocation metadata.');
     if (link !== undefined && (typeof link !== 'string' || link === ''))
       throw new Error('Invalid prepared invocation link.');
     if (

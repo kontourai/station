@@ -31,6 +31,7 @@ import type {
   TurnDedupRecord,
 } from '../records.js';
 import { compareCodePoints } from './order.js';
+import { preparedDedupLinkState } from './turn-dedup.js';
 
 /**
  * The provider-invocation boundary of one turn:
@@ -313,9 +314,8 @@ function pendingLink(
     dedup.value === null &&
     dedup.invocation === 'pending' &&
     dedup.owner !== undefined &&
+    preparedDedupLinkState(dedup) === 'linked' &&
     dedup.owner.id === ownerId &&
-    typeof dedup.preparedUpdatedAt === 'string' &&
-    dedup.preparedUpdatedAt !== '' &&
     dedup.preparedInvocationId === intent.invocationId
   );
 }
@@ -342,6 +342,7 @@ export function decideTurnBoundaryPrepare(
     command.intent.dedupKey !== undefined &&
     (tombstoned ||
       !dedup ||
+      preparedDedupLinkState(dedup) === 'invalid' ||
       dedup.value !== null ||
       dedup.invocation !== 'pending' ||
       !dedup.owner ||
@@ -394,6 +395,7 @@ export function decideTurnBoundaryBeginInvocation(
     command.intent.dedupKey !== undefined &&
     (tombstoned ||
       !dedup ||
+      preparedDedupLinkState(dedup) !== 'linked' ||
       dedup.key !== command.intent.dedupKey ||
       dedup.value !== null ||
       dedup.owner?.id !== command.dedupOwnerId ||

@@ -219,7 +219,11 @@ For a linked key, `dedupOwnerId` names its independently private claim token.
 Preparation atomically links that owner's pending dedup row with
 `preparedInvocationId` and `preparedUpdatedAt` beside its owner encoding, and
 moves the reservation to prepared. Exact retries are idempotent; changing any
-intent field conflicts. Ordinary dedup claim, release and begin cannot bypass
+intent field conflicts. A link and its prepared revision must both be valid
+nonempty strings or both absent. SQLite rejects a partial pair; portable
+decisions retain either surviving marker as non-replayable evidence. Only
+absence of both markers permits legacy pending behavior.
+Ordinary dedup claim, release and begin cannot bypass
 a linked pending intent, and legacy boundary transition/remove cannot begin or
 erase a captured prepared intent. A dead linked pending key answers `prepared`.
 
