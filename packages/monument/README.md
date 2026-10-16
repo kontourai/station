@@ -150,7 +150,7 @@ Terminal callbacks are fixed at open. Command context carries only liveness
 and limits; it cannot change the terminal authority. Adapter authors pass
 `KernelTerminalFacts` as the final argument to `runKernelTransactionStep`
 (`./adapter`), from their storage-open configuration.
-Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with either
+Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with any
 host callback, is rejected before any command. Host mode creates no terminal table. With every area bound or unused, the adapter creates no `monument_*` tables.
 
 `creationSequence` is optional and specific to a bound SQLite table. Its
@@ -167,18 +167,37 @@ above the fence. A missing terminal retains fenced rows. Rows with no fence
 and turn-scoped terminals retain the timestamp generation check; lifecycle
 and task-dispatch rows retain their separate settlement owners.
 
-This API does not move Station's runtime terminal reconciler. Its current
-`hasPossibleEffect` deletes event-retired rows. Replacing that path with a
-read-only command requires an event-authoritative read view and an explicit
-choice of when physical retirement runs; opting a writing participant into
-reads would take the write lock and does not satisfy that requirement.
+A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
+open (the SQLite binding receives `database` first). Only
+`turnBoundary.hasPossibleEffect` excludes those IDs from its raw thread rows.
+`get`, `listThread`, `listAll`, listing and recovery still see the retained rows;
+the default memory and SQLite terminal behavior is unchanged. No command or
+context can replace these facts.
+
+Station uses its canonical event log for that read projection, with the exact
+same predicate as physical retirement: session sequence strictly above the
+creation fence, timestamp fallback for NULL legacy fences, turn timestamp and
+provider-ID matching, and the existing lifecycle, task-dispatch, admission-error
+and recovery-terminal exclusions. Its polling path takes a deferred read
+transaction, does not drain pending transitions, and can read committed facts
+while a peer holds the WAL writer. An uncommitted terminal is invisible; after
+commit the next poll can answer inactive while the boundary row remains.
+
+Physical cleanup joins write-only participant admission for both create and
+accepted-turn recording, before occupancy and capacity decisions. It rolls back
+with the command or outer event append. Boot cleanup still precedes raw owner
+recovery. Claim, prepare, observe and reconcile paths retain pending-transition
+retries; until a writer retries, polling conservatively reads the unresolved
+stored fact. No Station participant opts into `observeReads`.
 
 `hostBoundaryConformanceCases` in `./testing` is a portable contract for hosts
 that bind a creation fence. Its harness supplies a durable creation-sequence
 source and terminal callbacks, without exposing SQL to the cases. It verifies
 capture and preservation across transition/reopen, terminal lookup, missing
-facts, strict ordering (earlier, equal, later), and acceptance against the fixed
-host terminal authority. The default-table suite
+facts, strict ordering (earlier, equal, later), acceptance against the fixed
+host terminal authority, and live read-projection facts across reopen while raw
+listing and dead-owner recovery retain the rows. The SQLite binding also rejects
+a projection callback in kernel-terminal mode at open. The default-table suite
 remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart
