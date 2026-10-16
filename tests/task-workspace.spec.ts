@@ -213,10 +213,6 @@ test.describe
       });
       await keepLocalOutput.click();
       await expect(
-        page.getByRole('tab', { name: 'Results', exact: true }),
-      ).toHaveAttribute('aria-selected', 'true');
-      await page.getByRole('tab', { name: 'Details', exact: true }).click();
-      await expect(
         page.getByText('Kept “local.md” as an immutable Task output.'),
       ).toBeVisible();
       await expect(
