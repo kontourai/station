@@ -33,6 +33,7 @@ const BOUND: SqliteKernelTables = {
   },
   requestKeys: { table: 'host_keys', resultColumn: 'result_json' },
   turnBoundary: 'unused',
+  inbox: 'unused',
 };
 
 const open: Array<() => void> = [];
@@ -236,6 +237,9 @@ describe('node:sqlite adapter bound to a host schema', () => {
     expect(() =>
       kernel.executeSync({ type: 'turnBoundary.list' }, context()),
     ).toThrow(/keeps no turnBoundary tables/);
+    expect(() =>
+      kernel.executeSync({ type: 'inbox.listOpen' }, context()),
+    ).toThrow(/keeps no inbox tables/);
   });
 
   it('keeps an unbound area on its own tables beside a bound one', () => {
