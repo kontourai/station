@@ -361,7 +361,7 @@ export interface ExecutionTargetExecutionDependencies
     context?: {
       clientOrigin?: ClientOrigin;
       principal?: PrincipalRef;
-      submissionDigest?: string;
+      submissionDigest?: string | null;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -693,10 +693,12 @@ export async function executeForegroundMessage(
       : input.attachments;
     if (effectiveClientTurnId && attachments)
       attachments = snapshotTurnSubmissionValue(attachments);
-    submissionDigest = effectiveClientTurnId
-      ? (context?.submissionDigest ??
-        foregroundTurnSubmissionDigest({ ...input, attachments }))
-      : undefined;
+    submissionDigest =
+      effectiveClientTurnId &&
+      !(context?.inboxPlacement && context.submissionDigest === undefined)
+        ? (context?.submissionDigest ??
+          foregroundTurnSubmissionDigest({ ...input, attachments }))
+        : undefined;
   };
   // Compare original proof before the legacy handoff effect check or accepted replay.
   const priorHandoff = requestedHandoff
@@ -1371,9 +1373,16 @@ export async function executeForegroundMessage(
         ? { modelOptions: { ...resolved.modelOptions } }
         : {}),
     },
-    input.clientOrigin || input.principal || submissionDigest
+    input.clientOrigin ||
+      input.principal ||
+      submissionDigest ||
+      context?.inboxPlacement
       ? {
-          ...(submissionDigest ? { submissionDigest } : {}),
+          ...(context?.inboxPlacement && submissionDigest === undefined
+            ? { submissionDigest: null }
+            : submissionDigest
+              ? { submissionDigest }
+              : {}),
           ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
           ...(input.principal ? { principal: input.principal } : {}),
         }

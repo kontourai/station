@@ -110,14 +110,12 @@ describe('client execution', () => {
           updatedAt: '2030-01-01T00:00:00.000Z',
         },
       };
-      const fetchMock = vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ success: true, data: receipt }), {
-            status: 202,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: receipt }), {
+          status: 202,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
       vi.stubGlobal('fetch', fetchMock);
       const pending =
         route === 'send'

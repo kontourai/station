@@ -204,9 +204,10 @@ A key is one send for the whole conversation, not only for one of its
 Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
-of the conversation. A key whose turn already started is answered with that
-turn (`providerTurnId`), whatever the retry changed, and staged attachments
-the retry carries are bound to that turn. A key another attempt still holds
+of the conversation. Known original input is compared first: changed input
+returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
+can replay a started turn (`providerTurnId`); authorized staged attachments
+are bound to that turn. An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
 it does not resolve in time. That includes a claim the delivery lookup calls

@@ -1422,8 +1422,9 @@ recorded sender. Delegated results use `startUnlessDelivered` too, so neither
 can send twice into a successor Session a continuation reserves, and every
 live keyed continuation (`executeForegroundMessage`) applies the same rule
 (`conversationKeyDecision`, through `inspectConversationTurnKey`) before it may
-reserve one: a same-key retry that names a model the engine cannot switch to
-mid-Session, or follows an ended Session, is answered from the ledger. A start that
+reserve one. Known original input is compared before replay: a changed model
+conflicts instead of reserving a successor, while matching input (or legacy
+unknown proof) can replay or join the earlier turn even after its Session ended. A start that
 has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
 a later drive reads the ledger: `started` settles it `placed`, a key no
 Session holds queues it again (Monument's `inbox.resolveUnconfirmed`). The

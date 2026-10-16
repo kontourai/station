@@ -779,6 +779,39 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
+  test('#3567: legacy queued input remains unknown when first placed instead of receiving reconstructed proof', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (
+        await world.send('legacy-follow', 'legacy queued input', {
+          whenBusy: 'queue',
+        })
+      ).status,
+    ).toBe(202);
+    const db = world.store['db'];
+    const before = db
+      .prepare('SELECT payload FROM monument_inbox_entries WHERE entry_key = ?')
+      .get('legacy-follow') as { payload: string };
+    const payload = JSON.parse(before.payload);
+    delete payload.inputDigest;
+    db.prepare(
+      'UPDATE monument_inbox_entries SET payload = ? WHERE entry_key = ?',
+    ).run(JSON.stringify(payload), 'legacy-follow');
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([{ state: 'sent' }]),
+    );
+    const row = db
+      .prepare(
+        'SELECT input_digest FROM orchestration_turn_dedup WHERE dedup_key LIKE ?',
+      )
+      .get('%legacy-follow') as { input_digest: string | null };
+    expect(row.input_digest).toBeNull();
+    expect(world.prompts()).toEqual(['read the file', 'legacy queued input']);
+  });
+
   test('#3567: a queued retry compares its original submitted identity before payload defaults discard empty context', async () => {
     const world = station();
     await world.busy();

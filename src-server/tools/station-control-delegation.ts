@@ -6831,7 +6831,7 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
-              ...(context?.submissionDigest
+              ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
                 : {}),
               ...(input.skillExperience
@@ -6852,7 +6852,7 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
-              ...(context?.submissionDigest
+              ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
                 : {}),
               ...(input.skillExperience

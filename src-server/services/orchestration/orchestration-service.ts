@@ -494,8 +494,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
-  /** Server-captured authorized intent, before foreground prompt composition. */
-  submissionDigest?: string;
+  /** Original intent proof; null preserves unknown legacy inbox input. */
+  submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
@@ -7051,13 +7051,14 @@ export class OrchestrationService {
                 internal.skillExperience,
               ),
             };
-          const submissionDigest = submittedInput.clientTurnId
-            ? (internal?.submissionDigest ??
-              directTurnSubmissionDigest(
-                submittedInput,
-                internal?.skillExperience,
-              ))
-            : undefined;
+          const submissionDigest =
+            submittedInput.clientTurnId && internal?.submissionDigest !== null
+              ? (internal?.submissionDigest ??
+                directTurnSubmissionDigest(
+                  submittedInput,
+                  internal?.skillExperience,
+                ))
+              : undefined;
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
