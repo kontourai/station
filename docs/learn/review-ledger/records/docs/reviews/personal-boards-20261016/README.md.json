@@ -10,13 +10,17 @@
   "limits": "Development-runtime captures and controlled route/browser tests. Not external-model, physical-device, cross-process, Gallery baseline, hosted or release qualification.",
 
   "sources": [
-    "docs/learn/media.json",
-
     "tests/personal-board-authoring.spec.ts",
 
     "src-server/routes/me/personal-layouts.ts",
 
-    "src-server/services/layouts/personal-board-authoring.ts"
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "docs/reviews/personal-boards-20261016/setup.jpg",
+
+    "docs/reviews/personal-boards-20261016/dashboard.jpg",
+
+    "docs/reviews/personal-boards-20261016/mobile.jpg"
   ],
 
   "checks": [
