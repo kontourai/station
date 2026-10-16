@@ -6,7 +6,7 @@
 }
 .personal-board {
   container-type: inline-size;
-  padding: var(--k-space-6);
+  padding: clamp(var(--k-space-4), 3cqi, var(--k-space-6));
   max-width: 1440px;
   margin: 0 auto;
 }
@@ -16,8 +16,11 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--k-space-3);
-  padding: var(--k-space-3) var(--k-space-6);
-  border-bottom: 1px solid var(--k-line);
+  max-width: 100%;
+}
+.personal-board__toolbar button,
+.personal-board__section-actions button {
+  min-height: 44px;
 }
 .personal-board__toolbar span {
   color: var(--k-text-muted);
@@ -30,21 +33,6 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
-.personal-board__heading {
-  margin-bottom: var(--k-space-6);
-}
-.personal-board h1,
-.personal-board__setup h1 {
-  font-size: var(--k-text-2xl);
-  font-weight: 600;
-  margin: var(--k-space-2) 0;
-  color: var(--k-text);
-}
-.personal-board__heading p,
-.personal-board__setup > p {
-  color: var(--k-text-muted);
-  max-width: 70ch;
-}
 .personal-board__eyebrow {
   font-size: var(--k-text-xs);
   letter-spacing: 0.08em;
@@ -52,21 +40,22 @@
   color: var(--k-text-muted);
 }
 .personal-board__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--k-space-4);
 }
 .personal-board__card {
-  min-width: 0;
+  flex: 1 1 calc(50% - var(--k-space-4));
+  min-width: min(100%, 320px);
   padding: var(--k-space-5);
   background: var(--k-panel);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-md);
 }
 .personal-board__card--full {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
-.personal-board__card > header {
+.personal-board__card-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -120,23 +109,21 @@
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
-.personal-board__empty {
-  color: var(--k-text-muted);
-  padding: var(--k-space-3) 0;
-}
 .personal-board__setup,
 .personal-board__editor {
   max-width: 960px;
-  padding: var(--k-space-6);
+  padding: clamp(var(--k-space-4), 3cqi, var(--k-space-6));
   margin: 0 auto;
 }
 .personal-board__templates {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--k-space-3);
   margin-top: var(--k-space-6);
 }
 .personal-board__templates > button {
+  flex: 1 1 calc(50% - var(--k-space-3));
+  min-width: min(100%, 280px);
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -235,30 +222,6 @@
 }
 .personal-board__add h2 {
   margin-bottom: var(--k-space-3);
-}
-@container (max-width: 640px) {
-  .personal-board__grid,
-  .personal-board__templates {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .personal-board__grid,
-  .personal-board__templates {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .personal-board,
-  .personal-board__setup,
-  .personal-board__editor {
-    padding: var(--k-space-4);
-  }
-  .personal-board__toolbar {
-    padding: var(--k-space-3);
-  }
-  .personal-board__toolbar button,
-  .personal-board__section-actions button {
-    min-height: 44px;
-  }
 }
 
 .personal-board-workspace

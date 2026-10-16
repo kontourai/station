@@ -9,6 +9,7 @@ import {
 import { personalBoardDefinitionSchema } from '@kontourai/station-sdk/personal-board';
 import { type ReactNode, useState } from 'react';
 import { Button } from '../../components/Button';
+import { PageFrame, PageFrameActions } from '../../components/page-frame';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
@@ -127,137 +128,157 @@ function BoardWorkspace({
   };
   return (
     <div className="personal-board-workspace">
-      <BoardToolbar
-        edit={
-          edit
-            ? {
-                preview,
-                valid: validation?.success === true,
-                changed,
-                pending: save.isPending,
-                proposal: !!document.proposal,
-              }
-            : null
-        }
-        saved={!!document.definition}
-        actions={{
-          cancel: () =>
-            guard(() => {
-              setEdit(null);
-              setPreview(false);
-              save.reset();
-            }),
-          preview: () => setPreview(!preview),
-          save: publish,
-          refresh: () => void query.refetch(),
-          chat,
-          edit: () => {
-            if (document.definition) begin(document, document.definition);
-          },
+      <PageFrame
+        routeIdentity={`personal-board:${slug}`}
+        spec={{
+          title:
+            edit?.definition.name ??
+            document.definition?.name ??
+            'Build your Board',
+          eyebrow: 'Personal Board',
+          subtitle:
+            edit?.definition.description ??
+            document.definition?.description ??
+            'Start with a dashboard, or describe what you want in chat. Live sections read current data from your Station.',
+          flush: true,
         }}
-      />
-      {query.isError && (
-        <p role="alert">
-          Could not refresh this Board. Your draft is preserved.{' '}
-          <Button onClick={() => void query.refetch()}>Retry refresh</Button>
-        </p>
-      )}
-      {chatError && (
-        <p role="alert">
-          Chat is not available in this region. Open a chat and ask an Agent
-          with Station tools to edit this Personal Board at /boards/{slug}.
-        </p>
-      )}
-      {save.isError && (
-        <p role="alert">
-          {save.error.message} Your draft is still here. Refresh the Board to
-          inspect what was saved before trying again.
-        </p>
-      )}
-      {changed && (
-        <div className="personal-board__notice" role="status">
-          This Board changed while you were editing. Your draft is preserved.
-          <Button
-            onClick={() =>
-              guard(() => {
-                setEdit(null);
-                setPreview(false);
-                save.reset();
-                void query.refetch();
-              })
+      >
+        <PageFrameActions>
+          <BoardToolbar
+            edit={
+              edit
+                ? {
+                    preview,
+                    valid: validation?.success === true,
+                    changed,
+                    pending: save.isPending,
+                    proposal: !!document.proposal,
+                  }
+                : null
             }
-          >
-            Reload current Board
-          </Button>
-        </div>
-      )}
-      {document.proposal && !edit && (
-        <section
-          className="personal-board__proposal"
-          aria-label="Board proposal"
-        >
-          <div>
-            <span className="personal-board__eyebrow">Ready to review</span>
-            <h2>{document.proposal.name}</h2>
-            <p>
-              {document.proposal.sections.length} sections ·{' '}
-              {document.proposal.sections
-                .map((section) => section.title)
-                .join(', ')}
-            </p>
-            <p>
-              Your saved Board stays in place until you apply this proposal.
-            </p>
-          </div>
-          <div>
+            saved={!!document.definition}
+            actions={{
+              cancel: () =>
+                guard(() => {
+                  setEdit(null);
+                  setPreview(false);
+                  save.reset();
+                }),
+              preview: () => setPreview(!preview),
+              save: publish,
+              refresh: () => void query.refetch(),
+              chat,
+              edit: () => {
+                if (document.definition) begin(document, document.definition);
+              },
+            }}
+          />
+        </PageFrameActions>
+        {query.isError && (
+          <p role="alert">
+            Could not refresh this Board. Your draft is preserved.{' '}
+            <Button onClick={() => void query.refetch()}>Retry refresh</Button>
+          </p>
+        )}
+        {chatError && (
+          <p role="alert">
+            Chat is not available in this region. Open a chat and ask an Agent
+            with Station tools to edit this Personal Board at /boards/{slug}.
+          </p>
+        )}
+        {save.isError && (
+          <p role="alert">
+            {save.error.message} Your draft is still here. Refresh the Board to
+            inspect what was saved before trying again.
+          </p>
+        )}
+        {changed && (
+          <div className="personal-board__notice" role="status">
+            This Board changed while you were editing. Your draft is preserved.
             <Button
-              disabled={save.isPending}
               onClick={() =>
-                save.mutate({ revision: document.revision, dismiss: true })
+                guard(() => {
+                  setEdit(null);
+                  setPreview(false);
+                  save.reset();
+                  void query.refetch();
+                })
               }
             >
-              Dismiss proposal
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => begin(document, document.proposal!, true)}
-            >
-              Review proposal
+              Reload current Board
             </Button>
           </div>
-        </section>
-      )}
-      {!document.definition && !document.proposal && !edit && (
-        <BoardSetup
-          name={document.layout.name}
-          projects={projects.data ?? []}
-          onChoose={(definition) => begin(document, definition)}
-        />
-      )}
-      {edit && !preview && (
-        <BoardEditor
-          definition={edit.definition}
-          update={update}
-          pending={save.isPending}
-          projects={projects.data ?? []}
-          validationError={
-            validation && !validation.success
-              ? validation.error.issues[0]?.message
-              : undefined
-          }
-        />
-      )}
-      {(edit && preview
-        ? edit.definition
-        : !edit
-          ? document.definition
-          : null) && (
-        <PersonalBoardDashboard
-          definition={
-            (edit && preview ? edit.definition : document.definition)!
-          }
-        />
-      )}
+        )}
+        {document.proposal && !edit && (
+          <section
+            className="personal-board__proposal"
+            aria-label="Board proposal"
+          >
+            <div>
+              <span className="personal-board__eyebrow">Ready to review</span>
+              <h2>{document.proposal.name}</h2>
+              <p>
+                {document.proposal.sections.length} sections ·{' '}
+                {document.proposal.sections
+                  .map((section) => section.title)
+                  .join(', ')}
+              </p>
+              <p>
+                Your saved Board stays in place until you apply this proposal.
+              </p>
+            </div>
+            <div>
+              <Button
+                disabled={save.isPending}
+                onClick={() =>
+                  save.mutate({ revision: document.revision, dismiss: true })
+                }
+              >
+                Dismiss proposal
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => begin(document, document.proposal!, true)}
+              >
+                Review proposal
+              </Button>
+            </div>
+          </section>
+        )}
+        {!document.definition && !document.proposal && !edit && (
+          <BoardSetup
+            name={document.layout.name}
+            projects={projects.data ?? []}
+            onChoose={(definition) => begin(document, definition)}
+          />
+        )}
+        {edit && !preview && (
+          <BoardEditor
+            definition={edit.definition}
+            update={update}
+            pending={save.isPending}
+            projects={projects.data ?? []}
+            validationError={
+              validation && !validation.success
+                ? validation.error.issues[0]?.message
+                : undefined
+            }
+          />
+        )}
+        {(edit && preview
+          ? edit.definition
+          : !edit
+            ? document.definition
+            : null) && (
+          <PersonalBoardDashboard
+            boardSlug={slug}
+            showHeader={false}
+            definition={
+              (edit && preview ? edit.definition : document.definition)!
+            }
+          />
+        )}
+      </PageFrame>
       {!edit && children}
       <DiscardModal />
     </div>

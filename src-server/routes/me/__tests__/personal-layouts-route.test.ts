@@ -1308,6 +1308,54 @@ describe('Personal Board authoring', () => {
       }),
     );
 
+  test.each(['project.v2', 'a_b-2'])(
+    'a Board can save a live section for existing Project %s',
+    async (projectSlug) => {
+      const { app } = seeded();
+      const proposed = await author(app, '/boards/daily.v2/proposal', 'POST', {
+        revision: null,
+        definition: {
+          ...definition,
+          sections: [{ ...definition.sections[0], projectSlug }],
+        },
+      });
+      expect(proposed.status).toBe(200);
+      const draft = (await json(proposed)).data;
+      const saved = await author(app, '/boards/daily.v2', 'PUT', {
+        revision: draft.revision,
+        definition: draft.proposal,
+      });
+      expect(saved.status).toBe(200);
+      expect((await json(saved)).data.definition.sections[0].projectSlug).toBe(
+        projectSlug,
+      );
+    },
+  );
+
+  test.each([
+    'a..b',
+    '../project',
+    'a/b',
+    'a\\b',
+    '.hidden',
+    '-leading',
+    '_leading',
+  ])(
+    'refuses unsafe Project filter %s before persisting a proposal',
+    async (projectSlug) => {
+      const { app } = seeded();
+      const proposed = await author(app, '/boards/daily/proposal', 'POST', {
+        revision: null,
+        definition: {
+          ...definition,
+          sections: [{ ...definition.sections[0], projectSlug }],
+        },
+      });
+      expect(proposed.status).toBe(400);
+      expect((await author(app, '/boards/daily', 'GET')).status).toBe(404);
+    },
+  );
+
   test('chat proposes privately; exact preview can be applied, persists across devices, and moves into a Project without its proposal', async () => {
     const { app } = await seededWithProjects();
     const proposed = await author(app, '/boards/daily/proposal', 'POST', {

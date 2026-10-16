@@ -2,6 +2,7 @@ import type {
   PersonalBoardDefinition,
   PersonalBoardSection,
 } from '@kontourai/station-contracts/personal-board';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 
 export const SECTION_KINDS = [
   {
@@ -40,7 +41,7 @@ export function newBoardSection(
   kind: PersonalBoardSection['kind'],
 ): PersonalBoardSection {
   const base = {
-    id: crypto.randomUUID(),
+    id: randomCorrelationId(),
     title: SECTION_KINDS.find((entry) => entry.kind === kind)!.label,
     width: 'half' as const,
   };

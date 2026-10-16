@@ -13,14 +13,6 @@ export function BoardSetup({
   const [projectSlug, setProjectSlug] = useState('');
   return (
     <section className="personal-board__setup">
-      <span className="personal-board__eyebrow">
-        Make room for what matters
-      </span>
-      <h1>Build your Board</h1>
-      <p>
-        Start with a dashboard, or describe what you want in chat. Live sections
-        read current data from your Station.
-      </p>
       <label>
         Project for a Project watch
         <select

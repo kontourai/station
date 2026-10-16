@@ -3,12 +3,12 @@ import {
   listPersonalLayouts,
   proposePersonalBoard,
 } from '@kontourai/station-sdk/client';
+import { personalBoardSlugSchema } from '@kontourai/station-sdk/personal-board';
 import {
   fromJsonSchema,
   type JsonSchemaType,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { z as z3 } from 'zod/v3';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { personalBoardProposalSchema } from '../routes/schemas/schema-definitions/personal-board.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
@@ -47,10 +47,7 @@ export function registerPersonalBoardTools(server: StationControlToolRegistry) {
       ),
   );
   const proposalInput = personalBoardProposalSchema.extend({
-    slug: z3
-      .string()
-      .regex(/^[a-zA-Z0-9_-]+$/)
-      .max(200),
+    slug: personalBoardSlugSchema,
   });
   server.toolWithSchema(
     'propose_personal_board',

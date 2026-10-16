@@ -114,7 +114,7 @@ const HEX64 = 'a'.repeat(64);
 const ARGS: Record<string, Record<string, unknown>> = {
   get_personal_board: { slug: 'daily' },
   propose_personal_board: {
-    slug: 'daily',
+    slug: 'daily.v2',
     revision: null,
     definition: { version: 1, name: 'Daily', description: '', sections: [] },
   },

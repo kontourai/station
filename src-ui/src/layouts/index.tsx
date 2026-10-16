@@ -469,7 +469,10 @@ export function LayoutRenderer({
     return (
       <>
         {layout?.dashboard && (
-          <PersonalBoardDashboard definition={layout.dashboard} />
+          <PersonalBoardDashboard
+            boardSlug={layout.slug}
+            definition={layout.dashboard}
+          />
         )}
         {layout && (
           <LayoutHeader

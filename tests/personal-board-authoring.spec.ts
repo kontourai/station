@@ -10,7 +10,7 @@ for (const width of [1280, 390]) {
     page,
     authenticatedRequest,
   }, testInfo) => {
-    const slug = `personal-author-${width}-${Date.now()}`;
+    const slug = `personal-author-${width}-${Date.now()}.v2`;
     const created = await authenticatedRequest.post(`${API}/api/me/layouts`, {
       data: { slug, name: 'My morning' },
     });
@@ -65,6 +65,32 @@ for (const width of [1280, 390]) {
       await expect(
         page.getByRole('link', { name: `Live task ${width}` }),
       ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'Morning desk' }),
+      ).toHaveCount(1);
+      const toolbar = page.locator('.personal-board__toolbar');
+      for (const button of await toolbar.getByRole('button').all()) {
+        const box = await button.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      }
+      const cards = await page
+        .locator('.personal-board__card')
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const { x, y, width } = element.getBoundingClientRect();
+            return { x, y, width };
+          }),
+        );
+      if (width === 390) {
+        expect(cards[1].x).toBeCloseTo(cards[0].x, 0);
+        expect(cards[1].y).toBeGreaterThan(cards[0].y);
+      } else {
+        expect(cards[1].y).toBeCloseTo(cards[0].y, 0);
+        expect(cards[1].x).toBeGreaterThan(cards[0].x);
+      }
       await page.screenshot({
         path: testInfo.outputPath(`daily-${width}.png`),
         fullPage: true,

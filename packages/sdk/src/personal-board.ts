@@ -1,11 +1,12 @@
 import { z } from 'zod/v3';
 
-const projectSlug = z
+export const personalBoardSlugSchema = z
   .string()
   .min(1)
   .max(200)
-  .regex(/^[a-zA-Z0-9_-]+$/)
-  .optional();
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
+  .refine((value) => !value.includes('..'), 'Use a safe path segment');
+const projectSlug = personalBoardSlugSchema.optional();
 const limit = z.number().int().min(1).max(30);
 const sectionBase = {
   id: z

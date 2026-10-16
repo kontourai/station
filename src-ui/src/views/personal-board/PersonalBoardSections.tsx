@@ -7,7 +7,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import { Button } from '../../components/Button';
-import { ErrorState, SkeletonBlock } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
@@ -58,11 +58,7 @@ function ReadState({
     );
   if (query.isLoading)
     return <SkeletonBlock count={2} label="Loading Board section" />;
-  return empty ? (
-    <p className="personal-board__empty">Nothing here right now.</p>
-  ) : (
-    children
-  );
+  return empty ? <Empty label="Nothing here right now." /> : children;
 }
 function TaskSection({
   section,
