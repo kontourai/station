@@ -75,6 +75,16 @@ const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
 /** Bound on this owner's remembered abandoned claims (oldest dropped first). */
 const TURN_CLAIM_RETAINED_MAX = 4096;
 
+export class TurnIdempotencySettledError extends Error {
+  readonly code = 'client_turn_settled';
+  constructor(readonly disposition: 'cancelled' | 'definitively-refused') {
+    super(
+      `This turn was ${disposition === 'cancelled' ? 'cancelled' : 'definitively refused'}. A new request requires a new turn key.`,
+    );
+    this.name = 'TurnIdempotencySettledError';
+  }
+}
+
 /** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
 export type TurnClaimInspection =
   | { state: 'absent' }
@@ -183,6 +193,8 @@ export class TurnIdempotencyStore {
       case 'expired':
         turnDedupClaims.add(1, { outcome: 'expired' });
         return { claimed: false, expired: true };
+      case 'settled':
+        throw new TurnIdempotencySettledError(result.disposition);
       case 'refused':
         throw new Error(
           `Turn claim refused by ${result.participant}: ${result.reason}`,
@@ -251,6 +263,8 @@ export class TurnIdempotencyStore {
         `Turn claim read refused by ${result.participant}: ${result.reason}`,
       );
     const record = result.record;
+    if (record.settlement)
+      throw new TurnIdempotencySettledError(record.settlement.disposition);
     if (record.value !== null)
       return { state: 'resolved', value: record.value };
     if (record.owner?.id === this.owner.id && this.retained.has(key))

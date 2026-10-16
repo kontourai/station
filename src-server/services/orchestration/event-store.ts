@@ -347,7 +347,7 @@ class EventAppendTransactionLostError extends Error {
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 
 // The polling projection and writer cleanup must classify exactly the same rows.
-const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND purpose != 'task-dispatch'
+const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', 'settled') AND purpose != 'task-dispatch'
             AND (? IS NULL OR thread_id = ?)
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event

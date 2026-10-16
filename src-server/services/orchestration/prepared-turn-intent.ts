@@ -72,6 +72,7 @@ export type PreparedTurnIntentView = {
     | 'invoking'
     | 'accepted'
     | 'indeterminate'
+    | 'settled'
     | 'lifecycle';
   input: z.infer<typeof retainedInputSchema>;
 };

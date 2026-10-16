@@ -257,6 +257,7 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
@@ -8813,7 +8814,8 @@ export class OrchestrationService {
           // a failed action — and its closed code must survive the wrapper
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          error instanceof TurnIdempotencySettledError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -8857,7 +8859,8 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof AttachmentInputUnsupportedError
+          error instanceof AttachmentInputUnsupportedError ||
+          error instanceof TurnIdempotencySettledError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );
