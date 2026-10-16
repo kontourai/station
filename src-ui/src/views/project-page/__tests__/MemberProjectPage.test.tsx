@@ -499,12 +499,12 @@ test('an admin opens Agent management before the member page reads the tool libr
       `/api/tool-library/projects/${project.slug}/agents`,
     ),
   );
-  expect(toolLibraryReads.toSorted()).toEqual(
+  expect([...toolLibraryReads].sort()).toEqual(
     [
       '/api/tool-library/access',
       '/api/tool-library/catalog',
       `/api/tool-library/projects/${project.slug}/agents`,
-    ].toSorted(),
+    ].sort(),
   );
 });
 
