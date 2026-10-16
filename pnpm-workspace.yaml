@@ -40,9 +40,9 @@ overrides:
   http-cache-semantics: 4.3.0
   '@modelcontextprotocol/client': 2.3.1
   '@modelcontextprotocol/sdk': 1.32.1
-  '@modelcontextprotocol/client>zod': $zod
-  '@modelcontextprotocol/core>zod': $zod
-  '@modelcontextprotocol/server>zod': $zod
+  '@modelcontextprotocol/client>zod': ^4.6.6
+  '@modelcontextprotocol/core>zod': ^4.6.6
+  '@modelcontextprotocol/server>zod': ^4.6.6
   shell-quote: 1.11.0
   '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
