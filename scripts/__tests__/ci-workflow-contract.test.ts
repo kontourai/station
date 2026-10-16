@@ -1806,9 +1806,13 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'full-regression': '${{ steps.merge-decision.outputs.full-regression }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       shards: '${{ steps.plan.outputs.shards }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'shard-count': '${{ steps.plan.outputs.shard-count }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      empty: '${{ steps.plan.outputs.empty }}',
     });
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
@@ -1831,7 +1835,7 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
     );
 
     // Downstream consumers still name the required check's id.
@@ -2076,7 +2080,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = staticsJobText(ci);
     const fullRegression = ci.slice(
-      ci.indexOf('  full-regression:'),
+      ci.indexOf('\n  full-regression:'),
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
@@ -2139,7 +2143,7 @@ describe('CI verification workflow contracts', () => {
     const fastChecks = staticsJobText(ci);
     const forkSmoke = ci.slice(
       ci.indexOf('  fork-smoke:'),
-      ci.indexOf('  full-regression:'),
+      ci.indexOf('\n  full-regression:'),
     );
     for (const [job, candidateRepository, conditional] of [
       [

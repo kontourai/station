@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Decides whether a merge-queue candidate needs the hosted full regression
- * (merge-queue-regression.yml, the required `Merge-queue regression` check).
+ * (ci.yml, the required `Merge-queue regression` check).
  *
  * fast-checks runs only the affected tests its plan selects. When the plan
  * defers to a lane, `prepareChangedSelection` drops related discovery and
