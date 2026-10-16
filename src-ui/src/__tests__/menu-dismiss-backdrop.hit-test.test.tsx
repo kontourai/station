@@ -179,6 +179,20 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
+vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({
+    children,
+  }: {
+    children: import('react').ReactNode;
+  }) => children,
+  useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@kontourai/station-sdk/tool-library', () => ({
+  useOwnToolAccess: () => ({
+    data: { station: { operator: true, name: 'Fixture Station' } },
+  }),
+}));
+
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionStatusDot: () => <span className="fixture-status-dot" />,

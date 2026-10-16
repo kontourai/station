@@ -185,6 +185,20 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isDesktop: false }),
 }));
 
+vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({
+    children,
+  }: {
+    children: import('react').ReactNode;
+  }) => children,
+  useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@kontourai/station-sdk/tool-library', () => ({
+  useOwnToolAccess: () => ({
+    data: { station: { operator: true, name: 'Fixture Station' } },
+  }),
+}));
+
 vi.mock('@kontourai/station-connect', () => ({
   ConnectionStatusDot: () => <span data-dot="1" />,
 }));
