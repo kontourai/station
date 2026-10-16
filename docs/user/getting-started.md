@@ -4,6 +4,38 @@ Station is a local-first workspace for agent work. This guide covers the ways
 to run Station today, a verified macOS/Linux install when its release ring is
 published, first launch, connection setup, and routine lifecycle.
 
+## Preferences across devices
+
+Open **Settings → General → Your account** to set the approval default for your
+new Codex, Claude or Muse chats. You can also use the chat's approval picker and
+choose **Save as my … default**. Full access requires an explicit
+confirmation. An Agent's own default takes precedence over your personal
+preference; an explicit chat choice takes precedence over both. Existing chats
+and unattended jobs keep their settings. Device grants and Station policy still
+control what may execute.
+
+Appearance, chat display, answer delivery, diff preferences and model-picker
+choices follow the same signed-in person across devices connected to this
+Station. They are saved as you change them, and other clients refresh on focus
+or reconnect. **Import previous preferences** brings over this browser's older
+portable choices without replacing settings your account already has. **Use
+default** removes a personal display choice; **Use inherited default** returns
+new-chat approvals to the Agent, Station or engine setting.
+
+While offline, changes wait on this page and are not saved yet. Keep the page
+open until saving finishes. If another device changed a composite preference,
+**Reload saved preferences** shows the current choice before you try again.
+
+Microphone/output providers, push permission, haptics, keyboard behavior and
+shortcuts, screen layout and device access stay on the device. Settings labels
+which scope owns a choice. If your Device is not linked to a person, preferences
+remain local. Different Stations keep separate account preferences.
+
+The approval chip shows the known mode, including **Full access**, **Auto** or
+**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+Open the picker to see the source, the confirmed mode and whether a request takes
+effect next turn or requires restarting the session.
+
 ## Ways To Run Station Today
 
 Station is open source and under active development. Check the

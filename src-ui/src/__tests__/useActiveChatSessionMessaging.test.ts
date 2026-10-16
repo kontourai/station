@@ -21,6 +21,20 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 
+const accountPreferenceFixture = vi.hoisted(() => ({
+  status: 'account',
+  saving: false,
+  requestScope: undefined as
+    | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+    | undefined,
+  data: {
+    schemaVersion: 1,
+    values: { interactiveApprovalModes: {} as Record<string, string> },
+  },
+}));
+vi.mock('../contexts/AccountPreferencesContext', () => ({
+  useAccountPreferences: () => accountPreferenceFixture,
+}));
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
 
 class CodedOrchestrationError extends Error {
@@ -224,6 +238,8 @@ const stagedSnapshot = {
 
 describe('useSendMessage canonical ExecutionTarget path', () => {
   beforeEach(() => {
+    accountPreferenceFixture.requestScope = undefined;
+    accountPreferenceFixture.data.values.interactiveApprovalModes = {};
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
     cachedAgentCatalog = undefined;
@@ -763,7 +779,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await act(async () => {
         await result.current(sessionId, 'codex', undefined, 'go');
       });
-      return sendExecutionMessageMock.mock.calls[0][1];
+      return sendExecutionMessageMock.mock.calls.at(-1)![1];
     }
 
     it.each([
@@ -791,6 +807,81 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         'approvalMode',
       );
       expect(body).not.toHaveProperty('setApprovalMode');
+    });
+
+    it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
+          requestScope,
+        );
+        activeChatsStore.updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          orchestrationSessionStarted: true,
+          status: 'idle',
+          orchestrationStatus: 'idle',
+        });
+        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('drops another account’s inherited default while keeping explicit chat choices', async () => {
+      activeChatsStore.updateChat(sessionId, {
+        queuedApprovalMode: 'never',
+        queuedApprovalDefaultNamespace: 'other-account',
+      });
+      expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationStatus: 'idle',
+        queuedApprovalMode: 'ask',
+      });
+      expect(await bodyAfterSend()).toMatchObject({ setApprovalMode: 'ask' });
+    });
+
+    it('an Agent default overrides the personal default and an explicit chat choice overrides both', async () => {
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [
+          {
+            slug: 'codex',
+            execution: { agentConnectionId: 'codex', approvalMode: 'ask' },
+          },
+        ],
+      };
+      try {
+        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        activeChatsStore.updateChat(sessionId, {
+          queuedApprovalMode: 'auto',
+          status: 'idle',
+          orchestrationStatus: 'idle',
+        });
+        expect(await bodyAfterSend()).toMatchObject({
+          setApprovalMode: 'auto',
+        });
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
     });
 
     it('carries a queued pick as setApprovalMode, compare-and-set against the folded decision', async () => {
@@ -1207,6 +1298,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   // "Retrying may help", and the only way on is an explicit send at the
   // chat's current mode, which must not carry full access again.
   it('a refused full access is not a failure: the draft returns and the resend drops full access', async () => {
+    accountPreferenceFixture.data.values.interactiveApprovalModes = {
+      codex: 'never',
+    };
+    cachedAgentCatalog = {
+      agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+    };
     activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'never' });
     sendExecutionMessageMock.mockRejectedValueOnce(
       Object.assign(
