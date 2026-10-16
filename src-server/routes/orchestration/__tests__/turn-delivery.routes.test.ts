@@ -6,6 +6,7 @@
  * owner are the real ones.
  */
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import {
   agentId,
@@ -561,18 +562,38 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(adapter.turns).toHaveLength(1);
   });
 
-  test('a send refused before the engine took it is not-received again, so the same key can be retried', async () => {
-    const { adapter, send, lookup } = station();
+  test('a definitive refusal retains its settlement and input while a new key can start new work', async () => {
+    const { adapter, send, app, root } = station();
     adapter.nextTurn = 'refuse';
     const refused = await send('conversation:refused', 'key-refused');
     expect(refused.status).toBeGreaterThanOrEqual(400);
-    expect(await lookup('conversation:refused', 'key-refused')).toEqual({
-      outcome: 'not-received',
-      conversationId: 'conversation:refused',
-      clientTurnId: 'key-refused',
+    const inspection = await app.request(
+      '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
+    );
+    expect(inspection.status, await inspection.clone().text()).toBe(409);
+    expect(await inspection.json()).toMatchObject({
+      success: false,
+      code: 'client_turn_settled',
+      disposition: 'definitively-refused',
     });
-    const retried = await send('conversation:refused', 'key-refused');
-    expect(retried.status, await retried.clone().text()).toBe(200);
+    const repeated = await send('conversation:refused', 'key-refused');
+    expect(repeated.status).toBeGreaterThanOrEqual(400);
+    expect(adapter.turns).toHaveLength(0);
+    const db = new DatabaseSync(join(root, 'orchestration.sqlite'), { readOnly: true });
+    try {
+      const audit = db.prepare(
+        'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
+      ).get('settled');
+      expect(audit?.state).toBe('settled');
+      expect(JSON.parse(String(audit?.prepared_settlement))).toMatchObject({
+        disposition: 'definitively-refused',
+      });
+      expect(db.prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns').get()?.count).toBe(1);
+    } finally {
+      db.close();
+    }
+    const next = await send('conversation:refused', 'key-new-request');
+    expect(next.status, await next.clone().text()).toBe(200);
     expect(adapter.turns).toHaveLength(1);
   });
 
