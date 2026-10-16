@@ -69,10 +69,11 @@ class ConversationsStore {
     agentSlug: string,
     conversationId: string,
     queryClient?: any,
+    isCurrent?: () => boolean,
   ): Promise<boolean> {
     const key = `messages:${agentSlug}:${conversationId}`;
     const inFlight = this.fetching.get(key);
-    if (inFlight) {
+    if (inFlight && !isCurrent) {
       return inFlight;
     }
 
@@ -99,22 +100,24 @@ class ConversationsStore {
           }
         }
 
-        this.messages[key] = await fetchConversationMessages(
+        const messages = await fetchConversationMessages(
           agentSlug,
           conversationId,
           toolMappings,
         );
+        if (isCurrent?.() === false) return false;
+        this.messages[key] = messages;
         this.notify();
         return true;
       } catch (error) {
         log.api(`Failed to fetch messages for ${conversationId}:`, error);
         return false;
       } finally {
-        this.fetching.delete(key);
+        if (!isCurrent) this.fetching.delete(key);
       }
     })();
 
-    this.fetching.set(key, promise);
+    if (!isCurrent) this.fetching.set(key, promise);
     return promise;
   }
 

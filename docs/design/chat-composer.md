@@ -228,8 +228,12 @@ patching the chat, or publishing activity. Within the same epoch, inventory
 pruning may retire the observation token but cannot discard an imperative open
 or its chat update. Only a current observation token publishes read success or
 failure; mounting the opened chat re-establishes observation. Picker validity
-also gates focus and the final patch after awaited hydration. These commands
-add no deadline or abort signal to resolution or transcript hydration.
+also gates focus and the final patch after awaited hydration. Hydration checks
+command currency before publishing to the message cache or tab. Focusing or
+reopening a hydrating tab adopts its cleanup ownership without cancelling a
+healthy same-epoch response; a superseded command cannot remove that adopted
+tab. These commands add no deadline or abort signal to resolution or transcript
+hydration.
 Mounted revalidators and history readers retain it through their subscription. The same
 boundary resets and cancels cached inventory and sessions queries; their
 activity feed accepts only rows still held by the current query cache. Stream

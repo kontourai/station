@@ -321,14 +321,14 @@ const historyPage = {
 
 // These assertions cross the failed reader, shared items, and actual row renderer.
 describe('inbox observation freshness', () => {
-  it('a failed history read marks dock and sidebar rows last known, and a successful read restores them', async () => {
+  it('a failed history read marks dock and mobile rows last known, and a successful read restores them', async () => {
     historyRead
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue(historyPage);
     renderWithProviders(
       <>
         <HistoryReader />
-        <ProjectSidebar />
+        <MobileSwitcher />
         <DockInbox />
       </>,
     );

@@ -80,6 +80,11 @@ export function useOpenConversation(apiBase: string) {
       inventoryUpdatedAt?: string,
       /** A newly replay-seeded fork has copied history before its first execution Session. */
       hydrateMessages = false,
+      hydration?: {
+        initialized: (id: string) => void;
+        current: () => boolean;
+        cleanup: (id: string) => void;
+      },
     ): Promise<string | null> => {
       // Orchestration events are keyed by provider thread id. Reopening one of
       // those conversations must preserve that identity so recovered events,
@@ -105,13 +110,21 @@ export function useOpenConversation(apiBase: string) {
           Boolean(execution?.provider) && !hydrateMessages,
       });
 
+      hydration?.initialized(sessionId);
+
       if (execution?.provider && !hydrateMessages) {
         return sessionId;
       }
 
-      const fetched = await fetchMessages(apiBase, agentSlug, conversationId);
-      if (!fetched) {
-        removeChat(sessionId);
+      const fetched = await fetchMessages(
+        apiBase,
+        agentSlug,
+        conversationId,
+        hydration?.current,
+      );
+      if (!fetched || hydration?.current() === false) {
+        if (hydration) hydration.cleanup(sessionId);
+        else removeChat(sessionId);
         return null;
       }
 

@@ -433,7 +433,7 @@ function transport(id: string) {
 it.each(['second-open', 'focus-shortcut', 'switch-away-and-back'] as const)(
   'same epoch %s preserves healthy hydration',
   async (mode) => {
-    const h = mountOpen('ordinary-' + mode);
+    const h = mountOpen(`ordinary-${mode}`);
     const t = transport(h.id);
     try {
       const opening = openConversationForDock(
@@ -453,7 +453,11 @@ it.each(['second-open', 'focus-shortcut', 'switch-away-and-back'] as const)(
           ).toBe(true);
         else {
           if (mode === 'switch-away-and-back') {
-            activeChatsStore.initChat('other', { agentSlug: 'demo-agent' });
+            activeChatsStore.initChat('other', {
+              agentSlug: 'demo-agent',
+              agentName: 'Demo agent',
+              title: 'Other chat',
+            });
             h.dock.current.focusSession('other');
           }
           h.dock.current.focusSession(tab);
