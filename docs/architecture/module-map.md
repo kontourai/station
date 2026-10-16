@@ -110,7 +110,7 @@ trusted tenant context partition the [account store](../../src-server/services/i
 Atomic field patches preserve unrelated settings; model-picker replacements use
 a revision precondition. Migration fills missing portable choices explicitly.
 
-**Client and authority.** The [provider](../../src-ui/src/contexts/AccountPreferencesContext.tsx)
+**Client and authority.** The [provider](../../src-ui/src/contexts/AccountPreferencesProvider.tsx)
 binds requests and pending projections to their originating authority. The
 [settings facade](../../src-ui/src/lib/device-settings-store.ts) keeps account
 values out of origin-wide local storage. First-send approval choices retain their

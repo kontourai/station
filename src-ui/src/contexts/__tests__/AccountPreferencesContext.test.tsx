@@ -25,7 +25,7 @@ import {
 import { AccountPreferencesSection } from '../../views/settings/AccountPreferencesSection';
 import { SettingsPageRow } from '../../views/settings/SettingsPageRow';
 import { settingsRow } from '../../views/settings/settings-catalog';
-import { AccountPreferencesProvider } from '../AccountPreferencesContext';
+import { AccountPreferencesProvider } from '../AccountPreferencesProvider';
 import { activeChatsStore } from '../active-chats-store';
 import {
   useDeviceSettings,

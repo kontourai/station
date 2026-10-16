@@ -6,7 +6,7 @@ import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
-import { AccountPreferencesProvider } from './contexts/AccountPreferencesContext';
+import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';

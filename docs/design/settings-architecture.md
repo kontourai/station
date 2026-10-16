@@ -104,7 +104,7 @@ next-turn requests and restart-required refusal. Its picker changes this chat;
 
 Implementation owners: [account store](../../src-server/services/identity/account-preferences.ts),
 [personal route](../../src-server/routes/me/account-preferences.ts),
-[authority-bound client](../../src-ui/src/contexts/AccountPreferencesContext.tsx),
+[authority-bound client](../../src-ui/src/contexts/AccountPreferencesProvider.tsx),
 [device facade](../../src-ui/src/lib/device-settings-store.ts), and
 [first-send caller](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts).
 The earlier sections below retain their dated design context where they describe
