@@ -1474,7 +1474,7 @@
 }
 .task-room-guest .account-entry__shared-history li {
   display: grid;
-  grid-template-columns: var(--k-space-8) minmax(0, 1fr);
+  grid-template-columns: var(--k-space-6) minmax(0, 1fr);
   gap: var(--k-space-2) var(--k-space-3);
   padding: var(--k-space-3) 0;
 }
