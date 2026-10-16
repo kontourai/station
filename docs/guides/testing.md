@@ -186,6 +186,14 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Title and body edits run only the independent `PR title` check in `PR: CI`.
+It reads live metadata once using trusted base code; it never waits for source
+jobs or installs dependencies. Source pushes and base retargets still run the
+source checks. On metadata-only events the skipped source aggregate has a
+different name, so it cannot replace a failing required `fast-checks` result.
+The `PR title` context is required before queue admission. Its merge-group
+job acknowledges that admission; it does not revalidate titles after enqueue.
+
 `Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the
 current same-repository PR head and cancels queued or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
@@ -2078,11 +2086,13 @@ only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
 workflow. Older candidates that emit no adaptive outputs also retain four shards.
-Each slice runs inside the fifteen-minute budget and
+Each allocated slice runs inside the fifteen-minute budget and
 writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
-UI bundle budget. `fast-checks` fails unless every part job succeeded and
+UI bundle budget, enforced by the fresh browser startup build rather than a
+second standalone UI build. `fast-checks` requires successful plan/statics jobs
+and successful shard receipts, or independently validated empty-plan omission, and
 the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
 slice of that plan; a skipped or cancelled part, a missing receipt, or a
 receipt for another plan or head fails it. A deferred selection (the
