@@ -61,6 +61,7 @@ import type {
   EventBus,
   ServerEvent,
 } from '../../services/orchestration/event-bus.js';
+import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import {
   tenantExecutionContextAttributes,
@@ -146,6 +147,7 @@ interface StationAgentResumeCursor {
 }
 
 interface StationAgentSessionRecord {
+  conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
@@ -909,6 +911,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
           ?.mode === 'worktree',
       session,
+      conversationTitle: derivedConversationTitle(
+        stringField(input.metadata?.delegationTitle),
+      ),
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
@@ -1131,6 +1136,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                 : {}),
               options: {
                 conversationId: input.threadId,
+                ...(record.conversationTitle
+                  ? { title: record.conversationTitle }
+                  : {}),
                 ...(record.userId ? { userId: record.userId } : {}),
                 ...(record.delegation ? { delegation: record.delegation } : {}),
                 ...(modelId ? { model: modelId } : {}),
