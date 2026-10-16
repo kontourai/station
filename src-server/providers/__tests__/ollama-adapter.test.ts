@@ -1,5 +1,5 @@
-import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import { ReadableStream } from 'node:stream/web';
+import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 
@@ -627,9 +627,10 @@ describe('OllamaAdapter', () => {
       modelId: 'llama3.2',
       cwd: '/work/station',
     });
-    await adapter.sendTurn({
+    const input: ProviderSendTurnInput = {
       threadId: 'thread-override',
       input: 'Say hi',
+      invocationId: 'model-await-origin',
       modelId: 'qwen3:1.7b',
       metadata: {
         modelLaunchPlan: {
@@ -639,8 +640,30 @@ describe('OllamaAdapter', () => {
           evidence: 'catalog-pending',
         },
       },
-    });
+    };
+    const pending = adapter.sendTurn(input);
+    input.invocationId = 'mutated-before-model-lookup';
+    await pending;
     await collect;
+    const [started, content, completed, idle] = await Promise.all([
+      iterator.next(),
+      iterator.next(),
+      iterator.next(),
+      iterator.next(),
+    ]);
+    expect(started.value).toMatchObject({
+      method: 'turn.started',
+      invocationId: 'model-await-origin',
+    });
+    expect(content.value).toMatchObject({
+      method: 'content.text-delta',
+      invocationId: 'model-await-origin',
+    });
+    expect(completed.value).toMatchObject({
+      method: 'turn.completed',
+      invocationId: 'model-await-origin',
+    });
+    expect(idle.value).not.toHaveProperty('invocationId');
 
     expect(models).toEqual(['llama3.2', 'qwen3:1.7b']);
     expect(
