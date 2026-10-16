@@ -141,6 +141,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // Executes cancellation against a loopback Actions API; owns one short Node child.
+  'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes

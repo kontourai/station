@@ -186,6 +186,18 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+`Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the
+current same-repository PR head and cancels queued or running checks for older
+heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
+cancellation rechecks the PR head and run attempt. It never cancels merge-group,
+main-push, manual diagnostic or publication runs. Missing PR attribution leaves
+a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+cancellation API, so the final head read bounds rather than eliminates the race
+with a concurrent force-push. Existing per-SHA concurrency groups remain in
+place to prevent delayed events from cancelling newer-head checks (#1445).
+The sweep checks out only the workflow's trusted revision and installs no
+dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
+
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
 after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
@@ -203,6 +215,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
