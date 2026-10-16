@@ -39,7 +39,8 @@ that check in the required `fast-checks` lane against the pull request's or
 merge group's base, so a file added under `docs/adr/` fails there. Locally the
 base is `origin/main`, and only committed files are compared. Corpus is not on
 npm: both commands fetch it with `npm exec` from the commit that
-`scripts/corpus-decisions.mjs` pins, the same one the Docs kit gate uses.
+`scripts/corpus-decisions.mjs` pins. The Docs kit gate and Pages bundle use the
+reviewed Corpus source selected in their owning workflows.
 
 ## Make authority explicit
 
