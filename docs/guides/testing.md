@@ -480,10 +480,14 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
-evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
-invariants, not the global static/build chain or full corpus.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+For ordinary pull requests, run focused evidence and push through the normal
+hooks. Required hosted PR checks own broad integration feedback. Local
+`npm run ci:fast` is optional for reproducing a hosted failure or checking a
+broad change before submission; do not run it routinely in addition to the
+hooks. It remains a bounded (fifteen-minute) diagnostic: base-pinned affected
+Vitest tests followed by fixed bounded invariants, not the global static/build
+chain or full corpus. Report local and hosted results separately; an omitted
+local diagnostic is not a local pass, and required hosted checks must succeed.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
 The iOS relevance check compares pull-request and merge-queue candidates from
 their merge base to the candidate head, so changes added only to a newer base
