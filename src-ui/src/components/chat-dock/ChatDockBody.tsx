@@ -2207,6 +2207,10 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
+            approvalModeIsNewSession={
+              !activeSession?.orchestrationSessionStarted &&
+              !activeSession?.conversationId
+            }
             approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}

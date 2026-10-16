@@ -25,6 +25,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
+| [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
@@ -94,6 +95,34 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SchedulerLedger and BuiltinScheduler](#schedulerledger-and-builtinscheduler) | Own scheduled-job state, occurrence receipts, and safe unattended execution. | `src-server/services/scheduling/scheduler-ledger.ts` |
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
+
+## AccountPreferences
+
+**Purpose.** Portable display and interactive-start preferences follow one verified
+person across devices connected to the same Station. Hardware choices, grants
+and geometry remain device-local; Project and Station configuration retain their
+existing owners.
+
+**Interface and persistence.** The [contract](../../packages/contracts/src/account-preferences.ts)
+and [personal route](../../src-server/routes/me/account-preferences.ts) expose
+GET/PATCH without a caller-supplied owner. The canonical principal resolver and
+trusted tenant context partition the [account store](../../src-server/services/identity/account-preferences.ts).
+Atomic field patches preserve unrelated settings; model-picker replacements use
+a revision precondition. Migration fills missing portable choices explicitly.
+
+**Client and authority.** The [provider](../../src-ui/src/contexts/AccountPreferencesProvider.tsx)
+binds requests and pending projections to their originating authority. The
+[settings facade](../../src-ui/src/lib/device-settings-store.ts) keeps account
+values out of origin-wide local storage. First-send approval choices retain their
+account namespace through outbox replay; unknown authority holds them, while a
+different verified account retires inherited choices. Preferences grant no
+execution authority and provide no cross-Station synchronization.
+
+**Evidence route.** [HTTP persistence tests](../../src-server/routes/me/__tests__/account-preferences.test.ts),
+[real account-device admission](../../src-server/routes/system/__tests__/authority-observation.routes.test.ts),
+and [client lifetime tests](../../src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx)
+cover distinct storage, authentication and projection boundaries. They do not
+establish physical-device or hosted release behavior.
 
 ## DeploymentAuthentication
 

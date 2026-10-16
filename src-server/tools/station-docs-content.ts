@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '7f2851a1150f33348bb105f159004a2cddaf5d7e9ae1e832f1d641acf57b5c58';
+  'eba2db5988d70033e428c250ccc0742cccca1e89b59e7804757d1bd7d4203fa0';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -766,11 +766,22 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Identity, Devices, and connection paths',
     summary:
       'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.',
-    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-nativeapplicationsignaling: NativeApplicationSignaling\n- architecture-native-relay-enrollment: Native relay enrollment\n- architecture-native-relay-link-intake: Native relay link intake\n- architecture-native-relay-account-and-requests: Native relay account and requests\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
+    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-accountpreferences: AccountPreferences\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-nativeapplicationsignaling: NativeApplicationSignaling\n- architecture-native-relay-enrollment: Native relay enrollment\n- architecture-native-relay-link-intake: Native relay link intake\n- architecture-native-relay-account-and-requests: Native relay account and requests\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
     tags: ['architecture', 'connections'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
     sourceAnchor: '',
+  },
+  {
+    id: 'architecture-accountpreferences',
+    title: 'AccountPreferences',
+    summary:
+      'Interface, composition, invariants, and documented evidence for AccountPreferences.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## AccountPreferences\n\n**Purpose.** Portable display and interactive-start preferences follow one verified\nperson across devices connected to the same Station. Hardware choices, grants\nand geometry remain device-local; Project and Station configuration retain their\nexisting owners.\n\n**Interface and persistence.** The [contract](../../packages/contracts/src/account-preferences.ts)\nand [personal route](../../src-server/routes/me/account-preferences.ts) expose\nGET/PATCH without a caller-supplied owner. The canonical principal resolver and\ntrusted tenant context partition the [account store](../../src-server/services/identity/account-preferences.ts).\nAtomic field patches preserve unrelated settings; model-picker replacements use\na revision precondition. Migration fills missing portable choices explicitly.\n\n**Client and authority.** The [provider](../../src-ui/src/contexts/AccountPreferencesProvider.tsx)\nbinds requests and pending projections to their originating authority. The\n[settings facade](../../src-ui/src/lib/device-settings-store.ts) keeps account\nvalues out of origin-wide local storage. First-send approval choices retain their\naccount namespace through outbox replay; unknown authority holds them, while a\ndifferent verified account retires inherited choices. Preferences grant no\nexecution authority and provide no cross-Station synchronization.\n\n**Evidence route.** [HTTP persistence tests](../../src-server/routes/me/__tests__/account-preferences.test.ts),\n[real account-device admission](../../src-server/routes/system/__tests__/authority-observation.routes.test.ts),\nand [client lifetime tests](../../src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx)\ncover distinct storage, authentication and projection boundaries. They do not\nestablish physical-device or hosted release behavior.',
+    tags: ['architecture', 'connections', 'AccountPreferences'],
+    parentId: 'architecture-connections',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'accountpreferences',
   },
   {
     id: 'architecture-deploymentauthentication',

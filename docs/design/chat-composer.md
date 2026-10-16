@@ -349,11 +349,16 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Unavailable Providers explain their status and are disabled. They can never
   create a new invalid chat selection.
 - Favorites, recents, hidden models, and explicit order use one versioned
-  device-settings record. Provider details own favorite/hide/reorder controls;
-  the picker consumes the same record.
+  account preference on this Station when signed in, with a device-local fallback.
+  Pending actions compose locally; a stale composite replacement is refused
+  rather than dropping another device’s favorites. Provider details and the
+  picker use the same preference owner.
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
+- Startup permissions show the requested mode and source before Start. The running
+  chip shows engine-confirmed values or a pending/restart state. Personal defaults
+  apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate when needed; Model does not stretch into unused space.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain

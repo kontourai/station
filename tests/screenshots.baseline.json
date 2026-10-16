@@ -149,7 +149,7 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "5902bf2aad0182c22219dedf2bd120ef5950febe53bc28e9fa18bc05b94101be"
+      "sha256": "6793b2081fb5b9ccdb57521ad57ce2fd33f1850a6695772db9e9392af78cae03"
     },
     {
       "name": "mobile-http-consent-390",
@@ -323,7 +323,7 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "33a4a8cca636725e798a913217b84e432c70d943649985791b6f23844e93ec07"
+      "sha256": "d0c3597fb28d2a96f5daf2c4089287038479b024a522e1d714d10ef6ed14fa37"
     },
     {
       "name": "settings-info-tip",
