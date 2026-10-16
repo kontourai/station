@@ -3,13 +3,14 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { _setApiBase } from '../../../packages/sdk/src/api-core';
 import {
   openConversationForDock,
   retryActiveConversationForDock,
 } from '../components/chat-dock/conversationOpenController';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   ConversationsProvider,
   conversationsStore,
@@ -38,9 +39,6 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => actions,
-}));
-vi.mock('../contexts/active-chats-store', () => ({
-  activeChatsStore: { getSnapshot: () => ({}) },
 }));
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => null,
@@ -79,6 +77,15 @@ function resolution(
 }
 
 function mountOpen(id: string) {
+  actions.initChat.mockImplementation((id, metadata) =>
+    activeChatsStore.initChat(id, metadata),
+  );
+  actions.updateChat.mockImplementation((id, patch) =>
+    activeChatsStore.updateChat(id, patch),
+  );
+  actions.removeChat.mockImplementation((id) =>
+    activeChatsStore.removeChat(id),
+  );
   _setApiBase('http://test.local');
   const client = new QueryClient();
   const observation = workObservation(client);
@@ -91,13 +98,22 @@ function mountOpen(id: string) {
     </QueryClientProvider>
   );
   const hook = renderHook(
-    () =>
-      useChatDockActions({
-        sessions: [],
+    () => {
+      const chats = useSyncExternalStore(
+        activeChatsStore.subscribe,
+        activeChatsStore.getSnapshot,
+      );
+      return useChatDockActions({
+        sessions: Object.entries(chats).map(([id, chat]) => ({
+          id,
+          conversationId: chat.conversationId,
+          agentSlug: chat.agentSlug!,
+        })),
         agents: [{ slug: agentId('demo-agent'), name: 'Demo agent' }],
         activeSessionId: null,
         setActiveSessionId: focus,
-      }),
+      });
+    },
     { wrapper },
   );
   const effects: Parameters<typeof openConversationForDock>[1] = {
@@ -126,6 +142,7 @@ function mountOpen(id: string) {
     recovery,
     effects,
     id,
+    dock: hook.result,
     close: () => {
       hook.unmount();
       client.clear();
@@ -134,6 +151,9 @@ function mountOpen(id: string) {
 }
 
 afterEach(() => {
+  for (const id of Object.keys(activeChatsStore.getSnapshot()))
+    activeChatsStore.removeChat(id);
+  activeChatsStore.flushPendingSave();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -375,6 +395,120 @@ it('a healthy progressive 1 MiB hydration completes after 36 seconds without rec
       intervalMs: 1100,
       transferMs: Math.ceil(bytes.length / 32768) * 1100,
     });
+  } finally {
+    h.close();
+  }
+});
+
+function messageResponse() {
+  return Response.json({
+    success: true,
+    data: [
+      {
+        id: 'current-message',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Current transcript' }],
+      },
+    ],
+  });
+}
+function transport(id: string) {
+  let finish!: (r: Response) => void;
+  const fetch = vi.fn(async (url: unknown) => {
+    if (String(url).endsWith('/open'))
+      return Response.json({ success: true, data: resolution(id) });
+    if (String(url).endsWith('/messages'))
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', fetch);
+  return {
+    fetch,
+    finish: () => finish(messageResponse()),
+    ready: () => waitFor(() => expect(finish).toBeDefined()),
+  };
+}
+it.each(['second-open', 'focus-shortcut', 'switch-away-and-back'] as const)(
+  'same epoch %s preserves healthy hydration',
+  async (mode) => {
+    const h = mountOpen('ordinary-' + mode);
+    const t = transport(h.id);
+    try {
+      const opening = openConversationForDock(
+        resolution(h.id).conversation,
+        h.effects,
+      );
+      await t.ready();
+      const tab = actions.initChat.mock.calls[0]![0];
+      expect(activeChatsStore.getSnapshot()[tab]).toBeDefined();
+      await act(async () => {
+        if (mode === 'second-open')
+          expect(
+            await openConversationForDock(
+              resolution(h.id).conversation,
+              h.effects,
+            ),
+          ).toBe(true);
+        else {
+          if (mode === 'switch-away-and-back') {
+            activeChatsStore.initChat('other', { agentSlug: 'demo-agent' });
+            h.dock.current.focusSession('other');
+          }
+          h.dock.current.focusSession(tab);
+        }
+      });
+      expect(h.focus).toHaveBeenLastCalledWith(tab);
+      await act(async () => {
+        t.finish();
+        await opening;
+      });
+      expect(actions.removeChat).not.toHaveBeenCalled();
+      expect(
+        Object.values(activeChatsStore.getSnapshot()).filter(
+          (c) => c.conversationId === h.id,
+        ),
+      ).toHaveLength(1);
+      expect(activeChatsStore.getSnapshot()[tab]?.messages).toHaveLength(1);
+      expect(
+        conversationsStore.getSnapshot().messages[
+          `messages:demo-agent:${h.id}`
+        ],
+      ).toHaveLength(1);
+    } finally {
+      h.close();
+    }
+  },
+);
+
+it('epoch replacement discards old hydration without removing a reopened tab', async () => {
+  const h = mountOpen('epoch-adopted-hydration');
+  const t = transport(h.id);
+  try {
+    const opening = openConversationForDock(
+      resolution(h.id).conversation,
+      h.effects,
+    );
+    await t.ready();
+    const tab = actions.initChat.mock.calls[0]![0];
+    h.observation.resetStreamEpoch();
+    await act(async () =>
+      expect(
+        await openConversationForDock(resolution(h.id).conversation, h.effects),
+      ).toBe(true),
+    );
+    await act(async () => {
+      t.finish();
+      expect(await opening).toBe(false);
+    });
+    expect(activeChatsStore.getSnapshot()[tab]).toBeDefined();
+    expect(activeChatsStore.getSnapshot()[tab]?.messages ?? []).toEqual([]);
+    expect(
+      conversationsStore.getSnapshot().messages[`messages:demo-agent:${h.id}`],
+    ).toBeUndefined();
+    expect(actions.removeChat).not.toHaveBeenCalled();
+    expect(h.recovery).toHaveBeenCalledExactlyOnceWith(null);
   } finally {
     h.close();
   }
