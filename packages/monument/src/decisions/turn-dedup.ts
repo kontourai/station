@@ -163,9 +163,7 @@ export function decideTurnDedupRelease(
 ): TurnDedupDecision<TurnDedupSettleResult> {
   if (
     !ownsUnresolved(current, command.ownerId) ||
-    preparedDedupLinkState(current) === 'invalid' ||
-    (preparedDedupLinkState(current) === 'linked' &&
-      current.invocation === 'pending')
+    preparedDedupLinkState(current) !== 'unlinked'
   )
     return { write: NO_WRITE, result: { kind: 'stale' } };
   return { write: { kind: 'delete' }, result: { kind: 'applied' } };
