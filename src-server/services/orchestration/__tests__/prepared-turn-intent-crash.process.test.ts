@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -14,6 +14,7 @@ import type { ProviderSendTurnInput } from '../../../providers/adapter-shape.js'
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
 
 const THREAD = 'prepared-turn-owner';
 const KEY = 'prepared-turn-key';
@@ -25,6 +26,7 @@ const services: OrchestrationService[] = [];
 const stores: EventStore[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const child of children.splice(0)) {
     if (child.exitCode !== null || child.signalCode !== null) continue;
     const exited = once(child, 'exit');
@@ -34,6 +36,29 @@ afterEach(async () => {
   for (const service of services.splice(0)) await service.shutdown();
   for (const store of stores.splice(0)) store.close();
 });
+
+class LiveResumeAdapter extends GateTestAdapter {
+  readonly sent: ProviderSendTurnInput[] = [];
+  override async hasSession() {
+    return true;
+  }
+  override async listSessions() {
+    return [
+      {
+        provider: 'claude' as const,
+        threadId: THREAD,
+        status: 'ready' as const,
+        resumeCursor: { sessionId: 'prepared-native-session' },
+        createdAt: '2026-10-16T00:00:00Z',
+        updatedAt: '2026-10-16T00:00:00Z',
+      },
+    ];
+  }
+  override async sendTurn(input: ProviderSendTurnInput) {
+    this.sent.push(input);
+    return { threadId: input.threadId, turnId: 'resumed-original' };
+  }
+}
 
 async function killedOwner(
   databasePath: string,
@@ -272,32 +297,10 @@ test('explicit prepared resume reauthorizes the retained input and sends its ori
     },
     requiresFreshCompanions: false,
   });
-  class ResumeAdapter extends GateTestAdapter {
-    readonly sent: ProviderSendTurnInput[] = [];
-    override async hasSession() {
-      return true;
-    }
-    override async listSessions() {
-      return [
-        {
-          provider: 'claude' as const,
-          threadId: THREAD,
-          status: 'ready' as const,
-          resumeCursor: { sessionId: 'prepared-native-session' },
-          createdAt: '2026-10-16T00:00:00Z',
-          updatedAt: '2026-10-16T00:00:00Z',
-        },
-      ];
-    }
-    override async sendTurn(input: ProviderSendTurnInput) {
-      this.sent.push(input);
-      return { threadId: input.threadId, turnId: 'resumed-original' };
-    }
-  }
   const store = new EventStore(path);
   expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
   stores.push(store);
-  const adapter = new ResumeAdapter();
+  const adapter = new LiveResumeAdapter();
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: new EventBus(),
@@ -349,4 +352,83 @@ test('explicit prepared resume reauthorizes the retained input and sends its ori
     service.resumePreparedTurnIntent(THREAD, invocationId, owner),
   ).rejects.toThrow('unavailable');
   expect(adapter.sent).toHaveLength(1);
+}, 90_000);
+
+test('resume refuses posture tightened after validation while its real coordinator is waiting', async () => {
+  const path = join(
+    makeTempDir('prepared-posture-revocation-'),
+    'events.sqlite',
+  );
+  await killedOwner(path, 'prepared');
+  const { row } = storedIntent(path);
+  const store = new EventStore(path);
+  stores.push(store);
+  const adapter = new LiveResumeAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug() {}, warn() {} },
+  });
+  services.push(service);
+  const owner = sessionReadAuthorityFromRequest(
+    'prepared-owner',
+    undefined,
+    undefined,
+  );
+  await service.readSession(THREAD, owner);
+  let entered!: () => void;
+  const atBarrier = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = SessionExecutionCoordinator.prototype.runPreparedTurnStart;
+  const spy = vi.spyOn(
+    SessionExecutionCoordinator.prototype,
+    'runPreparedTurnStart',
+  );
+  spy.mockImplementation(async function <T>(
+    this: SessionExecutionCoordinator,
+    threadId: string,
+    operation: () => Promise<T>,
+    workspaceKey?: string,
+  ): Promise<T> {
+    entered();
+    await hold;
+    spy.mockRestore();
+    return original.call(this, threadId, operation, workspaceKey) as Promise<T>;
+  });
+  const before = new DatabaseSync(path, { readOnly: true });
+  const owners = () =>
+    before
+      .prepare(
+        'SELECT owner_id, updated_at, state FROM orchestration_turn_boundaries WHERE thread_id = ?',
+      )
+      .get(THREAD);
+  const originalOwner = owners();
+  const pending = service.resumePreparedTurnIntent(
+    THREAD,
+    String(row.invocation_id),
+    owner,
+  );
+  try {
+    await atBarrier;
+    await service.dispatch({
+      type: 'setApprovalMode',
+      threadId: THREAD,
+      approvalMode: 'ask',
+    });
+  } finally {
+    release();
+  }
+  try {
+    await expect(pending).rejects.toThrow('unavailable');
+    expect(adapter.sent).toHaveLength(0);
+    expect(owners()).toEqual(originalOwner);
+  } finally {
+    before.close();
+  }
 }, 90_000);
