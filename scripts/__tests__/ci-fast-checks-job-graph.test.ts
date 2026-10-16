@@ -34,6 +34,7 @@ import { describe, expect, test } from 'vitest';
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
 type Job = {
+  name?: string;
   needs?: string | string[];
   if?: string;
   uses?: string;
@@ -41,6 +42,8 @@ type Job = {
 };
 type Context = {
   event: string;
+  action?: string;
+  retarget?: boolean;
   repository: string;
   headRepository: string;
 };
@@ -220,6 +223,9 @@ function simulate(
       if (head === 'github') {
         const key = rest.join('.');
         if (key === 'event_name') return context.event;
+        if (key === 'event.action') return context.action ?? 'synchronize';
+        if (key === 'event.changes.base')
+          return context.retarget ? { ref: { from: 'release' } } : undefined;
         if (key === 'repository') return context.repository;
         if (key === 'event.pull_request.head.repo.full_name')
           return context.event === 'pull_request_target'
@@ -506,6 +512,92 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(aggregatorPartResults(jobs, failedLegacy)).toBe(1);
     },
   );
+
+  test.each(['title', 'body'])(
+    'a metadata-only %s edit admits only the independent title check',
+    () => {
+      const state = simulate(readJobs(), {
+        ...sameRepositoryPr,
+        action: 'edited',
+      });
+      expect(
+        [...state.results]
+          .filter(([, result]) => result !== 'skipped')
+          .map(([id]) => id),
+      ).toEqual(['pr-title']);
+      expect(state.shards.size).toBe(0);
+    },
+  );
+
+  test.each([
+    [
+      'metadata edit',
+      'pull_request_target',
+      'edited',
+      false,
+      'fast-checks (metadata only)',
+    ],
+    ['base retarget', 'pull_request_target', 'edited', true, 'fast-checks'],
+    [
+      'source update',
+      'pull_request_target',
+      'synchronize',
+      false,
+      'fast-checks',
+    ],
+    ['merge queue', 'merge_group', 'checks_requested', false, 'fast-checks'],
+  ])(
+    '%s emits the correct source check context',
+    (_label, event, action, retarget, expected) => {
+      const expression = String(readJobs()['fast-checks'].name)
+        .replace(/^\$\{\{\s*/, '')
+        .replace(/\s*\}\}$/, '');
+      const name = evaluate(
+        expression,
+        (path) => {
+          switch (path.join('.')) {
+            case 'github.event_name':
+              return event;
+            case 'github.event.action':
+              return action;
+            case 'github.event.changes.base':
+              return retarget ? { ref: { from: 'release' } } : undefined;
+            default:
+              throw new Error(`Unexpected name context: ${path.join('.')}`);
+          }
+        },
+        {},
+      );
+      expect(name).toBe(expected);
+    },
+  );
+
+  test('merge queue emits the independent title context without source dependencies', () => {
+    const state = simulate(readJobs(), {
+      ...sameRepositoryPr,
+      event: 'merge_group',
+    });
+    expect(state.results.get('pr-title')).toBe('success');
+    expect(needsOf(readJobs()['pr-title'])).toEqual([]);
+  });
+
+  test('base retarget keeps the complete source graph', () => {
+    const state = simulate(
+      readJobs(),
+      { ...sameRepositoryPr, action: 'edited', retarget: true },
+      {
+        outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+      },
+    );
+    for (const id of [
+      ...PARTS,
+      'fast-checks',
+      'pr-title',
+      'repo-scans',
+      'ui-bundle-delta',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+  });
 
   test('a fork pull request runs fork-smoke and none of the fast-checks graph', () => {
     const state = simulate(jobs, {

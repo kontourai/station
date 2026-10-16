@@ -47,8 +47,10 @@ jobs:
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
+      full-regression: \${{ steps.merge-decision.outputs.full-regression }}
       shards: \${{ steps.plan.outputs.shards }}
       shard-count: \${{ steps.plan.outputs.shard-count }}
+      empty: \${{ steps.plan.outputs.empty }}
     steps:
       - name: Detect a candidate without the sharded lane
         id: mode
@@ -351,7 +353,7 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
@@ -364,7 +366,7 @@ describe('primary CI workflow governance', () => {
     expect(aggregate?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}',
+        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}',
       'cancel-in-progress': true,
     });
     // Every part job keys its own group on the head sha (#1445), and each
@@ -387,7 +389,7 @@ describe('primary CI workflow governance', () => {
     const forkSmoke = parsedJob(workflow, 'fork-smoke');
     expect(forkSmoke?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}",
+      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}",
     );
     expect(forkSmoke?.permissions).toEqual({ contents: 'read' });
     expect(forkSmoke?.['runs-on']).toBe('ubuntu-22.04');
@@ -712,8 +714,8 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
     ],
     [
       'a part-result check that accepts any result',
-      'all(.value.result == "success")',
-      'all(.value.result != "")',
+      '.["fast-checks-statics"].result == "success"',
+      '.["fast-checks-statics"].result != ""',
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
     ],
     [

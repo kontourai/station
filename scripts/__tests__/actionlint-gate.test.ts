@@ -550,65 +550,59 @@ describe('persistent runner policy', () => {
 
   test.each([
     [
-      'fast-checks base checkout ref',
-      'fast-checks-statics',
+      'pr-title',
       (job: Record<string, unknown>) => {
-        const base = (
-          job.steps as Array<{
-            name?: unknown;
-            with?: Record<string, unknown>;
-          }>
-        ).find(
-          (step) =>
-            step.name === 'Check out base policy for pull-request title gate',
-        );
-        if (!base?.with) throw new Error('Expected title-gate base checkout.');
-        base.with.ref = `\${{ github.event.pull_request.head.sha }}`;
+        job.permissions = { contents: 'write' };
       },
     ],
     [
-      'fork-smoke candidate checkout before title gate',
-      'fork-smoke',
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        job.name = 'optional title';
+      },
+    ],
+    [
+      'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        const titleIndex = steps.findIndex(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        const candidateIndex = steps.findIndex(
-          (step, index) =>
-            index > titleIndex &&
-            String(step.uses).startsWith('actions/checkout@'),
-        );
-        [steps[titleIndex], steps[candidateIndex]] = [
-          steps[candidateIndex],
-          steps[titleIndex],
-        ];
+        (steps[0].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.head.sha }}';
       },
     ],
     [
-      'unquoted title shell interpolation',
-      'fast-checks-statics',
+      'pr-title',
       (job: Record<string, unknown>) => {
-        const titleGate = (job.steps as Array<Record<string, unknown>>).find(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        if (!titleGate) throw new Error('Expected title gate.');
-        titleGate.run =
-          'node scripts/commit-message-gate.mjs --pull-request-title $PULL_REQUEST_TITLE $PULL_REQUEST_NUMBER';
+        job.if = '${{ success() }}';
       },
     ],
-  ])('rejects pull-request title topology with %s', (_name, jobId, mutate) => {
+  ])('rejects unsafe required metadata topology in %s', (jobId, mutate) => {
     expect(
       persistentRunnerPolicyFindings(
         primaryCiJobFixture(
-          jobId,
+          jobId as string,
           mutate as (job: Record<string, unknown>) => void,
         ),
       ),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId,
-      message: `${jobId} must validate the pull-request title from exact base policy before candidate checkout`,
+      message:
+        'Required PR title check must use the exact base-only read-only topology',
+    });
+  });
+
+  test('rejects a skipped metadata source aggregate using the required fast-checks name', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          job.name = 'fast-checks';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Metadata source aggregate must not replace the required fast-checks context',
     });
   });
 
@@ -654,8 +648,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
@@ -673,8 +666,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
