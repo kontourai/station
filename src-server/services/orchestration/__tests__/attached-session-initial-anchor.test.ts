@@ -254,8 +254,9 @@ test('resumes following a rewritten transcript after its saved offset exceeds th
   const importedPrompts = () =>
     store
       .listEvents(store.readSessions()[0].threadId)
-      .filter((event) => event.method === 'turn.started')
-      .map((event) => event.payload.prompt);
+      .flatMap((event) =>
+        event.payload.method === 'turn.started' ? [event.payload.prompt] : [],
+      );
   try {
     await service.pollNow();
     expect(importedPrompts()).toEqual(['original-first', 'original-second']);
