@@ -483,10 +483,7 @@ export function ProjectTaskRoomConversation({
               followup.mutate();
             }}
           >
-            <label
-              className="task-room-message-label"
-              htmlFor="task-thread-reply"
-            >
+            <label className="sr-only" htmlFor="task-thread-reply">
               Reply to this agent
             </label>
             <textarea
