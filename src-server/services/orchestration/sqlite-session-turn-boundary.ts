@@ -149,19 +149,6 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           identityKind: 'unverified',
         };
   }
-  function sameOwner(
-    left: OwnerIdentity | undefined,
-    right: OwnerIdentity,
-  ): boolean {
-    return (
-      left !== undefined &&
-      left.id === right.id &&
-      left.pid === right.pid &&
-      left.identityKind === right.identityKind &&
-      (left.identityKind !== 'exact' ||
-        (right.identityKind === 'exact' && left.birth === right.birth))
-    );
-  }
   function exact(input: {
     boundaryId: string;
     ownerId: string;
@@ -400,7 +387,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     },
     recordDefinitiveRefusal({
       boundaryId,
-      owner: expectedOwner,
+      boundary,
+      preparedAt,
       capture,
       claim,
       settlementId,
@@ -408,43 +396,20 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     }) {
       try {
         const binding = linked(capture, claim);
-        const listed = execute({ type: 'turnBoundary.list' });
-        if (listed.kind !== 'records') return { kind: 'unavailable' };
-        const current = listed.records.find(
-          (record) => record.boundaryId === boundaryId,
-        );
-        if (!current || !sameOwner(current.owner, expectedOwner))
-          return { kind: 'stale' };
-        const key = binding.intent.dedupKey;
         const custody = claim && readPreparedClaimCustody(claim);
-        const read =
-          key === undefined
-            ? undefined
-            : execute({ type: 'turnDedup.read', key });
-        if (
-          key !== undefined &&
-          (read?.kind !== 'found' ||
-            !custody ||
-            !sameOwner(read.record.owner, custody.owner) ||
-            !read.record.preparedUpdatedAt)
-        )
+        if (binding.intent.dedupKey !== undefined && !custody)
           return { kind: 'stale' };
-        const dedup = read?.kind === 'found' ? read.record : undefined;
         const result = execute({
           type: 'turnBoundary.recordDefinitiveRefusal',
           boundaryId,
           intent: binding.intent,
-          boundary: current.settlement?.boundary ?? {
-            owner: current.owner,
-            createdAt: current.createdAt,
-            updatedAt: current.updatedAt,
-          },
-          ...(dedup?.owner && dedup.preparedUpdatedAt
+          boundary,
+          ...(custody
             ? {
                 dedup: {
-                  owner: dedup.owner,
-                  createdAt: dedup.createdAt,
-                  updatedAt: dedup.preparedUpdatedAt,
+                  owner: custody.owner,
+                  createdAt: custody.createdAt,
+                  updatedAt: preparedAt,
                 },
               }
             : {}),

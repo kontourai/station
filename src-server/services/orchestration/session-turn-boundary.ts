@@ -94,7 +94,8 @@ export interface SessionTurnBoundaryCoordinator {
   }): SessionTurnBoundaryTransition;
   recordDefinitiveRefusal?(input: {
     boundaryId: string;
-    owner: OwnerIdentity;
+    boundary: { owner: OwnerIdentity; createdAt: string; updatedAt: string };
+    preparedAt: string;
     capture: CapturedTurnIntent;
     claim?: TurnClaim;
     settlementId: string;
@@ -620,17 +621,20 @@ export function createSessionTurnBoundaryAuthority(options: {
     }
 
     let invocationStarted = false;
+    let invocationStartedAt: string | undefined;
     let invocationAttempted = false;
     let prepared:
       | {
           capture: CapturedTurnIntent;
           claim?: TurnClaim;
+          preparedAt: string;
           current?: () => boolean;
         }
       | undefined = adopted
       ? {
           capture: adopted.capture,
           claim: adopted.turnClaim,
+          preparedAt: adopted.record.updatedAt,
           current: adopted.current,
         }
       : undefined;
@@ -678,7 +682,8 @@ export function createSessionTurnBoundaryAuthority(options: {
                 });
                 // Retain even an uncertain preparation. A lost acknowledgement must
                 // never let finally remove the fence or recompose different input.
-                if (result.kind !== 'stale') prepared = { capture, claim };
+                if (result.kind !== 'stale')
+                  prepared = { capture, claim, preparedAt: at };
                 return result;
               },
             }
@@ -696,7 +701,10 @@ export function createSessionTurnBoundaryAuthority(options: {
                     now: beginNow,
                   })
                 : transition(['prepared'], 'invoking', beginNow);
-            if (transitioned.kind === 'applied') invocationStarted = true;
+            if (transitioned.kind === 'applied') {
+              invocationStarted = true;
+              invocationStartedAt = beginNow;
+            }
             return transitioned;
           });
           if (result.kind === 'applied') invocationStarted = true;
@@ -707,7 +715,7 @@ export function createSessionTurnBoundaryAuthority(options: {
               recordDefinitiveRefusal(at: string) {
                 if (
                   !prepared ||
-                  !invocationStarted ||
+                  !invocationStartedAt ||
                   (terminalIntent &&
                     terminalIntent.kind !== 'definitively-refused')
                 )
@@ -721,7 +729,11 @@ export function createSessionTurnBoundaryAuthority(options: {
                 const attempt = terminalIntent;
                 const result = options.coordinator.recordDefinitiveRefusal!({
                   boundaryId,
-                  owner: options.owner,
+                  boundary: {
+                    owner: options.owner,
+                    createdAt: record.createdAt,
+                    updatedAt: invocationStartedAt,
+                  },
                   ...prepared,
                   now: attempt.now,
                   settlementId: attempt.settlementId,

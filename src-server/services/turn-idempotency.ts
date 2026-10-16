@@ -103,7 +103,7 @@ export type TurnClaimInspection =
 
 const preparedClaimCustody = new WeakMap<
   object,
-  { key: string; owner: OwnerIdentity }
+  { key: string; owner: OwnerIdentity; createdAt: number }
 >();
 
 /** Internal host composition only; no token is attached to the public claim. */
@@ -123,7 +123,27 @@ export class TurnIdempotencyStore {
   private readonly retained = new Set<string>();
 
   bindPreparedClaim(key: string, claim: object): void {
-    preparedClaimCustody.set(claim, { key, owner: this.owner });
+    const read = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    const owner = read.kind === 'found' ? read.record.owner : undefined;
+    if (
+      read.kind !== 'found' ||
+      !owner ||
+      owner.id !== this.owner.id ||
+      owner.pid !== this.owner.pid ||
+      owner.identityKind !== this.owner.identityKind ||
+      (owner.identityKind === 'exact' &&
+        (this.owner.identityKind !== 'exact' ||
+          owner.birth !== this.owner.birth))
+    )
+      throw new Error('Prepared claim owner is unavailable.');
+    preparedClaimCustody.set(claim, {
+      key,
+      owner: this.owner,
+      createdAt: read.record.createdAt,
+    });
   }
   composePreparedClaims<T>(
     compose: (binding: { owner: OwnerIdentity; liveness: OwnerLiveness }) => T,
