@@ -26,7 +26,11 @@
 
     "src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx",
 
-    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx"
+    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx",
+
+    "src-ui/src/components/header/Header.css",
+
+    "tests/sidebar-geometry.spec.ts"
   ],
 
   "checks": [
