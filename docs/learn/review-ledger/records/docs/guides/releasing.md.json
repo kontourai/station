@@ -64,7 +64,11 @@
 
     "scripts/pr-delivery-paths.json",
 
-    ".github/workflows/delivery-validation.yml"
+    ".github/workflows/delivery-validation.yml",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs"
   ],
 
   "checks": [
