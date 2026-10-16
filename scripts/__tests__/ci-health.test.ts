@@ -335,6 +335,97 @@ describe('CI health metrics', () => {
       regressionMinutes: { count: 3, median: 2, p90: 4 },
     });
   });
+  it('attributes integration durations to the current owner per exact merge candidate, retaining every owner attempt', () => {
+    const integration = (
+      id: number,
+      name: string,
+      minutes: number,
+      overrides = {},
+    ) =>
+      run(id, {
+        name,
+        event: 'merge_group',
+        head_branch: 'queue',
+        run_started_at: at(0),
+        updated_at: at(minutes),
+        ...overrides,
+      });
+    const historical = [
+      integration(1, 'Merge-queue regression', 2, { head_sha: 'old1' }),
+      integration(2, 'Merge integration', 4, { head_sha: 'old2' }),
+      integration(3, 'PR: Merge integration', 6, { head_sha: 'old3' }),
+      integration(3, 'PR: Merge integration', 8, {
+        head_sha: 'old3',
+        run_attempt: 2,
+      }),
+    ];
+    const current = [
+      integration(4, 'PR: CI', 3, { conclusion: 'failure' }),
+      integration(4, 'PR: CI', 9, { run_attempt: 2 }),
+    ];
+    const ownerJobs = (runs: ReturnType<typeof run>[]) =>
+      runs
+        .filter((r) => r.name === 'PR: CI')
+        .map((r) =>
+          job(r.id, {
+            name: 'Merge-queue regression',
+            health_run_key: `${r.id}:${r.run_attempt}`,
+            conclusion: r.conclusion,
+            status: r.conclusion == null ? 'in_progress' : 'completed',
+            completed_at: r.conclusion == null ? null : at(16),
+          }),
+        );
+    const measure = (runs: ReturnType<typeof run>[]) =>
+      mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).regressionMinutes;
+    expect(measure(historical)).toEqual({ count: 4, median: 6, p90: 8 });
+    expect(measure(current)).toEqual({ count: 2, median: 9, p90: 9 });
+    const transitional = [
+      integration(5, 'PR: Merge integration', 40),
+      ...current,
+    ];
+    expect(measure(transitional)).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(measure([...current, ...historical])).toEqual({
+      count: 6,
+      median: 6,
+      p90: 9,
+    });
+    expect(
+      measure([
+        integration(6, 'PR: CI', 50, { event: 'workflow_dispatch' }),
+        integration(7, 'Diagnostic: Merge integration', 55, {
+          event: 'workflow_dispatch',
+        }),
+        ...historical,
+      ]),
+    ).toEqual({ count: 4, median: 6, p90: 8 });
+    // An old PR: CI run without the integration job must not mask legacy timing.
+    expect(
+      mergeMetrics(transitional, [], {}, at(0), at(60)).regressionMinutes,
+    ).toEqual({
+      count: 1,
+      median: 40,
+      p90: 40,
+    });
+    // A job from a different attempt cannot establish this attempt's ownership.
+    expect(
+      mergeMetrics([current[0]], ownerJobs([current[1]]), {}, at(0), at(60))
+        .regressionMinutes.count,
+    ).toBe(0);
+    for (const conclusion of ['cancelled', null]) {
+      const runs = [
+        integration(8, 'PR: Merge integration', 40),
+        integration(9, 'PR: CI', 10, { conclusion }),
+      ];
+      expect(measure(runs)).toEqual({ count: 0, median: null, p90: null });
+      expect(
+        mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).groupsCancelled,
+      ).toBe(conclusion === 'cancelled' ? 1 : 0);
+      expect(
+        buildSnapshot({ ...emptyData(), runs, jobs: ownerJobs(runs) }, options)
+          .incomplete,
+      ).toBe(conclusion == null);
+    }
+  });
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
       run(i, {

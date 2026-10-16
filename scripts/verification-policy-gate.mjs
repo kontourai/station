@@ -225,7 +225,7 @@ export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
   'Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
-  'Nightly and tagged preview and stable promotions',
+  'Scheduled main qualification and tagged Preview/Stable',
   'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);

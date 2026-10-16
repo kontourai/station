@@ -1,0 +1,13 @@
+{
+  "revision": "7716b2d71d60494b975f406942b8e884160957eb",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed canonical guide delta for mutable title status: no change to focused source tests, fixtures, source authority or evidence requirements in this scope. Title metadata publication uses a separately restricted trusted workflow; six source checks remain required.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed canonical guide delta for mutable title status: no change to focused source tests, fixtures, source authority or evidence requirements in this scope. Title metadata publication uses a separately restricted trusted workflow; six source checks remain required.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed canonical guide delta for mutable title status: no change to focused source tests, fixtures, source authority or evidence requirements in this scope. Title metadata publication uses a separately restricted trusted workflow; six source checks remain required.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed canonical guide delta for mutable title status: no change to focused source tests, fixtures, source authority or evidence requirements in this scope. Title metadata publication uses a separately restricted trusted workflow; six source checks remain required.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -7,7 +7,7 @@ import {
   inspectCommitFromGit,
   normalizeDeployLedgerHead,
 } from './normalize-deploy-ledger-head.mjs';
-import { findQualification, listGithub } from './qualification-evidence.mjs';
+import { github, listGithub } from './qualification-evidence.mjs';
 
 export function runnerProfile(env = process.env) {
   const name = env.STATION_QUALIFICATION_RUNNER_PROFILE || 'free';
@@ -55,7 +55,9 @@ export function runnerProfile(env = process.env) {
       : name === 'free'
         ? 12
         : 20;
-  const background = 3 + ordinary + heavy;
+  // Static, exclusive corpora and Android viewport jobs form one chain in
+  // full-regression.yml. Only one of those three can overlap the matrices.
+  const background = 1 + ordinary + heavy;
   if (
     ordinary > 4 ||
     heavy > 2 ||
@@ -148,11 +150,8 @@ export async function qualificationAdmission(env = process.env) {
       { env: repositoryEnv },
     );
     for (const run of runs) {
-      if (
-        repository === env.GITHUB_REPOSITORY &&
-        String(run.id) === String(env.GITHUB_RUN_ID)
-      )
-        continue;
+      // The caller can share its run with active CI siblings. Count them and
+      // the admission runner itself; an extra reserved slot is conservative.
       const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
         env: repositoryEnv,
       });
@@ -182,9 +181,10 @@ export async function qualificationAdmission(env = process.env) {
 // qualifications that reached this step (2026-10-05..13, failed runs
 // included), the slowest start before it was 29 minutes and the slowest
 // finish after it was 72, so 29 + 15 + 72 = 116 concludes inside the queue's
-// window even when both worst cases coincide. Each observation costs a few
-// dozen API calls, so the ceiling also bounds that spend. The wait never
-// relaxes the capacity rule; it only re-observes it.
+// window even when both worst cases coincide. Those observations predate
+// ancillary-job serialization and do not bound the current critical path.
+// Each observation costs a few dozen API calls, so the ceiling also bounds
+// that spend. The wait never relaxes the rule; it only re-observes it.
 export const ADMISSION_WAIT_CEILING_MS = 15 * 60_000;
 export const ADMISSION_OBSERVE_INTERVAL_MS = 60_000;
 
@@ -282,13 +282,15 @@ export function finalPublicationDecision({
   source,
   ledger,
   ancestor,
-  qualification,
+  sourceGate,
   sourceCandidates = {},
   now = Date.now(),
   intervalMs = publicationInterval(),
 }) {
-  if (!qualification)
-    throw new Error('exact-source qualification unavailable or invalidated');
+  if (!sourceGate)
+    throw new Error(
+      'exact-source Nightly source gate unavailable or invalidated',
+    );
   const native = ledger.filter((row) =>
     ['nightly-android', 'nightly-desktop'].includes(row.channel),
   );
@@ -350,10 +352,7 @@ async function publisherAdmission(env = process.env) {
   ).trim();
   if (recoveryLock)
     throw new Error('native publication is held by the recovery lock');
-  const qualification = await findQualification(source, {
-    ...env,
-    GITHUB_RUN_ID: '0',
-  });
+  const sourceGate = await nightlySourceGate(source, env);
   const ledger = readLedgerFromGit(process.cwd(), 'origin/main');
   const sourceCandidates = Object.fromEntries(
     ['nightly-android', 'nightly-desktop'].map((channel) => {
@@ -374,7 +373,7 @@ async function publisherAdmission(env = process.env) {
   );
   const decision = finalPublicationDecision({
     source,
-    qualification,
+    sourceGate,
     ledger,
     sourceCandidates,
     ancestor: (prior, candidate) => {
@@ -395,11 +394,38 @@ async function publisherAdmission(env = process.env) {
     decision.androidNeeded = true;
     decision.desktopNeeded = true;
   }
-  console.log(JSON.stringify({ source, qualification, ...decision }));
+  console.log(JSON.stringify({ source, sourceGate, ...decision }));
   if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT required');
   appendFileSync(
     env.GITHUB_OUTPUT,
     `android_needed=${decision.androidNeeded}\ndesktop_needed=${decision.desktopNeeded}\n`,
+  );
+}
+
+/** Verify the actual Nightly run, not a caller-supplied success string. */
+export async function nightlySourceGate(source, env = process.env) {
+  if (!/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '')) return false;
+  const run = await github(`actions/runs/${env.GITHUB_RUN_ID}`, { env });
+  if (
+    !/^[0-9a-f]{40}$/.test(source ?? '') ||
+    run.head_sha !== source ||
+    run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
+    run.head_branch !== 'main' ||
+    String(run.id) !== String(env.GITHUB_RUN_ID) ||
+    !['in_progress', 'queued'].includes(run.status) ||
+    run.conclusion != null ||
+    run.path !== '.github/workflows/nightly.yml' ||
+    !['schedule', 'workflow_dispatch'].includes(run.event)
+  )
+    return false;
+  const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', { env });
+  const gates = jobs.filter(
+    (job) => job.name === '1 · Source gate (lint, typecheck, browser smoke)',
+  );
+  return (
+    gates.length === 1 &&
+    gates[0].status === 'completed' &&
+    gates[0].conclusion === 'success'
   );
 }
 
@@ -418,8 +444,8 @@ export async function reservationRecovery(source, env = process.env) {
     env.GITHUB_REPOSITORY,
   );
   if (!disposition.recover) return disposition;
-  // An actual completed qualification gate separates a delivery failure from a
-  // source failure. Never recover a reserved source merely because its run red.
+  // A completed source gate separates delivery failure from source failure.
+  // Historical qualification-driven runs retain their full-gate requirement.
   for (const run of previous) {
     if (
       run.head_sha !== source ||
@@ -438,13 +464,16 @@ export async function reservationRecovery(source, env = process.env) {
     });
     const qualified = jobs.some(
       (job) =>
-        job.name.endsWith('Full source qualification') &&
+        (job.name.endsWith('Full source qualification') ||
+          (run.path === '.github/workflows/nightly.yml' &&
+            job.name === '1 · Source gate (lint, typecheck, browser smoke)' &&
+            job.status === 'completed')) &&
         job.conclusion === 'success',
     );
     if (!qualified)
       return {
         recover: false,
-        reason: 'reserved source lacks a passing qualification gate',
+        reason: 'reserved source lacks a passing source gate',
       };
   }
   return disposition;

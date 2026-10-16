@@ -615,3 +615,39 @@ compatible version.
 | `@opentelemetry/core@2.0.1` and `2.1.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf) | Nested under the current `@voltagent/core@2.9.2` and `@voltagent/logger@2.0.2`; the root's independently managed OpenTelemetry graph resolves `2.10.0`. The VoltAgent package is at its published current version, and `npm audit` offers no compatible fix. | VoltAgent release notes and `npm audit --omit=dev --json` |
 | `uuid@9.0.1` | [`GHSA-w5hq-g745-h8pq`](https://github.com/advisories/GHSA-w5hq-g745-h8pq) | Nested only under the current `@voltagent/core@2.9.2`; a root override would cross the framework's private dependency boundary, and `npm audit` offers no compatible fix. | VoltAgent release notes and `npm audit --omit=dev --json` |
 | `@ai-sdk/provider-utils@3.0.30` | [`GHSA-866g-f22w-33x8`](https://github.com/advisories/GHSA-866g-f22w-33x8) | The six propagated low records resolve through VoltAgent's nested AI SDK provider graph. A root override cannot safely replace that framework-private 3.x dependency; Station keeps the affected provider path behind authenticated runtime entrypoints and existing request-size limits. | VoltAgent and AI SDK release notes plus `npm audit --omit=dev --json` |
+
+## Title policy publication
+
+The trusted title-status job receives `statuses:write` solely for title policy.
+The isolated source-policy publisher below is a separate exception; jobs that
+execute candidate code retain read-only tokens. The title job checks out the
+running workflow revision for PR events and the protected base for merge groups;
+candidate code never receives this token. It writes only `PR title policy` on
+the exact event head, leaving source-check contexts untouched.
+
+Pending is published before setup. Validation or publication errors attempt a
+failure status; once pending is accepted, rejected terminal writes leave it
+pending. If both the initial pending and fallback writes are rejected, the
+client cannot revoke an earlier remote success. The diagnostic job reports the
+error; it does not claim that remote admission failed closed. An operator hold
+is needed during such a complete publication outage.
+
+
+## Source policy publication
+
+The isolated [source-policy workflow](../../.github/workflows/source-verification-policy.yml)
+also receives `statuses:write`. It checks out trusted policy, never candidate
+code, and publishes only `Source verification policy` from existing GitHub run
+and job evidence. `PR: CI` calls it after core source checks and before optional
+delivery work for source-changing PR events. Lifecycle reconciliation handles
+requested, in-progress and completed source runs; metadata start events allocate
+no publisher, while metadata completion can reconcile existing proof.
+
+The policy binds the exact head, repository and every current main-target PR
+sharing that head. It checks recorded base ancestry and the current run attempt;
+new main commits do not by themselves invalidate ancestral source evidence.
+Missing, unfinished, failed, cancelled or divergent proof cannot borrow an older
+success. Reconciliation launches no candidate tests. Keep the legacy required
+`fast-checks` context until real publisher statuses are verified, then follow
+[the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
+This source status is not full release qualification.

@@ -11,9 +11,12 @@ import {
   ADMISSION_OBSERVE_INTERVAL_MS,
   ADMISSION_WAIT_CEILING_MS,
   finalPublicationDecision,
+  nightlySourceGate,
   main as pipelineMain,
   publicationInterval,
+  qualificationAdmission,
   recoveryDisposition,
+  reservationRecovery,
   runnerProfile,
 } from '../release-pipeline.mjs';
 
@@ -42,7 +45,7 @@ describe('release pipeline admission', () => {
       name: 'free',
       ordinary: 2,
       heavy: 1,
-      background: 6,
+      background: 4,
       total: 20,
     });
     expect(
@@ -50,7 +53,7 @@ describe('release pipeline admission', () => {
         STATION_QUALIFICATION_RUNNER_PROFILE: 'expanded',
         STATION_HOSTED_TOTAL_SLOTS: '40',
       }),
-    ).toMatchObject({ ordinary: 4, heavy: 2, background: 9 });
+    ).toMatchObject({ ordinary: 4, heavy: 2, background: 7 });
     expect(
       runnerProfile({
         STATION_QUALIFICATION_RUNNER_PROFILE: 'custom',
@@ -58,7 +61,7 @@ describe('release pipeline admission', () => {
         STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: '1',
         STATION_INTEGRATION_RESERVE: '12',
       }),
-    ).toMatchObject({ ordinary: 1, heavy: 1, background: 5 });
+    ).toMatchObject({ ordinary: 1, heavy: 1, background: 3 });
     expect(() =>
       runnerProfile({ STATION_QUALIFICATION_RUNNER_PROFILE: 'custom' }),
     ).toThrow();
@@ -101,7 +104,7 @@ describe('release pipeline admission', () => {
           source,
           ledger: [row(channel)],
           ancestor: () => true,
-          qualification: '42',
+          sourceGate: '42',
           now,
         }),
       ).toEqual(expected);
@@ -113,7 +116,7 @@ describe('release pipeline admission', () => {
         source,
         ledger: [row('nightly-desktop', prior)],
         ancestor: () => false,
-        qualification: '42',
+        sourceGate: '42',
         now,
       }),
     ).toThrow(/rollback/);
@@ -122,10 +125,10 @@ describe('release pipeline admission', () => {
         source,
         ledger: [],
         ancestor: () => true,
-        qualification: '',
+        sourceGate: '',
         now,
       }),
-    ).toThrow(/qualification/);
+    ).toThrow(/source gate/);
   });
   it('rechecks cadence under the delivery lock after another source shipped', () => {
     expect(() =>
@@ -138,18 +141,19 @@ describe('release pipeline admission', () => {
           },
         ],
         ancestor: () => true,
-        qualification: '42',
+        sourceGate: '42',
         now,
       }),
     ).toThrow(/cadence/);
   });
 });
 
-it('the real CLI observes configured peer jobs before admitting fanout and retains its snapshot', async () => {
+it('admission observes peer and same-run jobs, and the real CLI retains its snapshot', async () => {
   const makeTempDir = trackTempDirs();
   const root = makeTempDir('station-release-admission-');
   const output = join(root, 'output');
   let count = 0;
+  let sameRunCount = 0;
   let failing = false;
   const server = createServer((request, response) => {
     if (failing) {
@@ -162,12 +166,23 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       JSON.stringify(
         request.url?.includes('/jobs')
           ? {
-              jobs: Array.from({ length: count }, () => ({
-                status: 'in_progress',
-                labels: ['ubuntu-22.04'],
-              })),
+              jobs: Array.from(
+                {
+                  length: request.url.includes('/runs/99/')
+                    ? sameRunCount
+                    : count,
+                },
+                () => ({
+                  status: 'in_progress',
+                  labels: ['ubuntu-22.04'],
+                }),
+              ),
             }
-          : { workflow_runs: [{ id: 42 }] },
+          : {
+              workflow_runs: request.url?.includes('/owner/station/')
+                ? [{ id: 42 }, { id: 99 }]
+                : [{ id: 42 }],
+            },
       ),
     );
   });
@@ -197,6 +212,12 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       repositories: ['owner/station', 'owner/peer'],
     });
     expect(readFileSync(output, 'utf8')).toContain('admitted=true');
+    count = 7;
+    sameRunCount = 4;
+    expect(await qualificationAdmission(env)).toMatchObject({
+      occupied: 18,
+      admitted: false,
+    });
     // An unobservable repository fails closed at once; it is never waited on.
     writeFileSync(output, '');
     failing = true;
@@ -305,7 +326,7 @@ it('retains a just-published native platform across a ledger-only candidate with
           timestampUtc: new Date(now - 1000).toISOString(),
         },
       ],
-      qualification: '42',
+      sourceGate: '42',
       ancestor: () => true,
       now,
     }),
@@ -323,7 +344,7 @@ it('checks the current provider pointers without requiring retired ledger histor
           timestampUtc: '2020-01-01T00:00:00Z',
         },
       ],
-      qualification: '42',
+      sourceGate: '42',
       ancestor: () => false,
       now,
     }),
@@ -336,7 +357,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     repositories: ['owner/station'],
     occupied,
     macosOccupied,
-    admitted: occupied + 6 <= 20 && macosOccupied < 5,
+    admitted: occupied + 4 <= 20 && macosOccupied < 5,
     observedAt: '2026-10-12T09:26:20.800Z',
     scope:
       'configured repository snapshot; omitted organization workloads are not certified',
@@ -397,7 +418,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     // The production clock and sleep run on fake timers: no real waiting.
     vi.useFakeTimers();
     const env = workflowFiles();
-    const observations = [capacity(18, 4), capacity(15, 5), capacity(14, 4)];
+    const observations = [capacity(18, 4), capacity(15, 5), capacity(16, 4)];
     const observe = vi.fn(async () => {
       const next = observations.shift();
       if (!next) throw new Error('observed past admission');
@@ -449,7 +470,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
         },
       }),
     ).rejects.toThrow(
-      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
+      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 4 exceeds total 20, or macOS occupied 5 is not below 5/,
     );
     expect(observe).toHaveBeenCalledTimes(15);
     // The last re-observation starts exactly at the ceiling, never past it.
@@ -490,4 +511,116 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
       'Qualification admission failed: GitHub GET actions/runs: HTTP 502',
     );
   });
+});
+
+it('admits only the trusted current Nightly run and its completed source usability gate', async () => {
+  let run = {
+    ...producer,
+    id: 42,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+    status: 'in_progress',
+    conclusion: null as string | null,
+  };
+  let jobs = [
+    {
+      name: '1 · Source gate (lint, typecheck, browser smoke)',
+      status: 'completed',
+      conclusion: 'success',
+    },
+  ];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(
+      JSON.stringify(request.url?.includes('/jobs') ? { jobs } : run),
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect(await nightlySourceGate(source, env)).toBe(true);
+    const original = { ...run };
+    for (const override of [
+      { head_sha: prior },
+      { head_repository: { full_name: 'foreign/repo' } },
+      { head_branch: 'feature' },
+      { path: '.github/workflows/ci.yml' },
+      { event: 'pull_request' },
+      { status: 'completed', conclusion: 'failure' },
+      { status: 'completed', conclusion: 'cancelled' },
+      { id: 43 },
+    ]) {
+      run = { ...original, ...override };
+      expect(await nightlySourceGate(source, env)).toBe(false);
+    }
+    run = original;
+    const good = jobs[0];
+    for (const rejected of [
+      [],
+      [good, good],
+      [{ ...good, status: 'in_progress' }],
+      [{ ...good, conclusion: 'failure' }],
+      [{ ...good, conclusion: 'cancelled' }],
+      [{ ...good, conclusion: 'skipped' }],
+    ]) {
+      jobs = rejected;
+      expect(await nightlySourceGate(source, env)).toBe(false);
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it('recovers terminal Nightly delivery only after its actual source gate succeeded', async () => {
+  const run = {
+    ...producer,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+  };
+  let jobs = [
+    {
+      name: '1 · Source gate (lint, typecheck, browser smoke)',
+      status: 'completed',
+      conclusion: 'success',
+    },
+  ];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(
+      JSON.stringify(
+        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: [run] },
+      ),
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect((await reservationRecovery(source, env)).recover).toBe(true);
+    const good = jobs[0];
+    for (const rejected of [
+      [],
+      [{ ...good, status: 'in_progress' }],
+      [{ ...good, conclusion: 'failure' }],
+      [{ ...good, conclusion: 'cancelled' }],
+    ]) {
+      jobs = rejected;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
 });

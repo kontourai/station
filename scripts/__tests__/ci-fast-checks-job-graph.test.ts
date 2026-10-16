@@ -34,6 +34,7 @@ import { describe, expect, test } from 'vitest';
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
 type Job = {
+  name?: string;
   needs?: string | string[];
   if?: string;
   uses?: string;
@@ -41,6 +42,8 @@ type Job = {
 };
 type Context = {
   event: string;
+  action?: string;
+  retarget?: boolean;
   repository: string;
   headRepository: string;
 };
@@ -220,6 +223,9 @@ function simulate(
       if (head === 'github') {
         const key = rest.join('.');
         if (key === 'event_name') return context.event;
+        if (key === 'event.action') return context.action ?? 'synchronize';
+        if (key === 'event.changes.base')
+          return context.retarget ? { ref: { from: 'release' } } : undefined;
         if (key === 'repository') return context.repository;
         if (key === 'event.pull_request.head.repo.full_name')
           return context.event === 'pull_request_target'
@@ -385,6 +391,64 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  test.each(['', 'true', 'garbled'])(
+    'queue decision %s fails closed without another planner',
+    (decision) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {
+          outputs: {
+            'fast-checks-plan': {
+              legacy: 'false',
+              'full-regression': decision,
+            },
+          },
+        },
+      );
+      expect(state.results.get('merge-integration-full-regression')).toBe(
+        'success',
+      );
+    },
+  );
+
+  test('a failed plan still runs full regression even if it wrote false before failing', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      {
+        outputs: {
+          'fast-checks-plan': { legacy: 'false', 'full-regression': 'false' },
+        },
+        outcomes: { 'fast-checks-plan': 'failure' },
+      },
+    );
+    expect(state.results.get('merge-integration-full-regression')).toBe(
+      'success',
+    );
+  });
+
+  test('empty selections allocate no shard runner while retaining a required verdict', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outputs: {
+        'fast-checks-plan': {
+          legacy: 'false',
+          empty: 'true',
+          shards: '[1]',
+          'shard-count': '1',
+        },
+      },
+    });
+    expect(state.results.get('fast-checks-shard')).toBe('skipped');
+    expect(state.shards.has('fast-checks-shard')).toBe(false);
+    expect(aggregatorPartResults(jobs, state)).toBe(0);
+    const failed = simulate(jobs, sameRepositoryPr, {
+      outputs: { 'fast-checks-plan': { legacy: 'false', empty: 'true' } },
+      outcomes: { 'fast-checks-plan': 'failure' },
+    });
+    expect(aggregatorPartResults(jobs, failed)).toBe(1);
+  });
+
   test.each([1, 2, 4])(
     'the base verdict accepts %i planned legs on PRs and merge groups',
     (count) => {
@@ -448,6 +512,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(aggregatorPartResults(jobs, failedLegacy)).toBe(1);
     },
   );
+
+  test.each(['title', 'body'])(
+    'a metadata-only %s edit admits only the independent title check',
+    () => {
+      const state = simulate(readJobs(), {
+        ...sameRepositoryPr,
+        action: 'edited',
+      });
+      expect(
+        [...state.results]
+          .filter(([, result]) => result !== 'skipped')
+          .map(([id]) => id),
+      ).toEqual(['pr-title']);
+      expect(state.shards.size).toBe(0);
+    },
+  );
+
+  test('merge queue emits the independent title context without source dependencies', () => {
+    const state = simulate(readJobs(), {
+      ...sameRepositoryPr,
+      event: 'merge_group',
+    });
+    expect(state.results.get('pr-title')).toBe('success');
+    expect(needsOf(readJobs()['pr-title'])).toEqual([]);
+  });
+
+  test('base retarget keeps the complete source graph', () => {
+    const state = simulate(
+      readJobs(),
+      { ...sameRepositoryPr, action: 'edited', retarget: true },
+      {
+        outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+      },
+    );
+    for (const id of [
+      ...PARTS,
+      'fast-checks',
+      'pr-title',
+      'repo-scans',
+      'ui-bundle-delta',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+  });
 
   test('a fork pull request runs fork-smoke and none of the fast-checks graph', () => {
     const state = simulate(jobs, {
@@ -602,5 +709,51 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       )
       .map(([id]) => id);
     expect(exposed).toEqual([]);
+  });
+});
+
+describe('delivery work waits for required PR feedback', () => {
+  const jobs = readJobs();
+  const outputs = { 'delivery-plan': { install: 'true' } };
+  test.each(['success', 'failure', 'cancelled', 'skipped'] as const)(
+    'same-repository fast-checks %s controls expensive delivery work',
+    (result) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'fast-checks': result },
+        outputs,
+      });
+      expect(state.results.get('delivery-validation')).toBe(
+        result === 'success' ? 'success' : 'skipped',
+      );
+    },
+  );
+  test('a successful fork smoke still admits affected delivery proof', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('fast-checks')).toBe('skipped');
+    expect(state.results.get('delivery-validation')).toBe('success');
+  });
+  test('metadata changes and an empty affected plan allocate no delivery workers', () => {
+    expect(
+      simulate(
+        jobs,
+        { ...sameRepositoryPr, action: 'edited' },
+        { outputs },
+      ).results.get('delivery-validation'),
+    ).toBe('skipped');
+    expect(
+      simulate(jobs, sameRepositoryPr).results.get('delivery-validation'),
+    ).toBe('skipped');
+  });
+  test('failed delivery planning does not become an empty successful result', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'delivery-plan': 'failure' },
+      outputs,
+    });
+    expect(state.results.get('delivery-plan')).toBe('failure');
+    expect(state.results.get('delivery-validation')).toBe('skipped');
   });
 });
