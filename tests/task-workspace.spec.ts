@@ -196,6 +196,9 @@ test.describe
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
       await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
@@ -286,6 +289,9 @@ test.describe
         'task-secondary',
       );
       await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);

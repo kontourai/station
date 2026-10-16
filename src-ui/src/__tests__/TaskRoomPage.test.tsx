@@ -214,29 +214,80 @@ test('results presents kept answers, file outputs and pull requests in a single 
   expect(within(list).getByText('team/app #41')).toBeTruthy();
 });
 
-test('rail uses the named sections and falls back to description or a readable excerpt', () => {
-  mocks.brief =
-    '## Notes\n- [ ] Not a completion item\n\n## Done when\n- [x] The accepted goal is met';
-  const view = mount(
-    <TaskRoomRail
-      task={{ ...task, description: 'Description goal' }}
-      projectSlug="project"
-      onBrief={vi.fn()}
-      onResults={vi.fn()}
-    />,
-  );
-  expect(screen.getByText('Description goal')).toBeTruthy();
-  expect(screen.queryByText('Not a completion item')).toBeNull();
-  expect(screen.getByText('The accepted goal is met')).toBeTruthy();
-  view.unmount();
-  mocks.brief = 'An unstructured plan still has useful context.';
+test.each([
+  [
+    '## Goal\nSeeded goal.\n\n## Done when\n- Plain criterion\n+ Another criterion\n3. Numbered criterion\n\n## Suggested first step\nDo not show this step.',
+    'Seeded goal.',
+  ],
+  [
+    'Prose goal.\n\n## Done when\n- Plain criterion\n+ Another criterion\n3. Numbered criterion\n\n## Notes\nDo not show these notes.',
+    'Prose goal.',
+  ],
+])(
+  'rail projects only the saved goal and neutral completion bullets (%s)',
+  (source, goal) => {
+    mocks.brief = source;
+    mount(
+      <TaskRoomRail
+        task={{ ...task, description: 'Stale description' }}
+        projectSlug="project"
+        onBrief={vi.fn()}
+        onResults={vi.fn()}
+      />,
+    );
+    const goalSection = screen
+      .getByRole('heading', { name: 'Goal' })
+      .closest('section')!;
+    expect(within(goalSection).getByText(goal)).toBeTruthy();
+    expect(goalSection.textContent).not.toContain('Done when');
+    expect(goalSection.textContent).not.toContain('Suggested first step');
+    expect(screen.queryByText('Stale description')).toBeNull();
+    const completion = screen
+      .getByRole('heading', { name: 'Done when' })
+      .closest('section')!;
+    expect(within(completion).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(completion).getByText('Plain criterion')).toBeTruthy();
+    expect(within(completion).getByText('Another criterion')).toBeTruthy();
+    expect(within(completion).getByText('Numbered criterion')).toBeTruthy();
+    expect(within(completion).queryByRole('img')).toBeNull();
+  },
+);
+
+test('rail parses the description only when the document is empty, with mixed checked and unchecked markers', () => {
+  mocks.brief = '';
   mount(
     <TaskRoomRail
-      task={task}
+      task={{
+        ...task,
+        description:
+          '## Goal\nDescription goal.\n## Done when\n1. [X] Complete\n+ [ ] Pending\n* Neutral\n## Suggested first step\nExcluded step',
+      }}
       projectSlug="project"
       onBrief={vi.fn()}
       onResults={vi.fn()}
     />,
   );
-  expect(screen.getAllByText(mocks.brief).length).toBeGreaterThan(0);
+  expect(screen.getByText('Description goal.')).toBeTruthy();
+  expect(screen.getByLabelText('Checked')).toBeTruthy();
+  expect(screen.getByLabelText('Unchecked')).toBeTruthy();
+  expect(screen.getByText('Neutral')).toBeTruthy();
+  expect(screen.queryByText('Excluded step')).toBeNull();
+});
+
+test('a heading-only document does not substitute the description or later sections for a goal', () => {
+  mocks.brief = '## Notes\nNot the goal\n## Done when\n- [x] Complete';
+  mount(
+    <TaskRoomRail
+      task={{ ...task, description: 'Stale description' }}
+      projectSlug="project"
+      onBrief={vi.fn()}
+      onResults={vi.fn()}
+    />,
+  );
+  const goal = screen
+    .getByRole('heading', { name: 'Goal' })
+    .closest('section')!;
+  expect(goal.textContent).toContain('Add the goal');
+  expect(goal.textContent).not.toContain('Stale description');
+  expect(goal.textContent).not.toContain('Not the goal');
 });

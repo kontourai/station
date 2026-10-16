@@ -549,8 +549,8 @@ describe('TaskWorkspaceView', () => {
     );
     const { rerender } = render(view());
     expect(
-      screen.getByRole('region', { name: 'Task room workspace' }),
-    ).toBeTruthy();
+      screen.queryByRole('region', { name: 'Task room workspace' }),
+    ).toBeNull();
 
     roomDiscoveryResult = {
       data: { kind: 'unavailable' },
@@ -559,8 +559,8 @@ describe('TaskWorkspaceView', () => {
     rerender(view());
 
     expect(
-      screen.getByRole('region', { name: 'Task room workspace' }),
-    ).toBeTruthy();
+      screen.queryByRole('region', { name: 'Task room workspace' }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
@@ -1222,6 +1222,7 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
+    expect(screen.queryByTestId('task-basis-pane')).toBeNull();
     const open = await screen.findByRole('button', { name: 'Open Basis' });
     await waitFor(() => expect(request).toHaveBeenCalled());
     await act(async () => {});
@@ -1662,7 +1663,13 @@ describe('TaskWorkspaceView', () => {
     await act(async () => {
       await firstOptions.onSuccess(taskOutput());
     });
-    expect(screen.getByText(/Kept “app.ts”/)).toBeTruthy();
+    const details = screen.getByRole('tabpanel', { name: 'Details' });
+    expect(within(details).getByText(/Kept “app.ts”/)).toBeTruthy();
+    expect(
+      screen
+        .getByRole('tab', { name: 'Details' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
     expect(taskOutputsResult.refetch).toHaveBeenCalledTimes(1);
   });
 

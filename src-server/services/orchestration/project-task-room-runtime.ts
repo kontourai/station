@@ -771,6 +771,8 @@ export class ProjectTaskRoomRuntime {
         // retains exact Session/turn identity without a new history storage format.
         const fits = (value: string) =>
           value.length <= PROJECT_TASK_ROOM_LIMITS.stringBytes &&
+          Buffer.byteLength(value, 'utf8') <=
+            PROJECT_TASK_ROOM_LIMITS.stringBytes &&
           Buffer.byteLength(
             JSON.stringify({ kind: 'human-message', text: value }),
             'utf8',
@@ -779,17 +781,18 @@ export class ProjectTaskRoomRuntime {
         if (!fits(text)) {
           const notice =
             '\n\n_Answer shortened for the room. Open full run for the complete answer._';
-          let end = Math.min(
-            answer.text.length,
+          const points = Array.from(answer.text);
+          let low = 0;
+          let high = Math.min(
+            points.length,
             PROJECT_TASK_ROOM_LIMITS.stringBytes - notice.length,
           );
-          do {
-            text =
-              Array.from(answer.text.slice(0, end))
-                .filter((part) => !/^[\uD800-\uDFFF]$/.test(part))
-                .join('') + notice;
-            end = Math.floor(end / 2);
-          } while (!fits(text));
+          while (low < high) {
+            const middle = Math.ceil((low + high) / 2);
+            if (fits(points.slice(0, middle).join('') + notice)) low = middle;
+            else high = middle - 1;
+          }
+          text = points.slice(0, low).join('') + notice;
         }
         const result = await this.#history.append({
           grant: this.#issueAgent(

@@ -373,3 +373,22 @@ test('a shortened brief is disclosed before sending a thread reply and can be de
     within(thread).queryByText(/brief exceeds 16,000 characters/),
   ).toBeNull();
 });
+
+test('Chat filters completed live-work facts while retaining actual conversation messages', () => {
+  mocks.records = [
+    record(1),
+    {
+      ...record(2),
+      body: {
+        kind: 'live-work-finished',
+        sessionId: 'session-finished',
+        outcome: 'completed',
+      },
+    },
+  ];
+  mount();
+  const history = screen.getByRole('list', { name: 'Task room history' });
+  expect(within(history).getAllByRole('listitem')).toHaveLength(1);
+  expect(within(history).getByText('Hello room')).toBeTruthy();
+  expect(history.textContent).not.toContain('completed');
+});

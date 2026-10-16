@@ -351,8 +351,9 @@ export function TaskRoomRail({
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
       ? document.data.text
       : '';
+  const source = (text || task.description || '').trim();
+  const lines = source.split('\n');
   const section = (name: string) => {
-    const lines = text.split('\n');
     const start = lines.findIndex((line) =>
       new RegExp(`^#{1,6}\\s+${name}\\s*#*\\s*$`, 'i').test(line),
     );
@@ -366,12 +367,22 @@ export function TaskRoomRail({
   };
   const goalSection = section('Goal');
   const doneSection = section('Done when');
-  const excerpt = text.trim().slice(0, 800);
-  const goal = goalSection || task.description?.trim() || excerpt;
+  const firstHeading = lines.findIndex((line) => /^#{1,6}\s/.test(line));
+  const prose = lines
+    .slice(0, firstHeading < 0 ? undefined : firstHeading)
+    .join('\n')
+    .trim();
+  const goal = goalSection ?? prose.slice(0, 800);
   const checklist = (doneSection ?? '').split('\n').flatMap((line) => {
-    const match = /^\s*[-*] \[([ x])\] (.+)$/i.exec(line);
+    const match = /^\s*(?:[-*+]|\d+\.)\s+(?:\[([ xX])\]\s+)?(.+)$/.exec(line);
     return match
-      ? [{ done: match[1].toLowerCase() === 'x', text: match[2] }]
+      ? [
+          {
+            done:
+              match[1] === undefined ? null : match[1].toLowerCase() === 'x',
+            text: match[2],
+          },
+        ]
       : [];
   });
   return (
@@ -397,19 +408,23 @@ export function TaskRoomRail({
           <ul className="task-room-checklist">
             {checklist.map((item, index) => (
               <li key={index}>
-                <span
-                  role="img"
-                  aria-label={item.done ? 'Checked' : 'Unchecked'}
-                >
-                  {item.done ? '☑' : '☐'}
-                </span>
+                {item.done === null ? (
+                  <span aria-hidden="true">•</span>
+                ) : (
+                  <span
+                    role="img"
+                    aria-label={item.done ? 'Checked' : 'Unchecked'}
+                  >
+                    {item.done ? '☑' : '☐'}
+                  </span>
+                )}
                 <LazyMarkdown>{item.text}</LazyMarkdown>
               </li>
             ))}
           </ul>
-        ) : doneSection || (goalSection === undefined && excerpt) ? (
+        ) : doneSection ? (
           <LazyMarkdown loadingProjection="Loading brief…">
-            {doneSection || excerpt}
+            {doneSection}
           </LazyMarkdown>
         ) : (
           <p>Add a checklist in the brief.</p>

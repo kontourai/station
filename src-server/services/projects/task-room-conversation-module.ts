@@ -43,7 +43,12 @@ export class TaskRoomConversationModule {
   >();
   private readonly publicationHolds = new Map<
     string,
-    { count: number; ready: Promise<void>; finish(): void }
+    {
+      count: number;
+      ready: Promise<void>;
+      finish(): void;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
 
   holdPublication(taskId: string): () => void {
@@ -53,7 +58,14 @@ export class TaskRoomConversationModule {
       const ready = new Promise<void>((resolve) => {
         finish = resolve;
       });
-      held = { count: 0, ready, finish };
+      const timer = setTimeout(() => {
+        if (this.publicationHolds.get(taskId) === held) {
+          this.publicationHolds.delete(taskId);
+          finish();
+        }
+      }, 30_000);
+      timer.unref?.();
+      held = { count: 0, ready, finish, timer };
       this.publicationHolds.set(taskId, held);
     }
     held.count += 1;
@@ -64,7 +76,9 @@ export class TaskRoomConversationModule {
       released = true;
       lease.count -= 1;
       if (lease.count === 0) {
-        this.publicationHolds.delete(taskId);
+        clearTimeout(lease.timer);
+        if (this.publicationHolds.get(taskId) === lease)
+          this.publicationHolds.delete(taskId);
         lease.finish();
       }
     };
@@ -265,8 +279,14 @@ export class TaskRoomConversationModule {
         );
     };
     const releasePublication = this.holdPublication(input.taskId);
+    let clientTurnId: string;
     try {
       await this.waitForPublication(input.taskId);
+      await recheck();
+      clientTurnId = await this.deps.work.admitReply({
+        ...input,
+        scope: admitted,
+      });
       await recheck();
     } catch (error) {
       releasePublication();
@@ -275,7 +295,7 @@ export class TaskRoomConversationModule {
     return {
       releasePublication,
       expectedSessionId: input.sessionId,
-      clientTurnId: `room-reply:${admitted.requesterId}:${input.operationId}`,
+      clientTurnId,
       roomBinding: { projectId: admitted.roomProjectId, taskId: input.taskId },
       recheck,
     };
@@ -296,11 +316,16 @@ export class TaskRoomConversationModule {
     const starts = detail.events.filter(
       (event) => event.method === 'turn.started',
     );
+    const admittedReplies = new Set(
+      await this.deps.work.readReplyAdmissions(sessionId),
+    );
     const roomTurns = new Set(
       starts
         .filter(
           (event, index) =>
-            index === 0 || event.clientTurnId?.startsWith('room-reply:'),
+            index === 0 ||
+            (event.clientTurnId !== undefined &&
+              admittedReplies.has(event.clientTurnId)),
         )
         .map((event) => event.turnId),
     );

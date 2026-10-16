@@ -32,6 +32,7 @@ import {
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
+import { PROJECT_TASK_ROOM_LIMITS } from '../../orchestration/project-task-room-history.js';
 import { ProjectTaskRoomRuntime } from '../../orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../orchestration/session-lifecycle-service.js';
 import { TaskGraphService } from '../task-graph-service.js';
@@ -121,7 +122,7 @@ class RoomAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture() {
+async function fixture(observe = true) {
   const directory = makeTempDir('task-room-conversation-');
   const store = new EventStore(join(directory, 'events.sqlite'));
   const bus = new EventBus();
@@ -213,6 +214,7 @@ async function fixture() {
     },
   )!;
   let room: ProjectTaskRoomRuntime;
+  const historyOpens = vi.fn();
   const conversation = new TaskRoomConversationModule({
     graph,
     work,
@@ -226,7 +228,16 @@ async function fixture() {
   room = new ProjectTaskRoomRuntime({
     taskGraph: graph,
     projectForId: (id) => ({ id, slug: id }),
-    history: (authority) => store.createProjectTaskRoomHistory(authority),
+    history: (authority) => {
+      const history = store.createProjectTaskRoomHistory(authority);
+      return {
+        ...history,
+        open: (input) => {
+          historyOpens(input);
+          return history.open(input);
+        },
+      };
+    },
     working: store.createProjectTaskRoomWorkingState(),
     requestAuthority: {
       resolve: async () =>
@@ -294,7 +305,9 @@ async function fixture() {
       completions.get(key)?.();
       completions.delete(key);
     }
-    const pending = conversation.observe(event).catch((error) => {
+    const pending = (
+      observe ? conversation.observe(event) : Promise.resolve()
+    ).catch((error) => {
       failures.push(error);
     });
     publications.add(pending);
@@ -330,7 +343,8 @@ async function fixture() {
     taskRoomWork: {
       holdPublication: (taskId) => conversation.holdPublication(taskId),
       beforeInvocation: (taskId) => conversation.waitForPublication(taskId),
-      continued: (taskId) => conversation.reconcile(taskId),
+      continued: (taskId) =>
+        observe ? conversation.reconcile(taskId) : Promise.resolve(),
       module: work,
       authorize,
       resolveContext: async () => brief,
@@ -381,6 +395,7 @@ async function fixture() {
     sessions,
     store,
     conversation,
+    historyOpens,
     history,
     failures,
     agentCount: async () => {
@@ -535,7 +550,7 @@ test('room requests start the Task and publish canonical answers and continued t
     });
     if (continuedAnswer?.body.kind !== 'human-message')
       throw new Error('Missing continued answer');
-    expect(continuedAnswer.body.text.length).toBeLessThanOrEqual(8 * 1024);
+    expect(continuedAnswer.body.text.length).toBe(8 * 1024);
     expect(f.adapter.sessions.size).toBe(1);
     await f.room.reconcileAgentLifecycles([f.task.id]);
     expect(
@@ -928,3 +943,154 @@ test.each(['initial', 'reply'] as const)(
     }
   },
 );
+
+test.each([undefined, 'room-reply:forged-dock-send'])(
+  'the second turn from the private dock stays private, including a forged room tag (%s)',
+  async (clientTurnId) => {
+    const f = await fixture();
+    try {
+      const sessionId = await requestAgent(f);
+      await f.complete(sessionId, 'turn-1', 'Public initial answer');
+      await f.conversation.reconcile(f.task.id);
+      await f.sessions.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: sessionId,
+          input: 'Private dock send',
+          ...(clientTurnId ? { clientTurnId } : {}),
+        },
+      });
+      await f.started(sessionId, 'turn-2');
+      await f.complete(sessionId, 'turn-2', 'Private second-turn answer');
+      await f.conversation.reconcile(f.task.id);
+      const detail = await f.sessions.readSession(
+        sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(detail?.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'turn.started',
+            turnId: 'turn-2',
+            ...(clientTurnId ? { clientTurnId } : {}),
+          }),
+        ]),
+      );
+      const history = await f.history();
+      expect(
+        history.filter(
+          (entry) => entry.correlationId === `room-answer:${sessionId}`,
+        ),
+      ).toHaveLength(1);
+      expect(JSON.stringify(history)).toContain('Public initial answer');
+      expect(JSON.stringify(history)).not.toContain(
+        'Private second-turn answer',
+      );
+      expect(f.failures).toEqual([]);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test('one publication pass opens history once for several pending answers and skips already published answers', async () => {
+  const f = await fixture(false);
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'First pending answer');
+    const response = await f.post(`/delegations/${sessionId}/continue`, {
+      message: 'Second request',
+      taskRoomReply: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'second-pending',
+        attachBrief: false,
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    await f.conversation.waitForPublication(f.task.id);
+    const longAnswer = '🧪"\\\n'.repeat(3000);
+    await f.complete(sessionId, 'turn-2', longAnswer);
+    const answers = await f.conversation.answers({
+      sessionId,
+      ownerOperatorId: f.principal.id,
+    });
+    expect(answers).toHaveLength(2);
+    f.historyOpens.mockClear();
+    await f.room.publishAgentAnswers(f.task.id, sessionId);
+    const published = (await f.history()).filter(
+      (entry) => entry.correlationId === `room-answer:${sessionId}`,
+    );
+    expect(published).toHaveLength(2);
+    const answer = published.find((entry) => entry.causationId === 'turn-2');
+    if (answer?.body.kind !== 'human-message')
+      throw new Error('Missing Unicode answer');
+    const notice =
+      '\n\n_Answer shortened for the room. Open full run for the complete answer._';
+    expect(answer.body.text.endsWith(notice)).toBe(true);
+    const prefix = answer.body.text.slice(0, -notice.length);
+    expect(longAnswer.startsWith(prefix)).toBe(true);
+    expect(prefix.isWellFormed()).toBe(true);
+    expect(answer.body.text.length).toBeLessThanOrEqual(
+      PROJECT_TASK_ROOM_LIMITS.stringBytes,
+    );
+    expect(Buffer.byteLength(answer.body.text, 'utf8')).toBeLessThanOrEqual(
+      PROJECT_TASK_ROOM_LIMITS.stringBytes,
+    );
+    expect(Buffer.byteLength(JSON.stringify(answer.body))).toBeLessThanOrEqual(
+      PROJECT_TASK_ROOM_LIMITS.bodyBytes,
+    );
+    const next = Array.from(longAnswer)[Array.from(prefix).length];
+    const extended = prefix + next + notice;
+    expect(
+      extended.length > PROJECT_TASK_ROOM_LIMITS.stringBytes ||
+        Buffer.byteLength(extended, 'utf8') >
+          PROJECT_TASK_ROOM_LIMITS.stringBytes ||
+        Buffer.byteLength(
+          JSON.stringify({ kind: 'human-message', text: extended }),
+        ) > PROJECT_TASK_ROOM_LIMITS.bodyBytes,
+    ).toBe(true);
+
+    expect(f.historyOpens).toHaveBeenCalledTimes(1);
+    f.historyOpens.mockClear();
+    await f.room.publishAgentAnswers(f.task.id, sessionId);
+    expect(f.historyOpens).not.toHaveBeenCalled();
+  } finally {
+    await f.close();
+  }
+});
+
+test('publication holds expire and an expired release cannot release a newer hold', async () => {
+  const f = await fixture(false);
+  const reconcile = vi
+    .spyOn(f.room, 'reconcileAgentLifecycles')
+    .mockResolvedValue(undefined);
+  let expiredRelease = () => {};
+  let release = () => {};
+  let pending = Promise.resolve();
+  try {
+    vi.useFakeTimers();
+    expiredRelease = f.conversation.holdPublication(f.task.id);
+    pending = f.conversation.reconcile(f.task.id);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(reconcile).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reconcile).toHaveBeenCalledOnce();
+    await pending;
+    release = f.conversation.holdPublication(f.task.id);
+    const next = f.conversation.reconcile(f.task.id);
+    expiredRelease();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reconcile).toHaveBeenCalledOnce();
+    release();
+    await next;
+    expect(reconcile).toHaveBeenCalledTimes(2);
+  } finally {
+    expiredRelease();
+    release();
+    await pending;
+    vi.useRealTimers();
+    reconcile.mockRestore();
+    await f.close();
+  }
+});

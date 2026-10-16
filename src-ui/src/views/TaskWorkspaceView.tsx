@@ -392,10 +392,28 @@ function TaskWorkspaceContent({
     [plugins],
   );
   const [selection, setSelection] = useReferenceSelection(taskId, references);
+  const [basisVisible, setBasisVisible] = useState(false);
   const [basisHostOpen, setBasisHostOpen] =
     useState<WorkspacePaneHostOpenAction | null>(null);
   const captureBasisHostOpen = useCallback(
-    (action: WorkspacePaneHostOpenAction | null) => setBasisHostOpen(action),
+    (action: WorkspacePaneHostOpenAction | null) =>
+      setBasisHostOpen(
+        action
+          ? {
+              ...action,
+              open: (...args) => {
+                const outcome = action.open(...args);
+                if (outcome.ok) setBasisVisible(true);
+                return outcome;
+              },
+              focusExisting: (id) => {
+                const focused = action.focusExisting?.(id) ?? false;
+                if (focused) setBasisVisible(true);
+                return focused;
+              },
+            }
+          : null,
+      ),
     [],
   );
   const [outputPromotion, setOutputPromotion] =
@@ -554,14 +572,15 @@ function TaskWorkspaceContent({
         id="task-panel-Details"
         aria-labelledby="task-tab-Details"
       >
-        <section aria-label="Workspace and branch">
-          <h2>Workspace &amp; branch</h2>
+        <details className="task-workspace__record-details">
+          <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />
           <WorkspaceBindingSection task={graph.task} />
-        </section>
+        </details>
         <TaskRoomWorkspaceSection
           task={graph.task}
           onOpenActionChange={captureBasisHostOpen}
+          visible={basisVisible}
         />
         <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
           <TaskTurnReferenceView
@@ -576,7 +595,6 @@ function TaskWorkspaceContent({
           onPromotionSettled={(promotion, success) => {
             if (success) {
               operations.clear(promotion.relativePath, promotion.title);
-              setTab('Results');
             }
             setOutputPromotion(null);
           }}
@@ -631,8 +649,10 @@ function TaskWorkspaceContent({
 function TaskRoomWorkspaceSection({
   task,
   onOpenActionChange,
+  visible,
 }: {
   task: TaskRecord;
+  visible: boolean;
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
@@ -675,10 +695,19 @@ function TaskRoomWorkspaceSection({
         )
       : null;
   if (discovery.isLoading)
-    return <SkeletonBlock count={2} label="Checking Task room capabilities" />;
-  if (!document) return <p role="status">Task room document is unavailable.</p>;
+    return visible ? (
+      <SkeletonBlock count={2} label="Checking Task room capabilities" />
+    ) : null;
+  if (!document)
+    return visible ? (
+      <p role="status">Task room document is unavailable.</p>
+    ) : null;
   return (
-    <section className="task-workspace__room" aria-label="Task room workspace">
+    <section
+      className="task-workspace__room"
+      aria-label="Task room workspace"
+      hidden={!visible}
+    >
       <WorkspacePaneHost
         document={document}
         presentation="chromeless"
@@ -689,6 +718,7 @@ function TaskRoomWorkspaceSection({
           null
         }
         renderPane={(instance) => {
+          if (!visible) return null;
           const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
           return instance.descriptorId ===
             WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
@@ -696,6 +726,7 @@ function TaskRoomWorkspaceSection({
               fallback={<SkeletonBlock count={3} label="Loading Basis" />}
             >
               <LazyTaskBasisWorkspacePane
+                presentation="chromeless"
                 descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
                 instance={instance}
               />

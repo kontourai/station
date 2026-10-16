@@ -2313,7 +2313,8 @@ mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
 `ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
-`WorkspacePaneHost` remains in Details for Basis and other inspection panes.
+`WorkspacePaneHost` remains in Details for Basis, rendering its pane only after
+an explicit open action. Identity and workspace fields are collapsed by default.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -2346,7 +2347,11 @@ The request journal refreshes before fresh submissions and after acknowledgement
 Live presence and history use room SSE. Publication reconciliation is coalesced
 and scheduled after HTTP responses. A bounded proposal cache and durable lookup
 skip duplicate writes and history notifications, including after restart. Only
-room-origin turns publish answers; private dock follow-ups stay private.
+room-origin turns publish answers; private dock follow-ups stay private. Reply
+origin requires a server-recorded admission in the private request journal;
+a client turn prefix alone is insufficient. Abandoned publication holds expire
+after 30 seconds. Each answer pass opens history once and truncates oversized
+text precisely at a code-point boundary within both string and body byte limits.
 Shared Task projection continues to publish human messages and the document;
 it excludes agent answers and private execution metadata. Invited/public agent
 results and actual-provider acceptance remain separate qualification scopes.

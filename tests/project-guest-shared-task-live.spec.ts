@@ -442,7 +442,7 @@ test.describe
           {
             path: `/api/projects/${shared.slug}/access`,
             status: 403,
-            fragment: 'account_bound_device_route_forbidden',
+            fragment: 'project_access_forbidden',
           },
         ]) {
           const denied = await guestRead(expected.path);

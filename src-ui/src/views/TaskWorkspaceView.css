@@ -1081,7 +1081,7 @@
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
-.task-room-rail-content h3 {
+.task-room-rail-content > section > h3 {
   font-size: var(--k-text-xs);
   color: var(--k-text-faint);
   text-transform: uppercase;
@@ -1597,4 +1597,15 @@
 .task-room-result-content pre {
   max-width: 100%;
   overflow-x: auto;
+}
+
+.task-room-rail-content :is(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  font-weight: 600;
+  margin: 0;
+}
+.task-workspace__body
+  :is(h2, h3, h4):not(.task-workspace__answer-content *, .task-room-history *) {
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+  color: var(--k-text);
 }

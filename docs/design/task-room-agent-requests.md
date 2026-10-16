@@ -37,7 +37,8 @@ retains its confirmed write boundary, with failures isolated from dispatch
 acknowledgement; duplicate proposals make no history writes or history
 notifications. A private publication hold preserves human prompt before answer
 order even when a completion arrives before the human history write. Refusal and
-failure release the hold; it does not confer execution authority. A bounded
+failure release the hold. A hold expires after 30 seconds so an abandoned request
+cannot block later publication indefinitely; it does not confer execution authority. A bounded
 in-memory set avoids repeated lookups, and durable proposal lookup covers restart
 and cache eviction.
 Existing document/history updates continue using SSE and HTTP.
@@ -71,11 +72,17 @@ implementation receipts, not shipped, browser or actual-provider proof.
 
 Only the initial room-request turn and in-thread reply turns publish their answer text;
 private dock follow-ups on a room-bound Session stay private. Their origin survives
-restart through the canonical turn client identity. These completed turns publish
+restart through the canonical turn client identity and the private journal's admitted
+reply operation IDs. Each admission stores a server-generated client turn ID scoped
+to the request's Session; a client-supplied `room-reply:` prefix alone grants no
+publication. The bounded admission list is omitted from browser request views.
+Older binaries reject journal rows carrying this additive private field. These completed turns publish
 their answer text through the existing agent-publish append path. The private principal binds the exact Session; the
 envelope retains the turn ID. Browser history exposes that tuple and the
 canonical run identity when available. Answer text over the room body limit is
-shortened with an explicit notice and an Open full run action. Publication
+shortened at a code-point boundary to the largest prefix fitting the UTF-8 string
+and serialized body limits, with an explicit notice and an Open full run action.
+One publication pass opens history at most once for all its pending answers. Publication
 rechecks the immutable request binding, Task incarnation, Project and owner;
 reconciliation repeats publication idempotently, never provider execution.
 
@@ -95,10 +102,11 @@ provider effects. Unknown acknowledgements require full-run inspection instead
 of an automatic resend. The operation ID remains stable for the same send.
 The latest saved brief is attached by default; the thread checkbox can opt out.
 
-The shared Task document is the canonical brief. The Chat rail reads its `Goal`
-and `Done when` Markdown sections; the Task description is only a short Goal
-fallback. A document excerpt remains readable when the structured sections are
-missing. The Brief display renders Markdown and explicitly enters the same
+The shared Task document is the canonical brief. The Chat rail parses the saved
+document, or the Task description when the document is empty. Goal uses its named
+section or prose before the first heading; later sections never become Goal.
+Done when accepts plain bullets and numbered items as neutral criteria, alongside
+checked and unchecked Markdown checkboxes. The Brief display renders Markdown and explicitly enters the same
 live editor; edits autosave through the existing CRDT plan/batch protocol.
 
 Current canonical lifecycle ends an agent's live presence after each completed
@@ -314,3 +322,9 @@ not turn an acknowledged dispatch or saved status into a client error. An answer
 that cannot be published retains a blocked room line with Open full run. These
 are local implementation contracts; rendered, live-provider and hosted evidence
 remain separate receipts.
+
+Details keeps identity and workspace fields in a disclosure. Basis opens on demand
+from the kept-answer controls; it does not fetch or show a whole-Task error pane
+before that action. Chromeless Basis omits the portable MCP App control. Keeping
+a local file confirms it in Details; the Results count updates without changing
+the active tab.
