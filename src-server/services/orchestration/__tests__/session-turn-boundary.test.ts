@@ -31,15 +31,15 @@ function terminal(threadId: string, turnId: string): CanonicalRuntimeEvent {
 }
 
 describe('SessionTurnBoundaryAuthority', () => {
-  test('a future-writer settled audit survives session terminal cleanup but deliberate thread deletion removes it', () => {
+  test('an unbound settled row survives host terminal cleanup but deliberate thread deletion removes it', () => {
     const store = new EventStore(':memory:');
     try {
       const authority = store.sessionTurnBoundaryAuthority();
       expect(
         authority.claim('settled-audit', '2030-01-01T00:00:00.000Z').kind,
       ).toBe('owner');
-      // This reader's legacy schema cannot author settlement. Model the state
-      // written by a newer host without adding a production migration here.
+      // The legacy binding cannot decode or author settlement. Its kernel
+      // must refuse this tag, while host terminal SQL must preserve it.
       store['db'].exec('PRAGMA ignore_check_constraints = ON');
       store['db']
         .prepare(
@@ -65,10 +65,9 @@ describe('SessionTurnBoundaryAuthority', () => {
         createdAt: '2030-01-01T00:00:01.000Z',
       };
       store.appendEvent(exited);
-      expect(authority.observe(exited)).toEqual({ kind: 'applied' });
+      expect(authority.observe(exited)).toEqual({ kind: 'unavailable' });
       expect(authority.hasPossibleEffect('settled-audit')).toEqual({
-        kind: 'available',
-        active: false,
+        kind: 'unavailable',
       });
       expect(rows()).toEqual(before);
       // A write admission also joins EventStore's persisted-terminal cleanup.
@@ -76,11 +75,8 @@ describe('SessionTurnBoundaryAuthority', () => {
         'settled-audit',
         '2030-01-01T00:00:02.000Z',
       );
-      expect(lifecycle.kind).toBe('owner');
-      if (lifecycle.kind !== 'owner')
-        throw new Error('Expected lifecycle owner');
-      expect(lifecycle.release()).toEqual({ kind: 'applied' });
       expect(rows()).toEqual(before);
+      expect(lifecycle.kind).toBe('unavailable');
       store.deleteThread('settled-audit');
       expect(rows()).toEqual([]);
     } finally {
