@@ -1,20 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * #1536 section F reported two things about the dock header's identity row, and
- * both are geometry: with a long project path the conversation title got about
- * ONE CHARACTER, and "Claude Code" printed on top of "Opus 5".
- *
- * jsdom lays out nothing, so neither is observable there — the shrink factors
- * that fix them are CSS. This renders the real `ChatDockActiveIdentity` markup
- * into a real Chromium page carrying the real, cascade-resolved `index.css` at a
- * width narrow enough to force the overflow, and measures.
- *
- * The pre-fix arrangement is what makes the two claims discriminating: the agent
- * name, the engine chip and the model were each `flex-shrink: 0` inside an
- * `overflow: hidden` row, and a `flex-shrink: 0` box in an overflowing flex line
- * does not truncate — it keeps its width and the line overflows, which is how
- * two spans end up occupying the same pixels.
+ * Browser geometry for the real title/assistant markup and application CSS.
+ * Protects the two-line hierarchy and legible title at the smallest side dock.
  */
 
 import { dirname, resolve } from 'node:path';
@@ -51,47 +39,6 @@ const INDEX_CSS_PATH = resolve(HERE, '../index.css');
 const LONG_TITLE =
   'Reduce default toolbar clutter in the main header and the chat dock';
 
-function markup(): string {
-  const { container, unmount } = render(
-    <ChatDockActiveIdentity
-      session={
-        {
-          id: 'chat-1',
-          title: LONG_TITLE,
-          agentSlug: 'codex',
-          agentName: 'Codex',
-        } as ChatSession
-      }
-      agent={
-        {
-          slug: 'codex',
-          name: 'Codex',
-          engineId: 'claude-code',
-          engineDisplayName: 'Claude Code',
-        } as unknown as AgentData
-      }
-      modelLabel="Opus 5 (1M context)"
-      onClose={() => {}}
-    />,
-  );
-  const html = container.innerHTML;
-  unmount();
-  return html;
-}
-
-/**
- * The row's real host: `.chat-dock__header-identity` inside a
- * `.chat-dock__header` flex line, at a width where the content cannot fit.
- */
-function fixtureHtml(rowMarkup: string, width: number): string {
-  return dockFixtureHtml(
-    `<div class="chat-dock__title">
-       <div class="chat-dock__header-identity">${rowMarkup}</div>
-     </div>`,
-    width,
-  );
-}
-
 /** `.chat-dock__header`'s real contents, whatever they are, at a given width. */
 function dockFixtureHtml(headerMarkup: string, width: number): string {
   const css = resolveCssImports(INDEX_CSS_PATH);
@@ -109,7 +56,7 @@ function dockFixtureHtml(headerMarkup: string, width: number): string {
 
 /**
  * The whole title cluster as `ChatDockHeader` composes it: the identity block,
- * the project context, and the empty spacer that owns the row's growth.
+ * the project context, and the remaining spacer.
  */
 function titleClusterMarkup(title = 'New chat'): string {
   const { container, unmount } = render(
@@ -172,284 +119,70 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(() => cleanup());
 
-    async function measure(width: number) {
-      const page = await browser.newPage({
-        viewport: { width: Math.max(width, 400), height: 200 },
-      });
-      try {
-        await page.setContent(fixtureHtml(markup(), width));
-        return await page.evaluate(() => {
-          const box = (selector: string) => {
-            const element = document.querySelector(selector);
-            if (!element) throw new Error(`missing ${selector}`);
-            const rect = element.getBoundingClientRect();
-            return {
-              left: rect.left,
-              right: rect.right,
-              width: rect.width,
-              text: element.textContent ?? '',
-              clipped: element.scrollWidth > element.clientWidth + 1,
-            };
-          };
-          return {
-            title: box('.chat-dock__active-identity-title'),
-            engine: box('.chat-dock__active-identity-engine'),
-            agent: box('.chat-dock__active-identity-agent'),
-            row: box('.chat-dock__header-identity'),
-          };
-        });
-      } finally {
-        await page.close();
-      }
-    }
-
-    // Pixel containment is independent of the host's font metrics. The separate
-    // first-clipping test measures its threshold using the rendered font.
-    test.each([700, 600, 420, 260])(
-      'nothing overprints at %ipx: the row is ordered left to right and stays inside its host',
+    test.each([850, 700, 520, 420, 320, 280])(
+      'title, assistant, model and project remain readable without overprinting at %ipx',
       async (width) => {
-        const { title, engine, agent, row } = await measure(width);
-
-        expect(agent.right).toBeLessThanOrEqual(title.left + 1);
-        expect(title.right).toBeLessThanOrEqual(engine.left + 1);
-        // A `flex-shrink: 0` span in an overflowing flex line keeps its width
-        // and the line overflows — which is how two of them end up on the same
-        // pixels. Nothing here leaves its host.
-        expect(engine.right).toBeLessThanOrEqual(row.right + 1);
-      },
-    );
-
-    test('a dock with room for the whole row truncates neither part', async () => {
-      const { title, engine } = await measure(850);
-
-      expect(title.clipped).toBe(false);
-      expect(engine.clipped).toBe(false);
-    });
-
-    test.each([
-      ['application', ''],
-      ['Arial', 'Arial, sans-serif'],
-      ['monospace', 'monospace'],
-    ])(
-      'the engine/model token gives way first with %s font metrics',
-      async (_label, fontFamily) => {
         const page = await browser.newPage({
-          viewport: { width: 1600, height: 200 },
+          viewport: { width: 1456, height: 800 },
         });
         try {
-          await page.setContent(fixtureHtml(markup(), 1600));
-          const measured = await page.evaluate(async (family) => {
-            document.body.style.fontFamily = family;
-            await document.fonts.ready;
-            const host = document.querySelector<HTMLElement>('.chat-dock');
-            const title = document.querySelector<HTMLElement>(
-              '.chat-dock__active-identity-title',
-            );
-            const engine = document.querySelector<HTMLElement>(
-              '.chat-dock__active-identity-engine',
-            );
-            if (!host || !title || !engine) throw new Error('missing identity');
-            const read = (width: number) => {
-              host.style.width = `${width}px`;
-              return {
-                width,
-                titleClipped: title.scrollWidth > title.clientWidth + 1,
-                engineClipped: engine.scrollWidth > engine.clientWidth + 1,
-                titleWidth: title.getBoundingClientRect().width,
-              };
-            };
-            let narrow = 260;
-            let wide = 1600;
-            const full = read(wide);
-            if (full.titleClipped || full.engineClipped)
-              throw new Error('wide fixture must fit before measuring shrink');
-            const squeezed = read(narrow);
-            if (!squeezed.titleClipped && !squeezed.engineClipped)
-              throw new Error('narrow fixture must exercise truncation');
-            // Find the FIRST clipping pixel, regardless of installed fonts.
-            // Looking for any later engine-only band could hide title-first
-            // clipping; this brackets the transition from no clipping at all.
-            while (wide - narrow > 1) {
-              const middle = Math.floor((wide + narrow) / 2);
-              const state = read(middle);
-              if (state.titleClipped || state.engineClipped) narrow = middle;
-              else wide = middle;
-            }
-            return { before: read(wide), first: read(narrow) };
-          }, fontFamily);
-          expect(measured.before).toMatchObject({
-            titleClipped: false,
-            engineClipped: false,
-          });
-          expect(measured.first).toMatchObject({
-            titleClipped: false,
-            engineClipped: true,
-          });
-          expect(measured.first.titleWidth).toBeGreaterThan(300);
-        } finally {
-          await page.close();
-        }
-      },
-    );
-
-    /**
-     * Squeezed past that, the parts that are not the row's subject stop at their
-     * floors and the title takes over the yielding.
-     *
-     * Measured in the REAL CLUSTER — identity plus the project badge plus the
-     * spacer — because the identity-only fixture is optimistic: the badge is the
-     * identity's competitor for the row, and every earlier version of this claim
-     * was measured without it. A side dock's floor is `MIN_DOCK_WIDTH` = 280px
-     * (`useDockShellChrome`), so every width here is reachable by dragging the
-     * resize handle; none of it is hypothetical.
-     *
-     * WHAT HOLDS, and what does not:
-     *  - the engine/model token never drops below 48px (a legible prefix and a
-     *    hover target for its `title`) and the agent's name never below 40px;
-     *  - at 320px and wider the conversation title keeps 64px or more, and at the
-     *    280px floor 32px. #1552 D3 raised the title from 11px to 14px, so those
-     *    same pixel floors now hold FEWER characters than the glyph counts this
-     *    comment used to quote — a deliberate trade (the row's subject is legible
-     *    at a glance in the common case; the narrowest side dock gives up
-     *    characters it was already short of). The pixel floors are what the
-     *    distribution actually guarantees, so they are what is asserted.
-     *  - That is the disclosed limit of a
-     *    CSS-only distribution: the floors cannot be conditional on the DOCK's
-     *    width, because a media query sees the viewport (a 280px side dock lives
-     *    in a 1456px window) and a container query would need `container-type`
-     *    on a flex item that has to stay content-sized. Tapering them properly
-     *    belongs to the header-composition pass, not here.
-     * Before #1536 F the same measurement read 21px at 320 and 5px at 280 — a
-     * title of one or two characters, which is the defect that arc opened on.
-     */
-    test.each([
-      [520, 180],
-      [460, 140],
-      [420, 110],
-      [380, 90],
-      [320, 64],
-      [280, 32],
-    ])(
-      'at %ipx in the real cluster the floors hold and the title keeps %ipx',
-      async (width, minTitle) => {
-        const page = await browser.newPage({
-          viewport: { width: Math.max(width, 400), height: 400 },
-        });
-        try {
-          // The LONG title, so the title is a starvation candidate: at
-          // `flex-basis: auto` a short one simply fits and the measurement says
-          // nothing about the distribution.
           await page.setContent(
             dockFixtureHtml(titleClusterMarkup(LONG_TITLE), width),
           );
-          const measured = await page.evaluate(() => {
+          const geometry = await page.evaluate(() => {
             const box = (selector: string) => {
-              const element = document.querySelector(selector);
+              const element = document.querySelector<HTMLElement>(selector);
               if (!element) throw new Error(`missing ${selector}`);
               const rect = element.getBoundingClientRect();
               return {
                 left: rect.left,
                 right: rect.right,
+                top: rect.top,
+                bottom: rect.bottom,
                 width: rect.width,
-                clipped: element.scrollWidth > element.clientWidth + 1,
               };
             };
             return {
-              agent: box('.chat-dock__active-identity-agent'),
               title: box('.chat-dock__active-identity-title'),
+              agent: box('.chat-dock__active-identity-agent'),
               engine: box('.chat-dock__active-identity-engine'),
               close: box('.chat-dock__active-identity-close'),
-              badge: box('.chat-dock__project-badge'),
-              row: box('.chat-dock__header'),
+              project: box('.chat-dock__project-badge'),
+              header: box('.chat-dock__header'),
             };
           });
-
-          expect(Math.round(measured.engine.width)).toBeGreaterThanOrEqual(48);
-          expect(Math.round(measured.agent.width)).toBeGreaterThanOrEqual(40);
-          expect(Math.round(measured.title.width)).toBeGreaterThanOrEqual(
-            minTitle,
+          expect(geometry.title.width).toBeGreaterThanOrEqual(
+            width >= 420 ? 110 : 48,
           );
-          // Still one run, still ordered, and the close control — the only
-          // destructive one here — is never pushed out of the row.
-          expect(measured.agent.right).toBeLessThanOrEqual(
-            measured.title.left + 1,
+          expect(geometry.agent.width).toBeGreaterThan(24);
+          expect(geometry.engine.width).toBeGreaterThan(24);
+          expect(geometry.title.bottom).toBeLessThanOrEqual(
+            geometry.agent.top + 1,
           );
-          expect(measured.title.right).toBeLessThanOrEqual(
-            measured.engine.left + 1,
+          expect(geometry.agent.right).toBeLessThanOrEqual(
+            geometry.engine.left + 1,
           );
-          expect(measured.close.right).toBeLessThanOrEqual(
-            measured.row.right + 1,
+          expect(geometry.close.right).toBeLessThanOrEqual(
+            geometry.project.left + 1,
           );
-          expect(measured.badge.right).toBeLessThanOrEqual(
-            measured.row.right + 1,
+          expect(geometry.project.right).toBeLessThanOrEqual(
+            geometry.header.right + 1,
           );
+          for (const item of [
+            geometry.title,
+            geometry.agent,
+            geometry.engine,
+            geometry.close,
+          ]) {
+            expect(item.left).toBeGreaterThanOrEqual(geometry.header.left);
+            expect(item.right).toBeLessThanOrEqual(geometry.header.right + 1);
+            expect(item.bottom).toBeLessThanOrEqual(geometry.header.bottom + 1);
+          }
         } finally {
           await page.close();
         }
       },
     );
-  },
-);
-
-describe.skipIf(!chromiumAvailable)(
-  'the dock header title cluster reads as one run (#1536 F)',
-  () => {
-    let browser: Awaited<ReturnType<typeof chromium.launch>>;
-
-    beforeAll(async () => {
-      browser = await chromium.launch();
-    });
-    afterAll(async () => {
-      await browser?.close();
-    });
-    afterEach(() => cleanup());
-
-    /**
-     * The reported symptom was fragmentation, which is a distance: the identity
-     * and the project context both GREW, so on a wide dock they split the spare
-     * width and drifted to opposite ends —
-     * `[avatar | New chat] ……… [Opus 5] [×] ……… [No project]`. Growth belongs to
-     * an empty spacer, and this measures that it went there.
-     */
-    test('at a wide dock the badge follows the identity immediately, and the spacer holds the slack', async () => {
-      const page = await browser.newPage({
-        viewport: { width: 1456, height: 800 },
-      });
-      try {
-        await page.setContent(dockFixtureHtml(titleClusterMarkup(), 1400));
-        const measured = await page.evaluate(() => {
-          const box = (selector: string) => {
-            const element = document.querySelector(selector);
-            if (!element) throw new Error(`missing ${selector}`);
-            const rect = element.getBoundingClientRect();
-            return { left: rect.left, right: rect.right, width: rect.width };
-          };
-          return {
-            identity: box('.chat-dock__header-identity'),
-            close: box('.chat-dock__active-identity-close'),
-            badge: box('.chat-dock__project-badge'),
-            spacer: box('.chat-dock__title-spacer'),
-            title: box('.chat-dock__title'),
-          };
-        });
-
-        // One run: the badge starts within a fixed seam of the identity block's
-        // end, not half a row away.
-        expect(measured.badge.left - measured.identity.right).toBeLessThan(16);
-        // The × belongs to the identity cluster, immediately after its token.
-        expect(measured.close.right).toBeLessThanOrEqual(
-          measured.identity.right + 1,
-        );
-        // And the slack really is on the spacer, which is where a 1400px dock's
-        // spare width has to go.
-        expect(measured.spacer.width).toBeGreaterThan(600);
-        expect(measured.spacer.left).toBeGreaterThanOrEqual(
-          measured.badge.right - 1,
-        );
-      } finally {
-        await page.close();
-      }
-    });
   },
 );
 

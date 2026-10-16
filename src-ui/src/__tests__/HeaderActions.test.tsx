@@ -84,6 +84,31 @@ vi.mock('../components/header/OverflowMenu', () => ({
 }));
 
 import { HeaderActions } from '../components/header/HeaderActions';
+import {
+  consumePendingConnectionsModal,
+  OPEN_CONNECTIONS_MODAL_EVENT,
+} from '../lib/connectionModalEvents';
+
+test('Pair phone opens the existing host invitation flow directly from the Station chooser', async () => {
+  const opened = vi.fn();
+  window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+  try {
+    renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: /^Choose Station/ }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Pair phone' }),
+    );
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(opened.mock.calls[0]?.[0]?.detail).toEqual({
+      mode: 'pair-host',
+    });
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+  } finally {
+    window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+    consumePendingConnectionsModal();
+    cleanup();
+  }
+});
 
 function renderHeader(
   onOpenNotifications = vi.fn(),

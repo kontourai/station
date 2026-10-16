@@ -17116,7 +17116,7 @@ describe('OrchestrationService', () => {
             threadId: 'thread-slow-owner',
             clientTurnId: 'client-slow-owner',
           }),
-        ).toEqual({ state: 'indeterminate' });
+        ).toEqual({ state: 'indeterminate', ageOnly: true });
         const refusal = await slowService
           .dispatch({
             type: 'sendTurn',

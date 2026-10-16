@@ -1,6 +1,10 @@
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import {
+  checkOtelTelemetryConnection,
+  getOtelTelemetryDeliveryStatus,
+} from '../../telemetry-delivery-state.js';
 
 /** The inventory is served from the emitter's source so disclosure copy cannot drift. */
 /**
@@ -18,6 +22,43 @@ export function createUsageTelemetryDisclosureRoutes(
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
+  app.get('/delivery-status', async (c) => {
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({
+      success: true,
+      data: {
+        protocol: 'station-telemetry-delivery/v1',
+        product: await service.deliveryStatus(),
+        otel: getOtelTelemetryDeliveryStatus(),
+      },
+    });
+  });
+  app.post('/connection-checks/:transport', async (c) => {
+    const transport = c.req.param('transport');
+    if (transport !== 'product' && transport !== 'otel')
+      return c.json(
+        { success: false, error: { code: 'telemetry_transport_invalid' } },
+        400,
+      );
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    const result =
+      transport === 'product'
+        ? await service.checkConnection()
+        : await checkOtelTelemetryConnection();
+    return c.json({ success: true, data: result });
+  });
   app.get('/disclosure', async (c) => {
     const service = resolve();
     if (!service)

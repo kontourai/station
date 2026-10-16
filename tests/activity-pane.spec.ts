@@ -578,11 +578,19 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
       await page.screenshot({
         path: testInfo.outputPath('footer-populated-desktop.png'),
       });
-      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
-      await expect(presence).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Collapse workspace map' })
+        .click();
+      await footer.getByRole('button', { name: 'Sidebar utilities' }).click();
+      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
+      await expect(
+        utilities.getByRole('button', {
+          name: /4 participants.*2 active sessions/,
+        }),
+      ).toBeVisible();
       for (const name of ['Schedule', 'Customize', 'Settings']) {
         await expect(
-          footer.getByRole('button', { name, exact: true }),
+          utilities.getByRole('button', { name, exact: true }),
         ).toBeVisible();
       }
     },

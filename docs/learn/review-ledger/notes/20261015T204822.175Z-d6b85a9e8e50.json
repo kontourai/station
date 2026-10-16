@@ -1,0 +1,7 @@
+{
+  "revision": "c711bfab5813c8c9949f8061c92b0dedc3276f82",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the config-loader-storage.process.test.ts fixture delta and JsonFileMutationAuthority section against shared json-file-storage, lifecycle lock acquisition, integration storage, credential storage, CLI portability import, and the focused caller tests. The repair changes scheduling evidence only: a waiting parent claim and child-held IPC challenge replace wall-clock tick counting; both process updates remain asserted. Async acquisition, publication and caller-ownership claims remain accurate, so no prose change is needed. All three cases catch the real synchronous-acquisition mutation and restored focused coverage passes 52 tests. This scoped review does not qualify hosted regression or the hosted-persistence case in issue 2186.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/config-loader-storage.process.test.ts"]}
+  ]
+}

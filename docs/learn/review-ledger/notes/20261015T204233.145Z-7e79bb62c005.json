@@ -1,0 +1,7 @@
+{
+  "revision": "bc5868d3b2863c0a67b3e11c4a155116041550ac",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Fix round 1 correction at bc5868d3b28: the registered Project settings route is /projects/:slug/edit with section=agents, as used by ProjectPage and ProjectSettingsView. This supersedes the /settings route assertion in the preceding append-only note. The new mounted regression checks the actual href and canonical navigate destination; reverting only edit to settings fails both no-agent cases with the expected route mismatch, and restoration passes 27 tests. Creation/list invalidation, disabled reason, board presentation and Starter launch contracts remain as reviewed. No guide prose change; real rendered capture and provider execution are separate evidence.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
+  ]
+}

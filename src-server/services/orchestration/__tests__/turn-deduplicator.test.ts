@@ -185,8 +185,11 @@ describe('TurnDeduplicator', () => {
         state: 'in-flight',
       });
       vi.setSystemTime(Date.now() + 2 * 60_000);
+      // Indeterminate to the lookup, but only by age (#3568): a resend may
+      // still join it.
       expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
         state: 'indeterminate',
+        ageOnly: true,
       });
       // A live owner's claim is bounded the same way.
       const live = open();
@@ -196,7 +199,7 @@ describe('TurnDeduplicator', () => {
       vi.setSystemTime(Date.now() + 16 * 60_000);
       expect(
         live.ledger.inspect({ threadId: 't', clientTurnId: 'live' }),
-      ).toEqual({ state: 'indeterminate' });
+      ).toEqual({ state: 'indeterminate', ageOnly: true });
       live.store.close();
       store.close();
     } finally {
@@ -278,7 +281,7 @@ describe('TurnDeduplicator', () => {
       // one this owner gave up, so a same-key claim here waits on it.
       expect(
         ledger.inspect({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
-      ).toEqual({ state: 'indeterminate' });
+      ).toEqual({ state: 'indeterminate', ageOnly: true });
       expect(
         ledger.givenUp({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
       ).toBe(false);

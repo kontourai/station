@@ -3,6 +3,7 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InputRequestContent,
   InputRequestResponse,
@@ -837,6 +838,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       'interrupt',
       'resume',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),

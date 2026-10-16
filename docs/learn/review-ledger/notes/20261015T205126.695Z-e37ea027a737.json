@@ -1,0 +1,7 @@
+{
+  "revision": "7c7eaf9047bc99784cee89564261d8c55c496e58",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the one-field typed fixture correction: the real search-owner session.started seed now declares its required sessionId equal to threadId. This does not change the yielding implementation or repair the proven cold moving-tail losslessness failure. Candidate remains unqualified; the persistence note records that blocker and the scratch default-window counterexample is retained outside the repository.","inputs":["docs/design/project-task-room-history.md"]}
+  ]
+}

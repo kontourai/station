@@ -1,0 +1,21 @@
+{
+  "revision": "ffd5ea543063f6474014307624722f66e1800d72",
+
+  "notes": [
+    {"path":"README.md","note":"Executed the source dependency/bootstrap and production station start path with documented instance/home/port flags. Confirmed Customize is the entry to Connections; corrected First steps to name it. Registry route, published artifact, installer, data-flow and runtime contracts otherwise unchanged; no release or cross-platform proof claimed.","inputs":["README.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Walked the documented source path with Node 24.19.0, dependencies:ci, and station start in a sibling worktree/fresh isolated home. Exercised existing Codex account, project creation, Coding Files, built-in Codex chat reading README, Settings built-in engine selection, Station list_projects, and custom Codex Agent with read-only Station tools returning the exact project slug. Reviewed the new concise Codex path against those UI callers; system instructions delivery limitation remains explicit. No installer, fresh OAuth, Windows/mobile/native, or hosted qualification claimed.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/architecture/module-map.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/glossary.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the bounded destination-registry change: Customize now calls the existing /connections/engines destination Connections, matching its page title and public vocabulary. Routes, ordering, flag visibility, panes, authorization and persistence are unchanged; related architectural claims remain accurate. No broader runtime or security requalification is claimed.","inputs":["docs/design/shell-ownership-and-boards.md"]}
+  ]
+}

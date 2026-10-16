@@ -57,36 +57,74 @@ export function reviewDecisionChanged(before, after) {
   return decision(before) !== decision(after);
 }
 
-/** Compare cited values, rather than treating every manifest edit as relevant. */
-export function touchedReviewInputs(root, paths, changedPaths, before, after) {
-  const candidates = paths.filter((input) =>
-    changedPaths.has(bindingFile(input)),
-  );
-  const values = candidates.filter((input) => input !== bindingFile(input));
-  const objects = readGitObjects(
-    root,
-    values.flatMap((input) => [
+/** Compare cited values within one resolver; mutable refs are always reread. */
+export function createReviewInputComparator(root) {
+  const blobs = new Map();
+  const identities = new Map();
+  const digests = new Map();
+  const immutable = (spec) => /^[a-f0-9]{40}(?:\^(?:[1-9]\d*)?)?:/.test(spec);
+  const digest = (input, spec, bytes) => {
+    if (bytes === undefined) return undefined;
+    let identity = immutable(spec) ? identities.get(spec) : undefined;
+    if (identity === undefined) {
+      identity = createHash('sha256').update(bytes).digest('hex');
+      if (immutable(spec)) identities.set(spec, identity);
+    }
+    let selectors = digests.get(identity);
+    if (!selectors) {
+      selectors = new Map();
+      digests.set(identity, selectors);
+    }
+    if (!selectors.has(input))
+      selectors.set(input, bindingDigest(input, bytes));
+    return selectors.get(input);
+  };
+  return (paths, changedPaths, before, after) => {
+    const candidates = paths.filter((input) =>
+      changedPaths.has(bindingFile(input)),
+    );
+    const values = candidates.filter((input) => input !== bindingFile(input));
+    const specs = values.flatMap((input) => [
       `${before}:${bindingFile(input)}`,
       `${after}:${bindingFile(input)}`,
-    ]),
-  );
-  const changedValues = new Set(
-    values.filter((input, index) => {
-      const a = objects[index * 2];
-      const b = objects[index * 2 + 1];
-      const beforeDigest =
-        a === undefined ? undefined : bindingDigest(input, a);
-      const afterDigest = b === undefined ? undefined : bindingDigest(input, b);
-      return (
-        beforeDigest === undefined ||
-        afterDigest === undefined ||
-        beforeDigest !== afterDigest
-      );
-    }),
-  );
-  return candidates.filter(
-    (input) => input === bindingFile(input) || changedValues.has(input),
-  );
+    ]);
+    const missing = [
+      ...new Set(specs.filter((spec) => !immutable(spec) || !blobs.has(spec))),
+    ];
+    const observed = new Map(
+      readGitObjects(root, missing).map((bytes, index) => {
+        const spec = missing[index];
+        if (immutable(spec)) blobs.set(spec, bytes);
+        return [spec, bytes];
+      }),
+    );
+    const objects = specs.map((spec) =>
+      immutable(spec) ? blobs.get(spec) : observed.get(spec),
+    );
+    const changedValues = new Set(
+      values.filter((input, index) => {
+        const beforeDigest = digest(
+          input,
+          specs[index * 2],
+          objects[index * 2],
+        );
+        const afterDigest = digest(
+          input,
+          specs[index * 2 + 1],
+          objects[index * 2 + 1],
+        );
+        return (
+          beforeDigest === undefined ||
+          afterDigest === undefined ||
+          beforeDigest !== afterDigest
+        );
+      }),
+    );
+    // Callers append decision/dirty paths, so each comparison owns its array.
+    return candidates.filter(
+      (input) => input === bindingFile(input) || changedValues.has(input),
+    );
+  };
 }
 
 /** One stream of landing units; callers choose the range, never one log per commit. */

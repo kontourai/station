@@ -548,6 +548,50 @@ describe('executeForegroundMessage', () => {
     },
   );
 
+  test('#3568: a key some Session already started is answered from it, and its staged attachments are bound to that turn', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+    }));
+    deps.inspectConversationTurnKey = vi.fn(() => ({
+      outcome: 'started' as const,
+      sessionId: 'conversation:test:child-1',
+      turnId: 'provider-turn-earlier',
+    }));
+    deps.resolveConversationSession = vi.fn(async () => ({
+      sessionId: 'conversation:test:child-2',
+      startRequired: true,
+    }));
+    const resolveAttachments = vi.fn(() => []);
+
+    const handle = await executeForegroundMessage(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+        },
+        conversationId: 'conversation:test',
+        clientTurnId: 'client-turn-9',
+        message: 'with a file',
+        resolveAttachments,
+      },
+      deps,
+    );
+
+    expect(handle).toMatchObject({
+      sessionId: 'conversation:test:child-1',
+      providerTurnId: 'provider-turn-earlier',
+    });
+    // The route accepts the staged references under the binding this sets.
+    expect(resolveAttachments).toHaveBeenCalledWith({
+      threadId: 'conversation:test:child-1',
+      clientTurnId: 'client-turn-9',
+    });
+    expect(deps.resolveConversationSession).not.toHaveBeenCalled();
+    expect(deps.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('hydrates staged bytes only after continuation resolves its actual child session', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({

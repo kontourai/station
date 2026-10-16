@@ -675,6 +675,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/usage-telemetry/connection-checks:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/connection-checks',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // The preview request uses POST only so the selected file path and line
   // range stay out of URLs and proxies. It is nevertheless a bounded,
   // project-owned read: no mutation, caller-supplied root, or cross-project
@@ -1109,6 +1116,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Local canonical facts only; runtime also enforces verified person and owner/tenant scope.
+  {
+    id: '/api/analytics/usage-export:person-read',
+    method: 'GET',
+    prefix: '/api/analytics/usage-export',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The usage rollup normally reads this Station's own receipts, but its
   // default path also queries configured peer Stations with their stored
   // bearer credentials and returns their environment identities, models, and
@@ -2587,6 +2603,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/preferences' },
+    { method: 'PATCH', path: '/api/me/preferences' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
@@ -3086,6 +3104,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    },
+    // #3568: a conversation's inbox of held follow-ups. Reading it re-checks
+    // the conversation read ACL, so it keeps the family's read tier. Removing
+    // a held message is its sender's own mutation of a send it already made
+    // at the operate tier, which DELETE inherits from the family.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/inbox',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
     },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
