@@ -1030,7 +1030,7 @@ test('one publication pass opens history once for several pending answers and sk
     expect(answer.body.text.endsWith(notice)).toBe(true);
     const prefix = answer.body.text.slice(0, -notice.length);
     expect(longAnswer.startsWith(prefix)).toBe(true);
-    expect(prefix.isWellFormed()).toBe(true);
+    expect(/[\uD800-\uDFFF]/u.test(prefix)).toBe(false);
     expect(answer.body.text.length).toBeLessThanOrEqual(
       PROJECT_TASK_ROOM_LIMITS.stringBytes,
     );
