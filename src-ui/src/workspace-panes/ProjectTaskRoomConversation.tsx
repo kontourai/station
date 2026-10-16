@@ -30,6 +30,62 @@ import { RoomAvatar } from './ProjectTaskRoomPresence';
 import { TaskRoomComposer } from './TaskRoomComposer';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 
+function RoomAnswer({
+  text,
+  expanded,
+  onToggle,
+}: {
+  text: string;
+  expanded: boolean;
+  onToggle(): void;
+}) {
+  const body = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(expanded);
+  useLayoutEffect(() => {
+    void text;
+    const element = body.current;
+    if (!element) return;
+    const measure = () => {
+      if (!expanded)
+        setOverflowing(element.scrollHeight > element.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+  const clamped = overflowing && !expanded;
+  return (
+    <div className={clamped ? 'task-room-message-content--clamped' : undefined}>
+      <div
+        ref={body}
+        className={`task-room-answer${expanded ? '' : ' task-room-answer--preview'}${clamped ? ' task-room-answer--clamped' : ''}`}
+        onFocusCapture={() => {
+          if (clamped) onToggle();
+        }}
+      >
+        <LazyMarkdown
+          loadingProjection={<SkeletonBlock label="Loading answer" />}
+        >
+          {text}
+        </LazyMarkdown>
+      </div>
+      {overflowing && (
+        <Button
+          variant="ghost"
+          className="task-room-expand"
+          size="sm"
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function Time({ at, compact = false }: { at?: string; compact?: boolean }) {
   return at && Number.isFinite(Date.parse(at)) ? (
     <time dateTime={at} title={new Date(at).toLocaleString()}>
@@ -377,55 +433,34 @@ export function ProjectTaskRoomConversation({
             )}
             <Time at={record.occurredAt} compact={grouped} />
           </header>
-          <div
-            className={`task-room-message-content${execution && !expanded.has(record.sequence) ? ' task-room-message-content--clamped' : ''}`}
-          >
-            <div
-              inert={!!execution && !expanded.has(record.sequence)}
-              className={
-                execution
-                  ? `task-room-answer${expanded.has(record.sequence) ? '' : ' task-room-answer--clamped'}`
-                  : 'task-room-message-text'
-              }
-            >
-              {mention ? (
-                <>
-                  <span className="task-room-mention">@{mention[1]}</span>
-                  <LazyMarkdown>
-                    {record.body.text.slice(mention[0].length)}
-                  </LazyMarkdown>
-                </>
-              ) : (
-                <LazyMarkdown
-                  loadingProjection={
-                    execution ? (
-                      <SkeletonBlock label="Loading answer" />
-                    ) : (
-                      record.body.text
-                    )
-                  }
-                >
-                  {record.body.text}
-                </LazyMarkdown>
-              )}
-            </div>
-            {execution && (
-              <Button
-                variant="ghost"
-                className="task-room-expand"
-                aria-expanded={expanded.has(record.sequence)}
-                size="sm"
-                onClick={() =>
+          <div className="task-room-message-content">
+            {execution ? (
+              <RoomAnswer
+                text={record.body.text}
+                expanded={expanded.has(record.sequence)}
+                onToggle={() => {
+                  anchored.current = false;
                   setExpanded((current) => {
                     const next = new Set(current);
                     if (next.has(record.sequence)) next.delete(record.sequence);
                     else next.add(record.sequence);
                     return next;
-                  })
-                }
-              >
-                {expanded.has(record.sequence) ? 'Show less' : 'Show more'}
-              </Button>
+                  });
+                }}
+              />
+            ) : (
+              <div className="task-room-message-text">
+                {mention ? (
+                  <>
+                    <span className="task-room-mention">@{mention[1]}</span>
+                    <LazyMarkdown>
+                      {record.body.text.slice(mention[0].length)}
+                    </LazyMarkdown>
+                  </>
+                ) : (
+                  <LazyMarkdown>{record.body.text}</LazyMarkdown>
+                )}
+              </div>
             )}
           </div>
           {execution && !threadParent && (

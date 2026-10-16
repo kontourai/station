@@ -1304,7 +1304,7 @@
   max-width: 100%;
   overflow-x: auto;
 }
-.task-room-answer--clamped {
+.task-room-answer--preview {
   max-height: calc(
     var(--k-text-md) *
     var(--k-leading-normal) *
@@ -1312,6 +1312,8 @@
     var(--k-space-5)
   );
   overflow: clip;
+}
+.task-room-answer--clamped {
   mask-image: linear-gradient(to bottom, black 60%, transparent 75%);
 }
 .task-room-expand {
@@ -1670,7 +1672,7 @@
 }
 .task-room-answer .code-block-actions > span {
   font-size: var(--k-text-xs);
-  font-weight: 600;
+  font-weight: 900;
   text-transform: uppercase;
 }
 

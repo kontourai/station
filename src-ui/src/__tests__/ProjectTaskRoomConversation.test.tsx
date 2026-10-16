@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   records: [] as ProjectTaskRoomBrowserRecord[],
@@ -143,6 +143,8 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
       : {}),
   };
 }
+afterEach(() => vi.restoreAllMocks());
+
 beforeEach(() => {
   mocks.records = [];
   mocks.requestRecords = [];
@@ -327,6 +329,8 @@ test('an unpublished answer remains visible with full-run access when the live t
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
 });
 test('long agent answers expand and collapse without opening the full run', () => {
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(400);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
   const answer: ProjectTaskRoomBrowserRecord = {
     ...record(1, true),
     body: { kind: 'human-message', text: 'Detailed answer. '.repeat(80) },
@@ -498,4 +502,18 @@ test('thread Enter sends while Shift+Enter and IME keep the reply draft', async 
   expect(mocks.continue).not.toHaveBeenCalled();
   fireEvent.keyDown(textbox, { key: 'Enter' });
   await waitFor(() => expect(mocks.continue).toHaveBeenCalledOnce());
+});
+
+test('answers that fit do not show an expansion control', () => {
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(40);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(120);
+  mocks.records = [
+    {
+      ...record(1, true),
+      body: { kind: 'human-message', text: 'A short answer.' },
+    },
+  ];
+  mount();
+  expect(screen.getByText('A short answer.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
 });
