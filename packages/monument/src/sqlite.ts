@@ -338,7 +338,11 @@ function resolveIntentColumns(
   );
   if (binding.creationSequence)
     used.add(binding.creationSequence.column.toLowerCase());
-  if (Object.keys(resolved).some((field) => !(field in OWNED_INTENT_COLUMNS)))
+  if (
+    Object.keys(resolved).some(
+      (field) => !Object.hasOwn(OWNED_INTENT_COLUMNS, field),
+    )
+  )
     throw new TypeError('Unknown prepared intent column field.');
   for (const field of Object.keys(OWNED_INTENT_COLUMNS) as Array<
     keyof PreparedTurnIntent
