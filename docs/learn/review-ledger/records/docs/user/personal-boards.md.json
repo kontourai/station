@@ -56,7 +56,9 @@
 
     "src-ui/src/views/personal-board/BoardEditor.tsx",
 
-    "src-ui/src/views/personal-board/BoardSetup.tsx"
+    "src-ui/src/views/personal-board/BoardSetup.tsx",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [

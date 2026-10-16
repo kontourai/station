@@ -434,7 +434,9 @@
 
     "src-server/services/layouts/personal-layout-operation.ts",
 
-    "packages/sdk/src/personal-board.ts"
+    "packages/sdk/src/personal-board.ts",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [

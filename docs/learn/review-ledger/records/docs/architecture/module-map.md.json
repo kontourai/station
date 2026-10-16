@@ -1016,7 +1016,9 @@
 
     "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
 
-    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx"
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [
