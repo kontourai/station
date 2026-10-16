@@ -178,8 +178,8 @@ On Windows, in PowerShell:
 ```
 
 The default browser address is `http://localhost:38000`; use the sign-in link when access is requested.
-Run the same install command again to
-upgrade, and `station-nightly --version` to see the installed build. Set
+Run the same install command again to upgrade. Replace `start` with
+`--version` in the launch command to see the installed build. Set
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
 manifest instead. The Station Nightly desktop app uses the same ports and
 data directory; the installer refuses to share them silently (see
