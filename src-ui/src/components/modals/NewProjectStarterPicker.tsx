@@ -45,18 +45,6 @@ export function NewProjectStarterPicker({
         </button>
       </div>
 
-      <button
-        type="button"
-        className={`new-project-modal__none${selectedLayoutId === null ? ' new-project-modal__none--selected' : ''}`}
-        aria-pressed={selectedLayoutId === null}
-        onClick={() => onSelect(null)}
-      >
-        <span>
-          <strong>Start without a layout</strong>
-          <small>Create the project without a workspace view.</small>
-        </span>
-      </button>
-
       {gitWorkspaceDetected && codingStarter && (
         <div className="new-project-modal__starter-group">
           <p className="new-project-modal__starter-label">
@@ -73,6 +61,18 @@ export function NewProjectStarterPicker({
           />
         </div>
       )}
+
+      <button
+        type="button"
+        className={`new-project-modal__none${selectedLayoutId === null ? ' new-project-modal__none--selected' : ''}`}
+        aria-pressed={selectedLayoutId === null}
+        onClick={() => onSelect(null)}
+      >
+        <span>
+          <strong>Start without a layout</strong>
+          <small>Create the project without a workspace view.</small>
+        </span>
+      </button>
 
       {recentLayouts.length > 0 && (
         <div className="new-project-modal__starter-group">

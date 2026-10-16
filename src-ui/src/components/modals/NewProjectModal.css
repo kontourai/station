@@ -362,3 +362,14 @@
     border-radius: 14px;
   }
 }
+
+.new-project-modal__options summary {
+  min-height: 44px;
+  padding: var(--k-space-3) 0;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+.new-project-modal__options summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

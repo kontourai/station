@@ -47,6 +47,7 @@ interface RejectedSlug {
 interface CreatedProject {
   slug: string;
   layoutId: string | null;
+  layoutSlug?: string;
 }
 
 interface UseNewProjectSubmitOptions {
@@ -73,7 +74,7 @@ interface UseNewProjectSubmitOptions {
     name: string;
     slug: string;
   }) => Promise<string | null>;
-  onComplete: (slug: string) => void;
+  onComplete: (slug: string, layoutSlug?: string) => void;
 }
 
 /**
@@ -196,16 +197,23 @@ export function useNewProjectSubmit({
       }
 
       if (project.layoutId) {
+        const layoutId = project.layoutId;
         setApplyingStarter(true);
         try {
-          await applyProjectLayout(apiBase, project.slug, project.layoutId);
-          trackRecentLayout(project.layoutId);
+          const layout = await applyProjectLayout(
+            apiBase,
+            project.slug,
+            layoutId,
+          );
+          project = { ...project, layoutSlug: layout.slug };
+          setCreatedProject(project);
+          trackRecentLayout(layoutId);
         } finally {
           setApplyingStarter(false);
         }
       }
 
-      onComplete(project.slug);
+      onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
       setError(
         err instanceof Error ? userFacingErrorMessage(err) : String(err),
