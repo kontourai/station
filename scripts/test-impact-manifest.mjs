@@ -1292,6 +1292,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'src-server/services/starter-work/starter-registry.ts',
+    related: true,
     tests: ['scripts/__tests__/documentation-foundations.test.ts'],
     reason: 'Starter documentation runtime source',
   },
