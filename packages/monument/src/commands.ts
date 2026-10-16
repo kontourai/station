@@ -2,10 +2,13 @@ import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
   InboxEntryKind,
   InboxEntryRecord,
+  PreparedDedupSnapshot,
   PreparedTurnIntent,
+  PreparedTurnSettlement,
   RequestKeyId,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
+  TurnBoundarySnapshot,
   TurnBoundaryState,
   TurnDedupRecord,
 } from './records.js';
@@ -37,6 +40,12 @@ export type TurnDedupClaimResult =
   | { readonly kind: 'contended' }
   /** Retained input needs explicit guarded resume, never an ordinary claim. */
   | { readonly kind: 'prepared'; readonly invocationId: string }
+  | {
+      readonly kind: 'settled';
+      readonly disposition: PreparedTurnSettlement['disposition'];
+      readonly invocationId: string;
+      readonly settlementId: string;
+    }
   /** The dead owner may have started the effect. Never replay it. */
   | { readonly kind: 'indeterminate' }
   /**
@@ -157,6 +166,31 @@ export interface TurnBoundaryResumePreparedCommand {
   readonly now: string;
 }
 export type TurnBoundaryResumePreparedResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
+
+export interface PreparedSettlementInput {
+  readonly boundaryId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly boundary: TurnBoundarySnapshot;
+  readonly dedup?: PreparedDedupSnapshot;
+  readonly settlementId: string;
+  readonly now: string;
+}
+
+/** Explicit host-authorized cancellation of a never-begun prepared intent. */
+export interface TurnBoundaryCancelPreparedCommand
+  extends PreparedSettlementInput {
+  readonly type: 'turnBoundary.cancelPrepared';
+}
+
+/** The host asserts a definitive refusal; errors/timeouts alone never imply it. */
+export interface TurnBoundaryRecordDefinitiveRefusalCommand
+  extends PreparedSettlementInput {
+  readonly type: 'turnBoundary.recordDefinitiveRefusal';
+}
+
+export type PreparedSettlementResult =
   | { readonly kind: 'applied' }
   | { readonly kind: 'refused' };
 
@@ -483,6 +517,8 @@ export interface KernelResults {
   'turnBoundary.prepare': TurnBoundaryPrepareResult;
   'turnBoundary.beginInvocation': TurnBoundaryBeginInvocationResult;
   'turnBoundary.resumePrepared': TurnBoundaryResumePreparedResult;
+  'turnBoundary.cancelPrepared': PreparedSettlementResult;
+  'turnBoundary.recordDefinitiveRefusal': PreparedSettlementResult;
   'turnBoundary.transition': TurnBoundaryTransitionResult;
   'turnBoundary.remove': TurnBoundaryRemoveResult;
   'turnBoundary.recordAccepted': TurnBoundaryCreateResult;
@@ -518,6 +554,8 @@ export type KernelCommand =
   | TurnBoundaryPrepareCommand
   | TurnBoundaryBeginInvocationCommand
   | TurnBoundaryResumePreparedCommand
+  | TurnBoundaryCancelPreparedCommand
+  | TurnBoundaryRecordDefinitiveRefusalCommand
   | TurnBoundaryTransitionCommand
   | TurnBoundaryRemoveCommand
   | TurnBoundaryRecordAcceptedCommand

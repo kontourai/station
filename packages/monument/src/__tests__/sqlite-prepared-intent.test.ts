@@ -32,10 +32,11 @@ const schema = `CREATE TABLE host_boundaries (
   purpose TEXT NOT NULL, provider_turn_id TEXT, owner_json TEXT,
   owner_id TEXT, owner_pid INTEGER, owner_birth TEXT, owner_identity_kind TEXT,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-  invocation_id TEXT, input_digest TEXT, intent_digest TEXT, body_ref TEXT, linked_key TEXT
+  invocation_id TEXT, input_digest TEXT, intent_digest TEXT, body_ref TEXT, linked_key TEXT,
+  settlement_json TEXT
 );`;
 const cases = kernelConformanceCasesFor(['turnDedup', 'turnBoundary']).filter(
-  (entry) => entry.name.startsWith('prepared intent:'),
+  (entry) => entry.name.startsWith('prepared '),
 );
 
 for (const field of ['constructor', 'toString']) {
@@ -388,6 +389,7 @@ for (const ownerEncoding of ['json', 'columns'] as const) {
     ownerEncoding,
     terminalFacts: 'kernel',
     intentColumns,
+    settlementColumn: 'settlement_json',
   };
   for (const via of ['execute', 'executeSync'] as const) {
     registerKernelConformance(

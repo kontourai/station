@@ -38,6 +38,17 @@ retain authorization, body verification and effect invocation. Mixed-version
 writers need host fencing; additive columns alone cannot protect prepared
 intent from a legacy writer's cleanup. See the [protocol](README.md#reconcile-after-a-restart).
 
+Explicit prepared cancellation and definitive adapter refusal use separate
+trusted compound commands. They compare both full owners/revisions, intent and
+pending/begun link, then retain a passive same-table settlement audit and a
+non-reclaimable dedup outcome together. Settlement retains opaque intent/bodyRef;
+it neither stores nor deletes the host body. Passive rows occupy no active or
+accepted-capacity slot, and reads/recovery/terminal retirement exclude them.
+Only explicit thread forgetting removes the boundary audit. Deliberate host
+dedup-prefix deletion can erase dedup retention independently and never grants
+resume permission for a retained settled invocation. The kernel adds no host
+API, automatic retry, dormant Session-start protocol or new deletion authority.
+
 ## What it does not own
 
 | Concern | Owner |

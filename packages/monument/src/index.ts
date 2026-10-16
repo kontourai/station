@@ -25,6 +25,7 @@ export {
   type RequestKeyClaimInputs,
 } from './decisions/request-keys.js';
 export {
+  decidePreparedTurnSettlement,
   decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
