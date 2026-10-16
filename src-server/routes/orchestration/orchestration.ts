@@ -168,6 +168,7 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
+import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -3030,11 +3031,26 @@ export function createOrchestrationRoutes(
         );
       const answer = (data: TurnDeliveryInspection) =>
         c.json({ success: true, data });
-      const durable = orchestrationService.inspectTurnDelivery(
-        conversationId,
-        clientTurnId,
-        readAuthorityFor(c),
-      );
+      let durable: ReturnType<OrchestrationService['inspectTurnDelivery']>;
+      try {
+        durable = orchestrationService.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          readAuthorityFor(c),
+        );
+      } catch (error) {
+        if (error instanceof TurnIdempotencySettledError)
+          return c.json(
+            {
+              success: false,
+              error: error.message,
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          );
+        throw error;
+      }
       // A turn the ledger settled outranks the request still being answered.
       // Only the public fields: the ledger also names the Session a live
       // claim is on (for a resend to join), which this answer never shows.

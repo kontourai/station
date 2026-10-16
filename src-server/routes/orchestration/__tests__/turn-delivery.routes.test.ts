@@ -488,6 +488,21 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     },
   );
 
+  test('does not normalize an unrelated lookup error carrying a settlement-shaped code', async () => {
+    const { service, app } = station();
+    vi.spyOn(service, 'inspectTurnDelivery').mockImplementation(() => {
+      throw Object.assign(new Error('Unexpected storage failure'), {
+        code: 'client_turn_settled',
+        disposition: 'cancelled',
+      });
+    });
+    const response = await app.request(
+      '/api/orchestration/conversations/c/turn-deliveries/k',
+    );
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe('Internal Server Error');
+  });
+
   test('answers received while the session start is held open, then started once the engine has the turn; a same-key resend sends nothing', async () => {
     const { adapter, send, lookup } = station();
     let release!: () => void;

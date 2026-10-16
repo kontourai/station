@@ -50,9 +50,9 @@ class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
     return read.kind === 'found' ? read.record : undefined;
   }
 
-  settlePrepared(
+  prepare(
     key: string,
-    disposition: 'cancelled' | 'definitively-refused',
+    disposition?: 'cancelled' | 'definitively-refused',
   ): void {
     const row = this.read(key);
     if (!row?.owner) throw new Error('Expected the actual claimed owner.');
@@ -100,6 +100,7 @@ class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
         context,
       ),
     ).toEqual({ kind: 'applied' });
+    if (disposition === undefined) return;
     if (disposition === 'definitively-refused')
       expect(
         kernel.executeSync(
@@ -160,7 +161,7 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
       expect(store.claim('settled-key', 1, 'tracked')).toEqual({
         claimed: true,
       });
-      persistence.settlePrepared('settled-key', disposition);
+      persistence.prepare('settled-key', disposition);
       const before = persistence.read('settled-key');
       for (const operation of [
         () => store.claim('settled-key'),
@@ -299,6 +300,24 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
       exact: () => ({ pid: process.pid, start: 'successor-birth' }),
       probe: () => ({ state: 'dead' as const }),
     };
+
+    test('a prepared linked claim with a dead owner refuses ordinary replay without reclaiming', () => {
+      const persistence = new InMemoryTurnIdempotencyPersistence();
+      const first = new TurnIdempotencyStore(persistence, alive);
+      expect(first.claim('prepared-key', 1, 'tracked')).toEqual({
+        claimed: true,
+      });
+      persistence.prepare('prepared-key');
+      const before = persistence.read('prepared-key');
+      expect(
+        new TurnIdempotencyStore(persistence, dead).claim(
+          'prepared-key',
+          4,
+          'tracked',
+        ),
+      ).toEqual({ claimed: false, indeterminate: true });
+      expect(persistence.read('prepared-key')).toEqual(before);
+    });
 
     test('a tracked claim whose dead owner never began invoking is reclaimed', () => {
       const persistence = new InMemoryTurnIdempotencyPersistence();
