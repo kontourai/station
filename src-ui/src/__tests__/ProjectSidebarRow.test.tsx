@@ -338,7 +338,7 @@ describe('ProjectSidebarRow', () => {
       />,
     );
 
-    const accent = container.querySelector('.sidebar__project-accent');
+    const accent = container.querySelector('.sidebar__project-icon-slot');
     expect(accent?.getAttribute('style')).toContain('var(--event-tool-result)');
   });
 });

@@ -34,7 +34,7 @@
 }
 
 .sidebar--collapsed .sidebar__header {
-  height: auto;
+  height: var(--app-toolbar-height);
   justify-content: center;
   flex-direction: column;
   padding: var(--k-space-2) var(--k-space-1);
@@ -58,6 +58,7 @@
 }
 
 :root.is-desktop-mac .sidebar--collapsed .sidebar__header {
+  height: auto;
   padding-left: 4px;
   padding-top: 36px;
 }
@@ -110,7 +111,6 @@
 }
 
 .sidebar__home-button,
-.sidebar__collapse-button,
 .sidebar__mobile-close {
   border: none;
   border-radius: 4px;
@@ -127,30 +127,6 @@
   gap: 8px;
   padding: 0;
   color: inherit;
-}
-
-.sidebar__collapse-button {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  padding: 0;
-  color: var(--text-muted);
-}
-
-.sidebar__collapse-button:hover,
-.sidebar__collapse-button:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.sidebar--collapsed .sidebar__collapse-button {
-  width: 36px;
-  height: 36px;
-  margin-left: 0;
 }
 
 .sidebar__home-button:hover,
@@ -183,9 +159,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 4px 12px;
+  margin: var(--k-space-6) var(--k-space-2) var(--k-space-2);
+  padding: 0;
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   /* --text-tertiary for the same measured reason as the chips (#2150). */
@@ -203,7 +180,8 @@
 .sidebar--collapsed .sidebar__section-label--projects {
   display: flex;
   justify-content: center;
-  padding: 6px 0;
+  margin: var(--k-space-3) 0 var(--k-space-1);
+  padding: var(--k-space-1) 0;
 }
 
 .sidebar--collapsed .sidebar__section-label-text {
@@ -258,7 +236,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 4px;
+  padding: var(--k-space-3) var(--k-space-2);
 }
 
 .sidebar--collapsed .sidebar__body {
@@ -279,39 +257,32 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 12px;
+  min-height: calc(var(--k-space-6) + var(--k-space-1));
+  padding: var(--k-space-2);
   background: transparent;
   border: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: var(--text-md);
+  font-size: var(--k-text-sm);
   text-align: left;
   border-radius: 4px;
 }
 
-.sidebar__project-accent {
-  width: 3px;
-  height: 22px;
-  flex: 0 0 3px;
-  border-radius: 999px;
-}
-
-/* Every expanded row holds the icon's 18px slot, icon or not, so project
-   names start at one x. An icon-less project's slot stays empty; the bar
-   beside it carries the colour. */
+/* Every project has a mark; missing artwork uses its neutral initials tile. */
 .sidebar__project-icon-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  color: var(--k-text-muted);
 }
 
-.sidebar--collapsed .sidebar__project-accent {
-  position: absolute;
-  left: 2px;
-  height: 28px;
+.sidebar__project-icon-slot .project-icon--initials {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 30%, var(--k-line));
+  background: var(--k-panel-raised);
 }
 
 .sidebar__project-btn:hover {
@@ -319,16 +290,23 @@
 }
 
 .sidebar__project-btn--active {
-  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
-  border-left: 2px solid var(--accent-primary);
-  /* The 2px border comes out of the left padding, so the active row's bar
-     and name stay at the same x as every other row's. */
-  padding-left: 10px;
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
+}
+
+.sidebar__project-row .sidebar__project-btn--active {
+  background: transparent;
+  color: var(--k-text);
+  font-weight: 500;
+}
+
+.sidebar--collapsed .sidebar__project-row .sidebar__project-btn--active {
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
 }
 
 .sidebar--collapsed .sidebar__project-btn {
   justify-content: center;
-  padding: 10px 0;
+  padding: var(--k-space-2) 0;
 }
 
 .sidebar__project-name {
@@ -520,7 +498,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--k-space-1);
-  margin: var(--k-space-1) var(--k-space-2) var(--k-space-2) var(--k-space-5);
+  margin: var(--k-space-1) 0 var(--k-space-2)
+    calc(var(--k-space-4) + var(--k-space-1));
   padding-left: var(--k-space-2);
   border-left: 1px solid var(--k-line);
 }
@@ -528,6 +507,7 @@
 .sidebar__layout-chip {
   display: flex;
   align-items: center;
+  gap: var(--k-space-2);
   min-height: var(--k-space-6);
   width: 100%;
   padding: var(--k-space-1) var(--k-space-2);
@@ -536,7 +516,7 @@
   background: transparent;
   color: var(--k-text-muted);
   font: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -547,10 +527,27 @@
   color: var(--k-text);
 }
 
-.sidebar__layout-chip--current {
+.sidebar__layout-chip--current,
+.sidebar__layout-chip--current:hover {
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
   color: var(--k-action);
   font-weight: 500;
+}
+
+.sidebar__layout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  flex: 0 0 var(--k-space-4);
+}
+
+.sidebar__layout-icon .brand-icon {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
 }
 
 .sidebar__project-disclosure {
@@ -600,6 +597,12 @@
   overflow-wrap: anywhere;
 }
 
+.sidebar__popover-project-action {
+  margin-top: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+  border-radius: 0;
+}
+
 .sidebar__popover .sidebar__layout-chips {
   margin: var(--k-space-2) 0 0;
   padding: 0;
@@ -641,14 +644,15 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 12px;
+  min-height: var(--k-space-6);
+  padding: var(--k-space-2);
   background: transparent;
   border: none;
   /* --text-tertiary (#2150): the Activity row measured 4.52:1 on light with
      --text-muted -- at the AA floor, not above it. Same rung as the labels. */
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: var(--text-md);
+  font-size: var(--k-text-sm);
   text-align: left;
   border-radius: 4px;
 }
@@ -658,17 +662,10 @@
   color: var(--text-primary);
 }
 
-/* The current page reads the same on every place row: Home's current
-   treatment (`.sidebar__project-btn--active`) — accent-tinted fill and a
-   left accent bar — so Home and Activity, the panel's two places, cannot
-   look current in two different ways. */
+/* Current destinations share the quiet accent fill used by project views. */
 .sidebar__nav-btn--active {
-  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
-  border-left: 2px solid var(--accent-primary);
-  color: var(--text-primary);
-  /* As on a current project row: the border comes out of the padding, so a
-     current Activity's icon and label do not move. */
-  padding-left: 10px;
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
 }
 
 .sidebar__nav-btn[aria-disabled="true"] {
@@ -717,6 +714,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sidebar__nav-icon,
+.sidebar__nav-btn > svg {
+  display: inline-flex;
+  width: 22px;
+  height: var(--k-space-4);
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* The section toggles' caret is the shared disclosure caret

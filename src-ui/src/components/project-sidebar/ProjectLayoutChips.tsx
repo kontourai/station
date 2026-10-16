@@ -1,5 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { BrandIcon } from '../icons/BrandIcon';
+import {
+  BoardGlyph,
+  CheckGlyph,
+  CodeGlyph,
+  DashboardGlyph,
+  ShieldGlyph,
+} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 
 /**
@@ -23,6 +31,8 @@ export interface ProjectLayoutChip {
   key: string;
   /** The chip's visible text, which is also its accessible name. */
   name: string;
+  type?: string;
+  icon?: string;
   /**
    * True for the chip whose destination the app is currently showing. Exactly
    * the routed-destination meaning `aria-current="page"` carries, which is why
@@ -257,7 +267,27 @@ export function ProjectLayoutChips({
               event.preventDefault();
             }}
           >
-            {chip.name}
+            <span className="sidebar__layout-icon" aria-hidden="true">
+              {chip.type === 'coding' ? (
+                <CodeGlyph />
+              ) : chip.type === 'tasks' ? (
+                <CheckGlyph />
+              ) : chip.type === 'review' ? (
+                <ShieldGlyph />
+              ) : chip.icon ? (
+                <BrandIcon
+                  name={chip.name}
+                  icon={chip.icon}
+                  allowSafeImageIcon
+                  size={16}
+                />
+              ) : chip.type === 'session-board' ? (
+                <BoardGlyph />
+              ) : (
+                <DashboardGlyph />
+              )}
+            </span>
+            <span>{chip.name}</span>
           </button>
         ))}
       </div>

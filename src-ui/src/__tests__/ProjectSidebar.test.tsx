@@ -218,7 +218,6 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { RecentChatList } from '../components/chat-start/RecentChatList';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
-import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
@@ -388,7 +387,7 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     boards.push({ slug: 'daily', name: 'Daily brief' });
     renderSidebar(<ProjectSidebar />);
 
-    expect(await screen.findByText('Boards')).toBeTruthy();
+    expect(await screen.findByText('Personal Boards')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
     // Named separately from the positive assertion: a future change that
     // renders the section AND an alert somewhere else in the panel is still a
@@ -396,38 +395,16 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 
-  test('renders no Boards chrome — and no error alert — for a viewer with none', async () => {
+  test('offers the first Personal Board through the mounted section', async () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
-
-    // The chunk still loads; it is the SECTION that returns null. Proving the
-    // lazy work has SETTLED is the hard part of this case, because a section
-    // rendering nothing offers nothing to wait for — and an earlier revision
-    // awaited `Home`, which `ProjectSidebar` renders itself, so both negative
-    // assertions ran before the chunk had resolved or rejected and this test
-    // passed even with the module mock broken (#2062 review F3).
-    //
-    // The settle-proof is the section DOING something: answering the palette's
-    // create request, which is the affordance that exists for precisely this
-    // viewer. Only a mounted section can, so a chunk that threw cannot satisfy
-    // it.
-    // Let the dynamic import resolve and the section mount. Bounded and
-    // re-dispatching, because the listener only exists once the chunk is in
-    // the tree — and a flush count is a guess, whereas the spy is the fact.
-    // This cannot manufacture a pass: the assertion below still requires the
-    // section to have handled the request.
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await act(async () => {
-        requestNewBoard();
-      });
-      if (boardCreateSpy.mock.calls.length > 0) break;
-    }
+    const create = await screen.findByRole('button', { name: 'New Board' });
+    fireEvent.click(create);
     expect(boardCreateSpy).toHaveBeenCalledWith({
       slug: 'untitled-board',
       name: 'Untitled Board',
     });
-
-    expect(screen.queryByText('Boards')).toBeNull();
+    expect(screen.getByText('Personal Boards')).toBeTruthy();
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 });
@@ -492,22 +469,22 @@ describe('ProjectSidebar panel order (#2059)', () => {
   });
 });
 
-/**
- * #2150: `LayoutIcon` falls back to a two-letter monogram for a project with
- * no icon. At the row's 18px that was a smudge, it landed in the accessible
- * name ("CA Campfit"), and the design record draws the accent bar beside it
- * for identity. An icon-less project now shows the bar alone; a project WITH
- * an icon keeps it, because that is identity the user chose. Both directions
- * are pinned so the gate cannot quietly become "never show an icon".
- */
+/** Project marks stay decorative while every row keeps its canonical name. */
 describe('project row identity (#2150)', () => {
-  test('an icon-less project shows no monogram and is named by its name alone', () => {
+  test('an icon-less project has a decorative identity tile and its canonical accessible name', () => {
     resetState();
     projects.push({ id: 'p1', slug: 'campfit', name: 'Campfit' });
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
-    expect(row.textContent?.trim()).toBe('Campfit');
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    expect(row.querySelector('.sidebar__project-name')?.textContent).toBe(
+      'Campfit',
+    );
+    expect(row.querySelector('.project-icon--initials')).toBeTruthy();
+    expect(
+      row
+        .querySelector('.sidebar__project-icon-slot')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
   });
 
   test('a project with an icon keeps it', () => {
@@ -523,7 +500,7 @@ describe('project row identity (#2150)', () => {
     expect(row.textContent).toContain('🏕️');
   });
 
-  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+  test('a chosen image occupies the identity tile and stays out of the accessible name', () => {
     resetState();
     const image = 'data:image/png;base64,iVBORw0KGgo=';
     projects.push({
@@ -534,7 +511,6 @@ describe('project row identity (#2150)', () => {
     } as (typeof projects)[number]);
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
     const icon = row.querySelector('.sidebar__project-icon');
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
     expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
@@ -551,13 +527,10 @@ describe('project row identity (#2150)', () => {
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
     expect(row.querySelector('img')).toBeNull();
-    // Treated as no icon: the slot is reserved and empty; the bar carries
-    // the colour.
-    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(row.querySelector('.project-icon--initials')).toBeTruthy();
     expect(
       row.querySelector('.sidebar__project-icon-slot')?.childElementCount,
-    ).toBe(0);
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    ).toBe(1);
   });
 
   test('every expanded row reserves the icon slot, so an icon-less name lines up with an iconed one', () => {
@@ -580,16 +553,14 @@ describe('project row identity (#2150)', () => {
       expect(slot?.nextElementSibling?.className).toBe('sidebar__project-name');
       expect(slot?.getAttribute('aria-hidden')).toBe('true');
     }
-    // An icon-less project leaves the slot empty: no dot that could read as
-    // status or presence. Its colour is the bar's alone.
     const ferry = screen.getByRole('button', { name: 'Ferry' });
     expect(
       ferry.querySelector('.sidebar__project-icon-slot')?.childElementCount,
-    ).toBe(0);
+    ).toBe(1);
     expect(ferry.querySelector('[data-project-icon]')).toBeNull();
     expect(
-      ferry.querySelector<HTMLElement>('.sidebar__project-accent')?.style
-        .backgroundColor,
+      ferry.querySelector<HTMLElement>('.sidebar__project-icon-slot')?.style
+        .color,
     ).toBeTruthy();
   });
 });
@@ -860,8 +831,8 @@ describe('a project wears the same colour everywhere', () => {
 
     const sidebar = renderSidebar(<ProjectSidebar />);
     const sidebarColour = sidebar.container.querySelector<HTMLElement>(
-      '[title="Open Beta workspace"] .sidebar__project-accent',
-    )?.style.backgroundColor;
+      '[title="Open Beta workspace"] .sidebar__project-icon-slot',
+    )?.style.color;
     sidebar.unmount();
     // Sorted alpha, beta, gamma: beta takes the palette's SECOND colour,
     // which no allocation over beta alone would give it.

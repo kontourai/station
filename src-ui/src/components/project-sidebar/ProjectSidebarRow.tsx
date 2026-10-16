@@ -103,6 +103,7 @@ export function ProjectSidebarRow({
       chips.push({
         key: BOARD_SHORTCUT_KEY,
         name: 'Board',
+        type: 'session-board',
         current: isActive && pathname.endsWith('/session-board'),
         activate: () => {
           closeMenu();
@@ -116,10 +117,13 @@ export function ProjectSidebarRow({
       slug: string;
       name: string;
       type?: string;
+      icon?: string;
     }>) {
       chips.push({
         key: layout.slug,
         name: layout.name,
+        type: layout.type,
+        icon: layout.icon,
         current: isActive && activeLayout === layout.slug,
         /**
          * #2158: this Layout as a dock pane. The project id comes from the
@@ -198,12 +202,6 @@ export function ProjectSidebarRow({
               : `Open ${project.name} workspace`
           }
         >
-          <span
-            className="sidebar__project-accent"
-            style={{ backgroundColor: accent }}
-            aria-hidden="true"
-          />
-          {/* Expanded rows reserve the icon slot; an iconless rail needs a legible identity. */}
           {collapsed ? (
             <ProjectIcon
               project={project}
@@ -212,11 +210,15 @@ export function ProjectSidebarRow({
               className="sidebar__project-icon"
             />
           ) : (
-            <span className="sidebar__project-icon-slot" aria-hidden="true">
+            <span
+              className="sidebar__project-icon-slot"
+              style={{ color: accent }}
+              aria-hidden="true"
+            >
               <ProjectIcon
                 project={project}
-                size={18}
-                fallback="none"
+                size={22}
+                fallback="initials"
                 className="sidebar__project-icon"
               />
             </span>
@@ -322,9 +324,16 @@ export function ProjectSidebarRow({
         onClose={closeMenu}
       >
         <div className="sidebar__popover-heading">{project.name}</div>
+        <ProjectSidebarViews
+          projectName={project.name}
+          chips={chips}
+          isPending={isPending}
+          isError={isError}
+          retry={() => void refetch()}
+        />
         <button
           type="button"
-          className="menu-row"
+          className="menu-row sidebar__popover-project-action"
           onClick={() => {
             closeMenu();
             setProject(project.slug);
@@ -333,13 +342,6 @@ export function ProjectSidebarRow({
         >
           Open project
         </button>
-        <ProjectSidebarViews
-          projectName={project.name}
-          chips={chips}
-          isPending={isPending}
-          isError={isError}
-          retry={() => void refetch()}
-        />
       </SidebarPopover>
     </div>
   );

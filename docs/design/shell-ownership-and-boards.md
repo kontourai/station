@@ -117,7 +117,7 @@ identifiers that the local adapter currently binds to one directory.
 The workspace map keeps places in the sidebar and retains the app header:
 
 ```text
-Station                                      [collapse]
+Station                             (app header toggle)
 Home
 Activity
 PROJECTS                                             +
@@ -128,7 +128,7 @@ PROJECTS                                             +
     Research
   Ferry                                    1 live
   Thread
-BOARDS                                               +
+PERSONAL BOARDS                                      +
   Daily brief
   Research desk
 ─────────────────────────────────────────────────────
@@ -145,14 +145,22 @@ that list's single tab stop. The disclosure folds the selected project's
 views; project selection and Layout selection still use canonical guarded
 navigation.
 
-Clicking a collapsed project opens a popup with **Open project** and its
-Layouts. Layout and Board-availability reads are enabled only for visible
+Clicking a collapsed project opens a popup with its Layouts followed by
+**Open project**. Layout and Board-availability reads are enabled only for visible
 expanded views or an explicitly opened rail popup. Failed Layout reads show
 Retry rather than treating cached data as current. Escape, focus leaving,
 outside pointer input, navigation and changing sidebar presentation dismiss
 the popup. The header's sidebar control toggles the desktop rail or the
 mobile drawer. The header retains breadcrumbs, its Layout picker,
 notifications, account and Station controls, and region controls.
+
+**Personal Boards** follows Projects and remains visible when empty; its
+`+` creates the first Board and focuses its name. Loading and failed reads
+remain visible, with Retry on failure and creation disabled until the list
+is available. The collapsed rail has one dashboard button that opens the
+personal Board list and its create action. Escape returns focus to that
+button; selecting a Board dismisses the popup. Palette creation with the
+rail collapsed opens the new Board without focusing an invisible rename.
 
 The expanded footer uses one row. The collapsed footer puts live work,
 Schedule, Customize and Settings in **Sidebar utilities**. The presence tray
@@ -188,8 +196,9 @@ backups retain their stored section values for compatibility.
   Owners: [`SessionTranscript`](../../src-ui/src/components/session-detail/SessionTranscript.tsx),
   [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
   and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
-- **Boards** is the project-less section, following Projects. Personal Boards list first, then
-  instance-shared ones. The `+` creates a personal Board.
+- **Personal Boards** is the project-less section following Projects. The
+  `+` creates a personal Board, including when none exist. Instance-shared
+  Boards remain unbuilt; no shared group is shown without a backing list.
 - **Projects** keep their model. Their live-work count reads the shared
   session classifier. The selected project's child rows name its actual
   Layout records; these are not a hard-coded list of built-in features.

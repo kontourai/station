@@ -1,6 +1,6 @@
 .sidebar__footer {
   border-top: 1px solid var(--k-line);
-  padding: var(--k-space-1);
+  padding: var(--k-space-2);
   flex-shrink: 0;
 }
 .sidebar__footer-meta {
@@ -8,7 +8,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
-  padding: var(--k-space-1) var(--k-space-2);
+  padding: 0;
   color: var(--k-text-muted);
 }
 .sidebar__footer-actions {
@@ -84,4 +84,9 @@
 
 .sidebar__footer-meta .sidebar__presence-stack {
   display: none;
+}
+
+.sidebar__presence-summary {
+  font-size: var(--k-text-xs);
+  white-space: nowrap;
 }

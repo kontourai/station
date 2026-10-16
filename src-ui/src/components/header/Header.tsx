@@ -5,7 +5,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
 import { activatable } from '../../utils/activatable';
-import { MenuGlyph } from '../icons/Glyph';
+import { MenuGlyph, SidebarGlyph } from '../icons/Glyph';
 import { HeaderActions } from './HeaderActions';
 import { LayoutSwitcher } from './LayoutSwitcher';
 import { RegionToolbarControls } from './RegionToolbarControls';
@@ -75,7 +75,7 @@ export function Header({
         aria-expanded={isMobile ? undefined : !projectSidebarCollapsed}
         aria-controls="mobile-navigation"
       >
-        <MenuGlyph />
+        {isMobile ? <MenuGlyph /> : <SidebarGlyph />}
       </button>
       {/* The lockup owns the "full name or no name" rule: it is a one-line
           wrapping box, so a wordmark that cannot fit beside the logo wraps

@@ -27,6 +27,7 @@ import {
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
@@ -162,7 +163,6 @@ function ProjectSidebarImpl() {
     mobileOpen,
     mobileTriggerRef,
     setMobileOpen,
-    toggleCollapse,
   } = useProjectSidebarState();
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
@@ -254,11 +254,9 @@ function ProjectSidebarImpl() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
-          collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}
           onGoHome={goHome}
-          onToggleCollapse={toggleCollapse}
         />
 
         <div className="sidebar__body">
@@ -275,7 +273,9 @@ function ProjectSidebarImpl() {
             aria-current={isHomeActive ? 'page' : undefined}
             onClick={goHome}
           >
-            <span aria-hidden="true">⌂</span>
+            <span className="sidebar__nav-icon" aria-hidden="true">
+              <HomeGlyph />
+            </span>
             <span className="sidebar__project-name">Home</span>
           </button>
           {/* #2059 (D3): Activity sits directly under Home as the panel's
@@ -363,6 +363,7 @@ function ProjectSidebarImpl() {
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
           <LazyBoundary
+            key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
             load={loadProjectSidebarBoards}
             pending={null}
             componentProps={{
