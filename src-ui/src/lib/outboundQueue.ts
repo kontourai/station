@@ -2220,7 +2220,9 @@ async function beginLive(
           state: withRetired(
             {
               ...state,
-              turns: state.turns.filter((entry) => !exact(entry, claimed)),
+              turns: state.turns.filter(
+                (entry) => entry.clientTurnId !== clientTurnId,
+              ),
             },
             clientTurnId,
             'accepted',

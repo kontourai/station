@@ -66,6 +66,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
+import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
@@ -1080,6 +1081,36 @@ export function useSendMessage(
           : true;
       } catch (error) {
         stopDeliveryWatch?.();
+        const deliveryWasObserved = () => {
+          const observedChat = activeChatsStore.getSnapshot()[sessionId];
+          const sentMessage = observedChat?.messages?.find(
+            (message) =>
+              message.role === 'user' && message.clientId === resolvedTurnId,
+          );
+          return (
+            !options?.dispatch &&
+            sentMessage !== undefined &&
+            messageDeliveryStateFor(observedChat, sentMessage) === 'delivered'
+          );
+        };
+        const settleObservedDelivery = async () => {
+          await live?.accepted();
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (latest?.abortController === abortController)
+            updateChat(sessionId, {
+              abortController: undefined,
+              ...(latest.pendingClientTurnId === resolvedTurnId
+                ? {
+                    pendingClientTurnId: undefined,
+                    sendAwaitingTurnStart: undefined,
+                  }
+                : {}),
+            });
+          options?.onAdmission?.('accepted');
+          return true;
+        };
+        // A witnessed start outranks a later failure of this HTTP response.
+        if (deliveryWasObserved()) return settleObservedDelivery();
         // The outbox row follows what the answer proves. Any response is
         // Station's own answer: a refusal started nothing (the composer gets
         // the text back below), and a may-have-started answer keeps the row
@@ -1358,6 +1389,8 @@ export function useSendMessage(
             });
             return false;
           }
+          // A turn can arrive while the durable claim above is released.
+          if (deliveryWasObserved()) return settleObservedDelivery();
           clearStreamingMessage(sessionId);
           updateChat(sessionId, {
             status: 'queued',

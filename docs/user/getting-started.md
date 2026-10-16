@@ -537,6 +537,9 @@ with the same identity, and one Station may have started is kept and marked,
 never sent twice. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
+Once Station confirms a turn started, a late network error does not queue that
+message again.
+
 Until the agent has a message, its bubble is outlined rather than filled, with a
 short label:
 

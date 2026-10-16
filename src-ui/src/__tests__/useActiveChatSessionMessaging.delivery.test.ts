@@ -64,6 +64,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import {
   _resetOutboundQueueStorage,
@@ -745,6 +746,149 @@ describe('useSendMessage: durable before the request', () => {
       messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
     ).toBe('delivered');
   });
+
+  it.each([
+    'lookup',
+    'turn-started',
+    'during-release',
+    'newer-send',
+    'other-key',
+    'received',
+    'indeterminate',
+    'unknown',
+  ] as const)(
+    'a late transport failure respects the exact send evidence (%s)',
+    async (witness) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const storage =
+        witness === 'during-release' ? armableStorage() : undefined;
+      let rejectSend!: (reason: Error) => void;
+      sendExecutionMessageMock.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSend = reject;
+          }),
+      );
+      getTurnDeliveryMock.mockImplementation(
+        async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: ['received', 'indeterminate', 'unknown'].includes(witness)
+            ? witness
+            : 'started',
+          conversationId,
+          clientTurnId,
+        }),
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      let pending!: Promise<unknown>;
+      const onAdmission = vi.fn();
+      await act(async () => {
+        pending = result.current(
+          chat,
+          'codex',
+          undefined,
+          'delivered before the response',
+          undefined,
+          undefined,
+          undefined,
+          { onAdmission },
+        );
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+        clientTurnId: string;
+      };
+      const observeStart = () =>
+        handleTurnStartedEvent({
+          provider: 'codex',
+          threadId: chat,
+          turnId: 'provider-turn-1',
+          eventId: 'started-event',
+          createdAt: '2026-10-16T03:00:00.000Z',
+          method: 'turn.started',
+          clientTurnId: body.clientTurnId,
+          prompt: 'delivered before the response',
+        });
+      const newerController = new AbortController();
+      await act(async () => {
+        if (witness === 'lookup' || witness === 'newer-send') {
+          await vi.advanceTimersByTimeAsync(5_000);
+          expect(
+            activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[
+              body.clientTurnId
+            ],
+          ).toBe('started');
+          activeChatsStore.updateChat(chat, { status: 'idle' });
+        } else if (
+          witness === 'received' ||
+          witness === 'indeterminate' ||
+          witness === 'unknown'
+        ) {
+          await vi.advanceTimersByTimeAsync(5_000);
+        } else if (witness === 'turn-started') {
+          observeStart();
+        } else if (witness === 'during-release') {
+          storage!.arm(observeStart);
+        } else {
+          activeChatsStore.updateChat(chat, {
+            deliveryChecks: { 'other-key': 'started' },
+          });
+        }
+        if (witness === 'newer-send')
+          activeChatsStore.updateChat(chat, {
+            status: 'sending',
+            abortController: newerController,
+            pendingClientTurnId: 'newer-key',
+            sendAwaitingTurnStart: true,
+            input: 'newer draft',
+          });
+      });
+      let outcome: unknown;
+      await act(async () => {
+        rejectSend(new TypeError('Failed to fetch'));
+        outcome = await pending;
+      });
+      const delivered = [
+        'lookup',
+        'turn-started',
+        'during-release',
+        'newer-send',
+      ].includes(witness);
+      const state = activeChatsStore.getSnapshot()[chat];
+      expect(outcome).toBe(delivered);
+      expect(state?.status).toBe(
+        !delivered ? 'queued' : witness === 'lookup' ? 'idle' : 'sending',
+      );
+      expect(
+        state?.ephemeralMessages?.some((message) => message.queuedRetry) ??
+          false,
+      ).toBe(!delivered);
+      if (delivered) {
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        expect((await outboundDispatch.retiredKeys()).accepted).toContain(
+          body.clientTurnId,
+        );
+        await outboundDispatch.flush(async () => {
+          throw new Error('Delivered message must not be resent');
+        });
+      } else {
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: body.clientTurnId,
+            status: 'invoking',
+          }),
+        ]);
+      }
+      if (witness === 'newer-send')
+        expect(state).toMatchObject({
+          abortController: newerController,
+          pendingClientTurnId: 'newer-key',
+          sendAwaitingTurnStart: true,
+          input: 'newer draft',
+        });
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      expect(onAdmission).toHaveBeenCalledWith('accepted');
+    },
+  );
 
   it("records this window's own send, and whether it was saved on the device, until Station starts it", async () => {
     let answer!: (value: unknown) => void;
