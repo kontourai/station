@@ -145,6 +145,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     // claim is about what Plugins and Agents are declared to be.
     expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
     expect(shapeOf({ type: 'agents' })).toBe('split-pane');
+    expect(shapeOf({ type: 'task', taskId: 't1' })).toBe('split-pane');
   });
 
   test('a single-column route’s placeholder is a region', () => {
@@ -157,7 +158,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
   test('a route with no frame has no declared shape to hold', () => {
     expect(shapeOf({ type: 'home' })).toBe('unshaped');
-    expect(shapeOf({ type: 'task', taskId: 't1' })).toBe('unshaped');
   });
 
   describe('Guidance — one frame, three tabs, two layouts', () => {
