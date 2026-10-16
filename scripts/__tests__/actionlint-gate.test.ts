@@ -552,6 +552,14 @@ describe('persistent runner policy', () => {
     [
       'pr-title',
       (job: Record<string, unknown>) => {
+        const steps = job.steps as Array<Record<string, unknown>>;
+        (steps[0].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.base.sha }}';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
         job.permissions = { contents: 'write' };
       },
     ],

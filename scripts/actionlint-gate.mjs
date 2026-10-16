@@ -2596,7 +2596,7 @@ function primaryCiRouterFindings(file, document) {
           'fetch-depth': 1,
           'persist-credentials': false,
           repository: `\${{ github.repository }}`,
-          ref: `\${{ github.event.pull_request.base.sha }}`,
+          ref: `\${{ github.workflow_sha }}`,
         },
       },
       {
