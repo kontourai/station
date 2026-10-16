@@ -650,6 +650,54 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     }
   });
 
+  test.each(['boundary', 'dedup'] as const)(
+    'a definitive refusal cannot settle a changed private %s owner identity',
+    async (target) => {
+      const { adapter, send, root, lookup } = station();
+      const db = new DatabaseSync(join(root, 'orchestration.sqlite'));
+      try {
+        db.exec(`CREATE TRIGGER change_refusal_owner AFTER UPDATE OF state ON orchestration_turn_boundaries
+          WHEN NEW.state = 'invoking' BEGIN
+          ${
+            target === 'boundary'
+              ? 'UPDATE orchestration_turn_boundaries SET owner_pid = owner_pid + 1 WHERE boundary_id = NEW.boundary_id;'
+              : "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.pid', json_extract(owner_json, '$.pid') + 1) WHERE dedup_key = NEW.dedup_key;"
+          }
+          END`);
+        adapter.nextTurn = 'refuse';
+        const refused = await send(
+          'conversation:changed-owner',
+          'key-changed-owner',
+        );
+        expect(refused.status).toBe(409);
+        expect(
+          await lookup('conversation:changed-owner', 'key-changed-owner'),
+        ).toMatchObject({
+          outcome: 'indeterminate',
+        });
+        expect(adapter.turns).toHaveLength(0);
+        expect(
+          db
+            .prepare(
+              'SELECT state, prepared_settlement FROM orchestration_turn_boundaries',
+            )
+            .get(),
+        ).toMatchObject({
+          state: 'invoking',
+          prepared_settlement: null,
+        });
+        const row = db
+          .prepare('SELECT owner_json FROM orchestration_turn_dedup')
+          .get();
+        expect(JSON.parse(String(row?.owner_json))).not.toHaveProperty(
+          'settlement',
+        );
+      } finally {
+        db.close();
+      }
+    },
+  );
+
   test('a send that failed after the engine may have taken it is indeterminate while this Station lives, never received', async () => {
     const { adapter, send, lookup } = station();
     adapter.nextTurn = 'fail';
