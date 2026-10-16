@@ -17,6 +17,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { IconButton } from '../../components/IconButton';
+import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
 import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import {
@@ -337,15 +339,14 @@ export function GuestSharedTaskView({
         >
           <div className="account-entry__shared-task-heading">
             <h5>{selected.task.title}</h5>
-            <Button
-              variant="ghost"
-              size="sm"
+            <IconButton
               aria-label="Refresh shared Tasks"
               onClick={refreshTasks}
             >
-              Refresh
-            </Button>
-            <Button
+              <RefreshGlyph />
+            </IconButton>
+            <IconButton
+              aria-label="Close"
               onClick={() => {
                 const taskId = selected.task.id;
                 setSelectedTaskId(undefined);
@@ -354,8 +355,8 @@ export function GuestSharedTaskView({
                 );
               }}
             >
-              Close
-            </Button>
+              <CloseGlyph />
+            </IconButton>
           </div>
           <div
             className="task-room-tabs"

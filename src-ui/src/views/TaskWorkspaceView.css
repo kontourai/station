@@ -1617,7 +1617,8 @@
   background: transparent;
   padding: var(--k-space-4) 0;
 }
-.task-room-thread .icon-button {
+.task-room-thread .icon-button,
+.task-room-guest .icon-button {
   --icon-button-size: calc(var(--k-space-6) + var(--k-space-3));
 }
 
