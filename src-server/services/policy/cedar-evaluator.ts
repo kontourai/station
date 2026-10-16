@@ -216,8 +216,8 @@ export async function createPolicySet(input: {
             if (answer.type !== 'success') return deny('evaluation');
             const diagnostics = answer.response.diagnostics;
             const safeId = (id: string) => ids.includes(id);
-            const errors: PolicyDecision['errors'] = diagnostics.errors
-              .map((error) => ({
+            const errors = diagnostics.errors
+              .map<PolicyDecision['errors'][number]>((error) => ({
                 category: 'evaluation',
                 ...(safeId(error.policyId) ? { policyId: error.policyId } : {}),
               }))
