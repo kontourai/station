@@ -9,6 +9,7 @@ import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -93,6 +94,7 @@ import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-ho
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
 import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
+import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
@@ -5630,6 +5632,18 @@ export function configureRuntimeRoutes(
   // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
   // constructs a manifest store, a bindings store and a resolver, and the
   // projects routes below take theirs the same way.
+  context.app.route(
+    '/api/me',
+    createAccountPreferencesRoutes({
+      store: new AccountPreferencesStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      tenantId: (request) =>
+        tenantExecutionContextForRequest(request)?.tenantId,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
+  );
   const personalLayoutResolver =
     buildProjectResolutionRouteDeps(context).resolver;
   context.app.route(

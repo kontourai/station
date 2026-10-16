@@ -1,0 +1,7 @@
+{
+  "revision": "6b64ed92b7a1272b79908f8edf327fa7b4eb6036",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Integration review against main 64847103070: runtime-routes.ts adds only the authenticated /api/me preferences mount and its AccountPreferencesStore imports. The store writes a separate person-and-tenant preferences document; it does not touch AppConfig telemetry fields, disclosure routes, product/OTel reconfiguration callbacks, queues, delivery health or bootstrap ordering. The usage telemetry guide remains accurate. Source inspection only; no new live receiver or device claim.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

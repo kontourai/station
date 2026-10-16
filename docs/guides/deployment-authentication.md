@@ -203,6 +203,12 @@ account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
+A verified person can read and patch their own `/api/me/preferences` from an
+account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
+paths. Account preferences are partitioned by person and trusted tenant on this
+Station, and grant no Device or execution authority. See
+[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+
 ### Account-bound collaborator Devices
 
 A collaborator Device uses an explicit second pairing ceremony after account

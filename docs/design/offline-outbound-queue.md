@@ -130,3 +130,9 @@ applied without issuing another config write.
 Approvals are also excluded. They are live server decisions with expiring
 authority. Station queues the user turn that led to an approval, never the
 approval response itself.
+
+Personal approval defaults are captured for a first interactive send before it
+becomes durable. The pending choice retains the account namespace that selected
+it. Unknown authority holds the choice for verification; a different verified
+account retires it. Replay under the same account retains the original choice.
+Explicit chat picks remain independent of inherited personal defaults.

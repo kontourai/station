@@ -1008,7 +1008,9 @@
 
     "tests/helpers/journey-profile.ts",
 
-    "src-server/services/orchestration/thread-inbox.ts"
+    "src-server/services/orchestration/thread-inbox.ts",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
   ],
 
   "checks": [

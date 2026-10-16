@@ -438,6 +438,12 @@ export function HomeStartComposer({
         status: 'ready',
         agent,
         modelLabel,
+        executionAgentId: agent
+          ? start.modelChoiceFor(agent)?.executionAgentId
+          : undefined,
+        environmentId: agent
+          ? start.modelChoiceFor(agent)?.environmentId
+          : undefined,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
       };
   // The sidebar's colours, from the one project list it shows.

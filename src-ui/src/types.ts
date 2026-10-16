@@ -371,6 +371,7 @@ export interface ChatSession {
   approvalEscalationRejected?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;

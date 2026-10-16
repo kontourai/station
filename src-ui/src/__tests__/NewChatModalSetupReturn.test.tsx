@@ -49,6 +49,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [] }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceRead.inventory,
     refetch: experienceRead.refetch,
