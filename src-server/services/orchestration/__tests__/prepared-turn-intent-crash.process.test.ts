@@ -114,7 +114,7 @@ function storedIntent(databasePath: string) {
     ).toBeDefined();
     const row = db
       .prepare(
-        'SELECT client_turn_id, input_digest, envelope_json FROM orchestration_prepared_turns WHERE thread_id = ?',
+        'SELECT invocation_id, client_turn_id, input_digest, envelope_json FROM orchestration_prepared_turns WHERE thread_id = ?',
       )
       .get(THREAD);
     expect(row).toBeDefined();
@@ -211,6 +211,7 @@ test('explicit prepared resume reauthorizes the retained input and sends its ori
     undefined,
   );
   const invocationId = String(row.invocation_id);
+  expect(invocationId).toMatch(/^[a-f0-9-]{36}$/);
   expect(
     await service.readPreparedTurnIntent(THREAD, invocationId, stranger),
   ).toBeNull();
