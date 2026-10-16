@@ -11,6 +11,7 @@ import { LayoutSwitcher } from './LayoutSwitcher';
 import { RegionToolbarControls } from './RegionToolbarControls';
 import { useHeaderViewModel } from './useHeaderViewModel';
 import '../chat/chat.css';
+import './Header.css';
 
 interface HeaderProps {
   currentView?: NavigationView;

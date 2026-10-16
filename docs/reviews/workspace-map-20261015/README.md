@@ -159,3 +159,27 @@ owner byte-for-byte returned 42 passes. Separately removing the Boards
 owner's authority key caused the authority-replacement test to fail with the
 old popup still present (41 passed); byte-for-byte restoration returned all
 42 passes. No fault edits remain.
+
+## Hosted Gallery follow-up
+
+Run `38853843125` captured all 56 screens on `a9cb3be48c66`. Artifact
+`12027086292` (`gallery-pr-38853843125-1`) has ZIP SHA-256
+`7645cf8e7ca0d8a7dad280f71ea40fdd95be164198b6831422b77b77bd9bd08d`.
+Exact comparison found 37 changed desktop screens, 18 unchanged screens and
+one existing volatile entry. Review of baseline/current/diff images traced
+the differences to the revised workspace map and taller header, including
+content repositioning. No masks, thresholds or comparator changes were made.
+
+Independent visual review found one blocker: the sole desktop map-toggle
+SVG was squeezed by inherited horizontal button padding. The browser keeper
+at `7c2632a86be` reproduced an 8px-wide SVG against its 16px minimum. The fix
+loads scoped header styles that remove desktop toggle padding and reserve a
+nonshrinking 16px SVG. Mobile omits `aria-expanded`, so the desktop-scoped
+selector leaves its existing menu glyph styling intact. All four browser
+sidebar geometry cases and eight HeaderChrome cases pass after the fix.
+Independent source review found no blocker in the repair.
+
+This artifact is retained as diagnostic evidence and has not been adopted as
+a baseline. A fresh hosted capture must qualify the corrected glyph before
+reference adoption. Earlier local screenshots above retain their recorded
+source revision and predate this small glyph-size repair.
