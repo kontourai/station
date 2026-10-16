@@ -411,9 +411,14 @@
       }
     ],
     "screenshots": [
-      "/Users/brian/.t3/worktrees/station/station-worktrees/onboarding-codex-20261015/.kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-320.png",
-      "/Users/brian/.t3/worktrees/station/station-worktrees/onboarding-codex-20261015/.kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-390.png",
-      "/Users/brian/.t3/worktrees/station/station-worktrees/onboarding-codex-20261015/.kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-412.png"
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-320.png",
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-390.png",
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-412.png"
     ]
+  },
+  "browserReceiptProvenance": {
+    "originalReceipt": ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf.json",
+    "originalReceiptSha256": "c8557ac58bfe27c86fc36a736f52404fd76eba72a39b24dea6632e03dc0199d1",
+    "normalization": "Only screenshot paths are recorded relative to the repository root. The original receipt bytes are identified by SHA256."
   }
 }
