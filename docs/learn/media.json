@@ -19,12 +19,12 @@
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "4bd1d25d8850f5e5e76c901b9b7d7eac15aec24192cfb2ccb7e3f92e1b9af656",
+      "digest": "c775d985b4714cef162b60dbb96e7b261ab6c50054890f119750c5166ce640c3",
       "alt": "A Task Brief tab displaying an automatically saved shared plan.",
       "caption": "The Brief tab displays the shared plan after autosave.",
       "scenario": "Autosave a shared brief",
-      "evidence": "Actual isolated production Station at 1280x900, build cd0080e2ac8, fresh empty HOME and ports 3522/5622. Sample Project and Task were seeded through public HTTP APIs; the brief was typed in the UI, autosaved through the live CRDT plan/batch protocol, and displayed as Markdown. This frame was taken before agent dispatch. It proves this saved Brief display, not an invited/public, native, live-model or restart journey. Later controlled-ACP follow-up publication encountered the separately recorded room-history failure; that path remains unqualified on this build.",
-      "capturedRevision": "cd0080e2ac83016b7acd4fdc14f1ed476f5b96d0",
+      "evidence": "Actual production server and UI built from clean source 2f96417829bbfabd7969257b5424ec7e630b5083, isolated OS and Station homes, instance polish2, ports 3632/5732. Sample Project and Tasks were seeded through public APIs; this structured Brief was typed in the UI and saved through the live plan/batch protocol, then reopened after rebuilds. Screenshot at 1440x900, dark theme, DPR 1. The same Brief was inspected at 1024x975 and 390x844 in both themes. Related room/thread/shaping and invited local-account human-history fixtures used a deterministic local fake Ollama model; they are separate evidence from this frame. No real provider, native, hosted or release qualification is claimed.",
+      "capturedRevision": "2f96417829bbfabd7969257b5424ec7e630b5083",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
