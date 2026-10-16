@@ -1326,7 +1326,12 @@ no engine invocation itself: the caller supplies the ports for the busy check,
 a turn start, and a receipted steer, each already authorized. Monument calls
 those ports only after recording a new branch and maps their outcomes without
 retrying another branch. Station retains the lifecycle fold, invocation,
-authorization, key storage, steer receipts and result consumption. This
+authorization, key storage, steer receipts and result consumption.
+The same public module supplies `conversationKeyDecision` and
+`startUnlessDelivered` for inbox, foreground and delegated-result starts: the
+host inspects the whole conversation before a successor Session can take the
+key. A prior started turn replays, a live claim stays in flight, and an
+expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
 extraction remain open under #3565.
 

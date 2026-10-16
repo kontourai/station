@@ -46,6 +46,15 @@ The sequence passes `deliveryId` as `clientTurnId` or `clientInputId`, maps
 refused and indeterminate outcomes, and never tries the other branch. A thrown
 recording or port error propagates; a failed recording invokes no effect.
 
+`conversationKeyDecision` classifies a key across every Session of a
+conversation. `startUnlessDelivered` returns a known started turn without
+calling the start port, refuses an unresolved live claim with
+`client_turn_in_flight`, and returns indeterminate for an expired key or an
+unknown effect. An age-only indeterminate claim remains in flight because
+its live owner can still deliver. Only a key no Session holds can start.
+Station supplies the authorized ledger inspection and start ports; the inbox,
+foreground continuation and delegated-result callers use this same rule.
+
 This sequence has no storage of its own. The host supplies already-authorized
 ports and owns invocation, persistence, delivery-id deduplication and receipts.
 The optional recording callback is durable only if the host makes it so.
@@ -57,8 +66,8 @@ key row when each effect port is entered. Adapter conformance remains the
 contract for storage commands; this primitive adds none.
 
 This completes only the delivery primitive of #3565. Recovery-ledger core and
-steer receipts remain separate extraction work. First publication remains an
-owner decision; the API is still private `0.1.0`.
+steer receipts remain separate extraction work. The package remains private
+`0.1.0` until its reviewed functional release.
 
 ## The port
 
