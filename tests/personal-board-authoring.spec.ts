@@ -33,6 +33,13 @@ for (const width of [1280, 390]) {
       await expect(
         page.getByRole('dialog', { name: 'Starting Station', exact: true }),
       ).toBeHidden();
+      await expect(
+        page.getByRole('heading', { name: 'Build your Board' }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(`setup-${width}.png`),
+        fullPage: true,
+      });
       await page.getByRole('button', { name: /Daily brief/ }).click();
       await page.getByLabel('Board name').fill('Morning desk');
       await page
