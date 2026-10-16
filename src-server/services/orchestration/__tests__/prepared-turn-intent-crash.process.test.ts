@@ -298,7 +298,9 @@ test.each(['begun', 'invoked'] as const)(
     expect(envelope.input.text).toBe('pinned context\n\n  keep these bytes\n');
     expect(envelope.input).not.toHaveProperty('invocationId');
     if (phase === 'invoked') {
-      const invoked = observed.split('\n').find((line) => line.includes('"step":"invoked"'));
+      const invoked = observed
+        .split('\n')
+        .find((line) => line.includes('"step":"invoked"'));
       if (!invoked) throw new Error('Expected the actual adapter entry.');
       expect(JSON.parse(invoked)).toMatchObject({
         input: { invocationId: row.invocation_id },
@@ -342,6 +344,21 @@ test('explicit prepared resume reauthorizes the retained input and sends its ori
     },
     requiresFreshCompanions: false,
   });
+  const predecessor = new DatabaseSync(path);
+  try {
+    predecessor.exec(
+      'ALTER TABLE orchestration_turn_boundaries DROP COLUMN prepared_settlement',
+    );
+    expect(
+      predecessor
+        .prepare(
+          'SELECT invocation_id FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get(THREAD)?.invocation_id,
+    ).toBe(row.invocation_id);
+  } finally {
+    predecessor.close();
+  }
   const store = new EventStore(path);
   expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
   stores.push(store);
@@ -482,82 +499,92 @@ test('resume refuses posture tightened after validation while its real coordinat
 test.each([
   { cut: 'ownership transfer', transaction: 1 },
   { cut: 'invocation begin', transaction: 2 },
-])('resume refuses a peer policy commit immediately before $cut', async ({ transaction }) => {
-  const path = join(makeTempDir('prepared-peer-policy-'), 'events.sqlite');
-  await killedOwner(path, 'prepared');
-  const { row } = storedIntent(path);
-  const store = new EventStore(path);
-  const peer = new EventStore(path);
-  stores.push(store, peer);
-  const adapter = new LiveResumeAdapter();
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug() {}, warn() {} },
-  });
-  services.push(service);
-  const owner = sessionReadAuthorityFromRequest(
-    'prepared-owner',
-    undefined,
-    undefined,
-  );
-  await service.readSession(THREAD, owner);
-  const db = new DatabaseSync(path, { readOnly: true });
-  const boundary = () =>
-    db.prepare(
-      'SELECT owner_id, updated_at, state FROM orchestration_turn_boundaries WHERE thread_id = ?',
-    ).get(THREAD);
-  const before = boundary();
-  expect(before?.state).toBe('prepared');
-  let writes = 0;
-  let injected = false;
-  const originalExec = DatabaseSync.prototype.exec;
-  const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
-  exec.mockImplementation(function (this: DatabaseSync, sql: string) {
-    if (sql.trim().toUpperCase() === 'BEGIN IMMEDIATE' && !injected) {
-      writes += 1;
-      if (writes === transaction) {
-        injected = true;
-        // Commit through a separate real store before the resume writer acquires its lock.
-        peer.appendEvent({
-          eventId: 'peer-prepared-policy-revocation',
-          method: 'session.approval-mode-set',
-          provider: 'claude',
-          threadId: THREAD,
-          sessionId: THREAD,
-          createdAt: new Date().toISOString(),
-          approvalMode: 'ask',
-        });
+])(
+  'resume refuses a peer policy commit immediately before $cut',
+  async ({ transaction }) => {
+    const path = join(makeTempDir('prepared-peer-policy-'), 'events.sqlite');
+    await killedOwner(path, 'prepared');
+    const { row } = storedIntent(path);
+    const store = new EventStore(path);
+    const peer = new EventStore(path);
+    stores.push(store, peer);
+    const adapter = new LiveResumeAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug() {}, warn() {} },
+    });
+    services.push(service);
+    const owner = sessionReadAuthorityFromRequest(
+      'prepared-owner',
+      undefined,
+      undefined,
+    );
+    await service.readSession(THREAD, owner);
+    const db = new DatabaseSync(path, { readOnly: true });
+    const boundary = () =>
+      db
+        .prepare(
+          'SELECT owner_id, updated_at, state FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get(THREAD);
+    const before = boundary();
+    expect(before?.state).toBe('prepared');
+    let writes = 0;
+    let injected = false;
+    const originalExec = DatabaseSync.prototype.exec;
+    const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
+    exec.mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (sql.trim().toUpperCase() === 'BEGIN IMMEDIATE' && !injected) {
+        writes += 1;
+        if (writes === transaction) {
+          injected = true;
+          // Commit through a separate real store before the resume writer acquires its lock.
+          peer.appendEvent({
+            eventId: 'peer-prepared-policy-revocation',
+            method: 'session.approval-mode-set',
+            provider: 'claude',
+            threadId: THREAD,
+            sessionId: THREAD,
+            createdAt: new Date().toISOString(),
+            approvalMode: 'ask',
+          });
+        }
       }
+      return originalExec.call(this, sql);
+    });
+    try {
+      await expect(
+        service.resumePreparedTurnIntent(
+          THREAD,
+          String(row.invocation_id),
+          owner,
+        ),
+      ).rejects.toThrow('unavailable');
+      expect(injected).toBe(true);
+      expect(writes).toBe(transaction);
+      expect(store.latestApprovalModeDecision([THREAD])).toMatchObject({
+        approvalMode: 'ask',
+      });
+      expect(adapter.sent).toHaveLength(0);
+      expect(boundary()?.state).toBe('prepared');
+      if (transaction === 1) expect(boundary()).toEqual(before);
+      else expect(boundary()?.owner_id).not.toBe(before?.owner_id);
+      const dedup = db
+        .prepare('SELECT owner_json, value FROM orchestration_turn_dedup')
+        .get();
+      expect(dedup?.value).toBeNull();
+      expect(JSON.parse(String(dedup?.owner_json))).toMatchObject({
+        invocation: 'pending',
+      });
+    } finally {
+      exec.mockRestore();
+      db.close();
     }
-    return originalExec.call(this, sql);
-  });
-  try {
-    await expect(
-      service.resumePreparedTurnIntent(THREAD, String(row.invocation_id), owner),
-    ).rejects.toThrow('unavailable');
-    expect(injected).toBe(true);
-    expect(writes).toBe(transaction);
-    expect(store.latestApprovalModeDecision([THREAD])).toMatchObject({
-      approvalMode: 'ask',
-    });
-    expect(adapter.sent).toHaveLength(0);
-    expect(boundary()?.state).toBe('prepared');
-    if (transaction === 1) expect(boundary()).toEqual(before);
-    else expect(boundary()?.owner_id).not.toBe(before?.owner_id);
-    const dedup = db.prepare(
-      'SELECT owner_json, value FROM orchestration_turn_dedup',
-    ).get();
-    expect(dedup?.value).toBeNull();
-    expect(JSON.parse(String(dedup?.owner_json))).toMatchObject({
-      invocation: 'pending',
-    });
-  } finally {
-    exec.mockRestore();
-    db.close();
-  }
-}, 90_000);
+  },
+  90_000,
+);
 
 test('resume refuses a different live engine binding even when its native cursor is reused', async () => {
   const path = join(
