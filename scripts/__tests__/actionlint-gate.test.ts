@@ -631,6 +631,22 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('rejects PR-number-scoped concurrency for a shared-SHA commit status', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('pr-title', (job) => {
+          (job.concurrency as Record<string, unknown>).group =
+            'ci-pr-title-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
   test('does not grant status publication to candidate source jobs', () => {
     expect(
       persistentRunnerPolicyFindings(

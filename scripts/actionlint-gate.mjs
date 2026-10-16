@@ -2594,7 +2594,7 @@ function primaryCiRouterFindings(file, document) {
     },
     concurrency: {
       group:
-        'ci-pr-title-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}',
+        'ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
       'cancel-in-progress': false,
     },
     'runs-on': 'ubuntu-22.04',

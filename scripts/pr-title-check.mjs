@@ -46,14 +46,32 @@ export async function publishTitlePolicy({
     if (!/^[1-9]\d*$/.test(String(number)))
       throw new Error('Missing pull-request number');
     const pr = await request(`pulls/${number}`);
-    if (pr.head?.sha !== sha || pr.base?.ref !== 'main')
+    if (pr.head?.sha !== sha || pr.base?.ref !== 'main' || pr.state !== 'open')
       throw new Error('Pull request moved to another head or target');
-    const title = validatePullRequestTitle(pr.title, number);
+    // Associated PRs can contain this commit without owning it as their head.
+    // Refuse a full page: the status must never certify a truncated owner set.
+    const associated = await request(`commits/${sha}/pulls?per_page=100`);
+    if (!Array.isArray(associated) || associated.length >= 100)
+      throw new Error('Incomplete shared-head pull-request inventory');
+    const owners = associated.filter(
+      (candidate) =>
+        candidate.state === 'open' &&
+        candidate.base?.ref === 'main' &&
+        candidate.head?.sha === sha,
+    );
+    if (!owners.some((candidate) => candidate.number === number))
+      throw new Error('Triggered pull request missing from exact-head owners');
+    const valid =
+      validatePullRequestTitle(pr.title, number).ok &&
+      owners.every(
+        (candidate) =>
+          validatePullRequestTitle(candidate.title, candidate.number).ok,
+      );
     verdict = {
-      ok: title.ok,
-      description: title.ok
-        ? 'Live pull-request title conforms'
-        : 'Live pull-request title does not conform',
+      ok: valid,
+      description: valid
+        ? 'All open main-target titles at this head conform'
+        : 'An open main-target title at this head does not conform',
     };
   }
   await request(`statuses/${sha}`, {

@@ -14,6 +14,8 @@ const event = {
   },
 };
 const live = {
+  number: 42,
+  state: 'open',
   title: 'fix(ci): validate live titles',
   head: { sha: head },
   base: { ref: 'main' },
@@ -37,6 +39,7 @@ async function withApi(
     entries: Entry[];
     accepted: Entry[];
     setLive: (value: typeof live) => void;
+    setOwners: (value: (typeof live)[] | undefined) => void;
     setError: (kind: string) => void;
     execute: (
       payload?: typeof event,
@@ -48,6 +51,7 @@ async function withApi(
   const entries: Entry[] = [];
   const accepted: Entry[] = [];
   let current = live;
+  let owners: (typeof live)[] | undefined;
   let error = '';
   const server = createServer(async (req, res) => {
     let raw = '';
@@ -74,7 +78,13 @@ async function withApi(
     }
     if (req.method === 'POST') accepted.push(entry);
     res.end(
-      JSON.stringify(req.method === 'GET' ? current : { id: entries.length }),
+      JSON.stringify(
+        req.method === 'GET'
+          ? req.url?.includes('/commits/')
+            ? (owners ?? [current])
+            : current
+          : { id: entries.length },
+      ),
     );
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -110,6 +120,9 @@ async function withApi(
       accepted,
       setLive: (value) => {
         current = value;
+      },
+      setOwners: (value) => {
+        owners = value;
       },
       setError: (value) => {
         error = value;
@@ -162,9 +175,10 @@ describe('mutable title policy HTTP lifecycle', () => {
       await execute();
       expect(accepted.at(-1)?.body?.state).toBe('success');
       expect(
-        entries.slice(-3).map((entry) => [entry.method, entry.body?.state]),
+        entries.slice(-4).map((entry) => [entry.method, entry.body?.state]),
       ).toEqual([
         ['POST', 'pending'],
+        ['GET', undefined],
         ['GET', undefined],
         ['POST', 'success'],
       ]);
@@ -180,6 +194,67 @@ describe('mutable title policy HTTP lifecycle', () => {
       ).toBe(false);
     });
   });
+
+  test('two PRs sharing one head must both be corrected before either can publish success', async () => {
+    await withApi(async ({ accepted, setLive, setOwners, execute }) => {
+      const peer = { ...live, number: 43, title: 'invalid peer title' };
+      const triggerPeer = {
+        ...event,
+        pull_request: { ...event.pull_request, number: 43 },
+      };
+      setOwners([live, peer]);
+      // A valid triggering PR must not clear the other owner's invalid title.
+      await expect(execute()).rejects.toThrow('does not conform');
+      expect(accepted.at(-1)?.body?.state).toBe('failure');
+      // Correcting only the peer does not clear a now-invalid triggering PR.
+      const invalid = { ...live, title: 'invalid original title' };
+      setLive({ ...peer, title: live.title });
+      setOwners([invalid, { ...peer, title: live.title }]);
+      await expect(execute(triggerPeer)).rejects.toThrow('does not conform');
+      expect(accepted.at(-1)?.body?.state).toBe('failure');
+      setOwners([live, { ...peer, title: live.title }]);
+      await execute(triggerPeer);
+      expect(accepted.at(-1)?.body?.state).toBe('success');
+    });
+  });
+
+  test('associated descendants, closed PRs and other targets do not own the shared head', async () => {
+    await withApi(async ({ accepted, setOwners, execute }) => {
+      setOwners([
+        live,
+        {
+          ...live,
+          number: 43,
+          title: 'invalid',
+          head: { sha: 'c'.repeat(40) },
+        },
+        { ...live, number: 44, title: 'invalid', state: 'closed' },
+        { ...live, number: 45, title: 'invalid', base: { ref: 'release' } },
+      ]);
+      await execute();
+      expect(accepted.at(-1)?.body?.state).toBe('success');
+    });
+  });
+
+  test.each(['missing', 'full page'])(
+    'incomplete owner inventory (%s) fails closed',
+    async (kind) => {
+      await withApi(async ({ accepted, setOwners, execute }) => {
+        setOwners(
+          kind === 'missing'
+            ? [{ ...live, number: 43 }]
+            : Array.from({ length: 100 }, (_, index) => ({
+                ...live,
+                number: 42 + index,
+              })),
+        );
+        await expect(execute()).rejects.toThrow(
+          /inventory|missing from exact-head/,
+        );
+        expect(accepted.at(-1)?.body?.state).toBe('failure');
+      });
+    },
+  );
 
   test('a body edit with stale valid payload cannot keep an earlier success for a now-invalid live title', async () => {
     await withApi(async ({ entries, setLive, execute }) => {

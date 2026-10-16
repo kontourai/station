@@ -639,8 +639,8 @@ jobs:
       pull-requests: read
       statuses: write
     concurrency:
-      # Serialize publishers for one head; delayed events read live metadata.
-      group: ci-pr-title-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      # Status ownership is repository + SHA + context, across PR numbers.
+      group: ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
     timeout-minutes: 3
