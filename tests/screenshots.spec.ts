@@ -1033,7 +1033,7 @@ function seedActiveChatSession(
  * `fulfillSessionsFilteredEmptyFixture`'s doc comment for the established
  * per-screen `page.route`-override-then-unroute idiom this generalizes).
  * Every screen below that registers a route MUST call the returned cleanup
- * in `afterGoto`'s `finally`, or its fixture — a project list, a durable
+ * in `cleanup` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
  * run (a stray "Demo Project" can survive three screens later
  * and change Home's guidance-card content under an unrelated screen name).
@@ -1381,7 +1381,7 @@ function projectDetailFixture(
  */
 function overlayDockProjectMismatchHooks(
   resyncOnly = false,
-): Pick<Screen, 'beforeGoto' | 'afterGoto'> {
+): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
@@ -1428,6 +1428,11 @@ function overlayDockProjectMismatchHooks(
         ),
         await withRoute(
           page,
+          '**/api/projects/project-a',
+          projectDetailFixture({ slug: 'project-a', name: 'Project A' }),
+        ),
+        await withRoute(
+          page,
           '**/api/projects/project-b',
           projectDetailFixture({
             slug: 'project-b',
@@ -1456,106 +1461,113 @@ function overlayDockProjectMismatchHooks(
       }
     },
     afterGoto: async (page) => {
-      try {
-        await assertNoStrayProjectModal(page);
-        if (resyncOnly) {
-          await expect(
-            page.getByRole('button', {
-              name: 'Status unavailable — resync this conversation',
-              exact: true,
-            }),
-          ).toBeVisible();
-          if ((page.viewportSize()?.width ?? 0) > 600) {
-            await expect(
-              page.getByRole('button', { name: 'Refresh inbox', exact: true }),
-            ).toBeVisible();
-            await expect(
-              page.getByText("Couldn't refresh. Showing the last known list."),
-            ).toBeVisible({ timeout: 15_000 });
-          }
-          return;
-        }
-        // The dock's own inbox "ACTIVE NOW" row resolves this fixture
-        // session's title asynchronously (a live query racing the seeded
-        // sessionStorage title) — waiting for its settled text here, before
-        // anything else, is what makes the eventual shot deterministic
-        // (the row's transient intermediate text otherwise produces a
-        // real, reproducible ~1939-pixel diff between two otherwise
-        // byte-identical captures).
-        await expect(
-          page.locator('.chat-dock-inbox__item').first(),
-        ).toContainText('Mismatch demo chat', { timeout: 10_000 });
-        // The active session (project-b) renders first with no binding
-        // bound yet (archive#4525: the badge no longer follows the active
-        // session at all). Binding to Project A through the real picker
-        // interaction is what produces the mismatch, exactly as a user
-        // reaching this state would.
-        //
-        // #1552 D3 dropped the visible "No project" label — the unbound chip is
-        // the folder glyph alone, named for what pressing it does — so the
-        // unbound state is the accessible NAME now, and the empty text is
-        // asserted beside it so this cannot pass on a chip that renders nothing.
-        const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
-          timeout: 10_000,
-        });
-        await expect(badge).toHaveText('');
-        await badge.click();
-        await expect(
-          page.getByRole('dialog', { name: 'Projects' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
-          { timeout: 10_000 },
-        );
-        // The badge now names the BOUND project (by design it never
-        // follows the active session) — while the facts
-        // row leads with the session's own, muted, differing project name.
-        // Scoped to the badge's own class: the project sidebar (seeded
-        // from the same `/api/projects` mock) also renders a same-named
-        // button.
-        await expect(
-          page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect(
-          page.locator('.chat-dock__project-session-name'),
-        ).toBeVisible({ timeout: 10_000 });
+      await assertNoStrayProjectModal(page);
+      if (resyncOnly) {
         await expect(
           page.getByRole('button', {
             name: 'Status unavailable — resync this conversation',
             exact: true,
           }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect
-          .poll(() =>
-            page
-              .getByRole('button', {
-                name: 'Status unavailable — resync this conversation',
-                exact: true,
-              })
-              .evaluate(
-                (pill) =>
-                  pill
-                    .getAnimations({ subtree: true })
-                    .filter(
-                      (animation) =>
-                        animation.playState === 'running' &&
-                        animation.effect?.getComputedTiming().iterations !==
-                          Infinity,
-                    ).length,
-              ),
-          )
-          .toBe(0);
-        await expect(
-          page.locator('html'),
-          'The recovery dock must fit without adding document scroll overflow',
-        ).toHaveJSProperty('scrollHeight', page.viewportSize()!.height);
-      } finally {
-        // See `withRoute`'s doc comment: every route registered above must
-        // be unregistered again, or its fixture leaks into every screen
-        // captured after this one for the rest of the run.
-        for (const cleanup of cleanups) await cleanup();
+        ).toBeVisible();
+        if ((page.viewportSize()?.width ?? 0) > 600) {
+          await expect(
+            page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByText("Couldn't refresh. Showing the last known list."),
+          ).toBeVisible({ timeout: 15_000 });
+        }
+        return;
       }
+      // The dock's own inbox "ACTIVE NOW" row resolves this fixture
+      // session's title asynchronously (a live query racing the seeded
+      // sessionStorage title) — waiting for its settled text here, before
+      // anything else, is what makes the eventual shot deterministic
+      // (the row's transient intermediate text otherwise produces a
+      // real, reproducible ~1939-pixel diff between two otherwise
+      // byte-identical captures).
+      await expect(
+        page.locator('.chat-dock-inbox__item').first(),
+      ).toContainText('Mismatch demo chat', { timeout: 10_000 });
+      // The active session (project-b) renders first with no binding
+      // bound yet (archive#4525: the badge no longer follows the active
+      // session at all). Binding to Project A through the real picker
+      // interaction is what produces the mismatch, exactly as a user
+      // reaching this state would.
+      //
+      // #1552 D3 dropped the visible "No project" label — the unbound chip is
+      // the folder glyph alone, named for what pressing it does — so the
+      // unbound state is the accessible NAME now, and the empty text is
+      // asserted beside it so this cannot pass on a chip that renders nothing.
+      const badge = page.locator('.chat-dock__project-badge');
+      await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+        timeout: 10_000,
+      });
+      await expect(badge).toHaveText('');
+      await badge.click();
+      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
+        timeout: 10_000,
+      });
+      const projectRead = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/projects/project-a',
+      );
+      await page.getByRole('button', { name: 'Switch to Project A' }).click();
+      expect(
+        (await projectRead).status(),
+        'selected Project detail must be available',
+      ).toBe(200);
+      await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden({
+        timeout: 10_000,
+      });
+      // The badge now names the BOUND project (by design it never
+      // follows the active session) — while the facts
+      // row leads with the session's own, muted, differing project name.
+      // Scoped to the badge's own class: the project sidebar (seeded
+      // from the same `/api/projects` mock) also renders a same-named
+      // button.
+      await expect(
+        page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(
+        page.locator('.chat-dock__project-session-name'),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(
+        page.getByRole('button', {
+          name: 'Status unavailable — resync this conversation',
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 10_000 });
+      await expect
+        .poll(() =>
+          page
+            .getByRole('button', {
+              name: 'Status unavailable — resync this conversation',
+              exact: true,
+            })
+            .evaluate(
+              (pill) =>
+                pill
+                  .getAnimations({ subtree: true })
+                  .filter(
+                    (animation) =>
+                      animation.playState === 'running' &&
+                      animation.effect?.getComputedTiming().iterations !==
+                        Infinity,
+                  ).length,
+            ),
+        )
+        .toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight),
+        'settled conversation status must not extend the document',
+      ).toBe(page.viewportSize()?.height);
+    },
+    cleanup: async () => {
+      // Polling must see the scenario's fixtures until its image and recovery
+      // checks finish; removing them in afterGoto races the screenshot.
+      for (const cleanup of cleanups) await cleanup();
+      cleanups = [];
     },
   };
 }
@@ -1613,6 +1625,8 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
+  /** Release screen fixtures after capture and interaction checks, even on failure. */
+  cleanup?: () => Promise<void>;
   /**
    * This screen deliberately captures a loading skeleton (@kontourai/ui's
    * `.skeleton`) itself — opt out of the universal
@@ -3526,6 +3540,8 @@ test('build gallery — capture key screens', async ({ page }) => {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         });
+      } finally {
+        await screen.cleanup?.();
       }
     }
   } finally {
