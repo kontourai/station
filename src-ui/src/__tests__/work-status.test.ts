@@ -705,18 +705,18 @@ describe('status facts for chat, task and merged rows', () => {
   });
 
   it.each([
-    ['todo', 'Task · To do', 'idle'],
-    ['ready', 'Task · To do', 'idle'],
-    ['triage', 'Task · To do', 'idle'],
-    ['in_progress', 'Task · In progress', 'running'],
-    ['review', 'Task · In review', 'needsYou'],
-    ['verification', 'Task · In review', 'needsYou'],
-    ['blocked', 'Task · Blocked', 'needsYou'],
-    ['done', 'Task · Done', 'finished'],
-    ['canceled', 'Task · Canceled', 'finished'],
+    ['todo', 'Task · To do', 'idle', 'idle'],
+    ['ready', 'Task · To do', 'idle', 'idle'],
+    ['triage', 'Task · To do', 'idle', 'idle'],
+    ['in_progress', 'Task · In progress', 'running', 'running'],
+    ['review', 'Task · In review', 'needsYou', 'waiting'],
+    ['verification', 'Task · In review', 'needsYou', 'waiting'],
+    ['blocked', 'Task · Blocked', 'needsYou', 'blocked'],
+    ['done', 'Task · Done', 'finished', 'done'],
+    ['canceled', 'Task · Canceled', 'finished', 'stopped'],
   ] as const)(
     'an unassigned %s Task shows Task state without a session lifecycle',
-    (status, line, lane) => {
+    (status, line, lane, rung) => {
       const task: TaskRecord = {
         id: 'task-1',
         projectId: 'project-alpha',
@@ -738,9 +738,10 @@ describe('status facts for chat, task and merged rows', () => {
       expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
         line,
         lane,
+        rung,
       });
       // Home partitions without facts; both consumers must name the same state.
-      expect(workStatus(row.item, NOW)).toMatchObject({ line, lane });
+      expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
     },
   );
 

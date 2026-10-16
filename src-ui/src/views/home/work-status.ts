@@ -128,7 +128,10 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     const word = item.kindLabel;
     switch (item.lifecycleLabel) {
       case 'Needs attention':
-        return { rung: 'blocked', lane: 'needsYou', tone: 'attention', word };
+        // Only a blocked Task wears the lock; review waits on a person.
+        return word === 'Task · Blocked'
+          ? { rung: 'blocked', lane: 'needsYou', tone: 'attention', word }
+          : { rung: 'waiting', lane: 'needsYou', tone: 'attention', word };
       case 'Running':
         return { rung: 'running', lane: 'running', tone: 'active', word };
       case 'Completed':
@@ -152,7 +155,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
-      // With no recorded kind (no facts, a durable Task, an older server)
+      // With no recorded kind (no facts, an older server)
       // something is still owed; it reads as the generic rung.
       const kind = facts?.attention ?? 'waiting';
       return {
