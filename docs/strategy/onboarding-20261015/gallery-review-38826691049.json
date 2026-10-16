@@ -1,0 +1,516 @@
+{
+  "hostedRun": 38826691049,
+  "artifactId": 12016960931,
+  "artifactName": "gallery-pr-38826691049-1",
+  "archiveSha256": "abb829a319e417e403b7622c11039f4c360ef7fda7eac43232ce8a5bb4b1aa5c",
+  "capturedRevision": "2cdf0eb1e64564c58a0f7b44a62868e1abb0c19e",
+  "capture": "56/56 complete; all PNG hashes verified; comparison failed with27changed,2new and1previouslyvolatile screen",
+  "reviewedDifferences": [
+    {
+      "name": "command-palette-empty",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        1020,
+        360,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "home",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        726,
+        176,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "mobile-access-request-error-320",
+      "before": [
+        320,
+        844
+      ],
+      "after": [
+        320,
+        844
+      ],
+      "bbox": [
+        0,
+        145,
+        320,
+        844
+      ],
+      "disposition": "Intentional pairing input sizing and dialog containment changes."
+    },
+    {
+      "name": "mobile-access-request-error-390",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        0,
+        145,
+        390,
+        844
+      ],
+      "disposition": "Intentional pairing input sizing and dialog containment changes."
+    },
+    {
+      "name": "mobile-agent-editor-project-control",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "mobile-agent-editor-save-footer",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "mobile-agent-editor",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "mobile-agents",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "mobile-chat-dock-header-320",
+      "before": [
+        320,
+        568
+      ],
+      "after": [
+        320,
+        568
+      ],
+      "bbox": [
+        46,
+        151,
+        273,
+        344
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "mobile-connections",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "mobile-home",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        29,
+        151,
+        308,
+        822
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "mobile-onboarding-setup",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        29,
+        151,
+        307,
+        822
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "mobile-settings-overview",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "motion-reduced-mobile-chat",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        29,
+        151,
+        308,
+        496
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "motion-reduced-notification",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        726,
+        176,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-command-palette-results",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        1040,
+        360,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-connection-banner",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        159,
+        810,
+        212,
+        822
+      ],
+      "disposition": "Intentional left-aligned collapsed mobile Chat identity."
+    },
+    {
+      "name": "overlay-dock-project-bound",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        331,
+        175,
+        1152,
+        881
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-dock-project-mismatch",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        901
+      ],
+      "bbox": [
+        0,
+        0,
+        1440,
+        901
+      ],
+      "disposition": "Unintended document overflow; scoped status announcement anchor fixed in6c11886eae9; fresh hosted capture required."
+    },
+    {
+      "name": "overlay-mobile-sheet",
+      "before": [
+        390,
+        844
+      ],
+      "after": [
+        390,
+        844
+      ],
+      "bbox": [
+        29,
+        151,
+        308,
+        496
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-new-project-modal",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        272,
+        0,
+        1168,
+        900
+      ],
+      "disposition": "Intentional project-folder/name wording and collapsed More options."
+    },
+    {
+      "name": "overlay-project-switcher-populated",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        331,
+        176,
+        1152,
+        881
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-region-chooser-from-toggle",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        331,
+        176,
+        1152,
+        881
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-toast-action",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        726,
+        176,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "overlay-toast",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        726,
+        176,
+        1152,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "sessions-filtered-empty",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        520,
+        119,
+        836,
+        271
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    },
+    {
+      "name": "sessions",
+      "before": [
+        1440,
+        900
+      ],
+      "after": [
+        1440,
+        900
+      ],
+      "bbox": [
+        526,
+        176,
+        836,
+        404
+      ],
+      "disposition": "Intentional Run a task wording/mobile identity; inherited #3673 Attach/voice and #3672 inbox Refresh controls where visible."
+    }
+  ],
+  "newScreens": [
+    "desktop-conversation-resync",
+    "mobile-conversation-resync"
+  ],
+  "overflow": {
+    "owner": "ChatStatusPill body-portaled screen-reader announcement",
+    "probe": "document height901; anchor exact clipped span top0left0 ->900; restorestyle ->901",
+    "sourceRevision": "6c11886eae96566e5a8cbdc68b6cb44130312323",
+    "fixedCssSha256": "21889deb156a363b56d2eb266ae409cecc74629ab8314310fe9927d1c80a322d",
+    "mutation": {
+      "revision": "6c11886eae96566e5a8cbdc68b6cb44130312323",
+      "fixedCssSha256": "21889deb156a363b56d2eb266ae409cecc74629ab8314310fe9927d1c80a322d",
+      "testSha256": "b7dbf459fa227cb2732ff417f379f649a60dbdd3df7a9de3d18d491565f25841",
+      "mutation": "remove only the status announcement top/left anchoring rule"
+    },
+    "regression": "Before and injected screenshot assertion expected900/received901; fixed and restored3screen runs passed. Restored mismatch and desktop-resync1440x900; phone390x844.18statusunitchecks passed."
+  },
+  "independence": "Report-only reviewer and verifier clear; verifier checked all56hashes,27contact-sheet entries, mutation/restoration receipts and committed CSS bytes. No independent runtime/provider/assistive-technology claim.",
+  "baseline": "Unchanged. Fresh hosted capture after the overflow fix is required before baseline acceptance; no masks/threshold changes/waivers.",
+  "remainingRuntimeIssue": "https://github.com/kontourai/station/issues/3713"
+}

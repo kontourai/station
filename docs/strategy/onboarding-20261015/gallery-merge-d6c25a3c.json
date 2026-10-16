@@ -1,0 +1,750 @@
+{
+  "refs": {
+    "base": "7fda30be189f190ff11279c2d5fcabc7ec2283c0",
+    "ours": "34b922daacee96c5564c1cc03cfcc9c50da8cdaa",
+    "main": "d6c25a3c0728afdc799a5a74859d055fd75b53f6"
+  },
+  "entries": [
+    {
+      "name": "agent-editor",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "agent-editor",
+        "width": 1440,
+        "height": 900,
+        "sha256": "f735a602fb5509d3a1212e68abbf7887bcea01f77dc6cccbf32c66218773e86a"
+      },
+      "pngSha256": "2d8af78dd01d11f159e97380cbd0035492da9613ffa086024365a0f0df932b7d"
+    },
+    {
+      "name": "agent-editor-not-runnable",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "agent-editor-not-runnable",
+        "width": 1440,
+        "height": 900,
+        "sha256": "5de0e11f01523c751f7c2c6ce5916ded0ff537d924662cbaa98c774df0ca5a67"
+      },
+      "pngSha256": "ba695ffb738297e3c58199a5bc953a77a38c1ed1c801f4bfd429dcb2a0797f2c"
+    },
+    {
+      "name": "agents",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "agents",
+        "width": 1440,
+        "height": 900,
+        "sha256": "a718a1decd32f0727875e9e18aae828828a0db0c3ed7c43f5363358e0f6957f0"
+      },
+      "pngSha256": "6901513c52c3b9f33adae08d0d9c01f9b0d461f35e5e352fb58c84b250c124fd"
+    },
+    {
+      "name": "agents-empty",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "agents-empty",
+        "width": 1440,
+        "height": 900,
+        "sha256": "150f322bc7177c90722eb14c64536d25c9f67ff49baa02e624efd3318823c93f"
+      },
+      "pngSha256": "13742d10cb6dcfd69a57901f5500044d744c102fb426f5f4116e04e31f6b7f8d"
+    },
+    {
+      "name": "command-palette-empty",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "command-palette-empty",
+        "width": 1440,
+        "height": 900,
+        "sha256": "67912b102e89026d5d28733945d3cba47457d6bebe95c2bb5f23c7454f4a2e42"
+      },
+      "pngSha256": "7cd0c7a166a50524b42ec804a238956a07f956b9fd20e192bab741241f68e2b9"
+    },
+    {
+      "name": "connections",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "connections",
+        "width": 1440,
+        "height": 900,
+        "sha256": "f447c7f8195a4f9a9e5f14360862a5f08fe661d5c70691ccab55cc7eda765a8a"
+      },
+      "pngSha256": "698a318228ce8a7c60c39e4494275eea634686eb72a8e1ee69ea6ced4f85ffd1"
+    },
+    {
+      "name": "connections-agent-apps",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "connections-agent-apps",
+        "width": 1440,
+        "height": 900,
+        "sha256": "bf87a6d246f484bc44ba2d24be34ecd14bead06775b5cf4a1196cd677d27da51"
+      },
+      "pngSha256": "3ba82ee6468091e5ee34ec5d2bdc37bbc56edf39e43b170c159e3f9c81db1229"
+    },
+    {
+      "name": "connections-knowledge",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "connections-knowledge",
+        "width": 1440,
+        "height": 900,
+        "sha256": "a80c426550581c0d61533abf5be4c86396f8740a18c2c67b8d7e9f76595cdd5e"
+      },
+      "pngSha256": "3674217195f63b72b500171603f5d993acc1c6aca96e2c4040864fef9c9ca133"
+    },
+    {
+      "name": "connections-models",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "connections-models",
+        "width": 1440,
+        "height": 900,
+        "sha256": "f447c7f8195a4f9a9e5f14360862a5f08fe661d5c70691ccab55cc7eda765a8a"
+      },
+      "pngSha256": "698a318228ce8a7c60c39e4494275eea634686eb72a8e1ee69ea6ced4f85ffd1"
+    },
+    {
+      "name": "connections-tools",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "connections-tools",
+        "width": 1440,
+        "height": 900,
+        "sha256": "381c9b87824e7492680ac424c2fb3bf522343f32c3aec75294dfb9ee96084d5b"
+      },
+      "pngSha256": "0c077485022c422dfd20cdd0825348175d346eac3b64ac680f220fcc0f37a6cf"
+    },
+    {
+      "name": "desktop-conversation-resync",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "desktop-conversation-resync",
+        "width": 1440,
+        "height": 900,
+        "sha256": "fbdcbaef2daed74a15fc1eab36708257ad7defc51bf9009057b650c07330e14d"
+      },
+      "pngSha256": "a9997b7c7c0d0cd6ecde6ff3cc310352e195b5e939b9dfeedea7eb019349b064"
+    },
+    {
+      "name": "developer-telemetry",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "developer-telemetry",
+        "width": 1440,
+        "height": 900,
+        "sha256": "fab33953d41884d7e8befe81371eb5320f51f4ef119195e76d59abe74b1f9d37"
+      },
+      "pngSha256": "7051b97511d70be73284e152292137a19b25bd83b5b34d3ff249ce40fe50c81f"
+    },
+    {
+      "name": "home",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "home",
+        "width": 1440,
+        "height": 900,
+        "sha256": "5dc31e54bf488d0c5cdd3cfd7bbb612c8c9c0345c642c7ba1bc3da7107122e30"
+      },
+      "pngSha256": "9a6f979b117734bcb0c1e6ed14ddaf8f3c4d88eb0defb4ea953be5fa48bfd930"
+    },
+    {
+      "name": "mobile-access-request-error-320",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-access-request-error-320",
+        "width": 320,
+        "height": 844,
+        "sha256": "8c6fe1ed7ff9289b2680278c0a0b3ad77ae6cc59ed59f04c0b0c736bf16f7d4f"
+      },
+      "pngSha256": "fb9752f372f850a0c7d512fa7c3b9f606d94fd247928b66bff672734776e4e4a"
+    },
+    {
+      "name": "mobile-access-request-error-390",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-access-request-error-390",
+        "width": 390,
+        "height": 844,
+        "sha256": "66a3ccf8d8e434955e2d567f8b85569d15fb34471188964733738f0922eb4639"
+      },
+      "pngSha256": "6e817da575b1d577ac071d99f159568e5a29cd68c2fcf616951094e4ad6dbe52"
+    },
+    {
+      "name": "mobile-activity-compact",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "mobile-activity-compact",
+        "width": 390,
+        "height": 844,
+        "sha256": "73408ae60e4f2966e2d7ea76772189f4336de9f94e934c520762b15e957cf9cc"
+      },
+      "pngSha256": "13e6665a59b2ef3debbcb28ffac6e4f7d385c29eec3d632204330cf165f86bac"
+    },
+    {
+      "name": "mobile-agent-editor",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-agent-editor",
+        "width": 390,
+        "height": 844,
+        "sha256": "54e4988a26795f752980cf49f646c670f612b40347fe68aa0de9e7e964bf40bd"
+      },
+      "pngSha256": "5491a62a682b242eb278dcb0d85e587136ca85a5b0a0df47ac460bbf145e83bc"
+    },
+    {
+      "name": "mobile-agent-editor-project-control",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-agent-editor-project-control",
+        "width": 390,
+        "height": 844,
+        "sha256": "1e96db171a504be4cc9ee14b44249673cfee73c75196cb91878c2442ac8ad110"
+      },
+      "pngSha256": "ca8ce2a0768fb665085cfc52be6deac3f9b2cad325e4df5f695ebb1788c7f2df"
+    },
+    {
+      "name": "mobile-agent-editor-save-footer",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-agent-editor-save-footer",
+        "width": 390,
+        "height": 844,
+        "sha256": "fe6b444ffd6d34e211f05c5b217ab8839b000745ede9d4c6c44f258f16415981"
+      },
+      "pngSha256": "b4390742ce71dba0df960e372defd765de3f324f9df48f619bb4b70905bd14a2"
+    },
+    {
+      "name": "mobile-agents",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-agents",
+        "width": 390,
+        "height": 844,
+        "sha256": "4faafbf7ecdd42b51f3db527f646cb1e447c5b4f77863c4cf3f0fc99758ac38a"
+      },
+      "pngSha256": "88987ae7c0e4a573df22379deb490de730f4deb7bdf7772baece95058065f273"
+    },
+    {
+      "name": "mobile-chat-dock-header-320",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-chat-dock-header-320",
+        "width": 320,
+        "height": 568,
+        "sha256": "f971fc68e05c25f09796aab6423615df42704e68b046b7788f2504414d19cb5c"
+      },
+      "pngSha256": "24a9ccc383982f6804d57a530852a4cb7750955c337afe5ed77393aeb25953cf"
+    },
+    {
+      "name": "mobile-connections",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-connections",
+        "width": 390,
+        "height": 844,
+        "sha256": "8420a47a951338737c62a1af6bde968ac3d0ab7868138df766d5c39296b46748"
+      },
+      "pngSha256": "fd868cf3898613a128b38b1deb0d4b03de6deb0bb0e34f0ae927f59950cb4be8"
+    },
+    {
+      "name": "mobile-conversation-resync",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "mobile-conversation-resync",
+        "width": 390,
+        "height": 844,
+        "sha256": "39042d292636251b0da38c8688f427a67b06e8b714adb25b30546ab93196d263"
+      },
+      "pngSha256": "3a333ec8b8cfeb81bd439e07c1156d68678c71b62eba952c714cfb8bc142cfb1"
+    },
+    {
+      "name": "mobile-home",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "mobile-home",
+        "width": 390,
+        "height": 844,
+        "sha256": "b6fe3097a445985fde7cdb4f02fd938162f5fe4cbf43e90f445c1826a4e407a6"
+      },
+      "pngSha256": "edc123ed867447204bec26ba3f2c987f814c95dfe3ff32a51723333655e3e5e7"
+    },
+    {
+      "name": "mobile-http-consent-320",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "mobile-http-consent-320",
+        "width": 320,
+        "height": 844,
+        "sha256": "5902bf2aad0182c22219dedf2bd120ef5950febe53bc28e9fa18bc05b94101be"
+      },
+      "pngSha256": "0a02a1aecbbe3a1906527c1c1d5510285a9e990416dc6d542a36543ed3b6d4fa"
+    },
+    {
+      "name": "mobile-http-consent-390",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "mobile-http-consent-390",
+        "width": 390,
+        "height": 844,
+        "sha256": "1948bac43e213b04d7a9f1c1a7a84726b7edf1e26096801ec1ee795de13d9552"
+      },
+      "pngSha256": "2dbf18c8a78d07a330c9641ff5280bf1c575a31a48a900766dd1365562a4fbec"
+    },
+    {
+      "name": "mobile-onboarding-setup",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "mobile-onboarding-setup",
+        "width": 390,
+        "height": 844,
+        "sha256": "30ce31c4386f3c44bc740aa296dbcf32b9cf71690ed54ff9fee85c5a9fd14749"
+      },
+      "pngSha256": "649830db82f41ccf1cd8f5a8af1e650f7dbaede9946114cc716ad2bacf0bb600"
+    },
+    {
+      "name": "mobile-settings-overview",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "mobile-settings-overview",
+        "width": 390,
+        "height": 844,
+        "sha256": "2fbfa05e821b5745e0af633f6f6bbd13cd28cbc11cb118a498fa8d6d1255473b"
+      },
+      "pngSha256": "f3c119a946b7cf9fcab9ca64f23872648f3b68ab3cb43aa78aa47337fdfd1122"
+    },
+    {
+      "name": "motion-reduced-mobile-chat",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "motion-reduced-mobile-chat",
+        "width": 390,
+        "height": 844,
+        "sha256": "7814654d9a91df5be487218bd1a91baaf4ddcc1db137785d5eb9dfc927b0d76c"
+      },
+      "pngSha256": "39b96d56fbcac6ca378b499b8ffb7601093e36d37b5496538fa15c0100dfa148"
+    },
+    {
+      "name": "motion-reduced-navigation",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "motion-reduced-navigation",
+        "width": 1440,
+        "height": 900,
+        "sha256": "a718a1decd32f0727875e9e18aae828828a0db0c3ed7c43f5363358e0f6957f0"
+      },
+      "pngSha256": "6901513c52c3b9f33adae08d0d9c01f9b0d461f35e5e352fb58c84b250c124fd"
+    },
+    {
+      "name": "motion-reduced-notification",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "motion-reduced-notification",
+        "width": 1440,
+        "height": 900,
+        "sha256": "e69a4552a5b11fb067fd1030a896ea8905d3a8321b286d522e3d86a9b221b164"
+      },
+      "pngSha256": "f96c82ceb12538f8ad157b8d67a75bb47496ffec220913c937d4d77e36a9c91b"
+    },
+    {
+      "name": "motion-reduced-schedule-loading",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "motion-reduced-schedule-loading",
+        "width": 1440,
+        "height": 900,
+        "sha256": "b0fce49685072a4745e92c1b56c8c69e8faaa38e9711e982d45d84faa2388529"
+      },
+      "pngSha256": "a53aed15133751728bc9b96a052ed44ae902b0101cbd4dfdd2236cf7273a3e5e"
+    },
+    {
+      "name": "motion-reduced-schedule-modal",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "motion-reduced-schedule-modal",
+        "width": 1440,
+        "height": 900,
+        "sha256": "8e186c62c6891b322380575a63be0899e0ea74251e823ac3b9cb60436a94cbc6"
+      },
+      "pngSha256": "94e3827b58e4ad11cdc24a8742b4286ea2a31f1b4fc020d76dffc35abffcdec2"
+    },
+    {
+      "name": "overlay-add-job-modal",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "overlay-add-job-modal",
+        "width": 1440,
+        "height": 900,
+        "sha256": "8e186c62c6891b322380575a63be0899e0ea74251e823ac3b9cb60436a94cbc6"
+      },
+      "pngSha256": "94e3827b58e4ad11cdc24a8742b4286ea2a31f1b4fc020d76dffc35abffcdec2"
+    },
+    {
+      "name": "overlay-agent-actions-menu",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "overlay-agent-actions-menu",
+        "width": 1440,
+        "height": 900,
+        "sha256": "cb861bc3ac4800decd769448f535ebfbe93d6fc74badf6383a6982d027d1358c"
+      },
+      "pngSha256": "eae0723f2e38950580cf825508875728ec524eb3373eb1234c701955458d4a2d"
+    },
+    {
+      "name": "overlay-command-palette-results",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "overlay-command-palette-results",
+        "width": 1440,
+        "height": 900,
+        "sha256": "a274f920cd6f2d7d76576b967abc78bfec9729e8dfc3090552fc38f46fa169e9"
+      },
+      "pngSha256": "0ccdaf54a4e571f390be78393d89fec9f8d917fa39c0d3ed775085adfad141d7"
+    },
+    {
+      "name": "overlay-confirm-dialog",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "overlay-confirm-dialog",
+        "width": 1440,
+        "height": 900,
+        "sha256": "1c691488a48b53bb9d9603c411125dfa3d40349f95611ee936d5479f4c0c5751"
+      },
+      "pngSha256": "c9191c985afee96f62e974153d249c9afef22fa64595fb808c921b8ac60b61a8"
+    },
+    {
+      "name": "overlay-connection-banner",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "overlay-connection-banner",
+        "width": 390,
+        "height": 844,
+        "sha256": "4394d5a81642257a3133d9bdf5833a58dad9e20039afcd0f6cefadd204876c00"
+      },
+      "pngSha256": "9dda87303dc258a317fe30d0479d143df9c1ad572a5f13b60285d4e0c0278485"
+    },
+    {
+      "name": "overlay-dock-project-bound",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-dock-project-bound",
+        "width": 1440,
+        "height": 900,
+        "sha256": "989ee40d5f5a9ca166eba6778921c9e472eb6572d914aa854dd93a3b3e5f456d"
+      },
+      "pngSha256": "fcb94585676f1990b4a6d6dd8a09274a8c76aaff7aeb34f0c9aaa819d7ac6129"
+    },
+    {
+      "name": "overlay-dock-project-mismatch",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-dock-project-mismatch",
+        "width": 1440,
+        "height": 900,
+        "sha256": "74580bcc08358a10698320524b76fca96e80c778539a9b57e5da5051e27fa632"
+      },
+      "pngSha256": "67875afe64ae79c5f1444365940a866aa987783fcece382f5966f624e6b20cbf"
+    },
+    {
+      "name": "overlay-mobile-sheet",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-mobile-sheet",
+        "width": 390,
+        "height": 844,
+        "sha256": "65360cb8135d9feb09cecac4e75c5fc9480735da375c0c82768d19403155c8cb"
+      },
+      "pngSha256": "8d6f15834d3d15ce84e603d70d275ea65ffa688d462ac1b11ae84531d7aa4c7c"
+    },
+    {
+      "name": "overlay-new-project-layout-control",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "overlay-new-project-layout-control",
+        "width": 1440,
+        "height": 900,
+        "volatile": true
+      }
+    },
+    {
+      "name": "overlay-new-project-modal",
+      "side": "ours",
+      "reason": "onboarding-only change",
+      "entry": {
+        "name": "overlay-new-project-modal",
+        "width": 1440,
+        "height": 900,
+        "sha256": "1861179d2452d267271b1c73728fa501a38483ce04733d4883e91f5d1c426083"
+      },
+      "pngSha256": "e221ae77fddf2cbf4e1a9b151b3e15050d661837abd2c9f34b602cbaa059e4d0"
+    },
+    {
+      "name": "overlay-project-switcher-populated",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-project-switcher-populated",
+        "width": 1440,
+        "height": 900,
+        "sha256": "d12b3d539ae94cda693c2cdbc0eb457479ac7fa94c26c8bc77b1256fa2eddd37"
+      },
+      "pngSha256": "584f78e6f4e8f6411fd2b16f72395fad3efa1663fcf484972bfc984fcce6caa9"
+    },
+    {
+      "name": "overlay-region-chooser-from-toggle",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-region-chooser-from-toggle",
+        "width": 1440,
+        "height": 900,
+        "sha256": "108493b99a9422ee83e583bc43bfbef384d933490e2c4f8211b2d3a6eaace14a"
+      },
+      "pngSha256": "715933da260cb2dcb0a7db6cfe5d833c19e9f46f961ce37e9ceb36232cc871e7"
+    },
+    {
+      "name": "overlay-toast",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-toast",
+        "width": 1440,
+        "height": 900,
+        "sha256": "ad01f19827015e377ee10368b718d30b647c0fbec27caf25d211a92ea2ff5979"
+      },
+      "pngSha256": "18682656cce17b2f462bde89492e39a00af3586113c49ad09fa0694221abba7b"
+    },
+    {
+      "name": "overlay-toast-action",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "overlay-toast-action",
+        "width": 1440,
+        "height": 900,
+        "sha256": "d97e7ef22a0a799849874bf10888b90d8ea1b10066e844ef7a946f948bedbc42"
+      },
+      "pngSha256": "55154044a7e72af4abd986643bff413445061360dc6540bfdd487af2d9f5e347"
+    },
+    {
+      "name": "plugins",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "plugins",
+        "width": 1440,
+        "height": 900,
+        "sha256": "b35c0bdef583d7e1165441ebefabb2fe64df326fc52d42b2ca4214a15c14fb26"
+      },
+      "pngSha256": "8eb224d75a648fba16459604d5b8f81acc8f0598b1653e5da3b037d9e3f5a561"
+    },
+    {
+      "name": "profile",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "profile",
+        "width": 1440,
+        "height": 900,
+        "sha256": "42a0f28e7538409751675f88607f1123e02d6a9dcd45212b9e754f43f8188e90"
+      },
+      "pngSha256": "4bdadade831547b77902d1506ccd388c33f7cf4105c71ccba104ed62a654ffcf"
+    },
+    {
+      "name": "registry",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "registry",
+        "width": 1440,
+        "height": 900,
+        "sha256": "f16931f0da56c7306d02085834509e95c6c478468f75964d8d3aaa9c17c4251c"
+      },
+      "pngSha256": "b97f2a04a6ef80f4666de01b41f6adf6ced146367c5367596af5c0ed26f81319"
+    },
+    {
+      "name": "schedule",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "schedule",
+        "width": 1440,
+        "height": 900,
+        "sha256": "1c886b637107a408fe78fd06fe2edc28b69cd417f6f7032a5336cfae2525ffee"
+      },
+      "pngSha256": "e1a35e5a59fd332cb055743e53cd07f0b77f32f58edd16062345cc5561b431f5"
+    },
+    {
+      "name": "sessions",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "sessions",
+        "width": 1440,
+        "height": 900,
+        "sha256": "daac0dd2bc75583ffb5cda71e128969e944db8f89df857c8e606eef49deb8ce8"
+      },
+      "pngSha256": "a360b121237580197114a23d12c452682eb8a50ff2c675ed674210abd5492962"
+    },
+    {
+      "name": "sessions-filtered-empty",
+      "side": "ours",
+      "reason": "overlapping reviewed changes; retain onboarding reference pending fresh merged capture review",
+      "entry": {
+        "name": "sessions-filtered-empty",
+        "width": 1440,
+        "height": 900,
+        "sha256": "96b13e42699b42cd377b870c5030ae6d5aa0e5c07e55d6e7fda3d628715801b7"
+      },
+      "pngSha256": "a1208c82556291410a8281d85785203991d54dded3f5c4f6cda5fc3c7e95e787"
+    },
+    {
+      "name": "settings",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "settings",
+        "width": 1440,
+        "height": 900,
+        "sha256": "33a4a8cca636725e798a913217b84e432c70d943649985791b6f23844e93ec07"
+      },
+      "pngSha256": "6c7e08fb2bafbb69c0e6f2ee52cdee0260673419129e31676e2ad34b037ef9f0"
+    },
+    {
+      "name": "settings-info-tip",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "settings-info-tip",
+        "width": 1440,
+        "height": 900,
+        "sha256": "612f164ddb337199e076d3eb143a4aae82257889600da5111385f1af821c04a9"
+      },
+      "pngSha256": "dc2b9c5fec1f7731aeeade759d3d5bf4d36d8b9e682a02010b422d4487e6b277"
+    },
+    {
+      "name": "skills",
+      "side": "ours",
+      "reason": "identical entry",
+      "entry": {
+        "name": "skills",
+        "width": 1440,
+        "height": 900,
+        "sha256": "499e4291e505b1fee29f0012d5450b4f86742681197ee3d4ac3f6637b04aedb4"
+      },
+      "pngSha256": "a64ac4e584ea7dd5956adeea1033b383ca540be8369ff17d905c29bfe45fa30d"
+    }
+  ],
+  "mergedSource": "aeaebab54db1d99261a0d670a7f2dcf57d2b5cd7",
+  "limits": "Selection preserves previously reviewed parent references. It does not qualify combined pixels; fresh hosted capture review remains required.",
+  "status": "Historical merge disposition; combined hosted visual acceptance remains NOT_VERIFIED",
+  "sourceResolution": {
+    "statusPill": "Upstream fixed viewport position replaces the earlier component-scoped top/left rule; live-region text and semantics retained.",
+    "capture": "Upstream fixtures remain active through screenshot/recovery and release in cleanup. Project A detail and viewport containment assertions remain.",
+    "sourceReview": "Independent source resolution review has no P1/P2 findings."
+  },
+  "localCapture": {
+    "sourceRevision": "aeaebab54db1d99261a0d670a7f2dcf57d2b5cd7",
+    "selection": [
+      "home",
+      "overlay-dock-project-mismatch",
+      "desktop-conversation-resync",
+      "mobile-conversation-resync"
+    ],
+    "capturedAt": "2026-10-16T09:20:46.714Z",
+    "captureJsonSha256": "a438e0d408c7ddb4bab1a6bad270fd34c061daa33b104f84e327b221f6c76d48",
+    "screens": [
+      {
+        "name": "home",
+        "ok": true,
+        "dimensions": [
+          1440,
+          900
+        ],
+        "pngSha256": "d54e53375edcdb3e98adf2b94ffa6f0705c7a7a390da20950052ebbcbe906e9c",
+        "localArtifact": "gallery/home.png"
+      },
+      {
+        "name": "overlay-dock-project-mismatch",
+        "ok": true,
+        "dimensions": [
+          1440,
+          900
+        ],
+        "pngSha256": "400c983b932b306d01ae751a83e23bf5445466cc4c712814081a9d28af7bddb4",
+        "localArtifact": "gallery/overlay-dock-project-mismatch.png"
+      },
+      {
+        "name": "desktop-conversation-resync",
+        "ok": true,
+        "dimensions": [
+          1440,
+          900
+        ],
+        "pngSha256": "133742a5b164e97b2678062a0e527d07a10338a161a0acf7eeb2b349c45a4a04",
+        "localArtifact": "gallery/desktop-conversation-resync.png"
+      },
+      {
+        "name": "mobile-conversation-resync",
+        "ok": true,
+        "dimensions": [
+          390,
+          844
+        ],
+        "pngSha256": "b77fad6089a738d2fd97f7199ae08c59793ba8127b1e1d5140174dd4bb665491",
+        "localArtifact": "gallery/mobile-conversation-resync.png"
+      }
+    ],
+    "result": "1 Playwright case passed with four successful screen captures and recovery assertions",
+    "limits": "Local Chromium rendering is not hosted exact-pixel qualification. Local gallery files may be replaced by later captures."
+  },
+  "verification": {
+    "focused": "80 passed across status and screenshot comparator owners",
+    "typecheckE2e": "passed",
+    "fixturePolicy": "passed",
+    "documentationFreshness": "no blocking or advisory items",
+    "fullHostedMergedCapture": "NOT_VERIFIED; required before re-arming auto-merge"
+  }
+}

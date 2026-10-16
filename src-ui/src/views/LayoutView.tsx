@@ -1,7 +1,6 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import {
   FullScreenError,
-  FullScreenLoader,
   LayoutNavigationProvider,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
@@ -9,7 +8,7 @@ import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspa
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isLayoutRecordAbsent } from '../app-shell/layout-record-absent';
-import { ErrorState } from '../components/state';
+import { ErrorState, SkeletonList } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import {
   useApiBase,
@@ -341,7 +340,12 @@ export function LayoutView({
   }
 
   if (layoutLoading) {
-    return <FullScreenLoader label="layout" action={backToProject} />;
+    return (
+      <div>
+        <SkeletonList count={1} label="Opening layout" />
+        {backToProject}
+      </div>
+    );
   }
 
   // The loader's bound: the query has settled, and it did not produce a

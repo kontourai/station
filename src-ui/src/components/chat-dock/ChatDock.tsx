@@ -15,6 +15,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
   activeChatsStore,
@@ -430,6 +431,7 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   const isFullscreenPlacement = placement === 'fullscreen';
+  const layoutChatPlacement = useLayoutChatPlacement();
   // A full-screen Chat shows its active chat without opening the dock; end-of-
   // turn toasts must treat that chat as on screen (`isChatInForeground`).
   const fullscreenOnScreen = isFullscreenPlacement && props.onScreen !== false;
@@ -2147,12 +2149,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isMobile,
     isDockOpen: isPaneOpen,
     isDockMaximized: isPaneMaximized,
-    // A fullscreen-placed chat pane IS the dock-owned view (a Chat
-    // workspace layout hides the toolbar via its own App.tsx disjunct, so
-    // this header must carry both controls). Otherwise the route decides,
-    // through the same parser App.tsx's displayCurrentView rides.
+    // Coding embeds a fullscreen chat pane beneath the app toolbar. Only a
+    // viewport-owned Chat layout replaces that toolbar’s controls.
     isDockOwnedView:
-      isFullscreenPlacement ||
+      (isFullscreenPlacement && layoutChatPlacement !== 'center') ||
       isDockOwnedViewType(resolveViewFromPath(pathname).type),
   });
 
@@ -2461,6 +2461,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             />
           ) : (
             <ChatDockHeader
+              retainIdentityInNamedPane={Boolean(importedSessionId)}
               chatIdentity={
                 importedSessionId ? (
                   <ChatDockActiveIdentity

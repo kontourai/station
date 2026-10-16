@@ -147,6 +147,9 @@ describe('environment offer', () => {
       await runEnvironmentCommand(['offer'], deps);
 
       expect(deps.stdout).toHaveBeenCalledOnce();
+      expect(deps.stdout.mock.calls[0]?.[0]).toContain(
+        'Pairing code: PAIRME2345',
+      );
       expect(request).toHaveBeenCalledTimes(3);
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -102,7 +102,7 @@ import { getTenantRequestContext } from './runtime-tenant-context.js';
 
 type RuntimeApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
-export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
+const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -575,8 +575,9 @@ async function admitNativeDeviceProofRequest(
   // refused with no credential fallback.
   if (
     c.req.raw.headers.has('authorization') ||
-    parseDeviceSessionCookie(c.req.raw.headers.get('cookie') ?? undefined) !==
-      undefined
+    /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?\s*=/.test(
+      c.req.raw.headers.get('cookie') ?? '',
+    )
   )
     return refused(
       403,
@@ -964,7 +965,13 @@ function configureRuntimeSecurity(
     const bearerCredential = parseStrictBearer(authorization);
     const cookieCredential =
       authorization === undefined
-        ? parseDeviceSessionCookie(c.req.header('cookie'))
+        ? parseDeviceSessionCookie(
+            c.req.header('cookie'),
+            security.resolveCredentialAuthority
+              ? (candidate) =>
+                  security.resolveCredentialAuthority!(candidate) !== undefined
+              : undefined,
+          )
         : undefined;
     const credential = bearerCredential ?? cookieCredential;
 
@@ -1408,44 +1415,69 @@ async function readBoundedBody(
   return bytes;
 }
 
+export function deviceSessionCookieName(
+  secure: boolean,
+  environmentId: string,
+): string {
+  const scope = createHash('sha256')
+    .update(environmentId)
+    .digest('hex')
+    .slice(0, 16);
+  return `${secure ? SECURE_DEVICE_SESSION_COOKIE : LOOPBACK_DEVICE_SESSION_COOKIE}-${scope}`;
+}
+
 export function parseDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   // Cookie jars are shared across ports. Other localhost applications can
   // legitimately contribute several KiB; bound the header at the Node HTTP
   // default while still validating only one exact Station credential below.
   if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
+  const names = new Set<string>();
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');
     if (separator <= 0) continue;
     const name = segment.slice(0, separator).trim();
     if (
       name !== SECURE_DEVICE_SESSION_COOKIE &&
-      name !== LOOPBACK_DEVICE_SESSION_COOKIE
+      name !== LOOPBACK_DEVICE_SESSION_COOKIE &&
+      !/^(?:__Host-)?station-device-[a-f0-9]{16}$/.test(name)
     ) {
       continue;
     }
     const candidate = segment.slice(separator + 1).trim();
-    if (!DEVICE_CREDENTIAL_PATTERN.test(candidate)) return undefined;
+    if (names.has(name) || !DEVICE_CREDENTIAL_PATTERN.test(candidate))
+      return undefined;
+    names.add(name);
     matches.push(candidate);
   }
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 1) return matches[0];
+  const current = recognizes ? matches.filter(recognizes) : [];
+  return current.length === 1 ? current[0] : undefined;
 }
 
 /** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
 export function parseSecureDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   if (!value || value.length > 16 * 1024) return undefined;
-  const hasSecureName = value.split(';').some((segment) => {
+  const credential = parseDeviceSessionCookie(value, recognizes);
+  if (!credential) return undefined;
+  const hasSecureCredential = value.split(';').some((segment) => {
     const separator = segment.indexOf('=');
     return (
       separator > 0 &&
-      segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE
+      segment.slice(separator + 1).trim() === credential &&
+      (segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE ||
+        /^__Host-station-device-[a-f0-9]{16}$/.test(
+          segment.slice(0, separator).trim(),
+        ))
     );
   });
-  return hasSecureName ? parseDeviceSessionCookie(value) : undefined;
+  return hasSecureCredential ? credential : undefined;
 }
 
 function hasCredentialQuery(url: string): boolean {

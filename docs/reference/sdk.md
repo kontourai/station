@@ -1639,7 +1639,8 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 
 For a browser already signed in on the Station's same HTTPS origin, call
 `accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
-browser sends its existing `__Host-station-device` and provider cookies through
+browser sends its existing secure `__Host-station-device-<station-id-hash>`
+(legacy `__Host-station-device` is also accepted) and provider cookies through
 `credentials: 'same-origin'`; the SDK never reads or copies cookie values into
 JavaScript. Adoption returns a short-lived account continuation and a bounded,
 read-only alias for that same approved Device. Keep the alias with its
@@ -4278,7 +4279,10 @@ checked. `useAgentMcpPromptsQuery(agentSlug)` reads
 `runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
 and returns the text to send; a refusal throws the server's reason as a
 `StationHttpError`, retaining HTTP status, machine code, details and
-`Retry-After` when present. See the [commands guide](../guides/commands.md)
+`Retry-After` when present. The prompt-list query cancels its request when the
+query is cancelled, applies a 30-second request deadline, and disables automatic
+retries by default; `config.retry` can override that policy.
+See the [commands guide](../guides/commands.md)
 for scope and limits.
 
 

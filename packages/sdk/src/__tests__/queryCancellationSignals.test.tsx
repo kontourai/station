@@ -26,6 +26,8 @@ vi.mock('../api', async (importOriginal) => ({
   _getApiBase: async () => 'https://station.test',
 }));
 
+import { StationHttpError } from '../client/http';
+import { useAgentMcpPromptsQuery } from '../query-domains/agentAdmin';
 import { useLiveActivityQuery } from '../query-domains/liveActivity';
 import {
   useAuthStatusQuery,
@@ -60,7 +62,41 @@ beforeEach(() => {
   );
 });
 
+describe('MCP prompt failures', () => {
+  test.each([401, 403, 404, 429])(
+    'preserves HTTP %s without retrying the optional prompt lookup',
+    async (status) => {
+      mocks.authenticatedFetch.mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ error: { code: 'lookup_refused' } }), {
+            status,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': '30',
+            },
+          }),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: 3, retryDelay: 0 } },
+      });
+      const { result, unmount } = renderHook(
+        () => useAgentMcpPromptsQuery('codex'),
+        {
+          wrapper: wrapperFor(client),
+        },
+      );
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.error).toBeInstanceOf(StationHttpError);
+      expect(result.current.error).toMatchObject({ status });
+      expect(mocks.authenticatedFetch).toHaveBeenCalledTimes(1);
+      unmount();
+      client.clear();
+    },
+  );
+});
+
 const cases: Array<[string, () => unknown]> = [
+  ['useAgentMcpPromptsQuery', () => useAgentMcpPromptsQuery('codex')],
   ['useServerCapabilitiesQuery', () => useServerCapabilitiesQuery()],
   ['useLiveActivityQuery', () => useLiveActivityQuery()],
   ['useSystemStatusQuery', () => useSystemStatusQuery()],

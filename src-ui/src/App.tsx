@@ -49,10 +49,7 @@ import { PushNotificationsProvider } from './contexts/PushNotificationsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
-import {
-  useDockFoldsToOneRegion,
-  useDockSlotPlacement,
-} from './hooks/useIsMobile';
+import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { foldedDockRegion } from './regions/region-model';
 
 /**
@@ -459,12 +456,9 @@ function App() {
   // from the `type` word alone: a plugin-contributed layout typed 'chat'
   // renders its own tabs and keeps the ambient regions (#1446), and one typed
   // 'coding' keeps Chat in the dock.
-  const dockFoldsToOneRegion = useDockFoldsToOneRegion();
   const layoutChatPlacement =
     displayCurrentView.type === 'layout' && !selectedLayoutUnknown
-      ? resolveLayoutChatPlacement(selectedLayout, {
-          bottomOnly: dockFoldsToOneRegion,
-        })
+      ? resolveLayoutChatPlacement(selectedLayout)
       : 'none';
   const isChatWorkspaceLayout = layoutChatPlacement === 'viewport';
   // A layout route waits for its type before mounting the ambient controller.

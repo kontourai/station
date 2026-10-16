@@ -4,8 +4,8 @@ import { SparkleGlyph } from '../../components/icons/Glyph';
 import type { AgentEditorFormProps } from './types';
 import { buildSystemPromptPrompt } from './utils';
 
-const READONLY_TRAILER =
-  "This content is saved with the agent and stays portable, but this engine won't deliver it.";
+const DELIVERY_TRAILER =
+  "This content is saved with the agent and stays portable, but this engine won't deliver it. You can edit or remove it, or choose another engine.";
 
 export function AgentEditorPromptTab({
   form,
@@ -16,6 +16,7 @@ export function AgentEditorPromptTab({
   isEnriching,
   promptIsRequired,
   finding,
+  firstTurnDelivery = false,
 }: Pick<
   AgentEditorFormProps,
   | 'form'
@@ -27,29 +28,32 @@ export function AgentEditorPromptTab({
   | 'promptIsRequired'
 > & {
   finding?: AgentEngineValidationFinding;
+  firstTurnDelivery?: boolean;
 }) {
-  const readOnly = !!finding;
-
   return (
     <div className="agent-editor__section">
       {finding && (
         <div className="agent-editor__capability-banner" role="status">
           {finding.message}.{' '}
-          <InfoTip label="System instructions">{READONLY_TRAILER}</InfoTip>
+          <InfoTip label="System instructions">{DELIVERY_TRAILER}</InfoTip>
         </div>
+      )}
+      {firstTurnDelivery && (
+        <p className="agent-editor__section-desc">
+          Sent with the first message in each new chat. These instructions use
+          the same priority as your message.
+        </p>
       )}
       <div className="editor-field">
         <div className="editor-label-row">
           <label className="editor-label" htmlFor="ae-prompt">
-            System Instructions{' '}
-            {promptIsRequired && !readOnly && (
-              <span className="editor-required">*</span>
-            )}
+            Instructions{' '}
+            {promptIsRequired && <span className="editor-required">*</span>}
           </label>
           <button
             type="button"
             className="editor-enrich-btn"
-            disabled={isEnriching || !form.name || locked || readOnly}
+            disabled={isEnriching || !form.name || locked}
             aria-label="Generate system instructions"
             onClick={async () => {
               const text = await enrich(buildSystemPromptPrompt(form));
@@ -79,8 +83,8 @@ export function AgentEditorPromptTab({
             }))
           }
           placeholder="You are a helpful assistant..."
-          aria-required={promptIsRequired && !readOnly}
-          disabled={locked || readOnly}
+          aria-required={promptIsRequired}
+          disabled={locked}
         />
         {validationErrors.prompt && (
           <span className="editor-error">{validationErrors.prompt}</span>

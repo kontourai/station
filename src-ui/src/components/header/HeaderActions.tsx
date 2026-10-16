@@ -15,11 +15,14 @@ import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { HeaderHelpPrompt } from './utils';
@@ -182,6 +185,7 @@ export function HeaderActions({
   onToggleProfileMenu,
   onViewAllNotifications,
 }: HeaderActionsProps) {
+  const profile = usePlatformProfile();
   const { activeConnection, connections, setActiveConnection } =
     useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
@@ -465,6 +469,9 @@ export function HeaderActions({
             },
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
+            onPairPhone: hasLocalStationForProfile(profile)
+              ? () => openConnectionsModal({ mode: 'pair-host' })
+              : undefined,
           }}
           pending={null}
         />
