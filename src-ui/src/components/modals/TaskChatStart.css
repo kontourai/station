@@ -33,5 +33,5 @@
   outline-offset: var(--k-focus-ring-offset);
 }
 .task-chat-start .start-composer__box .start-composer__input:focus-visible {
-  outline: 0;
+  outline: none !important;
 }
