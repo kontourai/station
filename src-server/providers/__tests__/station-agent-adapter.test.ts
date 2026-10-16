@@ -2101,7 +2101,7 @@ describe('StationAgentAdapter', () => {
       [],
     );
     await adapter.stopSession('task-replace');
-    const [unresolved, exited] = await nextEvents(iterator, 2);
+    const [unresolved] = await nextEvents(iterator, 1);
     expect(unresolved).toMatchObject({
       method: 'tool.completed',
       toolCallId: 'reused-call',
@@ -2109,6 +2109,7 @@ describe('StationAgentAdapter', () => {
       turnId: second.turnId,
       invocationId: 'origin-B',
     });
+    const [exited] = await nextEvents(iterator, 1);
     expect(exited).not.toHaveProperty('invocationId');
   });
 
