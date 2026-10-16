@@ -2004,28 +2004,56 @@ for (const type of [
       ),
   });
   turnBoundary.push({
-    name: `prepared settlement: ${disposition} refuses the other invocation stage and legacy inputless rows`,
+    name: `prepared settlement: ${disposition} independently refuses the wrong keyless boundary stage and legacy inputless rows`,
     areas: ['turnBoundary', 'turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
-        const { owner, dedupOwner } = await prepareIntent(session);
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'stage-only',
+          inputDigest: 'stage-input',
+          intentDigest: 'stage-options',
+          bodyRef: 'stage-body',
+        };
+        await session.run(create('intent', 't', owner, at(1), 'reserved'));
+        await session.run({
+          type: 'turnBoundary.prepare',
+          boundaryId: 'intent',
+          ownerId: owner.id,
+          intent,
+          now: at(2),
+        });
         if (!refused)
           await session.run({
             type: 'turnBoundary.beginInvocation',
             boundaryId: 'intent',
             ownerId: owner.id,
-            dedupOwnerId: dedupOwner.id,
-            intent: preparedIntent,
+            intent,
             now: at(3),
           });
-        assert.deepEqual(await session.run(settlement(owner, dedupOwner)), {
+        const command = {
+          type,
+          boundaryId: 'intent',
+          intent,
+          settlementId: 'stage-only-settlement',
+          now: at(5),
+          boundary: {
+            owner,
+            createdAt: at(1),
+            updatedAt: refused ? at(2) : at(3),
+          },
+        };
+        const before = await boundary(session, 'intent');
+        assert.deepEqual(await session.run(command), {
           kind: 'refused',
         });
+        assert.deepEqual(await boundary(session, 'intent'), before);
         await session.run(create('legacy', 'u', owner, at(1)));
         assert.deepEqual(
           await session.run({
-            ...settlement(owner, dedupOwner),
+            ...command,
             boundaryId: 'legacy',
+            boundary: { ...command.boundary, updatedAt: at(1) },
           }),
           { kind: 'refused' },
         );
