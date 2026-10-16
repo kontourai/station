@@ -77,7 +77,7 @@ while (!store.readSessionByThread(threadId)) {
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
-if (phase === 'prepared') {
+if (phase === 'prepared' || phase === 'begun') {
   const exec = DatabaseSync.prototype.exec;
   DatabaseSync.prototype.exec = function (sql: string) {
     exec.call(this, sql);
@@ -86,12 +86,18 @@ if (phase === 'prepared') {
       `SELECT boundary_id, state FROM orchestration_turn_boundaries
        WHERE thread_id = ? AND boundary_id LIKE 'turn-boundary:%'`,
     ).get(threadId);
-    if (row?.state !== 'prepared') return;
+    if (row?.state !== (phase === 'prepared' ? 'prepared' : 'invoking')) return;
     // Stop the actual owner immediately after its durable preparation commit.
     // SIGKILL from the parent bypasses every service finally/release path.
-    report('prepared', { boundaryId: row.boundary_id });
+    report(phase, { boundaryId: row.boundary_id });
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
   };
+}
+if (phase === 'prepare-abort') {
+  const db = new DatabaseSync(databasePath);
+  db.exec(`CREATE TRIGGER abort_prepared_body BEFORE INSERT ON orchestration_prepared_turns
+    BEGIN SELECT RAISE(ABORT, 'fixture prepare body abort'); END`);
+  db.close();
 }
 
 void service

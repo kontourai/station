@@ -40,12 +40,16 @@ async function killedOwner(
   phase:
     | 'prepared'
     | 'invoked'
+    | 'begun'
+    | 'prepare-abort'
     | 'sparse-array'
     | 'array-subclass'
     | 'dense-array',
 ) {
   const expected =
-    phase === 'sparse-array' || phase === 'array-subclass'
+    phase === 'sparse-array' ||
+    phase === 'array-subclass' ||
+    phase === 'prepare-abort'
       ? 'failed'
       : phase === 'dense-array'
         ? 'invoked'
@@ -168,8 +172,8 @@ test('a killed prepared owner leaves the exact final input retrievable without i
   });
 }, 90_000);
 
-test.each(['sparse-array', 'array-subclass'] as const)(
-  'dispatch refuses %s JSON options before adapter entry',
+test.each(['sparse-array', 'array-subclass', 'prepare-abort'] as const)(
+  'dispatch refuses %s before adapter entry and leaves no partial preparation',
   async (phase) => {
     const path = join(
       makeTempDir('prepared-invalid-options-'),
@@ -184,6 +188,11 @@ test.each(['sparse-array', 'array-subclass'] as const)(
       expect(
         db
           .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
+          .get()?.count,
+      ).toBe(0);
+      expect(
+        db
+          .prepare('SELECT COUNT(*) AS count FROM orchestration_turn_dedup')
           .get()?.count,
       ).toBe(0);
       expect(
@@ -208,43 +217,49 @@ test('dispatch retains dense JSON-array options without changing their values', 
   ).toEqual(['keep', { nested: [1, null, true] }]);
 }, 90_000);
 
-test('a killed invoking owner retains its input and a normal retry invokes nothing', async () => {
-  const path = join(makeTempDir('invoking-intent-crash-'), 'events.sqlite');
-  const observed = await killedOwner(path, 'invoked');
-  expect(observed.match(/"step":"invoked"/g)).toHaveLength(1);
-  class CountingAdapter extends GateTestAdapter {
-    sent: ProviderSendTurnInput[] = [];
-    override async sendTurn(input: ProviderSendTurnInput) {
-      this.sent.push(input);
-      return { threadId: input.threadId, turnId: 'unexpected-retry' };
+test.each(['begun', 'invoked'] as const)(
+  'a killed %s owner retains its input and a normal retry invokes nothing',
+  async (phase) => {
+    const path = join(makeTempDir('invoking-intent-crash-'), 'events.sqlite');
+    const observed = await killedOwner(path, phase);
+    expect(observed.match(/"step":"invoked"/g) ?? []).toHaveLength(
+      phase === 'invoked' ? 1 : 0,
+    );
+    class CountingAdapter extends GateTestAdapter {
+      sent: ProviderSendTurnInput[] = [];
+      override async sendTurn(input: ProviderSendTurnInput) {
+        this.sent.push(input);
+        return { threadId: input.threadId, turnId: 'unexpected-retry' };
+      }
     }
-  }
-  const store = new EventStore(path);
-  stores.push(store);
-  const adapter = new CountingAdapter();
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug() {}, warn() {} },
-  });
-  services.push(service);
-  service.initialize();
-  await expect(
-    service.dispatch({
-      type: 'sendTurn',
-      input: {
-        threadId: THREAD,
-        clientTurnId: KEY,
-        input: INPUT,
-        ambientContext: AMBIENT,
-      },
-    }),
-  ).rejects.toMatchObject({ outcome: 'indeterminate' });
-  expect(adapter.sent).toHaveLength(0);
-  const { envelope } = storedIntent(path);
-  expect(envelope.input.text).toBe('pinned context\n\n  keep these bytes\n');
-}, 90_000);
+    const store = new EventStore(path);
+    stores.push(store);
+    const adapter = new CountingAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug() {}, warn() {} },
+    });
+    services.push(service);
+    service.initialize();
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: THREAD,
+          clientTurnId: KEY,
+          input: INPUT,
+          ambientContext: AMBIENT,
+        },
+      }),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(adapter.sent).toHaveLength(0);
+    const { envelope } = storedIntent(path);
+    expect(envelope.input.text).toBe('pinned context\n\n  keep these bytes\n');
+  },
+  90_000,
+);
 
 test('explicit prepared resume reauthorizes the retained input and sends its original bytes exactly once', async () => {
   const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
