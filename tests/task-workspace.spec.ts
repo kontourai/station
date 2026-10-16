@@ -441,10 +441,12 @@ test.describe
       await page.goto(`${live.ui}/projects/${projectSlug}?dock=open`);
       await expect(
         page
-          .getByRole('button', { name: /^Manage Stations/ })
+          .getByRole('button', { name: /^Choose Station/ })
           .getByLabel('connected'),
       ).toBeVisible({ timeout: 30_000 });
-      const newChat = page.getByTitle(/^New Chat/);
+      const newChat = page
+        .locator('.chat-dock__tab-actions')
+        .getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeVisible({ timeout: 20_000 });
       await newChat.click();
       // Chromium can paint this lazy route-transition dialog before its role
@@ -612,10 +614,15 @@ test.describe
       await expect(attachDialog).toHaveCount(0);
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByRole('heading', { name: 'Kept answers', exact: true }),
       ).toBeVisible();
-      await expect(page.getByText(answer, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText(answer, { exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByText(
           /semantic support is separate and has not been assessed/i,
@@ -637,7 +644,12 @@ test.describe
         uiOrigin: live.ui,
       });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await expect(page.getByText(answer, { exact: true })).toBeVisible({
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await expect(
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText(answer, { exact: true }),
+      ).toBeVisible({
         timeout: 30_000,
       });
 
