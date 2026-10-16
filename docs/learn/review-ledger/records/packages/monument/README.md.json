@@ -36,7 +36,11 @@
 
     "packages/monument/src/adapter.ts",
 
-    "packages/monument/src/testing/conformance.ts"
+    "packages/monument/src/testing/conformance.ts",
+
+    "scripts/monument-pack-smoke.mjs",
+
+    "scripts/__tests__/monument-pack-smoke.test.ts"
   ],
 
   "checks": []

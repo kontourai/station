@@ -1055,3 +1055,42 @@ describe('SessionTurnBoundaryAuthority', () => {
     ).toEqual({ kind: 'unavailable' });
   });
 });
+
+// Empty provider ids were accepted by the host authority before Monument.
+// They must not turn a matching empty terminal into proof of completion.
+test('an empty provider id cannot terminally retire an engine-opened boundary', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(
+      authority
+        .prepareProviderTurn(
+          'empty-turn-thread',
+          '',
+          '2030-01-01T00:00:00.000Z',
+        )
+        .record(),
+    ).toEqual({ kind: 'applied' });
+    expect(
+      authority.observe({
+        eventId: 'empty-terminal',
+        provider: 'claude',
+        threadId: 'empty-turn-thread',
+        turnId: '',
+        method: 'turn.completed',
+        createdAt: '2030-01-01T00:00:01.000Z',
+      }),
+    ).toEqual({ kind: 'applied' });
+    // Observe alone must keep the legacy possible-effect fact; runtime history
+    // reconciliation is a separate host path with its own existing contract.
+    expect(
+      store['db']
+        .prepare(
+          'SELECT COUNT(*) AS count FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get('empty-turn-thread'),
+    ).toEqual({ count: 1 });
+  } finally {
+    store.close();
+  }
+});
