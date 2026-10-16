@@ -55,7 +55,9 @@ export function runnerProfile(env = process.env) {
       : name === 'free'
         ? 12
         : 20;
-  const background = 3 + ordinary + heavy;
+  // Static, exclusive corpora and Android viewport jobs form one chain in
+  // full-regression.yml. Only one of those three can overlap the matrices.
+  const background = 1 + ordinary + heavy;
   if (
     ordinary > 4 ||
     heavy > 2 ||
@@ -148,11 +150,8 @@ export async function qualificationAdmission(env = process.env) {
       { env: repositoryEnv },
     );
     for (const run of runs) {
-      if (
-        repository === env.GITHUB_REPOSITORY &&
-        String(run.id) === String(env.GITHUB_RUN_ID)
-      )
-        continue;
+      // The caller can share its run with active CI siblings. Count them and
+      // the admission runner itself; an extra reserved slot is conservative.
       const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
         env: repositoryEnv,
       });
@@ -182,9 +181,10 @@ export async function qualificationAdmission(env = process.env) {
 // qualifications that reached this step (2026-10-05..13, failed runs
 // included), the slowest start before it was 29 minutes and the slowest
 // finish after it was 72, so 29 + 15 + 72 = 116 concludes inside the queue's
-// window even when both worst cases coincide. Each observation costs a few
-// dozen API calls, so the ceiling also bounds that spend. The wait never
-// relaxes the capacity rule; it only re-observes it.
+// window even when both worst cases coincide. Those observations predate
+// ancillary-job serialization and do not bound the current critical path.
+// Each observation costs a few dozen API calls, so the ceiling also bounds
+// that spend. The wait never relaxes the rule; it only re-observes it.
 export const ADMISSION_WAIT_CEILING_MS = 15 * 60_000;
 export const ADMISSION_OBSERVE_INTERVAL_MS = 60_000;
 
