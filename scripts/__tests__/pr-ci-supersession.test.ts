@@ -70,7 +70,7 @@ async function exercise({
       expect(req.method).toBe('POST');
       cancelled.push(Number(url.pathname.split('/').at(-2)));
       res.writeHead(202);
-      res.end('{}');
+      res.end();
     } else if (/\/actions\/runs\/\d+$/.test(url.pathname)) {
       const item = runs.find(
         (r) => r.id === Number(url.pathname.split('/').at(-1)),

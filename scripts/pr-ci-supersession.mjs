@@ -70,7 +70,10 @@ async function main() {
         current.head?.repo?.full_name !== repository
       )
         break;
-      await github(`actions/runs/${run.id}/cancel`, { method: 'POST' });
+      await github(`actions/runs/${run.id}/cancel`, {
+        method: 'POST',
+        responseBody: 'none',
+      });
       console.log(
         `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
       );
