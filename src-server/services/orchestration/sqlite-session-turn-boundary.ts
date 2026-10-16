@@ -17,11 +17,13 @@ export function createSqliteSessionTurnBoundaryCoordinator({
   db,
   head,
   reconcileTerminals,
+  retiredBoundaryIds,
   transactionLost,
 }: {
   db: SqliteDatabase & { readonly isTransaction?: boolean };
   head(): number;
   reconcileTerminals(threadId: string): void;
+  retiredBoundaryIds(threadId: string): readonly string[];
   transactionLost(cause: unknown): Error;
 }): SessionTurnBoundaryCoordinator {
   const kernel = openSqliteKernelStorage({
@@ -55,13 +57,19 @@ export function createSqliteSessionTurnBoundaryCoordinator({
               | { global_sequence: number }
               | undefined
           )?.global_sequence,
+        retiredBoundaryIds: (_db, threadId) => retiredBoundaryIds(threadId),
         creationSequence: { column: 'created_sequence', read: head },
       },
     },
     participants: [
       {
-        name: 'station-task-room-admission',
+        name: 'station-boundary-admission',
         admit(command) {
+          if (
+            command.type === 'turnBoundary.create' ||
+            command.type === 'turnBoundary.recordAccepted'
+          )
+            reconcileTerminals(command.threadId);
           if (
             command.type === 'turnBoundary.create' &&
             command.state !== 'lifecycle' &&
@@ -240,8 +248,6 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     hasPossibleEffect(threadId) {
-      // Physical event-terminal reconciliation remains host-owned in this slice.
-      reconcileTerminals(threadId);
       const result = execute({
         type: 'turnBoundary.hasPossibleEffect',
         threadId,

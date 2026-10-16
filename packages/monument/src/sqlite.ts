@@ -91,6 +91,11 @@ export interface SqliteTurnBoundaryTable {
     threadId: string,
     providerTurnId: string,
   ) => boolean;
+  /** Read-only event projection, fixed at open like the other host facts. */
+  readonly retiredBoundaryIds?: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+  ) => readonly string[];
   readonly terminalSequence?: (
     database: SqliteKernelDatabase,
     threadId: string,
@@ -326,7 +331,8 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
     if (
       boundary.terminalFacts === 'kernel' &&
       (boundary.terminalSeen !== undefined ||
-        boundary.terminalSequence !== undefined)
+        boundary.terminalSequence !== undefined ||
+        boundary.retiredBoundaryIds !== undefined)
     )
       throw new SqliteKernelConfigurationError(
         'Kernel terminal facts cannot have host callbacks.',
@@ -1213,6 +1219,8 @@ export function openSqliteKernelStorage(
         ? {
             terminalSeen: (thread: string, turn: string) =>
               boundary.terminalSeen!(db, thread, turn),
+            retiredBoundaryIds: (thread: string) =>
+              boundary.retiredBoundaryIds?.(db, thread) ?? [],
             terminalSequence: (thread: string, event: string | undefined) =>
               boundary.terminalSequence?.(db, thread, event),
           }

@@ -1385,7 +1385,7 @@ describe('CI verification workflow contracts', () => {
     expect(gallery).toContain('continue-on-error: true');
     expect(gallery).toContain('gallery/');
 
-    // The rot alarm is only an alarm if a pixel mismatch FAILS the job. A
+    // Capture and comparison integrity failures must still fail the job. A
     // file-level `toContain('continue-on-error')` would stay green if that
     // key migrated onto the capture/diff step, so pin it to the upload step:
     // everything before the upload must be able to fail the job.
@@ -1535,7 +1535,12 @@ describe('CI verification workflow contracts', () => {
     // half; nothing up to the upload may swallow a failure.
     const diffIndex = job.steps.findIndex((step) => step.id === 'diff');
     expect(job.steps[captureIndex]?.run).toBe('npm run test:e2e:screenshot');
-    expect(job.steps[diffIndex]?.run).toBe('npm run screenshot:diff');
+    expect(job.steps[diffIndex]?.run).toBe(
+      'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
+    );
+    expect(nightlyJob.steps[nightlyCaptureIndex]?.run).toContain(
+      'npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"',
+    );
     expect(diffIndex).toBe(captureIndex + 1);
     const uploadIndex = job.steps.findIndex((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
@@ -1559,18 +1564,12 @@ describe('CI verification workflow contracts', () => {
     const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
     expect(upload.with?.name).toBe(artifactName);
 
-    // The refresh instructions name that same artifact and the command that
-    // turns it into a baseline, and appear only when the DIFF failed; a
-    // capture failure gets the opposite advice.
-    const refresh = job.steps.find(
-      (step) => step.name === 'Explain how to refresh the baseline',
+    const review = job.steps.find(
+      (step) => step.name === 'Link visual review evidence',
     );
-    expect(refresh?.if).toBe("failure() && steps.diff.outcome == 'failure'");
-    expect(refresh?.env?.ARTIFACT).toBe(artifactName);
-    expect(refresh?.run).toContain(
-      `gh run download \${RUN_ID} --repo \${REPOSITORY} --name \${ARTIFACT}`,
-    );
-    expect(refresh?.run).toContain('npm run screenshot:baseline -- --gallery=');
+    expect(review?.if).toBe("always() && steps.diff.outcome != 'skipped'");
+    expect(review?.env?.ARTIFACT).toBe(artifactName);
+    expect(review?.run).toContain('GITHUB_STEP_SUMMARY');
     const pkg = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
