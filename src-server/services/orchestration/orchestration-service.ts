@@ -2506,6 +2506,9 @@ export class OrchestrationService {
           : undefined;
         return {
           assignedAgentSlug: session.assignedAgentSlug,
+          ...(session.delegation?.title
+            ? { delegationTitle: session.delegation.title }
+            : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
             ? { environmentId: session.environmentId }

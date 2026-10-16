@@ -431,6 +431,64 @@ async function fixture(observe = true) {
   };
 }
 
+test.each(['lineage', 'history', 'query', 'stored'] as const)(
+  'the %s conversation title comes from the person rather than the appended brief',
+  async (surface) => {
+    const f = await fixture();
+    try {
+      const title = 'Where should preference state live?';
+      const response = await f.post('/delegations', {
+        prompt: title,
+        target: {
+          environment: { kind: 'current' },
+          agent: 'researcher',
+          workspace: { kind: 'project', projectSlug: 'project' },
+        },
+        taskRoomRequest: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'human-conversation-title',
+          context: { version: f.brief.version, digest: f.brief.digest },
+        },
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+      if (body.data.kind !== 'recorded')
+        throw new Error('Request not recorded');
+      const sessionId = body.data.record.sessionId;
+      await f.started(sessionId, 'turn-1');
+      const authority = sessionReadAuthorityFromRequest(
+        f.principal.id,
+        undefined,
+        undefined,
+      );
+      let actual: string | undefined;
+      if (surface === 'lineage')
+        actual = (
+          await f.sessions.readSessionConversation(sessionId, authority)
+        )?.title;
+      else if (surface === 'history')
+        actual = (await f.sessions.listAllSessionConversations(authority)).find(
+          (r) => r.id === sessionId,
+        )?.title;
+      else if (surface === 'stored')
+        actual = f.store.conversationTitle([sessionId]);
+      else {
+        const result = await f.sessions.sessionQueries.read(
+          { type: 'conversation', threadId: sessionId },
+          authority,
+        );
+        if (result.status !== 'found') throw new Error(result.status);
+        actual = result.conversation.title;
+      }
+      expect(actual).toBe(title);
+      expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
+    } finally {
+      await f.close();
+    }
+  },
+);
+
 test('a terminal runtime error publishes the failed room line without another request', async () => {
   const f = await fixture(false);
   try {
@@ -467,18 +525,27 @@ test('a terminal runtime error publishes the failed room line without another re
     });
     let failure: CanonicalRuntimeEvent | undefined;
     await vi.waitFor(() => {
-      failure = f.store.listEvents(sessionId).find(e => e.payload.method === 'runtime.error')?.payload;
+      failure = f.store
+        .listEvents(sessionId)
+        .find((e) => e.payload.method === 'runtime.error')?.payload;
       expect(failure).toBeDefined();
     });
     if (!failure || failure.method !== 'runtime.error')
       throw new Error('Canonical failure not persisted');
     const reconciliation = vi.spyOn(f.conversation, 'reconcile');
-    await f.conversation.observe({ ...failure, provider: 'codex', retriable: true });
+    await f.conversation.observe({
+      ...failure,
+      provider: 'codex',
+      retriable: true,
+    });
     expect(reconciliation).not.toHaveBeenCalled();
     await f.conversation.observe(failure);
     await vi.waitFor(async () => {
-      expect((await f.history()).filter(r => r.body.kind === 'live-work-finished'))
-        .toMatchObject([{ body: { kind: 'live-work-finished', sessionId, outcome: 'failed' } }]);
+      expect(
+        (await f.history()).filter((r) => r.body.kind === 'live-work-finished'),
+      ).toMatchObject([
+        { body: { kind: 'live-work-finished', sessionId, outcome: 'failed' } },
+      ]);
     });
     expect(await f.agentCount()).toBe(0);
     expect(f.failures).toEqual([]);

@@ -39,6 +39,7 @@ import {
   buildTranscriptSeed,
   transcriptSeedSource,
 } from './conversation-transcript-seed.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -1132,7 +1133,9 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
-      title: conversationTitle(messages),
+      title:
+        derivedConversationTitle(detail.session.delegation?.title) ??
+        conversationTitle(messages),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)

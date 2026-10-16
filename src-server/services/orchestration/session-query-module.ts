@@ -200,6 +200,7 @@ interface SessionConversationQuerySource<Session> {
     events: readonly CanonicalRuntimeEvent[],
   ): {
     assignedAgentSlug?: string;
+    delegationTitle?: string;
     conversationId?: string;
     environmentId?: string;
     acceptedModel?: string;
@@ -513,7 +514,9 @@ export function createSessionQueryModule<Session>(
             ...(conversationSession.projectSlug
               ? { projectSlug: conversationSession.projectSlug }
               : {}),
-            title: conversationTitle(messages),
+            title:
+              derivedConversationTitle(conversationSession.delegationTitle) ??
+              conversationTitle(messages),
             ...(model ? { model } : {}),
             ...(conversationSession.acceptedModel
               ? { acceptedModel: conversationSession.acceptedModel }

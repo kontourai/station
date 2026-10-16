@@ -132,6 +132,12 @@ this history is not a public publication projection.
 
 ## Selected Task brief
 
+Room dispatch captures the person's message separately from the composed model input.
+Session and conversation headers, history lists, and new durable title indexes
+use that captured label; the Station-agent chat store receives the same label.
+Canonical prompts and the full Brief sent to the model remain intact. Existing
+conversation reads prefer captured labels when available without rewriting history.
+
 The request-list response advertises `station.task-room-context/v1` and returns
 an authorized snapshot or `null` when a complete brief cannot be obtained.
 The snapshot contains the Task title/description and shared document text/revision.
