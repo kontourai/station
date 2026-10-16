@@ -38,6 +38,37 @@ const cases = kernelConformanceCasesFor(['turnDedup', 'turnBoundary']).filter(
   (entry) => entry.name.startsWith('prepared intent:'),
 );
 
+for (const field of ['constructor', 'toString']) {
+  it(`bound intent mapping refuses unknown own ${field} even when its target column exists`, () => {
+    const db = new DatabaseSync(':memory:');
+    try {
+      db.exec(schema);
+      db.exec('ALTER TABLE host_boundaries ADD COLUMN extra_intent_field TEXT');
+      const columns = Object.assign({}, intentColumns, {
+        [field]: 'extra_intent_field',
+      });
+      expect(() =>
+        openSqliteKernelStorage({
+          database: db,
+          tables: {
+            turnBoundary: {
+              table: 'host_boundaries',
+              ownerEncoding: 'json',
+              terminalFacts: 'kernel',
+              intentColumns: columns,
+            },
+            turnDedup: 'unused',
+            requestKeys: 'unused',
+            inbox: 'unused',
+          },
+        }),
+      ).toThrow('Unknown prepared intent column field');
+    } finally {
+      db.close();
+    }
+  });
+}
+
 for (const via of ['execute', 'executeSync'] as const) {
   for (const invocation of [
     'pending',
