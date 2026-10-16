@@ -132,8 +132,8 @@ latest upstream releases:
 
 - Rust `tauri` 2.12.1
 - Rust `tauri-build` 2.7.1
-- npm `@tauri-apps/api` `^2.12.1`
-- npm `@tauri-apps/cli` `^2.12.1`
+- npm `@tauri-apps/api` `^2.12.3`
+- npm `@tauri-apps/cli` `^2.12.2`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -142,8 +142,10 @@ Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
 
-The Rust process, deep-link, updater, haptics, and notification plugins use
-the same minor lines as their npm packages. `tauri:context` checks the selected
+The Rust process, deep-link, updater, and haptics plugins use the same minor
+lines as their npm packages. The notification plugin remains Rust `=2.5.1`
+with npm `2.6.0`; this source inventory does not establish native compatibility.
+`tauri:context` checks the selected
 toolchain and configuration; those checks alone do not prove a packaged shell
 works.
 
