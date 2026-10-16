@@ -149,6 +149,19 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           identityKind: 'unverified',
         };
   }
+  function sameOwner(
+    left: OwnerIdentity | undefined,
+    right: OwnerIdentity,
+  ): boolean {
+    return (
+      left !== undefined &&
+      left.id === right.id &&
+      left.pid === right.pid &&
+      left.identityKind === right.identityKind &&
+      (left.identityKind !== 'exact' ||
+        (right.identityKind === 'exact' && left.birth === right.birth))
+    );
+  }
   function exact(input: {
     boundaryId: string;
     ownerId: string;
@@ -387,7 +400,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     },
     recordDefinitiveRefusal({
       boundaryId,
-      ownerId,
+      owner: expectedOwner,
       capture,
       claim,
       settlementId,
@@ -400,8 +413,10 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         const current = listed.records.find(
           (record) => record.boundaryId === boundaryId,
         );
-        if (!current || current.owner.id !== ownerId) return { kind: 'stale' };
+        if (!current || !sameOwner(current.owner, expectedOwner))
+          return { kind: 'stale' };
         const key = binding.intent.dedupKey;
+        const custody = claim && readPreparedClaimCustody(claim);
         const read =
           key === undefined
             ? undefined
@@ -409,7 +424,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         if (
           key !== undefined &&
           (read?.kind !== 'found' ||
-            read.record.owner?.id !== binding.dedupOwnerId ||
+            !custody ||
+            !sameOwner(read.record.owner, custody.owner) ||
             !read.record.preparedUpdatedAt)
         )
           return { kind: 'stale' };

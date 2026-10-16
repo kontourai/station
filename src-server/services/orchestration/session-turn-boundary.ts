@@ -94,7 +94,7 @@ export interface SessionTurnBoundaryCoordinator {
   }): SessionTurnBoundaryTransition;
   recordDefinitiveRefusal?(input: {
     boundaryId: string;
-    ownerId: string;
+    owner: OwnerIdentity;
     capture: CapturedTurnIntent;
     claim?: TurnClaim;
     settlementId: string;
@@ -721,7 +721,7 @@ export function createSessionTurnBoundaryAuthority(options: {
                 const attempt = terminalIntent;
                 const result = options.coordinator.recordDefinitiveRefusal!({
                   boundaryId,
-                  ownerId: options.owner.id,
+                  owner: options.owner,
                   ...prepared,
                   now: attempt.now,
                   settlementId: attempt.settlementId,
