@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
@@ -11,6 +11,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import './ProjectSidebarFooter.css';
 import { destinationIcon } from './nav-items';
 import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
+import { SidebarPopover } from './SidebarPopover';
 
 const loadCustomizeDialog = () =>
   import('./CustomizeDialog').then((module) => ({
@@ -29,6 +30,7 @@ interface ProjectSidebarFooterProps {
   activePath: string;
   navigate: (path: string) => void;
   isMobile: boolean;
+  collapsed?: boolean;
   onAfterNavigate?: () => void;
 }
 
@@ -36,62 +38,116 @@ export function ProjectSidebarFooter({
   activePath,
   navigate,
   isMobile,
+  collapsed = false,
   onAfterNavigate,
 }: ProjectSidebarFooterProps) {
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Close the utilities popup when its route or presentation changes.
+  useEffect(closeMore, [collapsed, activePath, closeMore]);
   const customizeTriggerRef = useRef<HTMLButtonElement>(null);
   const activeDestination = APP_DESTINATION_REGISTRY.getDestinationForView(
     resolveViewFromPath(activePath),
   );
   const go = (path: string) => {
+    closeMore();
     navigate(path);
     if (isMobile) onAfterNavigate?.();
   };
+  const utilities = [
+    {
+      key: 'schedule',
+      label: SCHEDULE.label(),
+      icon: destinationIcon('schedule'),
+      current: activeDestination?.id === SCHEDULE.id,
+      onSelect: () => go(SCHEDULE.route),
+    },
+    {
+      key: 'customize',
+      label: 'Customize',
+      icon: destinationIcon('plugins'),
+      current: false,
+      onSelect: () => {
+        closeMore();
+        setCustomizeOpen(true);
+      },
+    },
+    {
+      key: 'settings',
+      label: SETTINGS.label(),
+      icon: <SettingsGlyph />,
+      current: activeDestination?.id === SETTINGS.id,
+      onSelect: () => go(SETTINGS.route),
+    },
+  ];
+  const utilityButtons = utilities.map((action) => (
+    <button
+      key={action.key}
+      ref={action.key === 'customize' ? customizeTriggerRef : undefined}
+      type="button"
+      className={`sidebar__footer-action${action.current ? ' sidebar__footer-action--active' : ''}`}
+      aria-current={action.current ? 'page' : undefined}
+      aria-label={action.label}
+      title={action.label}
+      aria-haspopup={action.key === 'customize' ? 'dialog' : undefined}
+      data-first-run-anchor={
+        action.key === 'customize' ? 'customize' : undefined
+      }
+      onClick={action.onSelect}
+    >
+      {action.icon}
+      {collapsed && (
+        <span className="sidebar__utility-label">{action.label}</span>
+      )}
+    </button>
+  ));
+  const controls = (
+    <>
+      <ProjectSidebarPresenceTray
+        onOpenActivity={isMobile ? onAfterNavigate : undefined}
+      />
+      {collapsed ? (
+        <nav className="sidebar__utility-menu" aria-label="Sidebar navigation">
+          {utilityButtons}
+        </nav>
+      ) : (
+        <div className="sidebar__footer-actions">{utilityButtons}</div>
+      )}
+    </>
+  );
   return (
     <div className="sidebar__footer">
       <div className="sidebar__footer-meta">
-        <ProjectSidebarPresenceTray
-          onOpenActivity={isMobile ? onAfterNavigate : undefined}
-        />
-        <div className="sidebar__footer-actions">
+        {collapsed ? (
           <button
-            type="button"
-            className={`sidebar__footer-action${activeDestination?.id === SCHEDULE.id ? ' sidebar__footer-action--active' : ''}`}
-            aria-current={
-              activeDestination?.id === SCHEDULE.id ? 'page' : undefined
-            }
-            aria-label="Schedule"
-            title="Schedule"
-            onClick={() => go(SCHEDULE.route)}
-          >
-            {destinationIcon('schedule')}
-          </button>
-          <button
-            ref={customizeTriggerRef}
+            ref={moreTriggerRef}
             type="button"
             className="sidebar__footer-action"
-            aria-label="Customize"
-            title="Customize"
+            aria-label="Sidebar utilities"
             aria-haspopup="dialog"
-            data-first-run-anchor="customize"
-            onClick={() => setCustomizeOpen(true)}
+            aria-expanded={moreOpen}
+            title="Live work, Schedule, Customize and Settings"
+            onPointerDown={(event) => {
+              if (moreOpen) event.preventDefault();
+            }}
+            onClick={() => setMoreOpen((value) => !value)}
           >
-            {destinationIcon('plugins')}
+            <span aria-hidden="true">•••</span>
           </button>
-          <button
-            type="button"
-            className={`sidebar__footer-action${activeDestination?.id === SETTINGS.id ? ' sidebar__footer-action--active' : ''}`}
-            aria-current={
-              activeDestination?.id === SETTINGS.id ? 'page' : undefined
-            }
-            aria-label="Settings"
-            title="Settings"
-            onClick={() => go(SETTINGS.route)}
-          >
-            <SettingsGlyph />
-          </button>
-        </div>
+        ) : (
+          controls
+        )}
       </div>
+      <SidebarPopover
+        open={collapsed && moreOpen}
+        anchorRef={moreTriggerRef}
+        label="Sidebar utilities"
+        onClose={closeMore}
+      >
+        <div className="sidebar__footer-popover">{controls}</div>
+      </SidebarPopover>
       {customizeOpen && (
         <LazyBoundary
           load={loadCustomizeDialog}
@@ -103,7 +159,9 @@ export function ProjectSidebarFooter({
               closeLabel="Close Customize"
               onClose={() => setCustomizeOpen(false)}
               historyMode="none"
-              returnFocusTarget={customizeTriggerRef.current}
+              returnFocusTarget={
+                collapsed ? moreTriggerRef.current : customizeTriggerRef.current
+              }
               size="sm"
               footer={
                 <>
@@ -121,7 +179,9 @@ export function ProjectSidebarFooter({
             </Dialog>
           )}
           componentProps={{
-            returnFocusTarget: customizeTriggerRef.current,
+            returnFocusTarget: collapsed
+              ? moreTriggerRef.current
+              : customizeTriggerRef.current,
             onClose: () => setCustomizeOpen(false),
             onNavigate: (path: string) => {
               setCustomizeOpen(false);

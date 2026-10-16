@@ -272,8 +272,7 @@ retired names.
   [design/placement.md](design/placement.md)) — Coding and Chat kinds render
   in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
-  page, listed in the left panel's `Boards` section between Activity and
-  Projects and rendered by the same layout renderer a project Layout is
+  page, listed in the left panel's `Boards` section after Projects and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone
