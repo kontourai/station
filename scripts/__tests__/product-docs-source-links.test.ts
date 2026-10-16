@@ -2,7 +2,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { loadPublicDocs, renderMarkdown } from '../build-github-pages.mjs';
 
@@ -29,9 +28,9 @@ describe('public product documentation source links', () => {
       '###### Café 中文',
       '## <Quoted> "text"',
     ].join('\n');
-    const document = new JSDOM(renderMarkdown(source)).window.document;
-    const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')];
-    expect(headings.map(({ id }) => id)).toEqual([
+    const html = renderMarkdown(source);
+    const headings = [...html.matchAll(/<h[1-6]\b[^>]*\bid="([^"]*)"/g)];
+    expect(headings.map((heading) => heading[1])).toEqual([
       'install-nightly',
       'install-snake_case--flow',
       'install-nightly-1',
@@ -40,25 +39,23 @@ describe('public product documentation source links', () => {
       'café-中文',
       'quoted-text',
     ]);
-    expect(headings[1].textContent).toBe('Install snake_case & Flow');
-    expect(headings[1].querySelector('a')?.href).toBe(
-      'https://example.com/hidden-target',
+    expect(html).toContain(
+      'Install <code>snake_case</code> &amp; <a href="https://example.com/hidden-target">Flow</a>',
     );
-    expect(headings[6].textContent).toBe('<Quoted> "text"');
-    expect(
-      new JSDOM(
-        renderMarkdown('# Install Nightly'),
-      ).window.document.querySelector('h1')?.id,
-    ).toBe('install-nightly');
+    expect(html).toContain('&lt;Quoted&gt; &quot;text&quot;');
+    expect(renderMarkdown('# Install Nightly')).toContain(
+      '<h1 id="install-nightly">Install Nightly</h1>',
+    );
   });
 
   it('resolves the getting-started installation links to rendered sections', () => {
     const source = readFileSync('docs/user/getting-started.md', 'utf8');
-    const document = new JSDOM(renderMarkdown(source)).window.document;
-    const links = [
-      ...document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'),
-    ];
-    expect(links.map((link) => link.hash)).toEqual(
+    const html = renderMarkdown(source);
+    const links = [...html.matchAll(/<a\b[^>]*\bhref="(#[^"]+)"/g)];
+    const ids = new Set(
+      [...html.matchAll(/\bid="([^"]+)"/g)].map((id) => id[1]),
+    );
+    expect(links.map((link) => link[1])).toEqual(
       expect.arrayContaining([
         '#install-nightly',
         '#nightly-desktop-downloads',
@@ -66,10 +63,7 @@ describe('public product documentation source links', () => {
       ]),
     );
     for (const link of links) {
-      expect(
-        document.getElementById(decodeURIComponent(link.hash.slice(1))),
-        link.outerHTML,
-      ).not.toBeNull();
+      expect(ids.has(decodeURIComponent(link[1].slice(1))), link[0]).toBe(true);
     }
   });
 
