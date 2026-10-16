@@ -7820,6 +7820,17 @@ export class OrchestrationService {
                           throw error;
                         }
                         if (error instanceof SendTurnRefusedError) {
+                          if (boundary.recordDefinitiveRefusal) {
+                            claimOutcome = 'retain';
+                            const settled = boundary.recordDefinitiveRefusal(
+                              new Date().toISOString(),
+                            );
+                            if (settled.kind !== 'applied')
+                              throw new SessionTurnStartIndeterminateError();
+                            throw new TurnIdempotencySettledError(
+                              'definitively-refused',
+                            );
+                          }
                           // The adapter refused the turn BEFORE its first
                           // provider-visible effect, so no engine was invoked
                           // and no `turn.started` was published even though

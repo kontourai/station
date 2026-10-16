@@ -81,6 +81,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           bodyRef: 'body_ref',
           dedupKey: 'dedup_key',
         },
+        settlementColumn: 'prepared_settlement',
       },
     },
     participants: [
@@ -379,6 +380,61 @@ export function createSqliteSessionTurnBoundaryCoordinator({
             now,
           }),
         );
+        return result.kind === 'applied' ? result : { kind: 'stale' };
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
+    recordDefinitiveRefusal({
+      boundaryId,
+      ownerId,
+      capture,
+      claim,
+      settlementId,
+      now,
+    }) {
+      try {
+        const binding = linked(capture, claim);
+        const listed = execute({ type: 'turnBoundary.list' });
+        if (listed.kind !== 'records') return { kind: 'unavailable' };
+        const current = listed.records.find(
+          (record) => record.boundaryId === boundaryId,
+        );
+        if (!current || current.owner.id !== ownerId) return { kind: 'stale' };
+        const key = binding.intent.dedupKey;
+        const read =
+          key === undefined
+            ? undefined
+            : execute({ type: 'turnDedup.read', key });
+        if (
+          key !== undefined &&
+          (read?.kind !== 'found' ||
+            read.record.owner?.id !== binding.dedupOwnerId ||
+            !read.record.preparedUpdatedAt)
+        )
+          return { kind: 'stale' };
+        const dedup = read?.kind === 'found' ? read.record : undefined;
+        const result = execute({
+          type: 'turnBoundary.recordDefinitiveRefusal',
+          boundaryId,
+          intent: binding.intent,
+          boundary: current.settlement?.boundary ?? {
+            owner: current.owner,
+            createdAt: current.createdAt,
+            updatedAt: current.updatedAt,
+          },
+          ...(dedup?.owner && dedup.preparedUpdatedAt
+            ? {
+                dedup: {
+                  owner: dedup.owner,
+                  createdAt: dedup.createdAt,
+                  updatedAt: dedup.preparedUpdatedAt,
+                },
+              }
+            : {}),
+          settlementId,
+          now,
+        });
         return result.kind === 'applied' ? result : { kind: 'stale' };
       } catch {
         return { kind: 'unavailable' };

@@ -579,16 +579,24 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     const repeated = await send('conversation:refused', 'key-refused');
     expect(repeated.status).toBeGreaterThanOrEqual(400);
     expect(adapter.turns).toHaveLength(0);
-    const db = new DatabaseSync(join(root, 'orchestration.sqlite'), { readOnly: true });
+    const db = new DatabaseSync(join(root, 'orchestration.sqlite'), {
+      readOnly: true,
+    });
     try {
-      const audit = db.prepare(
-        'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
-      ).get('settled');
+      const audit = db
+        .prepare(
+          'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
+        )
+        .get('settled');
       expect(audit?.state).toBe('settled');
       expect(JSON.parse(String(audit?.prepared_settlement))).toMatchObject({
         disposition: 'definitively-refused',
       });
-      expect(db.prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns').get()?.count).toBe(1);
+      expect(
+        db
+          .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
+          .get()?.count,
+      ).toBe(1);
     } finally {
       db.close();
     }

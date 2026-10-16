@@ -7,21 +7,24 @@ export function ensurePreparedTurnIntents(db: SqliteDatabase): void {
     const columns = db
       .prepare('PRAGMA table_info(orchestration_turn_boundaries)')
       .all() as Array<{ name: string }>;
-    if (!columns.some(({ name }) => name === 'invocation_id')) {
+    if (!columns.some(({ name }) => name === 'prepared_settlement')) {
+      const hasIntent = columns.some(({ name }) => name === 'invocation_id');
       db.exec(`CREATE TABLE orchestration_turn_boundaries_prepared (
         boundary_id TEXT PRIMARY KEY,
         purpose TEXT NOT NULL DEFAULT 'turn' CHECK(purpose IN ('turn','task-dispatch')),
         thread_id TEXT NOT NULL,
-        state TEXT NOT NULL CHECK(state IN ('lifecycle','reserved','prepared','invoking','accepted','indeterminate')),
+        state TEXT NOT NULL CHECK(state IN ('lifecycle','reserved','prepared','invoking','accepted','indeterminate','settled')),
         provider_turn_id TEXT, owner_id TEXT NOT NULL, owner_pid INTEGER NOT NULL,
         owner_birth TEXT, owner_identity_kind TEXT NOT NULL,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
         created_sequence INTEGER CHECK(created_sequence >= 0),
-        invocation_id TEXT, input_digest TEXT, intent_digest TEXT, body_ref TEXT, dedup_key TEXT
+        invocation_id TEXT, input_digest TEXT, intent_digest TEXT, body_ref TEXT, dedup_key TEXT,
+        prepared_settlement TEXT
       );
       INSERT INTO orchestration_turn_boundaries_prepared
-        (boundary_id,purpose,thread_id,state,provider_turn_id,owner_id,owner_pid,owner_birth,owner_identity_kind,created_at,updated_at,created_sequence)
-        SELECT boundary_id,purpose,thread_id,state,provider_turn_id,owner_id,owner_pid,owner_birth,owner_identity_kind,created_at,updated_at,created_sequence
+        (boundary_id,purpose,thread_id,state,provider_turn_id,owner_id,owner_pid,owner_birth,owner_identity_kind,created_at,updated_at,created_sequence,invocation_id,input_digest,intent_digest,body_ref,dedup_key)
+        SELECT boundary_id,purpose,thread_id,state,provider_turn_id,owner_id,owner_pid,owner_birth,owner_identity_kind,created_at,updated_at,created_sequence,
+        ${hasIntent ? 'invocation_id,input_digest,intent_digest,body_ref,dedup_key' : 'NULL,NULL,NULL,NULL,NULL'}
         FROM orchestration_turn_boundaries;
       DROP TABLE orchestration_turn_boundaries;
       ALTER TABLE orchestration_turn_boundaries_prepared RENAME TO orchestration_turn_boundaries;

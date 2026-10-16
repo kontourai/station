@@ -188,7 +188,6 @@ export class TurnIdempotencyStore {
         return { claimed: false };
       case 'prepared':
       case 'indeterminate':
-      case 'prepared':
         turnDedupClaims.add(1, { outcome: 'indeterminate' });
         return { claimed: false, indeterminate: true };
       case 'expired':

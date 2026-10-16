@@ -92,6 +92,14 @@ export interface SessionTurnBoundaryCoordinator {
     now: string;
     current?: () => boolean;
   }): SessionTurnBoundaryTransition;
+  recordDefinitiveRefusal?(input: {
+    boundaryId: string;
+    ownerId: string;
+    capture: CapturedTurnIntent;
+    claim?: TurnClaim;
+    settlementId: string;
+    now: string;
+  }): SessionTurnBoundaryTransition;
   transition(input: {
     boundaryId: string;
     ownerId: string;
@@ -161,6 +169,7 @@ export interface SessionTurnBoundaryClaim {
     now: string,
   ): SessionTurnBoundaryTransition;
   beginInvocation(now: string): SessionTurnBoundaryTransition;
+  recordDefinitiveRefusal?(now: string): SessionTurnBoundaryTransition;
   accepted(turnId: string, now: string): SessionTurnBoundaryTransition;
   terminalObserved(turnId: string): SessionTurnBoundaryTransition;
   notInvoked(): SessionTurnBoundaryTransition;
@@ -630,6 +639,7 @@ export function createSessionTurnBoundaryAuthority(options: {
       | { kind: 'terminal-observed'; turnId: string }
       | { kind: 'not-invoked' }
       | { kind: 'indeterminate'; now: string }
+      | { kind: 'definitively-refused'; now: string; settlementId: string }
       | undefined;
     let terminalApplied = false;
     const transition = (
@@ -692,6 +702,35 @@ export function createSessionTurnBoundaryAuthority(options: {
           if (result.kind === 'applied') invocationStarted = true;
           return result;
         },
+        ...(options.coordinator.recordDefinitiveRefusal
+          ? {
+              recordDefinitiveRefusal(at: string) {
+                if (
+                  !prepared ||
+                  !invocationStarted ||
+                  (terminalIntent &&
+                    terminalIntent.kind !== 'definitively-refused')
+                )
+                  return { kind: 'stale' } as const;
+                if (terminalApplied) return { kind: 'applied' } as const;
+                terminalIntent ??= {
+                  kind: 'definitively-refused',
+                  now: at,
+                  settlementId: randomUUID(),
+                };
+                const attempt = terminalIntent;
+                const result = options.coordinator.recordDefinitiveRefusal!({
+                  boundaryId,
+                  ownerId: options.owner.id,
+                  ...prepared,
+                  now: attempt.now,
+                  settlementId: attempt.settlementId,
+                });
+                if (result.kind === 'applied') terminalApplied = true;
+                return result;
+              },
+            }
+          : {}),
         accepted(turnId: string, acceptedNow: string) {
           if (
             terminalIntent &&
