@@ -1485,34 +1485,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.task-room-overflow {
-  position: relative;
-}
-.task-room-overflow > summary {
-  cursor: pointer;
-  list-style: none;
-  display: grid;
-  place-items: center;
-  min-height: 44px;
-  min-width: 44px;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-}
-.task-room-overflow > div {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: var(--k-z-popover);
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-2);
-  width: 180px;
-  padding: var(--k-space-2);
-  background: var(--k-panel-raised);
-  border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-overlay);
-  box-shadow: var(--k-elevation-overlay);
-}
 .task-room-result-summary {
   list-style: none;
   padding: 0;

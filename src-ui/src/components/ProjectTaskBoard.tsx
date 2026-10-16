@@ -3,7 +3,7 @@ import {
   type TaskStatus,
   taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
-import { StatusBadge } from '@kontourai/ui/react';
+import { Empty, StatusBadge } from '@kontourai/ui/react';
 import './ProjectTaskBoard.css';
 
 const COLUMNS: readonly { label: string; statuses: readonly TaskStatus[] }[] = [
@@ -30,7 +30,16 @@ export function ProjectTaskBoard({
         const items = tasks.filter((task) =>
           column.statuses.includes(task.status),
         );
-        if (column.label === 'Canceled' && !items.length) return null;
+        if (column.label === 'Canceled' && !items.length)
+          return (
+            <details
+              className="project-task-board__empty-column"
+              key={column.label}
+            >
+              <summary>Canceled · 0</summary>
+              <Empty label="Tasks you cancel appear here." />
+            </details>
+          );
         return (
           <section
             className="project-task-board__column"

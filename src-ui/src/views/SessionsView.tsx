@@ -212,7 +212,7 @@ function ActivityRowMeta({
     : origin;
   const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];
-  if (session.delegation && sessionKindLabel(session) !== agentName)
+  if (session.delegation && !agentName)
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
   if (agentName) segments.push({ key: 'agent', text: agentName });
   if (project) segments.push({ key: 'project', text: project });
