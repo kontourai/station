@@ -91,10 +91,12 @@ describe('Cedar policy foundation (real WASM)', () => {
     const oversized = request();
     oversized.context.ticket = 'x'.repeat(262145);
     const getter = request();
+    let getterInvocations = 0;
     Object.defineProperty(getter.context, 'ticket', {
       enumerable: true,
       get() {
-        throw new Error('must not execute');
+        getterInvocations++;
+        return 'private-ticket';
       },
     });
     const cyclic = request();
@@ -112,6 +114,7 @@ describe('Cedar policy foundation (real WASM)', () => {
         errors: [{ category: 'input' }],
       });
     }
+    expect(getterInvocations).toBe(0);
     expect(set.evaluate(oversized)).toMatchObject({
       decision: 'deny',
       errors: [{ category: 'limit' }],
