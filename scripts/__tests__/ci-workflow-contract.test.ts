@@ -1775,9 +1775,7 @@ describe('CI verification workflow contracts', () => {
     };
     const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
       .jobs;
-    // Metadata-only skipped aggregates have a distinct context. Title checks
-    // independently gate PR admission; source and merge-group receipts stay
-    // under the existing required fast-checks context.
+    // Source execution is diagnostic; its trusted status reconciler owns admission.
     expect(jobs['pr-title'].name).toBe('PR title status publisher');
     expect(jobs['fast-checks'].name).toBe(
       `\${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}`,

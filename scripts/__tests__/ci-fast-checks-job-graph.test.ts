@@ -529,49 +529,6 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
-  test.each([
-    [
-      'metadata edit',
-      'pull_request_target',
-      'edited',
-      false,
-      'fast-checks (metadata only)',
-    ],
-    ['base retarget', 'pull_request_target', 'edited', true, 'fast-checks'],
-    [
-      'source update',
-      'pull_request_target',
-      'synchronize',
-      false,
-      'fast-checks',
-    ],
-    ['merge queue', 'merge_group', 'checks_requested', false, 'fast-checks'],
-  ])(
-    '%s emits the correct source check context',
-    (_label, event, action, retarget, expected) => {
-      const expression = String(readJobs()['fast-checks'].name)
-        .replace(/^\$\{\{\s*/, '')
-        .replace(/\s*\}\}$/, '');
-      const name = evaluate(
-        expression,
-        (path) => {
-          switch (path.join('.')) {
-            case 'github.event_name':
-              return event;
-            case 'github.event.action':
-              return action;
-            case 'github.event.changes.base':
-              return retarget ? { ref: { from: 'release' } } : undefined;
-            default:
-              throw new Error(`Unexpected name context: ${path.join('.')}`);
-          }
-        },
-        {},
-      );
-      expect(name).toBe(expected);
-    },
-  );
-
   test('merge queue emits the independent title context without source dependencies', () => {
     const state = simulate(readJobs(), {
       ...sameRepositoryPr,

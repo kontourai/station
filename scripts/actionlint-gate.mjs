@@ -375,6 +375,7 @@ const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'pr-title',
+  'source-policy',
   'delivery-plan',
   'delivery-validation',
   'fast-checks',
@@ -2507,6 +2508,16 @@ function fastChecksShardingFindings(file, jobs) {
   return findings;
 }
 
+function isExactSourcePolicyCall(job) {
+  if (!job) return false;
+  return (
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(job)))
+      .digest('hex') ===
+    'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
+  );
+}
+
 function primaryCiRouterFindings(file, document) {
   if (!workflowHasTrigger(document, PULL_REQUEST_TARGET)) {
     if (file !== '.github/workflows/ci.yml' || !hasCiRouterTrigger(document))
@@ -2525,6 +2536,16 @@ function primaryCiRouterFindings(file, document) {
   const findings = collectRequiredBrowserSmokeFindings(document).map(
     (message) => ({ file, jobId: 'fast-checks', message }),
   );
+  if (
+    document['run-name'] !==
+    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}"
+  )
+    findings.push({
+      file,
+      jobId: 'workflow',
+      message:
+        'source run-name must distinguish metadata-only edits without suppressing base-retarget verification',
+    });
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({
@@ -2544,6 +2565,7 @@ function primaryCiRouterFindings(file, document) {
     if (
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
+      !(jobId === 'source-policy' && isExactSourcePolicyCall(job)) &&
       !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
@@ -2587,6 +2609,13 @@ function primaryCiRouterFindings(file, document) {
   }
   // These jobs read base policy before any candidate execution. Bind the
   // checkout, complete diff, permissions, admission and local callee together.
+  if (!isExactSourcePolicyCall(jobs['source-policy']))
+    findings.push({
+      file,
+      jobId: 'source-policy',
+      message:
+        'source publication caller must retain its exact reviewed isolation and source-only admission',
+    });
   const deliveryJobs = Object.fromEntries(
     ['delivery-plan', 'delivery-validation'].map((id) => [id, jobs[id]]),
   );
@@ -2594,7 +2623,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(orderedPolicy(deliveryJobs)))
       .digest('hex') !==
-    '80a310512c12badf6774d99a5693d32dfb9915531ec9df4c2d77901cd82ecf0a'
+    '75f482a9585254aef98c8068f5d381c91da241dd1eb632130c370b636c6b4f78'
   )
     findings.push({
       file,
@@ -2927,6 +2956,22 @@ function orderedPolicy(value) {
   return value;
 }
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
+  if (file === '.github/workflows/source-verification-policy.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest ===
+      'e3062e32ad8eebbdf80683adfee10b5dec87396a41a42a83bdb781705d6cd973'
+      ? []
+      : [
+          {
+            file,
+            jobId: 'reconcile',
+            message:
+              'source verification publisher must retain its exact reviewed trusted-policy, read-only evidence and isolated status-write topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/landing-automation.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(orderedPolicy(document)))

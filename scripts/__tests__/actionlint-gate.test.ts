@@ -1414,6 +1414,124 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.workflow_run.head_sha }}';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps.push({ run: 'node candidate.mjs' });
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.permissions.contents = 'write';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.on.workflow_run.types = ['completed'];
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.if = 'always()';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.merge_group.head_sha }}';
+    },
+  ])('rejects widened source verification publication authority', (mutate) => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/source-verification-policy.yml',
+    );
+    if (!workflow) throw new Error('Missing source verification publisher');
+    const document = structuredClone(workflow.document);
+    mutate(document);
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'reconcile',
+      message:
+        'source verification publisher must retain its exact reviewed trusted-policy, read-only evidence and isolated status-write topology',
+    });
+  });
+
+  test('rejects a source marker that treats a base retarget as metadata-only', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!workflow) throw new Error('Missing CI');
+    const document = structuredClone(workflow.document) as Record<
+      string,
+      unknown
+    >;
+    document['run-name'] = 'PR metadata';
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'workflow',
+      message:
+        'source run-name must distinguish metadata-only edits without suppressing base-retarget verification',
+    });
+  });
+
   test('follows nested local candidate workflows and refuses an unreviewed callee', () => {
     const workflow = {
       on: { pull_request_target: {} },

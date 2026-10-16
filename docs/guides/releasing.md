@@ -107,6 +107,29 @@ runs remain visible; they no longer own title admission. Never manufacture
 source success. Queue publication acknowledges title enforcement at admission,
 not revalidation of constituent titles after enqueue.
 
+Source admission has a separate rollout. The trusted
+[`Source verification policy` publisher](../../.github/workflows/source-verification-policy.yml)
+publishes immediately after the core aggregate, before optional delivery work,
+and reconciles CI lifecycle events for recovery without executing candidate
+code or rerunning tests.
+It checks the newest applicable source run for every open main-target PR sharing
+an exact head, including its recorded base and repository identity. Ordinary
+main advancement does not require a fresh PR run; divergent base evidence does
+not qualify. A failed, cancelled, missing or unfinished source proof cannot
+be replaced by an older success. Metadata-only suites do not own source proof.
+
+During activation, retain required `fast-checks` until real `Source verification
+policy` statuses are verified on the intended heads, then replace only that
+required context. Keep CodeQL, dependency review, Windows, iOS, merge-queue
+regression and title policy requirements. The legacy `fast-checks` source aggregate remains available through migration;
+its skipped metadata job is never admission evidence.
+Use the publisher's explicit exact-SHA dispatch only to reconcile existing
+trusted evidence during rollout; do not manually write successful statuses.
+The event-driven publisher uses short jobs, not waiting runners. Metadata
+completion may reconcile a pending source result; metadata start events do not
+allocate a source publisher. Its status is
+not full release qualification and does not replace Beta/stable receipts.
+
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 minute 17 every six UTC hours, or by manual dispatch. It tests one exact workflow-event SHA from
 `main`, independently of platform publishing. Matrices do not cancel siblings

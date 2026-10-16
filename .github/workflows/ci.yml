@@ -1,4 +1,5 @@
 name: "PR: CI"
+run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}
 on:
   push:
     branches: [main]
@@ -541,8 +542,8 @@ jobs:
   fast-checks:
     name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
-    # Required source aggregate. Metadata-only events use another check name
-    # even when skipped, so they cannot replace a failed source verdict.
+    # Source execution aggregate; the trusted source-policy reconciler owns
+    # admission independently of metadata-only check-suite replacement.
     # `always()` without `!cancelled()`, deliberately: a
     # skipped required check reports success, so an aggregator that skipped
     # itself when a run was cancelled would let a cancelled run read green.
@@ -629,9 +630,18 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
 
+  source-policy:
+    name: Publish source admission
+    needs: [fast-checks, fork-smoke]
+    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    permissions: { contents: read, actions: read, statuses: write }
+    uses: ./.github/workflows/source-verification-policy.yml
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
   delivery-plan:
     name: Plan affected delivery checks
-    needs: [fast-checks, fork-smoke]
+    needs: [fast-checks, fork-smoke, source-policy]
     if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5

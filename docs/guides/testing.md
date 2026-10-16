@@ -529,6 +529,13 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Source execution and admission are separate: the `fast-checks` aggregate validates
+the actual plan, statics and shard receipts. The trusted source-policy publisher
+reconciles that result for the newest applicable exact-head source run, keeping
+metadata-only suites from replacing it. Missing or incomplete proof remains
+pending; failed or cancelled proof remains non-passing. The required-context
+rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
 exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
 succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
