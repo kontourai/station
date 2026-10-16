@@ -229,7 +229,7 @@ test.describe('Orchestration Chat Flow', () => {
 
   test('renders transcript, tool activity, and approval UI from canonical events', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const browserHealth = await monitorBrowserHealth(page);
     const commandBodies: any[] = [];
     await page.route('**/api/system/status', async (route) => {
@@ -456,6 +456,10 @@ test.describe('Orchestration Chat Flow', () => {
       .toBe(true);
     await page.keyboard.press('Tab');
     await expect(page.locator('#chat-workspace-pane :focus')).toHaveCount(1);
+    await testInfo.attach('approval-focus', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByRole('button', { name: 'Home', exact: true }).click();
@@ -543,7 +547,7 @@ test.describe('Orchestration Chat Flow', () => {
    */
   test('keeps the approval card label visible and its glyphs clear of its controls at 360px and 720px (decisions in the #3331 request sheet) and in a narrow desktop dock, with legible buttons in both themes (#2917)', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const browserHealth = await monitorBrowserHealth(page);
     let answer: 'refuse' | 'unconfirmed' | 'settled' = 'refuse';
     let requestId = 'req-2917';
@@ -936,6 +940,10 @@ test.describe('Orchestration Chat Flow', () => {
     const rightChooser = await openChooserFromToggle(page, 'Right');
     await rightChooser.getByRole('menuitem', { name: /^Chat( |$)/ }).click();
     await expect(rightChooser).toBeHidden();
+    await testInfo.attach('region-controls', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:
