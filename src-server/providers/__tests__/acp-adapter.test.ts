@@ -6136,6 +6136,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
 describe('AcpAdapter.steerTurn', () => {
   test('Kiro injects via _session/steer and keeps the in-flight prompt', async () => {
     const { adapter, processes } = createAdapter();
+    expect(adapter.metadata.durability?.steerPlacement.state).toBe('emulated');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',

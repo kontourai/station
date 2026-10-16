@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { StartupHandoff } from '../components/StartupHandoff';
 import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
@@ -459,18 +460,21 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
 
   if (profileBootstrapError) {
     return (
-      <FullScreenLoader
-        label="Station"
-        message="Station couldn’t finish starting"
-        action={
-          <div role="alert" aria-label="Station couldn’t finish starting">
-            <pre>{profileBootstrapError}</pre>
-            <button type="button" onClick={() => window.location.reload()}>
-              Reload Station
-            </button>
-          </div>
-        }
-      />
+      <>
+        <StartupHandoff recovery />
+        <FullScreenLoader
+          label="Station"
+          message="Station couldn’t finish starting"
+          action={
+            <div role="alert" aria-label="Station couldn’t finish starting">
+              <pre>{profileBootstrapError}</pre>
+              <button type="button" onClick={() => window.location.reload()}>
+                Reload Station
+              </button>
+            </div>
+          }
+        />
+      </>
     );
   }
   if (!profile) return <StartupScreen message="Preparing this device" />;

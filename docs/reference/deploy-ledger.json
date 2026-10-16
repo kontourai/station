@@ -1,5 +1,38 @@
 [
   {
+    "timestampUtc": "2026-10-16T00:39:12Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38816768728",
+    "sha": "b83e93be7c817bb4614c46c128ac8d2d4ecea071",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38816768728",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38816768728 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "df22f5f3a722617aad8d6855f211ef798e81b74e",
+      "groups": {
+        "feat": [
+          "[#3690](https://github.com/kontourai/station/pull/3690) feat(telemetry): add delivery controls and companion qualification"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3677](https://github.com/kontourai/station/pull/3677) build(monument): publish compiled dist and smoke the packed tarball (Refs #3565)",
+          "[#3693](https://github.com/kontourai/station/pull/3693) test(monument): park Flow continuation probe and Tier 1 fit report",
+          "[#3692](https://github.com/kontourai/station/pull/3692) perf(docs): reuse immutable scoped review comparisons"
+        ]
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T16:55:53Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2479.4",
