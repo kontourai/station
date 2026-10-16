@@ -1,5 +1,39 @@
 import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestration';
 
+/** Maximum remembered delivery answers per chat. */
+const DELIVERY_CHECKS_MAX = 32;
+
+export function withDeliveryCheck(
+  chat:
+    | {
+        deliveryChecks?: Readonly<Record<string, TurnDeliveryOutcome>>;
+        localSendKeys?: readonly string[];
+      }
+    | undefined,
+  clientTurnId: string,
+  outcome: TurnDeliveryOutcome,
+): {
+  deliveryChecks: Record<string, TurnDeliveryOutcome>;
+  localSendKeys?: readonly string[];
+} {
+  if (chat?.deliveryChecks?.[clientTurnId] === 'started') outcome = 'started';
+  const kept = Object.entries(chat?.deliveryChecks ?? {})
+    .filter(([key]) => key !== clientTurnId)
+    .slice(-(DELIVERY_CHECKS_MAX - 1));
+  return {
+    deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
+    // Started: delivered for good, so the bubble never falls back to
+    // "Not confirmed" once this answer ages out of the bounded record.
+    ...(outcome === 'started'
+      ? {
+          localSendKeys: chat?.localSendKeys?.includes(clientTurnId)
+            ? chat.localSendKeys.filter((key) => key !== clientTurnId)
+            : chat?.localSendKeys,
+        }
+      : {}),
+  };
+}
+
 /**
  * Where one message the user wrote stands on its way to the agent, named only
  * from facts this device has observed. Pure: every input below is a recorded

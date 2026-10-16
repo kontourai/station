@@ -139,7 +139,12 @@ export function registerOperatorPasskeyEnrollmentRoutes(
     deviceLabel: string;
     requester: EnrollmentRequester;
   } | null => {
-    const credential = parseDeviceSessionCookie(c.req.header('cookie'));
+    const credential = parseDeviceSessionCookie(
+      c.req.header('cookie'),
+      (candidate) =>
+        deps.credentials.verifyOperatorCredential(candidate) ||
+        deps.credentials.identifyDevice(candidate) !== null,
+    );
     if (credential === undefined) return null;
     if (deps.credentials.verifyOperatorCredential(credential)) {
       return {

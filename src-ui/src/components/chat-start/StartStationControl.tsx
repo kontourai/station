@@ -66,12 +66,13 @@ export function StartStationControl({
         ref={triggerRef}
         type="button"
         className="choice-trigger start-composer__station"
+        title={`Run a tracked task on ${destination}`}
         aria-haspopup="dialog"
         aria-label={`Run a task on a Station; current Station: ${destination}`}
         disabled={disabled || !scope}
         onClick={() => setOpen(true)}
       >
-        <span>on {destination}</span>
+        <span>Run a task…</span>
         <ArrowDownGlyph className="choice-caret" />
       </button>
       {open && scope && (

@@ -35,7 +35,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
-| `prompt` | System instructions (supports `{{key}}` template variables) |
+| `prompt` | Agent instructions (supports `{{key}}` template variables); delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines |
 | `model` | Station-engine model preference; see resolution order below |
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |

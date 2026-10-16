@@ -606,6 +606,7 @@ function formatEnvironmentOfferOutput(input: {
   return [
     'Station device pairing offer',
     `Endpoint: ${endpoint}`,
+    `Pairing code: ${input.offer.manualCode}`,
     `Expires: ${expires}`,
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`

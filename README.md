@@ -18,7 +18,7 @@ the work. A completed run and a passed review are separate facts.
 [Contributing](CONTRIBUTING.md)
 
 > **Status:** open source under active development (Apache-2.0). Run Station
-> from source on macOS or Linux, or try a Nightly desktop build.
+> using a signed Nightly server archive or a Nightly desktop build.
 > The portable installer requires a published release in the selected ring. See
 > [Get Station](#get-station).
 
@@ -60,7 +60,42 @@ Station brings several parts of agent work into one workspace:
 
 ## Get Station
 
-### Run from source (macOS, Linux)
+### Install the app
+
+For a first try, use the [Nightly desktop downloads](docs/user/getting-started.md#nightly-desktop-downloads)
+for macOS Apple silicon or Windows x64. Download the installer for your computer,
+open it, and launch Station. Nightly is a testing channel; see the linked guide
+for signing and platform limitations.
+
+### One-command server install
+
+On macOS or Linux, paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+```
+
+The signed Nightly archive includes Node.js. You do not need Git, a GitHub
+account, or a source build. The installer starts Station and prints a sign-in
+link. Later, launch it with:
+
+```bash
+~/.local/bin/station-nightly start
+```
+
+Using the full path works before your shell knows the `station-nightly` command.
+For Windows PowerShell, updates, and connection help, follow
+[Getting started](docs/user/getting-started.md#install-nightly).
+
+### On your phone
+
+Connect to a Station running on a computer. The phone uses that computer’s
+agents and files; it does not need Node.js or coding tools. Follow
+[Connect your phone](docs/user/getting-started.md#connect-your-phone).
+
+<a id="run-from-source-macos-linux"></a>
+
+### For contributors: run from source
 
 Requires Node.js 24.x, npm 10 or newer, and git. On Linux, interactive
 terminal panes additionally need a C++ toolchain (`g++`, `make`, `python3`);
@@ -76,14 +111,6 @@ npm run dependencies:ci
 Open the UI address the command prints, then follow
 [First steps](#first-steps). The [developer guide](docs/guides/development.md)
 covers instances, ports, temporary homes, and the desktop app build.
-
-### Nightly desktop build
-
-The [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop)
-carries macOS Apple silicon and Windows x64 builds for testers. Choose an asset
-for your platform and check its version; retained assets can belong to earlier
-builds. Nightly has its own install and update channel. See the
-[Nightly guide](docs/guides/nightly.md) for supported paths and limitations.
 
 ### Verified installer (when a stable release is published)
 
@@ -134,14 +161,14 @@ a workspace directory, and running it behind your own authenticated ingress.
 
 ## First steps
 
-1. Open **Connections** and choose **Add model connection** (a local or
+1. Open **Customize → Connections** and choose **Add model connection** (a local or
    hosted model service) or **Add engine** (an installed agent CLI). Startup
    can register supported native CLIs and their default Agents; check their
    readiness before starting work. The [Connections guide](docs/guides/connections.md)
    lists the engines and adoption rules.
 2. Open a local project.
-3. Start a direct chat for a quick question, or create a Task for work you
-   want to keep.
+3. Start a chat for ordinary work. Chats retain their history. Create a Task
+   when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
 
 If something is not ready, Station keeps the setup action visible. Run

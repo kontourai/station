@@ -755,28 +755,46 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(await later.outboundDispatch.snapshot()).toEqual([]);
   });
 
-  it("re-sending a key whose own earlier durable write landed late adopts that row; the old attempt's cleanup cannot delete it", async () => {
-    const queue = await freshRenderer();
-    const lateAttempt = await queue.outboundDispatch.beginLive({
-      ...intent,
-      clientTurnId: 'retried',
-    });
-    // The same message sent again from this renderer (a drain retry).
-    const retry = await queue.outboundDispatch.beginLive({
-      ...intent,
-      clientTurnId: 'retried',
-    });
-    await lateAttempt.refused();
-    const [adopted] = await queue.outboundDispatch.snapshot();
-    expect(adopted).toMatchObject({
-      clientTurnId: 'retried',
-      status: 'invoking',
-    });
-    // Still the retry's own send in flight: not listed beside its bubble.
-    expect(adopted?.liveInFlight).toBe(true);
-    await retry.accepted();
-    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
-  });
+  it.each(['refused', 'accepted'] as const)(
+    'an earlier attempt settling %s after the same key was adopted preserves the key outcome',
+    async (outcome) => {
+      const queue = await freshRenderer();
+      const lateAttempt = await queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'retried',
+      });
+      const retry = await queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'retried',
+      });
+      await lateAttempt[outcome]();
+      if (outcome === 'refused') {
+        const [adopted] = await queue.outboundDispatch.snapshot();
+        expect(adopted).toMatchObject({
+          clientTurnId: 'retried',
+          status: 'invoking',
+          liveInFlight: true,
+        });
+      } else {
+        // Acceptance is proof about the key, including an overlapping retry.
+        expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+        expect((await queue.outboundDispatch.retiredKeys()).accepted).toContain(
+          'retried',
+        );
+        await expect(
+          queue.outboundDispatch.beginLive({
+            ...intent,
+            clientTurnId: 'retried',
+          }),
+        ).rejects.toMatchObject({
+          name: 'OutboundKeyRetiredError',
+          reason: 'accepted',
+        });
+      }
+      await retry.accepted();
+      expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    },
+  );
 
   it('a held copy cannot be edited, merged or reordered here, and never holds back later messages', async () => {
     const queue = await freshRenderer();
