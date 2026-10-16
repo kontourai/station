@@ -125,6 +125,10 @@ async function createHarness(
             : undefined,
       resolveCredentialDeviceId: (credential) =>
         security.devicePairing.identifyDevice(credential)?.id,
+      resolveCredentialLocality: (credential) =>
+        security.credentialLocality(credential),
+      resolveCredentialMintKind: (credential) =>
+        security.credentialMintKind(credential),
       allowedOrigins: [ORIGIN],
     },
   });
