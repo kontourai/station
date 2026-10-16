@@ -104,7 +104,7 @@ export function snapshotDirectTurnInput<
 }
 
 /** Captured authorized client intent, before transcript/prompt/model preparation. */
-export function turnSubmissionDigest(input: {
+function turnSubmissionDigest(input: {
   text: string;
   ambientContext?: string;
   modelId?: string;
