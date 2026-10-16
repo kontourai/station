@@ -151,3 +151,11 @@ replacement, covered through the mounted sidebar. No remaining blocker was
 found. Native title-bar geometry and fresh hosted Gallery qualification are
 not established by this correction's local evidence. The PR remains open
 with auto-merge disabled pending visual feedback.
+
+Fault checks on clean committed `7b642e39d5b`: disabling the collapsed Boards
+popup caused three intended failures (navigator lifecycle, authority-change
+precondition, and first-create in the popup), with 39 passes. Restoring the
+owner byte-for-byte returned 42 passes. Separately removing the Boards
+owner's authority key caused the authority-replacement test to fail with the
+old popup still present (41 passed); byte-for-byte restoration returned all
+42 passes. No fault edits remain.
