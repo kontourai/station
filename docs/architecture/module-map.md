@@ -1388,6 +1388,73 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+**Held follow-ups (#3568).**
+[ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
+holds a person's follow-up for a busy conversation, so it is sent even if the
+app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
+the conversation's current Session has a turn open (the persisted fold or the
+live coordinator) or earlier follow-ups are still waiting, and also when the
+dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
+Only a plain continuation qualifies: one the caller may read, whose target
+names exactly the conversation's bound Agent and workspace
+(`followUpTargetMatchesBinding`), from a sender placement would accept;
+otherwise the send takes the live path. Inbox ids are canonical conversation
+ids (`conversationOf`). The entry is a
+[`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
+`EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
+sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+or Session-state event on the conversation, after each submit, at startup,
+and on bounded re-checks (the schedule, then two-minute checks up to 30 while
+entries wait, reset when a new message is accepted, and after a drive that
+failed mid-placement). It is not this
+module: a follow-up is a start, never a steer. Before each start it re-checks
+the sender with the live continuation's rule (`mayContinue`) and the sending
+device's or personal access token's route scope (`deviceMaySendChat`, one
+by-id lookup in the pairing service, `credentialHoldsScope`, which for an
+account-tied device or token also requires the account enabled and not signed
+out everywhere since the entry was queued), then reads the turn
+ledger for the key across the whole conversation
+(`startUnlessDelivered`, `inspectTurnDelivery`): `started` is settled
+`placed` without a send, `indeterminate`/`expired` is `unconfirmed`, a live
+claim waits, and only a key no Session holds is started, through the same
+`continueExecutionTargetMessage` continuation delegated results use, as the
+recorded sender. Delegated results use `startUnlessDelivered` too, so neither
+can send twice into a successor Session a continuation reserves, and every
+live keyed continuation (`executeForegroundMessage`) applies the same rule
+(`conversationKeyDecision`, through `inspectConversationTurnKey`) before it may
+reserve one: a same-key retry that names a model the engine cannot switch to
+mid-Session, or follows an ended Session, is answered from the ledger. A start that
+has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
+a later drive reads the ledger: `started` settles it `placed`, a key no
+Session holds queues it again (Monument's `inbox.resolveUnconfirmed`). The
+ledger is not read for it while the abandoned start is still running in this
+process (a cold start claims the key only once its Session exists), so it is
+never started a second time alongside itself.
+Someone else's entry that may still be sent (`queued`, `placing`,
+`unconfirmed`) is listed without its key, and `/chat` and
+`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`), and a
+live send under a key the inbox is starting now, from before the start begins
+until it answers, including past its deadline (`client_turn_in_flight`,
+`inFlight`, the in-memory `startsInProgress` set): to its own sender, or to
+anyone once the entry is dismissed (a dismissal does not end the start, so
+the key stays refused until it answers or Station restarts). Both go only to a
+caller who may read the conversation. An `unconfirmed` entry
+is never sent again and holds the ones behind it until someone who may send to
+the conversation dismisses it; only the sender withdraws a waiting one.
+Refusal reasons are stable codes with fixed messages. The delivery lookup
+answers `queued` for a waiting entry. `GET`/`DELETE /conversations/:id/inbox`
+list it and withdraw it. `deleteThread` forgets a conversation's entries.
+Hosted Stations have no inbox. Steer and display-only entries, a stale-head
+check and the UI's switch from its own per-tab queue are not built yet. The
+[service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
+restarts a real `OrchestrationService` and `EventStore` around a counting
+adapter. The
+[route test](../../src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts)
+runs `/chat` through the production foreground execution with a scripted
+engine, including a Session that ends between a crash and its re-drive. The
+[runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+covers the production ports for both deliveries.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs
@@ -1580,7 +1647,7 @@ Session-scoped terminal retirement uses event order in SQLite (#3563). Migration
 
 ## TurnDeduplicator
 
-A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible.
+A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). Only a claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
 
 **Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution, and returns nothing at its next poll once the claim is released or its owner in this process retains it; `givenUp({ threadId, clientTurnId })` says whether this process's owner still owns the unresolved claim and retained it (never another owner's claim of the key, however old); `inspect({ threadId, clientTurnId })` is a read-only peek that answers what a claim would meet (`absent`, `resolved`, `in-flight`, `reclaimable`, `indeterminate`, `expired`) without claiming, reclaiming or touching retention. Only the owner capability can `beginInvocation()`, `resolve(turnId)`, `release()` or `retain()`.
 

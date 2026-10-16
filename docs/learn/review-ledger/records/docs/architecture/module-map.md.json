@@ -992,6 +992,8 @@
 
     "pnpm-lock.yaml#/snapshots",
 
+    "src-server/services/orchestration/thread-inbox.ts",
+
     "src-server/knowledge-index/embedding-identity.ts",
 
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
