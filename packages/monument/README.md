@@ -7,11 +7,11 @@ and what it leaves to other packages.
 
 The API may change in any release until a second consumer exists.
 
-It is `private: true` in this checkout. `publish-packages.yml` exchanges an
-OIDC token for every public workspace, and npm can attach a trusted publisher
-only to a name that already exists, so a public manifest would fail every
-release until the first version is published another way. Publishing is an
-owner decision.
+It remains `private: true` in this checkout until its first functional release
+is qualified and the manifest is changed in a reviewed PR. CI publishing uses
+npm Trusted Publisher for `kontourai/station`, workflow `publish-packages.yml`.
+A registry bootstrap or placeholder enables setup; it does not qualify a
+functional package release.
 
 The published package is compiled ES modules (`dist/*.js`) with type
 declarations (`dist/*.d.ts`), built by `npm run build`. It runs on plain Node 24
@@ -105,8 +105,10 @@ it, and a command that throws or is refused undoes only itself.
 
 ## Host boundary rows and terminal facts
 
-Boundary binding is available for the phase-2b integration; Station's boundary
-coordinator has not switched to it yet. The binding supports the default
+Station's production boundary coordinator uses this binding for create,
+transition, remove, accepted-turn recording, terminal observation and listing.
+Station retains sealed-task admission, storage-error classification and
+process-owner reconciliation. The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
 `owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
 layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,
