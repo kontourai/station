@@ -27,6 +27,23 @@ export interface TurnDedupDecision<Result> {
 
 const NO_WRITE: TurnDedupWrite = Object.freeze({ kind: 'none' });
 
+/** Both absent is legacy; either surviving marker fences a partial record. */
+export function preparedDedupLinkState(
+  record: Pick<TurnDedupRecord, 'preparedInvocationId' | 'preparedUpdatedAt'>,
+): 'unlinked' | 'linked' | 'invalid' {
+  if (
+    record.preparedInvocationId === undefined &&
+    record.preparedUpdatedAt === undefined
+  )
+    return 'unlinked';
+  return typeof record.preparedInvocationId === 'string' &&
+    record.preparedInvocationId !== '' &&
+    typeof record.preparedUpdatedAt === 'string' &&
+    record.preparedUpdatedAt !== ''
+    ? 'linked'
+    : 'invalid';
+}
+
 /**
  * station#3559: a dead owner's claim may be taken over only when that owner
  * provably never began its effect. `begun` and unknown (absent) are not
@@ -34,7 +51,7 @@ const NO_WRITE: TurnDedupWrite = Object.freeze({ kind: 'none' });
  */
 export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
   return (
-    record.preparedInvocationId === undefined &&
+    preparedDedupLinkState(record) === 'unlinked' &&
     (record.invocation === 'pending' || record.invocation === 'untracked')
   );
 }
@@ -74,6 +91,7 @@ export function decideTurnDedupClaim(
   if (current.owner && liveness(current.owner) === 'dead') {
     if (
       current.invocation === 'pending' &&
+      preparedDedupLinkState(current) === 'linked' &&
       current.preparedInvocationId !== undefined
     )
       return {
@@ -114,7 +132,7 @@ export function decideTurnDedupBeginInvocation(
 ): TurnDedupDecision<TurnDedupBeginInvocationResult> {
   if (
     !ownsUnresolved(current, command.ownerId) ||
-    current.preparedInvocationId !== undefined ||
+    preparedDedupLinkState(current) !== 'unlinked' ||
     (current.invocation !== 'pending' && current.invocation !== 'begun')
   )
     return { write: NO_WRITE, result: { kind: 'refused' } };
@@ -145,8 +163,7 @@ export function decideTurnDedupRelease(
 ): TurnDedupDecision<TurnDedupSettleResult> {
   if (
     !ownsUnresolved(current, command.ownerId) ||
-    (current.preparedInvocationId !== undefined &&
-      current.invocation === 'pending')
+    preparedDedupLinkState(current) !== 'unlinked'
   )
     return { write: NO_WRITE, result: { kind: 'stale' } };
   return { write: { kind: 'delete' }, result: { kind: 'applied' } };

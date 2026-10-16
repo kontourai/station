@@ -4,11 +4,163 @@ import {
   decideTurnDedupClaim,
   turnClaimIsReclaimable,
 } from '../decisions/turn-dedup.js';
+import {
+  decideTurnBoundaryBeginInvocation,
+  decideTurnBoundaryPrepare,
+  decideTurnDedupBeginInvocation,
+  decideTurnDedupRelease,
+} from '../index.js';
 import { ownerLivenessFromProbe } from '../owner.js';
 import type { TurnDedupRecord } from '../records.js';
 import { createFakeProcessTable } from '../testing/index.js';
 
 describe('pure decisions', () => {
+  for (const invocation of [
+    'pending',
+    'begun',
+    'untracked',
+    undefined,
+  ] as const) {
+    it(`complete prepared links fence ordinary release/claim/begin with invocation ${invocation ?? 'unknown'}`, () => {
+      const processes = createFakeProcessTable();
+      const owner = processes.spawn();
+      processes.kill(owner);
+      const record: TurnDedupRecord = {
+        key: 'k',
+        value: null,
+        createdAt: 1,
+        owner,
+        invocation,
+        preparedInvocationId: 'i',
+        preparedUpdatedAt: '2',
+      };
+      expect(
+        decideTurnDedupRelease(record, {
+          type: 'turnDedup.release',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'stale' } });
+      expect(
+        decideTurnDedupClaim(
+          record,
+          {
+            type: 'turnDedup.claim',
+            key: 'k',
+            owner: processes.spawn(),
+            now: 3,
+            tracking: 'tracked',
+          },
+          processes.liveness,
+        ),
+      ).toEqual({
+        write: { kind: 'none' },
+        result:
+          invocation === 'pending'
+            ? { kind: 'prepared', invocationId: 'i' }
+            : { kind: 'indeterminate' },
+      });
+      expect(
+        decideTurnDedupBeginInvocation(record, {
+          type: 'turnDedup.beginInvocation',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'refused' } });
+    });
+  }
+  for (const metadata of [
+    { preparedUpdatedAt: '2' },
+    { preparedInvocationId: 'i' },
+  ]) {
+    it(`adapter records with partial prepared metadata ${Object.keys(metadata)[0]} never authorize ordinary or compound begin`, () => {
+      const processes = createFakeProcessTable();
+      const owner = processes.spawn();
+      processes.kill(owner);
+      const record: TurnDedupRecord = {
+        key: 'k',
+        value: null,
+        owner,
+        invocation: 'pending',
+        createdAt: 1,
+        ...metadata,
+      };
+      expect(turnClaimIsReclaimable(record)).toBe(false);
+      expect(
+        decideTurnDedupClaim(
+          record,
+          {
+            type: 'turnDedup.claim',
+            key: 'k',
+            owner: processes.spawn(),
+            now: 3,
+            tracking: 'tracked',
+          },
+          processes.liveness,
+        ),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'indeterminate' } });
+      expect(
+        decideTurnDedupBeginInvocation(record, {
+          type: 'turnDedup.beginInvocation',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'refused' } });
+      expect(
+        decideTurnDedupRelease(record, {
+          type: 'turnDedup.release',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'stale' } });
+      const intent = {
+        invocationId: 'i',
+        inputDigest: 'input',
+        intentDigest: 'envelope',
+        bodyRef: 'body',
+        dedupKey: 'k',
+      };
+      const boundary = {
+        boundaryId: 'b',
+        threadId: 't',
+        purpose: 'turn',
+        state: 'prepared',
+        owner,
+        createdAt: '1',
+        updatedAt: '2',
+        intent,
+      } as const;
+      expect(
+        decideTurnBoundaryBeginInvocation(boundary, record, false, {
+          type: 'turnBoundary.beginInvocation',
+          boundaryId: 'b',
+          ownerId: owner.id,
+          dedupOwnerId: owner.id,
+          intent,
+          now: '3',
+        }),
+      ).toEqual({ result: { kind: 'refused' } });
+      expect(
+        decideTurnBoundaryPrepare(
+          { ...boundary, state: 'reserved', intent: undefined },
+          record,
+          false,
+          {
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            dedupOwnerId: owner.id,
+            intent,
+            now: '3',
+          },
+        ),
+      ).toEqual({ result: { kind: 'stale' } });
+    });
+  }
   it('a dead owner with no invocation record is indeterminate, not reclaimed', () => {
     const processes = createFakeProcessTable();
     const dead = processes.spawn();

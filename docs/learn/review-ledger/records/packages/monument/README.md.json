@@ -40,7 +40,17 @@
 
     "scripts/monument-pack-smoke.mjs",
 
-    "scripts/__tests__/monument-pack-smoke.test.ts"
+    "scripts/__tests__/monument-pack-smoke.test.ts",
+
+    "packages/monument/src/decisions/turn-dedup.ts",
+
+    "packages/monument/src/index.ts",
+
+    "packages/monument/src/__tests__/sqlite-prepared-intent.test.ts",
+
+    "packages/monument/src/__tests__/participants.test.ts",
+
+    "packages/monument/src/__tests__/decisions.test.ts"
   ],
 
   "checks": []
