@@ -198,6 +198,7 @@ export function captureTurnIntent(
     adapterInput: {
       ...options,
       threadId: input.threadId,
+      invocationId,
       input: text,
       ...(input.clientTurnId === undefined
         ? {}
@@ -245,6 +246,7 @@ export function decodeTurnIntent(row: {
       ...options,
       input: text,
       threadId: row.threadId,
+      invocationId: row.invocationId,
       ...(envelope.clientTurnId === undefined
         ? {}
         : { clientTurnId: envelope.clientTurnId }),
