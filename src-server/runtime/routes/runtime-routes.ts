@@ -7590,6 +7590,8 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
   'endpoint,kind',
   'endpoint,kind,scope',
   'endpoint,scope',
+  'approval,endpoint',
+  'approval,endpoint,scope',
 ]);
 
 async function readPairingOfferJson(
@@ -7750,7 +7752,7 @@ function isDirectLoopbackCaller(c: {
  * as this user, satisfies all three. That is unchanged from the direct-socket
  * path this widens and is why the credential it mints keeps mint kind
  * `ui-bootstrap`, which the native consent broker refuses (station#3677 PR 3)
- * — this buys presentation and log-read locality, never approval authority.
+ * — browser Device administration never becomes native consent authority.
  */
 function isSameMachineBrowserCaller(c: {
   env: unknown;
@@ -8260,7 +8262,12 @@ export function configureDevicePairingPublicRoutes(
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
-    if (existingDevice) {
+    if (
+      existingDevice &&
+      (!matchedPurpose ||
+        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isLocalGrantMintedCredential(existingCredential!))
+    ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
@@ -9170,10 +9177,21 @@ export function configureDevicePairingHostRoutes(
     ) {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    if (
+      body.approval !== undefined &&
+      body.approval !== 'on-create' &&
+      body.approval !== 'on-request'
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+      return approvalRequiresOperator(c);
+    }
     try {
       return c.json(
         pairing.createOffer({
           endpoint: body.endpoint,
+          approval: body.approval as 'on-create' | 'on-request' | undefined,
           scope: body.scope as string | undefined,
           kind: body.kind as 'device' | 'delegation' | undefined,
         }),
@@ -9400,7 +9418,8 @@ export function configureDevicePairingHostRoutes(
             actor.mintKind === 'local-grant' &&
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
-            pairing.credentialMintKind(actor.credential) === 'local-grant';
+            (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
+              pairing.credentialMayManagePairing(actor.credential));
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
           if (!operatorCredential && !localGrant)

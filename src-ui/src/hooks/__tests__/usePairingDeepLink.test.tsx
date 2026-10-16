@@ -4,11 +4,12 @@
 
 import { encodeDevicePairingPayload } from '@kontourai/station-connect';
 import {
+  encodeBrowserPairingLink,
   encodePairingDeepLink,
   PAIRING_LINK_REMEDY,
 } from '@kontourai/station-connect/pairing-deep-link';
-import { act, render, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { usePairingDeepLink } from '../usePairingDeepLink';
 
 const nativePairingDeepLinkMock = vi.hoisted(() => ({
@@ -129,3 +130,51 @@ describe('usePairingDeepLink', () => {
     );
   });
 });
+
+afterEach(() => window.history.replaceState(null, '', '/'));
+
+test.each([true, false])(
+  'opens a browser invitation once and removes its proof from history (valid=%s)',
+  (valid) => {
+    const payload = valid
+      ? encodeDevicePairingPayload({
+          protocolVersion: 1,
+          environmentId: 'invited-station',
+          offerId: 'one-time-offer',
+          manualCode: 'ABCDE12345',
+          challenge: 'one-time-proof',
+          endpoint: window.location.origin,
+          scope: 'orchestration:read',
+          expiresAt: Date.now() + 60_000,
+        })
+      : 'station-pairing:v1:invalid';
+    const link = encodeBrowserPairingLink({
+      payload,
+      browserUrl: window.location.origin,
+    });
+    window.history.replaceState(null, '', link);
+    const onPairingPayload = vi.fn();
+    const onError = vi.fn();
+    const { rerender } = renderHook(() =>
+      usePairingDeepLink({
+        enabled: false,
+        onPairingPayload,
+        onError,
+      }),
+    );
+    expect(window.location.hash).toBe('');
+    if (valid) {
+      expect(onPairingPayload).toHaveBeenCalledExactlyOnceWith(payload);
+      expect(onError).not.toHaveBeenCalled();
+    } else {
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('invalid or expired'),
+      );
+      expect(onPairingPayload).not.toHaveBeenCalled();
+    }
+    rerender();
+    expect(onPairingPayload.mock.calls.length + onError.mock.calls.length).toBe(
+      1,
+    );
+  },
+);

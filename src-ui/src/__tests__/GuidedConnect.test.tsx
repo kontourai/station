@@ -2,8 +2,10 @@
  * @vitest-environment jsdom
  */
 
+import { encodeDevicePairingPayload } from '@kontourai/station-connect/device-pairing';
+import { encodeBrowserPairingLink } from '@kontourai/station-connect/pairing-deep-link';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const native = vi.hoisted(() => ({
   isTauri: false,
@@ -33,15 +35,18 @@ vi.mock('@kontourai/station-connect', () => ({
     hostAppName,
     hasLocalStation,
     onPairingSucceeded,
+    initialPairingPayload,
   }: {
     isOpen: boolean;
     initialPanel?: string;
     hostAppName?: string;
     hasLocalStation?: boolean;
     onPairingSucceeded?: () => void;
+    initialPairingPayload?: string;
   }) =>
     isOpen ? (
       <div
+        data-pairing-payload={initialPairingPayload}
         data-host-app-name={hostAppName}
         data-has-local-station={String(hasLocalStation)}
         data-testid="connection-manager"
@@ -267,4 +272,32 @@ describe('GuidedConnect', () => {
         .getAttribute('data-host-app-name'),
     ).toBe('Station Nightly');
   });
+});
+
+afterEach(() => window.history.replaceState(null, '', '/'));
+
+test('an unpaired browser opens its invitation review before the protected application mounts', () => {
+  const payload = encodeDevicePairingPayload({
+    protocolVersion: 1,
+    environmentId: 'invited-station',
+    offerId: 'browser-offer',
+    manualCode: 'ABCDE12345',
+    challenge: 'browser-proof',
+    endpoint: window.location.origin,
+    scope: 'orchestration:read',
+    expiresAt: Date.now() + 60_000,
+  });
+  window.history.replaceState(
+    null,
+    '',
+    encodeBrowserPairingLink({ payload, browserUrl: window.location.origin }),
+  );
+  render(<GuidedConnect />);
+  expect(
+    screen
+      .getByTestId('connection-manager')
+      .getAttribute('data-pairing-payload'),
+  ).toBe(payload);
+  expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  expect(window.location.hash).toBe('');
 });

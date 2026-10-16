@@ -771,8 +771,8 @@ test('the desktop home-proven local grant can invite and approve a phone without
   expect(h.security.credentialMayDecidePairingRequests(phone.credential)).toBe(
     false,
   );
-  // Browser launcher grants also prove home possession, but were not minted
-  // as desktop local grants and must not acquire pairing administration.
+  // The host-issued browser session can invite devices without acquiring
+  // the native desktop grant used by the consent broker.
   const launcher = await h.request(
     '/.well-known/station/v1/pairing/mint-ui-bootstrap',
     h.json({ secret: h.localGrantSecret() }),
@@ -784,12 +784,55 @@ test('the desktop home-proven local grant can invite and approve a phone without
     '/.well-known/station/v1/pairing/ui-bootstrap',
     {
       ...h.json({ token }),
-      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: ORIGIN,
+        Cookie: `${LOOPBACK_DEVICE_SESSION_COOKIE}=${phone.credential}`,
+      },
     },
     '127.0.0.1',
   );
   expect(browser.status).toBe(200);
   const browserCookie = browser.headers.get('set-cookie')!.split(';')[0];
+  const browserCredential = browserCookie.slice(browserCookie.indexOf('=') + 1);
+  expect(
+    h.security.devicePairing.isLocalGrantMintedCredential(browserCredential),
+  ).toBe(false);
+  expect(h.security.credentialMayDecidePairingRequests(browserCredential)).toBe(
+    true,
+  );
+  const browserHeaders = { Origin: ORIGIN, Cookie: browserCookie };
+  expect(
+    (await h.request('/api/pairing/devices', { headers: browserHeaders }))
+      .status,
+  ).toBe(200);
+  expect(
+    (await h.request('/api/pairing/people', { headers: browserHeaders }))
+      .status,
+  ).toBe(403);
+  const changed = await h.request(
+    `/api/pairing/devices/${phone.device.id}/scope`,
+    {
+      ...h.json({
+        scope: ['orchestration:read'],
+        expectedScope: phone.device.scope,
+      }),
+      headers: { ...browserHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+  expect(changed.status).toBe(200);
+  expect(((await changed.json()) as PairedDevice).scope).toBe(
+    'orchestration:read',
+  );
+  expect(
+    (
+      await h.request(`/api/pairing/devices/${phone.device.id}`, {
+        method: 'DELETE',
+        headers: browserHeaders,
+      })
+    ).status,
+  ).toBe(200);
+
   expect(
     (
       await h.request(
@@ -805,7 +848,7 @@ test('the desktop home-proven local grant can invite and approve a phone without
         '127.0.0.1',
       )
     ).status,
-  ).toBe(403);
+  ).toBe(201);
   h.security.devicePairing.revokeDevice(
     desktop.device.id,
     'operator-credential',
@@ -818,6 +861,132 @@ test('the desktop home-proven local grant can invite and approve a phone without
       )
     ).status,
   ).toBe(401);
+});
+
+test('an operator-created invitation grants its assigned access once without a second approval', async () => {
+  const h = await createHarness();
+  const scope =
+    'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access';
+  const created = await h.request(
+    '/api/pairing/offers',
+    h.json(
+      { endpoint: ORIGIN, scope, approval: 'on-create' },
+      h.operatorCredential,
+    ),
+  );
+  expect(created.status).toBe(201);
+  const offer = (await created.json()) as DevicePairingOffer;
+  expect(offer).not.toHaveProperty('preapproved');
+  const requested = await h.request(
+    '/.well-known/station/v1/pairing/request',
+    h.json({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Invited browser',
+    }),
+  );
+  expect(requested.status).toBe(202);
+  const pending = (await requested.json()) as DevicePairingRequest;
+  expect(pending.status).toBe('confirmed');
+  const exchanged = await h.request(
+    '/.well-known/station/v1/pairing/exchange',
+    h.json({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    }),
+  );
+  expect(exchanged.status).toBe(200);
+  const device = (await exchanged.json()) as {
+    credential: string;
+    device: PairedDevice;
+  };
+  expect(device.device.scope).toBe(scope);
+  expect(
+    h.security.devicePairing.credentialLocality(device.credential),
+  ).toBeUndefined();
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        h.json({ endpoint: ORIGIN }, device.credential),
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await h.request(
+        '/.well-known/station/v1/pairing/exchange',
+        h.json({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      )
+    ).status,
+  ).toBe(409);
+});
+
+test('cancelled invitations cannot grant access and unsolicited requests cannot approve themselves', async () => {
+  const h = await createHarness();
+  const created = await h.request(
+    '/api/pairing/offers',
+    h.json(
+      {
+        endpoint: ORIGIN,
+        scope: 'orchestration:read',
+        approval: 'on-create',
+      },
+      h.operatorCredential,
+    ),
+  );
+  expect(created.status).toBe(201);
+  const offer = (await created.json()) as DevicePairingOffer;
+  expect(
+    (
+      await h.request(`/api/pairing/offers/${offer.offerId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${h.operatorCredential}` },
+      })
+    ).status,
+  ).toBe(204);
+  expect(
+    (
+      await h.request(
+        '/.well-known/station/v1/pairing/request',
+        h.json({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: 'Too late',
+        }),
+      )
+    ).status,
+  ).toBe(409);
+  const unsolicited = await h.request(
+    '/.well-known/station/v1/pairing/access-request',
+    {
+      ...h.json({
+        deviceName: 'Uninvited browser',
+        scope: 'orchestration:read',
+        approval: 'on-create',
+      }),
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+    },
+  );
+  expect(unsolicited.status).toBe(202);
+  const pending = (await unsolicited.json()) as {
+    requestId: string;
+    offerId: string;
+    proof: string;
+  };
+  const exchange = await h.request(
+    '/.well-known/station/v1/pairing/exchange',
+    h.json(pending),
+  );
+  expect(exchange.status).toBe(409);
+  expect(await exchange.json()).toMatchObject({
+    error: 'request_not_confirmed',
+  });
 });
 
 describe('delegated engine sign-in HTTP admission', () => {

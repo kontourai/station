@@ -30,6 +30,7 @@ import {
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_DEVICES,
+  PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
@@ -264,6 +265,8 @@ interface DeviceRegistry {
 }
 
 interface PairingOfferState extends DevicePairingOffer {
+  /** Private authorization recorded when the operator creates an invitation. */
+  preapproved?: true;
   principalBinding?: DevicePrincipalBinding;
   status: 'open' | 'requested' | 'confirmed' | 'used' | 'cancelled';
   request?: DevicePairingRequest;
@@ -1241,6 +1244,7 @@ export class DevicePairingService {
     endpoint: string;
     scope?: string;
     kind?: PairedDeviceKind;
+    approval?: 'on-create' | 'on-request';
   }): DevicePairingOffer {
     let endpoint: URL;
     try {
@@ -1272,6 +1276,13 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('invalid_request');
     }
+    if (
+      input.approval === 'on-create' &&
+      ((input.kind !== undefined && input.kind !== 'device') ||
+        parsedScope.includes(PAIRING_SCOPE_ACCESS_MANAGE))
+    ) {
+      throw new DevicePairingError('invalid_request');
+    }
     this.#pruneOffers();
     if (this.#offers.size >= this.#maxActiveOffers) {
       throw new DevicePairingError('offer_capacity_reached');
@@ -1286,6 +1297,7 @@ export class DevicePairingService {
       scope,
       expiresAt: this.#now() + this.#offerTtlMs,
       status: 'open',
+      ...(input.approval === 'on-create' ? { preapproved: true as const } : {}),
       kind: input.kind ?? 'device',
     };
     this.#offers.set(offer.offerId, offer);
@@ -1331,6 +1343,7 @@ export class DevicePairingService {
         !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
       (input.accountCandidate === undefined) !==
         (input.accountCandidateSessionId === undefined) ||
+      (offer.preapproved === true && input.requireAccountBinding === true) ||
       (input.requireAccountBinding === true &&
         input.accountCandidate === undefined) ||
       (input.accountCandidate !== undefined &&
@@ -1372,7 +1385,8 @@ export class DevicePairingService {
     };
     offer.request = request;
     offer.requesterPosition = input.requesterPosition;
-    offer.status = 'requested';
+    offer.status = offer.preapproved ? 'confirmed' : 'requested';
+    if (offer.preapproved) request.status = 'confirmed';
     return cloneRequest(request);
   }
 
@@ -2257,7 +2271,11 @@ export class DevicePairingService {
     const device = this.identifyDevice(candidate);
     return device?.kind === 'device' &&
       device.credentialKind !== 'personal-token' &&
-      pairingScopeIncludes(this.#capScope(device), PAIRING_SCOPE_ACCESS_DEVICES)
+      (pairingScopeIncludes(
+        this.#capScope(device),
+        PAIRING_SCOPE_ACCESS_DEVICES,
+      ) ||
+        this.credentialMayManagePairing(candidate))
       ? device
       : null;
   }
@@ -3321,6 +3339,17 @@ export class DevicePairingService {
       : undefined;
   }
 
+  /** Host-issued browser sessions may manage device access, never native consent. */
+  credentialMayManagePairing(candidate: string): boolean {
+    return (
+      this.credentialMintKind(candidate) === 'ui-bootstrap' &&
+      pairingScopeIncludes(
+        this.effectiveScope(candidate) ?? '',
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      )
+    );
+  }
+
   /**
    * The credential-level mirror of the auth boundary's bound
    * local-grant-minted-operator predicate (archive#3677 PR 3): true only when
@@ -3534,6 +3563,7 @@ export class DevicePairingService {
       status: _status,
       request: _request,
       clientInstanceId: _clientInstanceId,
+      preapproved: _preapproved,
       ...safe
     } = offer;
     return safe;
