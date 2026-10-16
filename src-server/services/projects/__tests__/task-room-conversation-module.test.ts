@@ -680,10 +680,13 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
       JSON.stringify(f.failures),
     ).toBe(true);
     const root = f.store.conversationForSession(sessionId)!;
-    const binding = f.store
+    const started = f.store
       .listEvents(sessionId)
-      .find((event) => event.payload.method === 'session.started')
-      ?.payload.metadata;
+      .find((event) => event.payload.method === 'session.started');
+    const binding =
+      started?.payload.method === 'session.started'
+        ? started.payload.metadata
+        : undefined;
     expect(binding).toMatchObject({
       environmentId: 'current',
       targetId: 'researcher',
