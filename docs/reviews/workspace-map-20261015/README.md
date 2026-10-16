@@ -234,3 +234,14 @@ no additional changes. Eight focused files pass 285 tests, including mounted
 sidebar/Boards/footer/header, settings authority, comparator and workflow
 contracts. Fresh hosted qualification of the integrated candidate remains
 outstanding.
+
+The integrated browser run initially passed three geometry cases and failed
+before keyboard movement: the trace showed `#root[inert]` while the upstream
+**Starting Station** dialog was active, so programmatic focus did not enter
+the Layout row. The fixture now waits for that dialog to close before asking
+for focus, preserving the startup gate and all keyboard assertions. The final
+four-case browser geometry run passes. A six-screen local capture also passes
+Home, Agents, Settings, desktop/mobile conversation resync and dock project
+mismatch, including upstream recovery assertions. No local capture is used to
+refresh references or presented as hosted rendering evidence. Fixture guards
+pass 33 tests, and the E2E typecheck passes.
