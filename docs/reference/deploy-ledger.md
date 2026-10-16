@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-16T15:13:50Z | nightly-desktop | 0.1.11-nightly.2480.9 | `9658fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38909410337) |
 | 2026-10-16T15:13:47Z | nightly-android | 0.1.11-nightly.2480.9 | `9658fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38909410337) |
 | 2026-10-16T14:29:49Z | nightly-npm | 0.7.0-nightly.2480.38909410337 | `9658fa2` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38909410337) |
 | 2026-10-16T12:26:13Z | nightly-npm | 0.7.0-nightly.2480.38893835682 | `d4938a0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38893835682) |
@@ -285,6 +286,49 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-16T15:13:50Z · nightly-desktop · 0.1.11-nightly.2480.9
+
+- Ship SHA: `9658fa21a33eeaa975b083a55e1f677c56839fab`
+- Artifact built at: `2026-10-16T14:30:09.413Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery failure (run 38909410337)
+
+### Changelog
+
+Commits since `df22f5f` ([full sha](https://github.com/kontourai/station/commit/df22f5f3a722617aad8d6855f211ef798e81b74e)):
+
+**Features**
+
+- [#3694](https://github.com/kontourai/station/pull/3694) feat(settings): save personal preferences and clarify chat permissions
+- [#3697](https://github.com/kontourai/station/pull/3697) feat(monument): read event-retired boundaries without polling writes
+- [#3664](https://github.com/kontourai/station/pull/3664) feat(orchestration): hold a busy conversation's follow-ups in a durable server inbox (#3568)
+- [#3696](https://github.com/kontourai/station/pull/3696) feat(engines): disclose current durability fidelity (#3575)
+- [#3690](https://github.com/kontourai/station/pull/3690) feat(telemetry): add delivery controls and companion qualification
+
+**Fixes**
+
+- [#3715](https://github.com/kontourai/station/pull/3715) fix(onboarding): simplify first chat, phone pairing and Coding chrome
+- [#3726](https://github.com/kontourai/station/pull/3726) fix(gallery): keep visual review useful without failing every UI change
+- [#3724](https://github.com/kontourai/station/pull/3724) fix(home): show unassigned Tasks as Tasks, not unavailable agents
+- [#3725](https://github.com/kontourai/station/pull/3725) fix(sessions): anchor a cold Claude transcript import before reading it
+- [#3717](https://github.com/kontourai/station/pull/3717) fix(orchestration): yield background session writes instead of blocking the main thread
+- [#3718](https://github.com/kontourai/station/pull/3718) fix(monument): settle smoke process trees and stop cancelled runs
+- [#3716](https://github.com/kontourai/station/pull/3716) fix(orchestration): recover task room history after worker failure
+- [#3712](https://github.com/kontourai/station/pull/3712) fix(tasks): repair scheduler Task link, Task list refresh, and Dispatch without an agent
+- [#3698](https://github.com/kontourai/station/pull/3698) fix(startup): finish the visible Station intro before handing off
+
+**Docs**
+
+- [#3710](https://github.com/kontourai/station/pull/3710) docs(tasks): record Flow Agents contract gaps blocking Task tracker sync
+
+**Other**
+
+- [#3695](https://github.com/kontourai/station/pull/3695) refactor(monument): route production turn-boundary writes through the kernel
+- [#3709](https://github.com/kontourai/station/pull/3709) test(storage): prove cross-process lock liveness with a handshake
+- [#3677](https://github.com/kontourai/station/pull/3677) build(monument): publish compiled dist and smoke the packed tarball (Refs #3565)
+- [#3693](https://github.com/kontourai/station/pull/3693) test(monument): park Flow continuation probe and Tier 1 fit report
+- [#3692](https://github.com/kontourai/station/pull/3692) perf(docs): reuse immutable scoped review comparisons
 
 ## 2026-10-16T15:13:47Z · nightly-android · 0.1.11-nightly.2480.9
 
