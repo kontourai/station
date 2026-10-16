@@ -3655,6 +3655,41 @@ describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
     );
   });
 
+  test('a source-only Starter registry change plans documentation and discovered behavior without deferral', async () => {
+    const registry = 'src-server/services/starter-work/starter-registry.ts';
+    const behavioralSuites = [
+      'src-server/services/starter-work/__tests__/starter-registry.test.ts',
+      'src-server/routes/__tests__/starter-work.routes.test.ts',
+      'src-server/routes/orchestration/__tests__/task-dispatch-full-access.routes.test.ts',
+    ];
+    const selection = select([registry]);
+    expect(selection.relatedPaths).toEqual([registry]);
+    expect(selection.tests.map(({ path }) => path)).toContain(
+      'scripts/__tests__/documentation-foundations.test.ts',
+    );
+    const discoverRelatedFiles = vi.fn(async () => behavioralSuites);
+    const plan = await planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [registry] }),
+      discoverRelatedFiles,
+    });
+    expect(discoverRelatedFiles).toHaveBeenCalledWith(
+      process.cwd(),
+      [registry],
+      expect.objectContaining({ base: 'HEAD' }),
+    );
+    expect(plan.groups.flatMap(({ files }) => files)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/documentation-foundations.test.ts',
+        ...behavioralSuites,
+      ]),
+    );
+    expect(plan.deferredLanes).toEqual([]);
+    expect(plan.mergeQueueRegressionPaths).toEqual([]);
+    expect(plan.escalated).toBe(false);
+    expect(plan.emptyRelatedSelection).toBeUndefined();
+  });
+
   test('a docs change beside a truly unknown path still defers', () => {
     const selection = select([DOC, 'docs-private/notes.bin']);
     expect(selection.escalated).toBe(true);
