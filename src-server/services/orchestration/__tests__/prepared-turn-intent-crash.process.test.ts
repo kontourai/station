@@ -76,11 +76,13 @@ async function killedOwner(
     | 'prepare-abort'
     | 'sparse-array'
     | 'array-subclass'
+    | 'non-enumerable'
     | 'dense-array',
 ) {
   const expected =
     phase === 'sparse-array' ||
     phase === 'array-subclass' ||
+    phase === 'non-enumerable' ||
     phase === 'prepare-abort'
       ? 'failed'
       : phase === 'dense-array'
@@ -204,7 +206,12 @@ test('a killed prepared owner leaves the exact final input retrievable without i
   });
 }, 90_000);
 
-test.each(['sparse-array', 'array-subclass', 'prepare-abort'] as const)(
+test.each([
+  'sparse-array',
+  'array-subclass',
+  'non-enumerable',
+  'prepare-abort',
+] as const)(
   'dispatch refuses %s before adapter entry and leaves no partial preparation',
   async (phase) => {
     const path = join(

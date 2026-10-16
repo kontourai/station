@@ -134,6 +134,15 @@ void service
             },
           }
         : {}),
+      ...(phase === 'non-enumerable'
+        ? {
+            metadata: {
+              preparedStrictObject: Object.defineProperty({}, 'hidden', {
+                value: 'must not disappear',
+              }),
+            },
+          }
+        : {}),
       ...(phase === 'dense-array'
         ? {
             metadata: {
