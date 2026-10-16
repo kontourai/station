@@ -37,6 +37,8 @@ function tables(
   return {
     turnDedup: 'unused',
     requestKeys: 'unused',
+    // #3568: the inbox is another machine this storage does not own.
+    inbox: 'unused',
     turnBoundary: {
       table: 'host_boundaries',
       ownerEncoding,
@@ -453,6 +455,8 @@ for (const encoding of ['json', 'columns'] as const) {
                 tables: {
                   turnDedup: 'unused',
                   requestKeys: 'unused',
+                  // #3568: the inbox is another machine this storage does not own.
+                  inbox: 'unused',
                   turnBoundary: {
                     ...binding,
                     terminalSeen: (_db, thread, turn) =>

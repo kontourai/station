@@ -1,0 +1,7 @@
+{
+  "revision": "52a7ccccd8eb87d3cd005d5e516035ae8bd1c4b1",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the shipped Docs MCP manual, catalog ownership and source-versus-live-state limits against the generated 112-topic change. Canonical module-map persistence/startup text is regenerated into the architecture topic; no tool schema, topic identity, runtime command, permission or diagnostic claim changes. Generator and matching check exited0 with digest7a0b48f877a124f4c604f5b59717c2459fabc4583185a55f41b4a5baaa3c1337. Learning builder exited0 separately; neither certifies semantic accuracy or behavior. No prose change; MCP live caller and runtime tests unexecuted.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

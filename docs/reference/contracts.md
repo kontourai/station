@@ -20,6 +20,13 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 ## Modules
 
+The authored `@kontourai/station-contracts/usage-export` module defines the
+individual/personal-account request and retained-observation page, including
+UTC window, stream epoch, fixed high watermark and unknown history coverage.
+It neither describes an analytics authorization credential nor proves a
+durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+for current implementation and unexecuted acceptance limits.
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
@@ -31,6 +38,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
+| `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
+| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
@@ -363,7 +372,8 @@ terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
-`provider_turn_in_progress`, and the client queues the message until it ends.
+`provider_turn_in_progress`, and the client queues the message until it ends,
+unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
 reattaching to the engine's stored session) waits for the start, up to 15
 seconds, through the optional adapter method `whenSessionReady`. Orchestration
@@ -392,6 +402,11 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
+conversation's durable inbox (#3568): `POST /chat` answers `202` with a
+`ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
+message stands, and the delivery lookup answers `queued` while it waits. See
+the [Session API](session-api.md#let-station-hold-a-follow-up).
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
@@ -871,3 +886,34 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+## Engine durability declarations
+
+`ProviderDurabilityProfile` in the provider contract declares nine required cells:
+steering placement, crash continuation, tool replay, pending approvals, context
+carriage, fork, compaction, partial output and usage. Each cell identifies current
+fidelity (`native`, `emulated` or `none`) and its user-facing limit. Compaction
+also declares its owner (`station`, `engine` or `unknown`) independently of
+Station's crash-recovery support. These are
+delivery declarations, not permission to replay an effect with an unknown outcome.
+
+Built-in adapters expose the profile in their metadata. The engine capability
+matrix carries the same profile for clients that describe an engine before a
+Session exists. Legacy third-party adapter metadata may omit it; omission is
+unreported capability, never inferred support. Built-in adapter conformance
+rejects omitted cells.
+
+The engine description's **Recovery and delivery** disclosure reads these cells.
+Claude and Codex declare their live steering channels as native. ACP discloses a
+connection-dependent orchestration-command fallback that may interrupt and
+reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+not imply restart safety: no current profile promises mid-turn crash continuation,
+automatic tool replay or durable approval waits. Context supplied by Station has
+no accepted-through acknowledgement, and usage remains engine-reported where
+available. The unknown-engine profile does not infer context, output or usage
+support.
+
+This profile does not replace existing continuity capabilities or migrate existing
+provider-specific execution paths. Durable inbox placement, accepted-through
+context delivery and crash-durable model/tool steps have separate implementation
+owners. Profile claims must change with their adapter behavior and proof.

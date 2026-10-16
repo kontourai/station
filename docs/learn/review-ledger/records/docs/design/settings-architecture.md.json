@@ -42,7 +42,15 @@
 
     "src-ui/src/views/settings/settings-pages.ts",
 
-    "src-ui/src/components/SectionNavigation.tsx"
+    "src-ui/src/components/SectionNavigation.tsx",
+
+    "src-server/domain/settings-environment.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx"
   ],
 
   "checks": [

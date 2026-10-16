@@ -12,6 +12,27 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
+`useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
+These read current-process product and OTel delivery status and request explicit
+content-free connection checks. They receive an API base and request authority;
+query caches partition by API base and authority key. Unsupported or malformed
+responses throw instead of supplying healthy defaults. Product commit receipts
+and collector HTTP acceptance remain distinct from downstream delivery. See
+[Monitoring](../guides/monitoring.md#environment-variables) for the operator
+journey and limits. This surface requires a published SDK version containing it.
+
+`@kontourai/station-sdk/secret-bindings` also exports
+`listTelemetrySecretBindings(apiBase, options?)` and
+`updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.
+The latter accepts `bind` or `unbind`, the exact destination grant and an
+`expectedRevision`; it returns confirmed metadata, never key material. The
+`/secret-bindings-query` subpath provides the corresponding
+`useTelemetrySecretBindingsQuery` and `useTelemetrySecretBindingGrantMutation`
+hooks. Pass the render-captured request scope: caches partition by API base and
+authority key, and old responses cannot update a replacement authority. Existing
+MCP consumer inputs and results retain their own separate client functions.
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution
@@ -3399,6 +3420,17 @@ the connection dropped before the answer arrived. It is read-only and returns a
 again. A Station without the lookup answers `404`, which throws a refusal
 rather than reading as `not-received`. The
 [Session API](session-api.md) defines each outcome.
+`queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
+the conversation's inbox while its turn runs (#3568). It needs `conversationId`
+and `clientTurnId`, takes no approval pick, and resolves
+`{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
+(`outcome: 'queued'`). A Station that predates the inbox, and any send it
+cannot hold (attachments, a target other than the conversation's binding),
+refuses a busy send as before, so keep the message on
+`provider_turn_in_progress` or `provider_session_starting`.
+`listConversationInbox(apiBase, conversationId)` lists the held messages and
+`cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
+one, or dismisses one that is `unconfirmed` or `refused`.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
@@ -4331,6 +4363,47 @@ authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
+
+### Canonical usage export
+
+The [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
+has a separate request/page type in `@kontourai/station-contracts/usage-export`.
+The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
+Supply a captured `options.requestScope` and `query.expectedStationId` alongside
+the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
+have matching current authority; the client provides no ambient host fallback.
+The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
+receipt shapes and observation clocks within the selected UTC window,
+selected source/window/scope, committed order and page size, with
+a 2 MiB response ceiling. It preserves reported currencies, estimates and their
+pricing snapshots, repeated receipt restatements, missing measurements and
+unknown coverage without folding a page into a total.
+
+For a subsequent page, retain `nextCursor` plus a `query.snapshot` containing
+the previous page's `streamEpoch`, `highWater`, and last observation's
+`globalSequence` as `afterGlobalSequence`. A cursor requires that snapshot;
+changed epoch/watermark or non-advancing observations are refused. These values
+are pagination data, never a credential or authorization grant.
+
+`useUsageExportQuery(requestScope, query, config?)` is available from the lazy
+`@kontourai/station-sdk/usage-export-query` entry. Its key partitions API base,
+authority, expected Station, dates, scope, cursor, page size and snapshot.
+Missing scope disables dispatch; the hook withholds cached data during
+revalidation and on errors, never supplies the preceding key as placeholder
+data, and pauses polling on failure. Its explicit `refetch()` rejects on a
+refusal or a selection change while waiting instead of returning retained rows
+or a replacement page as a successful answer. Hosts must
+change the captured scope when current authority changes.
+
+Server export and request-authority controls have executed against mounted
+runtime composition with controlled identity fixtures; SDK fetcher and hook
+controls provide focused client evidence. These checks do not establish live
+source enrollment, deployment, publication or complete synced history.
+`useUsageRollupQuery` retains its interactive limits and is not a complete
+long-term export. No sync/checkpoint consumer is delivered by this page reader;
+#3459/#3460 retain grant, destination credential custody, deletion, restore and
+durable-index acceptance. These SDK source exports require a published release
+containing them.
 
 ### Station peer enrollment
 

@@ -1359,6 +1359,73 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+**Held follow-ups (#3568).**
+[ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
+holds a person's follow-up for a busy conversation, so it is sent even if the
+app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
+the conversation's current Session has a turn open (the persisted fold or the
+live coordinator) or earlier follow-ups are still waiting, and also when the
+dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
+Only a plain continuation qualifies: one the caller may read, whose target
+names exactly the conversation's bound Agent and workspace
+(`followUpTargetMatchesBinding`), from a sender placement would accept;
+otherwise the send takes the live path. Inbox ids are canonical conversation
+ids (`conversationOf`). The entry is a
+[`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
+`EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
+sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+or Session-state event on the conversation, after each submit, at startup,
+and on bounded re-checks (the schedule, then two-minute checks up to 30 while
+entries wait, reset when a new message is accepted, and after a drive that
+failed mid-placement). It is not this
+module: a follow-up is a start, never a steer. Before each start it re-checks
+the sender with the live continuation's rule (`mayContinue`) and the sending
+device's or personal access token's route scope (`deviceMaySendChat`, one
+by-id lookup in the pairing service, `credentialHoldsScope`, which for an
+account-tied device or token also requires the account enabled and not signed
+out everywhere since the entry was queued), then reads the turn
+ledger for the key across the whole conversation
+(`startUnlessDelivered`, `inspectTurnDelivery`): `started` is settled
+`placed` without a send, `indeterminate`/`expired` is `unconfirmed`, a live
+claim waits, and only a key no Session holds is started, through the same
+`continueExecutionTargetMessage` continuation delegated results use, as the
+recorded sender. Delegated results use `startUnlessDelivered` too, so neither
+can send twice into a successor Session a continuation reserves, and every
+live keyed continuation (`executeForegroundMessage`) applies the same rule
+(`conversationKeyDecision`, through `inspectConversationTurnKey`) before it may
+reserve one: a same-key retry that names a model the engine cannot switch to
+mid-Session, or follows an ended Session, is answered from the ledger. A start that
+has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
+a later drive reads the ledger: `started` settles it `placed`, a key no
+Session holds queues it again (Monument's `inbox.resolveUnconfirmed`). The
+ledger is not read for it while the abandoned start is still running in this
+process (a cold start claims the key only once its Session exists), so it is
+never started a second time alongside itself.
+Someone else's entry that may still be sent (`queued`, `placing`,
+`unconfirmed`) is listed without its key, and `/chat` and
+`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`), and a
+live send under a key the inbox is starting now, from before the start begins
+until it answers, including past its deadline (`client_turn_in_flight`,
+`inFlight`, the in-memory `startsInProgress` set): to its own sender, or to
+anyone once the entry is dismissed (a dismissal does not end the start, so
+the key stays refused until it answers or Station restarts). Both go only to a
+caller who may read the conversation. An `unconfirmed` entry
+is never sent again and holds the ones behind it until someone who may send to
+the conversation dismisses it; only the sender withdraws a waiting one.
+Refusal reasons are stable codes with fixed messages. The delivery lookup
+answers `queued` for a waiting entry. `GET`/`DELETE /conversations/:id/inbox`
+list it and withdraw it. `deleteThread` forgets a conversation's entries.
+Hosted Stations have no inbox. Steer and display-only entries, a stale-head
+check and the UI's switch from its own per-tab queue are not built yet. The
+[service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
+restarts a real `OrchestrationService` and `EventStore` around a counting
+adapter. The
+[route test](../../src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts)
+runs `/chat` through the production foreground execution with a scripted
+engine, including a Session that ends between a crash and its re-drive. The
+[runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+covers the production ports for both deliveries.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs
@@ -1547,11 +1614,11 @@ This owner records when a provider call may have crossed into an external effect
 
 Session-scoped terminal retirement uses event order in SQLite (#3563). Migration 014 adds nullable `created_sequence` without backfilling existing rows. New boundaries capture the durable global high-water mark under the writer lock; a persisted `session.exited` or turn-less `runtime.error` retires a boundary only when its sequence is greater than that fence. Live observation, runtime reads and boot reconciliation use this rule. NULL-fence rows retain timestamp ordering and can remain accepted or indeterminate across boots. Turn-scoped terminals also retain their timestamp generation check: a backward clock step can still misorder them because provider turn IDs can be reused and terminal events carry no invocation-generation identity. Repairing that requires a Station-assigned invocation ID carried across adapter and event contracts (#3566 or #3575). The in-memory Adapter retains timestamp ordering because it has no durable event sequence.
 
-**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots and engine-opened boundaries; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
+**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. Its private [`sqlite-session-turn-boundary.ts`](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) host adapter runs create, transition, remove, accepted-turn recording, terminal observation and listing through Monument on the existing `orchestration_turn_boundaries` table. Sealed-task admission joins the same writer transaction. A provider-started row runs inside the event append through a nested savepoint; the outer append alone publishes and settles admission. Storage errors retain the existing host result classification, and a lost outer transaction fails the append. Owner reconciliation and physical retirement from canonical terminal history remain host-owned. `monument-boundary-host.test.ts` retains the pre-migration SQL as an independent oracle, and `monument-boundary-append.test.ts` exercises the production authority with a peer connection and outer rollback. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots and engine-opened boundaries; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
 
 ## TurnDeduplicator
 
-A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible.
+A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). Only a claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
 
 **Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution, and returns nothing at its next poll once the claim is released or its owner in this process retains it; `givenUp({ threadId, clientTurnId })` says whether this process's owner still owns the unresolved claim and retained it (never another owner's claim of the key, however old); `inspect({ threadId, clientTurnId })` is a read-only peek that answers what a claim would meet (`absent`, `resolved`, `in-flight`, `reclaimable`, `indeterminate`, `expired`) without claiming, reclaiming or touching retention. Only the owner capability can `beginInvocation()`, `resolve(turnId)`, `release()` or `retain()`.
 
@@ -1651,6 +1718,46 @@ creation allocates a new identity. List/get derive non-secret backend availabili
 Datum only; they never materialize. Resolution requires one current, non-revoked exact
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
+
+`TelemetrySecretResolver.resolveForTelemetry` is a separate narrow capability
+for an instance binding with an exact `instance-telemetry-destination` grant.
+The transport (`product` or `otel`) and normalized complete destination must
+both match. MCP/ACP grants confer no telemetry authority, and person-owned
+bindings cannot supply a shared emitter. Materialization rechecks revision,
+revocation and the exact grant before returning; the result carries an
+`assertCurrent` check for dispatch and response settlement. The product sender
+consumes that check and refuses stale authority without environment fallback.
+
+Environment material resolves through Datum without a process. Keychain and
+1Password materialization runs in a fixed private child with a three-second
+deadline, bounded response and process-tree cleanup; the child carries only
+platform/secret-backend environment, no Station bootstrap credentials. Backend
+output and errors are not logged. Its entry is built beside the server bundle.
+The owning process controls are
+`src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts`;
+their source does not certify packaged or native execution. Saved OTLP
+bootstrap observes only the existing bounded app document before synchronous
+provider registration, then dynamically loads the resolver on the first
+export. Metrics imports therefore remain after provider registration. An
+export's async-local authority supplies its headers and validates callback
+settlement; a revoked grant cannot report an accepted export. Saved collector
+changes require restart and fence the old owner immediately. Standard
+environment-header inheritance is refused for saved destinations/references.
+
+The mounted config writer applies the validated persisted telemetry settings
+before unrelated Agent activation. External/default-Agent reconciliation also
+applies them after its validated read, without publishing an Agent generation
+early. Since HTTP starts before the product service is constructed, late
+construction captures a current ConfigLoader snapshot, checks its revision and
+assigns the service before awaiting disclosure restoration. Three superseded
+captures reject before sender construction. These source boundaries need
+executed interleaving controls; they do not establish generic embedded-runtime
+service cleanup after a late startup failure.
+
+The v1 document retains legacy records unchanged and adds optional
+`telemetryDestinationGrants` only when a telemetry grant is written. Older
+strict readers reject that new property; an upgrade/rollback must preserve and
+restore a compatible binding document, never delete grants to bypass admission.
 
 **Ownership (#3279).** A binding has an owner: `instance` (absent on records written
 before #3279, which keep their behavior), `principal`, or `principal-project`. The
@@ -4021,6 +4128,43 @@ model recovery refuses positive additions. Agent restrictions and store ACLs
 remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
 explains the UI and opt-out behavior.
 
+
+## CanonicalUsageExport
+
+**Purpose and callers.** The
+[usage export reader](../../src-server/analytics/usage-export-reader.ts) serves
+`GET /api/analytics/usage-export` through the existing analytics route,
+runtime request-principal binder and OrchestrationService. Its
+[contract](../../packages/contracts/src/usage-export.ts) describes retained
+canonical observations, not a source grant or complete synced history.
+
+**Authority.** Runtime composition resolves the existing verified person,
+refuses unbound Device/operator attribution, and derives SessionReadAuthority
+server-side. Individual scope keeps the exact owner; personal-account scope
+requires the existing current membership verdict, and hosted scope keeps
+exact owner+tenant. Credential/account authority and owner/source facts are
+rechecked before queued response release. Continuations carry no authority.
+
+**Data and bounds.** EventStore reuses its canonical receipt SELECT/map inside
+one read snapshot, pages committed global sequence through a fixed high
+watermark/stream epoch, and projects each selected event through the existing
+token/provider-cost receipt owner. Pages contain at most 100 observation events
+in a bounded UTC observed-day window. Export-only cumulative-cost projection
+admits at most 1,000 combined historical sequences before capped hydration;
+excess is unavailable, never a truncated cost segment. Old rollup limits and
+clone/mirror reconciliation remain separate.
+
+**Evidence and open work.** Source review repaired binder, person, membership
+and cost-budget defects. Focused real EventStore/mounted-route and runtime
+composition controls have exercised paging, owner/tenant selection and queued
+revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
+query leaf validate page facts and refuse changed waiting selections; their
+focused controls have executed. Source bounds are not measured latency
+or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
+credential custody, deletion invalidations, restore-generation fencing,
+receiver index/checkpoint transactions, clone identity and deployment remain
+open. A backed-up stream epoch is not a restore fence. See
+[monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 ## ProductTelemetryReceiver
 

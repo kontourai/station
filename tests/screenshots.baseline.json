@@ -29,7 +29,7 @@
       "name": "command-palette-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "aa87fb9d33e67b520cf87c4ba48857968d682265ddf1f82cc7efd5adc924d3ad"
+      "sha256": "67912b102e89026d5d28733945d3cba47457d6bebe95c2bb5f23c7454f4a2e42"
     },
     {
       "name": "connections",
@@ -64,8 +64,8 @@
     {
       "name": "desktop-conversation-resync",
       "width": 1440,
-      "height": 901,
-      "sha256": "c0fada39c37b83231292d348ab078c718b94d50e0fc12a4a78eb1419ffe82688"
+      "height": 900,
+      "sha256": "cbc6ff761862575ebd5608bf56f2c57d3149ca2fc08995f15ce50f9072fb008f"
     },
     {
       "name": "developer-telemetry",
@@ -77,7 +77,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "8f315f36cdf5151e1e81eaec2b1521a89218543522e4ea7a2ce4ea92b005b155"
+      "sha256": "bec36e2eff952162d1b4378f657856f7090e5512fefc432db063e88cc04c337e"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -136,8 +136,8 @@
     {
       "name": "mobile-conversation-resync",
       "width": 390,
-      "height": 845,
-      "sha256": "ce38556c86f1502c695c9a011c44e076d879d2652bdc636f94693860c32d4ef5"
+      "height": 844,
+      "sha256": "a7bdd8a56fe1a54210ec696c908c35cd8fdd4e99620d4922138cb9d027c2e569"
     },
     {
       "name": "mobile-home",
@@ -185,7 +185,7 @@
       "name": "motion-reduced-notification",
       "width": 1440,
       "height": 900,
-      "sha256": "43a56572c0351bcf16b29e83fae554344995b344485b1e87f331b5072670d082"
+      "sha256": "7072ea45d51ab411ae2a74191cfca74703cc905bcfbf9963fd372c043c45b0b9"
     },
     {
       "name": "motion-reduced-schedule-loading",
@@ -215,7 +215,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "d4821d416038345d55e77f3528efa175500bb7dc3f8216df03a5da1bfe131223"
+      "sha256": "a274f920cd6f2d7d76576b967abc78bfec9729e8dfc3090552fc38f46fa169e9"
     },
     {
       "name": "overlay-confirm-dialog",
@@ -233,13 +233,13 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "ec5790d84cc215baf173119c87360869383704161205b2540f7b3bc987b09322"
+      "sha256": "f61f7483802329d34ef920910040b7378ae383249aa8786aed5016517e7beec4"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
-      "height": 901,
-      "sha256": "2aa529e75d7c8cfdbf079dd4295918ca33bde33f4047a8ff112d14798bb6e128"
+      "height": 900,
+      "sha256": "522fc4add655a6fa63afe9804989047738cbe465b010e7c05f839bacab7af9b7"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -263,25 +263,25 @@
       "name": "overlay-project-switcher-populated",
       "width": 1440,
       "height": 900,
-      "sha256": "8f287634cf7de46fa1be056daa2d96edfb65712d95eeefbb9995c6f6f72f3ae4"
+      "sha256": "0aec808ce658a3e75fb7e7f07cb0c758042f1546d860961a58bf4b2ca6bc4c60"
     },
     {
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "db66e1ca5bcd229bd86f2ba69f21354c69a1274e88eab0dc1f06d6a2781c6936"
+      "sha256": "53880bd2868ea4c703514d122b90af4213ef085116e87d7ba03ac6b35d23ef8d"
     },
     {
       "name": "overlay-toast",
       "width": 1440,
       "height": 900,
-      "sha256": "f7ad81ae1ce3ab8c784fccc9a8b0c3a5035dc6d5752390b78d295fc69bb79d2e"
+      "sha256": "a24a7395484e1e1b75181fd27bf78e2d33051f62899c06cc7a261e84498360f5"
     },
     {
       "name": "overlay-toast-action",
       "width": 1440,
       "height": 900,
-      "sha256": "af65ebdfc6289c22c35f12d00ed66e6ff8acd9e5f141395f08e3e7ec359b1a70"
+      "sha256": "5f92c070611fe6f7701f57844f71087d6c12a12d2ec9be3ce89b5a9d890870a2"
     },
     {
       "name": "plugins",
@@ -311,13 +311,13 @@
       "name": "sessions",
       "width": 1440,
       "height": 900,
-      "sha256": "2dd672936b8a22535275aa5e0a96474813e36ef0448a1570c13bb35ab3e9137b"
+      "sha256": "8ff4db0a0e9a69dbe9e657324b754935953f148e36c58a6f1632550cb2534888"
     },
     {
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "2a69b64a5929d5168466ea68a73896e536dbc1a0d97f02a20133dcde56882cd4"
+      "sha256": "a62a1ffe548090ca37e9ed64c7b15c0401300673aef7d3cac66402d17414b668"
     },
     {
       "name": "settings",

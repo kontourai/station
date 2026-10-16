@@ -1,5 +1,194 @@
 [
   {
+    "timestampUtc": "2026-10-16T07:52:56Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38859296550",
+    "sha": "1860038c9b3d05d24e1c7faf65fc6b9404d0f0f7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38859296550",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38859296550 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7fda30be189f190ff11279c2d5fcabc7ec2283c0",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3724](https://github.com/kontourai/station/pull/3724) fix(home): show unassigned Tasks as Tasks, not unavailable agents",
+          "[#3725](https://github.com/kontourai/station/pull/3725) fix(sessions): anchor a cold Claude transcript import before reading it"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-10-16T06:39:30Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38855252661",
+    "sha": "7fda30be189f190ff11279c2d5fcabc7ec2283c0",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38855252661",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38855252661 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ee138f0d3f440e17320e66f0478603ee03997436",
+      "groups": {
+        "feat": [
+          "[#3664](https://github.com/kontourai/station/pull/3664) feat(orchestration): hold a busy conversation's follow-ups in a durable server inbox (#3568)"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-16T04:22:38Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38843412932",
+    "sha": "ee138f0d3f440e17320e66f0478603ee03997436",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38843412932",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38843412932 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "1904a3c43c6163069cee463fd6435ee62b7d62fd",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3717](https://github.com/kontourai/station/pull/3717) fix(orchestration): yield background session writes instead of blocking the main thread"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3695](https://github.com/kontourai/station/pull/3695) refactor(monument): route production turn-boundary writes through the kernel"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-10-16T03:34:50Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38829988957",
+    "sha": "1904a3c43c6163069cee463fd6435ee62b7d62fd",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38829988957",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38829988957 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "1de76d46c6709ef3145ebfa5360f501e9e9241a5",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3718](https://github.com/kontourai/station/pull/3718) fix(monument): settle smoke process trees and stop cancelled runs",
+          "[#3716](https://github.com/kontourai/station/pull/3716) fix(orchestration): recover task room history after worker failure"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-10-16T01:55:26Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38829290506",
+    "sha": "1de76d46c6709ef3145ebfa5360f501e9e9241a5",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38829290506",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38829290506 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b83e93be7c817bb4614c46c128ac8d2d4ecea071",
+      "groups": {
+        "feat": [
+          "[#3696](https://github.com/kontourai/station/pull/3696) feat(engines): disclose current durability fidelity (#3575)"
+        ],
+        "fix": [
+          "[#3712](https://github.com/kontourai/station/pull/3712) fix(tasks): repair scheduler Task link, Task list refresh, and Dispatch without an agent",
+          "[#3698](https://github.com/kontourai/station/pull/3698) fix(startup): finish the visible Station intro before handing off"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3710](https://github.com/kontourai/station/pull/3710) docs(tasks): record Flow Agents contract gaps blocking Task tracker sync"
+        ],
+        "other": [
+          "[#3709](https://github.com/kontourai/station/pull/3709) test(storage): prove cross-process lock liveness with a handshake"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-16T00:39:12Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38816768728",
+    "sha": "b83e93be7c817bb4614c46c128ac8d2d4ecea071",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38816768728",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38816768728 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "df22f5f3a722617aad8d6855f211ef798e81b74e",
+      "groups": {
+        "feat": [
+          "[#3690](https://github.com/kontourai/station/pull/3690) feat(telemetry): add delivery controls and companion qualification"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3677](https://github.com/kontourai/station/pull/3677) build(monument): publish compiled dist and smoke the packed tarball (Refs #3565)",
+          "[#3693](https://github.com/kontourai/station/pull/3693) test(monument): park Flow continuation probe and Tier 1 fit report",
+          "[#3692](https://github.com/kontourai/station/pull/3692) perf(docs): reuse immutable scoped review comparisons"
+        ]
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T16:55:53Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2479.4",
