@@ -86,7 +86,9 @@
 
     "src-ui/src/utils/approvalMode.ts",
 
-    "src-ui/src/components/badges/ComposerModeSheet.tsx"
+    "src-ui/src/components/badges/ComposerModeSheet.tsx",
+
+    "src-server/providers/adapters/codex-adapter.ts"
   ],
 
   "checks": [
