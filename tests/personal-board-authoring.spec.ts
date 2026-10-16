@@ -100,6 +100,16 @@ for (const width of [1280, 390]) {
         path: testInfo.outputPath(`daily-${width}.png`),
         fullPage: true,
       });
+      await page.evaluate(() =>
+        document.documentElement.setAttribute('data-theme', 'light'),
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`daily-light-${width}.png`),
+        fullPage: true,
+      });
+      await page.evaluate(() =>
+        document.documentElement.setAttribute('data-theme', 'dark'),
+      );
       await page.reload();
       await expect(
         page.getByRole('heading', { name: 'Morning desk' }),
