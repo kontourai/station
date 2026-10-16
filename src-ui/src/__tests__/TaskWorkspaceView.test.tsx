@@ -1490,7 +1490,10 @@ describe('TaskWorkspaceView', () => {
           realDiffFixture.put('binary.dat', Buffer.from([0, 255]));
         }
         if (kind === 'quoted')
-          realDiffFixture.put('quote"日本語\n.txt', 'literal addition\n');
+          realDiffFixture.put(
+            process.platform === 'win32' ? '日本語.txt' : 'quote"日本語\n.txt',
+            'literal addition\n',
+          );
         if (kind === 'refusal')
           realDiffFixture.put('oversized.txt', Buffer.alloc(256 * 1024 + 1));
         queryResult.data = graph({

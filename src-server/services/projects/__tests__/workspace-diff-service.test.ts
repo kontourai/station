@@ -63,12 +63,17 @@ describe('bounded worktree additions', () => {
 
   test('literal quoted, newline, Unicode and shell-looking names parse as distinct additions, including no final newline', async () => {
     const f = fixture();
-    const names = [
-      'quote".txt',
-      'line\nbreak.txt',
-      '日本語.txt',
-      '$(touch owned).txt',
-    ];
+    const names =
+      process.platform === 'win32'
+        ? ['日本語.txt', 'space name.txt']
+        : [
+            'quote".txt',
+            'line\nbreak.txt',
+            '日本語.txt',
+            '$(touch owned).txt',
+            'control' + String.fromCharCode(1) + '.txt',
+            'separator' + String.fromCharCode(0x2028) + '.txt',
+          ];
     for (const name of names)
       f.put(name, `literal ${name.replaceAll('\n', ' ')} content`);
     const { body } = await patch(f);

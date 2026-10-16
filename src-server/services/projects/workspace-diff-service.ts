@@ -73,7 +73,7 @@ function readAddition(
   if (
     parts.some(
       (part) =>
-        /^(?:\.env(?:\..*)?|\.ssh|\.aws|\.gnupg|credentials(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\..*)?)$/i.test(
+        /^(?:\.env(?:\..*)?|\.ssh|\.aws|\.gnupg|\.netrc|\.npmrc|\.pypirc|\.git-credentials|credentials(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\..*)?)$/i.test(
           part,
         ) || /\.(?:pem|key|p12|pfx)$/i.test(part),
     )
@@ -136,15 +136,23 @@ function readAddition(
   }
 }
 
-/** JSON quoting uses the Git C escapes understood by the shared Pierre parser. */
+/** Git C quoting, including octal UTF-8 bytes, as Pierre decodes it. */
 function quote(path: string): string {
-  return /[\s"\\]/.test(path) ||
-    [...path].some(
-      (character) =>
-        character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+  const bytes = Buffer.from(path);
+  if (
+    !bytes.some(
+      (byte) => byte <= 32 || byte >= 127 || byte === 34 || byte === 92,
     )
-    ? JSON.stringify(path)
-    : path;
+  )
+    return path;
+  return `"${[...bytes]
+    .map((byte) => {
+      if (byte < 32 || byte >= 127)
+        return `\\${byte.toString(8).padStart(3, '0')}`;
+      if (byte === 34 || byte === 92) return `\\${String.fromCharCode(byte)}`;
+      return String.fromCharCode(byte);
+    })
+    .join('')}"`;
 }
 
 function additionPatch(
@@ -206,6 +214,8 @@ export async function readWorkspaceDiff(
   let entries = 0;
   while (pending.length) {
     const directory = pending.pop()!;
+    if (directory.slice(top.length).split(sep).length > 64)
+      refuse('directory nesting exceeds 64 components');
     const before = fs.lstat(directory);
     if (
       !before.isDirectory() ||
