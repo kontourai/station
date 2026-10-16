@@ -1002,7 +1002,9 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
 
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
   ],
 
   "checks": [

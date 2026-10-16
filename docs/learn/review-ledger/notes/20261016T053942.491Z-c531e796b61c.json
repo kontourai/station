@@ -1,0 +1,7 @@
+{
+  "revision": "cd753e40adfaa53c82e4a31e699c730bc3011559",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the approved node-forge-only acceptance at cd753e40adf against the unchanged policy evaluator, current six-view audit, exact graph/caller hashes and 14 installed dependency files. Only the existing root node-forge reason and expires fields changed, with Brian approval recorded in issue3122 comment6207936292 and exclusive 2026-10-17T00:00:00Z deadline. The guide still accurately separates live advisory qualification, accepted risk, expiry and unused-record refusals; dated matrices remain historical. Current audit policy and 90 unchanged policy tests passed. Exact-deadline and unused-node-forge controls reject; restoring current inputs passes. This is temporary risk acceptance, not cryptographic remediation or a claim of universal nonreachability; dynamic/plugin exposure remains unverified.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}
