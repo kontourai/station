@@ -729,6 +729,7 @@ type ClaudeSessionRecord = {
   requireNativeResumeIdentity?: true;
   engineProcess?: ClaudeEngineProcess;
   nativeOwnershipBindingKey?: string;
+  preparedResumeBindingKey?: string;
   nativeOwnershipClaimed?: true;
 };
 
@@ -1246,6 +1247,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
   }
 
+  preparedTurnBinding(threadId: string) {
+    const record = this.sessions.get(threadId);
+    const nativeIdentity =
+      record && this.nativeSessionIdentity(record.session.resumeCursor);
+    return record?.preparedResumeBindingKey && nativeIdentity
+      ? { bindingKey: record.preparedResumeBindingKey, nativeIdentity }
+      : undefined;
+  }
+
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
@@ -1639,6 +1649,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       engineStderrTail: engineProcess.stderrTail,
       engineProcess,
       nativeOwnershipBindingKey: ownershipBindingKey,
+      preparedResumeBindingKey: resumeBindingKey,
       ...(nativeId && this.options.nativeSessionOwnership
         ? { nativeOwnershipClaimed: true as const }
         : {}),

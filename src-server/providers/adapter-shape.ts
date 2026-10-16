@@ -289,6 +289,12 @@ export interface ProviderNativeSessionIdentity {
   affinity?: ProviderSessionSourceAffinity;
 }
 
+/** Live launch facts held by the adapter, rather than inferred from persisted events. */
+interface ProviderPreparedTurnBinding {
+  readonly bindingKey: string;
+  readonly nativeIdentity: ProviderNativeSessionIdentity;
+}
+
 export interface ProviderDiscardSessionRecovery {
   sourceAffinity?: ProviderSessionSourceAffinity;
   sourceSessionId?: string;
@@ -357,6 +363,9 @@ export interface ProviderAdapterShape {
   nativeSessionIdentity?(
     resumeCursor: unknown,
   ): ProviderNativeSessionIdentity | undefined;
+  preparedTurnBinding?(
+    threadId: string,
+  ): ProviderPreparedTurnBinding | undefined;
 
   startSession(input: ProviderSessionStartInput): Promise<ProviderSession>;
   /** Optional independent-continuation capability for attached sessions. */

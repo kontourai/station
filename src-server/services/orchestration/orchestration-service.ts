@@ -7580,6 +7580,7 @@ export class OrchestrationService {
                                     nativeOutputRelay ||
                                     nativeForeground ||
                                     experienceReference ||
+                                    experienceContext ||
                                     internal?.receiverExecutionAdmission ||
                                     internal?.foregroundInvocationAdmission ||
                                     internal?.nativeMemoryReadAuthority ||
@@ -12330,12 +12331,16 @@ export class OrchestrationService {
       start?.method === 'session.started'
         ? start.metadata?.nativeResumeBindingKey
         : undefined;
+    const liveBinding = this.options.adapterRegistry
+      .get(session.provider)
+      ?.preparedTurnBinding?.(threadId);
     return {
       provider: session.provider,
       resumeCursor: session.resumeCursor ?? null,
       cwd: session.cwd ?? null,
       environmentId: metadata?.environmentId ?? null,
-      nativeBindingKey: nativeBindingKey ?? null,
+      nativeBindingKey: liveBinding?.bindingKey ?? nativeBindingKey ?? null,
+      liveBinding: liveBinding ?? null,
       connectionId: metadata?.connectionId ?? null,
       agentId: metadata?.agentSlug ?? null,
     };
@@ -12369,6 +12374,7 @@ export class OrchestrationService {
         stored.capture.resumeGuard.binding.nativeBindingKey,
       ) ||
       stored.capture.resumeGuard.binding.resumeCursor === null ||
+      stored.capture.resumeGuard.binding.liveBinding === null ||
       !samePreparedValue(
         stored.capture.resumeGuard.binding,
         this.preparedTurnBinding(threadId),

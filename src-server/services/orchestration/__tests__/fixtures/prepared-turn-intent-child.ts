@@ -42,6 +42,14 @@ class InterruptedAdapter extends GateTestAdapter {
   override async hasSession(id?: string) {
     return id !== undefined && this.sessions.has(id);
   }
+  preparedTurnBinding(id: string) {
+    return this.sessions.has(id)
+      ? {
+          bindingKey: 'b'.repeat(64),
+          nativeIdentity: { sessionId: 'prepared-native-session' },
+        }
+      : undefined;
+  }
 
   override sendTurn(
     value: ProviderSendTurnInput,
