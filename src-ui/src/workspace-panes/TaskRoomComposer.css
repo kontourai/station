@@ -46,6 +46,7 @@
 }
 .task-room-composer .task-room-brief-choice {
   flex: 1;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
   display: flex;
   align-items: center;
   min-width: 0;
