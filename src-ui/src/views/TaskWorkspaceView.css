@@ -1312,7 +1312,7 @@
     var(--k-space-5)
   );
   overflow: clip;
-  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 60%, transparent 75%);
 }
 .task-room-expand {
   border: 0;
@@ -1700,4 +1700,13 @@
   font-size: var(--k-text-xs);
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.task-room-message-content--clamped {
+  position: relative;
+}
+.task-room-message-content--clamped > .task-room-expand {
+  position: absolute;
+  inset-inline-start: var(--k-space-3);
+  inset-block-end: 0;
 }

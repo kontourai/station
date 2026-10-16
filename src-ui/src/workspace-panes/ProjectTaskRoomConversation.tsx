@@ -21,7 +21,7 @@ import { LazyMarkdown } from '../components/chat/LazyMarkdown';
 import { IconButton } from '../components/IconButton';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
-import { Empty, SkeletonList } from '../components/state';
+import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -377,7 +377,9 @@ export function ProjectTaskRoomConversation({
             )}
             <Time at={record.occurredAt} compact={grouped} />
           </header>
-          <div className="task-room-message-content">
+          <div
+            className={`task-room-message-content${execution && !expanded.has(record.sequence) ? ' task-room-message-content--clamped' : ''}`}
+          >
             <div
               inert={!!execution && !expanded.has(record.sequence)}
               className={
@@ -394,13 +396,24 @@ export function ProjectTaskRoomConversation({
                   </LazyMarkdown>
                 </>
               ) : (
-                <LazyMarkdown>{record.body.text}</LazyMarkdown>
+                <LazyMarkdown
+                  loadingProjection={
+                    execution ? (
+                      <SkeletonBlock label="Loading answer" />
+                    ) : (
+                      record.body.text
+                    )
+                  }
+                >
+                  {record.body.text}
+                </LazyMarkdown>
               )}
             </div>
             {execution && (
               <Button
                 variant="ghost"
                 className="task-room-expand"
+                aria-expanded={expanded.has(record.sequence)}
                 size="sm"
                 onClick={() =>
                   setExpanded((current) => {
@@ -568,7 +581,9 @@ export function ProjectTaskRoomConversation({
                   </label>
                   <Button
                     className="task-room-send"
-                    aria-label="Send reply"
+                    aria-label={followup.isPending ? 'Sending…' : 'Send reply'}
+                    pending={followup.isPending}
+                    pendingLabel="Sending…"
                     type="submit"
                     disabled={
                       !writable ||

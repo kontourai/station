@@ -360,6 +360,7 @@ export function createTaskRoutes(
       request: Request;
       proposalId: string;
       text: string;
+      occurredAt: string;
     }) => Promise<void>;
     taskDispatcher: TaskDispatcher;
     proposalBriefAvailable?: () => boolean;
@@ -755,6 +756,7 @@ export function createTaskRoutes(
           request: c.req.raw,
           proposalId: `room-created:${data.id}`,
           text: 'created this Task from a chat',
+          occurredAt: data.createdAt,
         });
       }
       return c.json({ success: true, data }, 201);
@@ -1307,6 +1309,7 @@ export function createTaskRoutes(
           task,
           request: c.req.raw,
           proposalId: `room-kept:${data.id}`,
+          occurredAt: data.createdAt,
           text: `kept ${input.kind === 'turn' ? 'an answer' : input.kind === 'user-input' ? 'a message' : 'a reference'} in Results`,
         });
       return c.json({ success: true, data }, 201);

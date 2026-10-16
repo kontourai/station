@@ -3880,7 +3880,13 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       logger: context.logger,
-      onRoomSystemLine: async ({ task, request, proposalId, text }) => {
+      onRoomSystemLine: async ({
+        task,
+        request,
+        proposalId,
+        text,
+        occurredAt,
+      }) => {
         try {
           const result = await projectTaskRoomRuntime?.message({
             taskId: task.id,
@@ -3889,7 +3895,7 @@ export function configureRuntimeRoutes(
             proposalId,
             correlationId: 'room-system',
             text,
-            occurredAt: task.updatedAt,
+            occurredAt,
           });
           if (result?.kind !== 'committed' && result?.kind !== 'duplicate')
             context.logger.warn('Task system line could not be published', {

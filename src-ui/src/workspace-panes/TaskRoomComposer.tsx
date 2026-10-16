@@ -430,11 +430,13 @@ export function TaskRoomComposer({
         <Button
           className="task-room-send"
           aria-label={
-            unconfirmed
-              ? 'Retry same agent request'
-              : recipient
-                ? `Ask ${recipient.name}`
-                : 'Send to task room'
+            pending
+              ? 'Sending…'
+              : unconfirmed
+                ? 'Retry same agent request'
+                : recipient
+                  ? `Ask ${recipient.name}`
+                  : 'Send to task room'
           }
           pending={pending}
           pendingLabel="Sending…"
