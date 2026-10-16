@@ -1,0 +1,17 @@
+{
+  "revision": "3c6769fe45739137a2530f4198bb28fa1217862e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed downstream config-reference and walkthrough-caption changes. Fresh-home defaults, instruction terminology and historical-capture qualifications do not change the dated abstraction findings; those findings were not requalified. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Reviewed App central Coding chat placement. Developer routing and shortcuts remain unchanged. No diagnostic or device execution verification performed. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/design/developer-surface.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed App central Coding chat placement. Shell-owned push subscription lifecycle remains unchanged; no push-service or device delivery verification performed. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed Connections label and config reference changes. Setting scopes, persistence, Save/discard and historical audit status remain unchanged; fresh-home versus legacy defaults documented in the config reference. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed mobile central chat placement. Generic plugin layout direction remains proposed; built-in/plugin/withheld dispatch boundaries unchanged. Current-state inventory remains dated to its recorded revision. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/app-shell/project-layout-kind.ts"]},
+
+    {"path":"docs/plans/README.md","note":"Reviewed generated index addition linking the onboarding improvement plan with its matching title; no behavior or completion claim added. Source-delta review only; no general product, release, provider or current screenshot qualification.","inputs":["docs/plans/README.md"]}
+  ]
+}

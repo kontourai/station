@@ -379,7 +379,12 @@ export function latestQueuedRetryNotice<
     content: string;
     ephemeral?: boolean;
     queuedRetry?: boolean;
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
   },
 >(messages: readonly Message[], queued: boolean) {
   if (!queued) return undefined;
@@ -1008,6 +1013,7 @@ export function ChatDockBody({
   const queuedRetryNotice = queuedRetry
     ? {
         text: queuedRetry.line,
+        confirm: queuedRetry.action.confirm === 'unconfirmed-discard',
         // What the transcript's own action does: run it, then drop the notice.
         onDiscard: () => {
           queuedRetry.action.handler();
@@ -2167,7 +2173,6 @@ export function ChatDockBody({
             textareaRef={chatInput.textareaRef}
             disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             allowDraftWhileDisabled={busyOpen && !!agent}
-            isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2212,14 +2217,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={[
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            agentRoute={
               activeOrchestrationSession?.modelRoute
                 ? `via ${activeOrchestrationSession.modelRoute.label}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+                : undefined
+            }
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }
@@ -2227,6 +2232,10 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
+            approvalModeIsNewSession={
+              !activeSession?.orchestrationSessionStarted &&
+              !activeSession?.conversationId
+            }
             approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}

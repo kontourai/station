@@ -584,7 +584,29 @@
 
     "packages/sdk/src/query-domains/resourcePosture.ts",
 
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/sdk/src/query-domains/secret-bindings.ts",
+
+    "packages/sdk/src/__tests__/publicBarrel.test.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
     "packages/sdk/src/query-domains/insightsResponse.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "packages/sdk/src/client/usage-export.ts",
+
+    "packages/sdk/src/query-domains/usageExport.ts",
+
+    "packages/sdk/src/__tests__/usage-export-client.test.ts",
+
+    "packages/sdk/src/__tests__/usage-export-query.test.tsx",
+
+    "packages/sdk/src/__tests__/usage-export.fixture.ts",
 
     "packages/sdk/package.json#/name",
 
@@ -602,7 +624,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/sdk/src/client/http.ts"
   ],
 
   "checks": [

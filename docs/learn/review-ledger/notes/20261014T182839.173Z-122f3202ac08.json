@@ -1,0 +1,7 @@
+{
+  "revision": "2488dbd1ca930ed20f2c2b641d4c7094e8e08a68",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"The responsive action inventory gained one exception entry (MessageDeliveryNote, the bubble's delivery actions); this document's claims about the inventory, its strategies and the mobile 44px floor are unchanged. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

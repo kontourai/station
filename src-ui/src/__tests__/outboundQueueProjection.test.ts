@@ -189,4 +189,76 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
         .mergedTurns,
     ).toEqual([first, second]);
   });
+
+  it('marks a pending row held back by an earlier not-sent row of its chat, and only those', () => {
+    projectOutboundQueueEntries([
+      { ...turn('first', 'session-order', 'refused'), status: 'failed' },
+      turn('second', 'session-order', 'behind it'),
+      turn('elsewhere', 'session-other', 'free to go'),
+      {
+        ...turn('unconfirmed', 'session-free', 'may have gone'),
+        status: 'may-have-started',
+      },
+      turn('after-unconfirmed', 'session-free', 'not held back'),
+    ]);
+    const rows = Object.fromEntries(
+      Object.values(activeChatsStore.getSnapshot()).flatMap(
+        (chat) =>
+          chat.outboundQueuedTurns?.map((row) => [
+            row.clientTurnId,
+            row.behindUnsent === true,
+          ]) ?? [],
+      ),
+    );
+    expect(rows).toEqual({
+      first: false,
+      second: true,
+      elsewhere: false,
+      unconfirmed: false,
+      'after-unconfirmed': false,
+    });
+  });
+
+  it('a message discarded in another window leaves this window too; a started one is recorded, not dropped', () => {
+    activeChatsStore.initChat('session-b', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    activeChatsStore.updateChat('session-b', {
+      localSendKeys: ['gone', 'went'],
+      messages: [
+        {
+          id: 'h',
+          role: 'user',
+          content: 'history',
+          turnId: 't1',
+          clientId: 'gone-but-started',
+          timestamp: 1,
+        },
+        {
+          id: 'gone',
+          role: 'user',
+          content: 'thrown away',
+          clientId: 'gone',
+          timestamp: 2,
+        },
+        {
+          id: 'went',
+          role: 'user',
+          content: 'delivered',
+          clientId: 'went',
+          timestamp: 3,
+        },
+      ] as never,
+    });
+    projectOutboundQueueEntries([], {
+      discarded: ['gone', 'gone-but-started'],
+      accepted: ['went'],
+    });
+    const chat = activeChatsStore.getSnapshot()['session-b'];
+    expect(chat?.messages?.map((message) => message.id)).toEqual(['h', 'went']);
+    expect(chat?.deliveryChecks?.went).toBe('started');
+    expect(chat?.localSendKeys).toEqual([]);
+  });
 });

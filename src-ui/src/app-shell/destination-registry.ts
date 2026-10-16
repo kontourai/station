@@ -359,7 +359,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     customizeNav: {
       group: 'set-up',
       order: 30,
-      label: 'Engines & Models',
+      label: 'Connections',
       route: '/connections/engines',
     },
     managementGroup: 'connections',

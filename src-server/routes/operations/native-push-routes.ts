@@ -48,12 +48,15 @@ interface NativePushRouteDeps {
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
 }
 
-function extractCredential(req: {
-  header: (name: string) => string | undefined;
-}): string | undefined {
+function extractCredential(
+  req: {
+    header: (name: string) => string | undefined;
+  },
+  identifies: (credential: string) => boolean,
+): string | undefined {
   const bearer = parseStrictBearer(req.header('authorization'));
   if (bearer) return bearer;
-  return parseDeviceSessionCookie(req.header('cookie'));
+  return parseDeviceSessionCookie(req.header('cookie'), identifies);
 }
 
 const UNAVAILABLE = {
@@ -78,7 +81,10 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
   app.use('/native-push', hosted);
 
   app.post('/native-push/register', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
     if (!device) return c.json({ error: 'device_pairing_required' }, 403);
     // Only a device that could list the sessions a card shows may register:
@@ -171,7 +177,10 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
   });
 
   app.delete('/native-push', (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
     if (!device) return c.json({ error: 'device_pairing_required' }, 403);
     // Scoped to the caller's own identified device only.

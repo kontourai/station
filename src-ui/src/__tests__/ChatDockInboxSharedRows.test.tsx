@@ -371,7 +371,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
-    // `SidebarOpenChats` (archive#3314) renders these rows with no catalog;
+    // Compact inbox callers render these rows with no catalog;
     // its layout must be untouched by this feature.
     const { container } = renderPanelHost(sessionItem({ agentSlug: 'codex' }));
     expect(avatarOf(container)).toBeNull();

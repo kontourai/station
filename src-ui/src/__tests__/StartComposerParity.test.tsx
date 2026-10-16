@@ -51,6 +51,20 @@ function render(ui: Parameters<typeof renderView>[0]) {
   );
 }
 
+vi.mock('../contexts/AccountPreferencesContext', () => ({
+  useAccountPreferences: () => ({
+    status: 'account',
+    saving: false,
+    data: {
+      schemaVersion: 1,
+      values: { interactiveApprovalModes: { claude: 'never', codex: 'never' } },
+    },
+  }),
+}));
+vi.mock('../contexts/ConfigContext', () => ({
+  useConfig: () => ({ defaultApprovalMode: 'auto' }),
+}));
+
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
   projects: [] as unknown[],
@@ -322,6 +336,39 @@ const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
 describe('Home and the dock start the same way', () => {
+  test('startup permissions show the saved account default and name its source before Start', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    expect(
+      await within(formOf(screen.getByTestId('home'))).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+    expect(
+      await within(formOf(ui.dock())).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+  });
+
   test('a Project page fixes its start context independently of the ambient dock', () => {
     const ui = renderBoth('station');
     const home = screen.getByTestId('home');

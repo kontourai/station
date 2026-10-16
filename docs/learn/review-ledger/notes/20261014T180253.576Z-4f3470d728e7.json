@@ -1,0 +1,7 @@
+{
+  "revision": "fa8c1d9a47419443309314aed6a886ab7886e4b2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the message delivery paragraph and outbox Interface against MessageDeliveryNote, messageDeliveryActions and outboundQueue.dismissUnconfirmed: bubble labels per derived state, safe-to-close only when Station outlives the app, Retry same key, Edit to composer, Discard, Check never resends, explicit unconfirmed dismissal retires the key.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e88208d9cffe2f47a0252fb051de939a04019a79",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Re-read the start and fresh --temp-home rows and the root/state paragraph. helpers.ts change only affects --temp-home minting: a candidate inside the resolved Station root or STATION_HOME, or refused by admission, is removed and retried once under /tmp/station; a refused retry is appended to the error. Other home selections, ports and channel derivation unchanged. Doc names --temp-home usage, not its location; no prose change. Rows now state: TMPDIR candidate inside the resolved Station root or STATION_HOME, or refused, is removed and the home is created under /tmp/station; Windows keeps the refusal. A temp home is still self-rooted.","inputs":["docs/reference/cli.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

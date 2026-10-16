@@ -390,7 +390,7 @@ interface InboxRowProps {
   /**
    * The live agent catalog, for the row's leading agent icon. Absent (or
    * empty) renders no icons and no icon column — the compact sidebar host
-   * (`SidebarOpenChats`) keeps today's layout byte-for-byte.
+   * keeps compact callers on the shared row anatomy.
    *
    * Must be referentially stable across renders: it is what
    * `inboxRowIconAgent` returns entries OF (a copy only for its #3355

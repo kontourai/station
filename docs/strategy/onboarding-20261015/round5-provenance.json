@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-15",
+  "sourceRevision": "987c661c12adf5a827c995c439b3b45386c1358f",
+  "scope": "Local browser and iOS26.5 Safari simulator; no physical/native/release qualification; Terminal excluded.",
+  "screenshots": [
+    {
+      "path": "round5-safari-tool-success.png",
+      "sha256": "eb38b99aa3d7c7be12d4d53a84374fcf0df8336f595410f7cfd13008c8a221c3",
+      "note": "Actual Safari simulator, sent message and successful tool result after restart."
+    },
+    {
+      "path": "round5-desktop-tool-success.png",
+      "sha256": "7d08c456bb5e56551b2f5bbff139171c5ba2526969687e114b44e3c288209179",
+      "note": "Desktop showing the failed first restart call and subsequent successful Safari call."
+    },
+    {
+      "path": "round5-desktop-history-error.png",
+      "sha256": "bcd04127db3131fb0b4b28c8f24aac03a487404ca787e1c487a7af02f3442c74",
+      "note": "Desktop transient history error after rebuild; later recovered."
+    },
+    {
+      "path": "round5-safari-after-repair.png",
+      "sha256": "2f357e23cecb86d87036fb2c20ed922c89e7f0d4d245ae40a291070ef95c0f17",
+      "note": "Actual Safari simulator after test-device revocation, new pairing request, exact host approval, restored history and a new successful Station tool call. Runtime source remains987c661c12a."
+    }
+  ],
+  "regressions": {
+    "baseline": "75 passed",
+    "injected": "6 intended failures,69 passed with both production owners restored to69f1b3b82af",
+    "restored": "75 passed",
+    "logs": [
+      "/tmp/station-final-history-after.log",
+      "/tmp/station-final-history-injected.log",
+      "/tmp/station-final-history-restored.log"
+    ]
+  },
+  "independentReview": "No P1/P2 source findings at987c661c12a; runtime incidents remain unexplained.",
+  "runtime": {
+    "conversation": "onboarding-codex:1792083192179",
+    "executionAfterRestart": "onboarding-codex:1792083192179:session:c36e89f7-6e9f-4806-990e-26ffd4970efe",
+    "desktopToolFailure": {
+      "toolCallId": "exec-147c4112-114d-43a7-a6fc-23a97e9ca520",
+      "time": "2026-10-15T22:08:14.591Z",
+      "status": "error",
+      "reason": "HTTP transport send failure; current process URL matched failure; no causal fix established"
+    },
+    "safariToolSuccess": {
+      "toolCallId": "exec-fd146f0e-4996-496f-a280-abaf457ae118",
+      "time": "2026-10-15T22:08:41.294Z",
+      "status": "success",
+      "projectSlug": "station-onboarding-demo-20261015"
+    },
+    "history": "Temporarily unavailable on rebuilt desktop before recovery; Safari restored history and sent a successful tool request. Recovery latency remains open.",
+    "sendState": "Desktop briefly retained an unconfirmed queued-send warning for the completed restart request.",
+    "nativeCliDiagnostic": "Separate ephemeral Codex0.162.1 invocation succeeded with the same endpoint/token; this does not establish app recovery correctness.",
+    "repairRetest": {
+      "revokedTestDevice": "23514c45-6994-4c47-bfbe-61fc13f54cc0",
+      "approvedRequest": "f306e15e-f4bb-46cf-8411-7a0988cd5290",
+      "status": "confirmed through exact host CLI approval; Safari restored history and composer",
+      "toolCallId": "exec-7fabdb17-ae87-4147-961b-1a9067443f53",
+      "toolStatus": "success",
+      "toolCompletedAt": "2026-10-15T22:30:07.737Z",
+      "expiredOffer": "First follow-up offer expired during slow simulator interaction; UI returned a visible expired/unavailable-code remedy. A fresh offer was used."
+    }
+  },
+  "qualification": {
+    "revision": "019ba969bff4bdfea7013783683a0e8f2232fe2f",
+    "productionSourceRevision": "987c661c12adf5a827c995c439b3b45386c1358f",
+    "prePush": "PASS transfer,static gates,SDK public barrel,Veritas0failures0warnings,all14typecheck lanes,commit subjects; foreground push succeeded",
+    "standaloneVeritas": "PASS0failures0warnings;veritas-1792102825736",
+    "prePushVeritas": "PASS0failures0warnings;veritas-1792103290201",
+    "learningGuide": "PASS10branches86module sections486Markdown documents",
+    "ciFast": "TIMED_OUT inside nested readiness after15-minute bound; infrastructureErrors1; request b050602a856639572dea44369222f1791afe6ef5592a4e61f24cd112b9af3e13. No successful qualification.",
+    "pullRequest": "https://github.com/kontourai/station/pull/3715",
+    "remainingRuntimeIssue": "https://github.com/kontourai/station/issues/3713",
+    "merge": "NOT_READY;draft;unarmed",
+    "mutations": "Receipt logs lack embedded revision/mutation hashes; exact injected bytes are author-attested, not independently witnessed."
+  }
+}

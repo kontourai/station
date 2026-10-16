@@ -1,0 +1,33 @@
+{
+  "revision": "8b8f63510187049c8c2101b6e7cdb071d89a8f8f",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#3667 Fix round 2: Checked SSE replay, Last-Event-ID and connection ownership against dispatch paths. The session JSON read opts into progressTimeoutMs; fetchSSE does not, and its stream/replay/stall behavior is unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3667 Fix round 2: Checked leaf transport, authority and live-surface ownership against the opt-in dispatch and session fetcher. Request selection, credential reporters, mutation guards and SSE ownership are unchanged. The JSON session read now bounds inactivity rather than total duration; the module map makes no conflicting duration claim.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"#3667 Fix round 2: Checked Agent request ownership, typed timeout and mutation uncertainty guidance. The opt-in session-list read is a GET with mutation:false; Agent dispatch, grants, execution cancellation and retries are unchanged.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3667 Fix round 2: Checked SDK/API integration routes and required deployment evidence against the updated canonical SDK session deadline section. Public routing, setup and authorization are unchanged; mocked transport tests do not qualify live slow-server/native delivery.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3667 Fix round 2: Checked interaction, request-sheet and rendering guidance against the new opt-in SDK path. No layout, viewport, focus, approval, dismissal or component behavior is changed; no prose update needed.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#3667 Fix round 2: Checked token, adopter, cascade and branding ownership against the opt-in SDK path. No styling or branding query caller selects the new option; no prose update needed.","inputs":["docs/guides/theming.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3667 Fix round 2: Checked request admission, protocol and typed uncertainty guidance. No server route, wire body, authentication or mutation semantics change; the client session GET retains typed read timeout classification.","inputs":["docs/patterns/backend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3667 Fix round 2: Checked existing SDK request-owner and credential/transport guidance against the session fetcher and progress-aware transport wrapper. Timeout policy remains at the SDK seam; no competing UI fetch lifecycle or cache is introduced.","inputs":["docs/patterns/frontend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3667 Fix round 2: Checked SDK routing, response-envelope and authority guidance. No route, status, payload, or server authorization changes; progress timeout remains an opt-in typed client failure on the session read.","inputs":["docs/reference/api.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#3667 Fix round 2: Reviewed CLI default request deadlines, explicit-budget precedence, write uncertainty and SSE exemptions. No CLI caller opts into progressTimeoutMs; existing timeoutMs and host defaults are unchanged. The session read-model query-domain fetcher is the sole new opt-in caller.","inputs":["docs/reference/cli.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#3667 Fix round 2: Checked health-coordinator and mutationAllowed boundaries against the unchanged authenticated dispatch guards. No credential routing, health evidence, mutation admission or native qualification contract changes.","inputs":["docs/reference/connect.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#3667 Fix round 2: Checked fetchOrchestrationSessions through authenticatedFetch progressTimeoutMs, the resetting body stream, StationRequestTimeoutError GET/mutation:false classification and React Query observers. The session read now bounds headers and body inactivity at 30 seconds, permits a progressing 1 MB response to complete after 40 seconds, and retains cached sessions during retries. Six real-SDK/mocked-transport tests and clean-tree fault injections verify these claims; no native deployment proof.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#3667 Fix round 2: Checked static documentation retrieval, product and SDK routing against the session fetcher delta. No docs tool, live-state observation, network access, credential or plugin packaging behavior changes.","inputs":["docs/reference/station-docs.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#3667 Fix round 2: Checked public SDK documentation and real-caller/cache test requirements. The canonical SDK reference now documents the progress-aware opt-in and regressions assert cache and observer results plus a timeout control without replacement.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

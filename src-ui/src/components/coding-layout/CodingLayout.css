@@ -796,6 +796,29 @@
   flex-direction: column;
 }
 
+.coding-terminal-connection,
+.coding-terminal-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2);
+  flex-shrink: 0;
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+
+.coding-terminal-connection button,
+.coding-terminal-keys button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--k-space-2);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  cursor: pointer;
+}
+
 .coding-terminal-selection-actions {
   display: flex;
   gap: 0.5rem;

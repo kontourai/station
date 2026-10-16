@@ -138,7 +138,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -168,6 +171,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: selectionModelState.agents }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceInventory.current,
     refetch: vi.fn(),

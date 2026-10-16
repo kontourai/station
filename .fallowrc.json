@@ -33,8 +33,10 @@
     "examples/**/src/index.{ts,tsx}",
     "packages/shared/src/installer/cli.ts",
     "packaging/portable-server/bin/station.mjs",
+    "scripts/lib/vitest-error-reporter.mjs",
     "src-server/services/orchestration/attached-session-path-child.ts",
     "src-server/services/plugins/plugin-draft-build-child.ts",
+    "src-ui/src/boot.ts",
     "src-ui/public/sw.js",
     "src-ui/public/voice-processor.js"
   ],

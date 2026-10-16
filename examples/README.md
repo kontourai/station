@@ -100,3 +100,7 @@ The next useful examples are not more layout variations:
   client's consumption or a published package.
 - Credentialed voice and transcription smoke remain environment-owned evidence,
   not repository-only examples.
+
+## Parked experiments
+
+- [Monument / Flow Agents continuation probe](experimental-monument-flow-probe/README.md): public-command fit/gap evidence for #3574; recommends Tier 1 and ships no Flow Agents integration.

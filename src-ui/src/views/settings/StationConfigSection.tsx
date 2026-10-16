@@ -35,10 +35,9 @@ import type { SettingsSectionId } from './settings-catalog';
 /**
  * The Station-document keys each section renders, in render order.
  *
- * Every key here was in the single `STATION_CONFIG_KEYS` list this module
- * used to hold; nothing was added and nothing dropped, which
- * `station-config-section.test.tsx` asserts against a literal inventory of
- * that list. It also asserts each key's catalog row names the section it is
+ * The original split and later additions retain an independent literal
+ * inventory in `station-config-section.test.tsx`. It also asserts each
+ * key's catalog row names the section it is
  * rendered under — the placement and the deep link are two statements about
  * the same row, and they are only true together.
  */
@@ -59,9 +58,13 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'disableDefaultSkillRegistries',
     'distributionProfile',
   ],
-  // Whether anything is sent. Where it would go is a derived status line with
-  // no writer, so it is a `PageRow` in `SettingsView`, not a registry row.
-  telemetry: ['telemetryEnabled'],
+  telemetry: [
+    'telemetryEnabled',
+    'productTelemetryEndpoint',
+    'productTelemetryKeyRef',
+    'otelTelemetryEndpoint',
+    'otelTelemetryKeyRef',
+  ],
   // What agents may do without asking.
   permissions: ['approvalGuardian', 'defaultApprovalMode'],
   // What a run starts with and what bounds it.

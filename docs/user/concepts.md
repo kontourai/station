@@ -4,6 +4,16 @@ Station uses a small set of user-facing concepts. Transport names, process
 details, and internal record shapes stay out of the way unless setup or
 diagnosis requires them.
 
+## Start with a computer, AI, and a conversation
+
+Your computer runs Station and your AI apps. Choose an AI and send a message.
+A phone connects to that computer to use the same conversations and files.
+
+Add a **Project** when you want to work in a folder or share context. Save a
+custom **Agent** when you want reusable instructions and tools. Choose **Run a
+task…** when you want tracked work you can return to. These choices can wait
+until you need them; starting a chat does not require creating each one.
+
 ## Station And Device
 
 - A **Station** is the host you connect to and work on.

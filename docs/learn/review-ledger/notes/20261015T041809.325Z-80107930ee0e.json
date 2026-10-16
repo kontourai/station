@@ -1,0 +1,7 @@
+{
+  "revision": "b1e4a9b2eb56eed682fc656eee0c63d1d90bb97d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked after fix round 4's last chat.css change: the phone message sheet's inline actions are now a fieldset (a group of buttons, not a menu) and '.message-details__menu' resets the fieldset's margin, padding and border; nothing else in chat.css changed. Rendered the sheet at 390px in both themes (buttons unchanged, no fieldset chrome). Searched this document for message-sheet, menu, Discard and delivery claims; none changes. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

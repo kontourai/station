@@ -2,26 +2,7 @@
 
 import { ORCHESTRATION_STREAM_CAUGHT_UP_EVENT } from '@kontourai/station-contracts/runtime-events';
 
-/**
- * #3077: one chat, two inboxes, one status line.
- *
- * The sidebar's Open-chats mini-inbox and the dock inbox both render the
- * shared row, but a row only says what its ITEM says, and the sidebar used
- * to build its own item from the chat store (`useOpenChats` alone) while the
- * dock merged the chat with its server session. For a chat whose session
- * awaits an approval that read "Needs approval" in the dock and "Idle" in
- * the sidebar at the same moment (the `overlay-dock-project-mismatch`
- * gallery screen caught it). Both surfaces now read the one derivation
- * (`useInboxWorkItems`); this renders both from one store state and one
- * real-fold session and requires the same words.
- *
- * The sidebar is the real `ProjectSidebar` (its mocks mirror
- * `ProjectSidebar.test.tsx`, minus the open-chats mock: the store and the
- * derivation are real here). The dock side is `ChatDockInboxPanel` fed by
- * the same hook and facts `ChatDock.tsx` hands it; `ChatDock` itself is too
- * large to mount here, so its three-line wiring to the hook is the one
- * thing this file takes on trust.
- */
+/** Dock and mobile inbox freshness share real observation, query and stream owners. */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type {
@@ -81,49 +62,6 @@ const SESSIONS: OrchestrationSessionSummary[] = [
   },
 ];
 
-const showSurfaceStub = vi.hoisted(() => vi.fn());
-vi.mock('../contexts/useShowSurface', () => ({
-  useShowSurface: () => showSurfaceStub,
-  useShowSurfacePage: () => showSurfaceStub,
-}));
-vi.mock('../contexts/RegionModelContext', () => ({
-  useRegionModelOptional: () => null,
-}));
-vi.mock('../build-info', () => ({
-  buildInfo: { version: '0.1.2', commit: 'test' },
-}));
-vi.mock('../contexts/ProjectsContext', () => ({
-  useProjects: () => ({ projects: [], isLoading: false }),
-}));
-vi.mock('../contexts/AgentsContext', () => ({
-  useAgents: () => AGENTS,
-}));
-vi.mock('../contexts/NavigationContext', () => {
-  const navigation = () => ({
-    selectedProject: null,
-    selectedProjectLayout: null,
-    navigate: vi.fn(),
-    setProject: vi.fn(),
-    setLayout: vi.fn(),
-    pathname: '/',
-  });
-  return {
-    useNavigation: (
-      selector?: (state: ReturnType<typeof navigation>) => unknown,
-    ) => (selector ? selector(navigation()) : navigation()),
-    useNavigationActions: navigation,
-  };
-});
-vi.mock('../hooks/useBranding', () => ({
-  useBranding: () => ({ appName: 'Station' }),
-}));
-vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({
-    isTauri: false,
-    productName: undefined,
-    channel: undefined,
-  }),
-}));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
@@ -190,7 +128,6 @@ import {
   retryActiveConversationForDock,
 } from '../components/chat-dock/conversationOpenController';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
-import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { workObservation } from '../contexts/work-observation';
@@ -302,38 +239,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('a chat open in this tab reads the same status in the sidebar and the dock', () => {
-  it('both say "Needs approval" for a session awaiting one', async () => {
-    const sidebar = renderWithProviders(<ProjectSidebar />);
-    const sidebarRow = await within(sidebar.container).findByRole('button', {
-      name: ROW_NAME,
-    });
-    const sidebarSection = sidebarRow.closest(
-      '#sidebar-open-chats',
-    ) as HTMLElement;
-    expect(sidebarSection).not.toBeNull();
-
+describe('open chat approval status in the dock and mobile inbox', () => {
+  it('the dock shows the session approval status and the chat project', async () => {
     const dock = renderWithProviders(<DockInbox />);
     const dockRow = await within(dock.container).findByRole('button', {
       name: ROW_NAME,
     });
 
-    const sidebarStatus = statusTextIn(sidebarSection);
-    const dockStatus = statusTextIn(dock.container);
-    // Pinned to the word, not only to each other: two surfaces agreeing on
-    // "Idle" for a session that awaits an approval would still be wrong.
-    expect(dockStatus).toBe('Needs approval');
-    expect(sidebarStatus).toBe(dockStatus);
-    // The lane they file it in agrees.
-    expect(within(sidebarSection).getByTestId('inbox-row').dataset.lane).toBe(
-      'needsYou',
-    );
+    expect(statusTextIn(dock.container)).toBe('Needs approval');
     expect(within(dock.container).getByTestId('inbox-row').dataset.lane).toBe(
       'needsYou',
     );
-    // And it is the same item: the accessible name (title and project) too.
     expect(dockRow.getAttribute('aria-label')).toBe(ROW_NAME);
-    expect(sidebarRow.getAttribute('aria-label')).toBe(ROW_NAME);
     expect(
       within(dock.container).getByText('Project B', {
         selector: '.inbox-row__project',
@@ -349,9 +266,9 @@ describe('a chat open in this tab reads the same status in the sidebar and the d
     expect(sheet.dataset.lane).toBe('needsYou');
   });
 
-  it('the sidebar row is the dock item for that chat, not a second derivation', () => {
+  it('merges the open chat with its session once', () => {
     // The merged item carries the session it was merged with; a chat-only
-    // item carries none. Both surfaces read this one.
+    // item carries none.
     let items: ReturnType<typeof useInboxWorkItems> = [];
     function Probe() {
       items = useInboxWorkItems(AGENTS, SESSIONS);

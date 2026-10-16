@@ -192,7 +192,19 @@
 
     "package.json#/engines",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    "scripts/lib/vitest-error-reporter.mjs",
+
+    "scripts/screenshot-diff.mjs",
+
+    "scripts/__tests__/screenshot-diff.test.ts",
+
+    "scripts/pr-ci-supersession.mjs",
+
+    ".github/workflows/pr-ci-supersession.yml",
+
+    "scripts/__tests__/pr-ci-supersession.test.ts"
   ],
 
   "checks": [

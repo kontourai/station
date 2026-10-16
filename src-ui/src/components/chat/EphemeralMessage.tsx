@@ -3,6 +3,10 @@ import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 import { Skeleton } from '../state';
 import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 
 // DOMPurify is ~118 KB of source and only the rare `contentType: 'html'`
 // ephemeral message needs it, so the sanitizing renderer loads on demand.
@@ -13,6 +17,8 @@ const SanitizedHtml = lazy(() =>
 interface EphemeralAction {
   label: string;
   handler: () => void;
+  /** Ask first, with the risk stated (`UnconfirmedDiscardConfirm`). */
+  confirm?: 'unconfirmed-discard';
 }
 
 interface EphemeralMsg {
@@ -152,7 +158,10 @@ export function EphemeralMessage({
           {textContent}
         </LazyMarkdown>
       )}
-      {msg.action && onAction && (
+      {msg.action && onAction && msg.action.confirm ? (
+        <ConfirmedAction label={msg.action.label} onConfirm={onAction} />
+      ) : null}
+      {msg.action && onAction && !msg.action.confirm && (
         <button
           type="button"
           className="ephemeral-message__action"
@@ -173,5 +182,49 @@ export function EphemeralMessage({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * An action that runs only after the shared confirmation (#3596). Its button
+ * stays put while the confirmation is open below it.
+ */
+function ConfirmedAction({
+  label,
+  onConfirm,
+}: {
+  label: string;
+  onConfirm: () => void;
+}) {
+  const disclosure = useUnconfirmedDiscardDisclosure();
+  return (
+    <>
+      <button
+        type="button"
+        className="ephemeral-message__action"
+        {...disclosure.triggerProps}
+        style={{
+          marginTop: '12px',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          border: 'none',
+          background: 'var(--color-primary)',
+          color: 'white',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </button>
+      {disclosure.open ? (
+        <div className="ephemeral-message__confirm">
+          <UnconfirmedDiscardConfirm
+            {...disclosure.confirmProps}
+            onConfirm={onConfirm}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

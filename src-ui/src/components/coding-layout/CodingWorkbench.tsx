@@ -368,8 +368,7 @@ export function CodingWorkbench({
     paneHostOpen: page === 'chat' ? hostOpen : null,
     existingPreviewFor,
     focusExisting: focusExistingPreview,
-    // A phone's Chat is the dock, maximized while the Chat page is the page.
-    ownsMobileDock: page === 'chat',
+    ownsMobileDock: !centerChat && page === 'chat',
   });
 
   // ── Transitions: the entering page slides in from the side it came from —
@@ -1171,24 +1170,26 @@ export function CodingWorkbench({
                   Inbox
                 </button>
               </li>
-              <li className="coding-workbench__crumb">
-                {page === 'drill-in' ? (
-                  <button
-                    type="button"
-                    className="coding-workbench__crumb-link"
-                    onClick={returnToChatPage}
-                  >
-                    {chatTitle}
-                  </button>
-                ) : (
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                  >
-                    {chatTitle}
-                  </span>
-                )}
-              </li>
+              {(!isMobile || page === 'drill-in') && (
+                <li className="coding-workbench__crumb">
+                  {page === 'drill-in' ? (
+                    <button
+                      type="button"
+                      className="coding-workbench__crumb-link"
+                      onClick={returnToChatPage}
+                    >
+                      {chatTitle}
+                    </button>
+                  ) : (
+                    <span
+                      className="coding-workbench__crumb-current"
+                      aria-current="page"
+                    >
+                      {chatTitle}
+                    </span>
+                  )}
+                </li>
+              )}
               {page === 'drill-in' ? (
                 <li className="coding-workbench__crumb">
                   <span

@@ -1,0 +1,7 @@
+{
+  "revision": "226812d12491f499a8fd7640b8e9adee2c7f066b",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Upstream docs/reference/cli.md change only rewords the start --temp-home row to name the tmp/ tree condition and the reported retry refusal. Searched this doc for temp-home location claims; none, no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
+  ]
+}

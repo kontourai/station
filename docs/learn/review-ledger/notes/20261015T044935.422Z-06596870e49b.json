@@ -1,0 +1,7 @@
+{
+  "revision": "329309c92e0e24896c63c04e59a1e59dbcf35d62",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed the fixed bound-column and unique-identity contract against open-time PRAGMA validation and its rejection/upsert tests. Verified host callbacks are fixed at open, the three invalid callback configurations reject before commands, and the exported portable host-fence cases cover capture, transition/reopen preservation, earlier/equal/later/missing facts across both layouts and entry points. Reviewed the stronger generated replay histories, forward-transition scope, explicit backward-transition error difference, and the retained production integration/read-projection deferral; this is a scoped API delta review, not a second-consumer or full-guide audit.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts","packages/monument/src/sqlite.ts","packages/monument/src/testing/host-boundary-conformance.ts","packages/monument/src/testing/index.ts","src-server/services/orchestration/__tests__/monument-boundary-host.test.ts","src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts"]}
+  ]
+}
