@@ -25,12 +25,16 @@ export {
   type RequestKeyClaimInputs,
 } from './decisions/request-keys.js';
 export {
+  decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
+  decideTurnBoundaryPrepare,
   decideTurnBoundaryReconcile,
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
+  decideTurnBoundaryResumePrepared,
   decideTurnBoundaryTransition,
+  isPreparedTurnIntent,
   planTurnBoundaryReconcile,
   turnBoundaryAcceptCollides,
 } from './decisions/turn-boundary.js';

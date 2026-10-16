@@ -14,11 +14,14 @@ import {
 } from './decisions/inbox.js';
 import { decideRequestKeyClaim } from './decisions/request-keys.js';
 import {
+  decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
+  decideTurnBoundaryPrepare,
   decideTurnBoundaryReconcile,
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
+  decideTurnBoundaryResumePrepared,
   decideTurnBoundaryTransition,
   turnBoundaryAcceptCollides,
 } from './decisions/turn-boundary.js';
@@ -209,6 +212,36 @@ function dispatch(
       if (decision.put) tx.turnBoundary.put(decision.put);
       return decision.result;
     }
+    case 'turnBoundary.prepare':
+    case 'turnBoundary.beginInvocation':
+    case 'turnBoundary.resumePrepared': {
+      const current = tx.turnBoundary.get(command.boundaryId);
+      const key = command.intent.dedupKey;
+      const dedup = key === undefined ? undefined : tx.turnDedup.get(key);
+      const tombstoned =
+        key !== undefined && tx.turnDedup.expiredAt(key) !== undefined;
+      const decision =
+        command.type === 'turnBoundary.prepare'
+          ? decideTurnBoundaryPrepare(current, dedup, tombstoned, command)
+          : command.type === 'turnBoundary.beginInvocation'
+            ? decideTurnBoundaryBeginInvocation(
+                current,
+                dedup,
+                tombstoned,
+                command,
+              )
+            : decideTurnBoundaryResumePrepared(
+                current,
+                dedup,
+                tombstoned,
+                command,
+                context.liveness,
+              );
+      // Both writes belong to this command's transaction. Never call a second command here.
+      if (decision.dedupPut) tx.turnDedup.put(decision.dedupPut);
+      if (decision.put) tx.turnBoundary.put(decision.put);
+      return decision.result;
+    }
     case 'turnBoundary.recordAccepted': {
       const decision = decideTurnBoundaryRecordAccepted(
         tx.turnBoundary.listThread(command.threadId),
@@ -284,7 +317,11 @@ function dispatch(
       for (const boundaryId of decision.remove)
         tx.turnBoundary.delete(boundaryId);
       for (const record of decision.put) tx.turnBoundary.put(record);
-      return { kind: 'reconciled', interrupted: decision.interrupted };
+      return {
+        kind: 'reconciled',
+        interrupted: decision.interrupted,
+        resumable: decision.resumable,
+      };
     }
     case 'turnBoundary.forgetThread': {
       for (const row of tx.turnBoundary.listThread(command.threadId))
@@ -435,6 +472,9 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'turnDedup.read': true,
   'turnDedup.forgetPrefix': false,
   'turnBoundary.create': false,
+  'turnBoundary.prepare': false,
+  'turnBoundary.beginInvocation': false,
+  'turnBoundary.resumePrepared': false,
   'turnBoundary.transition': false,
   'turnBoundary.remove': false,
   'turnBoundary.recordAccepted': false,

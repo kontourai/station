@@ -1337,6 +1337,113 @@ async function prepareIntent(session: Session) {
 
 turnBoundary.push(
   {
+    name: 'prepared intent: failed keyless preparation leaves its reservation, and ordinary cleanup retains captured input',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        await session.run(create('keyless', 't', owner, at(1), 'reserved'));
+        const intent = {
+          invocationId: 'keyless-i',
+          inputDigest: 'keyless-d',
+          intentDigest: 'keyless-e',
+          bodyRef: 'keyless-body',
+        };
+        const prepare = {
+          type: 'turnBoundary.prepare',
+          boundaryId: 'keyless',
+          ownerId: owner.id,
+          intent,
+          now: at(2),
+        } as const;
+        session.store.failNextCommit();
+        await assert.rejects(session.run(prepare), /Injected commit failure/);
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'keyless'))?.state, 'reserved');
+        assert.equal((await boundary(session, 'keyless'))?.intent, undefined);
+        assert.deepEqual(await session.run(prepare), { kind: 'applied' });
+        intent.bodyRef = 'mutated-caller-reference';
+        await session.store.reopen();
+        assert.equal(
+          (await boundary(session, 'keyless'))?.intent?.bodyRef,
+          'keyless-body',
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.remove',
+            boundaryId: 'keyless',
+            ownerId: owner.id,
+            from: ['prepared'],
+          }),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'keyless',
+            ownerId: owner.id,
+            intent: { ...intent, bodyRef: 'keyless-body' },
+            now: at(3),
+          }),
+          { kind: 'applied' },
+        );
+      }),
+  },
+  ...(
+    [
+      'boundary-unknown',
+      'dedup-unknown',
+      'boundary-live',
+      'dedup-live',
+    ] as const
+  ).map(
+    (control): KernelConformanceCase => ({
+      name: `prepared intent: ${control} independently blocks owner transfer`,
+      areas: ['turnBoundary', 'turnDedup'],
+      run: (harness) =>
+        withSession(harness, async (session) => {
+          const { owner, dedupOwner } = await prepareIntent(session);
+          const blocked = control.startsWith('boundary') ? owner : dedupOwner;
+          const dead = control.startsWith('boundary') ? dedupOwner : owner;
+          session.processes.kill(dead);
+          if (control.endsWith('unknown'))
+            session.processes.makeUnobservable(blocked);
+          const successor = session.processes.spawn();
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.resumePrepared',
+              boundaryId: 'intent',
+              intent: preparedIntent,
+              observed: {
+                owner,
+                createdAt: at(1),
+                updatedAt: at(2),
+                verdict: 'dead',
+              },
+              owner: successor,
+              dedup: {
+                previousOwner: dedupOwner,
+                createdAt: 1,
+                updatedAt: at(2),
+                owner: successor,
+              },
+              now: at(3),
+            }),
+            { kind: 'refused' },
+          );
+          assert.equal((await boundary(session, 'intent'))?.owner.id, owner.id);
+          const linked = await session.run({
+            type: 'turnDedup.read',
+            key: 'prepared-key',
+          });
+          assert.equal(
+            linked.kind === 'found' && linked.record.owner?.id,
+            dedupOwner.id,
+          );
+        }),
+    }),
+  ),
+  {
     name: 'prepared intent: immutable preparation and pending dedup link survive reopen',
     areas: ['turnBoundary', 'turnDedup'],
     run: (harness) =>
@@ -1497,6 +1604,7 @@ turnBoundary.push(
           dedup: {
             previousOwner: dedupOwner,
             createdAt: 1,
+            updatedAt: at(2),
             owner: successorDedup,
           },
           now: at(5),
@@ -1536,6 +1644,7 @@ turnBoundary.push(
           dedup: {
             previousOwner: dedupOwner,
             createdAt: 1,
+            updatedAt: at(2),
             owner: successorDedup,
           },
           now: at(5),
@@ -1547,6 +1656,7 @@ turnBoundary.push(
             observed: { ...resume.observed, owner: { ...owner, pid: 99 } },
           },
           { ...resume, dedup: { ...resume.dedup, createdAt: 99 } },
+          { ...resume, dedup: { ...resume.dedup, updatedAt: at(9) } },
           {
             ...resume,
             dedup: {
@@ -2446,7 +2556,11 @@ const crashPoints: KernelConformanceCase[] = [
         session.processes.kill(first);
         await session.store.reopen();
         const recovered = await reconcile(session, at(3));
-        assert.deepEqual(recovered, { kind: 'reconciled', interrupted: [] });
+        assert.deepEqual(recovered, {
+          kind: 'reconciled',
+          interrupted: [],
+          resumable: [],
+        });
         assert.deepEqual(await boundaries(session), []);
         assert.deepEqual(
           await session.run(

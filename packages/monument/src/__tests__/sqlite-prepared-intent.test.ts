@@ -231,7 +231,9 @@ it('bound intent columns are optional, validated when configured, and fixed at o
         },
       }),
     ).toThrow();
-    const columns = { ...intentColumns };
+    const columns: { -readonly [K in keyof typeof intentColumns]: string } = {
+      ...intentColumns,
+    };
     db.exec(
       'ALTER TABLE host_boundaries ADD COLUMN input_digest TEXT; ALTER TABLE host_boundaries ADD COLUMN intent_digest TEXT; ALTER TABLE host_boundaries ADD COLUMN body_ref TEXT; ALTER TABLE host_boundaries ADD COLUMN linked_key TEXT',
     );
@@ -366,7 +368,12 @@ for (const corruption of [
               verdict: 'dead',
             },
             owner: successor,
-            dedup: { previousOwner: owner, createdAt: 1, owner: successor },
+            dedup: {
+              previousOwner: owner,
+              createdAt: 1,
+              updatedAt: '2',
+              owner: successor,
+            },
             now: '4',
           },
           context,

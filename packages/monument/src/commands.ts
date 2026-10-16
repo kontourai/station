@@ -2,6 +2,7 @@ import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
   InboxEntryKind,
   InboxEntryRecord,
+  PreparedTurnIntent,
   RequestKeyId,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -34,6 +35,8 @@ export type TurnDedupClaimResult =
   | { readonly kind: 'claimed'; readonly reclaimed: boolean }
   | { readonly kind: 'resolved'; readonly value: string }
   | { readonly kind: 'contended' }
+  /** Retained input needs explicit guarded resume, never an ordinary claim. */
+  | { readonly kind: 'prepared'; readonly invocationId: string }
   /** The dead owner may have started the effect. Never replay it. */
   | { readonly kind: 'indeterminate' }
   /**
@@ -103,7 +106,7 @@ export interface TurnBoundaryCreateCommand {
   readonly type: 'turnBoundary.create';
   readonly boundaryId: string;
   readonly threadId: string;
-  readonly state: 'lifecycle' | 'prepared';
+  readonly state: 'lifecycle' | 'reserved' | 'prepared';
   readonly purpose: TurnBoundaryPurpose;
   readonly owner: OwnerIdentity;
   readonly now: string;
@@ -111,6 +114,51 @@ export interface TurnBoundaryCreateCommand {
 export type TurnBoundaryCreateResult =
   | { readonly kind: 'applied' }
   | { readonly kind: 'busy' };
+
+export interface TurnBoundaryPrepareCommand {
+  readonly type: 'turnBoundary.prepare';
+  readonly boundaryId: string;
+  readonly ownerId: string;
+  readonly intent: PreparedTurnIntent;
+  /** The linked claim's private token, independent of the boundary token. */
+  readonly dedupOwnerId?: string;
+  readonly now: string;
+}
+export type TurnBoundaryPrepareResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'stale' };
+
+export interface TurnBoundaryBeginInvocationCommand {
+  readonly type: 'turnBoundary.beginInvocation';
+  readonly boundaryId: string;
+  readonly ownerId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly dedupOwnerId?: string;
+  readonly now: string;
+}
+/** An applied retry acknowledges the same begin; it never authorizes a second effect. */
+export type TurnBoundaryBeginInvocationResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
+
+export interface TurnBoundaryResumePreparedCommand {
+  readonly type: 'turnBoundary.resumePrepared';
+  readonly boundaryId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly observed: Omit<TurnBoundaryReconcileObservation, 'boundaryId'>;
+  readonly owner: OwnerIdentity;
+  readonly dedup?: {
+    readonly previousOwner: OwnerIdentity;
+    readonly createdAt: number;
+    readonly updatedAt: string;
+    readonly owner: OwnerIdentity;
+  };
+  readonly now: string;
+}
+export type TurnBoundaryResumePreparedResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
 
 export interface TurnBoundaryTransitionCommand {
   readonly type: 'turnBoundary.transition';
@@ -221,6 +269,8 @@ export type TurnBoundaryReconcileResult = {
    * rows (unchanged). The caller retires each once it has reported it.
    */
   readonly interrupted: readonly TurnBoundaryRecord[];
+  /** Retained candidates, not permission to invoke; resume checks both fences. */
+  readonly resumable: readonly TurnBoundaryRecord[];
 };
 
 export interface TurnBoundaryForgetThreadCommand {
@@ -430,6 +480,9 @@ export interface KernelResults {
   'turnDedup.read': TurnDedupReadResult;
   'turnDedup.forgetPrefix': TurnDedupForgetPrefixResult;
   'turnBoundary.create': TurnBoundaryCreateResult;
+  'turnBoundary.prepare': TurnBoundaryPrepareResult;
+  'turnBoundary.beginInvocation': TurnBoundaryBeginInvocationResult;
+  'turnBoundary.resumePrepared': TurnBoundaryResumePreparedResult;
   'turnBoundary.transition': TurnBoundaryTransitionResult;
   'turnBoundary.remove': TurnBoundaryRemoveResult;
   'turnBoundary.recordAccepted': TurnBoundaryCreateResult;
@@ -462,6 +515,9 @@ export type KernelCommand =
   | TurnDedupReadCommand
   | TurnDedupForgetPrefixCommand
   | TurnBoundaryCreateCommand
+  | TurnBoundaryPrepareCommand
+  | TurnBoundaryBeginInvocationCommand
+  | TurnBoundaryResumePreparedCommand
   | TurnBoundaryTransitionCommand
   | TurnBoundaryRemoveCommand
   | TurnBoundaryRecordAcceptedCommand

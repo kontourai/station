@@ -21,7 +21,7 @@ takes no model dependency.
 | Machine | Durable record | Rule |
 | --- | --- | --- |
 | Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
-| Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
+| Turn boundary | one active fence per invocation, optionally with an opaque immutable intent binding | Ordinary intent uses `reserved` → `prepared` → `invoking` → `accepted` or `indeterminate`. Preparation links an optional pending dedup key; begin changes both fences in one transaction. After a crash, complete prepared intent is retained as a separate resumable candidate. Explicit resume compares both dead exact owners and revisions before transferring them. Dead reservations and inputless legacy preparation are removed; invoking becomes indeterminate. Legacy lifecycle, task-dispatch and engine-opened acceptance remain unchanged. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
 | Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
@@ -30,6 +30,13 @@ Each operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
 reads. Host projections join that transaction as synchronous participants: a
 participant can refuse a command before it writes, or abort it after.
+
+The prepared binding contains only invocation/input/intent digests, an opaque
+body reference and an optional dedup key. It supplies no body storage, host
+read/resume API, automatic replay or invocation terminal attribution. Hosts
+retain authorization, body verification and effect invocation. Mixed-version
+writers need host fencing; additive columns alone cannot protect prepared
+intent from a legacy writer's cleanup. See the [protocol](README.md#reconcile-after-a-restart).
 
 ## What it does not own
 

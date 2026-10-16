@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
+import { isPreparedTurnIntent } from './decisions/turn-boundary.js';
 import {
   type OwnerIdentity,
   ownerFields,
@@ -15,6 +16,7 @@ import {
 import type {
   InboxEntryRecord,
   InboxEntryState,
+  PreparedTurnIntent,
   RequestKeyRecord,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -83,6 +85,10 @@ export interface SqliteRequestKeyTable {
 export interface SqliteTurnBoundaryTable {
   readonly table: string;
   readonly ownerEncoding: 'json' | 'columns';
+  /** Opt in to prepared intent storage. Every named column must exist at open. */
+  readonly intentColumns?: {
+    readonly [K in keyof Required<PreparedTurnIntent>]: string;
+  };
   /** Host event log replaces the kernel's terminal table. Requires terminalSeen. */
   readonly terminalFacts: 'kernel' | 'host';
   /** Fixed at open; invoked synchronously inside the command transaction. */
@@ -187,7 +193,7 @@ export interface SqliteExecuteOptions {
   readonly withinHostTransaction?: boolean;
 }
 
-export const SQLITE_KERNEL_SCHEMA_VERSION = 1;
+export const SQLITE_KERNEL_SCHEMA_VERSION = 2;
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 const WAL_ATTEMPTS = 5;
 
@@ -308,7 +314,44 @@ const RESERVED_OWNER_FIELDS = new Set([
   'identityKind',
   'birth',
   'invocation',
+  'preparedInvocationId',
+  'preparedUpdatedAt',
 ]);
+
+const OWNED_INTENT_COLUMNS = Object.freeze({
+  invocationId: 'invocation_id',
+  inputDigest: 'input_digest',
+  intentDigest: 'intent_digest',
+  bodyRef: 'body_ref',
+  dedupKey: 'dedup_key',
+});
+
+function resolveIntentColumns(
+  binding: SqliteTurnBoundaryTable,
+): SqliteTurnBoundaryTable['intentColumns'] {
+  if (!binding.intentColumns) return undefined;
+  const resolved = { ...binding.intentColumns };
+  const used = new Set(
+    boundaryColumns({ ...binding, intentColumns: undefined })
+      .split(', ')
+      .map((column) => column.toLowerCase()),
+  );
+  if (binding.creationSequence)
+    used.add(binding.creationSequence.column.toLowerCase());
+  if (Object.keys(resolved).some((field) => !(field in OWNED_INTENT_COLUMNS)))
+    throw new TypeError('Unknown prepared intent column field.');
+  for (const field of Object.keys(OWNED_INTENT_COLUMNS) as Array<
+    keyof PreparedTurnIntent
+  >) {
+    const column = identifier(resolved[field]);
+    if (used.has(column.toLowerCase()))
+      throw new TypeError(
+        'Each intent field must have its own boundary column.',
+      );
+    used.add(column.toLowerCase());
+  }
+  return Object.freeze(resolved);
+}
 
 function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
   const dedup = tables.turnDedup;
@@ -387,6 +430,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
           ? {
               ...tables.turnBoundary,
               table: identifier(tables.turnBoundary.table),
+              intentColumns: resolveIntentColumns(tables.turnBoundary),
               ...(tables.turnBoundary.creationSequence
                 ? {
                     creationSequence: {
@@ -403,6 +447,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               table: 'monument_turn_boundaries',
               ownerEncoding: 'json',
               terminalFacts: 'kernel',
+              intentColumns: OWNED_INTENT_COLUMNS,
               owned: true,
             },
     inbox: tables.inbox ?? 'owned',
@@ -582,6 +627,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         ...(tables.turnBoundary.creationSequence
           ? [tables.turnBoundary.creationSequence.column]
           : []),
+        ...Object.values(tables.turnBoundary.intentColumns ?? {}),
       ]);
       const indexes = db
         .prepare(`PRAGMA index_list(${tables.turnBoundary.table})`)
@@ -626,6 +672,23 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
     if (!owned) return;
     db.exec(META_SCHEMA);
     db.exec(owned);
+    if (tables.turnBoundary !== 'unused' && tables.turnBoundary.owned) {
+      const present = new Set(
+        (
+          db
+            .prepare('PRAGMA table_info(monument_turn_boundaries)')
+            .all() as Array<{ name: string }>
+        ).map((column) => column.name),
+      );
+      for (const column of Object.values(OWNED_INTENT_COLUMNS))
+        if (!present.has(column))
+          db.exec(
+            `ALTER TABLE monument_turn_boundaries ADD COLUMN ${column} TEXT`,
+          );
+      db.exec(`DROP INDEX IF EXISTS monument_turn_boundaries_one_invocation;
+        CREATE UNIQUE INDEX monument_turn_boundaries_one_invocation ON monument_turn_boundaries(thread_id)
+          WHERE state IN ('lifecycle', 'reserved', 'prepared', 'invoking', 'indeterminate');`);
+    }
     const row = db
       .prepare("SELECT value FROM monument_meta WHERE key = 'schema_version'")
       .get() as { value: string } | undefined;
@@ -635,7 +698,11 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
       return;
     }
-    if (row.value !== String(SQLITE_KERNEL_SCHEMA_VERSION))
+    if (row.value === '1') {
+      db.prepare(
+        "UPDATE monument_meta SET value = ? WHERE key = 'schema_version'",
+      ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
+    } else if (row.value !== String(SQLITE_KERNEL_SCHEMA_VERSION))
       throw new SqliteKernelConfigurationError(
         `monument schema version ${row.value} is not ${SQLITE_KERNEL_SCHEMA_VERSION}; refusing to open.`,
       );
@@ -646,6 +713,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
 
 const BOUNDARY_STATES: ReadonlySet<string> = new Set<TurnBoundaryState>([
   'lifecycle',
+  'reserved',
   'prepared',
   'invoking',
   'accepted',
@@ -663,7 +731,12 @@ function parseInvocation(raw: unknown): TurnClaimInvocation | undefined {
 function decodeDedupOwner(
   ownerJson: string,
   binding: SqliteTurnDedupTables,
-): { readonly owner: OwnerIdentity; readonly recorded: unknown } {
+): {
+  readonly owner: OwnerIdentity;
+  readonly recorded: unknown;
+  readonly preparedInvocationId?: string;
+  readonly preparedUpdatedAt?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(ownerJson);
@@ -674,12 +747,23 @@ function decodeDedupOwner(
   }
   try {
     const fields = (parsed ?? {}) as Record<string, unknown>;
+    const link = fields.preparedInvocationId;
+    const revision = fields.preparedUpdatedAt;
+    if (link !== undefined && (typeof link !== 'string' || link === ''))
+      throw new Error('Invalid prepared invocation link.');
+    if (
+      revision !== undefined &&
+      (typeof revision !== 'string' || revision === '')
+    )
+      throw new Error('Invalid prepared invocation revision.');
     return {
       owner: parseOwnerIdentity({
         ...fields,
         id: fields[binding.ownerIdField],
       }),
       recorded: fields.invocation,
+      ...(link !== undefined ? { preparedInvocationId: link } : {}),
+      ...(revision !== undefined ? { preparedUpdatedAt: revision } : {}),
     };
   } catch (error) {
     if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
@@ -702,13 +786,20 @@ function decodeDedup(
   );
   if (typeof row.owner_json !== 'string')
     return { ...base, ...(legacyUntracked ? { invocation: 'untracked' } : {}) };
-  const { owner, recorded } = decodeDedupOwner(row.owner_json, binding);
+  const { owner, recorded, preparedInvocationId, preparedUpdatedAt } =
+    decodeDedupOwner(row.owner_json, binding);
   // An unrecognised value reads as absent, which a dead owner never reclaims;
   // only a row with no record at all can fall back to `untracked`.
   const invocation =
     parseInvocation(recorded) ??
     (legacyUntracked && recorded === undefined ? 'untracked' : undefined);
-  return { ...base, owner, ...(invocation ? { invocation } : {}) };
+  return {
+    ...base,
+    owner,
+    ...(invocation ? { invocation } : {}),
+    ...(preparedInvocationId !== undefined ? { preparedInvocationId } : {}),
+    ...(preparedUpdatedAt !== undefined ? { preparedUpdatedAt } : {}),
+  };
 }
 
 /**
@@ -726,6 +817,12 @@ function encodeDedupOwner(
     ...rest,
     [binding.ownerIdField]: id,
     ...(record.invocation ? { invocation: record.invocation } : {}),
+    ...(record.preparedInvocationId !== undefined
+      ? { preparedInvocationId: record.preparedInvocationId }
+      : {}),
+    ...(record.preparedUpdatedAt !== undefined
+      ? { preparedUpdatedAt: record.preparedUpdatedAt }
+      : {}),
   });
 }
 
@@ -739,6 +836,21 @@ function decodeBoundary(
   const purpose = String(row.purpose);
   if (purpose !== 'turn' && purpose !== 'task-dispatch')
     throw new Error(`Invalid monument boundary purpose: ${purpose}`);
+  let intent: PreparedTurnIntent | undefined;
+  if (binding.intentColumns) {
+    const raw = Object.fromEntries(
+      Object.entries(binding.intentColumns).map(([field, column]) => [
+        field,
+        row[column],
+      ]),
+    );
+    if (Object.values(raw).some((value) => value != null)) {
+      if (raw.dedupKey == null) delete raw.dedupKey;
+      if (!isPreparedTurnIntent(raw))
+        throw new Error('Invalid monument prepared intent.');
+      intent = raw;
+    }
+  }
   return {
     boundaryId: String(row.boundary_id),
     threadId: String(row.thread_id),
@@ -768,6 +880,7 @@ function decodeBoundary(
       : {}),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    ...(intent ? { intent } : {}),
   };
 }
 
@@ -837,6 +950,7 @@ function boundaryColumns(binding: SqliteTurnBoundaryTable): string {
       : ['owner_id', 'owner_pid', 'owner_birth', 'owner_identity_kind']),
     'created_at',
     'updated_at',
+    ...Object.values(binding.intentColumns ?? {}),
   ].join(', ');
 }
 
@@ -974,6 +1088,10 @@ function sqliteTransaction(
         ).map(decode),
       put: (record) => {
         const fence = boundary.creationSequence;
+        if (record.intent && !boundary.intentColumns)
+          throw new SqliteKernelConfigurationError(
+            'Prepared intent requires configured intentColumns.',
+          );
         // An update retains even a NULL legacy fence. Only a new row reads the head.
         const prior = fence
           ? one(
@@ -981,6 +1099,16 @@ function sqliteTransaction(
               record.boundaryId,
             )
           : undefined;
+        const priorRecord = !boundary.owned
+          ? one(
+              `SELECT ${selectedColumns} FROM ${boundary.table} WHERE boundary_id = ?`,
+              record.boundaryId,
+            )
+          : undefined;
+        const changeOwner =
+          priorRecord &&
+          JSON.stringify(ownerFields(decode(priorRecord).owner)) !==
+            JSON.stringify(ownerFields(record.owner));
         const values = [
           record.boundaryId,
           record.threadId,
@@ -999,6 +1127,10 @@ function sqliteTransaction(
               ]),
           record.createdAt,
           record.updatedAt,
+          ...Object.keys(boundary.intentColumns ?? {}).map(
+            (field) =>
+              record.intent?.[field as keyof PreparedTurnIntent] ?? null,
+          ),
           ...(fence
             ? [
                 prior
@@ -1015,7 +1147,22 @@ function sqliteTransaction(
         const updates = (
           boundary.owned
             ? columns.split(', ').filter((column) => column !== 'boundary_id')
-            : ['state', 'provider_turn_id', 'updated_at']
+            : [
+                'state',
+                'provider_turn_id',
+                'updated_at',
+                ...Object.values(boundary.intentColumns ?? {}),
+                ...(changeOwner
+                  ? boundary.ownerEncoding === 'json'
+                    ? ['owner_json']
+                    : [
+                        'owner_id',
+                        'owner_pid',
+                        'owner_birth',
+                        'owner_identity_kind',
+                      ]
+                  : []),
+              ]
         )
           .map((column) => `${column} = excluded.${column}`)
           .join(', ');
@@ -1250,6 +1397,16 @@ export function openSqliteKernelStorage(
     if (tables[area] === 'unused')
       throw new SqliteKernelConfigurationError(
         `${command.type}: this storage keeps no ${area} tables.`,
+      );
+    if (
+      (command.type === 'turnBoundary.prepare' ||
+        command.type === 'turnBoundary.beginInvocation' ||
+        command.type === 'turnBoundary.resumePrepared') &&
+      command.intent.dedupKey !== undefined &&
+      tables.turnDedup === 'unused'
+    )
+      throw new SqliteKernelConfigurationError(
+        `${command.type}: this storage keeps no turnDedup tables.`,
       );
     if (db.isTransaction) {
       if (!executeOptions.withinHostTransaction)

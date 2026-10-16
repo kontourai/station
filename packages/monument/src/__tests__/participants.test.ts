@@ -47,6 +47,43 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
     owner,
     now: 'a',
   },
+  'turnBoundary.prepare': {
+    type: 'turnBoundary.prepare',
+    boundaryId: 'b',
+    ownerId: owner.id,
+    intent: {
+      invocationId: 'i',
+      inputDigest: 'd',
+      intentDigest: 'e',
+      bodyRef: 'body',
+    },
+    now: 'b',
+  },
+  'turnBoundary.beginInvocation': {
+    type: 'turnBoundary.beginInvocation',
+    boundaryId: 'b',
+    ownerId: owner.id,
+    intent: {
+      invocationId: 'i',
+      inputDigest: 'd',
+      intentDigest: 'e',
+      bodyRef: 'body',
+    },
+    now: 'b',
+  },
+  'turnBoundary.resumePrepared': {
+    type: 'turnBoundary.resumePrepared',
+    boundaryId: 'b',
+    owner,
+    intent: {
+      invocationId: 'i',
+      inputDigest: 'd',
+      intentDigest: 'e',
+      bodyRef: 'body',
+    },
+    observed: { owner, createdAt: 'a', updatedAt: 'b', verdict: 'dead' },
+    now: 'c',
+  },
   'turnBoundary.transition': {
     type: 'turnBoundary.transition',
     boundaryId: 'b',

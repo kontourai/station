@@ -33,7 +33,10 @@ const NO_WRITE: TurnDedupWrite = Object.freeze({ kind: 'none' });
  * reclaimable.
  */
 export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
-  return record.invocation === 'pending' || record.invocation === 'untracked';
+  return (
+    record.preparedInvocationId === undefined &&
+    (record.invocation === 'pending' || record.invocation === 'untracked')
+  );
 }
 
 /**
@@ -69,6 +72,17 @@ export function decideTurnDedupClaim(
   // Liveness is consulted only for an unresolved claim with an owner, and
   // only `dead` frees it: `unknown` must not.
   if (current.owner && liveness(current.owner) === 'dead') {
+    if (
+      current.invocation === 'pending' &&
+      current.preparedInvocationId !== undefined
+    )
+      return {
+        write: NO_WRITE,
+        result: {
+          kind: 'prepared',
+          invocationId: current.preparedInvocationId,
+        },
+      };
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
     return {
@@ -100,6 +114,7 @@ export function decideTurnDedupBeginInvocation(
 ): TurnDedupDecision<TurnDedupBeginInvocationResult> {
   if (
     !ownsUnresolved(current, command.ownerId) ||
+    current.preparedInvocationId !== undefined ||
     (current.invocation !== 'pending' && current.invocation !== 'begun')
   )
     return { write: NO_WRITE, result: { kind: 'refused' } };
@@ -128,7 +143,11 @@ export function decideTurnDedupRelease(
   current: TurnDedupRecord | undefined,
   command: TurnDedupReleaseCommand,
 ): TurnDedupDecision<TurnDedupSettleResult> {
-  if (!ownsUnresolved(current, command.ownerId))
+  if (
+    !ownsUnresolved(current, command.ownerId) ||
+    (current.preparedInvocationId !== undefined &&
+      current.invocation === 'pending')
+  )
     return { write: NO_WRITE, result: { kind: 'stale' } };
   return { write: { kind: 'delete' }, result: { kind: 'applied' } };
 }

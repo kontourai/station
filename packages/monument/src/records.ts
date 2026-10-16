@@ -23,16 +23,30 @@ export interface TurnDedupRecord {
   readonly createdAt: number;
   readonly owner?: OwnerIdentity;
   readonly invocation?: TurnClaimInvocation;
+  /** Only explicit prepared resume may transfer this pending claim. */
+  readonly preparedInvocationId?: string;
+  /** Revision of the linked pending fence; preserved independently of its creation. */
+  readonly preparedUpdatedAt?: string;
 }
 
 export type TurnBoundaryState =
   | 'lifecycle'
+  | 'reserved'
   | 'prepared'
   | 'invoking'
   | 'accepted'
   | 'indeterminate';
 
 export type TurnBoundaryPurpose = 'turn' | 'task-dispatch';
+
+/** Immutable host-owned input identity; the kernel never reads the body. */
+export interface PreparedTurnIntent {
+  readonly invocationId: string;
+  readonly inputDigest: string;
+  readonly intentDigest: string;
+  readonly bodyRef: string;
+  readonly dedupKey?: string;
+}
 
 export interface TurnBoundaryRecord {
   readonly boundaryId: string;
@@ -46,6 +60,7 @@ export interface TurnBoundaryRecord {
   readonly updatedAt: string;
   /** Host event-sequence fence; absent/NULL rows retain timestamp ordering. */
   readonly createdSequence?: number | null;
+  readonly intent?: PreparedTurnIntent;
 }
 
 export interface RequestKeyId {

@@ -65,8 +65,8 @@ specific to node:sqlite and is not part of the portable contract.
 
 By default the `node:sqlite` adapter owns its `monument_*` tables. A host that
 already keeps these records in tables of its own can bind them instead, so its
-tables stay the source of truth and an older binary that writes them directly
-keeps working:
+tables stay the source of truth. Legacy rows retain their encoding; mixed-version
+writers of the prepared-intent protocol need host-enforced writer fencing:
 
 ```ts
 const storage = openSqliteKernelStorage({
@@ -202,13 +202,66 @@ remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart
 
+New ordinary turns can reserve a boundary before capturing input:
+`reserved` → `prepared` → `invoking` → `accepted` (or `indeterminate`).
+Legacy inputless `prepared` claims, session lifecycle claims and task dispatch
+retain their existing behavior. Engine-opened turns still record acceptance
+directly. Invocation terminal attribution is unchanged in this kernel cut.
+
+`turnBoundary.prepare` takes `boundaryId`, its private `ownerId`, `now` and an
+immutable `intent`: `{ invocationId, inputDigest, intentDigest, bodyRef, dedupKey? }`.
+These strings are opaque host facts. `inputDigest` identifies final adapter input,
+separately from a host's original submission digest. Monument stores no body,
+send options, credentials or capabilities. The host owns their serialization,
+body retention, authorization and admission.
+
+For a linked key, `dedupOwnerId` names its independently private claim token.
+Preparation atomically links that owner's pending dedup row with
+`preparedInvocationId` and `preparedUpdatedAt` beside its owner encoding, and
+moves the reservation to prepared. Exact retries are idempotent; changing any
+intent field conflicts. Ordinary dedup claim, release and begin cannot bypass
+a linked pending intent, and legacy boundary transition/remove cannot begin or
+erase a captured prepared intent. A dead linked pending key answers `prepared`.
+
+`turnBoundary.beginInvocation` compares the boundary owner and complete intent,
+plus the linked key's owner, pending state and backlink. One transaction changes
+dedup to begun and boundary to invoking. A lost-acknowledgement retry can answer
+applied only for the matching invoking/begun pair; it acknowledges the same begin
+and never authorizes a second adapter call. Any failure rolls both writes back.
+
+`turnBoundary.resumePrepared` only transfers ownership. It takes the complete
+intent, the observed boundary owner/creation/update timestamps and dead verdict,
+a new `owner`, and (for a linked key) `dedup: { previousOwner, createdAt, updatedAt,
+owner }`. The dedup `updatedAt` is its stored `preparedUpdatedAt`. Both prior owners
+must have exact identities and independently answer dead through context liveness;
+hosts should supply verdicts captured before entering the transaction. Both
+records must still match their observed revisions, pending link and intent.
+Live, unknown, missing, expired, resolved or begun evidence refuses transfer.
+Invoking and later boundaries can never be resumed or prepared again.
+
+Bound SQLite tables opt in with `intentColumns`, an object mapping each intent
+field (including optional-value `dedupKey`) to its own nullable TEXT column. All
+five column names are validated and copied at open. Old hosts need no new
+columns; intent-bearing writes require the explicit binding. JSON and column
+owner layouts use the same protocol. Default owned tables migrate schema version
+one additively to version two, preserving legacy rows and adding reserved to the
+unique active-thread index. Prepared dedup links remain in `owner_json`, with no
+new host dedup columns.
+
+Reconciliation removes dead reservations and inputless legacy preparation. It
+retains complete prepared intent in a separate `resumable` candidate list while
+invoking becomes indeterminate as before. A candidate is not replay permission:
+explicit resume must still validate both fences and the host must verify the
+body and fresh authority. There is no automatic resume, host resume API, generated
+key, input blob store or invocation terminal attribution in this package change.
+
 Probing whether a process is alive can take seconds, so it never happens under
-the write lock. A host lists the rows, plans the command, and commits it:
+the write lock during reconciliation. A host lists the rows, plans the command, and commits it:
 
 ```ts
 const listed = await storage.execute({ type: 'turnBoundary.list' }, context);
 const command = planTurnBoundaryReconcile(listed.records, { probe }, now);
-const { interrupted } = await storage.execute(command, context);
+const { interrupted, resumable } = await storage.execute(command, context);
 ```
 
 `planTurnBoundaryReconcile` probes each process once. Inside the transaction

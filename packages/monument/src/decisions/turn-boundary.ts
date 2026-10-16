@@ -1,12 +1,18 @@
 import type {
+  TurnBoundaryBeginInvocationCommand,
+  TurnBoundaryBeginInvocationResult,
   TurnBoundaryCreateCommand,
   TurnBoundaryCreateResult,
   TurnBoundaryObserveTerminalCommand,
+  TurnBoundaryPrepareCommand,
+  TurnBoundaryPrepareResult,
   TurnBoundaryReconcileCommand,
   TurnBoundaryReconcileObservation,
   TurnBoundaryRecordAcceptedCommand,
   TurnBoundaryRemoveCommand,
   TurnBoundaryRemoveResult,
+  TurnBoundaryResumePreparedCommand,
+  TurnBoundaryResumePreparedResult,
   TurnBoundaryTransitionCommand,
   TurnBoundaryTransitionResult,
 } from '../commands.js';
@@ -19,24 +25,30 @@ import {
   type ProcessIdentityObservation,
   type ProcessIdentityProbe,
 } from '../owner.js';
-import type { TurnBoundaryRecord } from '../records.js';
+import type {
+  PreparedTurnIntent,
+  TurnBoundaryRecord,
+  TurnDedupRecord,
+} from '../records.js';
 import { compareCodePoints } from './order.js';
 
 /**
  * The provider-invocation boundary of one turn:
  *
  *   (none) -> lifecycle                      lifecycle claim, no effect
- *   (none) -> prepared -> invoking -> accepted
+ *   (none) -> reserved -> prepared -> invoking -> accepted
+ *   (none) -> prepared                      legacy inputless claim
  *                     \           \-> indeterminate
  *                      \-> (removed: not invoked)
  *   (none) -> accepted                       engine-opened turn
  *
- * A row in `prepared`, `invoking`, `indeterminate` or `lifecycle` occupies
+ * A row in `reserved`, `prepared`, `invoking`, `indeterminate` or `lifecycle` occupies
  * its thread. `accepted` rows do not, up to the per-thread capacity.
  */
 
 export interface TurnBoundaryDecision<Result> {
   readonly put?: TurnBoundaryRecord;
+  readonly dedupPut?: TurnDedupRecord;
   readonly result: Result;
 }
 
@@ -65,6 +77,8 @@ export function decideTurnBoundaryCreate(
   command: TurnBoundaryCreateCommand,
   acceptedCapacity: number,
 ): TurnBoundaryDecision<TurnBoundaryCreateResult> {
+  if (command.state === 'reserved' && command.purpose !== 'turn')
+    return { result: { kind: 'busy' } };
   if (existing)
     return {
       result:
@@ -129,6 +143,17 @@ export function decideTurnBoundaryTransition(
   command: TurnBoundaryTransitionCommand,
   collision: boolean,
 ): TurnBoundaryDecision<TurnBoundaryTransitionResult> {
+  if (!['invoking', 'accepted', 'indeterminate'].includes(command.to))
+    return { result: { kind: 'stale' } };
+  // Prepared intent must cross the dual fence, never the legacy transition.
+  if (
+    current?.intent &&
+    (command.to === 'invoking' ||
+      current.state === 'prepared' ||
+      current.state === 'reserved')
+  )
+    return { result: { kind: 'stale' } };
+  if (current?.state === 'reserved') return { result: { kind: 'stale' } };
   const target = collision ? 'indeterminate' : command.to;
   let after = current;
   let put: TurnBoundaryRecord | undefined;
@@ -192,6 +217,8 @@ export function decideTurnBoundaryRemove(
   liveness: OwnerLiveness,
 ): { readonly remove: boolean; readonly result: TurnBoundaryRemoveResult } {
   if (!current) return { remove: false, result: { kind: 'applied' } };
+  if (current.state === 'prepared' && current.intent)
+    return { remove: false, result: { kind: 'stale' } };
   if (
     current.owner.id !== command.ownerId ||
     !command.from.includes(current.state) ||
@@ -245,11 +272,204 @@ function sameOwner(a: OwnerIdentity, b: OwnerIdentity): boolean {
   );
 }
 
+/** Invalid or incomplete identities are never resumable. No digest semantics are inferred. */
+export function isPreparedTurnIntent(
+  value: unknown,
+): value is PreparedTurnIntent {
+  if (typeof value !== 'object' || value === null) return false;
+  const intent = value as Record<string, unknown>;
+  return (
+    ['invocationId', 'inputDigest', 'intentDigest', 'bodyRef'].every(
+      (field) => typeof intent[field] === 'string' && intent[field] !== '',
+    ) &&
+    (intent.dedupKey === undefined ||
+      (typeof intent.dedupKey === 'string' && intent.dedupKey !== ''))
+  );
+}
+
+function sameIntent(
+  a: PreparedTurnIntent | undefined,
+  b: PreparedTurnIntent,
+): boolean {
+  return (
+    isPreparedTurnIntent(a) &&
+    isPreparedTurnIntent(b) &&
+    a.invocationId === b.invocationId &&
+    a.inputDigest === b.inputDigest &&
+    a.intentDigest === b.intentDigest &&
+    a.bodyRef === b.bodyRef &&
+    a.dedupKey === b.dedupKey
+  );
+}
+
+function pendingLink(
+  dedup: TurnDedupRecord | undefined,
+  intent: PreparedTurnIntent,
+  ownerId: string | undefined,
+): dedup is TurnDedupRecord & { owner: OwnerIdentity } {
+  return (
+    dedup !== undefined &&
+    dedup.key === intent.dedupKey &&
+    dedup.value === null &&
+    dedup.invocation === 'pending' &&
+    dedup.owner !== undefined &&
+    dedup.owner.id === ownerId &&
+    typeof dedup.preparedUpdatedAt === 'string' &&
+    dedup.preparedUpdatedAt !== '' &&
+    dedup.preparedInvocationId === intent.invocationId
+  );
+}
+
+export function decideTurnBoundaryPrepare(
+  current: TurnBoundaryRecord | undefined,
+  dedup: TurnDedupRecord | undefined,
+  tombstoned: boolean,
+  command: TurnBoundaryPrepareCommand,
+): TurnBoundaryDecision<TurnBoundaryPrepareResult> {
+  if (
+    !current ||
+    current.owner.id !== command.ownerId ||
+    current.purpose !== 'turn' ||
+    (current.state !== 'reserved' && current.state !== 'prepared') ||
+    !isPreparedTurnIntent(command.intent)
+  )
+    return { result: { kind: 'stale' } };
+  if (current.intent && !sameIntent(current.intent, command.intent))
+    return { result: { kind: 'conflict' } };
+  if (current.state === 'prepared' && !current.intent)
+    return { result: { kind: 'stale' } };
+  if (
+    command.intent.dedupKey !== undefined &&
+    (tombstoned ||
+      !dedup ||
+      dedup.value !== null ||
+      dedup.invocation !== 'pending' ||
+      !dedup.owner ||
+      dedup.owner.id !== command.dedupOwnerId ||
+      dedup.key !== command.intent.dedupKey ||
+      (dedup.preparedInvocationId !== undefined &&
+        dedup.preparedInvocationId !== command.intent.invocationId) ||
+      (current.intent === undefined &&
+        dedup.preparedInvocationId !== undefined) ||
+      (current.intent !== undefined &&
+        !pendingLink(dedup, command.intent, command.dedupOwnerId)))
+  )
+    return { result: { kind: 'stale' } };
+  if (current.intent) return { result: { kind: 'applied' } };
+  return {
+    put: {
+      ...current,
+      state: 'prepared',
+      intent: { ...command.intent },
+      updatedAt: command.now,
+    },
+    ...(dedup && command.intent.dedupKey !== undefined
+      ? {
+          dedupPut: {
+            ...dedup,
+            preparedInvocationId: command.intent.invocationId,
+            preparedUpdatedAt: command.now,
+          },
+        }
+      : {}),
+    result: { kind: 'applied' },
+  };
+}
+
+export function decideTurnBoundaryBeginInvocation(
+  current: TurnBoundaryRecord | undefined,
+  dedup: TurnDedupRecord | undefined,
+  tombstoned: boolean,
+  command: TurnBoundaryBeginInvocationCommand,
+): TurnBoundaryDecision<TurnBoundaryBeginInvocationResult> {
+  if (
+    current?.purpose !== 'turn' ||
+    current.owner.id !== command.ownerId ||
+    !sameIntent(current.intent, command.intent) ||
+    (current.state !== 'prepared' && current.state !== 'invoking')
+  )
+    return { result: { kind: 'refused' } };
+  const already = current.state === 'invoking';
+  if (
+    command.intent.dedupKey !== undefined &&
+    (tombstoned ||
+      !dedup ||
+      dedup.key !== command.intent.dedupKey ||
+      dedup.value !== null ||
+      dedup.owner?.id !== command.dedupOwnerId ||
+      dedup.preparedInvocationId !== command.intent.invocationId ||
+      dedup.invocation !== (already ? 'begun' : 'pending'))
+  )
+    return { result: { kind: 'refused' } };
+  if (already) return { result: { kind: 'applied' } };
+  return {
+    put: { ...current, state: 'invoking', updatedAt: command.now },
+    ...(dedup && command.intent.dedupKey !== undefined
+      ? { dedupPut: { ...dedup, invocation: 'begun' } }
+      : {}),
+    result: { kind: 'applied' },
+  };
+}
+
+export function decideTurnBoundaryResumePrepared(
+  current: TurnBoundaryRecord | undefined,
+  dedup: TurnDedupRecord | undefined,
+  tombstoned: boolean,
+  command: TurnBoundaryResumePreparedCommand,
+  liveness: OwnerLiveness,
+): TurnBoundaryDecision<TurnBoundaryResumePreparedResult> {
+  const observed = command.observed;
+  if (
+    current?.purpose !== 'turn' ||
+    current.state !== 'prepared' ||
+    !sameIntent(current.intent, command.intent) ||
+    observed.verdict !== 'dead' ||
+    current.owner.identityKind !== 'exact' ||
+    current.owner.id === command.owner.id ||
+    !sameOwner(current.owner, observed.owner) ||
+    current.createdAt !== observed.createdAt ||
+    current.updatedAt !== observed.updatedAt ||
+    liveness(current.owner) !== 'dead'
+  )
+    return { result: { kind: 'refused' } };
+  if (
+    command.intent.dedupKey !== undefined &&
+    (tombstoned ||
+      !command.dedup ||
+      !pendingLink(dedup, command.intent, command.dedup.previousOwner.id) ||
+      dedup.owner.identityKind !== 'exact' ||
+      dedup.owner.id === command.dedup.owner.id ||
+      !sameOwner(dedup.owner, command.dedup.previousOwner) ||
+      dedup.createdAt !== command.dedup.createdAt ||
+      dedup.preparedUpdatedAt !== command.dedup.updatedAt ||
+      liveness(dedup.owner) !== 'dead')
+  )
+    return { result: { kind: 'refused' } };
+  return {
+    put: {
+      ...current,
+      owner: ownerFields(command.owner),
+      updatedAt: command.now,
+    },
+    ...(dedup && command.dedup && command.intent.dedupKey !== undefined
+      ? {
+          dedupPut: {
+            ...dedup,
+            owner: ownerFields(command.dedup.owner),
+            preparedUpdatedAt: command.now,
+          },
+        }
+      : {}),
+    result: { kind: 'applied' },
+  };
+}
+
 /**
  * Dead owners' rows after a crash:
  *
- * - `prepared` and `lifecycle`: no effect began, so the row is removed and not
- *   reported.
+ * - `reserved`, inputless legacy `prepared` and `lifecycle`: removed.
+ * - Complete ordinary `prepared` intents: retained and reported separately
+ *   as candidates; explicit resume still checks both fences.
  * - `invoking`: the effect may have started, so the row becomes
  *   `indeterminate` and is reported.
  * - `accepted` and `indeterminate`: reported unchanged; the caller retires
@@ -269,6 +489,7 @@ export function decideTurnBoundaryReconcile(
   readonly remove: readonly string[];
   readonly put: readonly TurnBoundaryRecord[];
   readonly interrupted: readonly TurnBoundaryRecord[];
+  readonly resumable: readonly TurnBoundaryRecord[];
 } {
   const verdicts = new Map(
     observed.map((observation) => [observation.boundaryId, observation]),
@@ -276,6 +497,7 @@ export function decideTurnBoundaryReconcile(
   const remove: string[] = [];
   const put: TurnBoundaryRecord[] = [];
   const interrupted: TurnBoundaryRecord[] = [];
+  const resumable: TurnBoundaryRecord[] = [];
   for (const row of rows) {
     const observation = verdicts.get(row.boundaryId);
     if (
@@ -287,6 +509,13 @@ export function decideTurnBoundaryReconcile(
       continue;
     switch (row.state) {
       case 'prepared':
+        if (row.purpose === 'turn' && isPreparedTurnIntent(row.intent)) {
+          resumable.push(row);
+          break;
+        }
+        remove.push(row.boundaryId);
+        break;
+      case 'reserved':
       case 'lifecycle':
         remove.push(row.boundaryId);
         break;
@@ -306,7 +535,7 @@ export function decideTurnBoundaryReconcile(
         break;
     }
   }
-  return { remove, put, interrupted };
+  return { remove, put, interrupted, resumable };
 }
 
 /**
