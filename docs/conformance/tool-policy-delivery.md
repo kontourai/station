@@ -95,6 +95,33 @@ has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+### Codex approval policy and reviewer
+
+Station's Codex Ask mode selects `approvalPolicy: untrusted` and
+`sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
+These policies determine when Codex requests approval. They do not select who
+reviews a sandbox escalation. Station leaves Codex's `approvalsReviewer`
+unchanged on thread start, resume, native adoption by fork, and subsequent
+turns. Codex configuration and managed requirements therefore govern that
+reviewer. An untrusted-command prompt and a sandbox escalation can take
+different approval paths.
+
+With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
+escalations automatically without opening a Station approval card. The Ask
+chip confirms the approval-policy mapping only; Station does not currently
+report the effective reviewer. Its picker and chip disclosure name that gap.
+Ask alone is not evidence that a person must approve every sandbox escalation.
+See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
+
+This mapping was checked against Codex CLI 0.162.1's generated app-server
+schema, which still accepts `untrusted` and exposes a separate
+`approvalsReviewer` request field. Newer OpenAI documentation retires
+`untrusted`; that does not establish behavior for every installed CLI version.
+A future reviewer selector must respect supported protocol versions and managed
+requirements, surface refusals, and preserve the sandbox boundary. Changing
+approval policy or selecting Full access is not a substitute for selecting a
+reviewer.
+
 ## Selected MCP tools
 
 The Agent editor's tool selection is separate from approval grants.
