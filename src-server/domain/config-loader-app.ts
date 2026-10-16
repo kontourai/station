@@ -340,6 +340,7 @@ async function loadAppConfigFileInternal(
         // on every Station that upgrades. Absent stays absent, and the UI
         // reads absent as "not offered" (`resolveFirstRunOffer`).
         firstRun: { status: 'pending' },
+        attachedSessionsOutsideProjects: false,
       };
       try {
         await saveAppConfigFileInternal(

@@ -631,13 +631,13 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       expect.objectContaining({ approvalMode: 'connection-default' }),
     );
     expect(chat().approvalPosture).toBe('connection-default');
-    expect(renderPill().text).toBe('Default');
+    expect(renderPill().text).toBe('Engine default');
     const wire = await send();
     expect(wire.setApprovalMode).toBeUndefined();
     expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');
     // What the engine applied is what the chip names (#2409).
     act(() => turnStarted('t1', 'ask'));
-    expect(renderPill().name).toMatch(/^Approval mode: Default — Ask first/);
+    expect(renderPill().name).toMatch(/^Approval mode: Ask — Ask first/);
   });
 
   test('T3: the Station default is not sent for a new session when a posture is recorded', async () => {

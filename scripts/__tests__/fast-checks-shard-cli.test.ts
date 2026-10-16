@@ -128,7 +128,7 @@ function aggregateFixture({
   shardCount = 4,
 } = {}) {
   const { directory, head } = repository();
-  const plan = { ...planFor(head, files), shardCount };
+  const plan = { ...planFor(head, files, files.length === 0), shardCount };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
@@ -184,6 +184,31 @@ describe('fast-checks aggregator exit status (child process)', () => {
       const result = aggregate(aggregateFixture({ shardCount }));
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain('[fast-checks] PASS');
+    },
+  );
+
+  test.each([0, 1])(
+    'omitted runners require a truly empty plan (%i files)',
+    (count) => {
+      const directory = aggregateFixture({
+        files: count ? ['a/a.test.ts'] : [],
+        omit: [1, 2, 3, 4],
+      });
+      const needs = {
+        ...successNeeds,
+        'fast-checks-plan': { result: 'success', outputs: { empty: 'true' } },
+        'fast-checks-shard': { result: 'skipped' },
+      };
+      const result = aggregate(directory, needs);
+      expect(result.status, result.stderr).toBe(count ? 1 : 0);
+      if (count)
+        expect(result.stderr).toContain(
+          'empty-shard admission requires an empty plan',
+        );
+      else
+        expect(result.stdout).toContain(
+          'no tests selected; no runner allocated',
+        );
     },
   );
 

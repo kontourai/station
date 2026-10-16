@@ -1,0 +1,32 @@
+name: "Repo: Superseded PR checks"
+
+on:
+  workflow_run:
+    workflows: ["PR: CI"]
+    types: [requested]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write
+
+jobs:
+  cancel-obsolete:
+    if: >-
+      ${{ github.event.workflow_run.event == 'pull_request_target' &&
+          github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Cancel only runs superseded by the live PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-ci-supersession.mjs

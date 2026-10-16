@@ -14,7 +14,7 @@ import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
 import {
-  recheckLocalUiSessionAfterPairing,
+  recheckLocalUiSession,
   resetLocalUiBootstrapForTests,
 } from '../lib/local-ui-bootstrap';
 import {
@@ -181,7 +181,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  test('a host that stays away spends exactly the bound, then renders recovery', async () => {
+  test('a host outage stops at its bound and recovers through Try again without reloading', async () => {
     const fetchMock = vi
       .fn()
       .mockImplementation(() => Promise.resolve(unavailable()));
@@ -203,6 +203,41 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     await settleForLongerThanTheLadder();
     expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
     expect(protectedMount).not.toHaveBeenCalled();
+
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('{}')));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('Protected application mounted');
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT + 1);
+  });
+
+  test('returning to an unavailable host rechecks access once across wake events', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(unavailable()));
+    vi.stubGlobal('fetch', fetchMock);
+    renderGate(<div>Protected application mounted</div>);
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+
+    let finish: (response: Response) => void = () => {};
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledTimes(
+        LOCAL_UI_SESSION_ATTEMPT_LIMIT + 1,
+      ),
+    );
+    await act(async () => finish(new Response('{}')));
+    await screen.findByText('Protected application mounted');
   });
 
   test('a refusal is not retried, and its screen says nothing about attempts', async () => {
@@ -225,8 +260,116 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     // spent its delays and its remaining attempts by now. A 401 is a decision
     // about this browser, and repeating it only spends its auth rate limit.
     await settleForLongerThanTheLadder();
+    act(() => window.dispatchEvent(new Event('focus')));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/attempt/i)).toBeNull();
+  });
+
+  test.each([200, 503])(
+    'a fresh launcher owns recovery across wake events (HTTP %s)',
+    async (status) => {
+      const fetchMock = vi.fn<typeof fetch>(() =>
+        Promise.resolve(unavailable()),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      renderGate(<div>Protected application mounted</div>);
+      await screen.findByRole(
+        'heading',
+        { name: 'Reconnecting to this Station' },
+        { timeout: PAST_THE_LADDER_MS },
+      );
+
+      let finishRetry: (response: Response) => void = () => {};
+      fetchMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishRetry = resolve;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+
+      let finishLauncher: (response: Response) => void = () => {};
+      fetchMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishLauncher = resolve;
+          }),
+      );
+      window.history.replaceState(
+        null,
+        '',
+        `/#station-ui-bootstrap=${'R'.repeat(43)}`,
+      );
+      act(() => window.dispatchEvent(new Event('hashchange')));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+      expect(String(fetchMock.mock.calls[4]?.[0])).toBe(UI_BOOTSTRAP_URL);
+
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('online'));
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+
+      await act(async () =>
+        finishLauncher(status === 200 ? new Response('{}') : unavailable()),
+      );
+      await act(async () => finishRetry(unavailable()));
+      if (status === 200) {
+        await screen.findByText('Protected application mounted');
+      } else {
+        await waitFor(() =>
+          expect(
+            (
+              screen.getByRole('button', {
+                name: 'Try again',
+              }) as HTMLButtonElement
+            ).disabled,
+          ).toBe(false),
+        );
+      }
+    },
+  );
+
+  test('pairing success supersedes a pending launcher refusal and remains coalesced', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{}', { status: 401 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderGate(<div>Protected application mounted</div>);
+    await screen.findByRole('button', { name: 'Complete pairing' });
+
+    let finishLauncher: (response: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLauncher = resolve;
+        }),
+    );
+    window.history.replaceState(
+      null,
+      '',
+      `/#station-ui-bootstrap=${'P'.repeat(43)}`,
+    );
+    act(() => window.dispatchEvent(new Event('hashchange')));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    let finishIdentity: (response: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishIdentity = resolve;
+        }),
+    );
+    const complete = screen.getByRole('button', { name: 'Complete pairing' });
+    fireEvent.click(complete);
+    fireEvent.click(complete);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(IDENTITY_URL);
+    await act(async () => finishIdentity(new Response('{}')));
+    await screen.findByText('Protected application mounted');
+    await act(async () => finishLauncher(new Response('{}', { status: 403 })));
+    expect(screen.getByText('Protected application mounted')).toBeTruthy();
   });
 
   test('the degraded window explains the wait and names the retry running under it', async () => {
@@ -339,7 +482,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
 
   test('a resolution superseded mid-backoff abandons its remaining attempts', async () => {
     // Not reachable through the UI — the gate offers no pairing control while a
-    // resolution is pending — so this drives `recheckLocalUiSessionAfterPairing`
+    // resolution is pending — so this drives `recheckLocalUiSession`
     // directly, the same seam the gate calls on pairing success. Without the
     // generation guard the abandoned ladder keeps fetching and keeps writing the
     // module-level attempt counter the live ladder is being read from.
@@ -375,7 +518,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     expect(heldAttempts).toHaveLength(1);
     holdRequests = false;
 
-    await expect(recheckLocalUiSessionAfterPairing(API_BASE)).resolves.toEqual({
+    await expect(recheckLocalUiSession(API_BASE)).resolves.toEqual({
       kind: 'host-unavailable',
     });
     // Two from the superseded ladder, a full ladder from the superseding one.

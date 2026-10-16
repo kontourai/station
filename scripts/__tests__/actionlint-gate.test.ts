@@ -284,7 +284,12 @@ describe('persistent runner policy', () => {
       jobs: Record<string, Record<string, unknown>>;
     };
     mutate(document.jobs[jobId]);
-    return [{ file: workflow.file, document }];
+    return [
+      { file: workflow.file, document },
+      ...readWorkflowDocuments().filter(
+        ({ file }) => file === '.github/workflows/full-regression.yml',
+      ),
+    ];
   }
 
   function portableArchiveWorkflowFixture(
@@ -545,65 +550,130 @@ describe('persistent runner policy', () => {
 
   test.each([
     [
-      'fast-checks base checkout ref',
-      'fast-checks-statics',
-      (job: Record<string, unknown>) => {
-        const base = (
-          job.steps as Array<{
-            name?: unknown;
-            with?: Record<string, unknown>;
-          }>
-        ).find(
-          (step) =>
-            step.name === 'Check out base policy for pull-request title gate',
-        );
-        if (!base?.with) throw new Error('Expected title-gate base checkout.');
-        base.with.ref = `\${{ github.event.pull_request.head.sha }}`;
-      },
-    ],
-    [
-      'fork-smoke candidate checkout before title gate',
-      'fork-smoke',
+      'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        const titleIndex = steps.findIndex(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        const candidateIndex = steps.findIndex(
-          (step, index) =>
-            index > titleIndex &&
-            String(step.uses).startsWith('actions/checkout@'),
-        );
-        [steps[titleIndex], steps[candidateIndex]] = [
-          steps[candidateIndex],
-          steps[titleIndex],
-        ];
+        (steps[1].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.base.sha }}';
       },
     ],
     [
-      'unquoted title shell interpolation',
-      'fast-checks-statics',
+      'pr-title',
       (job: Record<string, unknown>) => {
-        const titleGate = (job.steps as Array<Record<string, unknown>>).find(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        if (!titleGate) throw new Error('Expected title gate.');
-        titleGate.run =
-          'node scripts/commit-message-gate.mjs --pull-request-title $PULL_REQUEST_TITLE $PULL_REQUEST_NUMBER';
+        job.permissions = { contents: 'write' };
       },
     ],
-  ])('rejects pull-request title topology with %s', (_name, jobId, mutate) => {
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        job.name = 'optional title';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        const steps = job.steps as Array<Record<string, unknown>>;
+        (steps[1].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.head.sha }}';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        job.if = '${{ success() }}';
+      },
+    ],
+  ])('rejects unsafe required metadata topology in %s', (jobId, mutate) => {
     expect(
       persistentRunnerPolicyFindings(
         primaryCiJobFixture(
-          jobId,
+          jobId as string,
           mutate as (job: Record<string, unknown>) => void,
         ),
       ),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId,
-      message: `${jobId} must validate the pull-request title from exact base policy before candidate checkout`,
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.permissions = {
+        contents: 'read',
+        'pull-requests': 'read',
+        statuses: 'write',
+        checks: 'write',
+      };
+    },
+    (job: Record<string, unknown>) => {
+      (job.concurrency as Record<string, unknown>)['cancel-in-progress'] = true;
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).shift();
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).pop();
+    },
+    (job: Record<string, unknown>) => {
+      job.name = 'PR title policy';
+    },
+  ])('rejects unsafe title status publication topology', (mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('pr-title', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('rejects PR-number-scoped concurrency for a shared-SHA commit status', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('pr-title', (job) => {
+          (job.concurrency as Record<string, unknown>).group =
+            'ci-pr-title-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('does not grant status publication to candidate source jobs', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks-statics', (job) => {
+          job.permissions = { contents: 'read', statuses: 'write' };
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks-statics',
+      message:
+        'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
+    });
+  });
+
+  test('rejects a skipped metadata source aggregate using the required fast-checks name', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          job.name = 'fast-checks';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Metadata source aggregate must not replace the required fast-checks context',
     });
   });
 
@@ -649,8 +719,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
@@ -668,8 +737,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
@@ -1333,7 +1401,6 @@ describe('persistent runner policy', () => {
       '.github/workflows/desktop-rust.yml',
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
-      '.github/workflows/merge-queue-regression.yml',
       '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
@@ -1732,7 +1799,6 @@ describe('persistent runner policy', () => {
     '.github/workflows/security-analysis.yml',
     '.github/workflows/windows-pr-verification.yml',
     '.github/workflows/build-ios.yml',
-    '.github/workflows/merge-queue-regression.yml',
   ])('rejects %s without merge_group queue evaluation', (file) => {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -3372,7 +3438,7 @@ describe('the real workflow corpus', () => {
 });
 
 describe('merge-queue regression workflow policy', () => {
-  const file = '.github/workflows/merge-queue-regression.yml';
+  const file = '.github/workflows/ci.yml';
   function mergeQueueRegressionDocument() {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -3429,7 +3495,9 @@ describe('merge-queue regression workflow policy', () => {
       persistentRunnerPolicyFindings([
         { file, document },
         ...fullRegression(),
-      ]).filter((finding) => finding.jobId === 'full-regression'),
+      ]).filter(
+        (finding) => finding.jobId === 'merge-integration-full-regression',
+      ),
     ).toEqual([]);
   });
 
@@ -3467,11 +3535,18 @@ describe('merge-queue regression workflow policy', () => {
     ],
   ])('removes the full-regression call exemption from %s', (_name, mutate) => {
     const document = mergeQueueRegressionDocument();
-    mutate(document.jobs['full-regression'] as Record<string, unknown>);
+    mutate(
+      document.jobs['merge-integration-full-regression'] as Record<
+        string,
+        unknown
+      >,
+    );
     const findings = persistentRunnerPolicyFindings([
       { file, document },
       ...fullRegression(),
-    ]).filter((finding) => finding.jobId === 'full-regression');
+    ]).filter(
+      (finding) => finding.jobId === 'merge-integration-full-regression',
+    );
     expect(
       findings.some(
         (finding) =>
@@ -3895,8 +3970,8 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       node.with.cache = 'pnpm';
       delete node.with['package-manager-cache'];
       const queueJobId = calledFrom(
-        '.github/workflows/merge-queue-regression.yml',
-        'full-regression',
+        '.github/workflows/ci.yml',
+        'merge-integration-full-regression',
         'static',
       );
       expect(cacheFindings(workflows)).toEqual([
@@ -4123,8 +4198,8 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       const workflows = real().filter(({ file }) => file !== FULL);
       // The merge queue's deferred-candidate call is reachable as written.
       const queueMissing = {
-        file: '.github/workflows/merge-queue-regression.yml',
-        jobId: 'full-regression',
+        file: '.github/workflows/ci.yml',
+        jobId: 'merge-integration-full-regression',
         message: MISSING_CALLEE,
       };
       expect(cacheFindings(workflows)).toEqual([queueMissing]);

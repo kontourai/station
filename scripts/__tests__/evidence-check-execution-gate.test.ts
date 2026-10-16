@@ -137,7 +137,7 @@ function createFixture(
   );
   writeFileSync(
     join(root, '.githooks/pre-push'),
-    'npm run --silent veritas:readiness\n',
+    '# readiness belongs to required hosted fast-checks\n',
   );
   writeFileSync(
     join(root, 'scripts/evidence-check-execution.json'),
@@ -247,7 +247,7 @@ describe('evidence-check execution gate', () => {
     );
   });
 
-  test('scoped checks require readiness in the fast lane and pre-push hook', () => {
+  test('scoped checks require readiness in the fast lane', () => {
     const root = createFixture(() => {});
     writeFileSync(
       join(root, 'scripts/run-ci-fast.mjs'),
@@ -257,7 +257,7 @@ describe('evidence-check execution gate', () => {
     const { status, output } = runGate(root);
     expect(status).toBe(1);
     expect(output).toContain(
-      'evidence check "session-transition-contract" is scoped but Veritas readiness is not wired to both ci:fast and pre-push',
+      'evidence check "session-transition-contract" is scoped but Veritas readiness is not wired to ci:fast',
     );
   });
 

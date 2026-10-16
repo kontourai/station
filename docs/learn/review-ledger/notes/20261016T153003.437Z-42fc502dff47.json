@@ -1,0 +1,27 @@
+{
+  "revision": "66badf626cb0448e868af36e8e732a816992e2ff",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed merged contributor route: focused local evidence and normal hooks precede required hosted integration; broad local ci-fast is restricted to a specific failure or explicit request. Readiness/all-typechecks now execute in hosted statics; governance block unchanged. Instruction budget passes.","inputs":["AGENTS.md"]},
+
+    {"path":".agents/skills/test-audit/SKILL.md","note":"Reviewed shortened reference to canonical local feedback rule. Mutation, focused proof and required hosted integration remain intact; no broad local check is implied by optional wording.","inputs":[".agents/skills/test-audit/SKILL.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed combined supersession, lighter hooks and concrete local feedback rule. Obsolete PR cancellation retains live-head checks; hosted statics owns readiness/typecheck removed from hook; local ci-fast only for specific failures or explicit requests. Generated schedule reflects explicit local diagnosis. Independent source review approved66badf626cb; combined hosted outcomes not yet observed.","inputs":["docs/guides/testing.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed ci-fast description and reference to the single canonical local feedback rule. Required hosted PR/queue checks retain broad verification, focused local checks remain required, no optional blanket permission remains.","inputs":["docs/guides/development.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed merged hook command table and local pipeline: readiness and full typechecking moved to existing required hosted statics; lint, governance and scoped transfer/static/SDK/commit gates retained. Local diagnosis links canonical testing rule.","inputs":["docs/guides/code-quality.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed concise ordinary PR path: focused local evidence, hooks and required hosted PR/queue checks. Source-bound receipt and qualification validity contracts unchanged.","inputs":["docs/reference/verification-receipts.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed combined guide and gate-for deltas: focused policy checks, code-health assessment and host slot policy remain valid. Required hosted statics now owns readiness/all-typechecking; script instructions do not require duplicate local broad execution.","inputs":["scripts/AGENTS.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"CLAUDE.md","note":"Root import continues to apply the merged precise local feedback and hosted-ownership rule. Governance block unchanged.","inputs":["CLAUDE.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed development/testing reference deltas: no change to server focused, profiling or runtime evidence requirements.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing reference delta: hosted broad-check ownership does not alter required UI focused/mounted evidence.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed testing reference delta: fixture fidelity, resource classification and deferred-selection non-pass remain unchanged.","inputs":["tests/AGENTS.md"]}
+  ]
+}

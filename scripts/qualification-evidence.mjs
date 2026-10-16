@@ -72,7 +72,7 @@ export function qualificationVerdict(needs, reuseRun) {
 
 export async function github(
   path,
-  { method = 'GET', body, env = process.env } = {},
+  { method = 'GET', body, env = process.env, responseBody = 'json' } = {},
 ) {
   const repository = env.GITHUB_REPOSITORY;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? ''))
@@ -99,7 +99,9 @@ export async function github(
     throw new Error(
       `GitHub ${method} ${path.split('?')[0]}: HTTP ${response.status}`,
     );
-  return response.status === 204 ? null : response.json();
+  return response.status === 204 || responseBody === 'none'
+    ? null
+    : response.json();
 }
 
 export async function listGithub(path, key, options) {

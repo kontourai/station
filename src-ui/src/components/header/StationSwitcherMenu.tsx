@@ -19,6 +19,7 @@ export function StationSwitcherMenu({
   onSelect,
   onClose,
   onManage,
+  onPairPhone,
 }: {
   anchor: HTMLElement;
   connections: SavedConnection[];
@@ -28,6 +29,7 @@ export function StationSwitcherMenu({
   onSelect: (connection: SavedConnection) => Promise<void>;
   onClose: () => void;
   onManage: () => void;
+  onPairPhone?: () => void;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const [position, setPosition] = useState({ right: 12, top: 0 });
@@ -156,6 +158,19 @@ export function StationSwitcherMenu({
             );
           })}
         </div>
+        {onPairPhone && (
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-row"
+            onClick={() => {
+              onClose();
+              onPairPhone();
+            }}
+          >
+            Pair phone
+          </button>
+        )}
         <button
           type="button"
           role="menuitem"

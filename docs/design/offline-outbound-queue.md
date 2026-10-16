@@ -26,7 +26,13 @@ a refusal removes it and hands the text back to the composer; Station's
 "may have started" answer keeps it as unconfirmed (never resent, and it no
 longer holds back later messages in the chat); anything else, including a
 proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
-Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send).
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send). A foreground send that
+already has an exact-key `started` answer, or an explicitly keyed turn-start event
+matching its authored bubble, remains delivered if the original response later
+fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
+lookup already in flight cannot erase a witnessed start. Acceptance retires the
+key and removes its overlapping attempts together. Durable flush dispatches
+(`options.dispatch`) retain their separate provider-turn settlement rules.
 While it waits, the message reads "No answer yet · sends once Station confirms
 it never arrived" on its bubble and in the outbox list, and its chat notice's and
 the list's Discard… withdraw it only after the shared confirmation, which says
@@ -58,6 +64,11 @@ and never resends, and a Discard… that removes it only after the user confirms
 "I checked, discard it" with the risk stated (its key is retired, so it is never
 sent again). Each row records the Station it was written for and is
 only ever sent to, or settled by, that Station; for another it waits, listed.
+
+Station can also hold a follow-up itself, in the conversation's durable inbox
+([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
+in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
+The app does not use it yet; until it does, the rules below apply.
 
 Follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
@@ -125,3 +136,9 @@ applied without issuing another config write.
 Approvals are also excluded. They are live server decisions with expiring
 authority. Station queues the user turn that led to an approval, never the
 approval response itself.
+
+Personal approval defaults are captured for a first interactive send before it
+becomes durable. The pending choice retains the account namespace that selected
+it. Unknown authority holds the choice for verification; a different verified
+account retires it. Replay under the same account retains the original choice.
+Explicit chat picks remain independent of inherited personal defaults.

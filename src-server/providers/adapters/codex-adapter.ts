@@ -13,6 +13,7 @@ import type {
   ConnectionQuotaSnapshotUpdate,
 } from '@kontourai/station-contracts/connection-quota';
 import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -731,6 +732,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
+    durability: STEERING_ENGINE_DURABILITY,
     continuity: this.continuity,
     connectionId: engineConnectionId('codex'),
     builtin: true,

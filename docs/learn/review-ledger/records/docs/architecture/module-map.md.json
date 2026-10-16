@@ -966,13 +966,45 @@
 
     "tests/helpers/journey-profile.ts",
 
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/domain/telemetry-credential-materialization.ts",
+
+    "src-server/services/secrets/telemetry-key-materialization-child.ts",
+
+    "src-server/telemetry.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/telemetry-broker/src/app.ts",
+
+    "packages/telemetry-broker/src/store.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
     "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
 
     "pnpm-lock.yaml#/packages",
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/knowledge-index/embedding-identity.ts"
+    "src-server/services/orchestration/thread-inbox.ts",
+
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
   ],
 
   "checks": [
