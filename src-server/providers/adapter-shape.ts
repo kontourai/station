@@ -12,6 +12,7 @@ import type {
   EngineId,
   ModelLaunchCapabilities,
   ProviderContinuityCapabilities,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -217,6 +218,8 @@ export interface ProviderAdapterMetadata {
    * are read as `none` until they opt in with a version they actually support.
    */
   continuity?: ProviderContinuityCapabilities;
+  /** Absent on legacy plugins means unreported, never an inferred guarantee. */
+  durability?: ProviderDurabilityProfile;
   /** Native process sandbox can enforce Station's independent-review policy. */
   reviewIsolation?: 'read-only';
   /**

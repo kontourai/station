@@ -645,6 +645,7 @@ import {
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import {
   buildStationBasisProjectionToolResult,
   buildStationBasisUnavailableToolResult,
@@ -2108,7 +2109,7 @@ export function configureRuntimeRoutes(
   );
   context.app.on(
     'GET',
-    '/api/analytics/usage-rollup',
+    ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
     bindConversationReadAuthority,
   );
   context.app.on(
@@ -2746,6 +2747,48 @@ export function configureRuntimeRoutes(
         !hostedTenantRegistry &&
         !isHostedTenantExecutionRequired() &&
         isBoundRuntimeLocalOperator(request),
+      async (requestContext, request) => {
+        const { captureAuthorityObservation, revalidateAuthorityObservation } =
+          await import('../../services/identity/authority-observation.js');
+        const captured = await captureAuthorityObservation({
+          context: requestContext,
+          request: requestContext.req.raw,
+          runtimePrincipal: getRuntimeAuthenticatedRequestPrincipal(
+            requestContext.req.raw,
+          ),
+          security: context.environmentSecurityService,
+          deploymentAuthentication: context.deploymentAuthentication,
+          resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
+        });
+        if (
+          connectedAccountOwnerId(
+            resolveOrchestrationRequestPrincipal(requestContext),
+          ) === undefined ||
+          captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
+        ) {
+          const { UsageExportRejected } = await import(
+            '../../analytics/usage-export-reader.js'
+          );
+          throw new UsageExportRejected('usage_export_authority_changed', 403);
+        }
+        const selected = context.orchestrationService.readUsageReceiptExport(
+          conversationReadAuthorityForRequest(requestContext.req.raw),
+          captured.envelope.environmentId,
+          request,
+        );
+        return {
+          page: selected.page,
+          async assertCurrent() {
+            await revalidateAuthorityObservation({
+              request: requestContext.req.raw,
+              captured,
+              security: context.environmentSecurityService,
+              deploymentAuthentication: context.deploymentAuthentication,
+            });
+            selected.assertCurrent();
+          },
+        };
+      },
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
@@ -6388,6 +6431,10 @@ export function configureRuntimeRoutes(
       (request) =>
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
+      (config) => {
+        context.getUsageTelemetry?.()?.reconfigure(config);
+        reconfigureOtelTelemetryDelivery(config);
+      },
     ),
   );
   context.app.route(

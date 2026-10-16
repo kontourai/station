@@ -193,6 +193,26 @@
       "type": "boolean",
       "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
     },
+    "productTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "productTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "otelTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "otelTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
     "mobileDeviceHubUrl": {
       "type": "string",
       "description": "HTTP address of the local device helper Station uses to list and capture simulators and emulators."

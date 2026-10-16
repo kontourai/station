@@ -26,6 +26,8 @@ import { primeNativeNotifications } from '../platform/native/notify';
 import { Button } from './Button';
 import { ElapsedWait } from './ElapsedWait';
 import { LazyBoundary } from './LazyBoundary';
+import { StartupHandoff } from './StartupHandoff';
+import { StartupScreen } from './StartupScreen';
 import { SkeletonBlock } from './state';
 import './LocalUiSessionGate.css';
 
@@ -291,6 +293,7 @@ export function LocalUiSessionGate({
     if (accessCheck === 'degraded') {
       return (
         <main aria-live="polite">
+          <StartupHandoff recovery />
           <p role="alert">
             Station is taking longer than expected to answer this
             browser&rsquo;s access check.
@@ -305,7 +308,7 @@ export function LocalUiSessionGate({
     }
     return (
       <main aria-live="polite">
-        <p>Checking this browser's Station access…</p>
+        <StartupScreen message="Checking this browser's Station access…" />
         <RetryAttempt attempt={identityAttempt} />
         <ElapsedWait startedAt={accessStartedAt} />
       </main>
@@ -356,6 +359,7 @@ export function LocalUiSessionGate({
       // it makes a settled screen read as pending and the wait spin to its
       // deadline. Rename it there in the same change.
       <main className="local-ui-session-recovery" aria-live="polite">
+        <StartupHandoff recovery />
         <h1>Reconnecting to this Station</h1>
         <p role="alert">Keep Station running on your computer, then retry.</p>
         <Button onClick={() => recheckSession()} disabled={checkingRecovery}>
