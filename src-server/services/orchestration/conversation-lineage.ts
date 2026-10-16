@@ -966,7 +966,14 @@ export class ConversationLineage {
     clientTurnId: string,
     authority: SessionReadScope,
   ):
-    | { outcome: 'not-received' | 'received' | 'indeterminate' | 'expired' }
+    | { outcome: 'not-received' | 'expired' }
+    | {
+        outcome: 'received' | 'indeterminate';
+        /** The Session whose claim it is, when one live claim holds it. */
+        sessionId?: string;
+        /** See `TurnClaimInspection`: only too old to prove in flight. */
+        ageOnly?: true;
+      }
     | { outcome: 'started'; sessionId: string; turnId: string }
     | null {
     const store = this.deps.eventStore;
@@ -995,9 +1002,26 @@ export class ConversationLineage {
       };
     const has = (state: string) =>
       found.some(({ claim }) => claim.state === state);
-    if (has('indeterminate')) return { outcome: 'indeterminate' };
+    // A possible effect anywhere outranks a claim that may still resolve.
+    if (
+      found.some(
+        ({ claim }) => claim.state === 'indeterminate' && !claim.ageOnly,
+      )
+    )
+      return { outcome: 'indeterminate' };
     if (has('expired')) return { outcome: 'expired' };
-    if (has('in-flight')) return { outcome: 'received' };
+    // #3660: a live owner's claim, however old, may still deliver. It reads
+    // indeterminate to the lookup, but names its Session so a resend can
+    // join it.
+    const aged = found.find(({ claim }) => claim.state === 'indeterminate');
+    if (aged)
+      return {
+        outcome: 'indeterminate',
+        sessionId: aged.sessionId,
+        ageOnly: true,
+      };
+    const held = found.find(({ claim }) => claim.state === 'in-flight');
+    if (held) return { outcome: 'received', sessionId: held.sessionId };
     return { outcome: 'not-received' };
   }
 

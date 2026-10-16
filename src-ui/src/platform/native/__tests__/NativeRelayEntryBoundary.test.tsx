@@ -18,6 +18,7 @@ const entry = vi.hoisted(() => ({
   operator: vi.fn(),
   auth: vi.fn(),
   recovery: vi.fn(),
+  preferences: vi.fn(),
   session: vi.fn(),
   version: 0,
   repository: null as NativeStationProfileStorage | null,
@@ -105,6 +106,12 @@ vi.mock('../../../contexts/RecoveryQueryBoundary', () => ({
 }));
 vi.mock('../../../contexts/AuthorityQueryContext', () => ({
   AuthorityQueryProvider: Through,
+}));
+vi.mock('../../../contexts/AccountPreferencesProvider', () => ({
+  AccountPreferencesProvider: ({ children }: { children: ReactNode }) => {
+    entry.preferences();
+    return children;
+  },
 }));
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
   ActiveChatsProvider: Through,
@@ -236,6 +243,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   await screen.findByText('Native member entry');
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.recovery).not.toHaveBeenCalled();
+  expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
   entry.retired.mockClear();
@@ -270,6 +278,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   await screen.findByText('Operator workspace');
   expect(entry.auth).toHaveBeenCalled();
   expect(entry.recovery).toHaveBeenCalled();
+  expect(entry.preferences).toHaveBeenCalled();
   expect(entry.session).toHaveBeenCalled();
   const operatorCalls = entry.operator.mock.calls.length;
   const authCalls = entry.auth.mock.calls.length;
@@ -293,6 +302,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   entry.operator.mockClear();
   entry.auth.mockClear();
   entry.recovery.mockClear();
+  entry.preferences.mockClear();
   entry.session.mockClear();
   act(() => {
     entry.relay = true;
@@ -302,6 +312,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   await screen.findByText('Native member entry');
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.recovery).not.toHaveBeenCalled();
+  expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
   act(() => {

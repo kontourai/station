@@ -38,6 +38,19 @@ credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
 
+## Personal preferences
+
+`GET /api/me/preferences` reads the verified person's preferences on this
+Station. `PATCH` changes named fields; null resets a field. The server derives
+the person and trusted tenant boundary from the request, never a supplied owner.
+Unbound Devices and internal Agent callers are refused. Device-only keys and
+unknown fields return 400. Model-picker replacement requires the current
+`If-Match` revision; a conflict returns 409. `?onlyMissing=true` imports only
+unset choices under the write lock. Preferences grant no execution access.
+
+See [account preference contracts](contracts.md#account-preferences) and
+[the SDK](sdk.md#account-preferences).
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.

@@ -12,6 +12,7 @@ import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
 import { VoiceOrb } from '../voice/VoiceOrb';
+import { StartApprovalSummary } from './StartApprovalSummary';
 import './StartComposer.css';
 
 /**
@@ -97,6 +98,8 @@ export type StartAgentChip =
        * gap, not a Model: the chip then names the Agent alone.
        */
       modelLabel?: string;
+      executionAgentId?: string;
+      environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
     };
@@ -410,6 +413,14 @@ export function StartComposer({
                 <ArrowDownGlyph className="choice-caret" />
               </button>
             )}
+            {agent.status === 'ready' &&
+              (!agent.environmentId || agent.environmentId === 'current') &&
+              agent.agent && (
+                <StartApprovalSummary
+                  agent={agent.agent}
+                  executionAgentId={agent.executionAgentId}
+                />
+              )}
             {skill && (
               <span className="start-composer__chip start-composer__chip--skill">
                 <span className="start-composer__chip-text">{skill.title}</span>

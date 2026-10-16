@@ -1000,6 +1000,14 @@
 
     "src-server/analytics/usage-export-reader.ts",
 
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/services/orchestration/thread-inbox.ts",
+
+    "src-server/knowledge-index/embedding-identity.ts",
+
     "src-ui/src/lib/task-shaping.ts",
 
     "src-ui/src/components/chat/TaskShapingComposer.tsx",
@@ -1036,7 +1044,9 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
 
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
   ],
 
   "checks": [

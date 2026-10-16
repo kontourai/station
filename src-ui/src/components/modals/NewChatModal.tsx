@@ -1284,6 +1284,12 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          executionAgentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.executionAgentId
+            : undefined,
+          environmentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.environmentId
+            : undefined,
           needsSetup: draftAgent
             ? !agentRunnability(draftAgent).runnable
             : false,

@@ -203,6 +203,15 @@ Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
 
+## Account preferences
+
+`@kontourai/station-contracts/account-preferences` declares portable preference
+keys, the partial account document and field-patch/reset semantics. The scope is
+one verified person within one Station and trusted tenant boundary. Account
+preferences contain no credentials, Device grants or Project/Station policy.
+Interactive approval defaults are per engine; their presence does not authorize
+execution. Device-only keys are refused by the personal preferences route.
+
 ## Native relay and account composition
 
 The [native relay link contract](../../packages/contracts/src/native-relay-link.ts)
@@ -372,7 +381,8 @@ terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
-`provider_turn_in_progress`, and the client queues the message until it ends.
+`provider_turn_in_progress`, and the client queues the message until it ends,
+unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
 reattaching to the engine's stored session) waits for the start, up to 15
 seconds, through the optional adapter method `whenSessionReady`. Orchestration
@@ -401,6 +411,11 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
+conversation's durable inbox (#3568): `POST /chat` answers `202` with a
+`ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
+message stands, and the delivery lookup answers `queued` while it waits. See
+the [Session API](session-api.md#let-station-hold-a-follow-up).
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,

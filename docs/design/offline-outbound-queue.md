@@ -59,6 +59,11 @@ and never resends, and a Discard… that removes it only after the user confirms
 sent again). Each row records the Station it was written for and is
 only ever sent to, or settled by, that Station; for another it waits, listed.
 
+Station can also hold a follow-up itself, in the conversation's durable inbox
+([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
+in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
+The app does not use it yet; until it does, the rules below apply.
+
 Follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
 with. Nothing sends that copy automatically: the window's own queue sends it
@@ -125,3 +130,9 @@ applied without issuing another config write.
 Approvals are also excluded. They are live server decisions with expiring
 authority. Station queues the user turn that led to an approval, never the
 approval response itself.
+
+Personal approval defaults are captured for a first interactive send before it
+becomes durable. The pending choice retains the account namespace that selected
+it. Unknown authority holds the choice for verification; a different verified
+account retires it. Replay under the same account retains the original choice.
+Explicit chat picks remain independent of inherited personal defaults.

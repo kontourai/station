@@ -3427,6 +3427,17 @@ the connection dropped before the answer arrived. It is read-only and returns a
 again. A Station without the lookup answers `404`, which throws a refusal
 rather than reading as `not-received`. The
 [Session API](session-api.md) defines each outcome.
+`queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
+the conversation's inbox while its turn runs (#3568). It needs `conversationId`
+and `clientTurnId`, takes no approval pick, and resolves
+`{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
+(`outcome: 'queued'`). A Station that predates the inbox, and any send it
+cannot hold (attachments, a target other than the conversation's binding),
+refuses a busy send as before, so keep the message on
+`provider_turn_in_progress` or `provider_session_starting`.
+`listConversationInbox(apiBase, conversationId)` lists the held messages and
+`cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
+one, or dismisses one that is `unconfirmed` or `refused`.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
@@ -4442,3 +4453,17 @@ Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' 
 'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
 Keep the human draft visible and inspect the full run before resending; the field
 does not grant retry or execution authority.
+## Account preferences
+
+The React-free client entry exports `getAccountPreferences(apiBase, options)`
+and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
+`/api/me/preferences`. Use captured request authority in `options.requestScope`.
+The server derives the owner; callers never supply an account or tenant id.
+The returned `revision` is supplied as `If-Match` when replacing model-picker
+preferences. A stale composite update returns 409. Omitted fields stay unchanged; null resets a field. Engine defaults merge by
+engine, and null for one engine removes only that engine's default. Import uses
+`onlyMissing: true` (the fourth argument) to fill unset fields atomically.
+
+These preferences follow one person across devices connected to the same
+Station. They grant no execution permissions and do not provide cross-Station
+cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
