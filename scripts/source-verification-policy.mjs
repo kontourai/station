@@ -74,6 +74,35 @@ function jobState(job) {
   return 'pending';
 }
 
+const METADATA_AGGREGATE_NAMES = [
+  'fast-checks (metadata only)',
+  "github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks'",
+];
+
+function isCompletedMetadata(jobs, run) {
+  if (new Set(jobs.map((job) => job.name)).size !== jobs.length) return false;
+  if (
+    run.status !== 'completed' ||
+    !['success', 'failure'].includes(run.conclusion)
+  )
+    return false;
+  const aggregate = jobs.filter((job) =>
+    METADATA_AGGREGATE_NAMES.includes(job.name),
+  );
+  const title = jobs.filter((job) =>
+    ['PR title', 'PR title status publisher'].includes(job.name),
+  );
+  if (
+    aggregate.length !== 1 ||
+    jobState(aggregate[0]) !== 'skipped' ||
+    title.length !== 1 ||
+    title[0].status !== 'completed' ||
+    !['success', 'failure'].includes(title[0].conclusion)
+  )
+    return false;
+  return jobs.every((job) => job === title[0] || jobState(job) === 'skipped');
+}
+
 function sourceVerdict(jobs, fork, run) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
@@ -81,6 +110,7 @@ function sourceVerdict(jobs, fork, run) {
   // Skipped check names may be literal GitHub expressions. Discriminate by
   // the actual producer jobs, never the aggregate's display-name expression.
   if (plan === 'skipped' && statics === 'skipped' && forkSmoke === 'skipped') {
+    if (isCompletedMetadata(jobs, run)) return null;
     const aggregate = jobState(
       proofJob(jobs, ['fast-checks', 'Fast checks execution']),
     );
@@ -97,12 +127,6 @@ function sourceVerdict(jobs, fork, run) {
         ].includes(run.conclusion))
     )
       return failure('Newest skipped source run failed or was cancelled');
-    if (
-      run.status === 'completed' &&
-      run.conclusion === 'success' &&
-      aggregate !== 'success'
-    )
-      return null;
     return pending(
       'Skipped source run is not a completed successful metadata run',
     );

@@ -1500,7 +1500,9 @@ describe('persistent runner policy', () => {
       ({ file }) => file === '.github/workflows/source-verification-policy.yml',
     );
     if (!workflow) throw new Error('Missing source verification publisher');
-    const document = structuredClone(workflow.document);
+    const document = structuredClone(workflow.document) as Parameters<
+      typeof mutate
+    >[0];
     mutate(document);
     expect(
       persistentRunnerPolicyFindings([{ ...workflow, document }]),

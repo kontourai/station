@@ -36,6 +36,29 @@ const jobs = [
   status: 'completed',
   conclusion: name.startsWith('Fork') ? 'skipped' : 'success',
 }));
+// Observed run 38949134941: title bootstrap failed; all thirteen source jobs skipped.
+const legacyMetadataJobs = [
+  'PR title',
+  'diff',
+  'Exact full-diff classification',
+  `fast-checks shard \${{ matrix.shard }}`,
+  'UI entry bundle delta (report only)',
+  'Repository source scans',
+  'fast-checks plan',
+  'fast-checks statics',
+  'merge-integration-full-regression',
+  "github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks'",
+  'Merge-queue regression',
+  'full-regression',
+  'manual-completion-diagnostics',
+  'Fork pull-request smoke',
+].map((name, id) => ({
+  id: 117135772985 + id,
+  name,
+  status: 'completed',
+  conclusion: id === 0 ? 'failure' : 'skipped',
+}));
+
 type Job = (typeof jobs)[number];
 type Run = typeof run & { head_branch?: string };
 
@@ -146,7 +169,12 @@ function fixture() {
     });
     state.jobs.set(
       11,
-      jobs.map((job) => ({ ...job, conclusion })),
+      conclusion === 'skipped'
+        ? legacyMetadataJobs.map((job) => ({
+            ...job,
+            conclusion: job.name === 'PR title' ? 'success' : 'skipped',
+          }))
+        : jobs.map((job) => ({ ...job, conclusion })),
     );
   };
   return { state, execute, newer };
@@ -310,7 +338,10 @@ describe('source verification reconciler API boundary', () => {
     state.runs[0].status = 'completed';
     state.jobs.set(
       11,
-      jobs.map((job) => ({ ...job, conclusion: 'skipped' })),
+      legacyMetadataJobs.map((job) => ({
+        ...job,
+        conclusion: job.name === 'PR title' ? 'success' : 'skipped',
+      })),
     );
     expect((await execute('workflow_run')).state).toBe('success');
   });
@@ -329,6 +360,48 @@ describe('source verification reconciler API boundary', () => {
           .filter((job) => job.name !== 'Fast checks execution'),
       );
       expect((await execute()).state).toBe('failure');
+    },
+  );
+  test('observed failed legacy title-only metadata does not supersede genuine source success', async () => {
+    const { state, execute, newer } = fixture();
+    newer('skipped');
+    state.runs[0].conclusion = 'failure';
+    state.jobs.set(11, structuredClone(legacyMetadataJobs));
+    expect((await execute()).state).toBe('success');
+  });
+  test.each([
+    'aggregate failure',
+    'aggregate cancelled',
+    'aggregate missing',
+    'run cancelled',
+    'extra failed job',
+    'unknown skipped name',
+    'duplicate skipped name',
+  ])(
+    'legacy metadata does not fall through to old green with %s',
+    async (change) => {
+      const { state, execute, newer } = fixture();
+      newer('skipped');
+      state.runs[0].conclusion = 'failure';
+      const observed = structuredClone(legacyMetadataJobs);
+      const aggregate = observed[9];
+      if (change === 'aggregate failure') aggregate.conclusion = 'failure';
+      if (change === 'aggregate cancelled') aggregate.conclusion = 'cancelled';
+      if (change === 'aggregate missing') observed.splice(9, 1);
+      if (change === 'run cancelled') state.runs[0].conclusion = 'cancelled';
+      if (change === 'extra failed job')
+        observed.push({
+          id: 900,
+          name: 'source build',
+          status: 'completed',
+          conclusion: 'failure',
+        });
+      if (change === 'unknown skipped name')
+        aggregate.name = 'arbitrary expression';
+      if (change === 'duplicate skipped name')
+        observed.push({ ...observed[1], id: 901 });
+      state.jobs.set(11, observed);
+      expect((await execute()).state).not.toBe('success');
     },
   );
   test('publisher workflow checks out only trusted policy with narrowly isolated write authority', () => {
