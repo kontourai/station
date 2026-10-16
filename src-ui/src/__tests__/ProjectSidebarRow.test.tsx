@@ -2,10 +2,23 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
+const { setProject, setLayout, navigate } = vi.hoisted(() => ({
+  setProject: vi.fn(),
+  setLayout: vi.fn(),
+  navigate: vi.fn(),
+}));
 const layoutsQueryMock = vi.fn();
 const boardAvailabilityQueryMock = vi.fn();
 
@@ -20,9 +33,9 @@ vi.mock('../contexts/NavigationContext', () => {
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({
-    navigate: vi.fn(),
-    setProject: vi.fn(),
-    setLayout: vi.fn(),
+    navigate,
+    setProject,
+    setLayout,
     // The row selects `pathname` to style the Session Board entry.
     pathname: '/',
   });
@@ -47,6 +60,7 @@ const project: ProjectMetadata = {
 
 describe('ProjectSidebarRow', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     boardAvailabilityQueryMock.mockReset();
     boardAvailabilityQueryMock.mockReturnValue({
       data: { hasBuilderRun: true },
@@ -324,7 +338,103 @@ describe('ProjectSidebarRow', () => {
       />,
     );
 
-    const accent = container.querySelector('.sidebar__project-accent');
+    const accent = container.querySelector('.sidebar__project-icon-slot');
     expect(accent?.getAttribute('style')).toContain('var(--event-tool-result)');
+  });
+});
+
+describe('collapsed project view navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  test('opens views on demand, selects the layout and returns focus on Escape', () => {
+    layoutsQueryMock.mockReturnValue({
+      data: [{ slug: 'coding', name: 'Coding' }],
+      isPending: false,
+      isError: false,
+    });
+    const onNavigate = vi.fn();
+    render(
+      <StrictMode>
+        <ProjectSidebarRow
+          project={project}
+          isActive={false}
+          activeLayout={null}
+          collapsed
+          onNavigate={onNavigate}
+        />
+      </StrictMode>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Demo Project views' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeTruthy();
+    expect(setProject).not.toHaveBeenCalled();
+    expect(layoutsQueryMock).toHaveBeenLastCalledWith('demo', {
+      enabled: true,
+    });
+    const press = createEvent.pointerDown(trigger, {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(trigger, press);
+    if (!press.defaultPrevented) act(() => trigger.focus());
+    fireEvent.click(trigger);
+    expect(
+      screen.queryByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(
+      screen.getByRole('dialog', { name: 'Demo Project views' }),
+      { key: 'Escape' },
+    );
+    expect(
+      screen.queryByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Coding' }));
+    expect(setLayout).toHaveBeenCalledWith('demo', 'coding');
+    expect(onNavigate).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeNull();
+  });
+
+  test('a failed view read offers recovery rather than cached layout navigation', () => {
+    const retry = vi.fn();
+    layoutsQueryMock.mockReturnValue({
+      data: [{ slug: 'coding', name: 'Coding' }],
+      isPending: false,
+      isError: true,
+      refetch: retry,
+    });
+    render(
+      <ProjectSidebarRow
+        project={project}
+        isActive={false}
+        activeLayout={null}
+        collapsed
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Demo Project views' }));
+    const popup = screen.getByRole('dialog', { name: 'Demo Project views' });
+    expect(within(popup).getByRole('alert').textContent).toContain(
+      'Unable to load views',
+    );
+    expect(within(popup).queryByRole('button', { name: 'Coding' })).toBeNull();
+    fireEvent.click(within(popup).getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 });

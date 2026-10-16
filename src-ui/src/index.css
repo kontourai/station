@@ -189,7 +189,7 @@
 
 :root {
   --chat-dock-header-height: 38px;
-  --app-toolbar-height: 46px;
+  --app-toolbar-height: calc(var(--k-space-5) * 2);
   /* Safe area insets for mobile/APK */
   --safe-top: env(safe-area-inset-top, 0px);
   /* What the toolbar actually occupies. The toolbar pads itself down by the
@@ -787,6 +787,7 @@ button:hover {
 .app-toolbar {
   display: flex;
   align-items: center;
+  min-height: var(--app-toolbar-total-height);
   /* Denser, flatter native-titlebar feel: tighter gutters + gap, a
      single hairline, no fill beyond the surface token. */
   gap: 14px;
@@ -1184,7 +1185,17 @@ button:hover {
 
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
-  display: none;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
 }
 .app-toolbar__lockup {
   display: none;
@@ -7515,8 +7526,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .app-toolbar__breadcrumb {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: var(--text-base);
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-right: 8px;
 }

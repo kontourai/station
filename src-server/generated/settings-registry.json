@@ -484,15 +484,6 @@
       "configKey": "theme"
     },
     {
-      "id": "sidebar-sections",
-      "label": "Sidebar sections",
-      "help": "The sidebar’s Open chats and Drafts sections reopen as you left them on this device.",
-      "scope": "device",
-      "section": "appearance",
-      "route": "/settings?view=appearance&highlight=sidebar-sections",
-      "configKey": "sidebarSections"
-    },
-    {
       "id": "haptic-feedback",
       "label": "Haptic feedback",
       "help": "A mobile shell pulses on streaming replies, copies, pairing success, and destructive confirms.",

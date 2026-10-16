@@ -198,7 +198,13 @@
 
     "scripts/screenshot-diff.mjs",
 
-    "scripts/__tests__/screenshot-diff.test.ts"
+    "scripts/__tests__/screenshot-diff.test.ts",
+
+    "scripts/pr-ci-supersession.mjs",
+
+    ".github/workflows/pr-ci-supersession.yml",
+
+    "scripts/__tests__/pr-ci-supersession.test.ts"
   ],
 
   "checks": [

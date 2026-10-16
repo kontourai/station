@@ -150,6 +150,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
   useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
