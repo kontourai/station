@@ -464,8 +464,12 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
     ).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(0);
+    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
     expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
     const editor = screen.getByRole('textbox', { name: 'Task brief' });
     fireEvent.change(editor, { target: { value: '# Goal\nA revised room' } });

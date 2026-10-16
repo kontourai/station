@@ -693,9 +693,18 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
           provider: 'claude',
           threadId: 'successor',
           cwd: f.adapter.sessions.get(sessionId)!.cwd,
+          metadata: { userId: f.principal.id },
         },
       },
       { userId: f.principal.id },
+    );
+    await vi.waitFor(async () =>
+      expect(
+        await f.sessions.readSession(
+          'successor',
+          sessionReadAuthorityFromRequest(f.principal.id, undefined, undefined),
+        ),
+      ).not.toBeNull(),
     );
     await expect(
       f.conversation.admission(

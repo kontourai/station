@@ -142,7 +142,7 @@ test.each([undefined, 'codex'])(
         received = response;
         return response;
       });
-      await entered;
+      await Promise.race([entered, pendingFirst]);
       expect(received?.status).toBe(200);
       release();
       const first = await pendingFirst;
