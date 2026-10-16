@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "scope": "Single dependency consolidation; no original PR closure, auto-merge, release output, exception record, expiry or authority configuration change.",
-  "integrationBase": "d57abb035ac3ad638cdf5615f4edbca051ac6e99",
-  "branch": "t3/5dbb3b7a",
+  "scope": "Single dependency consolidation; retire only the three unused http-cache-semantics exceptions after the patched update. No original PR closure, auto-merge, release output, other exception or authority configuration change.",
+  "integrationBase": "84c79c7af8a2ad8dc719befb7cc0e2ca7a2c61fe",
+  "branch": "build/dependabot-consolidation-20261016",
   "sourcePRs": [
     {
       "number": 3358,
@@ -23,8 +23,8 @@
     {
       "number": 3680,
       "url": "https://github.com/kontourai/station/pull/3680",
-      "head": "63f5b29e2c9dff973842a4b48884619791873841",
-      "title": "build(deps): bump the github-actions-minor-patch group with 8 updates",
+      "head": "df6ce359339d450bd97cf8a8a84b6bf361297ba7",
+      "title": "build(deps): bump the github-actions-minor-patch group across 1 directory with 8 updates",
       "stateAtInventory": "open",
       "adoption": "Workflow action pins plus reviewed exact gate/digest bindings."
     },
@@ -1256,7 +1256,7 @@
     "minimumReleaseAgeExclude": [
       "@kontourai/*"
     ],
-    "advisoryExceptions": "UNCHANGED",
+    "advisoryExceptions": "Remove only root/sdk/shared http-cache-semantics GHSA-ch52-4w7c-c8xp entries: unused in all six normalized current audits. Preserve remaining exceptions and residuals exactly.",
     "httpCacheExceptionExpiry": "2026-10-17",
     "exactSubjectAuthority": "NOT_VERIFIED"
   },
@@ -1341,14 +1341,12 @@
       "formatterLaunched": false,
       "subsequentTypecheckLaunched": false,
       "status": "NOT_VERIFIED; allocating phases await fresh CPU<=85 admission"
-    }
+    },
+    "historicalEvidenceNotice": "Entries predating takeover describe the prior integration and are not current-head validation. See the PR evidence for the new combined head."
   },
   "unresolved": [
-    "Current build/type/behavior qualification and refreshed installed cache inventory",
-    "Canonical Connect build and server/UI types",
-    "Final complete installed cache census and original/bad/restored/copy/shadow/drift controls",
-    "Six complete normalized root/sdk/shared full/production audits and exact-subject authority for original three cache exception records",
-    "Current final focused suite, ci:fast, readiness, code health, transfer baseline and normal push hooks",
-    "Hosted/queue/actual-main qualification belongs to parent"
-  ]
+    "Hosted required checks and merge-queue verification remain pending publication.",
+    "Historical evidence above is not a completion receipt for this branch."
+  ],
+  "previousIntegrationBase": "d57abb035ac3ad638cdf5615f4edbca051ac6e99"
 }

@@ -29,7 +29,7 @@ const FLOW_AGENTS_REVIEW_PIN = REVIEW_PINS[0];
 const FLOW_AGENTS_REVIEW = `${FLOW_AGENTS_REVIEW_ACTION}@${FLOW_AGENTS_REVIEW_PIN}`;
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UPLOAD_ARTIFACT =
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+  'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9';
 const expression = (value: string) => `\${{ ${value} }}`;
 
 describe('standalone Codex PR review workflow', () => {
