@@ -72,7 +72,9 @@ for (const width of [1280, 390]) {
       for (const button of await toolbar.getByRole('button').all()) {
         const box = await button.boundingBox();
         expect(box).not.toBeNull();
-        expect(box!.height).toBeGreaterThanOrEqual(44);
+        await expect
+          .poll(async () => (await button.boundingBox())?.height ?? 0)
+          .toBeGreaterThanOrEqual(44);
         expect(box!.x).toBeGreaterThanOrEqual(0);
         expect(box!.x + box!.width).toBeLessThanOrEqual(width);
       }
@@ -91,6 +93,9 @@ for (const width of [1280, 390]) {
         expect(cards[1].y).toBeCloseTo(cards[0].y, 0);
         expect(cards[1].x).toBeGreaterThan(cards[0].x);
       }
+      await expect(
+        page.getByRole('link', { name: `Live task ${width}` }),
+      ).toBeVisible();
       await page.screenshot({
         path: testInfo.outputPath(`daily-${width}.png`),
         fullPage: true,
