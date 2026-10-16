@@ -1004,7 +1004,13 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
 
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts"
   ],
 
   "checks": [
