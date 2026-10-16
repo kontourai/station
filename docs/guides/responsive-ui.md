@@ -218,7 +218,9 @@ final frame matches the resting opacity and transform, so completed effects
 release instead of retaining an animated stacking context. Exit and celebration
 effects retain their terminal frames; running status loops keep their existing
 lifetime. The Gallery regression observes the rendered pill through the Web
-Animations API and checks its resting styles after completion.
+Animations API and checks its resting styles after completion. Its visually
+hidden live announcement is anchored at the document origin so the body portal
+cannot add a scroll row below a dock that fills the viewport.
 
 ### Action rows
 

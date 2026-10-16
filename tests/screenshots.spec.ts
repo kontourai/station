@@ -1546,6 +1546,10 @@ function overlayDockProjectMismatchHooks(
               ),
           )
           .toBe(0);
+        await expect(
+          page.locator('html'),
+          'The recovery dock must fit without adding document scroll overflow',
+        ).toHaveJSProperty('scrollHeight', page.viewportSize()!.height);
       } finally {
         // See `withRoute`'s doc comment: every route registered above must
         // be unregistered again, or its fixture leaks into every screen
