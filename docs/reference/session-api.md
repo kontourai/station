@@ -801,11 +801,12 @@ anchor even after the file grows, the source is rediscovered, the follower's
 bounded cache evicts the thread, or Station restarts. The anchor is reusable
 only for the same source handle and configuration-home affinity. It stores no
 page contents and cannot recover deleted or truncated source bytes. If the file
-shrinks below the saved offset, the follower logs a warning and pins a new initial
-window on the next poll so following resumes; bytes before that window remain
-outside retention. A legacy attachment without configuration-home affinity keeps
-its migration anchor in memory until its first successful read, preserving the
-old durable cursor and affinity on read failure. Codex and Grok start at byte zero;
+shrinks below the saved offset, the source logs a warning and the follower pins a
+new initial window on the next poll so following resumes; bytes before that window
+remain outside retention. Records without a `uuid` are identified by byte offset,
+so after a rewrite one may be skipped as a duplicate or imported twice. A legacy attachment without configuration-home affinity keeps
+its migration anchor in memory until its first read that does not throw,
+preserving the old durable cursor and affinity when the read throws. Codex and Grok start at byte zero;
 OpenCode starts before the first message in its ordered database query. Their
 cold cursors do not move with append-only growth.
 
