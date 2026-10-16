@@ -132,13 +132,15 @@ describe('SessionExecutionCoordinator', () => {
   );
 
   test.each([
-    { kind: 'ordinary', effect: true },
-    { kind: 'prepared', effect: true },
-    { kind: 'ordinary', effect: false },
-    { kind: 'prepared', effect: false },
+    { kind: 'ordinary', effect: true, oldTerminal: false },
+    { kind: 'prepared', effect: true, oldTerminal: false },
+    { kind: 'ordinary', effect: false, oldTerminal: false },
+    { kind: 'prepared', effect: false, oldTerminal: false },
+    { kind: 'ordinary', effect: true, oldTerminal: true },
+    { kind: 'prepared', effect: true, oldTerminal: true },
   ])(
-    'a failed $kind start retains workspace custody only with an effect fence ($effect)',
-    async ({ kind, effect }) => {
+    'a failed $kind start retains custody with effect=$effect, unrelated terminal=$oldTerminal',
+    async ({ kind, effect, oldTerminal }) => {
       const boundaries = createInMemorySessionTurnBoundaryAuthority();
       const coordinator = new SessionExecutionCoordinator(boundaries);
       if (kind === 'prepared' && effect) {
@@ -165,6 +167,10 @@ describe('SessionExecutionCoordinator', () => {
                     { kind: 'applied' },
                   );
                 }
+                if (oldTerminal)
+                  coordinator.observe(
+                    event('turn.completed', 'unrelated-old-turn'),
+                  );
                 throw new Error('Provider acknowledgement unavailable.');
               },
               '/repo',
@@ -172,6 +178,10 @@ describe('SessionExecutionCoordinator', () => {
           : coordinator.runPreparedTurnStart(
               'thread-1',
               async () => {
+                if (oldTerminal)
+                  coordinator.observe(
+                    event('turn.completed', 'unrelated-old-turn'),
+                  );
                 throw new Error('Provider acknowledgement unavailable.');
               },
               '/repo',
