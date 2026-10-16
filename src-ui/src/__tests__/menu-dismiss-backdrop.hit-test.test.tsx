@@ -79,6 +79,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import {
   afterAll,
   afterEach,
@@ -180,11 +181,8 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
-  StationToolLibraryProvider: ({
+  StationToolLibraryProvider: ({ children }: { children: ReactNode }) =>
     children,
-  }: {
-    children: import('react').ReactNode;
-  }) => children,
   useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('@kontourai/station-sdk/tool-library', () => ({

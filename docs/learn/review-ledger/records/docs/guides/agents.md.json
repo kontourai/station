@@ -242,7 +242,9 @@
 
     "src-ui/src/components/attention/AttentionCard.css",
 
-    "src-server/services/orchestration/session-agent-start-policy.ts"
+    "src-server/services/orchestration/session-agent-start-policy.ts",
+
+    "src-ui/src/views/project-page/MemberProjectPage.tsx"
   ],
 
   "checks": [
