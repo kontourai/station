@@ -1022,7 +1022,15 @@
 
     "src-server/routes/orchestration/tasks.ts",
 
-    "src-ui/src/contexts/active-chats-state.ts"
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
   ],
 
   "checks": [
