@@ -198,9 +198,8 @@ specific regressions; they cannot guarantee that new code has no defects.
 Use `npm run gate:for -- <paths>` before editing and run its focused checks.
 Push through the normal scoped gates; required hosted PR checks own broad
 integration feedback, and the merge queue verifies the latest-main composition.
-Local `npm run ci:fast` is optional for a hosted-failure diagnosis or a broad
-change, rather than a routine extra pre-push pass. The [testing guide](testing.md)
-owns the full schedule and promotion-completion requirements.
+The [testing guide](testing.md#what-counts-as-tested) owns local diagnosis,
+the full schedule and promotion-completion requirements.
 
 The push hook clears repository-local Git routing variables before launching
 checks, while preserving global/system configuration. This lets a check inspect

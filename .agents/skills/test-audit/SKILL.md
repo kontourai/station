@@ -165,8 +165,7 @@ sibling worktree under `../station-worktrees/`.
 5. Run `git diff --check origin/main...HEAD` and
    `npm run test:changed -- --base=origin/main --explain`. Use focused evidence
    and normal push hooks; required hosted PR and merge-queue checks own broad
-   integration verification. Local `npm run ci:fast` is optional when diagnosing
-   a hosted failure or checking a broad change before submission. Exit 3 from
+   integration verification. Follow the [local feedback rule](../../../docs/guides/testing.md#what-counts-as-tested). Exit 3 from
    the selector is provisional, not completion.
 6. Inspect `git diff --numstat origin/main...HEAD`; report production/tooling separately from
    tests and test support. Update `scripts/test-fixture-policy-baseline.json`

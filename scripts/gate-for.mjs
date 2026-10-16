@@ -74,8 +74,7 @@ export const LANE_LADDER = Object.freeze([
     detail: null,
   }),
   Object.freeze({
-    stage:
-      'Optional local broad diagnostic (not a routine pre-push requirement)',
+    stage: 'Only to reproduce a specific failure or when explicitly requested',
     command: 'npm run ci:fast',
     detail: null,
   }),
