@@ -149,6 +149,20 @@ test('a reconcile with no new answers performs no history open or append, includ
       proposalId: 'durable-human',
       text: 'Human message',
     });
+    await runtime.message({
+      taskId: task.id,
+      request,
+      proposalId: 'owner-status',
+      text: 'Status → In review',
+      correlationId: 'room-status',
+    });
+    await runtime.message({
+      taskId: task.id,
+      request,
+      proposalId: 'owner-thread',
+      text: 'Owner-only thread reply',
+      correlationId: 'room-thread:session',
+    });
     await runtime.reconcileAgentLifecycles([task.id]);
     expect(appends.mock.calls.length).toBeGreaterThan(0);
     opens.mockClear();
@@ -210,6 +224,15 @@ test('a reconcile with no new answers performs no history open or append, includ
       ]),
     });
     expect(JSON.stringify(guest)).not.toContain('Durable Alice');
+    expect(JSON.stringify(guest)).not.toContain('Status → In review');
+    expect(JSON.stringify(guest)).not.toContain('Owner-only thread reply');
+    const owner = await runtime.history({
+      taskId: task.id,
+      request,
+      project: true,
+    });
+    expect(JSON.stringify(owner)).toContain('Status → In review');
+    expect(JSON.stringify(owner)).toContain('Owner-only thread reply');
   } finally {
     await runtime.close();
     store.close();

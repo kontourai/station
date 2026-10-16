@@ -492,6 +492,7 @@ describe('TaskWorkspaceView', () => {
       screen.queryByText('Workspace pane changes are saved in this tab.'),
     ).toBeNull();
     const details = screen.getByRole('tabpanel', { name: 'Details' });
+    expect(within(details).queryByRole('tablist')).toBeNull();
     expect(
       details.lastElementChild?.querySelector('summary')?.textContent,
     ).toBe('Raw room history');

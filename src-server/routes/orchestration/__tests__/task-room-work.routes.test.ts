@@ -144,6 +144,7 @@ test.each([undefined, 'codex'])(
       });
       await Promise.race([entered, pendingFirst]);
       expect(received?.status).toBe(200);
+      await vi.waitFor(() => expect(continued).toHaveBeenCalledOnce());
       release();
       const first = await pendingFirst;
       expect(first.status).toBe(200);

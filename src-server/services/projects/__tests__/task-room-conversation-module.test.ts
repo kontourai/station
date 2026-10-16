@@ -680,6 +680,18 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
       JSON.stringify(f.failures),
     ).toBe(true);
     const root = f.store.conversationForSession(sessionId)!;
+    const binding = f.store
+      .listEvents(sessionId)
+      .find((event) => event.payload.method === 'session.started')
+      ?.payload.metadata;
+    expect(binding).toMatchObject({
+      environmentId: 'current',
+      targetId: 'researcher',
+    });
+    if (!binding || typeof binding.environmentId !== 'string')
+      throw new Error(
+        'The predecessor must have a verified Environment binding.',
+      );
     f.store.reserveNextConversationSession({
       conversationId: root.conversationId,
       predecessorSessionId: sessionId,
@@ -693,10 +705,16 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
           provider: 'claude',
           threadId: 'successor',
           cwd: f.adapter.sessions.get(sessionId)!.cwd,
-          metadata: { userId: f.principal.id },
+          metadata: { ...binding, userId: f.principal.id },
         },
       },
       { userId: f.principal.id },
+      {
+        conversationIdentity: {
+          conversationId: root.conversationId,
+          environmentId: binding.environmentId,
+        },
+      },
     );
     await vi.waitFor(async () =>
       expect(
@@ -750,6 +768,17 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
       ),
     ).rejects.toThrow(/room reply.*Session/);
     expect(f.adapter.turns).toHaveLength(1);
+    await continueDelegatedTask(
+      {
+        taskId: sessionId,
+        message: 'Private follow-up reaches the owned successor',
+        userId: f.principal.id,
+        principal: f.principal,
+      },
+      f.sessions,
+    );
+    expect(f.adapter.turns).toHaveLength(2);
+    expect(f.adapter.turns[1].threadId).toBe('successor');
   } finally {
     await f.close();
   }
