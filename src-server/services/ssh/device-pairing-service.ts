@@ -78,6 +78,16 @@ import {
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
 
+/** Host browser device use grants must not transfer administration or consent. */
+export function isProtectedPairingPromotionScope(token: PairingScope): boolean {
+  const paths = PAIRING_SCOPE_GRANT_PATHS[token];
+  return (
+    paths.length === 1 &&
+    paths[0] === 'operator-promotion' &&
+    deviceRequestedExtraScopes(token).length === 0
+  );
+}
+
 const REGISTRY_SCHEMA_VERSION = 3 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
 const PRE_CREDENTIAL_ALIAS_REGISTRY_SCHEMA_VERSION = 2;
@@ -1276,10 +1286,12 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('invalid_request');
     }
+    // Preapproval has no later operator decision at which to review promotion.
     if (
       input.approval === 'on-create' &&
       ((input.kind !== undefined && input.kind !== 'device') ||
-        parsedScope.includes(PAIRING_SCOPE_ACCESS_MANAGE))
+        parsedScope.includes(PAIRING_SCOPE_ACCESS_MANAGE) ||
+        parsedScope.some(isProtectedPairingPromotionScope))
     ) {
       throw new DevicePairingError('invalid_request');
     }
@@ -2659,6 +2671,16 @@ export class DevicePairingService {
       approval.kind === 'device-access' &&
       this.credentialMayManagePairing(approval.credential) &&
       device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      scope.some(
+        (token) =>
+          isProtectedPairingPromotionScope(token) &&
+          !pairingScopeIncludes(device.scope, token),
+      )
     )
       throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)

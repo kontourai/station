@@ -584,7 +584,16 @@ A launcher browser session bearing the private `home-possession` locality and
 requests and administer paired Devices while its effective grant retains
 `access:manage`. Its admission is an exact method/path allowlist; it cannot
 administer passkeys, people, accounts or peer credentials. It cannot delegate
-its private mint record or the `access:devices` administration grant. Ordinary
+its private mint record or introduce scopes whose sole declared grant path is
+operator promotion, except the Device-use permissions `coding:exec` and
+`approval:full-access`. This restriction covers both invitation modes, the final
+scope kept when confirming an existing request (including operator-created or
+older browser offers), and newly added scopes on paired Devices. In particular,
+a host session must not convey `relay:manage`, `access:approve` or
+`consent:decide` authority to invitees. It can narrow a pending grant or remove
+an existing permission; retaining an existing protected permission is not a new
+promotion. Raw operator request-time approval and explicitly promoted
+`access:devices` administrators retain their existing authority. Ordinary
 Devices with inherited `access:manage` remain refused. This deliberately trusts
 the host-issued browser session, including code on its origin, with Device
 administration; the native consent broker still requires `local-grant`, so
@@ -595,9 +604,12 @@ Operator-created invitations can record approval at creation (`approval:
 'on-create'`). The private offer stores that decision; its challenge authorizes
 one recipient for exactly the recorded scope until expiry or cancellation.
 The requester cannot choose this mode or enlarge that scope. Such invitations
-must be ordinary Devices and cannot carry `access:manage`, `home:control` or
-`access:devices`. A leaked invitation can be redeemed by its first holder;
-use request-time approval when the operator needs to identify the recipient
+must be ordinary Devices and cannot carry `access:manage` or protected
+operator-promotion scopes. This service rule applies to operator callers too:
+a preapproved bearer invitation bypasses the later decision where protected
+promotion would be reviewed. `coding:exec` and `approval:full-access` remain
+available as explicit Device-use grants. A leaked invitation can be redeemed by
+its first holder; use request-time approval when the operator needs to identify the recipient
 before granting access. Default API offers and unsolicited access requests
 retain request-time confirmation. Host CLI invitations and the pairing panel
 explicitly select approval at creation.

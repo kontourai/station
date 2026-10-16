@@ -175,6 +175,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopeIncludes,
+  parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import type {
@@ -624,6 +625,7 @@ import {
   type DeviceAccessApproval,
   DevicePairingError,
   type DevicePairingService,
+  isProtectedPairingPromotionScope,
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
@@ -9194,7 +9196,13 @@ export function configureDevicePairingHostRoutes(
     if (options.isApprovalCurrent?.(c.req.raw) !== true) {
       return approvalRequiresOperator(c);
     }
-    if (body.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+    if (
+      isHostBrowser(c.req.raw) &&
+      (body.kind === 'delegation' ||
+        (
+          parsePairingScope((body.scope as string | undefined) ?? '') ?? []
+        ).some(isProtectedPairingPromotionScope))
+    ) {
       return approvalRequiresOperator(c);
     }
     try {
@@ -9421,6 +9429,12 @@ export function configureDevicePairingHostRoutes(
           throw new DevicePairingError('approval_requires_operator');
         }
         const kept = grantedScope ?? requested?.scope ?? '';
+        if (
+          isHostBrowser(c.req.raw) &&
+          (parsePairingScope(kept) ?? []).some(isProtectedPairingPromotionScope)
+        ) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         if (deviceRequestedExtraScopes(kept).length > 0) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =

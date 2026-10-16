@@ -879,6 +879,162 @@ test('the desktop home-proven local grant can invite and approve a phone without
   ).toBe(401);
 });
 
+describe('host browser cannot transfer protected promotion authority', () => {
+  async function browserHarness() {
+    const h = await createHarness();
+    const minted = await h.request(
+      '/.well-known/station/v1/pairing/mint-ui-bootstrap',
+      h.json({ secret: h.localGrantSecret() }),
+      '127.0.0.1',
+    );
+    expect(minted.status).toBe(200);
+    const { token } = (await minted.json()) as { token: string };
+    const browser = await h.request(
+      '/.well-known/station/v1/pairing/ui-bootstrap',
+      {
+        ...h.json({ token }),
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      },
+      '127.0.0.1',
+    );
+    expect(browser.status).toBe(200);
+    const headers = {
+      'Content-Type': 'application/json',
+      Origin: ORIGIN,
+      Cookie: browser.headers.get('set-cookie')!.split(';')[0],
+    };
+    return {
+      ...h,
+      browserPost: (path: string, body?: unknown) =>
+        h.request(path, {
+          method: 'POST',
+          headers,
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        }),
+    };
+  }
+
+  test.each(['relay:manage', 'access:approve', 'consent:decide'] as const)(
+    'refuses %s in browser invitations, final approval and scope introductions',
+    async (token) => {
+      const h = await browserHarness();
+      const scope = `orchestration:read ${token}`;
+      for (const approval of ['on-create', 'on-request'] as const) {
+        const created = await h.browserPost('/api/pairing/offers', {
+          endpoint: ORIGIN,
+          scope,
+          approval,
+        });
+        expect(created.status).toBe(403);
+        expect(await created.json()).toMatchObject({
+          error: 'approval_requires_operator',
+        });
+      }
+      // An operator-created or older browser offer can already be pending.
+      const pending = await h.createPendingRequest(
+        'Pending protected offer',
+        scope,
+      );
+      const confirmPath = `/api/pairing/requests/${pending.requestId}/confirm`;
+      for (const body of [undefined, { scope }]) {
+        const confirmed = await h.browserPost(confirmPath, body);
+        expect(confirmed.status).toBe(403);
+        expect(await confirmed.json()).toMatchObject({
+          error: 'approval_requires_operator',
+        });
+        expect(
+          h.security.devicePairing
+            .listRequests()
+            .find((request) => request.requestId === pending.requestId)?.status,
+        ).toBe('pending');
+      }
+      const narrowed = await h.browserPost(confirmPath, {
+        scope: 'orchestration:read',
+      });
+      expect(narrowed.status).toBe(200);
+      expect(await narrowed.json()).toMatchObject({
+        scope: 'orchestration:read',
+      });
+
+      const target = await h.pairDevice('Ordinary Device');
+      const changed = await h.browserPost(
+        `/api/pairing/devices/${target.device.id}/scope`,
+        {
+          scope: ['orchestration:read', token],
+          expectedScope: target.device.scope,
+        },
+      );
+      expect(changed.status).toBe(403);
+      expect(await changed.json()).toMatchObject({
+        error: 'approval_requires_operator',
+      });
+      expect(h.security.resolveGrantedScope(target.credential)).toBe(
+        target.device.scope,
+      );
+    },
+  );
+
+  test.each(['relay:manage', 'access:approve', 'consent:decide'] as const)(
+    'keeps deliberate operator and explicit device administrator grants of %s',
+    async (token) => {
+      const h = await browserHarness();
+      const scope = `orchestration:read ${token}`;
+      const preapproved = await h.request(
+        '/api/pairing/offers',
+        h.json(
+          {
+            endpoint: ORIGIN,
+            scope,
+            approval: 'on-create',
+          },
+          h.operatorCredential,
+        ),
+      );
+      expect(preapproved.status).toBe(400);
+      expect(await preapproved.json()).toEqual({ error: 'invalid_request' });
+      const pending = await h.createPendingRequest(
+        'Operator approved Device',
+        scope,
+      );
+      const confirmed = await h.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        h.json({}, h.operatorCredential),
+      );
+      expect(confirmed.status).toBe(200);
+      expect(await confirmed.json()).toMatchObject({ scope });
+
+      const admin = await h.pairDevice('Explicit access administrator');
+      const promoted = await h.request(
+        `/api/pairing/devices/${admin.device.id}/scope`,
+        h.json(
+          { scope: ['orchestration:read', 'access:devices'] },
+          h.operatorCredential,
+        ),
+      );
+      expect(promoted.status).toBe(200);
+      const target = await h.pairDevice('Managed Device');
+      const path = `/api/pairing/devices/${target.device.id}/scope`;
+      const granted = await h.request(
+        path,
+        h.json({ scope: ['orchestration:read', token] }, admin.credential),
+      );
+      expect(granted.status).toBe(200);
+      expect(h.security.resolveGrantedScope(target.credential)).toBe(scope);
+      const retained = await h.browserPost(path, {
+        scope: ['orchestration:read', 'orchestration:operate', token],
+      });
+      expect(retained.status).toBe(200);
+      const removed = await h.browserPost(path, {
+        scope: ['orchestration:read'],
+      });
+      expect(removed.status).toBe(200);
+      expect(h.security.resolveGrantedScope(target.credential)).toBe(
+        'orchestration:read',
+      );
+    },
+  );
+});
+
 test.each([
   'offer',
   'cancel',
