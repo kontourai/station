@@ -262,13 +262,17 @@ function dispatch(
         tx.turnBoundary.delete(boundaryId);
       return { kind: 'applied' };
     }
-    case 'turnBoundary.hasPossibleEffect':
+    case 'turnBoundary.hasPossibleEffect': {
+      const retired = new Set(facts?.retiredBoundaryIds?.(command.threadId));
       return {
         kind: 'available',
         active: tx.turnBoundary
           .listThread(command.threadId)
-          .some((row) => row.state !== 'lifecycle'),
+          .some(
+            (row) => row.state !== 'lifecycle' && !retired.has(row.boundaryId),
+          ),
       };
+    }
     case 'turnBoundary.list':
       return { kind: 'records', records: tx.turnBoundary.listAll() };
     case 'turnBoundary.reconcile': {

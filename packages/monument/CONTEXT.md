@@ -110,8 +110,12 @@ vite or vitest configs are accepted limits, left to review.
   supplying `KernelTerminalFacts` to its transaction step): observation and forgetting do not maintain a second
   terminal source. Session-terminal ordering can use the host's persisted
   sequence and an existing boundary creation-fence column; NULL legacy fences
-  and turn-scoped generations retain timestamps. Station now uses the binding
-  for boundary writes and listing, on its existing tables and connection.
-  Its host adapter retains admission and storage-error classification.
-  Physical terminal reconciliation still uses host SQL; a read-only
-  event-authoritative projection remains a separate integration step.
+  and turn-scoped generations retain timestamps. Optional fixed-at-open
+  `retiredBoundaryIds` facts filter only possible-effect polling; raw rows,
+  listing and recovery remain unchanged. Station binds that projection to
+  canonical events using the same predicate as physical cleanup. Polling takes
+  no writer lock and does not retry pending transitions. Physical cleanup runs
+  before create/accepted admission decisions in their writer transaction, and
+  before raw recovery at boot. Claim, prepare, observe and reconcile retain
+  pending retries. Its host adapter retains admission and storage-error
+  classification on the existing tables and connection.
