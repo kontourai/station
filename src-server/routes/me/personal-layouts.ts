@@ -28,7 +28,7 @@ import {
 } from '../../domain/project-file-transactions.js';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
-import { isAgentOriginatedRequest } from '../../runtime/mcp/station-control-caller.js';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { resolveLayoutPaneReferences } from '../../services/layouts/layout-pane-reference.js';
 import {
@@ -246,7 +246,7 @@ export function createPersonalLayoutRoutes(
     '/boards/:layoutSlug',
     validate(personalBoardSaveSchema),
     withOwner((c, owner) => {
-      if (isAgentOriginatedRequest(c.req.raw))
+      if (requestMayBeAnAgent(c.req.raw))
         return c.json(
           { success: false, error: 'Review and save this Board in Station.' },
           403,
@@ -261,7 +261,7 @@ export function createPersonalLayoutRoutes(
     '/boards/:layoutSlug/proposal',
     validate(personalBoardDismissSchema),
     withOwner((c, owner) => {
-      if (isAgentOriginatedRequest(c.req.raw))
+      if (requestMayBeAnAgent(c.req.raw))
         return c.json(
           { success: false, error: 'Dismiss this proposal in Station.' },
           403,

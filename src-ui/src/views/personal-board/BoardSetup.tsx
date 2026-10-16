@@ -19,7 +19,7 @@ export function BoardSetup({
       <h1>Build your Board</h1>
       <p>
         Start with a dashboard, or describe what you want in chat. Live sections
-        stay connected to Station.
+        read current data from your Station.
       </p>
       <label>
         Project for a Project watch

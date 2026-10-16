@@ -31,6 +31,7 @@ import {
   FileStorageConflictError,
   FileStorageNotFoundError,
 } from '../../../domain/project-file-transactions.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -1329,6 +1330,22 @@ describe('Personal Board authoring', () => {
       (await promote(app, 'alice-laptop', 'daily', { projectSlug: 'demo' }))
         .status,
     ).toBe(409);
+    for (const [method, path, body] of [
+      ['PUT', '/boards/daily', { revision: draft.revision, definition }],
+      ['DELETE', '/boards/daily/proposal', { revision: draft.revision }],
+    ] as const) {
+      const internal = new Request(
+        `http://station.test${path}`,
+        as('alice-laptop', { method, body: JSON.stringify(body) }),
+      );
+      setRuntimeAuthenticatedRequestPrincipal(internal, {
+        kind: 'internal',
+        credential: 'fixture-internal',
+        authority: undefined,
+        source: 'bearer',
+      });
+      expect((await app.request(internal)).status).toBe(403);
+    }
     const agentHeaders = { 'x-station-control-origin': 'agent-tool' };
     expect(
       (
