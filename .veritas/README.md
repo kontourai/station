@@ -116,7 +116,7 @@ through required hosted `fast-checks-statics` and its `ci:fast` readiness call.
 There, freshness is
 scoped: a stale record blocks when the change's own diff touches its document,
 a recorded source or the record itself. In the merge queue, on `main` and in
-Nightly static verification the same test only reports staleness, so another
+Scheduled full qualification the same test only reports staleness, so another
 PR's change cannot dequeue this one; a Nightly sweep keeps one tracking issue
 for what remains. The separate same-repository PR source-scan job reports
 freshness too and is not a required status check. A normal reader build can
