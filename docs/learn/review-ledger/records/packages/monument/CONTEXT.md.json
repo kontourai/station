@@ -16,7 +16,17 @@
 
     "packages/monument/src/sqlite.ts",
 
-    "packages/monument/src/adapter.ts"
+    "packages/monument/src/adapter.ts",
+
+    "packages/monument/src/records.ts",
+
+    "packages/monument/src/commands.ts",
+
+    "packages/monument/src/decisions/turn-boundary.ts",
+
+    "packages/monument/src/decisions/turn-dedup.ts",
+
+    "packages/monument/src/testing/conformance.ts"
   ],
 
   "checks": []
