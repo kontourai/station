@@ -612,9 +612,7 @@ export function ProjectTasksSection({
                     {selectedTask.title}
                   </div>
                   <div className="project-page__task-detail-meta">
-                    {selectedTask.sessionId
-                      ? 'Run linked'
-                      : 'No session yet'}
+                    {selectedTask.sessionId ? 'Run linked' : 'No session yet'}
                   </div>
                   {taskClaim?.state === 'claimed-by-me' && (
                     <div

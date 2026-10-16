@@ -57,11 +57,11 @@ import {
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
   ServerEvent,
 } from '../../services/orchestration/event-bus.js';
-import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import {
   tenantExecutionContextAttributes,

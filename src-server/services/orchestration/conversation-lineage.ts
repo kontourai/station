@@ -35,11 +35,11 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   buildTranscriptSeed,
   transcriptSeedSource,
 } from './conversation-transcript-seed.js';
-import { derivedConversationTitle } from './conversation-title.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.

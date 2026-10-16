@@ -123,7 +123,10 @@ export class TaskRoomConversationModule {
       event.method === 'runtime.error' &&
       event.turnId &&
       !isDeferredRetriableTurnError(event);
-    if (!['turn.completed', 'turn.aborted'].includes(event.method) && !terminalError)
+    if (
+      !['turn.completed', 'turn.aborted'].includes(event.method) &&
+      !terminalError
+    )
       return;
     const binding = this.deps.readBinding(event.threadId);
     if (binding) await this.reconcile(binding.taskId);
