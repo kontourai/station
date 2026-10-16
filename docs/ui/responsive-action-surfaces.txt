@@ -175,3 +175,4 @@ src-ui/src/components/registry/MarketplaceSources.tsx|exception|Shared Dialog pr
 src-ui/src/components/session/SessionModelPicker.tsx|covered|Flexible model filter plus 44px Options control inside the shared picker frame; desktop and 430px browser layout inspected without horizontal overflow, keyboard and selection owner tests retained.
 
 src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx|covered|Shared ActionRow wraps Reply and Keep with Open full run in overflow; shared split-pane companion opens the agent thread in Dialog on phones. ProjectTaskRoomConversation.test.tsx exercises replying, keeping and opening runs.
+src-ui/src/workspace-panes/TaskRoomComposer.tsx|covered|Textarea precedes the wrapping actions row; recipient, brief and Send keep 44px touch targets at 390px.
