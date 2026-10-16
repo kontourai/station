@@ -55,10 +55,11 @@ jobs:
     # (verify:static) parses `src-ui/src/fonts.css` and holds the declared
     # inventory in `scripts/ui-glyph-coverage-allowlist.json` (#1649).
     #
-    # Pinned by digest, not by tag: `v1.63.0-noble` is republished, and a
+    # Pinned by digest, not by tag: `v1.64.1-noble` can be republished, and a
     # rebuilt base image is a different renderer wearing the same name.
-    # Bump this in lockstep with `@playwright/test` (currently 1.63.0), and
-    # expect a re-baseline to be part of that change.
+    # Bump this in lockstep with lock-resolved `@playwright/test` (1.64.1).
+    # Review renderer differences separately; baseline changes need their own
+    # reviewed commit.
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
