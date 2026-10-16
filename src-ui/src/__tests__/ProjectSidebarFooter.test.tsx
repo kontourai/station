@@ -181,6 +181,11 @@ describe('ProjectSidebarFooter', () => {
       'Customize',
       'Settings',
     ]);
+    expect(
+      screen
+        .getByRole('button', { name: 'Customize' })
+        .getAttribute('data-first-run-anchor'),
+    ).toBe('customize');
   });
 
   test('the count and the avatar stack derive from the live projection', () => {

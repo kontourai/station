@@ -270,7 +270,6 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'diff-style': 'device',
   'diff-wrap': 'device',
   theme: 'device',
-  'sidebar-sections': 'device',
   'haptic-feedback': 'device',
   'confirm-conversation-delete': 'device',
   'accent-color': 'device',
