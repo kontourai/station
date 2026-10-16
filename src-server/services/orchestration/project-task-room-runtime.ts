@@ -20,6 +20,7 @@ import type {
   ProjectTaskRoomOutputFeedback,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
+  ProjectTaskRoomRecord,
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
 import type {
@@ -1203,20 +1204,50 @@ export class ProjectTaskRoomRuntime {
       input.current,
     );
     if (!grant) return { kind: 'not-found' } as const;
-    const result = await this.#history.read({
-      grant,
-      ...(input.cursor ? { cursor: input.cursor } : {}),
-    });
-    if (!(await input.current())) return { kind: 'not-found' } as const;
-    if (result.kind === 'denied') return { kind: 'not-found' } as const;
-    return projectHistory(
-      result,
-      () => undefined,
-      () => undefined,
-      () => undefined,
-      true,
-    ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+    const records: ProjectTaskRoomRecord[] = [];
+    let cursor = input.cursor;
+    for (;;) {
+      const page = await this.#history.read({
+        grant,
+        ...(cursor ? { cursor } : {}),
+      });
+      if (!(await input.current())) return { kind: 'not-found' } as const;
+      if (page.kind === 'denied') return { kind: 'not-found' } as const;
+      if (page.kind !== 'available')
+        return projectHistory(
+          page,
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      const human = page.records.filter(sharedHumanMessage);
+      // Keep the next physical page intact if its human records do not fit.
+      // Private-only pages may advance the cursor without becoming empty chat pages.
+      if (records.length && records.length + human.length > 100)
+        return projectHistory(
+          { ...page, records, hasMore: true, nextCursor: cursor },
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      records.push(...human);
+      if (!page.hasMore) {
+        const { nextCursor: _next, ...complete } = page;
+        return projectHistory(
+          { ...complete, records, hasMore: false },
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      }
+      if (!page.nextCursor) return { kind: 'unavailable' } as const;
+      cursor = page.nextCursor;
+    }
   }
+
   async sharedDocument(input: {
     taskId: string;
     request: Request;
@@ -3931,6 +3962,17 @@ function requestReceiptId(
     .digest('hex')}`;
 }
 
+function sharedHumanMessage(
+  record: Pick<ProjectTaskRoomRecord, 'principal' | 'body' | 'correlationId'>,
+): boolean {
+  return (
+    record.principal.kind !== 'agent' &&
+    record.body.kind === 'human-message' &&
+    !record.correlationId?.startsWith('room-thread:') &&
+    !['room-status', 'room-system'].includes(record.correlationId ?? '')
+  );
+}
+
 /**
  * Browser history is a deliberately smaller DTO than the durable record.
  * Grant receipts, device/operator identities, policy revisions, and scope
@@ -3954,10 +3996,7 @@ function projectHistory(
                 record.body.kind === 'live-work-presence-ended') &&
               record.principal.kind !== 'agent'
             ) &&
-            (!guest ||
-              (!record.correlationId?.startsWith('room-thread:') &&
-                record.correlationId !== 'room-status' &&
-                record.correlationId !== 'room-system')),
+            (!guest || sharedHumanMessage(record)),
         )
         .map((record: any) => ({
           actor: {
