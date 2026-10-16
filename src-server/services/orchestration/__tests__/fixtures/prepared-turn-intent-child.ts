@@ -116,6 +116,7 @@ void service
       clientTurnId,
       input,
       ambientContext,
+      ...{ invocationId: 'untrusted-caller-invocation' },
       ...(phase === 'sparse-array'
         ? {
             metadata: {

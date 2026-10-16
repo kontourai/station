@@ -294,8 +294,17 @@ test.each(['begun', 'invoked'] as const)(
       }),
     ).rejects.toMatchObject({ outcome: 'indeterminate' });
     expect(adapter.sent).toHaveLength(0);
-    const { envelope } = storedIntent(path);
+    const { row, envelope } = storedIntent(path);
     expect(envelope.input.text).toBe('pinned context\n\n  keep these bytes\n');
+    expect(envelope.input).not.toHaveProperty('invocationId');
+    if (phase === 'invoked') {
+      const invoked = observed.split('\n').find((line) => line.includes('"step":"invoked"'));
+      if (!invoked) throw new Error('Expected the actual adapter entry.');
+      expect(JSON.parse(invoked)).toMatchObject({
+        input: { invocationId: row.invocation_id },
+      });
+      expect(row.invocation_id).not.toBe('untrusted-caller-invocation');
+    }
   },
   90_000,
 );
@@ -356,6 +365,7 @@ test('explicit prepared resume reauthorizes the retained input and sends its ori
   });
   expect(adapter.sent).toHaveLength(1);
   expect(adapter.sent[0]).toMatchObject({
+    invocationId,
     threadId: THREAD,
     clientTurnId: KEY,
     input: 'pinned context\n\n  keep these bytes\n',
