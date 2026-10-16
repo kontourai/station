@@ -78,7 +78,15 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/providers/adapters/codex-approval-mode.ts",
+
+    "src-server/providers/adapters/codex-adapter-notifications.ts",
+
+    "src-ui/src/utils/approvalMode.ts",
+
+    "src-ui/src/components/badges/ComposerModeSheet.tsx"
   ],
 
   "checks": [
