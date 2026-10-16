@@ -2314,7 +2314,7 @@ mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
 The provider serializes join, announce and departure across mount replacement;
-reannouncing an already-published viewer refreshes it. Browser message history
+reannouncing an already-published viewer refreshes it. Expired departures settle before a renewed join replaces their handles. Legacy checkpoints can recover a retired handle only from a retained principal whose original announcement receipt matches; a different policy remains unavailable. Browser message history
 filters human presence lifecycle facts separately from the internal history.
 Shared history pages retain their continuation cursor and human-only filter.
 Room dispatch records a human-authored title separately from the provider prompt

@@ -344,3 +344,10 @@ the appended brief remains provider context. Guest history uses bounded pages
 and continuation cursors instead of treating a second page as unavailable.
 These are implementation claims; local checks, rendered fixtures, live-provider
 acceptance and hosted qualification remain distinct evidence.
+
+Expired viewer renewal settles the prior departure before minting replacement
+presence handles. A legacy checkpoint with a retired departure handle may be
+repaired only when an existing captured principal matches the original
+announcement's retained history receipt, actor, Session and policy. Missing
+history or a mismatched policy remains unavailable. Failed recovery is retryable
+after its backing state changes; recovery never infers authority from a label.
