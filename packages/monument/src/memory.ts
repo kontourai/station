@@ -8,6 +8,7 @@ import {
   type KernelTransaction,
 } from './port.js';
 import type {
+  InboxEntryRecord,
   RequestKeyId,
   RequestKeyRecord,
   TurnBoundaryRecord,
@@ -23,6 +24,7 @@ interface MemoryImage {
   readonly turnTerminals: Map<string, Set<string>>;
   /** Map insertion order is the request keys' insertion order. */
   readonly requestKeys: Map<string, RequestKeyRecord>;
+  readonly inbox: Map<string, InboxEntryRecord>;
 }
 
 function emptyImage(): MemoryImage {
@@ -32,6 +34,7 @@ function emptyImage(): MemoryImage {
     turnBoundaries: new Map(),
     turnTerminals: new Map(),
     requestKeys: new Map(),
+    inbox: new Map(),
   };
 }
 
@@ -75,6 +78,20 @@ function stateOf(volume: MemoryKernelVolume): VolumeState {
 
 const requestKeyId = (id: RequestKeyId): string =>
   JSON.stringify([id.callerSessionId, id.tool, id.key]);
+
+const inboxEntryId = (inboxId: string, key: string): string =>
+  JSON.stringify([inboxId, key]);
+
+const OPEN_INBOX_STATES: ReadonlySet<InboxEntryRecord['state']> = new Set([
+  'queued',
+  'placing',
+  'unconfirmed',
+]);
+const SETTLED_INBOX_STATES: ReadonlySet<InboxEntryRecord['state']> = new Set([
+  'placed',
+  'refused',
+  'cancelled',
+]);
 
 const copy = <T>(value: T): T => structuredClone(value);
 
@@ -201,6 +218,47 @@ function transactionOver(image: MemoryImage): KernelTransaction {
           .sort(([, a], [, b]) => a.createdAt - b.createdAt)
           .slice(0, count);
         for (const [key] of victims) image.requestKeys.delete(key);
+      },
+    },
+    inbox: {
+      get: (inboxId, key) => {
+        const record = image.inbox.get(inboxEntryId(inboxId, key));
+        return record && copy(record);
+      },
+      listInbox: (inboxId) =>
+        [...image.inbox.values()]
+          .filter((record) => record.inboxId === inboxId)
+          .sort((a, b) => a.sequence - b.sequence)
+          .map(copy),
+      listOpen: () =>
+        [...image.inbox.values()]
+          .filter((record) => OPEN_INBOX_STATES.has(record.state))
+          .sort(
+            (a, b) =>
+              compareCodePoints(a.inboxId, b.inboxId) ||
+              a.sequence - b.sequence,
+          )
+          .map(copy),
+      put: (record) => {
+        image.inbox.set(inboxEntryId(record.inboxId, record.key), copy(record));
+      },
+      deleteSettledBefore: (inboxId, cutoff) => {
+        for (const [id, record] of [...image.inbox])
+          if (
+            record.inboxId === inboxId &&
+            SETTLED_INBOX_STATES.has(record.state) &&
+            record.updatedAt < cutoff
+          )
+            image.inbox.delete(id);
+      },
+      deleteInbox: (inboxId) => {
+        let removed = 0;
+        for (const [id, record] of [...image.inbox])
+          if (record.inboxId === inboxId) {
+            image.inbox.delete(id);
+            removed += 1;
+          }
+        return removed;
       },
     },
   };

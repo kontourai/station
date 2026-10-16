@@ -123,7 +123,10 @@ import {
 } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
-import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
+import {
+  applyWalJournalMode,
+  isSqliteContentionError,
+} from '../../utils/sqlite-wal.js';
 import {
   type OperationalEventConsumer,
   type OperationalEventConsumerConfig,
@@ -291,6 +294,10 @@ import {
   turnDedupKey,
 } from './sqlite-turn-dedup-persistence.js';
 import {
+  createSqliteThreadInboxStore,
+  type ThreadInboxStore,
+} from './thread-inbox.js';
+import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_LABEL_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
@@ -335,6 +342,7 @@ class EventAppendTransactionLostError extends Error {
   }
 }
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
+const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
 /**
@@ -1946,6 +1954,10 @@ export class EventStore {
   private readonly operationalEventConsumers =
     new Set<OperationalEventConsumer>();
   private readonly commitObservers = new Set<EventStoreCommitObserver>();
+  private readonly backgroundWriteTails = new Map<
+    string | symbol,
+    Promise<void>
+  >();
   private readonly operationalEventSubscriptionRegistries =
     new Set<OperationalEventSubscriptionRegistry>();
   private readonly projectTaskRoomHistories = new Set<ProjectTaskRoomHistory>();
@@ -1960,6 +1972,7 @@ export class EventStore {
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
+  private threadInbox?: ThreadInboxStore;
 
   constructor(
     dbPath: string,
@@ -4334,6 +4347,79 @@ export class EventStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** Only for replayable background sources; exhaustion rejects to their poll. */
+  appendEventIfAbsentInBackground(
+    event: CanonicalRuntimeEvent,
+  ): Promise<number | undefined> {
+    return this.writeInBackground(event.threadId, () =>
+      this.appendEventIfAbsent(event),
+    );
+  }
+
+  upsertSessionInBackground(session: ProviderSession): Promise<void> {
+    return this.writeInBackground(session.threadId, () =>
+      this.upsertSession(session),
+    );
+  }
+
+  deleteThreadInBackground(threadId: string): Promise<void> {
+    return this.writeInBackground(threadId, () => this.deleteThread(threadId));
+  }
+
+  private async writeInBackground<T>(
+    threadId: string | symbol,
+    write: () => T,
+  ): Promise<T> {
+    this.assertNoOuterTransactionForPublication();
+    // One FIFO across all background operations for a Session. The follower
+    // also awaits each event before advancing its page/cursor or publishing.
+    const previous =
+      this.backgroundWriteTails.get(threadId) ?? Promise.resolve();
+    const pending = previous.then(async () => {
+      const deadline = performance.now() + SQLITE_BUSY_TIMEOUT_MS;
+      let backoff = 2;
+      for (;;) {
+        this.assertNoOuterTransactionForPublication();
+        const { timeout } = this.db.prepare('PRAGMA busy_timeout').get() as {
+          timeout: number;
+        };
+        try {
+          // Each attempt is wholly synchronous, including its rollback. Never
+          // hold a transaction or this connection's zero timeout across await:
+          // room workers need the event loop to authorize their locked write.
+          this.db.exec('PRAGMA busy_timeout = 0');
+          return write();
+        } catch (error) {
+          if (!isSqliteContentionError(error) || this.db.isTransaction)
+            throw error;
+          const remaining = deadline - performance.now();
+          if (remaining <= 0) throw error;
+        } finally {
+          this.db.exec(`PRAGMA busy_timeout = ${timeout}`);
+        }
+        await new Promise<void>((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(backoff, Math.max(0, deadline - performance.now())),
+          ),
+        );
+        backoff = Math.min(backoff * 2, 64);
+      }
+    });
+    // A failed page must not poison the next poll's retries. Callers still see
+    // the original rejection and must retain their source progress on failure.
+    const settled = pending.then(
+      () => {},
+      () => {},
+    );
+    this.backgroundWriteTails.set(threadId, settled);
+    void settled.then(() => {
+      if (this.backgroundWriteTails.get(threadId) === settled)
+        this.backgroundWriteTails.delete(threadId);
+    });
+    return pending;
   }
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
@@ -11874,6 +11960,12 @@ export class EventStore {
     return this.delegationResults;
   }
 
+  /** #3568: follow-ups held for a conversation's next turn boundary. */
+  threadInboxStore(): ThreadInboxStore {
+    this.threadInbox ??= createSqliteThreadInboxStore(this.db);
+    return this.threadInbox;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -12595,6 +12687,9 @@ export class EventStore {
         )
         .all(threadId) as Array<{ blob_ref: string }>
     ).map((row) => row.blob_ref);
+    // #3568: opened before the transaction, because opening it migrates the
+    // inbox's tables in a transaction of its own.
+    const threadInbox = this.threadInboxStore();
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
@@ -12704,6 +12799,10 @@ export class EventStore {
         .run(threadId);
       // #3559: a deleted thread's claims and their tombstones leave with it.
       this.turnDedupPersistence.forgetThread(threadId);
+      // #3568: a deleted conversation's queued follow-ups go with it. A
+      // conversation is keyed by its root Session, so only that deletion
+      // names any entries.
+      threadInbox.forget(threadId);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -13221,9 +13320,36 @@ export class EventStore {
   private scheduleMessageSearchBackfill(): void {
     setImmediate(() => {
       if (this.messageSearchBackfillClosed) return;
-      if (this.backfillNextMessageSearchProjection()) {
-        this.scheduleMessageSearchBackfill();
-      }
+      void this.writeInBackground(MESSAGE_SEARCH_BACKGROUND_WRITE, () =>
+        this.messageSearchBackfillClosed
+          ? false
+          : this.backfillNextMessageSearchProjection(),
+      ).then(
+        (more) => {
+          if (more) this.scheduleMessageSearchBackfill();
+        },
+        (error: unknown) => {
+          if (this.messageSearchBackfillClosed) return;
+          const contended = isSqliteContentionError(error);
+          logger.warn('Message search backfill failed', {
+            error,
+            databasePath: this.databasePath,
+            recovery: contended ? 'retry-in-2s' : 'restart-required',
+          });
+          // Non-contention faults stop scheduled backfill until restart;
+          // warn with the database and recovery action instead of throwing
+          // from the detached scheduler callback.
+          if (contended) {
+            // Projection and watermark roll back together. Re-read the same
+            // durable window on the next pass, including after budget expiry.
+            const retry = setTimeout(
+              () => this.scheduleMessageSearchBackfill(),
+              2_000,
+            );
+            retry.unref?.();
+          }
+        },
+      );
     });
   }
 

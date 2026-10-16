@@ -125,6 +125,40 @@ subscribers. The adapter re-reads the bounded document projection and
 reauthorizes before delivery; SQLite notifications are never treated as replay
 truth or as permission to disclose stored content.
 
+The attached-session follower uses yielding EventStore writes for envelopes,
+owner records, transcript events, session/cursor updates, and colliding alias
+deletion. Each synchronous attempt temporarily sets `busy_timeout=0`, completes
+or rolls back, and restores the prior timeout before an asynchronous backoff
+(2–64 ms). A Session FIFO preserves background write order. Each queued write
+has a five-second contention budget once it reaches the front; exhaustion
+rejects the poll without advancing its cursor. An established nonzero cursor
+lets a later poll re-read the source page; existing event IDs suppress duplicate
+inserts. Claude's initial zero cursor selects a moving tail window. Append-only
+growth beyond that window after a failed write can omit already-observed events
+even while their source bytes remain. This pre-existing limitation is tracked in
+[#3708](https://github.com/kontourai/station/issues/3708); it requires a durable
+page queue or a source-owned stable initial replay anchor. Deterministic ingress
+refusals keep their existing logged-skip policy.
+
+Scheduled message-search imports use the same yielding path. Their projection
+and watermark commit in one transaction. On contention budget exhaustion, the
+next pass retries the unchanged durable window after two seconds; restart also
+resumes from that watermark. A non-contention error stops scheduled backfill
+until restart and logs a warning with the error, database path and recovery
+action.
+
+Background follower and search-backfill writes yield between contention
+attempts instead of busy-waiting on the main thread. Every other main-thread
+writer remains synchronous, including constructor migrations, foreground/provider event and
+Session updates, command/turn/delivery receipts and checkpoints, adoption and
+recovery/credential ledgers, native/voice run transitions, attachment quota and
+reference writes, operational-event journals, conversation history and lineage,
+steer inputs, native session bindings, declared outputs, Session work-item
+associations, and source-seal/provider-admission transactions. These writers can still collide with room workers and block the
+event loop; [#3701](https://github.com/kontourai/station/issues/3701) remains open.
+This change does not establish universal deadlock freedom or worker recovery
+after another writer blocks the event loop.
+
 Capabilities and agent authorization are checked before work, immediately
 before a write after the worker owns its SQLite transaction, and again before a
 read batch is disclosed. A revocation that arrives during link resolution or

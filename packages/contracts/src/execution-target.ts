@@ -143,6 +143,24 @@ export interface ExecutionTarget {
  */
 export const EXECUTION_ENGINE_CHANGED_CODE = 'execution_engine_changed';
 
+/**
+ * Why Station refused to continue a conversation in its persisted workspace
+ * (#3568): the project context, worktree binding or directory it was bound to
+ * is missing, moved, corrupt or no longer matches. Nothing started. Station
+ * reports one of these as a held follow-up's `reasonCode`.
+ */
+export const CONTINUATION_WORKSPACE_REFUSAL_CODES = [
+  'continuation_workspace_project_context_missing',
+  'continuation_workspace_corrupt_worktree_binding',
+  'continuation_workspace_worktree_gone',
+  'continuation_workspace_different_project',
+  'continuation_workspace_worktree_moved',
+  'continuation_workspace_direct_mismatch',
+  'continuation_workspace_unbound',
+] as const;
+export type ContinuationWorkspaceRefusalCode =
+  (typeof CONTINUATION_WORKSPACE_REFUSAL_CODES)[number];
+
 export const EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION =
   'station.execution-resolution/v1' as const;
 
