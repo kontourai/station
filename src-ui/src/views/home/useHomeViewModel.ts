@@ -254,11 +254,16 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   };
   return {
     ...data,
-    // #2310 review M3: the "Continue" card must name work. A Draft
-    // has none — nothing was ever sent — and stays reachable in its lane.
+    // Drafts have no work yet; finished Tasks stay reachable in their lanes.
     primaryWorkItem: data.workItems.find(
       (task) =>
-        task.kind !== 'remote-session' && task.lifecycleLabel !== 'Draft',
+        task.kind !== 'remote-session' &&
+        task.lifecycleLabel !== 'Draft' &&
+        !(
+          task.kind === 'task' &&
+          (task.lifecycleLabel === 'Completed' ||
+            task.lifecycleLabel === 'Stopped')
+        ),
     ),
     continueWork: createContinueWork(
       onNavigate,

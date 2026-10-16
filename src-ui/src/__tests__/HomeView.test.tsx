@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import type { TaskRecord } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -979,6 +980,59 @@ describe('HomeView', () => {
     });
     expect(onNavigate).not.toHaveBeenCalled();
   });
+
+  test.each(['done', 'canceled'] as const)(
+    'Continue skips a newer %s Task and opens the most recent unfinished Task',
+    (status) => {
+      const task = {
+        projectId: 'p1',
+        priority: 'normal',
+        description: '',
+        createdBy: 'user',
+        createdAt: '2026-07-10T00:00:00Z',
+      } satisfies Partial<TaskRecord>;
+      fixtures.tasks = [
+        {
+          ...task,
+          id: 'older-task',
+          title: 'Older unfinished Task',
+          status: 'todo',
+          updatedAt: '2026-07-11T00:00:00Z',
+        },
+        {
+          ...task,
+          id: 'finished-task',
+          title: 'Finished Task',
+          status,
+          updatedAt: '2026-07-14T00:00:00Z',
+        },
+        {
+          ...task,
+          id: 'unfinished-task',
+          title: 'Most recent unfinished Task',
+          status: 'in_progress',
+          updatedAt: '2026-07-13T00:00:00Z',
+        },
+      ] satisfies TaskRecord[];
+      const onNavigate = vi.fn();
+      const view = renderHomeView({ continuation: null, onNavigate });
+      expect(continueRow().textContent).toContain(
+        'Most recent unfinished Task',
+      );
+      fireEvent.click(continueRow());
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'task',
+        taskId: 'unfinished-task',
+      });
+
+      view.unmount();
+      fixtures.tasks = fixtures.tasks.filter(
+        (task) => task.id === 'finished-task',
+      );
+      renderHomeView({ continuation: null, onNavigate });
+      expect(queryContinue()).toBeNull();
+    },
+  );
 
   // #2310 review M3: the newest session is a Draft (nothing ever sent). The
   // card must continue the most recent WORK, not an empty session.
