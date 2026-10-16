@@ -2015,22 +2015,31 @@ for (const type of [
           intentDigest: 'stage-options',
           bodyRef: 'stage-body',
         };
-        await session.run(create('intent', 't', owner, at(1), 'reserved'));
-        await session.run({
-          type: 'turnBoundary.prepare',
-          boundaryId: 'intent',
-          ownerId: owner.id,
-          intent,
-          now: at(2),
-        });
-        if (!refused)
+        assert.deepEqual(
+          await session.run(create('intent', 't', owner, at(1), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
           await session.run({
-            type: 'turnBoundary.beginInvocation',
+            type: 'turnBoundary.prepare',
             boundaryId: 'intent',
             ownerId: owner.id,
             intent,
-            now: at(3),
-          });
+            now: at(2),
+          }),
+          { kind: 'applied' },
+        );
+        if (!refused)
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.beginInvocation',
+              boundaryId: 'intent',
+              ownerId: owner.id,
+              intent,
+              now: at(3),
+            }),
+            { kind: 'applied' },
+          );
         const command = {
           type,
           boundaryId: 'intent',
@@ -2044,6 +2053,8 @@ for (const type of [
           },
         };
         const before = await boundary(session, 'intent');
+        assert.equal(before?.state, refused ? 'prepared' : 'invoking');
+        assert.equal(before?.updatedAt, command.boundary.updatedAt);
         assert.deepEqual(await session.run(command), {
           kind: 'refused',
         });
