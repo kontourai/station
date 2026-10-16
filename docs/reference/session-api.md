@@ -800,8 +800,12 @@ through the yielding EventStore write path. Failed page writes replay from that
 anchor even after the file grows, the source is rediscovered, the follower's
 bounded cache evicts the thread, or Station restarts. The anchor is reusable
 only for the same source handle and configuration-home affinity. It stores no
-page contents and cannot recover deleted or truncated source bytes; bytes before
-the initial window remain outside retention. Codex and Grok start at byte zero;
+page contents and cannot recover deleted or truncated source bytes. If the file
+shrinks below the saved offset, the follower logs a warning and pins a new initial
+window on the next poll so following resumes; bytes before that window remain
+outside retention. A legacy attachment without configuration-home affinity keeps
+its migration anchor in memory until its first successful read, preserving the
+old durable cursor and affinity on read failure. Codex and Grok start at byte zero;
 OpenCode starts before the first message in its ordered database query. Their
 cold cursors do not move with append-only growth.
 

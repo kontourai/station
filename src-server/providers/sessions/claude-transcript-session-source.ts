@@ -5,6 +5,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   claudeToolResultOutputReceipt,
   summarizeClaudeToolResult,
@@ -61,6 +62,7 @@ const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'claude-config-home';
+const logger = createLogger({ name: 'claude-transcript-session-source' });
 
 interface ClaudeTranscriptSessionSourceOptions {
   /** Claude config directory, not its projects child. */
@@ -270,7 +272,11 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     const root = this.canonicalProjectsRoot(sourceHome);
     const canonical = root ? this.canonicalRegularFile(root, file) : null;
     if (!canonical) {
-      return { outcome: 'rejected_candidate', events: [], cursor: 0 };
+      return {
+        outcome: 'rejected_candidate',
+        events: [],
+        cursor: previousCursor,
+      };
     }
     const cursorOffset =
       typeof previousCursor === 'number'
@@ -310,13 +316,18 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     let byteLimited = false;
     try {
       const stat = lstatSync(canonical);
-      // Object cursors include durable cold-window anchors, including zero.
-      // A shortened source cannot satisfy that anchor; never silently slide it.
-      if (typeof previousCursor !== 'number' && cursorOffset > stat.size) {
+      if (cursorOffset > stat.size) {
+        logger.warn('Claude transcript shrank; resetting its replay anchor', {
+          threadId: session.threadId,
+          previousOffset: cursorOffset,
+          size: stat.size,
+        });
+        // The follower persists zero, then pins a fresh bounded window before
+        // reading again. Deleted bytes cannot be replayed.
         return {
           outcome: 'rejected_candidate',
           events: [],
-          cursor: previousCursor,
+          cursor: 0,
         };
       }
       windowStart =

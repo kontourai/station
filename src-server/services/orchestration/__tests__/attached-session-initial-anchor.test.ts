@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { ClaudeTranscriptSessionSource } from '../../../providers/sessions/claude-transcript-session-source.js';
@@ -78,7 +78,7 @@ test.each([
           threadId = descriptor.threadId;
           expect(observedIds).toHaveLength(2);
           // The real first page has been observed. Hold the peer writer until
-          // the follower's actual SQLite metadata write exhausts its budget.
+          // the follower's actual SQLite import write exhausts its budget.
           peer.exec('BEGIN IMMEDIATE');
         }
         return result;
@@ -116,20 +116,6 @@ test.each([
         await service.stop();
         store.close();
         store = new EventStore(database);
-        // Same native id in a different source home cannot borrow the anchor.
-        const otherHome = join(directory, 'other-claude');
-        const otherFile = transcript(otherHome, directory);
-        writeFileSync(otherFile.path, otherFile.line('wrong-home'));
-        const prior = store.readSessions()[0];
-        const other = follow(
-          new ClaudeTranscriptSessionSource({ configDir: otherHome }),
-        );
-        try {
-          await other.pollNow();
-          expect(store.readSessions()[0]).toEqual(prior);
-        } finally {
-          await other.stop();
-        }
         source = new ClaudeTranscriptSessionSource({ configDir });
         service = follow(source);
       } else if (recovery === 'cache eviction') {
@@ -166,6 +152,22 @@ test.each([
       expect(
         Buffer.byteLength(JSON.stringify(session?.resumeCursor)),
       ).toBeLessThan(1024);
+      if (recovery === 'restart') {
+        // Same native id in a different source home cannot borrow the anchor.
+        const otherHome = join(directory, 'other-claude');
+        const otherFile = transcript(otherHome, directory);
+        writeFileSync(otherFile.path, otherFile.line('wrong-home'));
+        const prior = store.readSessions()[0];
+        const other = follow(
+          new ClaudeTranscriptSessionSource({ configDir: otherHome }),
+        );
+        try {
+          await other.pollNow();
+          expect(store.readSessions()[0]).toEqual(prior);
+        } finally {
+          await other.stop();
+        }
+      }
     } finally {
       if (peer.isTransaction) peer.exec('ROLLBACK');
       await service.stop();
@@ -185,6 +187,7 @@ test('does not observe a cold page until its anchor write succeeds', async () =>
   const store = new EventStore(database);
   const peer = new DatabaseSync(database);
   const source = new ClaudeTranscriptSessionSource({ configDir });
+  const metadataWrites = vi.spyOn(store, 'upsertSessionInBackground');
   let reads = 0;
   let hold = true;
   const wrapped: AttachedSessionSource = {
@@ -217,7 +220,9 @@ test('does not observe a cold page until its anchor write succeeds', async () =>
     expect(reads).toBe(0);
     expect(store.readSessions()).toEqual([]);
     peer.exec('ROLLBACK');
+    metadataWrites.mockClear();
     await service.pollNow();
+    expect(metadataWrites).toHaveBeenCalledTimes(2);
     expect(reads).toBe(1);
     expect(store.readSessions()[0]?.resumeCursor).toMatchObject({
       cursor: { offset: statSync(file.path).size },
@@ -229,3 +234,48 @@ test('does not observe a cold page until its anchor write succeeds', async () =>
     store.close();
   }
 }, 15_000);
+
+test('resumes following a rewritten transcript after its saved offset exceeds the file size', async () => {
+  const directory = tempDir('station-truncated-transcript-');
+  const configDir = join(directory, 'claude');
+  const file = transcript(configDir, directory);
+  writeFileSync(
+    file.path,
+    file.line('original-first') + file.line('original-second'),
+  );
+  const store = new EventStore(join(directory, 'orchestration.sqlite'));
+  const source = new ClaudeTranscriptSessionSource({ configDir });
+  const service = new AttachedSessionFollowService({
+    sources: [source],
+    eventStore: store,
+    eventBus: new EventBus(),
+    listProjects: () => [{ slug: 'app', workingDirectory: directory }],
+  });
+  const importedPrompts = () =>
+    store
+      .listEvents(store.readSessions()[0].threadId)
+      .filter((event) => event.method === 'turn.started')
+      .map((event) => event.payload.prompt);
+  try {
+    await service.pollNow();
+    expect(importedPrompts()).toEqual(['original-first', 'original-second']);
+    writeFileSync(file.path, file.line('short'));
+    await service.pollNow();
+    await service.pollNow();
+    expect(importedPrompts()).toContain('short');
+    appendFileSync(file.path, file.line('appended'));
+    await service.pollNow();
+    expect(importedPrompts()).toEqual([
+      'original-first',
+      'original-second',
+      'short',
+      'appended',
+    ]);
+    expect(store.readSessions()[0].resumeCursor).toMatchObject({
+      cursor: { offset: statSync(file.path).size },
+    });
+  } finally {
+    await service.stop();
+    store.close();
+  }
+});

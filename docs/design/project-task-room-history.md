@@ -140,7 +140,11 @@ inserts. The anchor remains bound to the source handle and configuration-home
 affinity. It retains bounded cursor state rather than page contents. This fixes
 [#3708](https://github.com/kontourai/station/issues/3708) while preserving the
 initial 2 MiB retention window: older bytes outside it are not backfilled, and
-source deletion or truncation cannot be recovered from a cursor alone.
+source deletion or truncation cannot be recovered from a cursor alone. If a file
+shrinks below the saved offset, a warning is logged and the next poll pins a new
+initial window so following resumes. A legacy attachment without source-home
+affinity keeps its migration anchor in memory until a successful read; a failed
+read preserves its durable cursor and does not grant affinity.
 Codex and Grok already start at byte zero; OpenCode starts before the first
 message in its ordered database query, so they have no moving cold window.
 Deterministic ingress refusals keep their existing logged-skip policy.

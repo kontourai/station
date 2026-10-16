@@ -679,6 +679,7 @@ export class AttachedSessionFollowService {
     let reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
       ? priorCursor.cursor
       : undefined;
+    let anchorPersisted = false;
     if (
       source.initialCursor &&
       (reusableCursor === undefined || reusableCursor === 0)
@@ -691,9 +692,16 @@ export class AttachedSessionFollowService {
         );
       }
       // #3708: no observable page may depend on a moving cold-read window.
-      // Commit before read(), and retain the anchor in memory only after the
-      // yielding write succeeds. Restart and LRU eviction restore the same row.
-      await this.persistAttachedSession(source, descriptor, snapshot, anchor);
+      // A legacy row gains affinity only after a successful read. Its migration
+      // anchor stays in memory until then; other rows pin it before read().
+      const migratingLegacyAffinity =
+        persisted?.controlMode === 'read-only-attached' &&
+        !persisted.attachedSource?.affinity &&
+        descriptor.affinity !== undefined;
+      if (!migratingLegacyAffinity) {
+        await this.persistAttachedSession(source, descriptor, snapshot, anchor);
+        anchorPersisted = true;
+      }
       reusableCursor = anchor;
       state.cursors.set(sourceCursorKey(source), {
         provider: source.provider,
@@ -727,7 +735,7 @@ export class AttachedSessionFollowService {
       // A later successful poll can continue without replaying the source.
       // In particular, do not grant a legacy attachment a newly discovered
       // affinity until that source has completed one successful bounded read.
-      if (!persisted) {
+      if (!persisted && !anchorPersisted) {
         await this.persistAttachedSession(
           source,
           descriptor,
@@ -744,12 +752,14 @@ export class AttachedSessionFollowService {
     // Persist attachment metadata before importing, but advance neither durable
     // nor in-memory progress until the whole page is stored. An interrupted
     // page then replays through existing event-id deduplication without loss.
-    await this.persistAttachedSession(
-      source,
-      descriptor,
-      snapshot,
-      reusableCursor,
-    );
+    if (!anchorPersisted) {
+      await this.persistAttachedSession(
+        source,
+        descriptor,
+        snapshot,
+        reusableCursor,
+      );
+    }
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
