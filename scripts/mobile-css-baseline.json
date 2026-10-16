@@ -45,6 +45,10 @@
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the exit animation is `forwards`: under the motion primitive alone a 0.01ms run HOLDS the collapsed end state instead of leaving the panel as it was."
     },
+    "src-ui/src/components/modals/TaskChatStart.css": {
+      "count": 1,
+      "reason": "#3705: the New Task shaping start surface is a chat-dock sheet like BackgroundTasksSheet; on phones it fills the viewport below the toolbar so the page's own Start work composer cannot sit beside the shaping composer. No shared primitive owns chat-dock sheet height."
+    },
     "src-ui/src/components/chat/QueuedMessages.css": {
       "count": 1,
       "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
