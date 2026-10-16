@@ -13,6 +13,7 @@ import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { scaleLivenessMs } from '../lib/liveness-scale.mjs';
+import { redactVerificationOutput } from '../lib/verification-redaction.mjs';
 import {
   cargoDependencyVersion,
   collectFindings,
@@ -36,9 +37,18 @@ describe('tauri context', () => {
     mkdirSync(directory);
     process.stderr.write(`Tauri context probe evidence: ${directory}\n`);
     return (phase: string, detail: object = {}) => {
+      const redacted = Buffer.from(
+        redactVerificationOutput(JSON.stringify(detail)),
+      );
+      const limit = 64 * 1024;
       writeFileSync(
         join(directory, `${phase}.json`),
-        JSON.stringify({ phase, at: new Date().toISOString(), ...detail }),
+        JSON.stringify({
+          phase,
+          at: new Date().toISOString(),
+          detail: redacted.subarray(0, limit).toString('utf8'),
+          truncated: redacted.length > limit,
+        }),
       );
     };
   }
