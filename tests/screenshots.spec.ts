@@ -167,6 +167,23 @@ async function fulfillGallerySystemStatus(route: Route): Promise<void> {
   });
 }
 
+async function fulfillGalleryToolAccess(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const access = await response.json();
+  if (!response.ok() || !access.success || !access.data?.station?.name)
+    throw new Error('Gallery requires the live tool-access projection.');
+  await route.fulfill({
+    response,
+    json: {
+      ...access,
+      data: {
+        ...access.data,
+        station: { ...access.data.station, name: 'Gallery host' },
+      },
+    },
+  });
+}
+
 function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   if (route.request().method() !== 'GET') return route.fallback();
   return route.fulfill({
@@ -1504,7 +1521,15 @@ function overlayDockProjectMismatchHooks(
         await expect(
           page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
+        const projectRead = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/projects/project-a',
+        );
         await page.getByRole('button', { name: 'Switch to Project A' }).click();
+        expect(
+          (await projectRead).status(),
+          'selected Project detail must be available',
+        ).toBe(200);
         await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
           { timeout: 10_000 },
         );
@@ -1895,7 +1920,17 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
+  {
+    name: 'profile',
+    title: 'Profile',
+    path: '/profile',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('region', { name: 'My access', exact: true }),
+      ).toContainText('Operator on Gallery host');
+    },
+  },
   {
     name: 'settings',
     title: 'Settings',
@@ -3184,6 +3219,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
+  await page.route('**/api/tool-library/access', fulfillGalleryToolAccess);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established
