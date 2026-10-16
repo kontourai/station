@@ -260,6 +260,16 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+test('central phone chat preserves the ambient dock state while mounting and leaving', () => {
+  harness.isMobile = true;
+  navigationStore.setDockState(false, false);
+  const view = renderStack({ centerChat: true });
+  expect(crumbs()).toEqual(['Inbox']);
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+  view.unmount();
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+});
+
 describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
   test('lands on the Chat page: Chat is the page, the pane host is hidden and inert', () => {
     renderStack();

@@ -1,0 +1,7 @@
+{
+  "revision": "b831b54ab203c25e76981a5965a436dd6e0f1aa4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed #3719 Home Continue/Recent Task rows through buildHomeWorkItems, workStatus and the shared InboxRow. Home uses the existing displayed-kind field for Task status and the board's existing No agent assigned copy; session words remain shared. Composer, handoff, responsive row anatomy and conversation status claims remain accurate; no prose change. EXECUTED: focused owner and importing UI suites (281 tests), UI typecheck after building the missing Connect declarations; one old-label fault produced 11 intended failures, exact restoration passed 148 tests. Screenshots pending. NOT_VERIFIED: broad gates and hosted checks per reduced owner plan. #3707 deferred because a second invalidation owner lives outside taskGraph.ts.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/work-status.ts","src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}

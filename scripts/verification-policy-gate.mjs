@@ -223,7 +223,7 @@ export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
   'docs/guides/development.md',
 ]);
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
-  'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
+  'Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
   'Nightly and tagged preview and stable promotions',
   'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',

@@ -1465,12 +1465,12 @@ describe('changed verification selection', () => {
     //
     // What this does NOT prove is that the reference is an execution or a
     // source read rather than a command-text pin. A call-argument scan cannot
-    // decide it: most of these eleven tests build the path through a const or
+    // decide it: most of these twelve tests build the path through a const or
     // a join() before spawning it, and one splits it across join arguments,
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);
@@ -3653,6 +3653,41 @@ describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
         ...DOC_SUITES,
       ]),
     );
+  });
+
+  test('a source-only Starter registry change plans documentation and discovered behavior without deferral', async () => {
+    const registry = 'src-server/services/starter-work/starter-registry.ts';
+    const behavioralSuites = [
+      'src-server/services/starter-work/__tests__/starter-registry.test.ts',
+      'src-server/routes/__tests__/starter-work.routes.test.ts',
+      'src-server/routes/orchestration/__tests__/task-dispatch-full-access.routes.test.ts',
+    ];
+    const selection = select([registry]);
+    expect(selection.relatedPaths).toEqual([registry]);
+    expect(selection.tests.map(({ path }) => path)).toContain(
+      'scripts/__tests__/documentation-foundations.test.ts',
+    );
+    const discoverRelatedFiles = vi.fn(async () => behavioralSuites);
+    const plan = await planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [registry] }),
+      discoverRelatedFiles,
+    });
+    expect(discoverRelatedFiles).toHaveBeenCalledWith(
+      process.cwd(),
+      [registry],
+      expect.objectContaining({ base: 'HEAD' }),
+    );
+    expect(plan.groups.flatMap(({ files }) => files)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/documentation-foundations.test.ts',
+        ...behavioralSuites,
+      ]),
+    );
+    expect(plan.deferredLanes).toEqual([]);
+    expect(plan.mergeQueueRegressionPaths).toEqual([]);
+    expect(plan.escalated).toBe(false);
+    expect(plan.emptyRelatedSelection).toBeUndefined();
   });
 
   test('a docs change beside a truly unknown path still defers', () => {

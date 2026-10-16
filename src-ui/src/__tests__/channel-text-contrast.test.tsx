@@ -207,11 +207,9 @@ function renderSurfaces(): string {
       appName="Station"
       homeLabel="Station"
       channelBadge="Nightly"
-      collapsed={false}
       isMobile={false}
       onCloseMobile={() => {}}
       onGoHome={() => {}}
-      onToggleCollapse={() => {}}
     />,
   );
   const readiness = render(<ReadinessPanel projectSlug="p" />);

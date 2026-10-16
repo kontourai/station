@@ -1094,3 +1094,34 @@ test('an empty provider id cannot terminally retire an engine-opened boundary', 
     store.close();
   }
 });
+
+// #3568: turn boundaries and the conversation inbox are separate Monument
+// storages on EventStore's one connection, and only the inbox's owns the
+// inbox machine. A boundary write must create no inbox table of its own.
+test('turn-boundary storage owns no inbox table: a store whose inbox was never opened has none after a boundary write', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(
+      authority
+        .prepareProviderTurn(
+          'inbox-free-thread',
+          'turn-1',
+          '2030-01-01T00:00:00.000Z',
+        )
+        .record(),
+    ).toEqual({ kind: 'applied' });
+    const inboxTables = () =>
+      store['db']
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'monument_inbox%'",
+        )
+        .all();
+    expect(inboxTables()).toEqual([]);
+    // Control: the inbox's own storage does create it.
+    store.threadInboxStore();
+    expect(inboxTables()).toEqual([{ name: 'monument_inbox_entries' }]);
+  } finally {
+    store.close();
+  }
+});

@@ -67,7 +67,8 @@ live in Settings.
 
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
-the Project fixed. Project and Station controls sit above the text box;
+the Project fixed. The duplicate project chat callout has been removed; the
+composer is the Project’s entry to a new chat. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -113,9 +114,7 @@ of these routes require separate evidence from the source and controlled tests.
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. An empty Home does not add a second welcome question.
 
-The **on <host>** control names the answering Station's host projection, or
-**on Project default** when the Project has a saved execution environment. It
-opens the existing task launcher with the current message, Project, Agent and
+The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
 explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
@@ -350,11 +349,16 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Unavailable Providers explain their status and are disabled. They can never
   create a new invalid chat selection.
 - Favorites, recents, hidden models, and explicit order use one versioned
-  device-settings record. Provider details own favorite/hide/reorder controls;
-  the picker consumes the same record.
+  account preference on this Station when signed in, with a device-local fallback.
+  Pending actions compose locally; a stale composite replacement is refused
+  rather than dropping another device’s favorites. Provider details and the
+  picker use the same preference owner.
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
+- Startup permissions show the requested mode and source before Start. The running
+  chip shows engine-confirmed values or a pending/restart state. Personal defaults
+  apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate when needed; Model does not stretch into unused space.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
@@ -565,10 +569,12 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-Owner-directed revision (clarified 2026-09-05): project switching and
-conversation switching are primary phone-header actions. Both stay directly
-reachable with readable current context and 44px touch targets at 320px,
-390px, and 412px widths. Neither requires opening Chat actions first.
+Project and conversation switching remain direct phone-header actions with
+readable current context and 44px targets at 320px, 390px and 412px. The
+October audit proposed moving the future-project choice into Chat actions;
+that remains a proposal because the product contract requires direct access.
+The current implementation keeps the project control and simplifies title
+wrapping and assistant context without removing either primary action.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
@@ -583,7 +589,8 @@ existing details/actions sheet, including Git and PR reads on demand.
 
 The **Projects** picker uses the same **+** component, named **New project**,
 and opens the canonical `/projects/new` flow. Its empty state explains the
-next action. Project icons and accent fallback match the sidebar; a checkmark
+next action. Chosen Project icons and the accent palette match the sidebar;
+the workspace map uses initials tiles while picker fallbacks use accent marks. A checkmark
 identifies the selected project. Other rows show stacked switch arrows; the
 separate home icon opens the Project workspace. Hover, keyboard focus or a hold
 explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
@@ -622,3 +629,22 @@ pre-merge browser smoke must exercise the journey rather than wait for Nightly.
 An indeterminate wait may show elapsed observation time, clearly identified as time waiting in this view. It must not invent a completion estimate. Access requests with a persisted expiry show a countdown from that expiry; the clock itself is not a live-region announcement.
 
 Discovered Codex rollouts continue through app-server `thread/fork`, returning a distinct native child ID. Cleanup archives the confirmed child. This is separate from resuming an existing Station-owned Codex session, which uses `thread/resume`.
+
+## Header simplification, October 2026
+
+The desktop chat title leads, with assistant and reported engine/model context
+on a second line. Coding keeps the title in its own breadcrumb. Its bar omits the assistant,
+engine/model, future-chat Project and Git strip; Agent and engine/model controls
+stay beside the composer, while Project and file context remain in their owning
+surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
+title in the chat header and uses its breadcrumb for Inbox and pane navigation.
+Working chats open a keyboard-operable
+menu. On mobile, the title is one line with assistant context beneath it. The direct
+Project control retains its New chats caption: it sets future chat context,
+not the current conversation’s binding. Moving that control into Chat actions
+remains an unimplemented proposal requiring a product-contract decision.
+
+Earlier Project before/after illustrations on this page are historical
+comparisons. Their duplicate callout and older dock chrome are not current
+acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
+for actual captures and remaining Terminal and pairing work.

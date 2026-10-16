@@ -11,6 +11,15 @@
  */
 export type * from './commands.js';
 export {
+  decideInboxCancel,
+  decideInboxClaimNext,
+  decideInboxRelease,
+  decideInboxResolveUnconfirmed,
+  decideInboxSettle,
+  decideInboxSubmit,
+  inboxHead,
+} from './decisions/inbox.js';
+export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
   type RequestKeyClaimInputs,
@@ -56,8 +65,12 @@ export {
 } from './port.js';
 export type * from './records.js';
 export {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
   decideSessionDelivery,
   deliverSessionMessage,
+  keyInFlightError,
+  keyInFlightError,
   parseSessionDeliveryDecision,
   type SessionDeliveryBranch,
   type SessionDeliveryDecision,
@@ -66,5 +79,7 @@ export {
   type SessionSendMode,
   type SessionStartResult,
   type SessionSteerResult,
+  startUnlessDelivered,
+  startUnlessDelivered,
 } from './session-message-delivery.js';
 export { resolveKernelLimits } from './step.js';

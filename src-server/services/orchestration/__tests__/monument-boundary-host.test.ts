@@ -476,6 +476,7 @@ test('alternating frozen SQL and the production Monument coordinator share one d
         ).high_water,
       ),
     reconcileTerminals: () => {},
+    retiredBoundaryIds: () => [],
     transactionLost: (cause) => new Error('Host transaction lost', { cause }),
   });
   let ordinal = 0;

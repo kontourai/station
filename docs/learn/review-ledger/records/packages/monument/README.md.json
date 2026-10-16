@@ -38,17 +38,9 @@
 
     "packages/monument/src/testing/conformance.ts",
 
-    "packages/monument/src/session-message-delivery.ts",
+    "scripts/monument-pack-smoke.mjs",
 
-    "packages/monument/src/index.ts",
-
-    "src-server/routes/orchestration/session-agent-control.ts",
-
-    "src-server/services/orchestration/delegation-result-delivery.ts",
-
-    "packages/monument/src/__tests__/session-message-delivery.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
+    "scripts/__tests__/monument-pack-smoke.test.ts"
   ],
 
   "checks": []
