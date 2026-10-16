@@ -1798,6 +1798,52 @@ export class ProjectTaskRoomRuntime {
     const now = Date.now();
     const actorId = actorIdFor(principal);
     const entry = this.#liveEntry(document, now);
+    const scope = entry.room.scope;
+    const authorization: LiveWorkAuthorization = {
+      actorId,
+      scope,
+      capabilities: new Set([
+        'join',
+        'read',
+        'write',
+        'watch',
+        'follow',
+        'announce',
+        'history-read',
+      ]),
+    };
+    if (input.command === 'join') {
+      const snapshot = entry.room.snapshotAfterMutation(authorization, now);
+      if (
+        snapshot.outcome === 'available' &&
+        snapshot.snapshot.state === 'degraded'
+      ) {
+        const checkpoint = await this.#checkpointForRequest({
+          taskId: input.taskId,
+          request: input.request,
+          document,
+          principal,
+          entry,
+          now,
+        });
+        if (checkpoint !== 'stored') return { kind: checkpoint } as const;
+        const reconciled = await this.#reconcileCadencePending(
+          document,
+          entry,
+          now,
+        );
+        if (reconciled === undefined) return { kind: 'unavailable' } as const;
+        const settled = await this.#checkpointForRequest({
+          taskId: input.taskId,
+          request: input.request,
+          document,
+          principal,
+          entry,
+          now,
+        });
+        if (settled !== 'stored') return { kind: settled } as const;
+      }
+    }
     const priorTtlAuthority =
       input.command === 'join' ? entry.ttlAuthorities.get(actorId) : undefined;
     let retireTtlAuthority: string | undefined;
@@ -1836,20 +1882,6 @@ export class ProjectTaskRoomRuntime {
         return { kind: 'not-found' } as const;
       this.#activeLiveMaterial.set(requestId, input.request);
     }
-    const scope = entry.room.scope;
-    const authorization: LiveWorkAuthorization = {
-      actorId,
-      scope,
-      capabilities: new Set([
-        'join',
-        'read',
-        'write',
-        'watch',
-        'follow',
-        'announce',
-        'history-read',
-      ]),
-    };
     let result: LiveWorkMutationOutcome;
     try {
       if (input.command === 'join')
@@ -2749,10 +2781,14 @@ export class ProjectTaskRoomRuntime {
     entry.authorities.set(token, { principal });
     return token;
   }
-  #releaseTtlAuthority(entry: LiveRoomEntry, actorId: string) {
-    const token = entry.ttlAuthorities.get(actorId);
+  #releaseTtlAuthority(
+    entry: LiveRoomEntry,
+    actorId: string,
+    token = entry.ttlAuthorities.get(actorId),
+  ) {
     if (token) entry.authorities.delete(token);
-    entry.ttlAuthorities.delete(actorId);
+    if (entry.ttlAuthorities.get(actorId) === token)
+      entry.ttlAuthorities.delete(actorId);
   }
 
   async #issueLiveMaterial<K extends RoomCapability>(
@@ -3351,7 +3387,17 @@ export class ProjectTaskRoomRuntime {
       recoveryId: `room-recovery:${entry.generation}`,
       scope: entry.room.scope,
     };
+    const closing = new Set(
+      recovery.state.lifecycles
+        .filter((lifecycle) => lifecycle.state === 'closing')
+        .map((lifecycle) => lifecycle.announcementId),
+    );
     for (const pending of recovery.state.pending) {
+      if (
+        pending.intent.kind !== 'departure' ||
+        !closing.has(pending.lifecycleId ?? '')
+      )
+        continue;
       const intentId = pending?.intent?.intentId;
       if (
         typeof intentId !== 'string' ||
@@ -3371,9 +3417,18 @@ export class ProjectTaskRoomRuntime {
       } finally {
         this.#activeLiveRecovery.delete(pending.intent.requestId);
       }
-      if (outcome.outcome === 'unavailable') return undefined;
+      if (
+        outcome.outcome === 'unavailable' ||
+        outcome.outcome === 'degraded' ||
+        outcome.outcome === 'rate_limited'
+      )
+        return undefined;
       if (outcome.outcome === 'updated' || outcome.outcome === 'departed')
-        this.#releaseTtlAuthority(entry, pending.actorId);
+        this.#releaseTtlAuthority(
+          entry,
+          pending.actorId,
+          pending.intent.requestId,
+        );
       reconciled = true;
     }
     return reconciled;
@@ -3390,7 +3445,11 @@ export class ProjectTaskRoomRuntime {
     if (existing) return existing;
     const recovery = this.#restorePending(document);
     this.#recovery.set(key, recovery);
-    return recovery;
+    return recovery.then((available) => {
+      if (!available && this.#recovery.get(key) === recovery)
+        this.#recovery.delete(key);
+      return available;
+    });
   }
   async #restorePending(document: {
     projectId: string;
@@ -3439,15 +3498,63 @@ export class ProjectTaskRoomRuntime {
           (await this.#restorePending(document))
         );
       }
-      if (
-        state.pending.some((pending) => {
-          const authority = persisted.authorities.get(pending.intent.requestId);
-          return (
-            !authority || actorIdFor(authority.principal) !== pending.actorId
+      const authorities = new Map(persisted.authorities);
+      let repaired = false;
+      for (const pending of state.pending) {
+        if (!authorities.has(pending.intent.requestId)) {
+          const lifecycle = state.lifecycles.find(
+            (item) => item.announcementId === pending.lifecycleId,
           );
-        })
-      )
-        return false;
+          if (
+            pending.intent.kind !== 'departure' ||
+            !lifecycle ||
+            lifecycle.identity.actor.kind !== 'human' ||
+            lifecycle.identity.ttlClosureRequestId !== pending.intent.requestId
+          )
+            return false;
+          // Older renewal checkpoints could retire this handle too early.
+          // Restore only a captured principal proven by its original room receipt.
+          for (const candidate of authorities.values()) {
+            if (actorIdFor(candidate.principal) !== pending.actorId) continue;
+            const grant = this.#issueSystemLiveMaterial(
+              document.taskId,
+              candidate,
+              'history-read',
+            );
+            if (!grant) continue;
+            let record: ProjectTaskRoomRecord | undefined;
+            try {
+              record = await this.#history.findByProposal?.({
+                grant,
+                proposalId: lifecycle.announcementId,
+              });
+            } finally {
+              this.#issued.delete(grant.opaqueToken);
+            }
+            const body = record?.envelope.proposal.body;
+            if (
+              record?.body.kind === 'live-work-started' &&
+              record.body.sessionId === pending.intent.work.sessionId &&
+              plainRecord(body) &&
+              plainRecord(body.grantReceipt) &&
+              body.grantReceipt.capability === 'lifecycle-append' &&
+              body.grantReceipt.receiptId ===
+                requestReceiptId(
+                  record.scope,
+                  candidate.principal,
+                  'lifecycle-append',
+                )
+            ) {
+              authorities.set(pending.intent.requestId, candidate);
+              repaired = true;
+              break;
+            }
+          }
+        }
+        const authority = authorities.get(pending.intent.requestId);
+        if (!authority || actorIdFor(authority.principal) !== pending.actorId)
+          return false;
+      }
       const recoveryScope = state?.scope;
       // The recovery row belongs to one Project/Task/document and generation.
       // Never let a syntactically valid image from another row reissue its
@@ -3461,6 +3568,17 @@ export class ProjectTaskRoomRuntime {
         recoveryScope.channelId !== `room:${document.documentId}`
       )
         return false;
+      if (
+        repaired &&
+        (await this.#deps.working.recovery({
+          scope: document,
+          generation: stored.generation,
+          value: persistedRecoveryValue(state, authorities, [
+            ...persisted.armedIntentIds,
+          ]),
+        })) !== 'stored'
+      )
+        return false;
       const authorization: LiveWorkRecoveryAuthorization = {
         kind: 'system',
         recoveryId: `room-recovery:${stored.generation}`,
@@ -3470,7 +3588,7 @@ export class ProjectTaskRoomRuntime {
       const ports = {
         history: new ProjectTaskLiveWorkHistoryAdapter(this.#history, {
           issue: async ({ capability, requestId }) => {
-            const authority = persisted.authorities.get(requestId);
+            const authority = authorities.get(requestId);
             const grant = authority
               ? this.#issueSystemLiveMaterial(
                   document.taskId,
@@ -3517,7 +3635,7 @@ export class ProjectTaskRoomRuntime {
       const storedRecovery = await this.#deps.working.recovery({
         scope: document,
         generation: stored.generation,
-        value: persistedRecoveryValue(corrected.state, persisted.authorities),
+        value: persistedRecoveryValue(corrected.state, authorities),
       });
       if (storedRecovery !== 'stored' || this.#closed) return false;
       return true;
