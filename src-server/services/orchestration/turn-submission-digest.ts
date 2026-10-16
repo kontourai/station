@@ -4,6 +4,7 @@ import {
   parseChatAttachmentDataUrl,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
+import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import {
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
   type ProviderSendTurnInput,
@@ -166,6 +167,40 @@ export function directTurnSubmissionDigest(
       threadId: input.threadId,
       displayInput: input.displayInput ?? null,
       expectedInputRequest: input.expectedInputRequest ?? null,
+    },
+  });
+}
+
+/** Foreground identity is shared by live sends and their durable inbox placement. */
+export function foregroundTurnSubmissionDigest(input: {
+  message: string;
+  target: ExecutionTarget;
+  ambientContext?: string;
+  attachments?: ChatAttachmentInput[];
+  skillExperience?: SkillExperienceStartInputV1;
+  ephemeral?: boolean;
+  expectedInputRequest?: unknown;
+  setApprovalMode?: unknown;
+  setApprovalModeBasedOn?: unknown;
+}): string {
+  return turnSubmissionDigest({
+    text: input.message,
+    ...(input.ambientContext !== undefined
+      ? { ambientContext: input.ambientContext }
+      : {}),
+    ...(input.target.model?.override !== undefined
+      ? { modelId: input.target.model.override }
+      : {}),
+    ...(input.attachments ? { attachments: input.attachments } : {}),
+    ...(input.skillExperience
+      ? { skillExperience: input.skillExperience }
+      : {}),
+    scope: {
+      target: input.target,
+      ephemeral: input.ephemeral ?? false,
+      expectedInputRequest: input.expectedInputRequest ?? null,
+      setApprovalMode: input.setApprovalMode ?? null,
+      setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
     },
   });
 }

@@ -15,6 +15,7 @@ import type {
   ResolvedWorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
   type SetApprovalModeResult,
@@ -32,6 +33,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -47,10 +49,11 @@ import {
   keyInFlightError,
 } from '../orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
+import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
 import {
+  foregroundTurnSubmissionDigest,
   snapshotTurnSubmissionFields,
   snapshotTurnSubmissionValue,
-  turnSubmissionDigest,
 } from '../orchestration/turn-submission-digest.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -388,15 +391,24 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
-  /**
-   * #3568: the turn ledger's answer for a key across every Session of the
-   * conversation. Read before a continuation may reserve a successor, since
-   * deduplication is per Session. Optional for remote compatibility.
-   */
+  /** An authorized sender's existing FIFO entry, before any live continuation effect. */
+  readPendingConversationSubmission?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    clientTurnId: string,
+    userId?: string,
+  ) =>
+    | {
+        entry: ConversationInboxEntry & { clientTurnId: string };
+        inputDigest?: string;
+      }
+    | undefined;
+  /** Read the key across the authorized conversation before reserving a successor. */
   inspectConversationTurnKey?: (
     access: EnvironmentAccess,
     conversationId: string,
     clientTurnId: string,
+    inputDigest?: string,
   ) => ConversationKeyInspection;
   /**
    * #3568: join the turn a live claim holds `clientTurnId` for on
@@ -407,6 +419,7 @@ export interface ExecutionTargetExecutionDependencies
     sessionId: string,
     clientTurnId: string,
     signal?: AbortSignal,
+    inputDigest?: string,
   ) => Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
@@ -572,7 +585,9 @@ async function refuseUngrantedCarriedPick(
 export async function executeForegroundMessage(
   input: ForegroundMessageInput,
   deps: ExecutionTargetExecutionDependencies,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent) {
     input = snapshotTurnSubmissionFields(input, [
       'target',
@@ -679,26 +694,8 @@ export async function executeForegroundMessage(
     if (effectiveClientTurnId && attachments)
       attachments = snapshotTurnSubmissionValue(attachments);
     submissionDigest = effectiveClientTurnId
-      ? turnSubmissionDigest({
-          text: input.message,
-          ...(input.ambientContext !== undefined
-            ? { ambientContext: input.ambientContext }
-            : {}),
-          ...(input.target.model?.override !== undefined
-            ? { modelId: input.target.model.override }
-            : {}),
-          ...(attachments ? { attachments } : {}),
-          ...(input.skillExperience
-            ? { skillExperience: input.skillExperience }
-            : {}),
-          scope: {
-            target: input.target,
-            ephemeral: input.ephemeral ?? false,
-            expectedInputRequest: input.expectedInputRequest ?? null,
-            setApprovalMode: input.setApprovalMode ?? null,
-            setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
-          },
-        })
+      ? (context?.submissionDigest ??
+        foregroundTurnSubmissionDigest({ ...input, attachments }))
       : undefined;
   };
   // Compare original proof before the legacy handoff effect check or accepted replay.
@@ -841,13 +838,47 @@ export async function executeForegroundMessage(
   // a key of its own, derived from its intent, and is not checked here.
   if (binding && !validHandoff && !requestedHandoff && input.clientTurnId) {
     const clientTurnId = input.clientTurnId;
+    const queued = context?.inboxPlacement
+      ? undefined
+      : deps.readPendingConversationSubmission?.(
+          resolved.access,
+          conversationId,
+          clientTurnId,
+          input.userId,
+        );
+    if (queued) {
+      captureSubmission(queued.entry.sessionId ?? conversationId);
+      if (
+        queued.inputDigest !== undefined &&
+        queued.inputDigest !== submissionDigest
+      )
+        throw new ClientTurnInputConflictError();
+      throw new ConversationTurnQueuedError(queued.entry);
+    }
+    if (!input.resolveAttachments) captureSubmission(conversationId);
     let decision = conversationKeyDecision(
       deps.inspectConversationTurnKey?.(
         resolved.access,
         conversationId,
         clientTurnId,
+        submissionDigest,
       ),
     );
+    if (
+      input.resolveAttachments &&
+      'sessionId' in decision &&
+      decision.sessionId
+    ) {
+      captureSubmission(decision.sessionId);
+      decision = conversationKeyDecision(
+        deps.inspectConversationTurnKey?.(
+          resolved.access,
+          conversationId,
+          clientTurnId,
+          submissionDigest,
+        ),
+      );
+    }
     // A live claim on a known Session: join its turn (bounded), as a
     // same-key send meeting that claim in its own Session does.
     if (
@@ -861,6 +892,7 @@ export async function executeForegroundMessage(
         holder,
         clientTurnId,
         input.joinWaitSignal,
+        submissionDigest,
       );
       decision =
         joined.outcome === 'started'
@@ -873,10 +905,7 @@ export async function executeForegroundMessage(
       // Staged attachments are bound to the turn that took them, as for a
       // send that went through, so the route accepts (rather than strands)
       // the references this retry carries.
-      input.resolveAttachments?.({
-        threadId: decision.sessionId,
-        clientTurnId,
-      });
+      if (submissionDigest === undefined) captureSubmission(decision.sessionId);
       return {
         conversationId,
         sessionId: decision.sessionId,

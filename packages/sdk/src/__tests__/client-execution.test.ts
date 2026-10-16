@@ -93,6 +93,57 @@ describe('client execution', () => {
     );
   });
 
+  test.each(['send', 'continue'])(
+    'preserves a queued receipt as a typed outcome for ordinary %s callers',
+    async (route) => {
+      const receipt = {
+        outcome: 'queued',
+        conversationId: 'conv-1',
+        clientTurnId: 'queued-key',
+        entry: {
+          conversationId: 'conv-1',
+          clientTurnId: 'queued-key',
+          kind: 'follow-up',
+          state: 'queued',
+          message: 'waiting',
+          createdAt: '2030-01-01T00:00:00.000Z',
+          updatedAt: '2030-01-01T00:00:00.000Z',
+        },
+      };
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ success: true, data: receipt }), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+      const pending =
+        route === 'send'
+          ? sendExecutionMessage('http://station.test', {
+              conversationId: 'conv-1',
+              clientTurnId: 'queued-key',
+              message: 'waiting',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+            })
+          : continueExecutionMessage('http://station.test', 'conv-1', {
+              clientTurnId: 'queued-key',
+              message: 'waiting',
+            });
+      await expect(pending).rejects.toMatchObject({
+        name: 'ForegroundMessageQueuedError',
+        status: 202,
+        outcome: 'queued',
+        receipt,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('never treats a receipt without provider turn evidence as accepted', async () => {
     vi.stubGlobal(
       'fetch',

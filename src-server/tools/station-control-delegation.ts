@@ -6167,7 +6167,9 @@ export async function executeExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
     input = snapshotTurnSubmissionFields(input, [
       'target',
@@ -6485,16 +6487,30 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    readPendingConversationSubmission: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+      userId?: string,
+    ) =>
+      orchestrationService.readPendingConversationSubmission?.(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        userId,
+      ),
     inspectConversationTurnKey: (
       _access: EnvironmentAccess,
       conversationId: string,
       clientTurnId: string,
+      inputDigest?: string,
     ) =>
       typeof orchestrationService.inspectTurnDelivery === 'function'
         ? orchestrationService.inspectTurnDelivery(
             conversationId,
             clientTurnId,
             INTERNAL_SESSION_READ_SCOPE,
+            inputDigest,
           )
         : undefined,
     joinConversationTurnKey: async (
@@ -6502,12 +6518,14 @@ export async function executeExecutionTargetMessage(
       sessionId: string,
       clientTurnId: string,
       signal?: AbortSignal,
+      inputDigest?: string,
     ) =>
       typeof orchestrationService.joinHeldTurnKey === 'function'
         ? await orchestrationService.joinHeldTurnKey(
             sessionId,
             clientTurnId,
             signal,
+            inputDigest,
           )
         : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
@@ -6858,7 +6876,7 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies);
+  return executeResolvedForegroundMessage(input, resolverDependencies, context);
 }
 
 /**
@@ -7026,7 +7044,9 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
   if (input.clientTurnId)
     input = snapshotTurnSubmissionFields(input, [
       'model',
@@ -7178,5 +7198,8 @@ export async function continueExecutionTargetMessage(
       },
     },
     orchestrationService,
+    undefined,
+    undefined,
+    context,
   );
 }

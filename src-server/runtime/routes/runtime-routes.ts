@@ -4407,6 +4407,8 @@ export function configureRuntimeRoutes(
       clientOrigin: ClientOrigin;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      inputDigest?: string;
+      inboxPlacement?: true;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -4419,6 +4421,10 @@ export function configureRuntimeRoutes(
         },
         context.orchestrationService,
         remoteStations,
+        {
+          submissionDigest: input.inputDigest,
+          ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+        },
       );
       if (!isForegroundDispatchHandle(handle))
         return { outcome: 'indeterminate' };
@@ -4505,11 +4511,12 @@ export function configureRuntimeRoutes(
       },
       deviceMaySend: (deviceId, since) =>
         context.environmentSecurityService.deviceMaySendChat(deviceId, since),
-      inspectDelivery: (conversationId, clientTurnId) =>
+      inspectDelivery: (conversationId, clientTurnId, inputDigest) =>
         service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
           INTERNAL_SESSION_READ_SCOPE,
+          inputDigest,
         ),
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
@@ -4517,6 +4524,8 @@ export function configureRuntimeRoutes(
             {
               conversationId,
               message: payload.message,
+              inputDigest: payload.inputDigest,
+              inboxPlacement: true,
               clientTurnId,
               userId: payload.actor.userId,
               principal: payload.actor.principal,

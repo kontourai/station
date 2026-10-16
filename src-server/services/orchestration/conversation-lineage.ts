@@ -964,6 +964,7 @@ export class ConversationLineage {
     conversationId: string,
     clientTurnId: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ):
     | { outcome: 'not-received' | 'expired' }
     | {
@@ -990,7 +991,7 @@ export class ConversationLineage {
       return null;
     const found = sessionIds.map((sessionId) => ({
       sessionId,
-      claim: ledger.inspect({ threadId: sessionId, clientTurnId }),
+      claim: ledger.inspect({ threadId: sessionId, clientTurnId, inputDigest }),
     }));
     const started = found.find(({ claim }) => claim.state === 'resolved');
     if (started?.claim.state === 'resolved')

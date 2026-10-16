@@ -228,6 +228,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
   function station(
     options: {
       inbox?: boolean;
+      continueThroughExecutor?: true;
       /** Reopen another process's home (a restart). */
       root?: string;
       /** This process's birth: an earlier birth's claims read as dead. */
@@ -315,16 +316,40 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     /** Set to answer the conversation-wide ledger read with this instead. */
     const ledger: { answer?: ConversationKeyInspection } = {};
     const deps: ExecutionTargetExecutionDependencies = {
-      inspectConversationTurnKey: (_access, conversationId, clientTurnId) =>
+      readPendingConversationSubmission: (
+        _access,
+        conversationId,
+        clientTurnId,
+        userId,
+      ) =>
+        service.readPendingConversationSubmission(
+          conversationId,
+          clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+          userId,
+        ),
+      inspectConversationTurnKey: (
+        _access,
+        conversationId,
+        clientTurnId,
+        inputDigest,
+      ) =>
         ledger.answer ??
         service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
           INTERNAL_SESSION_READ_SCOPE,
+          inputDigest,
         ),
       // As production composes it (station-control-delegation.ts).
-      joinConversationTurnKey: (_access, sessionId, clientTurnId, signal) =>
-        service.joinHeldTurnKey(sessionId, clientTurnId, signal),
+      joinConversationTurnKey: (
+        _access,
+        sessionId,
+        clientTurnId,
+        signal,
+        inputDigest,
+      ) =>
+        service.joinHeldTurnKey(sessionId, clientTurnId, signal, inputDigest),
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
         environmentId: ENVIRONMENT,
@@ -385,7 +410,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         });
         return undefined;
       },
-      sendTurn: async (_access, input) => {
+      sendTurn: async (_access, input, context) => {
         const gate = sendTurnGate.wait;
         sendTurnGate.wait = undefined;
         if (gate) {
@@ -395,6 +420,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         const dispatched = await service.dispatchWithReceipt(
           { type: 'sendTurn', input },
           { userId: OWNER },
+          { submissionDigest: context?.submissionDigest },
         );
         if (!dispatched.result || !('turnId' in dispatched.result))
           throw new Error('dispatch returned no turn id');
@@ -432,11 +458,12 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           ) === userId ||
           service.canUserReadSession(conversationId, authority(userId)),
         deviceMaySend: () => true,
-        inspectDelivery: (conversationId, clientTurnId) =>
+        inspectDelivery: (conversationId, clientTurnId, inputDigest) =>
           service.inspectTurnDelivery(
             conversationId,
             clientTurnId,
             INTERNAL_SESSION_READ_SCOPE,
+            inputDigest,
           ),
         // The continuation a placement makes, through the same foreground
         // execution the route uses, as the recorded sender.
@@ -456,6 +483,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
                 fullAccessGrant: null,
               } as never,
               deps,
+              { submissionDigest: payload.inputDigest, inboxPlacement: true },
             );
             if (!isForegroundDispatchHandle(handle))
               return { outcome: 'indeterminate' };
@@ -525,6 +553,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             throw Object.assign(new Error('refused'), {
               code: continueRefusal.code,
             });
+          if (options.continueThroughExecutor)
+            return executeForegroundMessage(
+              {
+                ...input,
+                target: {
+                  environment: { kind: 'current' },
+                  agent: AGENT,
+                  ...(input.model ? { model: input.model } : {}),
+                },
+              },
+              deps,
+            );
           return {} as never;
         },
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
@@ -645,6 +685,123 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       prompts,
     };
   }
+
+  test.each([false, true])(
+    '#3567: known input conflicts before conversation replay or busy queue acceptance (queue=%s)',
+    async (queue) => {
+      const world = station();
+      if (queue) world.adapter.holdTurns = true;
+      const first = await world.send('digest-key', ' original ');
+      expect(first.status, await first.clone().text()).toBe(200);
+      const firstTurn = (
+        (await first.json()) as { data: { providerTurnId: string } }
+      ).data.providerTurnId;
+      const changed = await world.send(
+        'digest-key',
+        'original',
+        queue ? { whenBusy: 'queue' } : {},
+      );
+      expect({
+        status: changed.status,
+        body: await changed.json(),
+      }).toMatchObject({
+        status: 409,
+        body: { code: 'client_turn_input_conflict' },
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      const replay = await world.send('digest-key', ' original ');
+      expect({
+        status: replay.status,
+        body: await replay.json(),
+      }).toMatchObject({
+        status: 200,
+        body: { data: { providerTurnId: firstTurn } },
+      });
+      expect(world.adapter.turns).toHaveLength(1);
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  test.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    '#3567: a live retry of an owned queued intent conflicts or returns its existing FIFO entry (same=%s, continue=%s)',
+    async (same, continuation) => {
+      const world = station({ continueThroughExecutor: true });
+      await world.busy();
+      expect(
+        (await world.send('follow', 'queued original', { whenBusy: 'queue' }))
+          .status,
+      ).toBe(202);
+      world.inbox.stop();
+      world.adapter.holdTurns = false;
+      world.adapter.complete();
+      await eventually(() =>
+        expect(
+          world.service.hasActiveTurn(
+            world.service.currentConversationSessionId(CONVERSATION),
+          ),
+        ).toBe(false),
+      );
+      const retry = await (continuation ? world.continueSend : world.send)(
+        'follow',
+        same ? 'queued original' : 'different live input',
+      );
+      expect({ status: retry.status, body: await retry.json() }).toMatchObject(
+        same
+          ? {
+              status: 202,
+              body: {
+                data: {
+                  outcome: 'queued',
+                  entry: {
+                    clientTurnId: 'follow',
+                    state: 'queued',
+                    message: 'queued original',
+                  },
+                },
+              },
+            }
+          : {
+              status: 409,
+              body: { code: 'client_turn_input_conflict' },
+            },
+      );
+      expect(world.adapter.turns).toHaveLength(1);
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { state: 'queued', message: 'queued original' },
+      ]);
+    },
+  );
+
+  test('#3567: a queued retry compares its original submitted identity before payload defaults discard empty context', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (await world.send('follow', 'same message', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    const changed = await world.send('follow', 'same message', {
+      whenBusy: 'queue',
+      ambientContext: '',
+    });
+    expect({
+      status: changed.status,
+      body: await changed.json(),
+    }).toMatchObject({
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
+    });
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([
+      { message: 'same message', state: 'queued' },
+    ]);
+    expect(world.adapter.turns).toHaveLength(1);
+  });
 
   test('a follow-up to a busy conversation is held, answered 202, and sent once when the turn ends', async () => {
     const world = station();
@@ -767,7 +924,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       whenBusy: 'queue',
     });
     expect(conflict.status).toBe(409);
-    expect(await conflict.json()).toMatchObject({ code: 'inbox_key_conflict' });
+    expect(await conflict.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
     expect(world.inbox.list(CONVERSATION)).toMatchObject([
       { message: 'then summarize' },
     ]);
@@ -951,6 +1110,15 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(second.inbox.list(CONVERSATION)).toMatchObject([
       { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
     ]);
+    const changed = await second.send('follow', 'different original input');
+    expect({
+      status: changed.status,
+      body: await changed.json(),
+    }).toMatchObject({
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
+    });
+    expect(second.prompts()).toEqual([]);
   });
 
   test('R2-2: a live claim on the ended Session holds the entry back from a successor', async () => {
@@ -1236,7 +1404,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     model: { override: 'claude-other-model' },
   };
 
-  test('R6-1: a live send that changes the model while the inbox starts the key is refused, and a retry after it lands answers its turn; one engine send', async () => {
+  test('R6-1: a changed model is in flight while the inbox starts the key, then conflicts with its known original input', async () => {
     const world = station({ modelPerTurn: false });
     await world.busy();
     expect(
@@ -1270,9 +1438,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       status: 409,
       body: { code: 'client_turn_in_flight' },
     });
-    // The client retries as told, same key and the changed model: the
-    // ledger already holds its turn on S1, so nothing is sent again.
-    const sentTurn = world.inbox.list(CONVERSATION)[0]?.turnId;
+    // Once original input is known, changing the model is a nonretryable conflict.
     const retry = await world.send('owner-key', 'then summarize', {
       target: otherModel,
     });
@@ -1280,31 +1446,47 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(sendsOf(world, 'then summarize')).toHaveLength(1);
     expect(retryAnswer).toMatchObject({
-      status: 200,
-      body: { data: { providerTurnId: sentTurn } },
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
     });
   });
 
-  test('R6-2: with no inbox involved, a same-key retry that changes the model answers the first turn; one engine send', async () => {
-    const world = station({ modelPerTurn: false });
-    const first = await world.send('k1', 'read the file');
-    expect(first.status, await first.clone().text()).toBe(200);
-    const firstTurn = (
-      (await first.json()) as { data: { providerTurnId: string } }
-    ).data.providerTurnId;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const retry = await world.send('k1', 'read the file', {
-      target: otherModel,
-    });
-    const retryAnswer = { status: retry.status, body: await retry.json() };
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(sendsOf(world, 'read the file')).toHaveLength(1);
-    expect(retryAnswer).toMatchObject({
-      status: 200,
-      body: { data: { providerTurnId: firstTurn } },
-    });
-    expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(1);
-  });
+  test.each([false, true])(
+    'R6-2: changed model conflicts with known proof and preserves unknown legacy replay (legacy=%s)',
+    async (legacy) => {
+      const world = station({ modelPerTurn: false });
+      const first = await world.send('k1', 'read the file');
+      expect(first.status, await first.clone().text()).toBe(200);
+      const firstTurn = (
+        (await first.json()) as { data: { providerTurnId: string } }
+      ).data.providerTurnId;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (legacy)
+        world.store['db'].exec(
+          'UPDATE orchestration_turn_dedup SET input_digest = NULL',
+        );
+      const retry = await world.send('k1', 'read the file', {
+        target: otherModel,
+      });
+      const retryAnswer = { status: retry.status, body: await retry.json() };
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(sendsOf(world, 'read the file')).toHaveLength(1);
+      expect(retryAnswer).toMatchObject(
+        legacy
+          ? {
+              status: 200,
+              body: { data: { providerTurnId: firstTurn } },
+            }
+          : {
+              status: 409,
+              body: { code: 'client_turn_input_conflict' },
+            },
+      );
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+    },
+  );
 
   test('R6-2: a key the ledger reads as possibly sent or in flight elsewhere is refused before any Session is reserved', async () => {
     const world = station({ modelPerTurn: false });
@@ -1362,9 +1544,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           conversationId: CONVERSATION,
           clientTurnId: 'k1',
         });
-        // The client retries with the same key (and a model change, so a
-        // continuation would otherwise move to a new Session).
-        const retry = world.send('k1', 'and then this', { target: otherModel });
+        const changed = await world.send('k1', 'and then this', {
+          target: otherModel,
+        });
+        expect({
+          status: changed.status,
+          body: await changed.json(),
+        }).toMatchObject({
+          status: 409,
+          body: { code: 'client_turn_input_conflict' },
+        });
+        // Identical input still joins the live holder, even when that claim is old.
+        const retry = world.send('k1', 'and then this');
         await new Promise((resolve) => setTimeout(resolve, 200));
         world.adapter.releaseHeldSend?.();
         const [first, again] = await Promise.all([firstAttempt, retry]);

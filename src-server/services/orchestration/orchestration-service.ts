@@ -4967,12 +4967,18 @@ export class OrchestrationService {
     clientTurnId: string,
     /** Stops only this wait (the caller went away); nothing is sent either way. */
     signal?: AbortSignal,
+    inputDigest?: string,
   ): Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
   > {
     this.initialize();
-    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
+    const held = await this.awaitHeldTurnKey(
+      sessionId,
+      clientTurnId,
+      signal,
+      inputDigest,
+    );
     if (held.kind === 'turn')
       return { outcome: 'started', turnId: held.turnId };
     return {
@@ -4984,13 +4990,42 @@ export class OrchestrationService {
     conversationId: string,
     clientTurnId: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
     this.initialize();
     return this.conversationLineage.inspectTurnDelivery(
       conversationId,
       clientTurnId,
       authority,
+      inputDigest,
     );
+  }
+
+  readPendingConversationSubmission(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    userId?: string,
+  ) {
+    this.initialize();
+    if (
+      this.conversationLineage.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        authority,
+      ) === null
+    )
+      return undefined;
+    const pending = this.options.eventStore?.readPendingThreadInboxSubmission(
+      conversationId,
+      clientTurnId,
+    );
+    if (pending && pending.userId !== userId)
+      throw Object.assign(
+        new Error("This message key belongs to someone else's queued message."),
+        { code: 'inbox_key_held' },
+      );
+    return pending;
   }
 
   async readConversationHandoffStatus(
