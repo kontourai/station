@@ -97,7 +97,8 @@ credentials retain their existing execution semantics.
 
 Open **Profile → My access** to see Station authority and roles across Projects.
 Admins and Owners can reach **Agents and tools** there and from their shared
-Project. This authoring surface does not enable member agent execution: member
+Project. Shared Project pages load Agent management only when it is opened;
+viewers and contributors do not load the tool catalog. This authoring surface does not enable member agent execution: member
 turns remain refused by the existing execution gate. Computer contribution and
 execution authority remain separate requirements. The engine picker includes
 managed **Station** alongside installed engines. Station Agents keep no external

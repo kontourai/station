@@ -364,7 +364,7 @@ const MENUS: readonly {
   {
     name: 'the avatar’s profile menu',
     selector: '.app-toolbar__profile-menu',
-    rowCount: 3,
+    rowCount: 4,
     open: () => {
       // The fine pointer, where this menu exists at all: on a phone the avatar
       // that opens it is hidden and the panel closes itself (see ProfileMenu).

@@ -6,6 +6,10 @@ import {
 } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import type {
+  OwnAccessView,
+  ToolLibraryView,
+} from '@kontourai/station-contracts/tool-library';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -141,7 +145,7 @@ function installSharedTaskTransport() {
         toolLibraryReads.push(url.pathname);
         const data =
           url.pathname === '/api/tool-library/access'
-            ? {
+            ? ({
                 principalId: 'member-admin',
                 name: 'Administrator',
                 station: {
@@ -160,17 +164,21 @@ function installSharedTaskTransport() {
                     canExecute: false,
                   },
                 ],
-              }
+              } satisfies OwnAccessView)
             : url.pathname === '/api/tool-library/catalog'
-              ? {
+              ? ({
                   sources: [],
                   operator: false,
                   canManageAgents: true,
                   canManagePolicy: false,
-                  project: { id: project.id, slug: project.slug },
+                  project: {
+                    id: project.id,
+                    slug: project.slug,
+                    name: project.name,
+                  },
                   policy: { mode: 'all', sources: [], revision: 1 },
                   engines: [],
-                }
+                } satisfies ToolLibraryView)
               : url.pathname ===
                   `/api/tool-library/projects/${project.slug}/agents`
                 ? []
