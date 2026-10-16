@@ -111,7 +111,9 @@ checked and unchecked Markdown checkboxes. The Brief display renders Markdown an
 live editor; edits autosave through the existing CRDT plan/batch protocol.
 
 Current canonical lifecycle ends an agent's live presence after each completed
-turn, including a follow-up on a Session with an older finish receipt. The
+turn, including a follow-up on a Session with an older finish receipt. Terminal
+turn errors also trigger room publication, so a failed stream produces a failure
+line without another request. Codex's deferred retry errors remain in flight. The
 private agent answer retains the exact Session, turn and canonical run identity.
 
 The first recorded room request starts a todo/ready Task through an atomic

@@ -431,6 +431,62 @@ async function fixture(observe = true) {
   };
 }
 
+test('a terminal runtime error publishes the failed room line without another request', async () => {
+  const f = await fixture(false);
+  try {
+    const response = await f.post('/delegations', {
+      prompt: 'Inspect the export',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'researcher',
+        workspace: { kind: 'project', projectSlug: 'project' },
+      },
+      taskRoomRequest: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'fails-in-stream',
+        context: { version: f.brief.version, digest: f.brief.digest },
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+    if (body.data.kind !== 'recorded') throw new Error('Request not recorded');
+    const sessionId = body.data.record.sessionId;
+    await f.started(sessionId, 'turn-1');
+    await f.conversation.reconcile(f.task.id);
+    f.adapter.events.push({
+      eventId: randomUUID(),
+      provider: f.adapter.provider,
+      threadId: sessionId,
+      turnId: 'turn-1',
+      createdAt: new Date().toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      message: 'The response stream failed.',
+      retriable: true,
+    });
+    let failure: CanonicalRuntimeEvent | undefined;
+    await vi.waitFor(() => {
+      failure = f.store.listEvents(sessionId).find(e => e.payload.method === 'runtime.error')?.payload;
+      expect(failure).toBeDefined();
+    });
+    if (!failure || failure.method !== 'runtime.error')
+      throw new Error('Canonical failure not persisted');
+    const reconciliation = vi.spyOn(f.conversation, 'reconcile');
+    await f.conversation.observe({ ...failure, provider: 'codex', retriable: true });
+    expect(reconciliation).not.toHaveBeenCalled();
+    await f.conversation.observe(failure);
+    await vi.waitFor(async () => {
+      expect((await f.history()).filter(r => r.body.kind === 'live-work-finished'))
+        .toMatchObject([{ body: { kind: 'live-work-finished', sessionId, outcome: 'failed' } }]);
+    });
+    expect(await f.agentCount()).toBe(0);
+    expect(f.failures).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
 test('room requests start the Task and publish canonical answers and continued turns into one agent thread', async () => {
   const f = await fixture();
   try {

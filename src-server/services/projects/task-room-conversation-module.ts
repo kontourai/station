@@ -1,5 +1,8 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import type { TaskRoomWorkRecord } from '@kontourai/station-contracts/task-room-work';
 import {
@@ -116,7 +119,12 @@ export class TaskRoomConversationModule {
   }
 
   async observe(event: CanonicalRuntimeEvent): Promise<void> {
-    if (!['turn.completed', 'turn.aborted'].includes(event.method)) return;
+    const terminalError =
+      event.method === 'runtime.error' &&
+      event.turnId &&
+      !isDeferredRetriableTurnError(event);
+    if (!['turn.completed', 'turn.aborted'].includes(event.method) && !terminalError)
+      return;
     const binding = this.deps.readBinding(event.threadId);
     if (binding) await this.reconcile(binding.taskId);
   }
