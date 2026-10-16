@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-10-16T07:52:56Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2480.38859296550",
+    "sha": "1860038c9b3d05d24e1c7faf65fc6b9404d0f0f7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38859296550",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2480.38859296550 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7fda30be189f190ff11279c2d5fcabc7ec2283c0",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3724](https://github.com/kontourai/station/pull/3724) fix(home): show unassigned Tasks as Tasks, not unavailable agents",
+          "[#3725](https://github.com/kontourai/station/pull/3725) fix(sessions): anchor a cold Claude transcript import before reading it"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-16T06:39:30Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2480.38855252661",
