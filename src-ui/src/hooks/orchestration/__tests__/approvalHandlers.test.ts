@@ -13,7 +13,7 @@ const updateChat = vi.fn();
 const navigate = vi.fn();
 
 vi.mock('../../../contexts/NavigationContext', () => ({
-  navigationStore: { navigate },
+  navigationStore: { navigate, getSnapshot: () => ({ isDockOpen: false }) },
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({

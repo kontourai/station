@@ -367,10 +367,8 @@ test.describe('Orchestration Chat Flow', () => {
       page.getByRole('button', { name: 'Running ls' }),
     ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
-    // On a phone the Coding layout's Chat is the dock again (the wide
-    // centre's Chat unmounts); the approval arrives once it is on screen.
-    await expect(page.locator('#chat-dock')).toBeVisible();
-    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -426,31 +424,11 @@ test.describe('Orchestration Chat Flow', () => {
     ).toBe(true);
     await page.getByRole('button', { name: 'Allow Once' }).click();
     await expect(approvalQueue).toBeHidden();
-
-    // The notification decision opens its conversation. The removed trigger
-    // returns focus to its surviving pane; Tab must enter that chat, not Home.
-    await expect(page).toHaveURL(
-      (url) =>
-        url.pathname === '/' && url.searchParams.get('chat') === 'conv-1',
-    );
-    await expect
-      .poll(() => page.evaluate(() => document.activeElement !== document.body))
-      .toBe(true);
-    await page.keyboard.press('Tab');
-    await expect(page.locator('#chat-dock :focus')).toHaveCount(1);
-
-    await page.setViewportSize({ width: 1280, height: 720 });
-    // Notification navigation left the Coding layout for the canonical dock.
-    await expect(page.locator('#chat-dock')).toBeVisible();
-    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
-    await openChatRegion(page);
-
     await expect
       .poll(() =>
         commandBodies.some((body) => body.type === 'respondToRequest'),
       )
       .toBe(true);
-
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -461,6 +439,31 @@ test.describe('Orchestration Chat Flow', () => {
         status: 'approved',
       },
     });
+    await expect(
+      page.getByRole('dialog', { name: 'Needs approval' }),
+    ).toBeHidden();
+
+    // Answering the visible chat must preserve Coding and its focus context.
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === '/projects/dev/layouts/code' &&
+        url.searchParams.get('chat') === 'conv-1',
+    );
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement !== document.body))
+      .toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#chat-workspace-pane :focus')).toHaveCount(1);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === '/');
+    await openChatRegion(page);
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -829,12 +832,8 @@ test.describe('Orchestration Chat Flow', () => {
     };
 
     await page.setViewportSize({ width: 360, height: 800 });
-    // At a phone width the Coding layout's Chat is its dock again (#928
-    // coding stack): the centre's Chat unmounts and the Chat page opens the
-    // dock maximized. `boundingBox()` does not wait, so the card has to be
-    // back on screen in the dock before its geometry is read.
-    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
-    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
     const sheet = page.getByRole('dialog', { name: 'Needs approval' });
     await expect(sheet).toBeVisible();
     await sheet.getByRole('button', { name: 'Close and answer later' }).click();

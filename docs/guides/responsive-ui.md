@@ -96,7 +96,9 @@ sticky/dialog/system. A surface popover stays above the dock but below navigatio
 chrome; a modal dialog supersedes notification chrome.
 Do not use feature-local large z-index values to compensate for a wrong owner
 or stacking context. A blocking system surface must explicitly choose the
-system layer. Test stacked dialogs and notices together, not only in isolation.
+system layer. Transparent notification wrappers must let pointer events through;
+only their visible controls and panels take clicks. Test stacked dialogs and
+notices together, not only in isolation.
 
 Package-owned surfaces such as Station Connect retain their package boundary.
 They need their own behavior evidence; similar class names are not proof that
