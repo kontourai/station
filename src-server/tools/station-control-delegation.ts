@@ -54,7 +54,6 @@ import {
   sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
-  INTERNAL_SESSION_READ_SCOPE,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
