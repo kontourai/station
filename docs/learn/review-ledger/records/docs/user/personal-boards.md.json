@@ -50,7 +50,13 @@
 
     "src-ui/src/views/layout-workspace-shape.ts",
 
-    "tests/personal-board-authoring.spec.ts"
+    "tests/personal-board-authoring.spec.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoard.css",
+
+    "src-ui/src/views/personal-board/BoardEditor.tsx",
+
+    "src-ui/src/views/personal-board/BoardSetup.tsx"
   ],
 
   "checks": [

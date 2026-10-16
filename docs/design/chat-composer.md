@@ -134,6 +134,13 @@ resource bindings. A branch badge does not claim a GitHub integration or whole
 Project synchronization: portable Project identity and per-Station resource
 bindings remain separate from Git content synchronization.
 
+**Build with chat** on a Personal Board offers a removable composer draft in
+a new, explicitly projectless chat. Only one ambient pane on the captured
+Station may claim it; a Project-bound pane cannot reinterpret its scope.
+Choosing an Agent stages the text without sending it. The Agent uses the
+Personal Board proposal tools, and the person previews and applies the result
+in the Board. See [Personal Boards](../user/personal-boards.md).
+
 A Project page start hands the dock its fixed Project without changing the
 ambient dock binding. An unavailable fixed Project blocks starting and keeps
 the message. Returned drafts are scoped to that Project and Station authority.

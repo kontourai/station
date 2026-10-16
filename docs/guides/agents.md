@@ -56,6 +56,15 @@ Saved changes apply to new chats. Hover over or click an info icon for field
 explanations and engine capabilities. Keyboard users can press Enter to open it,
 use arrow or Page keys to scroll long help, and press Escape to dismiss it.
 
+Personal Board authoring lives in the **Projects** tool group:
+`list_personal_boards` and `get_personal_board` are readers;
+`propose_personal_board` is a mutating tool that writes a private proposal.
+Selecting **Read only** does not enable proposals. Enable that tool explicitly,
+or choose **All** for the group, if the Agent should build dashboards. It cannot
+publish through these tools: the person reviews and applies the proposal in the
+Board. **Build with chat** offers context in a new projectless chat without
+sending it; see [Personal Boards](../user/personal-boards.md).
+
 Station Control publishes native MCP titles and behavioral annotations. The
 `ai.kontour/tool-group` vendor metadata organizes the picker; third-party
 integrations can supply the same display hint. It does not grant access or
