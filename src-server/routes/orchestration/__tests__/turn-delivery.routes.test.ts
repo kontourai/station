@@ -650,26 +650,47 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     }
   });
 
-  test.each(['boundary', 'dedup'] as const)(
-    'a definitive refusal cannot settle a changed private %s owner identity',
-    async (target) => {
+  test.each([
+    {
+      label: 'boundary owner',
+      sql: 'UPDATE orchestration_turn_boundaries SET owner_pid = owner_pid + 1 WHERE boundary_id = NEW.boundary_id;',
+    },
+    {
+      label: 'dedup owner',
+      sql: "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.pid', json_extract(owner_json, '$.pid') + 1) WHERE dedup_key = NEW.dedup_key;",
+    },
+    {
+      label: 'boundary update revision',
+      sql: "UPDATE orchestration_turn_boundaries SET updated_at = '2099-01-01T00:00:00.000Z' WHERE boundary_id = NEW.boundary_id;",
+    },
+    {
+      label: 'boundary creation revision',
+      sql: "UPDATE orchestration_turn_boundaries SET created_at = '2000-01-01T00:00:00.000Z' WHERE boundary_id = NEW.boundary_id;",
+    },
+    {
+      label: 'dedup preparation revision',
+      sql: "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.preparedUpdatedAt', '2099-01-01T00:00:00.000Z') WHERE dedup_key = NEW.dedup_key;",
+    },
+    {
+      label: 'dedup creation revision',
+      sql: 'UPDATE orchestration_turn_dedup SET created_at = created_at + 1 WHERE dedup_key = NEW.dedup_key;',
+    },
+  ])(
+    'a definitive refusal cannot settle a changed private $label',
+    async ({ sql }) => {
       const { adapter, send, root, lookup } = station();
       const db = new DatabaseSync(join(root, 'orchestration.sqlite'));
       try {
         db.exec(`CREATE TRIGGER change_refusal_owner AFTER UPDATE OF state ON orchestration_turn_boundaries
           WHEN NEW.state = 'invoking' BEGIN
-          ${
-            target === 'boundary'
-              ? 'UPDATE orchestration_turn_boundaries SET owner_pid = owner_pid + 1 WHERE boundary_id = NEW.boundary_id;'
-              : "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.pid', json_extract(owner_json, '$.pid') + 1) WHERE dedup_key = NEW.dedup_key;"
-          }
+          ${sql}
           END`);
         adapter.nextTurn = 'refuse';
         const refused = await send(
           'conversation:changed-owner',
           'key-changed-owner',
         );
-        expect(refused.status).toBe(409);
+        expect(refused.status, await refused.clone().text()).toBe(409);
         expect(
           await lookup('conversation:changed-owner', 'key-changed-owner'),
         ).toMatchObject({
