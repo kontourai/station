@@ -1999,119 +1999,152 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  test('does not let an interrupted stream clear or abort its replacement turn', async () => {
-    const signals: AbortSignal[] = [];
-    const streamControllers: ReadableStreamDefaultController<Uint8Array>[] = [];
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
-      async (_input, init) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              streamControllers.push(controller);
-              if (init?.signal) signals.push(init.signal);
-            },
-          }),
-          { status: 200 },
-        ),
-    );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: () => true,
-      ...approvalDeps(),
-      fetch: fetchMock,
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
-    await adapter.startSession({
-      threadId: 'task-replace',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer' },
-    });
-
-    const first = await adapter.sendTurn({
-      threadId: 'task-replace',
-      input: 'First turn',
-      invocationId: 'origin-A',
-    });
-    const encoder = new TextEncoder();
-    const frame = (index: number, event: Record<string, unknown>) =>
-      streamControllers[index]!.enqueue(
-        encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+  test.each([
+    { lateOpen: false, lateResult: true },
+    { lateOpen: true, lateResult: false },
+    { lateOpen: true, lateResult: true },
+  ])(
+    'does not let an interrupted stream clear or abort its replacement turn (late open $lateOpen, result $lateResult)',
+    async ({ lateOpen, lateResult }) => {
+      const signals: AbortSignal[] = [];
+      const streamControllers: ReadableStreamDefaultController<Uint8Array>[] =
+        [];
+      const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+        async (_input, init) =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                streamControllers.push(controller);
+                if (init?.signal) signals.push(init.signal);
+              },
+            }),
+            { status: 200 },
+          ),
       );
-    frame(0, {
-      type: 'tool-call',
-      toolCallId: 'reused-call',
-      toolName: 'repo_write',
-      input: {},
-    });
-    const openedA = await nextEvents(iterator, 5);
-    expect(openedA.at(-1)).toMatchObject({
-      method: 'tool.started',
-      invocationId: 'origin-A',
-    });
-    await adapter.interruptTurn('task-replace', first.turnId);
-    const second = await adapter.sendTurn({
-      threadId: 'task-replace',
-      input: 'Replacement turn',
-      invocationId: 'origin-B',
-    });
-    frame(1, {
-      type: 'tool-call',
-      toolCallId: 'reused-call',
-      toolName: 'repo_write',
-      input: {},
-    });
-    const openedB = await nextEvents(iterator, 5);
-    expect(openedB.at(-1)).toMatchObject({
-      method: 'tool.started',
-      invocationId: 'origin-B',
-    });
-    streamControllers[0]!.enqueue(
-      encoder.encode(
-        `data: ${JSON.stringify({ type: 'tool-result', toolCallId: 'reused-call', toolName: 'repo_write', output: 'late-A-result' })}\n\ndata: ${JSON.stringify({ type: 'text-delta', text: 'late-A' })}\n\n`,
-      ),
-    );
-    streamControllers[0]?.error(new Error('interrupted stream closed'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId: 'task-replace',
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer' },
+      });
 
-    expect(signals[0]?.aborted).toBe(true);
-    expect(signals[1]?.aborted).toBe(false);
-    expect((await adapter.listSessions())[0]?.status).toBe('running');
-    await adapter.interruptTurn('task-replace', first.turnId);
-    expect(signals[1]?.aborted).toBe(false);
-    streamControllers[1]?.enqueue(
-      new TextEncoder().encode(
-        'data: {"type":"text-delta","text":"current-B"}\n\n',
-      ),
-    );
-    streamControllers[1]?.close();
-    const events = [...openedA, ...openedB, ...(await nextEvents(iterator, 5))];
-    expect(
-      events.filter((event) => event.method === 'turn.aborted'),
-    ).toMatchObject([{ turnId: first.turnId, invocationId: 'origin-A' }]);
-    expect(
-      events.filter((event) => event.method === 'turn.completed'),
-    ).toMatchObject([{ turnId: second.turnId, invocationId: 'origin-B' }]);
-    expect(
-      events.filter((event) => event.method === 'content.text-delta'),
-    ).toMatchObject([
-      { delta: 'late-A', invocationId: 'origin-A' },
-      { delta: 'current-B', invocationId: 'origin-B' },
-    ]);
-    expect(events.filter((event) => event.method === 'runtime.error')).toEqual(
-      [],
-    );
-    await adapter.stopSession('task-replace');
-    const [unresolved] = await nextEvents(iterator, 1);
-    expect(unresolved).toMatchObject({
-      method: 'tool.completed',
-      toolCallId: 'reused-call',
-      status: 'unresolved',
-      turnId: second.turnId,
-      invocationId: 'origin-B',
-    });
-    const [exited] = await nextEvents(iterator, 1);
-    expect(exited).not.toHaveProperty('invocationId');
-  });
+      const first = await adapter.sendTurn({
+        threadId: 'task-replace',
+        input: 'First turn',
+        invocationId: 'origin-A',
+      });
+      const encoder = new TextEncoder();
+      const frame = (index: number, event: Record<string, unknown>) =>
+        streamControllers[index]!.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+        );
+      frame(0, {
+        type: 'tool-call',
+        toolCallId: 'reused-call',
+        toolName: 'repo_write',
+        input: {},
+      });
+      const openedA = await nextEvents(iterator, 5);
+      expect(openedA.at(-1)).toMatchObject({
+        method: 'tool.started',
+        invocationId: 'origin-A',
+      });
+      await adapter.interruptTurn('task-replace', first.turnId);
+      const second = await adapter.sendTurn({
+        threadId: 'task-replace',
+        input: 'Replacement turn',
+        invocationId: 'origin-B',
+      });
+      frame(1, {
+        type: 'tool-call',
+        toolCallId: 'reused-call',
+        toolName: 'repo_write',
+        input: {},
+      });
+      const openedB = await nextEvents(iterator, 5);
+      expect(openedB.at(-1)).toMatchObject({
+        method: 'tool.started',
+        invocationId: 'origin-B',
+      });
+      const delayedFrames: Record<string, unknown>[] = [];
+      if (lateOpen)
+        delayedFrames.push({
+          type: 'tool-call',
+          toolCallId: 'reused-call',
+          toolName: 'repo_write',
+          input: {},
+        });
+      if (lateResult)
+        delayedFrames.push({
+          type: 'tool-result',
+          toolCallId: 'reused-call',
+          toolName: 'repo_write',
+          output: 'late-A-result',
+        });
+      delayedFrames.push({ type: 'text-delta', text: 'late-A' });
+      streamControllers[0]!.enqueue(
+        encoder.encode(
+          delayedFrames
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(''),
+        ),
+      );
+      streamControllers[0]?.error(new Error('interrupted stream closed'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
+      expect((await adapter.listSessions())[0]?.status).toBe('running');
+      await adapter.interruptTurn('task-replace', first.turnId);
+      expect(signals[1]?.aborted).toBe(false);
+      streamControllers[1]?.enqueue(
+        new TextEncoder().encode(
+          'data: {"type":"text-delta","text":"current-B"}\n\n',
+        ),
+      );
+      streamControllers[1]?.close();
+      const lateEvents = await nextEvents(iterator, delayedFrames.length + 3);
+      const events = [...openedA, ...openedB, ...lateEvents];
+      expect(lateEvents.slice(0, delayedFrames.length)).toMatchObject(
+        delayedFrames.map(() => ({
+          turnId: first.turnId,
+          invocationId: 'origin-A',
+        })),
+      );
+      expect(
+        events.filter((event) => event.method === 'turn.aborted'),
+      ).toMatchObject([{ turnId: first.turnId, invocationId: 'origin-A' }]);
+      expect(
+        events.filter((event) => event.method === 'turn.completed'),
+      ).toMatchObject([{ turnId: second.turnId, invocationId: 'origin-B' }]);
+      expect(
+        events.filter((event) => event.method === 'content.text-delta'),
+      ).toMatchObject([
+        { delta: 'late-A', invocationId: 'origin-A' },
+        { delta: 'current-B', invocationId: 'origin-B' },
+      ]);
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toEqual([]);
+      await adapter.stopSession('task-replace');
+      const [unresolved] = await nextEvents(iterator, 1);
+      expect(unresolved).toMatchObject({
+        method: 'tool.completed',
+        toolCallId: 'reused-call',
+        status: 'unresolved',
+        turnId: second.turnId,
+        invocationId: 'origin-B',
+      });
+      const [exited] = await nextEvents(iterator, 1);
+      expect(exited).not.toHaveProperty('invocationId');
+    },
+  );
 
   test('recovers the Station agent binding from the persisted resume cursor', async () => {
     const adapter = new StationAgentAdapter({
