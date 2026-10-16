@@ -128,6 +128,7 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
     await page.getByRole('button', { name: 'Collapse workspace map' }).click();
     const sidebar = page.locator('.sidebar');
     await expect(sidebar).toHaveClass(/sidebar--collapsed/);
+    await expect(sidebar).toHaveCSS('width', '52px');
     const rail = await sidebar.boundingBox();
     const mark = await page
       .locator('.sidebar__project-row .project-icon')
