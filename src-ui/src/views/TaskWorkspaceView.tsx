@@ -29,7 +29,8 @@ import {
 import { Button } from '../components/Button';
 import { DiffPanel } from '../components/coding-layout/DiffPanel';
 import { FileContentViewer } from '../components/coding-layout/FileContentViewer';
-import { DetailHeader } from '../components/DetailHeader';
+import { usePageHeader } from '../components/page-frame';
+import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import {
   Empty,
   ErrorState,
@@ -467,7 +468,11 @@ function TaskWorkspaceContent({
         projectId={projectId}
         onDetails={() => setTab('Details')}
       />
-      <div className="task-room-tabs" role="tablist" aria-label="Task views">
+      <div
+        className="task-room-tabs page__tabs"
+        role="tablist"
+        aria-label="Task views"
+      >
         {['Chat', 'Brief', 'Results', 'Details', 'About'].map((name) => (
           <Button
             key={name}
@@ -476,7 +481,7 @@ function TaskWorkspaceContent({
             aria-selected={tab === name}
             aria-controls={`task-panel-${name}`}
             id={`task-tab-${name}`}
-            className={name === 'About' ? 'task-room-mobile-tab' : ''}
+            className={`page__tab${name === 'About' ? ' split-pane__mobile-tab' : ''}`}
             onClick={() => setTab(name)}
             onKeyDown={(event) => {
               if (
@@ -515,19 +520,24 @@ function TaskWorkspaceContent({
         id="task-panel-Chat"
         aria-labelledby="task-tab-Chat"
       >
-        <ProjectTaskRoomConversation
-          taskId={taskId}
-          projectSlug={projectSlug}
-          taskCreatedAt={graph.task.createdAt}
-        />
-        <aside className="task-room-rail">
-          <TaskRoomRail
-            task={graph.task}
+        <SplitPaneCompanion
+          companion={
+            <aside className="task-room-rail">
+              <TaskRoomRail
+                task={graph.task}
+                projectSlug={projectSlug}
+                onBrief={() => setTab('Brief')}
+                onResults={() => setTab('Results')}
+              />
+            </aside>
+          }
+        >
+          <ProjectTaskRoomConversation
+            taskId={taskId}
             projectSlug={projectSlug}
-            onBrief={() => setTab('Brief')}
-            onResults={() => setTab('Results')}
+            taskCreatedAt={graph.task.createdAt}
           />
-        </aside>
+        </SplitPaneCompanion>
       </div>
       <div
         className="task-room-panel"
@@ -884,7 +894,8 @@ function TaskExperienceBoundary({
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {
-  return <DetailHeader title={task.title} subtitle={`Task ${task.id}`} />;
+  usePageHeader({ title: task.title, subtitle: `Task ${task.id}` });
+  return null;
 }
 
 function TaskIdentitySection({ task }: { task: TaskRecord }) {

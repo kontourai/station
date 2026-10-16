@@ -165,7 +165,9 @@ test('agent answers open in the dock, can be kept, and replies continue the exac
   mocks.records = [record(1, true), record(2, true)];
   mount();
   expect(screen.getAllByText('Answer in markdown')).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
+  expect(screen.queryByRole('menuitem', { name: 'Open full run' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'More answer actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Open full run' }));
   expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
   await waitFor(() =>

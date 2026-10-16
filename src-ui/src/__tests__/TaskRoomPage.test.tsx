@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { PageFrame } from '../components/page-frame';
 
 const mocks = vi.hoisted(() => ({
   rename: vi.fn(),
@@ -89,7 +90,12 @@ function mount(children: React.ReactNode) {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      {children}
+      <PageFrame
+        spec={{ title: 'Task', body: 'fill', flush: true }}
+        routeIdentity="task:task-1"
+      >
+        {children}
+      </PageFrame>
     </QueryClientProvider>,
   );
 }
@@ -119,6 +125,10 @@ test('header edits the title and offers only permitted status transitions, shari
       projectSlug="project"
       onDetails={details}
     />,
+  );
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+    task.title,
   );
   const select = screen.getByRole('combobox', { name: 'Task status' });
   expect(

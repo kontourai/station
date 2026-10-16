@@ -101,14 +101,7 @@
   max-height: calc(var(--k-space-6) * 8);
   overflow-y: auto;
 }
-@media (max-width: 560px) {
-  .task-room-composer {
-    margin: var(--k-space-2) var(--k-space-3) var(--k-space-3);
-  }
-  .task-room-composer .task-room-brief-choice {
-    min-width: 0;
-  }
-}
+
 .task-room-composer {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
@@ -154,4 +147,8 @@
 }
 .task-room-inline-status[role="alert"] {
   color: var(--k-negative);
+}
+
+.task-room-composer .task-room-brief-choice {
+  min-width: 0;
 }

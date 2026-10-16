@@ -13,6 +13,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { PageFrame } from '../components/page-frame';
 
 let queryResult: {
   data?: any;
@@ -256,7 +257,14 @@ function render(
   });
   const view = rtlRender(ui, {
     wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        <PageFrame
+          spec={{ title: 'Task', body: 'fill', flush: true }}
+          routeIdentity="task:test"
+        >
+          {children}
+        </PageFrame>
+      </QueryClientProvider>
     ),
     ...options,
   });

@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { SkeletonBlock } from '../components/state';
 import { navigationStore } from '../contexts/navigation-store';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import {
@@ -764,7 +765,9 @@ export function TaskRoomEditorPane({
       {!editing && (
         <div className="task-room-brief-rendered">
           {text ? (
-            <LazyMarkdown loadingProjection="Loading brief…">
+            <LazyMarkdown
+              loadingProjection={<SkeletonBlock label="Loading brief" />}
+            >
               {text}
             </LazyMarkdown>
           ) : (

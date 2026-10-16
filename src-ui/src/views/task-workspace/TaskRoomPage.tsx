@@ -15,7 +15,14 @@ import {
 import { useProjectTaskRoomDocumentQuery } from '@kontourai/station-sdk/project-task-rooms';
 import { useTaskOutputsQuery } from '@kontourai/station-sdk/task-outputs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckGlyph, glyph } from '../../components/icons/Glyph';
+import { PageFrameActions, usePageHeader } from '../../components/page-frame';
+import { SkeletonBlock, SkeletonList } from '../../components/state';
+
+const ChecklistBoxGlyph = glyph('M3 3h10v10H3Z');
+const ChecklistBulletGlyph = glyph('M7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0');
+
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -74,48 +81,60 @@ export function TaskRoomHeader({
     },
     onError: (error) => setNotice(error.message),
   });
+  const header = useMemo(
+    () => ({
+      title: (
+        <span className="task-room-title">
+          {editing ? (
+            <span className="task-room-title-edit">
+              <label className="sr-only" htmlFor="task-title">
+                Task title
+              </label>
+              <input
+                id="task-title"
+                value={title}
+                maxLength={512}
+                onChange={(event) => setTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === 'Enter' &&
+                    title.trim() &&
+                    !rename.isPending
+                  )
+                    rename.mutate();
+                  if (event.key === 'Escape') {
+                    setEditing(false);
+                    setTitle(task.title);
+                  }
+                }}
+              />
+              <Button
+                onClick={() => rename.mutate()}
+                disabled={!title.trim() || rename.isPending}
+              >
+                Save title
+              </Button>
+              <Button onClick={() => setEditing(false)}>Cancel</Button>
+            </span>
+          ) : (
+            <span>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label={`Edit title: ${task.title}`}
+              >
+                {task.title}
+              </button>
+            </span>
+          )}
+        </span>
+      ),
+    }),
+    [editing, title, task.title, rename.isPending, rename.mutate],
+  );
+  usePageHeader(header);
   return (
-    <header className="task-room-header">
-      <div className="task-room-title">
-        {editing ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              rename.mutate();
-            }}
-          >
-            <label className="sr-only" htmlFor="task-title">
-              Task title
-            </label>
-            <input
-              id="task-title"
-              value={title}
-              maxLength={512}
-              onChange={(event) => setTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') {
-                  setEditing(false);
-                  setTitle(task.title);
-                }
-              }}
-            />
-            <Button type="submit" disabled={!title.trim() || rename.isPending}>
-              Save title
-            </Button>
-            <Button onClick={() => setEditing(false)}>Cancel</Button>
-          </form>
-        ) : (
-          <h1>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label={`Edit title: ${task.title}`}
-            >
-              {task.title}
-            </button>
-          </h1>
-        )}
-      </div>
+    <PageFrameActions>
       <label className="task-room-status">
         <span className="sr-only">Task status</span>
         <select
@@ -190,7 +209,7 @@ export function TaskRoomHeader({
           {notice}
         </p>
       )}
-    </header>
+    </PageFrameActions>
   );
 }
 
@@ -265,7 +284,7 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
         </p>
       )}
       {(answers.isLoading || outputs.isLoading || prs.isLoading) && (
-        <p role="status">Loading results…</p>
+        <SkeletonList count={2} label="Loading results" />
       )}
       <ul aria-label="Kept results">
         {answers.data?.map((answer, index) =>
@@ -390,13 +409,15 @@ export function TaskRoomRail({
       <section>
         <h3>Goal</h3>
         {goal ? (
-          <LazyMarkdown loadingProjection="Loading brief…">{goal}</LazyMarkdown>
+          <LazyMarkdown
+            loadingProjection={<SkeletonBlock label="Loading brief" />}
+          >
+            {goal}
+          </LazyMarkdown>
+        ) : document.isLoading ? (
+          <SkeletonBlock label="Loading brief" />
         ) : (
-          <p>
-            {document.isLoading
-              ? 'Loading brief…'
-              : 'Add the goal to the shared brief.'}
-          </p>
+          <p>Add the goal to the shared brief.</p>
         )}
         <Button onClick={onBrief} size="sm">
           Edit brief
@@ -408,22 +429,33 @@ export function TaskRoomRail({
           <ul className="task-room-checklist">
             {checklist.map((item, index) => (
               <li key={index}>
-                {item.done === null ? (
-                  <span aria-hidden="true">•</span>
-                ) : (
-                  <span
-                    role="img"
-                    aria-label={item.done ? 'Checked' : 'Unchecked'}
-                  >
-                    {item.done ? '☑' : '☐'}
-                  </span>
-                )}
+                <span
+                  className="task-room-checklist-mark"
+                  role={item.done === null ? undefined : 'img'}
+                  aria-hidden={item.done === null || undefined}
+                  aria-label={
+                    item.done === null
+                      ? undefined
+                      : item.done
+                        ? 'Checked'
+                        : 'Unchecked'
+                  }
+                >
+                  {item.done === null ? (
+                    <ChecklistBulletGlyph />
+                  ) : (
+                    <ChecklistBoxGlyph />
+                  )}
+                  {item.done && <CheckGlyph />}
+                </span>
                 <LazyMarkdown>{item.text}</LazyMarkdown>
               </li>
             ))}
           </ul>
         ) : doneSection ? (
-          <LazyMarkdown loadingProjection="Loading brief…">
+          <LazyMarkdown
+            loadingProjection={<SkeletonBlock label="Loading brief" />}
+          >
             {doneSection}
           </LazyMarkdown>
         ) : (

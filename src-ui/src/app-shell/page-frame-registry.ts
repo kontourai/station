@@ -134,14 +134,16 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // docs/design/shell-skeletons.md §2.2.
   'project-edit': null,
 
+  // Tasks use the shared compact workspace header above their room.
+  task: { ...SPLIT_PANE, className: 'page-frame--workspace' },
+
   // The project surfaces below are workspaces, not management pages. Each
   // one's own identity header IS its content (a project's avatar/name/path
-  // row, a task's status header, a layout or pane rendering a plugin's
+  // row, a layout or pane rendering a plugin's
   // viewport edge-to-edge). Framing them would put a second title above a
   // surface that already answers "where am I" — and for panes and layouts,
   // steal viewport from a renderer that was handed the whole area.
   project: null,
-  task: null,
   layout: null,
   // #2062: a Board renders through the SAME layout renderer as a project
   // Layout, so it takes the same answer for the same reason — the renderer is
@@ -171,6 +173,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
 const UNSURFACED_FALLBACK_TITLES: Partial<
   Record<NavigationView['type'], string>
 > = {
+  task: 'Task',
   'project-session-board': 'Board',
   'project-flow-console': 'Flow console',
 };

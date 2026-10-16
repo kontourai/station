@@ -15,8 +15,10 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -251,99 +253,108 @@ export function ProjectTaskRoomConversation({
             )}
             <Time at={record.occurredAt} />
           </header>
-          <div
-            className={
-              execution
-                ? `task-room-answer${expanded.has(record.sequence) ? '' : ' task-room-answer--clamped'}`
-                : 'task-room-message-text'
-            }
-          >
-            <LazyMarkdown>{record.body.text}</LazyMarkdown>
-          </div>
-          {execution && (
-            <Button
-              size="sm"
-              onClick={() =>
-                setExpanded((current) => {
-                  const next = new Set(current);
-                  if (next.has(record.sequence)) next.delete(record.sequence);
-                  else next.add(record.sequence);
-                  return next;
-                })
+          <div className="task-room-message-content">
+            <div
+              className={
+                execution
+                  ? `task-room-answer${expanded.has(record.sequence) ? '' : ' task-room-answer--clamped'}`
+                  : 'task-room-message-text'
               }
             >
-              {expanded.has(record.sequence) ? 'Show less' : 'Show more'}
-            </Button>
-          )}
-          {execution && (
-            <div className="task-room-message-actions">
+              <LazyMarkdown>{record.body.text}</LazyMarkdown>
+            </div>
+            {execution && (
               <Button
                 size="sm"
                 onClick={() =>
-                  guard(() => {
-                    setThread(execution.sessionId);
-                    setUncertain(false);
-                    setNotice('');
+                  setExpanded((current) => {
+                    const next = new Set(current);
+                    if (next.has(record.sequence)) next.delete(record.sequence);
+                    else next.add(record.sequence);
+                    return next;
                   })
                 }
               >
-                {replies
-                  ? `${replies} ${replies === 1 ? 'reply' : 'replies'}`
-                  : 'Reply in thread'}
+                {expanded.has(record.sequence) ? 'Show less' : 'Show more'}
               </Button>
-              <Button
-                size="sm"
-                disabled={
-                  keep.isPending ||
-                  kept.has(`${execution.sessionId}:${execution.turnId}`) ||
+            )}
+          </div>
+          {execution && (
+            <ActionRow
+              className="task-room-message-actions"
+              primary={
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    guard(() => {
+                      setThread(execution.sessionId);
+                      setUncertain(false);
+                      setNotice('');
+                    })
+                  }
+                >
+                  {replies
+                    ? `${replies} ${replies === 1 ? 'reply' : 'replies'}`
+                    : 'Reply in thread'}
+                </Button>
+              }
+              secondary={
+                <Button
+                  size="sm"
+                  disabled={
+                    keep.isPending ||
+                    kept.has(`${execution.sessionId}:${execution.turnId}`) ||
+                    references.data?.some(
+                      (reference) =>
+                        reference.state === 'available' &&
+                        reference.sessionId === execution.sessionId &&
+                        reference.turnId === execution.turnId,
+                    )
+                  }
+                  onClick={async () => {
+                    try {
+                      await keep.mutateAsync({
+                        taskId,
+                        kind: 'turn',
+                        sessionId: execution.sessionId,
+                        turnId: execution.turnId,
+                        sourceSurface: 'task-room',
+                      });
+                      setKept((current) =>
+                        new Set(current).add(
+                          `${execution.sessionId}:${execution.turnId}`,
+                        ),
+                      );
+                      setNotice('Answer kept in Results.');
+                    } catch (error) {
+                      setNotice(
+                        error instanceof Error
+                          ? error.message
+                          : 'Could not keep this answer.',
+                      );
+                    }
+                  }}
+                >
+                  {kept.has(`${execution.sessionId}:${execution.turnId}`) ||
                   references.data?.some(
                     (reference) =>
                       reference.state === 'available' &&
                       reference.sessionId === execution.sessionId &&
                       reference.turnId === execution.turnId,
                   )
-                }
-                onClick={async () => {
-                  try {
-                    await keep.mutateAsync({
-                      taskId,
-                      kind: 'turn',
-                      sessionId: execution.sessionId,
-                      turnId: execution.turnId,
-                      sourceSurface: 'task-room',
-                    });
-                    setKept((current) =>
-                      new Set(current).add(
-                        `${execution.sessionId}:${execution.turnId}`,
-                      ),
-                    );
-                    setNotice('Answer kept in Results.');
-                  } catch (error) {
-                    setNotice(
-                      error instanceof Error
-                        ? error.message
-                        : 'Could not keep this answer.',
-                    );
-                  }
-                }}
-              >
-                {kept.has(`${execution.sessionId}:${execution.turnId}`) ||
-                references.data?.some(
-                  (reference) =>
-                    reference.state === 'available' &&
-                    reference.sessionId === execution.sessionId &&
-                    reference.turnId === execution.turnId,
-                )
-                  ? 'Kept'
-                  : 'Keep'}
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void openRun(execution.sessionId)}
-              >
-                Open full run
-              </Button>
-            </div>
+                    ? 'Kept'
+                    : 'Keep'}
+                </Button>
+              }
+              overflowLabel="More answer actions"
+              overflow={[
+                {
+                  key: 'open-run',
+                  label: 'Open full run',
+                  onSelect: () => void openRun(execution.sessionId),
+                },
+              ]}
+            />
           )}
         </article>
       </li>
@@ -354,201 +365,217 @@ export function ProjectTaskRoomConversation({
       className={`project-task-room-conversation${thread ? ' task-room-conversation--thread-open' : ''}`}
       aria-label="Task room conversation"
     >
-      {shared?.presenceError && <p role="alert">{shared.presenceError}</p>}
-      <div className="task-room-messages">
-        {history.isError && (
-          <p role="alert">
-            Room history is unavailable.{' '}
-            <Button onClick={() => void history.refetch()}>Retry</Button>
-          </p>
-        )}
-        {capabilities && !capabilities.historyRead && (
-          <p role="status">History is not shared with this connection.</p>
-        )}
-        {!records.length && !history.isLoading && (
-          <div className="task-room-chat-empty">
-            <h2>Start the conversation</h2>
-            <p>
-              Share a thought, shape the brief, or ask an agent to work on this
-              Task.
-            </p>
-          </div>
-        )}
-        <ol aria-live="polite" aria-label="Task room history">
-          {visible.map((record, index) => message(record, visible[index - 1]))}
-        </ol>
-        {running.map((participant) => (
-          <div
-            className="task-room-running"
-            role="status"
-            key={participant.actor.actorId}
-          >
-            <span className="task-room-live-dot" />
-            <strong>{participant.actor.label}</strong>
-            {participant.work.workState === 'blocked' &&
-            participant.work.workName === "Answer couldn't be posted" ? (
-              <>
-                <span>Answer couldn't be posted ·</span>
-                <Button
-                  size="sm"
-                  onClick={() => void openRun(participant.work.sessionId)}
-                >
-                  Open full run
+      <SplitPaneCompanion
+        sheet={{
+          label: `${threadRecords[0]?.actor.label ?? 'Agent'} · Thread`,
+          onDismiss: () => guard(() => setThread(undefined)),
+        }}
+        companion={
+          thread ? (
+            <section className="task-room-thread" aria-label="Agent thread">
+              <header className="split-pane-companion__detail-header">
+                <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
+                <Button onClick={() => guard(() => setThread(undefined))}>
+                  Close thread
                 </Button>
-              </>
-            ) : (
-              <>
-                <span>is {participant.work.workState}</span>
-                <Button
-                  size="sm"
-                  onClick={() => void openRun(participant.work.sessionId)}
-                >
-                  Watch
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!writable || stop.isPending}
-                  onClick={() => stop.mutate(participant.work.sessionId)}
-                >
-                  Stop
-                </Button>
-              </>
-            )}
-          </div>
-        ))}
-        {pages.some((page) => page.kind === 'gap') && (
-          <p role="alert">Earlier room history is unavailable.</p>
-        )}
-        {history.hasNextPage && (
-          <Button
-            onClick={() => void history.fetchNextPage()}
-            disabled={history.isFetchingNextPage}
-          >
-            Load more messages
-          </Button>
-        )}
-        <div ref={bottom} />
-      </div>
-      {records
-        .filter(
-          (record) =>
-            record.body.kind === 'live-work-finished' &&
-            record.body.outcome === 'completed' &&
-            !records.some(
-              (answer) =>
-                answer.execution?.sessionId ===
-                (record.body.kind === 'live-work-finished'
-                  ? record.body.sessionId
-                  : undefined),
-            ),
-        )
-        .map(
-          (record) =>
-            record.body.kind === 'live-work-finished' && (
-              <p
-                key={`unposted:${record.sequence}`}
-                className="task-room-inline-status"
-                role="status"
+              </header>
+              <ol className="task-room-thread-messages">
+                {threadRecords.map((record, index) =>
+                  message(record, threadRecords[index - 1]),
+                )}
+              </ol>
+              <form
+                className="task-room-composer task-room-thread-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  followup.mutate();
+                }}
               >
-                Answer couldn't be posted ·{' '}
+                <label className="sr-only" htmlFor="task-thread-reply">
+                  Reply to this agent
+                </label>
+                <textarea
+                  id="task-thread-reply"
+                  value={reply}
+                  rows={1}
+                  placeholder="Reply…"
+                  onChange={(event) => {
+                    setReply(event.target.value);
+                    setNotice('');
+                    replyOperation.current = undefined;
+                  }}
+                  readOnly={!writable || followup.isPending || uncertain}
+                />
+                <label className="task-room-brief-choice">
+                  <input
+                    type="checkbox"
+                    checked={attachBrief}
+                    disabled={followup.isPending || uncertain}
+                    onChange={(event) => setAttachBrief(event.target.checked)}
+                  />
+                  Brief
+                </label>
                 <Button
-                  size="sm"
-                  onClick={() =>
-                    record.body.kind === 'live-work-finished' &&
-                    void openRun(record.body.sessionId)
+                  className="task-room-send"
+                  aria-label="Send reply"
+                  type="submit"
+                  disabled={
+                    !writable ||
+                    !reply.trim() ||
+                    followup.isPending ||
+                    uncertain
                   }
                 >
-                  Open full run
+                  ↑
                 </Button>
-              </p>
-            ),
-        )}
-      {thread && (
-        <section className="task-room-thread" aria-label="Agent thread">
-          <header>
-            <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
-            <Button onClick={() => guard(() => setThread(undefined))}>
-              Close thread
-            </Button>
-          </header>
-          <ol className="task-room-thread-messages">
-            {threadRecords.map((record, index) =>
-              message(record, threadRecords[index - 1]),
-            )}
-          </ol>
-          <form
-            className="task-room-composer task-room-thread-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              followup.mutate();
-            }}
-          >
-            <label className="sr-only" htmlFor="task-thread-reply">
-              Reply to this agent
-            </label>
-            <textarea
-              id="task-thread-reply"
-              value={reply}
-              rows={1}
-              placeholder="Reply…"
-              onChange={(event) => {
-                setReply(event.target.value);
-                setNotice('');
-                replyOperation.current = undefined;
-              }}
-              readOnly={!writable || followup.isPending || uncertain}
-            />
-            <label className="task-room-brief-choice">
-              <input
-                type="checkbox"
-                checked={attachBrief}
-                disabled={followup.isPending || uncertain}
-                onChange={(event) => setAttachBrief(event.target.checked)}
-              />
-              Brief
-            </label>
-            <Button
-              className="task-room-send"
-              aria-label="Send reply"
-              type="submit"
-              disabled={
-                !writable || !reply.trim() || followup.isPending || uncertain
-              }
-            >
-              ↑
-            </Button>
-          </form>
-          {attachBrief &&
-            requests.data?.context?.text.includes('Brief shortened to fit') && (
-              <p className="task-room-inline-status" role="status">
-                The brief exceeds 16,000 characters. A shortened version with a
-                notice will be attached.
-              </p>
-            )}
-          {notice && (
-            <p className="task-room-inline-status" role="status">
-              {notice}{' '}
-              {uncertain && (
-                <Button size="sm" onClick={() => void openRun(thread)}>
-                  Open full run
-                </Button>
+              </form>
+              {attachBrief &&
+                requests.data?.context?.text.includes(
+                  'Brief shortened to fit',
+                ) && (
+                  <p className="task-room-inline-status" role="status">
+                    The brief exceeds 16,000 characters. A shortened version
+                    with a notice will be attached.
+                  </p>
+                )}
+              {notice && (
+                <p className="task-room-inline-status" role="status">
+                  {notice}{' '}
+                  {uncertain && (
+                    <Button size="sm" onClick={() => void openRun(thread)}>
+                      Open full run
+                    </Button>
+                  )}
+                </p>
               )}
+            </section>
+          ) : null
+        }
+      >
+        {shared?.presenceError && <p role="alert">{shared.presenceError}</p>}
+        <div className="task-room-messages">
+          {history.isError && (
+            <p role="alert">
+              Room history is unavailable.{' '}
+              <Button onClick={() => void history.refetch()}>Retry</Button>
             </p>
           )}
-        </section>
-      )}
-      {!thread && notice && (
-        <p className="task-room-inline-status" role="status">
-          {notice}
-        </p>
-      )}
-      <TaskRoomComposer
-        taskId={taskId}
-        projectSlug={projectSlug ?? ''}
-        taskCreatedAt={taskCreatedAt ?? ''}
-        writable={writable && !!projectSlug && !!taskCreatedAt}
-        readable={capabilities?.historyRead === true}
-      />
+          {capabilities && !capabilities.historyRead && (
+            <p role="status">History is not shared with this connection.</p>
+          )}
+          {!records.length && !history.isLoading && (
+            <div className="task-room-chat-empty">
+              <h2>Start the conversation</h2>
+              <p>
+                Share a thought, shape the brief, or ask an agent to work on
+                this Task.
+              </p>
+            </div>
+          )}
+          <ol aria-live="polite" aria-label="Task room history">
+            {visible.map((record, index) =>
+              message(record, visible[index - 1]),
+            )}
+          </ol>
+          {running.map((participant) => (
+            <div
+              className="task-room-running"
+              role="status"
+              key={participant.actor.actorId}
+            >
+              <span className="task-room-live-dot" />
+              <strong>{participant.actor.label}</strong>
+              {participant.work.workState === 'blocked' &&
+              participant.work.workName === "Answer couldn't be posted" ? (
+                <>
+                  <span>Answer couldn't be posted ·</span>
+                  <Button
+                    size="sm"
+                    onClick={() => void openRun(participant.work.sessionId)}
+                  >
+                    Open full run
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span>is {participant.work.workState}</span>
+                  <Button
+                    size="sm"
+                    onClick={() => void openRun(participant.work.sessionId)}
+                  >
+                    Watch
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!writable || stop.isPending}
+                    onClick={() => stop.mutate(participant.work.sessionId)}
+                  >
+                    Stop
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
+          {pages.some((page) => page.kind === 'gap') && (
+            <p role="alert">Earlier room history is unavailable.</p>
+          )}
+          {history.hasNextPage && (
+            <Button
+              onClick={() => void history.fetchNextPage()}
+              disabled={history.isFetchingNextPage}
+            >
+              Load more messages
+            </Button>
+          )}
+          <div ref={bottom} />
+        </div>
+        {records
+          .filter(
+            (record) =>
+              record.body.kind === 'live-work-finished' &&
+              record.body.outcome === 'completed' &&
+              !records.some(
+                (answer) =>
+                  answer.execution?.sessionId ===
+                  (record.body.kind === 'live-work-finished'
+                    ? record.body.sessionId
+                    : undefined),
+              ),
+          )
+          .map(
+            (record) =>
+              record.body.kind === 'live-work-finished' && (
+                <p
+                  key={`unposted:${record.sequence}`}
+                  className="task-room-inline-status"
+                  role="status"
+                >
+                  Answer couldn't be posted ·{' '}
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      record.body.kind === 'live-work-finished' &&
+                      void openRun(record.body.sessionId)
+                    }
+                  >
+                    Open full run
+                  </Button>
+                </p>
+              ),
+          )}
+        {!thread && notice && (
+          <p className="task-room-inline-status" role="status">
+            {notice}
+          </p>
+        )}
+        <TaskRoomComposer
+          taskId={taskId}
+          projectSlug={projectSlug ?? ''}
+          taskCreatedAt={taskCreatedAt ?? ''}
+          writable={writable && !!projectSlug && !!taskCreatedAt}
+          readable={capabilities?.historyRead === true}
+        />
+      </SplitPaneCompanion>
       <DiscardModal />
     </section>
   );
