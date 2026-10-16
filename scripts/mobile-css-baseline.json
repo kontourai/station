@@ -218,7 +218,7 @@
       "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
     },
     "src-ui/src/views/SessionsView.css": {
-      "count": 3,
+      "count": 2,
       "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
     },
     "src-ui/src/views/SettingsView.css": {
