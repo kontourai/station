@@ -116,6 +116,8 @@ function canonical(value: unknown, ancestors = new Set<object>()): string {
         );
       return `[${value.map((item) => canonical(item, ancestors)).join(',')}]`;
     }
+    if (Reflect.ownKeys(value).length !== Object.keys(value).length)
+      throw new Error('Prepared turn input cannot contain hidden fields.');
     return `{${Object.keys(value)
       .sort()
       .map(
