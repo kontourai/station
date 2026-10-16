@@ -1888,7 +1888,7 @@ test.each([false, true])(
     fireEvent.change(input, { target: { value: 'Show installer progress' } });
     if (remove)
       fireEvent.click(
-        screen.getByRole('button', { name: 'Remove New Task mode' }),
+        screen.getByRole('button', { name: 'Remove Shaping a Task mode' }),
       );
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));

@@ -1502,7 +1502,7 @@ export function NewChatModal({
               className="task-chat-start__chip"
               size="sm"
               onClick={() => setShaping(false)}
-              aria-label="Remove New Task mode"
+              aria-label="Remove Shaping a Task mode"
             >
               Shaping a Task ×
             </Button>

@@ -2639,7 +2639,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <Button
               className="task-chat-start__chip"
               size="sm"
-              aria-label="Remove New Task mode"
+              aria-label="Remove Shaping a Task mode"
               onClick={() =>
                 updateChat(activeSessionId!, { taskShaping: false })
               }
