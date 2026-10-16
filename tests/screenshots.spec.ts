@@ -1033,7 +1033,7 @@ function seedActiveChatSession(
  * `fulfillSessionsFilteredEmptyFixture`'s doc comment for the established
  * per-screen `page.route`-override-then-unroute idiom this generalizes).
  * Every screen below that registers a route MUST call the returned cleanup
- * in `afterGoto`'s `finally`, or its fixture — a project list, a durable
+ * in `cleanup` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
  * run (a stray "Demo Project" can survive three screens later
  * and change Home's guidance-card content under an unrelated screen name).
@@ -1428,6 +1428,11 @@ function overlayDockProjectMismatchHooks(
         ),
         await withRoute(
           page,
+          '**/api/projects/project-a',
+          projectDetailFixture({ slug: 'project-a', name: 'Project A' }),
+        ),
+        await withRoute(
+          page,
           '**/api/projects/project-b',
           projectDetailFixture({
             slug: 'project-b',
@@ -1503,7 +1508,15 @@ function overlayDockProjectMismatchHooks(
       await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
         timeout: 10_000,
       });
+      const projectRead = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/projects/project-a',
+      );
       await page.getByRole('button', { name: 'Switch to Project A' }).click();
+      expect(
+        (await projectRead).status(),
+        'selected Project detail must be available',
+      ).toBe(200);
       await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden({
         timeout: 10_000,
       });
@@ -1545,6 +1558,10 @@ function overlayDockProjectMismatchHooks(
             ),
         )
         .toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight),
+        'settled conversation status must not extend the document',
+      ).toBe(page.viewportSize()?.height);
     },
     cleanup: async () => {
       // Polling must see the scenario's fixtures until its image and recovery
