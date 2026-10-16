@@ -4800,6 +4800,8 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+      ...(input.principal ? { principal: input.principal } : {}),
       ...(input.taskRoomInvocationAdmission?.clientTurnId
         ? { clientTurnId: input.taskRoomInvocationAdmission.clientTurnId }
         : {}),

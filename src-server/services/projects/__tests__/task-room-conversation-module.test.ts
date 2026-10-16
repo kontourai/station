@@ -648,6 +648,19 @@ test('room requests start the Task and publish canonical answers and continued t
     expect(f.adapter.turns[1].threadId).toBe(sessionId);
     expect(f.adapter.turns[1].input).toContain('Please refine it');
     expect(f.adapter.turns[1].input).toContain('# Task brief: Make the room');
+    await f.started(sessionId, 'turn-2');
+    const continued = await f.sessions.readSession(
+      sessionId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(
+      continued?.events.find(
+        (event) => event.method === 'turn.started' && event.turnId === 'turn-2',
+      ),
+    ).toMatchObject({
+      principal: f.principal,
+      clientTurnId: expect.stringMatching(/^room-reply:[0-9a-f-]{36}$/),
+    });
     await vi.waitFor(async () => expect(await f.agentCount()).toBe(1));
     f.adapter.answer(
       sessionId,
