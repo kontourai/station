@@ -243,4 +243,3 @@ curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
   sh -s uninstall
 test ! -e "$install_root"
 test -d "$station_home"
-
