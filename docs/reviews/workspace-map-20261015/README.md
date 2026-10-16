@@ -183,3 +183,26 @@ This artifact is retained as diagnostic evidence and has not been adopted as
 a baseline. A fresh hosted capture must qualify the corrected glyph before
 reference adoption. Earlier local screenshots above retain their recorded
 source revision and predate this small glyph-size repair.
+
+## Corrected hosted reference adoption
+
+Run `38856746806` captured all 56 screens on `3face3e11d5`. Reviewed artifact
+`12028639233` (`gallery-pr-38856746806-1`) has ZIP SHA-256
+`4c4aa82eb413675fa85d058329b283cb2fa36bb710e09e704854b59f4ba4c46f`.
+The baseline comparison reported 37 changed desktop screens, 18 unchanged
+screens and the one existing volatile entry.
+
+Independent decoded-pixel comparison with the prior reviewed artifact found
+36 scenes changed only at the repaired header toggle (148 pixels per scene,
+x=239..252, y=16..27). The two New Project scenes changed only in the
+corresponding blurred backdrop area; modal content was unchanged. The other
+18 scenes, including mobile, were pixel-identical. Independent image review
+found the toggle legible and no unexplained visual regression.
+
+Baseline-only commit `c59a329e594` adopts that exact hosted artifact through
+`npm run screenshot:baseline`. It changes 37 reference PNGs and their manifest
+hashes, preserving the existing volatile entry byte-for-byte. No capture
+code, comparator, mask, threshold or exception changed. Comparing the same
+artifact against the updated references passes 55/55, plus one existing
+volatile skip. This establishes reference consistency, not a fresh hosted
+render on the baseline commit or completion of the merge queue.
