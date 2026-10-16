@@ -76,6 +76,8 @@ clearly mark the stale document.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
+- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — request-authorized committed-order receipt pages, focused server/client evidence, and pending grant, deletion, restore, durable sync and deployment acceptance.
+- **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
@@ -96,8 +98,10 @@ clearly mark the stale document.
   historical lookup; GitHub issues and pull requests remain the authority for
   live work.
 - **[Patterns](patterns/)** — frontend and backend implementation conventions.
-- **[ADRs](adr/)** — numbered architecture decision records; supersession is
-  recorded inside the record or by a named successor.
+- **[Decisions](decisions/index.md)** — one living record per decision subject,
+  checked by Corpus; new decisions go here.
+- **[ADRs](adr/)** — numbered architecture decision records, frozen as history;
+  supersession is recorded inside the record or by a named successor.
 - **[Contexts](contexts/)** — per-area `CONTEXT.md` files routed from
   [../CONTEXT-MAP.md](../CONTEXT-MAP.md).
 - **[Conformance](conformance/)** — external-contract conformance notes.
@@ -109,6 +113,8 @@ clearly mark the stale document.
   metadata-only routing control plane and its current qualification boundary.
 - **[Testing](testing/)** — supplementary testing records; the canonical
   guide is [guides/testing.md](guides/testing.md).
+- **[UI review evidence](reviews/workspace-map-20261015/README.md)** — workspace
+  map screenshots, review results, capture revisions, and verification limits.
 - **[Third-party](third-party/)** — vendored/external integration notes.
 - **[UI](ui/)** — ratchet and exception baselines consumed by `scripts/*-ratchet.mjs`
   (data files, not prose).

@@ -1,4 +1,5 @@
 import { SectionNavigation } from '../components/SectionNavigation';
+import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -20,7 +21,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import { PageRow } from '../components/PageRow';
 import type { SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
@@ -70,6 +70,7 @@ import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { PairingSection } from './settings/PairingSection';
+import { PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -79,6 +80,7 @@ import {
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
+import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -98,6 +100,7 @@ import {
   settingsSectionsForView,
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
+import { TelemetryDelivery } from './settings/TelemetryDelivery';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -225,7 +228,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
-    sidebarSections,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
     // Settings row, so the in-chat gear was the only place to change them.
@@ -995,6 +997,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               </div>
             )}
 
+            {sectionVisible('account-preferences') && (
+              <AccountPreferencesSection />
+            )}
+
             {/* ── Station scope ── */}
             {groupVisible('this-station') && (
               <section
@@ -1047,6 +1053,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
+                {/* #3557: people, their Station group and their tokens.
+              Operator-only (the same gate as device hosts); the section
+              renders nothing for a caller the route refuses. */}
+                {sectionVisible('people') && <PeopleSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1127,6 +1137,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       })()}
                     />
                     <UsageTelemetryDisclosure />
+                    <TelemetryDelivery />
                   </Section>
                 )}
 
@@ -1240,52 +1251,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             {/* ── This device scope ── */}
             {groupVisible('you') && (
               <section
-                aria-label="This device settings"
+                aria-label="Personal and device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">Saved to this device.</p>
+                <p className="settings__scope-caption">
+                  Personal choices follow your account when signed in. Device
+                  capabilities and layout stay here; each setting shows its
+                  scope.
+                </p>
 
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
                     <PageRow
                       {...settingsRow('theme')}
                       control={<ThemeToggle />}
-                    />
-                    {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-                    <PageRow
-                      {...settingsRow('sidebar-sections')}
-                      description="Show the Open chats and Drafts sections in the sidebar."
-                      control={
-                        <div className="settings__toggle-column">
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.openChatsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  openChatsHidden: !checked,
-                                })
-                              }
-                              label="Open chats in sidebar"
-                            />
-                            <span aria-hidden="true">Open chats</span>
-                          </div>
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.draftsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  draftsHidden: !checked,
-                                })
-                              }
-                              label="Drafts in sidebar"
-                            />
-                            <span aria-hidden="true">Drafts</span>
-                          </div>
-                        </div>
-                      }
                     />
                     {isMobile && (
                       <PageRow
@@ -1344,7 +1323,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       // `defaultChatFontSize` is not in force anywhere yet, so
                       // moving the slider with it would show a fallback no chat is
                       // using.
-                      description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                      description={`Font size for your chat messages (10–24px). Unset follows the Station default of ${savedConfig.defaultChatFontSize ?? 14}px.`}
                       control={
                         <div className="settings__range-row">
                           <input
@@ -1400,7 +1379,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   from the same mapping module. */}
                     <PageRow
                       {...settingsRow('smooth-answer-reveal')}
-                      description="How this device displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
+                      description="How your interface displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
                       control={
                         <select
                           className="editor-select"
@@ -1428,7 +1407,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-reasoning')}
-                      description="Chat messages on this device include the model’s reasoning steps."
+                      description="Your chat messages include the model’s reasoning steps."
                       control={
                         <Toggle
                           checked={chatShowReasoning}
@@ -1575,7 +1554,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette on this device."
+                      description="Show Developer in Customize and the command palette."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}

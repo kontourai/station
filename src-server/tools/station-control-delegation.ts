@@ -23,6 +23,7 @@ import { environmentId } from '@kontourai/station-contracts/execution-target';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type InterruptTurnResult,
   normalizeRequestAnswerability,
   type RequestAnswerability,
 } from '@kontourai/station-contracts/orchestration';
@@ -53,6 +54,7 @@ import {
   sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -1903,9 +1905,13 @@ function localRefusalOf(
   message: string,
 ): LocalStationRefusal | undefined {
   if (target.kind !== 'current') return undefined;
-  const code = (payload as { code?: unknown } | null | undefined)?.code;
+  const body = payload as
+    | { code?: unknown; reason?: unknown }
+    | null
+    | undefined;
+  const code = body?.code;
   return typeof code === 'string' && code
-    ? new LocalStationRefusal(code, message)
+    ? new LocalStationRefusal(code, message, body?.reason)
     : undefined;
 }
 
@@ -4986,12 +4992,53 @@ export async function respondToDelegatedTaskRequest(
   };
 }
 
+const INTERRUPT_TURN_OUTCOMES: ReadonlySet<string> = new Set<
+  InterruptTurnResult['outcome']
+>([
+  'cooperative',
+  'forced',
+  'turn-completed',
+  'pending-turn-start',
+  'no-active-turn',
+]);
+
+/**
+ * #3158: the outcome the stopping Station derived for an `interruptTurn`
+ * (`InterruptTurnResult`), read from its command result. Anything else
+ * (another Station's older response, an unexpected result) is `undefined`:
+ * unknown, never a guessed outcome.
+ */
+function knownInterruptOutcome(
+  outcome: unknown,
+): InterruptTurnResult['outcome'] | undefined {
+  return typeof outcome === 'string' && INTERRUPT_TURN_OUTCOMES.has(outcome)
+    ? (outcome as InterruptTurnResult['outcome'])
+    : undefined;
+}
+const interruptTurnOutcomeOf = (result: unknown) =>
+  knownInterruptOutcome(
+    result && typeof result === 'object'
+      ? (result as { outcome?: unknown }).outcome
+      : undefined,
+  );
+
+export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
+  interruptRequested: true;
+  /**
+   * #3158: what the stop actually did, as the orchestration service derived
+   * it (`InterruptTurnResult['outcome']`). `no-active-turn` means nothing was
+   * interrupted (no turn running, or not the requested one). Absent when the
+   * Station that ran the stop did not report it.
+   */
+  interruptOutcome?: InterruptTurnResult['outcome'];
+};
+
 /** Interrupt the active turn after re-verifying environment and user binding. */
 export async function interruptDelegatedTask(
   input: DelegatedTaskReferenceInput & { turnId?: string },
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
-): Promise<DelegatedTaskSnapshot & { interruptRequested: true }> {
+): Promise<DelegatedTaskInterruptResult> {
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
@@ -5004,8 +5051,10 @@ export async function interruptDelegatedTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    return normalizeDelegatedIdentity(
-      await postCanonical<DelegatedTaskSnapshot & { interruptRequested: true }>(
+    // The selected Station's own route ran the stop and reports its outcome;
+    // it is passed on only if it is one this Station's contract names.
+    const { interruptOutcome, ...forwarded } = normalizeDelegatedIdentity(
+      await postCanonical<DelegatedTaskInterruptResult>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/interrupt`,
         {
@@ -5015,6 +5064,8 @@ export async function interruptDelegatedTask(
         'The selected Station could not interrupt the delegated task',
       ),
     );
+    const outcome = knownInterruptOutcome(interruptOutcome);
+    return { ...forwarded, ...(outcome ? { interruptOutcome: outcome } : {}) };
   }
   const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   const snapshot = snapshotFor(loaded);
@@ -5023,21 +5074,24 @@ export async function interruptDelegatedTask(
       `Delegated task cannot be interrupted while ${snapshot.status}`,
     );
   }
+  let interrupted: unknown;
   if (loaded.target.kind === 'current' && orchestrationService) {
-    await orchestrationService.dispatchWithReceipt(
-      {
-        type: 'interruptTurn',
-        threadId: snapshot.currentSessionId,
-        ...(input.turnId ? { turnId: input.turnId } : {}),
-      },
-      dispatchContextForAuthority(
-        readAuthority,
-        input.clientOrigin,
-        input.principal,
-      ),
-    );
+    interrupted = (
+      await orchestrationService.dispatchWithReceipt(
+        {
+          type: 'interruptTurn',
+          threadId: snapshot.currentSessionId,
+          ...(input.turnId ? { turnId: input.turnId } : {}),
+        },
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+        ),
+      )
+    ).result;
   } else {
-    await readSelectedStation(loaded.target, () =>
+    interrupted = await readSelectedStation(loaded.target, () =>
       interruptTurn(
         loaded.target.apiBase,
         {
@@ -5052,7 +5106,12 @@ export async function interruptDelegatedTask(
     target: snapshot.target.kind,
     environment: loaded.target.kind,
   });
-  return { ...snapshot, interruptRequested: true };
+  const interruptOutcome = interruptTurnOutcomeOf(interrupted);
+  return {
+    ...snapshot,
+    interruptRequested: true,
+    ...(interruptOutcome ? { interruptOutcome } : {}),
+  };
 }
 
 /**
@@ -6418,6 +6477,31 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    inspectConversationTurnKey: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+    ) =>
+      typeof orchestrationService.inspectTurnDelivery === 'function'
+        ? orchestrationService.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        : undefined,
+    joinConversationTurnKey: async (
+      _access: EnvironmentAccess,
+      sessionId: string,
+      clientTurnId: string,
+      signal?: AbortSignal,
+    ) =>
+      typeof orchestrationService.joinHeldTurnKey === 'function'
+        ? await orchestrationService.joinHeldTurnKey(
+            sessionId,
+            clientTurnId,
+            signal,
+          )
+        : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
@@ -6854,6 +6938,73 @@ export function resumedWorkspaceBinding(
     return { workspace: { kind: 'directory', cwd: sessionCwd } };
   }
   return {};
+}
+
+/**
+ * #3568 fix round (A4): whether a `/chat` follow-up's target names exactly
+ * what continuing this conversation will use: its bound Agent (and execution
+ * Agent) and its bound workspace, with no engine or Agent-definition
+ * precondition. The inbox
+ * replays a held follow-up through {@link continueExecutionTargetMessage},
+ * which rebuilds the target from the binding, so a body that names anything
+ * else must take the live path, which checks it while the sender waits.
+ * Conservative: a reserved handoff, an unreadable or unbound conversation,
+ * or any shape it does not recognise answers `false`.
+ */
+export async function followUpTargetMatchesBinding(
+  orchestrationService: OrchestrationService,
+  conversationId: string,
+  target: ExecutionTarget,
+  readAuthority: SessionReadAuthority,
+): Promise<boolean> {
+  if (target.expectedEngine) return false;
+  const rootDetail = await orchestrationService.readSession(
+    conversationId,
+    readAuthority,
+  );
+  if (!rootDetail) return false;
+  const currentSessionId =
+    orchestrationService.currentConversationSessionId(conversationId);
+  if (orchestrationService.reservedConversationHandoff(currentSessionId))
+    return false;
+  const currentDetail = await orchestrationService.readSession(
+    currentSessionId,
+    readAuthority,
+  );
+  if (!currentDetail) return false;
+  const metadata = sessionBinding(rootDetail);
+  const currentMetadata = sessionBinding(currentDetail);
+  const bound = delegationTargetBinding(currentMetadata);
+  if (!bound || !metadata) return false;
+  const agent = target.agent;
+  // A stale-definition precondition is checked only by the live path.
+  if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
+    return false;
+  const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
+  const requestedExecution =
+    typeof agent === 'string' ? undefined : agent.executionAgent;
+  const boundExecution =
+    typeof currentMetadata?.executionAgentId === 'string'
+      ? currentMetadata.executionAgentId
+      : undefined;
+  if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
+    return false;
+  const workspace = resumedWorkspaceBinding(
+    metadata,
+    record(rootDetail.session).cwd,
+  ).workspace;
+  const requested = target.workspace;
+  if (!requested) return workspace === undefined;
+  if (requested.kind === 'project')
+    return (
+      workspace?.kind === 'project' &&
+      workspace.projectSlug === requested.projectSlug &&
+      requested.cwd === undefined &&
+      requested.workspaceIsolation === undefined
+    );
+  if (requested.kind === 'directory')
+    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
+  return false;
 }
 
 export async function continueExecutionTargetMessage(

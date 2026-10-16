@@ -106,6 +106,12 @@ export function buildOutgoingUserMessage(
   currentMessages: ChatMessage[] | undefined,
   content: string,
   attachments?: FileAttachment[],
+  /**
+   * The send's idempotency key, when the caller has minted it: the bubble
+   * then carries the same identity Station stamps on the turn's
+   * `turn.started`, so the two match exactly.
+   */
+  clientId: string = randomCorrelationId(),
 ): {
   messages: ChatMessage[];
   contentParts?: ChatMessage['contentParts'];
@@ -125,13 +131,11 @@ export function buildOutgoingUserMessage(
     }
   }
 
-  // archive#1293: a stable client-only id for this optimistic append, so a
+  // archive#1293: `clientId` is a stable id for this optimistic append, so a
   // rejected send's rollback can remove exactly this message by id instead
   // of relying on the whole `messages` array still being the same reference
   // it was at send time (see rejectedSendRollback in
   // useActiveChatSessionMessaging.ts).
-  const clientId = randomCorrelationId();
-
   const nextMessage: ChatMessage = {
     role: 'user',
     content,

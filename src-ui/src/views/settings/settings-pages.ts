@@ -2,7 +2,11 @@ import type { SettingsSectionId } from './settings-catalog';
 
 /** Topics organize navigation; each row keeps its own persistence authority. */
 export const SETTINGS_PAGES = [
-  { id: 'general', title: 'General', sections: ['permissions', 'agent-runs'] },
+  {
+    id: 'general',
+    title: 'General',
+    sections: ['account-preferences', 'permissions', 'agent-runs'],
+  },
   { id: 'appearance', title: 'Appearance', sections: ['appearance'] },
   { id: 'chat', title: 'Chat', sections: ['chat'] },
   {
@@ -15,7 +19,11 @@ export const SETTINGS_PAGES = [
     title: 'Keyboard shortcuts',
     sections: ['keyboard-shortcuts'],
   },
-  { id: 'devices', title: 'Devices', sections: ['pairing', 'device-hosts'] },
+  {
+    id: 'devices',
+    title: 'Devices',
+    sections: ['pairing', 'device-hosts', 'people'],
+  },
   {
     id: 'privacy',
     title: 'Privacy & sharing',

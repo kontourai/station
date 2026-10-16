@@ -215,10 +215,32 @@
 .account-entry .page-section__description {
   margin-block: 0;
 }
-.account-entry .project-access__members,
-.account-entry .project-access__invite {
+.account-entry .invite-flow {
   display: grid;
   gap: 1rem;
+}
+/* The shared person list (components/people) in the guest card's palette:
+   the same divided list as the app, with this page's surface, border and
+   radius instead of the app tokens. Invitation rows keep the
+   project-access__member style below. */
+.account-entry .person-list {
+  border-color: var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+.account-entry .person-row + .person-row {
+  border-top-color: var(--border-primary);
+}
+.account-entry .person-row:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+.account-entry .person-row:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+.account-entry .person-row__name {
+  color: var(--text-primary);
 }
 .account-entry .project-access__member {
   display: flex;
@@ -238,13 +260,13 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.account-entry .project-access__invite label:not(.cb),
+.account-entry .invite-flow label:not(.cb),
 .account-entry .project-access__actions label:not(.cb) {
   display: grid;
   gap: 0.35rem;
 }
-.account-entry .project-access__invite input:not([type="checkbox"]),
-.account-entry .project-access__invite select,
+.account-entry .invite-flow input:not([type="checkbox"]),
+.account-entry .invite-flow select,
 .account-entry .project-access__actions select {
   min-height: 44px;
   max-width: 100%;
@@ -260,7 +282,7 @@
   border-radius: 8px;
   background: var(--bg-secondary);
 }
-.account-entry .project-access__invite h3,
+.account-entry .invite-flow h3,
 .account-entry .page-section h3 {
   margin-block: 0;
 }

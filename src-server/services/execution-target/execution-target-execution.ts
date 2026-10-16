@@ -8,6 +8,7 @@ import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-atta
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
+  ContinuationWorkspaceRefusalCode,
   ExecutionResolutionReceipt,
   ExecutionTarget,
   ResolvedExecutionEngine,
@@ -40,6 +41,11 @@ import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
+import {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
+  keyInFlightError,
+} from '../orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -87,6 +93,13 @@ export interface ForegroundMessageInput {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /**
+   * #3568: stops only the bounded wait a same-key retry spends joining
+   * another attempt's turn, when the caller goes away. The route passes its
+   * request's signal here. It is never a send's signal: a send must still go
+   * through once Station has it (`sendTurn`'s own `signal` contract).
+   */
+  joinWaitSignal?: AbortSignal;
   /**
    * #2436: an approval-posture decision this send carries (made before the
    * chat had a session, or while its client was offline). It is recorded
@@ -305,14 +318,7 @@ export interface ExecutionSessionBinding {
 
 export class ContinuationWorkspaceError extends Error {
   constructor(
-    readonly code:
-      | 'continuation_workspace_project_context_missing'
-      | 'continuation_workspace_corrupt_worktree_binding'
-      | 'continuation_workspace_worktree_gone'
-      | 'continuation_workspace_different_project'
-      | 'continuation_workspace_worktree_moved'
-      | 'continuation_workspace_direct_mismatch'
-      | 'continuation_workspace_unbound',
+    readonly code: ContinuationWorkspaceRefusalCode,
     message: string,
   ) {
     super(message);
@@ -373,6 +379,29 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
+  /**
+   * #3568: the turn ledger's answer for a key across every Session of the
+   * conversation. Read before a continuation may reserve a successor, since
+   * deduplication is per Session. Optional for remote compatibility.
+   */
+  inspectConversationTurnKey?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    clientTurnId: string,
+  ) => ConversationKeyInspection;
+  /**
+   * #3568: join the turn a live claim holds `clientTurnId` for on
+   * `sessionId` (bounded), as a same-key send meeting that claim does.
+   */
+  joinConversationTurnKey?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+    clientTurnId: string,
+    signal?: AbortSignal,
+  ) => Promise<
+    | { outcome: 'started'; turnId: string }
+    | { outcome: 'indeterminate' | 'in-flight' }
+  >;
   /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
@@ -723,6 +752,69 @@ export async function executeForegroundMessage(
         },
       };
     }
+  }
+  // #3568: a key some Session of the conversation already holds is answered
+  // from there, before the continuation can reserve a successor: that
+  // successor's own per-Session claim would take it again (a same-key retry
+  // with a model change, or after its Session ended). A handoff turn carries
+  // a key of its own, derived from its intent, and is not checked here.
+  if (binding && !validHandoff && !requestedHandoff && input.clientTurnId) {
+    const clientTurnId = input.clientTurnId;
+    let decision = conversationKeyDecision(
+      deps.inspectConversationTurnKey?.(
+        resolved.access,
+        conversationId,
+        clientTurnId,
+      ),
+    );
+    // A live claim on a known Session: join its turn (bounded), as a
+    // same-key send meeting that claim in its own Session does.
+    if (
+      decision.kind === 'in-flight' &&
+      decision.sessionId &&
+      deps.joinConversationTurnKey
+    ) {
+      const holder = decision.sessionId;
+      const joined = await deps.joinConversationTurnKey(
+        resolved.access,
+        holder,
+        clientTurnId,
+        input.joinWaitSignal,
+      );
+      decision =
+        joined.outcome === 'started'
+          ? { kind: 'started', sessionId: holder, turnId: joined.turnId }
+          : joined.outcome === 'indeterminate'
+            ? { kind: 'may-have-been-sent' }
+            : decision;
+    }
+    if (decision.kind === 'started') {
+      // Staged attachments are bound to the turn that took them, as for a
+      // send that went through, so the route accepts (rather than strands)
+      // the references this retry carries.
+      input.resolveAttachments?.({
+        threadId: decision.sessionId,
+        clientTurnId,
+      });
+      return {
+        conversationId,
+        sessionId: decision.sessionId,
+        providerTurnId: decision.turnId,
+        target: { kind: 'agent', id: resolved.agentId },
+        resolution: resolved.receipt,
+      };
+    }
+    if (decision.kind === 'may-have-been-sent')
+      throw Object.assign(
+        new Error(
+          'An earlier attempt of this message may have reached the agent.',
+        ),
+        {
+          code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+          outcome: 'indeterminate',
+        },
+      );
+    if (decision.kind === 'in-flight') throw keyInFlightError();
   }
   // Validate every durable binding before a continuation can reserve its next
   // child. A rejected Agent/Environment/user/workspace request is read-only.
@@ -1161,6 +1253,11 @@ export async function executeForegroundMessage(
           }
         : {}),
       ...(effectiveClientTurnId ? { clientTurnId: effectiveClientTurnId } : {}),
+      // A handoff is deduplicated under a key derived from its conversation;
+      // its turn.started carries the key the client actually sent with it.
+      ...(requestedHandoff
+        ? { clientKey: `handoff:${input.handoffIntent!.idempotencyKey}` }
+        : {}),
       // Only an override the CALLER sent for this turn goes on a sendTurn. The
       // Agent's declared model is applied once, at session start, where the
       // adapter declares it can apply one; engines describe their per-turn

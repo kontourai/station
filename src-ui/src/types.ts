@@ -354,6 +354,15 @@ export interface ChatSession {
     createdAt: number;
     status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
     lastError?: string;
+    /** See ChatUIState.outboundQueuedTurns (active-chats-state.ts). */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;
@@ -369,6 +378,7 @@ export interface ChatSession {
   approvalEscalationRejected?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
@@ -399,6 +409,11 @@ export interface ChatSession {
   conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
   /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * The send awaiting its turn start is one Station's delivery lookup said it
+   * has (`received`): the session may still be starting.
+   */
+  pendingSendStationHasIt?: boolean;
   /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
   queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */

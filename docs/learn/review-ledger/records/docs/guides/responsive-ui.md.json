@@ -126,6 +126,8 @@
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
 
+    "src-ui/src/components/status/live-status.css",
+
     "packages/shared/package.json#/name",
 
     "packages/shared/package.json#/exports",

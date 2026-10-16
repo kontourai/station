@@ -249,12 +249,19 @@
     "docs/pages/**",
     "docs/patterns/**",
     "docs/plans/**",
+    "docs/reviews/workspace-map-20261015/README.md",
     "docs/security/**",
     "docs/strategy/**",
     "docs/testing/**",
     "docs/third-party/**",
     "docs/guides/!(contributing|keyboard-shortcuts|product-law-authoring).md",
     "docs/reference/!(contributor-commands|product-laws|station-docs).md",
-    "docs/user/workspace-checkpoints.md"
-  ]
+    "docs/user/workspace-checkpoints.md",
+    "docs/decisions/**"
+  ],
+  "decisions": {
+    "adr": {
+      "dir": "docs/adr"
+    }
+  }
 }

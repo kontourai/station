@@ -1,0 +1,25 @@
+{
+  "revision": "37e8ed41f661207c52ed5b58d623234c969d91b1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Re-reviewed for 37e8ed41f6, which only replaces an any cast in the new EventStore.listTurnEventsByMethods read with a typed row array. No behavior or claim this document makes changes.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

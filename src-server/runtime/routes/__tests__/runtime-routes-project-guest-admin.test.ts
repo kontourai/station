@@ -547,6 +547,51 @@ describe('project guest administration over the production composition', () => {
     expect(changed.status, await changed.clone().text()).toBe(200);
   });
 
+  // #3586: characterizes `accountMemberCaller` over the real composition.
+  // An account session is held to membership on the Project read and the
+  // catalogue alike; the operator keeps operator rules.
+  test('member caller: a non-member account is refused the Project and the catalogue; a member reads its own; the operator reads all', async () => {
+    const h = await setup();
+    await h.shareWithGuestAdmin('demo', 'Demo');
+    await h.projectService.createProject({ name: 'Private', slug: 'private' });
+    const slugs = async (response: Response) => {
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = await readJson<{ data: { slug: string }[] }>(response);
+      return body.data.map((project) => project.slug).sort();
+    };
+    const { credential: peerCredential } = h.pairAccountBound(
+      'peer-kiosk',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const peer = h.guestHeaders(peerCredential, 'fixture_account=peer');
+    const peerRead = await h.request('/api/projects/demo', peer());
+    expect(peerRead.status, await peerRead.clone().text()).toBe(404);
+    expect(await slugs(await h.request('/api/projects', peer()))).toEqual([]);
+
+    const { credential: guestCredential } = h.pairAccountBound(
+      'guest-reader',
+      GUEST_GRANT,
+    );
+    const guest = h.guestHeaders(guestCredential);
+    const memberRead = await h.request('/api/projects/demo', guest());
+    expect(memberRead.status, await memberRead.clone().text()).toBe(200);
+    const unshared = await h.request('/api/projects/private', guest());
+    expect(unshared.status, await unshared.clone().text()).toBe(404);
+    expect(await slugs(await h.request('/api/projects', guest()))).toEqual([
+      'demo',
+    ]);
+
+    const operatorRead = await h.request(
+      '/api/projects/private',
+      h.operatorHeaders(),
+    );
+    expect(operatorRead.status, await operatorRead.clone().text()).toBe(200);
+    expect(
+      await slugs(await h.request('/api/projects', h.operatorHeaders())),
+    ).toEqual(['demo', 'private']);
+  });
+
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {
     const h = await setup();
     const pairing = h.security.devicePairing;

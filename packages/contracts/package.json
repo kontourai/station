@@ -26,6 +26,7 @@
   ],
   "exports": {
     "./product-telemetry": "./src/product-telemetry.ts",
+    "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./insights": "./src/insights.ts",
@@ -48,6 +49,8 @@
     "./agent-plugin": "./src/agent-plugin.ts",
     "./skill-experience": "./src/skill-experience.ts",
     "./plugin-visibility": "./src/plugin-visibility.ts",
+    "./station-groups": "./src/station-groups.ts",
+    "./personal-tokens": "./src/personal-tokens.ts",
     "./agent-identity": "./src/agent-identity.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./answer-share": "./src/answer-share.ts",
@@ -167,6 +170,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./usage-export": "./src/usage-export.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
@@ -211,7 +215,8 @@
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
-    "./mcp-prompts": "./src/mcp-prompts.ts"
+    "./mcp-prompts": "./src/mcp-prompts.ts",
+    "./account-preferences": "./src/account-preferences.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

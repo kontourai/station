@@ -503,8 +503,8 @@ Closing the sheet hides it without answering; that prompt remains dismissed
 until Answer or Needs approval reopens it. A newly opened prompt can open the
 sheet again. Sending and failure state survive hiding the sheet.
 
-Approval toasts open the originating conversation and send the selected
-decision. Accepted approval actions in notification history and Attention also
+Approval toasts send the selected decision. If the originating conversation
+is already visible, its layout stays in place; otherwise the action opens it. Accepted approval actions in notification history and Attention also
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 
@@ -512,8 +512,16 @@ The shared answer path coalesces concurrent answers to the same prompt. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
-Check status reads the request before another decision can be sent. Errors
-keep a short summary beside the controls and technical details in a disclosure.
+Check status reads the request before another decision can be sent. An accepted
+decision stays locked across hiding or remounting the controls while its
+confirmed receipt is retained, until the request resolves or inspection
+confirms it is still answerable. The shared cache holds at most 256 decisions;
+confirmed receipts may age out to admit a new request, while uncertain
+deliveries stay locked. The controls show
+sending and accepted state; an accepted decision also offers Check status while
+waiting for the tool to continue. Desktop controls and delivery feedback follow
+the command preview, with technical details in a disclosure. A failed status
+read keeps the decision locked and does not resend it.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),

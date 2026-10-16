@@ -170,7 +170,9 @@ function countMatches(absolutePath: string, pattern: RegExp): number {
   return source.match(global)?.length ?? 0;
 }
 
-const APPEND_EVENT_PATTERN = /\.appendEvent(IfAbsent)?\(/;
+// `InBackground` is the yielding variant background writers use (#3701); it
+// persists the same event, so it must stay in this inventory.
+const APPEND_EVENT_PATTERN = /\.appendEvent(IfAbsent)?(InBackground)?\(/;
 const EMIT_ORCHESTRATION_EVENT_PATTERN =
   /eventBus\.emit\(SERVER_EVENTS\.ORCHESTRATION_EVENT/;
 
@@ -219,9 +221,26 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
     PINNED_WRITER_CALLSITE_COUNTS,
   ).filter((file) => PINNED_WRITER_CALLSITE_COUNTS[file]!.emitCalls > 0);
 
+  // The store is the sink every writer above calls, not a writer. Its
+  // yielding wrapper delegates to its own appendEventIfAbsent with the
+  // event its caller already sanitized; pinning the count keeps any other
+  // self-call in the store from passing silently.
+  const EVENT_STORE_SINK = 'src-server/services/orchestration/event-store.ts';
+  const EVENT_STORE_SELF_DELEGATIONS = 1;
+
   it('the discovered set of .appendEvent(/.appendEventIfAbsent( call sites matches the pinned list exactly', () => {
-    const discovered = filesMatching(APPEND_EVENT_PATTERN);
+    const discovered = filesMatching(APPEND_EVENT_PATTERN).filter(
+      (file) => file !== EVENT_STORE_SINK,
+    );
     expect(discovered).toEqual([...PINNED_EVENT_APPEND_WRITERS].sort());
+  });
+
+  it('the event store sink only delegates to itself the pinned number of times', () => {
+    const source = readSourceForScanning(join(REPO_ROOT, EVENT_STORE_SINK));
+    expect(
+      countMatches(join(REPO_ROOT, EVENT_STORE_SINK), APPEND_EVENT_PATTERN),
+    ).toBe(EVENT_STORE_SELF_DELEGATIONS);
+    expect(source).toContain('this.appendEventIfAbsent(event)');
   });
 
   it('the discovered set of eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT sites matches the pinned list exactly', () => {

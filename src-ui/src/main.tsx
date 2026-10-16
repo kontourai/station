@@ -6,6 +6,7 @@ import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
+import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
@@ -41,6 +42,7 @@ import {
 } from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
+import { StartupHandoff } from './components/StartupHandoff';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
@@ -70,7 +72,6 @@ import {
   resolveBootTheme,
 } from './lib/device-settings-store';
 import { stationQueryDefaults } from './lib/queryDefaults';
-import { releaseInitialStartupAnimation } from './lib/startup-animation';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -231,10 +232,10 @@ if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
 
 function renderApp(): void {
-  releaseInitialStartupAnimation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <LazyBoundary
           load={loadAccountEntry}
@@ -244,6 +245,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : isSharedAnswerPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         {/* The boundary is eager (it must exist to catch the page's own chunk
           failing to load) and carries no stylesheet, so the entry cost is a
@@ -254,6 +256,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <PlatformBootstrap>
           <NativeRelayLinkIntake>
@@ -293,53 +296,55 @@ function renderApp(): void {
                           />
                         </RecoveryQueryBoundary>
                         <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
-                          <SyntaxHighlighterProvider>
-                            <AuthProvider>
-                              {/* extension-registry stays in the protected
+                          <AccountPreferencesProvider>
+                            <SyntaxHighlighterProvider>
+                              <AuthProvider>
+                                {/* extension-registry stays in the protected
                             query/auth boundary: PluginRegistryBootstrap
                             invalidates ['layouts'] on the authority client
                             and must never run against the observation
                             bootstrap client. Navigation/toast read from
                             the stable providers above. */}
-                              <PermissionManager>
-                                <KeyboardShortcutsProvider>
-                                  <ConversationsProvider>
-                                    <ActiveChatsProvider>
-                                      <VoiceProviderContext>
-                                        <MessageContextContext>
-                                          <AnalyticsProvider>
-                                            <PreviewProvider>
-                                              <LocaleProvider
-                                                developmentLocale={
-                                                  developmentLocale
-                                                }
-                                              >
-                                                <RegionModelProvider>
-                                                  <BrandingThemeBridge />
-                                                  <App />
-                                                </RegionModelProvider>
-                                                <NotificationContainer />
-                                              </LocaleProvider>
-                                            </PreviewProvider>
-                                          </AnalyticsProvider>
-                                        </MessageContextContext>
-                                      </VoiceProviderContext>
-                                    </ActiveChatsProvider>
-                                  </ConversationsProvider>
-                                </KeyboardShortcutsProvider>
-                              </PermissionManager>
-                              <DeferredCapabilityBoundary
-                                id="extension-registry"
-                                failurePresentation="notification"
-                                load={loadPluginRegistryBootstrap}
-                                copy={{
-                                  failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
-                                  failure:
-                                    'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                                }}
-                              />
-                            </AuthProvider>
-                          </SyntaxHighlighterProvider>
+                                <PermissionManager>
+                                  <KeyboardShortcutsProvider>
+                                    <ConversationsProvider>
+                                      <ActiveChatsProvider>
+                                        <VoiceProviderContext>
+                                          <MessageContextContext>
+                                            <AnalyticsProvider>
+                                              <PreviewProvider>
+                                                <LocaleProvider
+                                                  developmentLocale={
+                                                    developmentLocale
+                                                  }
+                                                >
+                                                  <RegionModelProvider>
+                                                    <BrandingThemeBridge />
+                                                    <App />
+                                                  </RegionModelProvider>
+                                                  <NotificationContainer />
+                                                </LocaleProvider>
+                                              </PreviewProvider>
+                                            </AnalyticsProvider>
+                                          </MessageContextContext>
+                                        </VoiceProviderContext>
+                                      </ActiveChatsProvider>
+                                    </ConversationsProvider>
+                                  </KeyboardShortcutsProvider>
+                                </PermissionManager>
+                                <DeferredCapabilityBoundary
+                                  id="extension-registry"
+                                  failurePresentation="notification"
+                                  load={loadPluginRegistryBootstrap}
+                                  copy={{
+                                    failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
+                                    failure:
+                                      'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                                  }}
+                                />
+                              </AuthProvider>
+                            </SyntaxHighlighterProvider>
+                          </AccountPreferencesProvider>
                         </AuthorityQueryProvider>
                       </ToastProvider>
                     </NavigationProvider>

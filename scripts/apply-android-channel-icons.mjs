@@ -10,30 +10,39 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeAndroidThemedIcon } from './lib/android-themed-icon.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { CHANNEL_PALETTES } from './lib/station-icon.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const ANDROID_ICON_CHANNELS = ['stable', 'dev', 'beta', 'nightly'];
+// Android colour resources are #AARRGGBB.
+const opaque = (hex) => `#FF${hex.slice(1).toUpperCase()}`;
+
+// Each accent is its channel's icon water colour, so the Android 12+ theme
+// accent matches the launcher icon. `splashBackground` fills the adaptive
+// launcher icon's background layer (ic_launcher_background) with a light
+// tint of the same hue; the opaque full-bleed foreground normally covers it.
 export const ANDROID_CHANNEL_IDENTITY = {
   stable: {
     appName: 'Station',
-    accent: '#FF018786',
+    accent: opaque(CHANNEL_PALETTES.stable.water),
     splashBackground: '#FFFFFFFF',
   },
   dev: {
     appName: 'Station Dev',
-    accent: '#FFC77800',
+    accent: opaque(CHANNEL_PALETTES.dev.water),
     splashBackground: '#FFFFF8E7',
   },
   beta: {
     appName: 'Station Beta',
-    accent: '#FF4F46E5',
-    splashBackground: '#FFF5F3FF',
+    accent: opaque(CHANNEL_PALETTES.beta.water),
+    splashBackground: '#FFF2FDF5',
   },
   nightly: {
     appName: 'Station Nightly',
-    accent: '#FF7C3AED',
-    splashBackground: '#FFF8F2FF',
+    accent: opaque(CHANNEL_PALETTES.nightly.water),
+    splashBackground: '#FFFDF2F6',
   },
 };
 
@@ -139,6 +148,7 @@ export function applyAndroidChannelIcons(
 `,
     );
     const values = join(destination, 'values');
+    writeAndroidThemedIcon(destination);
     mkdirSync(values, { recursive: true });
     writeFileSync(
       join(values, 'ic_launcher_background.xml'),

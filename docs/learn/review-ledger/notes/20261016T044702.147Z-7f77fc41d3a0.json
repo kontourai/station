@@ -1,0 +1,7 @@
+{
+  "revision": "a899357be52606bd97c4009a8b41c38a829c0b70",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the workspace-map instructions against header toggle, canonical project Layout navigation and Personal Boards popup/create actions. Other first-run and chat guidance remains unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/header/Header.tsx","src-ui/src/index.css"]}
+  ]
+}

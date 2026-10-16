@@ -1,0 +1,9 @@
+{
+  "revision": "87287aaa92e73bdfe5276935a7422e6a3bbf89d9",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Not re-captured: this round changes OrchestrationService only by extracting the contended-claim wait into awaitHeldTurnKey and adding joinHeldTurnKey (#3568). The request-inspection flow these frames show (inspectRequest, its route and UI) is untouched, so the capture still shows current behaviour.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Not re-captured: this round changes OrchestrationService only by extracting the contended-claim wait into awaitHeldTurnKey and adding joinHeldTurnKey (#3568). The request-inspection flow these frames show (inspectRequest, its route and UI) is untouched, so the capture still shows current behaviour.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

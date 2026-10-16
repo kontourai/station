@@ -102,6 +102,20 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
+    "src-ui/src/components/usage-stats/UsageBreakdownSection.tsx",
+
+    "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+
+    "src-ui/src/components/usage-stats/UsageSummaryCards.tsx",
+
+    "src-ui/src/components/usage-stats/period.ts",
+
+    "src-ui/src/components/usage-stats/UsageTrendChart.tsx",
+
+    "tests/profile.spec.ts",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css",
+
     "src-server/__tests__/telemetry.test.ts",
 
     "src-server/runtime/bootstrap/hosted-tenant-mode.ts",
@@ -115,6 +129,24 @@
     "packages/telemetry-broker/src/main.ts",
 
     "packages/telemetry-broker/README.md",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/routes/operations/__tests__/usage-export.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts",
 
     "pnpm-lock.yaml#/packages",
 

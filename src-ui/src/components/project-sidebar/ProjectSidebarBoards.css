@@ -19,9 +19,44 @@
 
 .sidebar__board-glyph {
   display: inline-flex;
-  width: 18px;
+  width: 22px;
   justify-content: center;
-  flex: 0 0 18px;
+  flex: 0 0 22px;
+}
+
+.sidebar__boards-description {
+  margin: 0 var(--k-space-2) var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  line-height: 1.6;
+}
+
+.sidebar__boards-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--k-space-4);
+  border: 0;
+  border-top: 1px solid var(--k-line);
+  padding: var(--k-space-2);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+
+.sidebar__boards-trigger:hover {
+  color: var(--k-text);
+  background: var(--k-panel-raised);
+}
+
+.sidebar__boards-popover .sidebar__section-label {
+  margin: var(--k-space-1) var(--k-space-2) var(--k-space-3);
+}
+
+.sidebar__boards-popover .sidebar__project-btn {
+  min-height: 44px;
 }
 
 /* The rename input replaces the row in place, so it has to carry the row's
@@ -74,15 +109,8 @@
    `.sidebar__section-remove` and `.sidebar__reorder-handle` already give for
    this exact problem in `ProjectSidebar.css`.
 
-   This is load-bearing rather than polish (#2062 review M1). The row menu is
-   the ONLY rename affordance a phone has: the section is hidden when the
-   viewer owns no Boards, so the `+` inside it is unreachable, and the command
-   palette — the entry point that exists for that viewer — deliberately does
-   not open rename on touch, because the panel sits in a drawer that is
-   normally closed. A Board created that way arrives named `Untitled Board`,
-   and before this block the control for renaming it sat at `opacity: 0`,
-   tappable and invisible. `:focus-within` could not rescue it either: tapping
-   the row navigates and closes the drawer.
+   Palette creation on a phone opens the Board without focusing rename in
+   the closed drawer. Keep its row actions visible when the drawer reopens.
 
    `pointer: coarse` rather than the drawer's width breakpoint, following
    `.sidebar__reorder-handle`: the defect is the absence of hover, not a

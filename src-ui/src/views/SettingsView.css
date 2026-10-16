@@ -451,6 +451,36 @@
   padding: 0 0.25rem 0.5rem;
   border-bottom: 0;
 }
+/* #3557: a section's one header action stays on the title line, compact,
+   at every width (the shared page-section stacks actions full-width on
+   phones; a single compact action should not become a full-row button). */
+.settings__section--with-action > .page-section__header {
+  flex-direction: row;
+  align-items: center;
+}
+.settings__section--with-action
+  > .page-section__header
+  > .page-section__actions {
+  width: auto;
+}
+.settings__section-note {
+  margin: 0;
+  padding: var(--k-space-3) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.settings__header-action.button {
+  position: relative;
+  min-height: 32px;
+  padding: 0 var(--k-space-3);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+.settings__header-action.button::before {
+  content: "";
+  position: absolute;
+  inset: -6px -2px;
+}
 .settings__section .page-section__title {
   font-size: var(--k-text-md);
   font-weight: 600;

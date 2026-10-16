@@ -25,6 +25,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
+| [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
@@ -65,7 +66,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
 | [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
-| [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
+| [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
@@ -95,6 +96,34 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
 
+## AccountPreferences
+
+**Purpose.** Portable display and interactive-start preferences follow one verified
+person across devices connected to the same Station. Hardware choices, grants
+and geometry remain device-local; Project and Station configuration retain their
+existing owners.
+
+**Interface and persistence.** The [contract](../../packages/contracts/src/account-preferences.ts)
+and [personal route](../../src-server/routes/me/account-preferences.ts) expose
+GET/PATCH without a caller-supplied owner. The canonical principal resolver and
+trusted tenant context partition the [account store](../../src-server/services/identity/account-preferences.ts).
+Atomic field patches preserve unrelated settings; model-picker replacements use
+a revision precondition. Migration fills missing portable choices explicitly.
+
+**Client and authority.** The [provider](../../src-ui/src/contexts/AccountPreferencesProvider.tsx)
+binds requests and pending projections to their originating authority. The
+[settings facade](../../src-ui/src/lib/device-settings-store.ts) keeps account
+values out of origin-wide local storage. First-send approval choices retain their
+account namespace through outbox replay; unknown authority holds them, while a
+different verified account retires inherited choices. Preferences grant no
+execution authority and provide no cross-Station synchronization.
+
+**Evidence route.** [HTTP persistence tests](../../src-server/routes/me/__tests__/account-preferences.test.ts),
+[real account-device admission](../../src-server/routes/system/__tests__/authority-observation.routes.test.ts),
+and [client lifetime tests](../../src-ui/src/contexts/__tests__/AccountPreferencesContext.test.tsx)
+cover distinct storage, authentication and projection boundaries. They do not
+establish physical-device or hosted release behavior.
+
 ## DeploymentAuthentication
 
 This boundary answers who signed in to a Station. Account identity augments Device and
@@ -111,6 +140,14 @@ admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The
 application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
+
+Explicit device administration is independent of operator identity.
+`EnvironmentSecurityService.authorizeCredential` admits `access:devices` only
+on existing-device list/scope/revoke/remove leaves. `DevicePairingService` checks
+the current device credential and group ceiling before mutations; only the
+operator may grant or remove `access:devices`. CLI and Paired devices UI use the
+same authenticated principal. See the [CLI reference](../reference/cli.md#environment)
+and [threat model](../security/remote-access-threat-model.md).
 
 Operator passkeys are a separate, enrollment-only owner so far (#3257). The
 [enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
@@ -1191,6 +1228,10 @@ action and whether the Conversation lineage includes host execution. A
 Conversation target uses its newest started Session. Directory scope uses the
 deepest containing canonical Project directory; missing or unreadable paths
 cannot establish a target. This does not rewrite a Session's stored Project.
+`ownProjectSlug(caller)` names the slug of the caller's own session-record
+Project when that Project has a working directory, the slug still leads
+back to it and the caller's owner holds `execute` there; any other caller
+gets none.
 
 **Admission.** A bound operator retains operator reach under ordinary route
 authorization. Other callers must target the same recorded owner, stay local
@@ -1198,13 +1239,22 @@ and satisfy the required Project action. A caller without bound assurance must
 also stay within its own Session's Project/global scope and avoid host
 execution. Approving a global target requires the operator. These are verified
 Station-control caller rules, not additional restrictions on every paired
-person UI request.
+person UI request. A scope refusal of the caller's own owner's target,
+including one whose Project Station cannot confirm, is
+`station_control_out_of_scope` with a `reason` and fixed copy that names no
+Project; a target Station cannot read at all, or another owner's, keeps the
+refusal that reads like a missing Session. For a new Session, a named Project
+the owner may not dispatch in reads as one Station cannot confirm.
 
 **Composition and evidence.** [Runtime routes](../../src-server/runtime/routes/runtime-routes.ts)
 supply record readers and Project authorization. The
 [dispatch route helper](../../src-server/routes/orchestration/dispatch-scope.ts)
 applies the shared rule before privileged downstream hops and passes the
-resolved directory rather than the caller's original alias. The
+resolved directory rather than the caller's original alias. Before that, for
+`/chat` and its siblings and `/delegations`, it gives a new Session on this
+Station that names no workspace the caller's own Project
+(`withCallerProjectWorkspace`), so the rule, the dispatch and the start-time
+repeat all see that Project's workspace. The
 [execution-target resolver](../../src-server/services/execution-target/execution-target-resolver.ts)
 also requires local Project cwd overrides to exist inside that Project when
 there is no separately verified remote path. Source tests include the
@@ -1264,7 +1314,7 @@ An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
 [SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
 is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and later for delegation result delivery.
+Control's `send_to_session` and for delegated task result delivery.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, sender, mode,
 deliveryId, decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
@@ -1321,6 +1371,113 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+**Delegated task results (#3158).**
+[DelegationResultDelivery](../../src-server/services/orchestration/delegation-result-delivery.ts)
+delivers a local child's result to the conversation that delegated it through
+this module in `auto` mode. The `POST /delegations` route records ownership
+only from a `caller-derived` delegation context, so the parent is the calling
+Station Control session's own conversation, never an id the request names.
+`caller-derived` covers every caller channel, including a copied or app-held
+token. The route therefore also records the owner attribution the dispatch
+carried: `verified-bound` only for a bound caller acting for an authenticated
+owner, otherwise `unattributed-agent`. Delivery replays exactly that attribution
+and principal, which is no more than `send_to_session` allows the same caller.
+A child transition (today `settled`) is read from the persisted lifecycle fold
+after the event bus publishes it, and again at startup. Each transition is one
+durable row in `EventStore`, holding the text composed from the child's stored
+output. That row is the consumption record shared with `get_task`: the recorded
+parent's read of its own child at rest consumes it. `interrupt_task` from the
+recorded parent, or from the delegating owner in person, cancels it and
+suppresses the one turn it stops. An interrupt that names a turn suppresses only
+that turn, whether or not the log shows it yet, and it is suppressed even
+if it completed normally. A turn not yet in the log when the interrupt arrived
+is matched as the service matches its one pending interrupt (the next turn to
+start, until a completion, abort or Session exit on the child's Session, or the
+pending-interrupt TTL), and is suppressed only
+if it did not complete normally. A transition found after a restart, rather
+than as its terminal landed, never takes a suppression made since, and a turn
+that runs after a restart never takes one made before it. A refused
+interrupt, or one the orchestration service reports stopped nothing
+(`no-active-turn`, for example a `turnId` that is not the running turn), undoes
+only its own records: a row a read consumed or another interrupt also cancelled
+stays closed. An engine without mid-turn steer leaves the row pending
+until the parent's turn ends. A start is re-driven only into the Session it
+named, and a row that keeps failing or stays unconfirmed is settled
+`undeliverable` after five attempts. Remote and SSH children, hosted Stations,
+and `needs_input`/`blocked` transitions are not delivered. The
+[route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
+and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+use recorded start and steer effects, not a real engine; the integration test
+runs its interrupt-outcome cases through the real orchestration service with a
+test adapter.
+
+**Held follow-ups (#3568).**
+[ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
+holds a person's follow-up for a busy conversation, so it is sent even if the
+app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
+the conversation's current Session has a turn open (the persisted fold or the
+live coordinator) or earlier follow-ups are still waiting, and also when the
+dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
+Only a plain continuation qualifies: one the caller may read, whose target
+names exactly the conversation's bound Agent and workspace
+(`followUpTargetMatchesBinding`), from a sender placement would accept;
+otherwise the send takes the live path. Inbox ids are canonical conversation
+ids (`conversationOf`). The entry is a
+[`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
+`EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
+sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+or Session-state event on the conversation, after each submit, at startup,
+and on bounded re-checks (the schedule, then two-minute checks up to 30 while
+entries wait, reset when a new message is accepted, and after a drive that
+failed mid-placement). It is not this
+module: a follow-up is a start, never a steer. Before each start it re-checks
+the sender with the live continuation's rule (`mayContinue`) and the sending
+device's or personal access token's route scope (`deviceMaySendChat`, one
+by-id lookup in the pairing service, `credentialHoldsScope`, which for an
+account-tied device or token also requires the account enabled and not signed
+out everywhere since the entry was queued), then reads the turn
+ledger for the key across the whole conversation
+(`startUnlessDelivered`, `inspectTurnDelivery`): `started` is settled
+`placed` without a send, `indeterminate`/`expired` is `unconfirmed`, a live
+claim waits, and only a key no Session holds is started, through the same
+`continueExecutionTargetMessage` continuation delegated results use, as the
+recorded sender. Delegated results use `startUnlessDelivered` too, so neither
+can send twice into a successor Session a continuation reserves, and every
+live keyed continuation (`executeForegroundMessage`) applies the same rule
+(`conversationKeyDecision`, through `inspectConversationTurnKey`) before it may
+reserve one: a same-key retry that names a model the engine cannot switch to
+mid-Session, or follows an ended Session, is answered from the ledger. A start that
+has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
+a later drive reads the ledger: `started` settles it `placed`, a key no
+Session holds queues it again (Monument's `inbox.resolveUnconfirmed`). The
+ledger is not read for it while the abandoned start is still running in this
+process (a cold start claims the key only once its Session exists), so it is
+never started a second time alongside itself.
+Someone else's entry that may still be sent (`queued`, `placing`,
+`unconfirmed`) is listed without its key, and `/chat` and
+`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`), and a
+live send under a key the inbox is starting now, from before the start begins
+until it answers, including past its deadline (`client_turn_in_flight`,
+`inFlight`, the in-memory `startsInProgress` set): to its own sender, or to
+anyone once the entry is dismissed (a dismissal does not end the start, so
+the key stays refused until it answers or Station restarts). Both go only to a
+caller who may read the conversation. An `unconfirmed` entry
+is never sent again and holds the ones behind it until someone who may send to
+the conversation dismisses it; only the sender withdraws a waiting one.
+Refusal reasons are stable codes with fixed messages. The delivery lookup
+answers `queued` for a waiting entry. `GET`/`DELETE /conversations/:id/inbox`
+list it and withdraw it. `deleteThread` forgets a conversation's entries.
+Hosted Stations have no inbox. Steer and display-only entries, a stale-head
+check and the UI's switch from its own per-tab queue are not built yet. The
+[service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
+restarts a real `OrchestrationService` and `EventStore` around a counting
+adapter. The
+[route test](../../src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts)
+runs `/chat` through the production foreground execution with a scripted
+engine, including a Session that ends between a crash and its re-drive. The
+[runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+covers the production ports for both deliveries.
 
 ## SessionDigest
 
@@ -1506,19 +1663,19 @@ This owner records when a provider call may have crossed into an external effect
 
 **Interface.** `claim(threadId, now)` returns an opaque, one-way capability that may move only `prepared → invoking → accepted|indeterminate`, or remove a definitely uninvoked/terminally observed boundary. `claimLifecycle` acquires the conflicting per-thread lifecycle capability. Lifecycle code receives only `hasPossibleEffect`; canonical terminal projection receives only `observe`. A caller cannot supply an owner token or arbitrary stored state. The same authority separately owns Session-start and Task-dispatch claims; those have no invented provider turn ID. `prepareProviderTurn` records an engine-initiated turn directly as accepted, without pretending a user command started it. It works in two steps, so the canonical publish path writes that row inside the append of the turn's `turn.started` and the row commits or rolls back with the event.
 
-**Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. The single exception is a Session-start claim whose Adapter throws `SessionStartRefusedError`: that type is the Adapter's assertion that the engine definitively refused and what it spawned is torn down, with a `runtime.error` and `session.exited` published for the `session.started` it had already sent (the ACP adapter throws it for a model its fresh `session/new` options did not offer), so `refused()` removes the `invoking` boundary and the receipt is `rejected`. A claim without `refused` (the nested Task-dispatch start claim) records the usual indeterminate start, and an unconfirmed release falls back to it. Ambiguous boundary writes retain their exact opaque intent and retry it before later work without reinvoking the Adapter. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
+**Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. The single exception is a Session-start claim whose Adapter throws `SessionStartRefusedError`: that type is the Adapter's assertion that the engine definitively refused and what it spawned is torn down, with a `runtime.error` and `session.exited` published for the `session.started` it had already sent (the ACP adapter throws it for a model its fresh `session/new` options did not offer), so `refused()` removes the `invoking` boundary and the receipt is `rejected`. A claim without `refused` (the nested Task-dispatch start claim) records the usual indeterminate start, and an unconfirmed release falls back to it. Ambiguous boundary writes retain their exact opaque intent and retry it on later claim, prepare, observe or reconcile paths without reinvoking the Adapter. Possible-effect polling does not drain those writes; unresolved stored facts remain conservative until a writer retries. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
 
 Session-scoped terminal retirement uses event order in SQLite (#3563). Migration 014 adds nullable `created_sequence` without backfilling existing rows. New boundaries capture the durable global high-water mark under the writer lock; a persisted `session.exited` or turn-less `runtime.error` retires a boundary only when its sequence is greater than that fence. Live observation, runtime reads and boot reconciliation use this rule. NULL-fence rows retain timestamp ordering and can remain accepted or indeterminate across boots. Turn-scoped terminals also retain their timestamp generation check: a backward clock step can still misorder them because provider turn IDs can be reused and terminal events carry no invocation-generation identity. Repairing that requires a Station-assigned invocation ID carried across adapter and event contracts (#3566 or #3575). The in-memory Adapter retains timestamp ordering because it has no durable event sequence.
 
-**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots and engine-opened boundaries; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
+**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. Its private [`sqlite-session-turn-boundary.ts`](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) host adapter runs create, transition, remove, accepted-turn recording, terminal observation and listing through Monument on the existing `orchestration_turn_boundaries` table. Sealed-task admission joins the same writer transaction. A provider-started row runs inside the event append through a nested savepoint; the outer append alone publishes and settles admission. Storage errors retain the existing host result classification, and a lost outer transaction fails the append. Possible-effect polling uses optional fixed-at-open `retiredBoundaryIds` facts to exclude canonical event-retired rows without deleting them. Its deferred read transaction sees committed history while a peer holds the WAL writer; uncommitted terminals stay invisible. Raw listing and owner recovery still see retained rows. The host shares one exact predicate between that read projection and physical retirement, preserving strict sequence fences, legacy timestamp and NULL/empty-ID behavior, turn generations and lifecycle/task-dispatch/admission-error/recovery-marker exclusions. Physical cleanup joins write-only create and accepted-turn admission before occupancy/capacity decisions and rolls back with the command or outer event append; boot cleanup still precedes raw recovery. No Station participant observes reads. Owner reconciliation remains host-owned. `monument-boundary-host.test.ts` retains the pre-migration SQL as an independent oracle, and `monument-boundary-append.test.ts` exercises the production authority with a peer connection and outer rollback. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots, retained rows during writer-locked polling (including pending retry), admission cleanup at capacity and engine-opened outer rollback; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
 
 ## TurnDeduplicator
 
-A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible.
+A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). Only a claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
 
-**Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution. Only the owner capability can `beginInvocation()`, `resolve(turnId)` or `release()`.
+**Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution, and returns nothing at its next poll once the claim is released or its owner in this process retains it; `givenUp({ threadId, clientTurnId })` says whether this process's owner still owns the unresolved claim and retained it (never another owner's claim of the key, however old); `inspect({ threadId, clientTurnId })` is a read-only peek that answers what a claim would meet (`absent`, `resolved`, `in-flight`, `reclaimable`, `indeterminate`, `expired`) without claiming, reclaiming or touching retention. Only the owner capability can `beginInvocation()`, `resolve(turnId)`, `release()` or `retain()`.
 
-**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed, and only when that owner never called `beginInvocation`; unknown liveness remains contended. The owner calls `beginInvocation` durably before it moves the invocation boundary to `invoking` and calls the provider, and a failure there invokes nothing and releases the claim. A dead owner's claim that began invoking, or a thread row whose invocation is unknown, answers `indeterminate`, and the send fails with the same possible-effect error as a live indeterminate start. Invocation is stored inside the row's owner record, so a writer that replaces the owner without recording it (an older peer or a downgraded runtime) leaves it unknown rather than a stale `pending`. That rule lives on the claim row because the invocation boundary cannot answer it: boot recovery deletes a dead owner's boundary row once it has bannered the interrupted turn. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. An evicted row leaves a key-only tombstone in `orchestration_turn_dedup_expired`, outside the cap, so a later retry of that key answers `expired` and is refused like `indeterminate` instead of being claimed afresh ([#3559](https://github.com/kontourai/station/issues/3559)). A `chat:` tombstone answers for 30 days (`TURN_DEDUP_TOMBSTONE_RETENTION_MS`), far past Station's longest client retry window of seven days, and is removed on the next dedup write after that; the key is then new again. That bound exists because a turn relayed through the station-agent adapter writes both a thread key and a `chat:` key, and `chat:` tombstones have no thread to delete them with. Thread tombstones are not time-bounded: a session-control start re-drives its unresolved request key forever with the same `clientTurnId`, so its thread tombstone lasts as long, until `deleteThread` removes both.
+**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one; the wait ends early when the owner releases the claim without a result, and that send is refused with the retryable code `client_turn_in_flight` so the client re-sends with the same key. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed, and only when that owner never called `beginInvocation`; unknown liveness remains contended. The owner calls `beginInvocation` durably before it moves the invocation boundary to `invoking` and calls the provider, and a failure there invokes nothing and releases the claim. A dead owner's claim that began invoking, or a thread row whose invocation is unknown, answers `indeterminate`, and the send fails with the same possible-effect error as a live indeterminate start. Invocation is stored inside the row's owner record, so a writer that replaces the owner without recording it (an older peer or a downgraded runtime) leaves it unknown rather than a stale `pending`. That rule lives on the claim row because the invocation boundary cannot answer it: boot recovery deletes a dead owner's boundary row once it has bannered the interrupted turn. An owner that gives a claim up after a possible effect (the provider call failed after invocation began) calls `retain()`: the row stays unresolved and unreplayable exactly as before, and only this owner's in-memory record (at most 4,096 keys) makes `inspect` answer it `indeterminate` instead of `in-flight` while the process lives, and makes a same-key `claim` in that process answer `indeterminate` instead of `contended`, so a resend is refused at once with the possible-effect error rather than waiting on a claim nothing will resolve; a resend already waiting in `awaitResolution` stops at the next poll and is refused the same way, because after an unresolved wait the service asks `givenUp`, which is true only for a claim this process retained (another process still meets the claim as `contended`). Any other unresolved wait, including one on a live owner's claim older than 15 minutes that `inspect` already calls `indeterminate`, is refused with the retryable `client_turn_in_flight`, because that turn may still be delivered; a read fault in `givenUp` falls through to the same retryable refusal. A fresh claim of the key clears the marker, so a key reused after `deleteThread` reads in flight again; once the owner dies the row answers `indeterminate` durably anyway. Any unresolved claim whose owner is not proven dead reads `in-flight` for at most `TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS` (15 minutes), then `indeterminate`. `inspect` backs the foreground delivery lookup (`GET /api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId`, [session API](../reference/session-api.md)), which peeks every Session of the conversation. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. An evicted row leaves a key-only tombstone in `orchestration_turn_dedup_expired`, outside the cap, so a later retry of that key answers `expired` and is refused like `indeterminate` instead of being claimed afresh ([#3559](https://github.com/kontourai/station/issues/3559)). A `chat:` tombstone answers for 30 days (`TURN_DEDUP_TOMBSTONE_RETENTION_MS`), far past Station's longest client retry window of seven days, and is removed on the next dedup write after that; the key is then new again. That bound exists because a turn relayed through the station-agent adapter writes both a thread key and a `chat:` key, and `chat:` tombstones have no thread to delete them with. Thread tombstones are not time-bounded: a session-control start re-drives its unresolved request key forever with the same `clientTurnId`, so its thread tombstone lasts as long, until `deleteThread` removes both.
 
 **Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth: no migration, the same `owner_json` encoding (the owner id is still `token`), so an older binary that writes the tables directly keeps working. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
 
@@ -1614,6 +1771,46 @@ creation allocates a new identity. List/get derive non-secret backend availabili
 Datum only; they never materialize. Resolution requires one current, non-revoked exact
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
+
+`TelemetrySecretResolver.resolveForTelemetry` is a separate narrow capability
+for an instance binding with an exact `instance-telemetry-destination` grant.
+The transport (`product` or `otel`) and normalized complete destination must
+both match. MCP/ACP grants confer no telemetry authority, and person-owned
+bindings cannot supply a shared emitter. Materialization rechecks revision,
+revocation and the exact grant before returning; the result carries an
+`assertCurrent` check for dispatch and response settlement. The product sender
+consumes that check and refuses stale authority without environment fallback.
+
+Environment material resolves through Datum without a process. Keychain and
+1Password materialization runs in a fixed private child with a three-second
+deadline, bounded response and process-tree cleanup; the child carries only
+platform/secret-backend environment, no Station bootstrap credentials. Backend
+output and errors are not logged. Its entry is built beside the server bundle.
+The owning process controls are
+`src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts`;
+their source does not certify packaged or native execution. Saved OTLP
+bootstrap observes only the existing bounded app document before synchronous
+provider registration, then dynamically loads the resolver on the first
+export. Metrics imports therefore remain after provider registration. An
+export's async-local authority supplies its headers and validates callback
+settlement; a revoked grant cannot report an accepted export. Saved collector
+changes require restart and fence the old owner immediately. Standard
+environment-header inheritance is refused for saved destinations/references.
+
+The mounted config writer applies the validated persisted telemetry settings
+before unrelated Agent activation. External/default-Agent reconciliation also
+applies them after its validated read, without publishing an Agent generation
+early. Since HTTP starts before the product service is constructed, late
+construction captures a current ConfigLoader snapshot, checks its revision and
+assigns the service before awaiting disclosure restoration. Three superseded
+captures reject before sender construction. These source boundaries need
+executed interleaving controls; they do not establish generic embedded-runtime
+service cleanup after a late startup failure.
+
+The v1 document retains legacy records unchanged and adds optional
+`telemetryDestinationGrants` only when a telemetry grant is written. Older
+strict readers reject that new property; an upgrade/rollback must preserve and
+restore a compatible binding document, never delete grants to bypass admission.
 
 **Ownership (#3279).** A binding has an owner: `instance` (absent on records written
 before #3279, which keep their behavior), `principal`, or `principal-project`. The
@@ -1962,11 +2159,11 @@ directories are not overwritten. Known post-publication faults preserve the
 applied result. `project-identity-service.test.ts` exercises visibility, retries,
 faults, input capture and real checkout resolution through the filesystem owner.
 
-**Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes its validated value and exact `replace`, `remove`, and `createLayout` capabilities. Its server-only `withCurrentRead` runs a callback against a captured Project value under the same revision lock; `replaceManifest` conditionally updates the sidecar. These are explicit storage-owner capabilities, not a general filesystem transaction API. HTTP callers receive none of them.
+**Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes its validated value and exact `replace`, `remove`, and `createLayout` capabilities. Its server-only `withCurrentRead` runs a callback against a captured Project value under the same revision lock; `replaceManifest` conditionally updates the sidecar. `mutateDocuments(projectSlug, root, operation, body)` and `readDocuments` lend one callback a checked multi-file capability over a Project document root: a knowledge namespace's `metadata.json` and `files/` tree, which may be a configured directory outside the Project tree. These are explicit storage-owner capabilities, not a general filesystem transaction API. HTTP callers receive none of them.
 
-**Behavior.** One Station-owned, project-keyed lock outside the deletable Project tree orders create, update, delete, Layout, conversation, and document mutations across processes. Reads runtime-validate strict persisted schemas; only `ENOENT` means absent. Every revision snapshots its input, admits one exact transition synchronously, joins a concurrent duplicate intent without publishing twice, and rejects a different intent. Replace and remove compare the exact observed fingerprint after ownership. Layout creation is issued only by the Project revision whose validated agent scope, workspace, and namespace facts produced it, so a concurrent Project change conflicts before any Layout effect. Project deletion atomically renames the entire tree out of service before best-effort trash cleanup, so a nested writer ordered before deletion cannot resurrect it and one ordered after deletion is refused. Publication uses the shared same-directory sync-and-rename Adapter. A post-commit fault is classified by exact readback, and observer or cleanup failure cannot turn a committed effect into a retryable result.
+**Behavior.** One Station-owned, project-keyed lock outside the deletable Project tree orders create, update, delete, Layout, conversation, and document mutations across processes. Reads runtime-validate strict persisted schemas; only `ENOENT` means absent. Every revision snapshots its input, admits one exact transition synchronously, joins a concurrent duplicate intent without publishing twice, and rejects a different intent. Replace and remove compare the exact observed fingerprint after ownership. Layout creation is issued only by the Project revision whose validated agent scope, workspace, and namespace facts produced it, so a concurrent Project change conflicts before any Layout effect. Project deletion atomically renames the entire tree out of service before best-effort trash cleanup, so a nested writer ordered before deletion cannot resurrect it and one ordered after deletion is refused. Publication uses the shared same-directory sync-and-rename Adapter. A [document transaction](../../src-server/domain/project-document-transactions.ts) holds the Project lock, then the document root's own identity lock in the Station home's `coordination/knowledge-file-transactions` directory, so Project deletion is ordered against it and two Projects configured onto one directory never interleave. It stages writes, verifies the file, directory and legacy-source read set, durably writes a prepared journal, then publishes documents, metadata, and removals in that order. Before the callback runs it completes, rolls back, or refuses (as corruption) any journal a crashed writer left in the root. Its journal file, journal shape, and lock name are the ones Station's earlier `KnowledgeFileTransactions` document writer used, so a journal left by an earlier build is recovered and that build is excluded while the lock is held. A post-commit fault is classified by exact readback, and observer or cleanup failure cannot turn a committed effect into a retryable result. Legacy document callbacks are ordered by the Project lock but currently do not refuse a write merely because the Project was already deleted; this remains a compatibility limit of the document path.
 
-**Code and evidence.** `FileStorageAdapter` composes one authority and exposes intent-shaped `IStorageAdapter` revisions to `ProjectService`, knowledge-namespace mutation, and Project routes. Plugin namespace convergence completes idempotently before catalog Layout creation; the subsequent Project revision binds every Project-dependent Layout decision. HTTP maps only typed absence to 404, exact conflicts to stable 409, and corrupt or unavailable storage to stable 5xx copy without filesystem diagnostics. Layout creation adds server-owned identity and timestamps before persistence. Real child-process ordering, same-capability concurrency, stale Project/Layout revisions, post-commit, strict-schema, non-file, and missing-file proofs live in `src-server/domain/__tests__/project-file-transactions.process.test.ts`, `file-storage-schemas.test.ts`, and the Project route/service suites. **Do not reintroduce:** route- or service-owned read/merge/save, direct recursive Project deletion, Layout-local lock files, permissive `JSON.parse` casts at persisted boundaries, treating schema or I/O errors as empty or 404, raw storage paths in API errors, request-supplied code or callbacks under lifecycle ownership, or nested record writes outside the Project lifecycle lock.
+**Code and evidence.** `FileStorageAdapter` composes one authority and exposes intent-shaped `IStorageAdapter` revisions to `ProjectService`, knowledge-namespace mutation, and Project routes. Plugin namespace convergence completes idempotently before catalog Layout creation; the subsequent Project revision binds every Project-dependent Layout decision. HTTP maps only typed absence to 404, exact conflicts to stable 409, and corrupt or unavailable storage to stable 5xx copy without filesystem diagnostics. Layout creation adds server-owned identity and timestamps before persistence. Real child-process ordering, same-capability concurrency, stale Project/Layout revisions, post-commit, strict-schema, non-file, and missing-file proofs live in `src-server/domain/__tests__/project-file-transactions.process.test.ts`, `file-storage-schemas.test.ts`, and the Project route/service suites. Document crash recovery (a killed writer, a journal from the earlier writer, a corrupt journal), exclusion by an earlier build holding the root lock, and Project-lock ordering are proven with real writer processes in `src-server/services/knowledge/__tests__/knowledge-document-transactions.process.test.ts`. **Do not reintroduce:** route- or service-owned read/merge/save, direct recursive Project deletion, Layout-local lock files, permissive `JSON.parse` casts at persisted boundaries, treating schema or I/O errors as empty or 404, raw storage paths in API errors, request-supplied code or callbacks under lifecycle ownership, or nested record writes outside the Project lifecycle lock.
 
 ## ProjectIdentity
 
@@ -2047,7 +2244,8 @@ interfaces; they do not establish live external-provider behavior.
 ## SqliteVecIndexProvider
 
 **Purpose and interface.** `SqliteVecIndexProvider` owns a derived vector index:
-upsert/remove, scoped search, explicit root rebuild, and statistics. Callers supply the
+upsert/remove, scoped search, explicit root rebuild, per-generation chunk counts
+(`generations`), and statistics. Callers supply the
 store and embedder for a rebuild. Runtime composition selects this built-in index for
 the store/index routes; the older `KnowledgeService` has a different,
 configured-provider interface.
@@ -2056,12 +2254,15 @@ configured-provider interface.
 A rebuild reads and embeds source records before deleting that root's rows. Embedding
 failure therefore leaves the old partition intact, but a later write failure can leave
 an incomplete rebuild: the replacement is not one atomic transaction. Changing vector
-width recreates the whole table and clears all roots' rebuild timestamps. The index does
-not record embedding-model identity, so a same-width model change needs an explicit
-rebuild. The search route checks root access and re-reads each record, but combines its
-current title/category with the cached index excerpt; it does not compare that excerpt
-with the current body. A successful lookup therefore establishes neither text freshness
-nor an active lifecycle state.
+width recreates the whole table and clears all roots' rebuild timestamps. Each chunk
+records its embedding generation (provider kind, model and width, from
+[embedding-identity](../../src-server/knowledge-index/embedding-identity.ts)); an
+identity-scoped search admits only that generation, and a table from before generations
+is reported as unknown and replaced on its next write. The search route checks root
+access, re-reads each record, returns an excerpt only while the record's current body
+still contains it, refills withheld hits from further down the ranking (up to 1,000), and
+reports readable stale roots and withheld records beside the results. It does not check
+lifecycle state, so a retired record with an unchanged body is still returned.
 
 **Follow the code.** [Index
 implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts), [HTTP
@@ -2070,9 +2271,10 @@ composition](../../src-server/runtime/routes/runtime-routes.ts) show the ownersh
 access checks. [Provider
 tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),
 [partition tests](../../src-server/knowledge-index/__tests__/partition-scoping.test.ts),
-and [lossless-rebuild
-tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts) use
-controlled records and embeddings. They do not guarantee equal ranking after a
+[lossless-rebuild
+tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts), and the
+[route tests](../../src-server/routes/knowledge/__tests__/knowledge-index.routes.test.ts)
+for generations, excerpt currency and refill use controlled records and embeddings. They do not guarantee equal ranking after a
 model/source change or prove live embedding-service availability.
 
 ## KnowledgeFileTransactions
@@ -2085,8 +2287,10 @@ repair pending work; the separate source-observation path deliberately cannot.
 writable knowledge root a serialized publication capability. The callback uses the
 coordinator’s checked read/write methods within its owned transaction context; it
 receives no lock token, journal path or raw commit operation. `read` supplies the same
-recovery gate to read-only work. The built-in Kit default and Obsidian adapters and the
-project `KnowledgeDocumentFileTransaction` all use this one shared Implementation.
+recovery gate to read-only work. The built-in Kit default and Obsidian adapters use this
+one shared Implementation. Project knowledge documents (`KnowledgeDocumentFileTransaction`)
+moved to [ProjectFileTransactions](#projectfiletransactions)' document capability, which
+keeps this journal and lock protocol so either writer recovers the other's crash.
 
 **Contract.** A Station-owned coordination directory under `STATION_HOME` holds
 process-identity file locks keyed by each root's real path, device, and inode. This
@@ -2114,9 +2318,9 @@ from validated records through the adapter's explicit reindex path. Symlinked ro
 directory entries, and publication paths are refused.
 
 **Seam, Implementation, callers, and tests.** Each writable adapter constructs the
-coordinator at its root and routes record, graph, alias, path, archive, relocation,
-project-document content, project-document metadata, and authoritative directory-tree
-reads through it. Project-document vectors are a post-commit derived Adapter effect.
+coordinator at its root and routes record, graph, alias, path, archive, relocation, and
+authoritative directory-tree reads through it. Project-document content and metadata go
+through `ProjectFileTransactions.mutateDocuments`/`readDocuments` instead. Project-document vectors are a post-commit derived Adapter effect.
 Every vector carries the authoritative content hash; search, content reconstruction, and
 injected context join derived hits back to transaction-gated metadata and reject a stale
 or missing hash. Legacy metadata without a hash is not authority for vector text and
@@ -3092,11 +3296,11 @@ application.
 
 An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
-**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations form the UI's durable outbound Interface. `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
+**Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
 
-**Behavior.** The Module persists `pending → invoking` before transport. An explicit `not-invoked` outcome may return an intent to `pending` or `failed`; `deferred` restores it to `pending` without consuming an attempt and blocks that Session for the current flush; accepted transport becomes `accepted` with its exact provider turn id. A structured foreground indeterminate outcome, any transport throw or abort after invocation begins, or any post-effect persistence uncertainty is `may-have-started` evidence. `invoking`, `accepted`, and `may-have-started` are non-replayable across renderer restart, block later work in the same session, and are never aged out or evicted. A full queue evicts the oldest ordinary `pending` or `failed` draft; protected evidence is never an admission victim. Exact `(sessionId, providerTurnId)` terminal evidence lives in the same locked durable queue state as its accepted row, is consumed once, and reconciles a persisted accepted/evidence pair on a later `open()` after an interrupted write; a bounded completed-tuple record ignores a duplicate terminal after that consumption. An older accepted row without a nonempty provider turn id migrates to `may-have-started` with an explicit migration reason, never a replayable public acceptance. A terminal never needs to be the currently open turn, but cannot settle a different session with a colliding provider id. Canonical `turn.started` has no provider-backed client correlation and never settles this Interface by session id. Error observers run only after claim classification and cannot undo it.
+**Behavior.** The Module persists `pending → invoking` before transport. An explicit `not-invoked` outcome may return an intent to `pending` or `failed`; `deferred` restores it to `pending` without consuming an attempt and blocks that Session for the current flush; accepted transport becomes `accepted` with its exact provider turn id. A structured foreground indeterminate outcome, any transport throw or abort after invocation begins, or any post-effect persistence uncertainty is `may-have-started` evidence. `invoking`, `accepted`, and `may-have-started` are never replayed blindly and are never aged out or evicted; `invoking` and `accepted` block later work in the same session. The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, changes nothing. `check` is the user's version for one row and stops (`failed`) instead of resending when a `may-have-started` row proves never received. A composer send's row follows Station's own answer (its envelope): a refusal removes it; may-have-started keeps it `may-have-started`; a busy-engine refusal keeps it as a held follow-up; anything else, including a non-Station response, releases its claim so `reconcile` settles it by the lookup at the next pass. A queue-drain send's row differs: a definitive refusal (Station's own 4xx that a retry would repeat) keeps it as a not-sent (`failed`) record, may-have-started keeps it `may-have-started`, and any other failure returns it to the queue as its held copy. A live row is hidden from projection (`liveInFlight`) while its own renderer waits on it, and so is a held copy. A held copy (`pending` with `heldBy`) is never sent automatically: the live queue that holds it sends it under the same key, or the user does (`sendHeld`) once it is listed. The projection hides only copies this renderer's queue shows (`heldHere`) and lists every other one (another window's, or one that closed) first, with Send and Discard only (Edit, Merge and Reorder are refused on a held copy); a held copy never holds back later rows, and nothing releases one by a timer or a liveness guess. Discarding a row, or Station accepting its send, retires its key in the shared state: no held copy is re-created for a retired key and `beginLive` refuses one (`OutboundKeyRetiredError`), so a Discard in any window is honoured by the holder's queue and a delivered message leaves no ghost copy. `syncHeld` takes over an earlier pending copy of a key its queue holds again (a reload restores the queue under a new renderer), and the flush hook syncs after each `reconcile`, before the flush, so a send that was mid-drain at a reload is taken back by the restored queue rather than also flushed. `beginLive` refuses a key whose row is on its way or possibly started (`OutboundRowInFlightError`), and neither the composer nor the queue drain sends it then; a re-send from the same renderer adopts that renderer's own late-landing `invoking` row instead. A refused queued follow-up's not-sent record carries the send's key, so the projection lists it once and its dismissal discards the durable copy. Every row records its `station` (API base plus verified environment id); `flush`, `reconcile` and `check` act only on rows for the Station named, and the projection marks the rest as waiting for theirs. A `may-have-started` row no longer blocks later rows of its session. `discard` refuses a `may-have-started` row; the only way it leaves is the user's explicit "I checked, discard it" (`dismissUnconfirmed`), which removes it and retires its key in one write. The same dismissal also withdraws an `invoking` row no renderer holds a claim on (a send that got no answer, released for the lookup; public rows mark it `awaitingLookup`), and refuses every other status. Public rows mark an `invoking` row `sendUnderWay` while another renderer that claimed it is proven running (its Web Lock is held), or while a flush pass of this renderer holds its own claim; a claim of this renderer's that no pass holds (a write-back that failed) is not. A claim whose renderer is proven gone (its lock no longer held) is public `awaitingLookup`, and `dismissUnconfirmed` withdraws it too, rechecking that renderer's liveness under the queue lock and refusing if the claim was re-taken; an unknown liveness is neither. The flush hook re-projects on another window's change notice. A pass starts from a projection only when a row the previous projection showed held back by an earlier row of its chat (`claimNext`'s rule) is now one this window may send (pending, held nowhere, for this Station, behind no unsent message, in a writable chat); a row that was sendable all along is not retried on every notice. That pass only sends: it neither reconciles (which can release a duplicate tab's held follow-up to pending) nor runs `syncHeld` (re-holding would take back a key a duplicated tab also holds, and that tab would answer in kind). A replay into a turn still running is `deferred`, never `not-invoked`, so it spends no attempt; the flush hook does not send to a chat with a turn running at all (`isTurnInFlight` puts it in the pass's blocked sessions), and a chat counts as newly sendable (starting a pass) only when it becomes writable with no turn running, with a pending or `invoking` row, so a claim and its release never retrigger the next send. As a backstop, `releaseDeferred` stamps `deferredAt` and `claimNext` skips a row deferred less than `OUTBOUND_DEFER_RETRY_MS` ago, whatever started the pass; the hook keeps one timer for the earliest such wait; when it fires it re-reads the queue (arming the timer for the next row still waiting) and starts a pass, so a skipped row is not stranded even when that pass claims nothing. A renderer whose renderer-lock request failed records its boot id in a bounded shared list, and its claims read as unknown liveness, never as gone; a held copy listed from another window never counts as a waiting row that starts a pass; while any row is `sendUnderWay` it re-projects every few seconds. A full queue evicts the oldest ordinary `pending` or `failed` draft; protected evidence is never an admission victim. Exact `(sessionId, providerTurnId)` terminal evidence lives in the same locked durable queue state as its accepted row, is consumed once, and reconciles a persisted accepted/evidence pair on a later `open()` after an interrupted write; a bounded completed-tuple record ignores a duplicate terminal after that consumption. An older accepted row without a nonempty provider turn id migrates to `may-have-started` with an explicit migration reason, never a replayable public acceptance. A terminal never needs to be the currently open turn, but cannot settle a different session with a colliding provider id. A live foreground send may settle its own key when a delivery lookup confirms `started`, or an explicit server-stamped `turn.started.clientTurnId` matches an existing authored bubble. A heuristic match from an older unkeyed event is not retirement evidence. A recorded `started` cannot be downgraded by a lookup already in flight. After such proof, a late transport error cannot queue that message again; acceptance removes overlapping attempts of the same key while retiring it. Durable flush dispatches (`options.dispatch`) retain exact `(sessionId, providerTurnId)` terminal evidence or a delivery-lookup answer for the row's own key. Error observers run only after claim classification and cannot undo it.
 
-**Code and evidence.** The implementation privately composes IndexedDB transaction storage, optional Web Lock cooperation, renderer claim identity, pruning, and an in-memory fence for a same-renderer storage fault. `useActiveChatSessionMessaging` is the foreground/replay transport Adapter; `useOutboundQueueFlush`, queued-message controls, and terminal event handling use the same Module Interface. The local steer queue and durable outbound queue are optional ChatDock capabilities: both are dynamically composed only when queue state exists and share `QueuedMessages.css` beside those lazy components, so their code and styles do not consume the always-loaded entry budget. Evidence lives in `src-ui/src/__tests__/outboundQueue.test.ts`, `outboundQueueTerminalIntegration.test.ts`, `useActiveChatSessionMessaging.test.ts`, `OutboundQueuedMessages.test.tsx`, and `outbound-queue-css-boundary.test.ts`. **Do not reintroduce:** hook-local mark/release/accept writes, a DOM session-observation event, session-id settlement of a possible start, automatic retry/eviction of possible-effect evidence, or queue-only code/styles in the eager ChatDock/entry surface.
+**Code and evidence.** The implementation privately composes IndexedDB transaction storage, optional Web Lock cooperation, renderer claim identity, pruning, and an in-memory fence for a same-renderer storage fault. `useActiveChatSessionMessaging` is the foreground/replay transport Adapter; `useOutboundQueueFlush`, queued-message controls, and terminal event handling use the same Module Interface. The local steer queue and durable outbound queue are optional ChatDock capabilities: both are dynamically composed only when queue state exists and share `QueuedMessages.css` beside those lazy components, so their code and styles do not consume the always-loaded entry budget. Evidence lives in `src-ui/src/__tests__/outboundQueue.test.ts`, `outboundQueueLiveReconcile.test.ts` (a fresh module instance settling a killed renderer's row), `useActiveChatSessionMessaging.delivery.test.ts`, `useOutboundQueueFlush.test.ts`, `tests/message-delivery-recovery.spec.ts` (a real Station and a reloaded page), `outboundQueueTerminalIntegration.test.ts`, `useActiveChatSessionMessaging.test.ts`, `OutboundQueuedMessages.test.tsx`, and `outbound-queue-css-boundary.test.ts`. **Do not reintroduce:** hook-local mark/release/accept writes, a DOM session-observation event, session-id settlement of a possible start, automatic retry/eviction of possible-effect evidence, or queue-only code/styles in the eager ChatDock/entry surface.
 
 ## StarterWorkRegistry
 
@@ -3977,6 +4181,43 @@ model recovery refuses positive additions. Agent restrictions and store ACLs
 remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
 explains the UI and opt-out behavior.
 
+
+## CanonicalUsageExport
+
+**Purpose and callers.** The
+[usage export reader](../../src-server/analytics/usage-export-reader.ts) serves
+`GET /api/analytics/usage-export` through the existing analytics route,
+runtime request-principal binder and OrchestrationService. Its
+[contract](../../packages/contracts/src/usage-export.ts) describes retained
+canonical observations, not a source grant or complete synced history.
+
+**Authority.** Runtime composition resolves the existing verified person,
+refuses unbound Device/operator attribution, and derives SessionReadAuthority
+server-side. Individual scope keeps the exact owner; personal-account scope
+requires the existing current membership verdict, and hosted scope keeps
+exact owner+tenant. Credential/account authority and owner/source facts are
+rechecked before queued response release. Continuations carry no authority.
+
+**Data and bounds.** EventStore reuses its canonical receipt SELECT/map inside
+one read snapshot, pages committed global sequence through a fixed high
+watermark/stream epoch, and projects each selected event through the existing
+token/provider-cost receipt owner. Pages contain at most 100 observation events
+in a bounded UTC observed-day window. Export-only cumulative-cost projection
+admits at most 1,000 combined historical sequences before capped hydration;
+excess is unavailable, never a truncated cost segment. Old rollup limits and
+clone/mirror reconciliation remain separate.
+
+**Evidence and open work.** Source review repaired binder, person, membership
+and cost-budget defects. Focused real EventStore/mounted-route and runtime
+composition controls have exercised paging, owner/tenant selection and queued
+revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
+query leaf validate page facts and refuse changed waiting selections; their
+focused controls have executed. Source bounds are not measured latency
+or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
+credential custody, deletion invalidations, restore-generation fencing,
+receiver index/checkpoint transactions, clone identity and deployment remain
+open. A backed-up stream epoch is not a restore fence. See
+[monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 ## ProductTelemetryReceiver
 

@@ -388,7 +388,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
   /** The verdict of one request: a typed refusal, 404, or `reached`. */
   const verdict = (answer: Answer, reached: boolean): string =>
     answer.status === 403 && answer.body.code?.startsWith('station_control_')
-      ? answer.body.code
+      ? answer.body.reason
+        ? `${answer.body.code}:${answer.body.reason}`
+        : answer.body.code
       : reached
         ? 'reached'
         : `not reached (${answer.status} ${answer.body.code ?? ''})`;
@@ -406,11 +408,24 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
 
   /** Aims, as [label, caller session, target, expected for a non-bound caller, expected for a bound operator]. */
   const NOT_FOUND = 'not reached (404 session_not_found)';
+  const OUT = (reason: string) => `station_control_out_of_scope:${reason}`;
   const MATRIX: ReadonlyArray<[string, string, string, string, string]> = [
     ['same Project', 'op-caller-a', 'op-thread-a', 'reached', 'reached'],
-    ['other Project', 'op-caller-a', 'op-thread-b', ASSURANCE, 'reached'],
-    ['global', 'op-caller-a', 'op-thread-global', ASSURANCE, 'reached'],
-    ['host thread', 'op-caller-a', 'op-host-a', ASSURANCE, 'reached'],
+    [
+      'other Project',
+      'op-caller-a',
+      'op-thread-b',
+      OUT('other-project'),
+      'reached',
+    ],
+    [
+      'global',
+      'op-caller-a',
+      'op-thread-global',
+      OUT('global-space'),
+      'reached',
+    ],
+    ['host thread', 'op-caller-a', 'op-host-a', OUT('host'), 'reached'],
     ['another owner', 'op-caller-a', 'person-thread-a', ASSURANCE, NOT_FOUND],
     // `new-*` has no start record here. This is NOT another Station: these
     // leaves carry no environment, so a remote target is unreachable through
@@ -427,7 +442,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       'global caller → Project',
       'op-caller-global',
       'op-thread-a',
-      ASSURANCE,
+      OUT('project-from-global'),
       'reached',
     ],
   ];
@@ -846,7 +861,11 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       support.current.set('op-thread-a', 'op-thread-a2');
       support.hostThreads.add('op-thread-a');
       const refused = await post(base, 'send', caller(), body);
-      expect([refused.status, refused.body.code]).toEqual([403, ASSURANCE]);
+      expect([refused.status, refused.body.code, refused.body.reason]).toEqual([
+        403,
+        'station_control_out_of_scope',
+        'host',
+      ]);
       expect(support.commands).toHaveLength(1);
       expect(support.continued).toHaveLength(0);
     });

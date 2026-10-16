@@ -14,6 +14,10 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import YAML from 'yaml';
+import {
+  verifyIosChannelIcons,
+  verifyShippedIosAppIcon,
+} from './ios-channel-icons.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -349,11 +353,14 @@ if (invokedDirectly(import.meta.url)) {
   if (process.platform !== 'darwin')
     throw new Error('iOS simulator builds require macOS and Xcode.');
   if (process.argv[2] === 'prepare') prepareIosSimulator();
-  else if (process.argv[2] === 'verify')
-    console.log(
-      `Verified simulator app: ${verifyIosSimulator(join(ROOT, 'src-desktop/gen/apple/build/station_iOS.xcarchive'))}`,
+  else if (process.argv[2] === 'verify') {
+    const app = verifyIosSimulator(
+      join(ROOT, 'src-desktop/gen/apple/build/station_iOS.xcarchive'),
     );
-  else
+    verifyIosChannelIcons('dev');
+    verifyShippedIosAppIcon('dev', { appDir: app });
+    console.log(`Verified simulator app: ${app}`);
+  } else
     throw new Error(
       'Usage: node scripts/ios-simulator-build.mjs prepare|verify',
     );

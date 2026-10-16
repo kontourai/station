@@ -154,7 +154,11 @@
 
     "src-server/security/relay-management-authority.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts",
+
+    "scripts/write-ios-build-manifest.mjs",
+
+    "src-ui/src/platform/native/startupPresentation.ts"
   ],
 
   "checks": [

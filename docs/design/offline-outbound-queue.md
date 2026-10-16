@@ -16,6 +16,75 @@ server can deduplicate a request that landed immediately before disconnect.
 The queue survives restart and is projected back into the chat dock before a
 reconnect flush begins.
 
+The same queue keeps a text send from the composer durable while it is in
+flight. The send is written as `invoking` before its request goes out (a write
+bounded to three seconds; past it the send goes without the row and the
+composer keeps its saved draft), and the composer's saved draft is let go only
+once that row is written, so closing the app mid-send loses nothing and leaves
+no second copy to send under a new key. Station's own answer settles the row:
+a refusal removes it and hands the text back to the composer; Station's
+"may have started" answer keeps it as unconfirmed (never resent, and it no
+longer holds back later messages in the chat); anything else, including a
+proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send). A foreground send that
+already has an exact-key `started` answer, or an explicitly keyed turn-start event
+matching its authored bubble, remains delivered if the original response later
+fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
+lookup already in flight cannot erase a witnessed start. Acceptance retires the
+key and removes its overlapping attempts together. Durable flush dispatches
+(`options.dispatch`) retain their separate provider-turn settlement rules.
+While it waits, the message reads "No answer yet · sends once Station confirms
+it never arrived" on its bubble and in the outbox list, and its chat notice's and
+the list's Discard… withdraw it only after the shared confirmation, which says
+that a message which already arrived cannot be taken back. Every open window
+re-reads the queue's finished keys on the cross-window change channel and when it
+comes back into view, so a discard in one window removes the bubble in all.
+That channel refreshes what a window shows. It starts a send there only when a
+message the window could not send before, because an earlier message of its chat
+went first, now can (for example, the other window's send that held it back has
+settled, even if that window then closed). A message that could not be sent for
+another reason, such as a turn still running, is not retried on every notice. That
+send only sends: it asks Station about nothing and never re-holds the window's
+queued follow-ups (which would take back a follow-up a duplicated tab also holds,
+and that tab would do the same in turn). A queued message is not sent while a turn is
+running in its chat; it goes when the turn ends. If one is tried anyway, it waits
+without using up an attempt and is not tried again for a moment and a half,
+whatever asks; it is retried once that wait ends. A send another window has claimed reads "Sending", with no Check,
+only while that window is proven running (it holds its renderer lock); a claim
+left by a window that closed or crashed reads "No answer yet" like its bubble,
+with Check and Discard…, and the discard checks again that the window is gone.
+A window's own claim reads "Sending" only while its own send is in progress.
+While any send reads "Sending" this way the list looks again every few seconds,
+since a window that closes says nothing.
+The lookup settles released rows, and rows whose app was closed, at the next
+launch or reconnect: never received → sent again with the same key; started →
+done; received → asked again later; possibly started, or the conversation runs
+on another Station → kept as unconfirmed, with a Check that asks Station again
+and never resends, and a Discard… that removes it only after the user confirms
+"I checked, discard it" with the risk stated (its key is retired, so it is never
+sent again). Each row records the Station it was written for and is
+only ever sent to, or settled by, that Station; for another it waits, listed.
+
+Station can also hold a follow-up itself, in the conversation's durable inbox
+([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
+in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
+The app does not use it yet; until it does, the rules below apply.
+
+Follow-ups held behind a running turn stay in the tab's session storage, and
+each keeps a durable copy in the queue under the key the queue will send it
+with. Nothing sends that copy automatically: the window's own queue sends it
+when the turn ends, a reload's restored queue takes the copies back (so an
+edit or a delete there is what counts), and a copy whose window closed, or
+another window's, is listed first with Send and Discard for the user (it does
+not hold back later messages). A discarded or delivered message is never sent
+again from any window. A
+message whose row is already on its way or possibly started is never sent
+again from the composer or the queue. A send refused because the engine is
+busy joins that queue with its own key and copy, and the queue's drain writes
+the same before-the-request row as a composer send. Sends with attachments or
+a visual skill are not written to the queue (their draft is kept until
+Station answers, as before).
+
 Configuration edits are excluded by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits
 have different authority and concurrency rules, and the current write routes
@@ -67,3 +136,9 @@ applied without issuing another config write.
 Approvals are also excluded. They are live server decisions with expiring
 authority. Station queues the user turn that led to an approval, never the
 approval response itself.
+
+Personal approval defaults are captured for a first interactive send before it
+becomes durable. The pending choice retains the account namespace that selected
+it. Unknown authority holds the choice for verification; a different verified
+account retires it. Replay under the same account retains the original choice.
+Explicit chat picks remain independent of inherited personal defaults.

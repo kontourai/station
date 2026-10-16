@@ -34,11 +34,7 @@ describe('agent capability profile', () => {
       },
     );
     for (const surface of surfaces) {
-      // station#1195: codex's toolServers cell is now deliverable
-      // (session/wire), so the 'tools' surface is always visible+editable
-      // regardless of authored content — every OTHER codex surface
-      // (prompt/skills/commands) stays unsupported-and-empty-so-hidden.
-      if (surface.key === 'tools') {
+      if (surface.key === 'tools' || surface.key === 'prompt') {
         expect(surface.visible).toBe(true);
         expect(surface.mode).toBe('editable');
       } else {
@@ -59,11 +55,10 @@ describe('agent capability profile', () => {
     );
     for (const surface of surfaces) {
       expect(surface.visible).toBe(true);
-      // station#1195: 'tools' is now deliverable for codex, so authoring it
-      // renders normally editable — the invalid-readonly rule now applies
-      // only to the still-unsupported prompt/skills/commands surfaces.
       expect(surface.mode).toBe(
-        surface.key === 'tools' ? 'editable' : 'invalid-readonly',
+        surface.key === 'tools' || surface.key === 'prompt'
+          ? 'editable'
+          : 'invalid-readonly',
       );
     }
   });
@@ -101,6 +96,7 @@ describe('agent capability profile', () => {
     );
     expect(codexTabsEmpty.map((tab) => tab.key)).toEqual([
       'basic',
+      'prompt',
       'tools',
       'engine',
       'connection',
@@ -172,15 +168,19 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
   test('codex exposes tools, which the fallback hid', () => {
     expect(tabs('codex', 'codex')).toEqual([
       'basic',
+      'prompt',
       'tools',
       'engine',
       'connection',
     ]);
   });
 
-  test('muse stays minimal, because its matrix genuinely declares no such surface', () => {
-    // Guards against reading the fix as "more tabs everywhere": muse's cells
-    // are unsupported by design, so its tab set must NOT grow.
-    expect(tabs('muse', 'muse')).toEqual(['basic', 'engine', 'connection']);
+  test('muse exposes first-message instructions without inventing tool support', () => {
+    expect(tabs('muse', 'muse')).toEqual([
+      'basic',
+      'prompt',
+      'engine',
+      'connection',
+    ]);
   });
 });

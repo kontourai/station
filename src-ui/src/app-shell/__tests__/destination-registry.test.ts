@@ -156,9 +156,8 @@ describe('DestinationRegistry', () => {
         id: 'connections',
         group: 'set-up',
         order: 30,
-        // The whole point of the override: the LABEL is not the destination's
-        // own ('Connections') and the ROUTE is not its root ('/connections').
-        label: 'Engines & Models',
+        // Open the engine list directly while keeping the destination's name.
+        label: 'Connections',
         route: '/connections/engines',
       },
       {

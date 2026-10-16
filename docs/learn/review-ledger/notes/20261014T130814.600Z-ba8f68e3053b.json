@@ -1,0 +1,15 @@
+{
+  "revision": "2b466f0e1572d7cc7fd88cd6fbf3476bd5ee79f9",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"pnpm-workspace.yaml gained only a peerDependencyRules.allowedVersions entry for Veritas's optional Survey peer. The packages list is unchanged, so the claims that npm run changeset selects workspace packages and that the private root application is not a member still hold.","inputs":[".changeset/README.md","pnpm-workspace.yaml"]},
+
+    {"path":".veritas/GOVERNANCE.md","note":"Veritas 1.11.2 template: the policy-change attestation and explain commands now use npx --no @kontourai/veritas. The veritas:shadow alias is described as running the installed Veritas readiness --working-tree, which matches the package.json script. Ran npx --no @kontourai/veritas explain against 1.11.2: it prints these lead lines, and attest --help still lists policy-change. Zone lists unchanged.","inputs":[".veritas/GOVERNANCE.md"]},
+
+    {"path":".veritas/README.md","note":"Run instructions now use npx --no @kontourai/veritas explain, or npm run veritas:coverage, instead of bare veritas. Alias comments name the readiness arguments each script passes, matching package.json. Exit codes 0/1/2 are unchanged in 1.11.2: readiness exited 1 on a failing required check during the upgrade. explain --file and explain <ruleId> ran against the installed 1.11.2.","inputs":[".veritas/README.md",".veritas/GOVERNANCE.md"]},
+
+    {"path":"AGENTS.md","note":"npx --no @kontourai/veritas apply governance-blocks (1.11.2) replaced only the line between the governance markers, with the npx --no readiness spelling. Every other line, including the required-checks and landing rules, is unchanged. The GOVERNANCE.md it points to was reviewed in this change.","inputs":["AGENTS.md",".veritas/GOVERNANCE.md"]},
+
+    {"path":"CLAUDE.md","note":"apply governance-blocks replaced only the line between the markers, with npx --no @kontourai/veritas readiness. The @AGENTS.md import and the surrounding text are unchanged.","inputs":["CLAUDE.md",".veritas/GOVERNANCE.md","AGENTS.md"]}
+  ]
+}

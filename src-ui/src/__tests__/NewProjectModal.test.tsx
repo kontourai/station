@@ -38,6 +38,7 @@ const createProjectMock = vi.fn();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
 const setProjectMock = vi.fn();
+const setLayoutMock = vi.fn();
 const onCloseMock = vi.fn();
 const reposQueryState = vi.hoisted(() => ({
   data: undefined as
@@ -149,7 +150,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setProject: setProjectMock }),
+  useNavigation: () => ({
+    setProject: setProjectMock,
+    setLayout: setLayoutMock,
+  }),
 }));
 
 vi.mock('../hooks/useGitActions', () => ({
@@ -171,7 +175,7 @@ vi.mock('../components/PathAutocomplete', () => ({
     placeholder: string;
   }) => (
     <input
-      aria-label="Working Directory"
+      aria-label="Project folder"
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
@@ -199,6 +203,7 @@ describe('NewProjectModal starter layout picker', () => {
       data: { entries: [] },
     });
     setProjectMock.mockReset();
+    setLayoutMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;
@@ -240,7 +245,7 @@ describe('NewProjectModal starter layout picker', () => {
     };
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    expect(screen.queryByLabelText('Working Directory')).toBeNull();
+    expect(screen.queryByLabelText('Project folder')).toBeNull();
     expect(
       screen.getByText(
         'Created on this Station. You pick the name; the host keeps the folder.',
@@ -254,7 +259,7 @@ describe('NewProjectModal starter layout picker', () => {
     expect(availableLayoutsQueryMock).toHaveBeenCalledWith({ enabled: true });
 
     expect(screen.getByLabelText('Choose project icon')).toBeTruthy();
-    expect(screen.getByLabelText('Project identity')).toBeTruthy();
+    expect(screen.getByLabelText('Project name')).toBeTruthy();
     expect(screen.queryByText('Preview')).toBeNull();
     expect(screen.queryByText(/create as/i)).toBeNull();
     expect(screen.queryByText(/^leaf\b/i)).toBeNull();
@@ -272,7 +277,7 @@ describe('NewProjectModal starter layout picker', () => {
     createProjectMock.mockResolvedValue({ slug: 'station' });
 
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/station/' },
     });
     fireEvent.click(screen.getByLabelText('Choose project icon'));
@@ -290,7 +295,7 @@ describe('NewProjectModal starter layout picker', () => {
   test('does not discover artwork while typing a partial path', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/Users/me/de' },
     });
 
@@ -314,7 +319,7 @@ describe('NewProjectModal starter layout picker', () => {
     try {
       render(<NewProjectModal isOpen onClose={onCloseMock} />);
       expect(
-        (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+        (screen.getByLabelText('Project folder') as HTMLInputElement).value,
       ).toBe('/work/scratch/app');
     } finally {
       window.history.replaceState(null, '', '/');
@@ -324,7 +329,7 @@ describe('NewProjectModal starter layout picker', () => {
   test('enables local artwork discovery once a directory is picked', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/Users/me/site/' },
     });
 
@@ -341,7 +346,7 @@ describe('NewProjectModal starter layout picker', () => {
     const { rerender } = render(
       <NewProjectModal isOpen onClose={onCloseMock} />,
     );
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/plain/' },
     });
     expect(screen.queryByText('Recommended for this Git directory')).toBeNull();
@@ -357,7 +362,7 @@ describe('NewProjectModal starter layout picker', () => {
       repos: [{ root: '/tmp/repo' }],
     };
     rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/repo/' },
     });
 
@@ -392,7 +397,7 @@ describe('NewProjectModal starter layout picker', () => {
     };
 
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/repo/' },
     });
 
@@ -415,7 +420,7 @@ describe('NewProjectModal starter layout picker', () => {
     const { rerender } = render(
       <NewProjectModal isOpen onClose={onCloseMock} />,
     );
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/repo/' },
     });
     await waitFor(() =>
@@ -437,7 +442,7 @@ describe('NewProjectModal starter layout picker', () => {
         .getAttribute('aria-pressed'),
     ).toBe('true');
 
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/other-repo/' },
     });
     await waitFor(() =>
@@ -456,7 +461,7 @@ describe('NewProjectModal starter layout picker', () => {
       repos: [{ root: '/tmp/repo' }],
     };
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/repo/' },
     });
     await waitFor(() =>
@@ -493,12 +498,13 @@ describe('NewProjectModal starter layout picker', () => {
 
   test('keeps every project draft field mounted while browsing and selecting a layout', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/draft/' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Project' },
     });
+    fireEvent.click(screen.getByText('More options'));
     fireEvent.change(screen.getByLabelText(/Description/), {
       target: { value: 'Keep this description' },
     });
@@ -517,7 +523,7 @@ describe('NewProjectModal starter layout picker', () => {
       screen.queryByRole('dialog', { name: /Browse installed layouts/ }),
     ).toBeNull();
     expect(
-      (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+      (screen.getByLabelText('Project folder') as HTMLInputElement).value,
     ).toBe('/tmp/draft/');
     expect(
       (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
@@ -580,7 +586,7 @@ describe('NewProjectModal starter layout picker', () => {
     createProjectMock.mockResolvedValue({ slug: 'typed-workspace' });
 
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/typed-workspace' },
     });
     // The state the user is looking at when they press Create.
@@ -611,9 +617,10 @@ describe('NewProjectModal starter layout picker', () => {
       repos: [{ root: '/tmp/repo' }],
     };
     createProjectMock.mockResolvedValue({ slug: 'repo' });
+    applyProjectLayoutMock.mockResolvedValue({ slug: 'coding' });
 
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/repo' },
     });
     await waitFor(() =>
@@ -632,6 +639,10 @@ describe('NewProjectModal starter layout picker', () => {
         'builtin:coding',
       ),
     );
+    await waitFor(() =>
+      expect(setLayoutMock).toHaveBeenCalledWith('repo', 'coding'),
+    );
+    expect(setProjectMock).not.toHaveBeenCalled();
   });
 
   // #2708 A-2: a create refused by the validation middleware, as the REAL
@@ -739,7 +750,7 @@ describe('NewProjectModal starter layout picker', () => {
       'My Project',
     ) as HTMLInputElement;
 
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/launch-pad' },
     });
     await waitFor(() => expect(nameInput.value).toBe('Launch Pad'));
@@ -747,12 +758,12 @@ describe('NewProjectModal starter layout picker', () => {
     // Once the user edits the name, a later directory change must not
     // overwrite it.
     fireEvent.change(nameInput, { target: { value: 'Custom Name' } });
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/other-dir' },
     });
     await waitFor(() =>
       expect(
-        (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+        (screen.getByLabelText('Project folder') as HTMLInputElement).value,
       ).toBe('/tmp/other-dir'),
     );
     expect(nameInput.value).toBe('Custom Name');
@@ -770,6 +781,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     validateDirectoryMock.mockReset();
     validateDirectoryMock.mockResolvedValue({ error: null });
     setProjectMock.mockReset();
+    setLayoutMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;
@@ -799,10 +811,10 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     ).toBeNull();
 
     // The two genuinely non-obvious behaviors survive as a short hint
-    // attached to the field they concern (Project identity: the name and
+    // attached to the field they concern (Project name: the name and
     // icon), not as a preamble read before any input exists.
     const identityField = screen
-      .getByLabelText('Project identity')
+      .getByLabelText('Project name')
       .closest('.editor-field') as HTMLElement;
     expect(identityField).toBeTruthy();
     expect(
@@ -874,6 +886,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
     validateDirectoryMock.mockReset();
     validateDirectoryMock.mockResolvedValue({ error: null });
     setProjectMock.mockReset();
+    setLayoutMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;
@@ -1032,6 +1045,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       data: { entries: [] },
     });
     setProjectMock.mockReset();
+    setLayoutMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;
@@ -1205,7 +1219,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       error: Object.assign(new Error('Folder not found'), { status: 404 }),
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/definitely/not/a/real/dir-audit' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1230,7 +1244,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       error: Object.assign(new Error('Folder not found'), { status: 404 }),
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/definitely/not/a/real/dir-audit' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1239,7 +1253,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     await screen.findByRole('alert');
 
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/real-enough' },
     });
 
@@ -1253,7 +1267,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   test('says so when the directory check answers with neither data nor an error', async () => {
     validateDirectoryMock.mockResolvedValue({ error: null });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/unanswered' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1292,7 +1306,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       data: { entries: [] },
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/audit-loaded-host' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1306,7 +1320,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     // No verdict about the path: the input must not claim invalidity and the
     // retry control must stay live.
     expect(
-      screen.getByLabelText('Working Directory').getAttribute('aria-invalid'),
+      screen.getByLabelText('Project folder').getAttribute('aria-invalid'),
     ).toBeNull();
     const create = screen.getByRole('button', {
       name: 'Create',
@@ -1324,7 +1338,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       }),
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/audit-busy' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1353,7 +1367,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       }),
     );
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.change(screen.getByLabelText('Working Directory'), {
+    fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/slow' },
     });
     fireEvent.change(screen.getByPlaceholderText('My Project'), {

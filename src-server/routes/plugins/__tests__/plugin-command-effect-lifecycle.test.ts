@@ -194,6 +194,7 @@ function harness(
       verifyOperatorCredential: (candidate) =>
         candidate === OPERATOR_CREDENTIAL,
       identifyDevice: () => null,
+      resolveGrantedScope: () => undefined,
     },
   });
   const visibility = new PluginVisibilityService(home);

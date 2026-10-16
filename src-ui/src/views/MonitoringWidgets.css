@@ -1233,6 +1233,11 @@
   transition: opacity var(--motion-base);
 }
 
+.export-btn > svg {
+  width: 14px;
+  height: 14px;
+}
+
 .export-btn:hover {
   opacity: 1;
 }

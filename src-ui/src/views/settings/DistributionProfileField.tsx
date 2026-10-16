@@ -6,9 +6,9 @@
  * kinds never get a generic editor — see `registry-row.tsx`).
  */
 import type { DistributionProfileSelection } from '@kontourai/station-contracts/distribution';
-import { PageRow } from '../../components/PageRow';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 
 export function DistributionProfileField({
   definition,

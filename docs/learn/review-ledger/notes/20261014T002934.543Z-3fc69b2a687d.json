@@ -1,0 +1,7 @@
+{
+  "revision": "f5e07fdcb99bade18e236f04c8e6251de93a55a5",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Fix round reviewed: the ACP adapter now prefers session/resume when sessionCapabilities.resume is advertised, falls back to session/load (resume not advertised, or method-not-found with loadSession advertised), suppresses replayed history while reattaching, and refuses sendTurn while reattaching. The document makes no claim about the reattach method, replay publication or this refusal; its statements remain accurate.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

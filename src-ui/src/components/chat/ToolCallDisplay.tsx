@@ -354,42 +354,6 @@ function ToolCallRow({
             {lineContent}
           </div>
         )}
-        {awaitingApproval && onApprove && (
-          <div className="tool-call__actions">
-            <ToolApprovalControls
-              request={{
-                requestId: toolCall.approvalId ?? '',
-                threadId: toolCall.approvalThreadId,
-                requestEventId: toolCall.approvalEventId,
-              }}
-              onApprove={onApprove}
-              grantToolName={grantToolName}
-              sessionGrant={
-                // A part without the projected grant (a registry-route
-                // request) is judged by its tool name alone.
-                toolCall.approvalSessionGrant ??
-                toolRequestSessionGrant({ toolName: grantToolName })
-              }
-              summary={label}
-              details={
-                hasDetail ? (
-                  <ToolCallDetails
-                    id={id}
-                    server={server}
-                    toolName={toolName}
-                    originalName={originalName}
-                    args={args}
-                    result={result}
-                    error={error}
-                    cancelled={cancelled}
-                    unresolved={unresolved}
-                    approvalStatus={approvalStatus}
-                  />
-                ) : null
-              }
-            />
-          </div>
-        )}
       </div>
       {/* Collapsed-visible only while genuinely running — a settled row
           repeating its last progress line would read as ongoing activity.
@@ -411,6 +375,42 @@ function ToolCallRow({
           approvalStatus={approvalStatus}
           lastProgress={running ? undefined : progressMessage}
         />
+      )}
+      {awaitingApproval && onApprove && (
+        <div className="tool-call__actions">
+          <ToolApprovalControls
+            request={{
+              requestId: toolCall.approvalId ?? '',
+              threadId: toolCall.approvalThreadId,
+              requestEventId: toolCall.approvalEventId,
+            }}
+            onApprove={onApprove}
+            grantToolName={grantToolName}
+            sessionGrant={
+              // A part without the projected grant (a registry-route
+              // request) is judged by its tool name alone.
+              toolCall.approvalSessionGrant ??
+              toolRequestSessionGrant({ toolName: grantToolName })
+            }
+            summary={label}
+            details={
+              hasDetail ? (
+                <ToolCallDetails
+                  id={id}
+                  server={server}
+                  toolName={toolName}
+                  originalName={originalName}
+                  args={args}
+                  result={result}
+                  error={error}
+                  cancelled={cancelled}
+                  unresolved={unresolved}
+                  approvalStatus={approvalStatus}
+                />
+              ) : null
+            }
+          />
+        </div>
       )}
     </div>
   );
@@ -447,7 +447,9 @@ function useApprovalDecision(
   const previousShared = useRef(shared);
   useEffect(() => {
     const recovered =
-      previousShared.current?.phase === 'unconfirmed' && shared === null;
+      (previousShared.current?.phase === 'unconfirmed' ||
+        previousShared.current?.phase === 'sent') &&
+      shared === null;
     previousShared.current = shared;
     if (
       shared?.phase === 'already-settled' &&
@@ -457,7 +459,10 @@ function useApprovalDecision(
       setPhase('already-settled');
       setFailure(null);
       setChosen(undefined);
-    } else if (recovered && localPhase === 'unconfirmed') {
+    } else if (
+      recovered &&
+      (localPhase === 'unconfirmed' || localPhase === 'sent')
+    ) {
       admission.current = false;
       setPhase('idle');
       setFailure(null);
@@ -594,6 +599,18 @@ function ApprovalDecisionStatus({
 }) {
   return (
     <>
+      {(phase === 'sending' || phase === 'sent') && (
+        <p className="tool-call__approve-status" role="status">
+          {phase === 'sending'
+            ? 'Sending your decision…'
+            : 'Decision sent. Waiting for the tool to continue.'}
+          {phase === 'sent' && check && (
+            <Button pending={checking} onClick={() => void check()}>
+              Check status
+            </Button>
+          )}
+        </p>
+      )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
           This request is no longer open.
@@ -604,7 +621,9 @@ function ApprovalDecisionStatus({
           <p>
             {phase === 'unconfirmed'
               ? 'Delivery is not confirmed.'
-              : 'Your decision was not delivered.'}{' '}
+              : phase === 'sent'
+                ? 'Current status is not confirmed.'
+                : 'Your decision was not delivered.'}{' '}
             {failure.summary}
           </p>
           {phase === 'unconfirmed' && check && (

@@ -1,0 +1,7 @@
+{
+  "revision": "9ba4bd1ea6ba75318a1d684e8d956f0f89e757b0",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round 1 delta review: the screenshot recovery fixture uses the existing runtime-conversation builder, explicit bounded-history capability, ordinary click/Enter actions, held response gates released in finally, request counts, and rendered replacement/error assertions at the real ChatDock owners. Initial fixture failures and a startup deadline are retained as negative evidence. No Gallery baseline or native transport qualification is claimed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

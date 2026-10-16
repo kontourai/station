@@ -73,6 +73,6 @@ describe('MessageBubble transcript marker (station#3415)', () => {
     expect(marker?.getAttribute('data-chat-message-key')).toBe('row-1');
     expect(container.querySelector('.message-row')).toBeNull();
     expect(screen.queryByText('User')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Copy message' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Copy/ })).toBeNull();
   });
 });

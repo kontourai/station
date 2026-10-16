@@ -69,12 +69,15 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -133,6 +136,10 @@ import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/to
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
+import {
+  readAuthorizedUsageExport,
+  UsageExportRejected,
+} from '../../analytics/usage-export-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -144,6 +151,7 @@ import type {
 } from '../../providers/adapter-shape.js';
 import {
   AttachmentInputUnsupportedError,
+  ClientTurnInFlightError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -609,10 +617,19 @@ export class OrchestrationCommandDispatchError extends Error {
  *   still exiting.
  * - #2324: a send that arrived while the engine was running a turn it opened
  *   on its own; it succeeds once that turn closes.
+ * - A send that outwaited its session's engine start (an ACP reattach); it
+ *   succeeds once the session is ready.
+ * - A send whose session's start failed while it waited: nothing was sent,
+ *   and a later send can restart the session, so the message is kept.
+ * - A send whose idempotency key another attempt still held or released
+ *   unsent: the same key may be sent again.
  */
 const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
   MUSE_TURN_SLOT_RELEASING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
 ]);
 
 /**
@@ -4894,6 +4911,75 @@ export class OrchestrationService {
     );
   }
 
+  /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
+  /**
+   * The turn another attempt holds `clientTurnId` for on `threadId`, waited
+   * for (bounded, by the deduplicator's own wait). `given-up` when this
+   * process's own owner gave the key up after it may have reached the engine
+   * (the possible-effect refusal the delivery lookup also gives, never a
+   * resend). Only that: a live owner's claim, however old, may still
+   * deliver, so its resend stays free to join the turn (#3660). A read fault
+   * falls through to `held`, which is safe because a resend meets the same
+   * held claim. `held`: still held, or released without sending.
+   */
+  private async awaitHeldTurnKey(
+    threadId: string,
+    clientTurnId: string,
+    signal?: AbortSignal,
+  ): Promise<{ kind: 'turn'; turnId: string } | { kind: 'given-up' | 'held' }> {
+    const ledger = this.turnDeduplicator;
+    if (!ledger) return { kind: 'held' };
+    const turnId = await raceWithSignal(
+      ledger.awaitResolution({ threadId, clientTurnId }),
+      signal,
+    ).catch(() => undefined);
+    if (turnId) return { kind: 'turn', turnId };
+    let givenUp = false;
+    try {
+      givenUp = ledger.givenUp({ threadId, clientTurnId });
+    } catch {
+      givenUp = false;
+    }
+    return givenUp ? { kind: 'given-up' } : { kind: 'held' };
+  }
+
+  /**
+   * #3568: join the turn a live claim holds `clientTurnId` for on
+   * `sessionId`, as a same-key send meeting that claim in `sendTurn` does:
+   * `started` with its turn once it resolves, `indeterminate` when this
+   * process gave the key up after a possible effect, else `in-flight`.
+   */
+  async joinHeldTurnKey(
+    sessionId: string,
+    clientTurnId: string,
+    /** Stops only this wait (the caller went away); nothing is sent either way. */
+    signal?: AbortSignal,
+  ): Promise<
+    | { outcome: 'started'; turnId: string }
+    | { outcome: 'indeterminate' | 'in-flight' }
+  > {
+    this.initialize();
+    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
+    if (held.kind === 'turn')
+      return { outcome: 'started', turnId: held.turnId };
+    return {
+      outcome: held.kind === 'given-up' ? 'indeterminate' : 'in-flight',
+    };
+  }
+
+  inspectTurnDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+  ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
+    this.initialize();
+    return this.conversationLineage.inspectTurnDelivery(
+      conversationId,
+      clientTurnId,
+      authority,
+    );
+  }
+
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,
@@ -5517,6 +5603,24 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  readUsageReceiptExport(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageExport({
+      store,
+      authority,
+      stationId,
+      request,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
   }
 
   /**
@@ -6916,10 +7020,13 @@ export class OrchestrationService {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
+            // The client's own key for the turn.started stamp; Station's.
+            clientKey: stampedClientKey,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
+            clientKey?: string;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -7101,20 +7208,28 @@ export class OrchestrationService {
                 throw new SessionTurnStartIndeterminateError();
               }
               if (claim.kind === 'contended') {
-                const existingTurnId =
-                  claim.turnId ??
-                  (await raceWithSignal(
-                    turnDeduplicator!.awaitResolution({
-                      threadId: turnInput.threadId,
+                const held = claim.turnId
+                  ? { kind: 'turn' as const, turnId: claim.turnId }
+                  : await this.awaitHeldTurnKey(
+                      turnInput.threadId,
                       clientTurnId,
-                    }),
-                    turnInput.signal,
-                  ).catch(() => undefined));
-                if (!existingTurnId) {
-                  throw new Error(
-                    `Turn ${clientTurnId} is already being processed for thread ${turnInput.threadId}.`,
-                  );
+                      turnInput.signal,
+                    );
+                if (held.kind !== 'turn') {
+                  throwIfAborted(turnInput.signal);
+                  if (held.kind === 'given-up') {
+                    orchestrationTurnDedup.add(1, {
+                      provider: adapter.provider,
+                      outcome: 'indeterminate',
+                    });
+                    throw new SessionTurnStartIndeterminateError();
+                  }
+                  // The other attempt still holds the key, or released it
+                  // without sending (its own refusal). Nothing new was sent:
+                  // retryable, so the client re-sends with the same key.
+                  throw new ClientTurnInFlightError();
                 }
+                const existingTurnId = held.turnId;
                 orchestrationTurnDedup.add(1, {
                   provider: adapter.provider,
                   outcome: claim.turnId ? 'hit' : 'hit_inflight',
@@ -7168,8 +7283,17 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
-              const startTurn = async () =>
-                this.sessionExecutionCoordinator.runTurnStart(
+              const startTurn = async () => {
+                // An adapter whose session is visible before its engine start
+                // finishes (an ACP reattach) is waited on HERE, before the
+                // turn-start claim and workspace barrier are taken, so Stop,
+                // End and idle-park never queue behind a long start. The
+                // request's signal ends the wait; nothing reaches the engine.
+                await adapter.whenSessionReady?.(turnInput.threadId, {
+                  signal: turnInput.signal,
+                });
+                throwIfAborted(turnInput.signal);
+                return this.sessionExecutionCoordinator.runTurnStart(
                   turnInput.threadId,
                   async (boundary) => {
                     const current = await this.readSession(
@@ -7298,6 +7422,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -7549,6 +7674,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -7579,7 +7705,10 @@ export class OrchestrationService {
                         return accepted;
                       } catch (error) {
                         if (!providerAccepted) {
-                          this.clientOriginTurns.cancel(turnInput.threadId);
+                          for (const held of this.clientOriginTurns.cancel(
+                            turnInput.threadId,
+                          ))
+                            this.projectAndPublishEvent(held);
                           if (
                             (nativeOutputRelay ||
                               internal?.nativeMemoryReadAuthority) &&
@@ -7791,6 +7920,7 @@ export class OrchestrationService {
                       : identity.key;
                   })(),
                 );
+              };
               try {
                 result = await startTurn();
               } catch (error) {
@@ -7924,6 +8054,8 @@ export class OrchestrationService {
                 ownedClientTurnClaim.resolve(obtainedResult.turnId);
               } else if (claimOutcome === 'release') {
                 ownedClientTurnClaim.release();
+              } else {
+                ownedClientTurnClaim.retain();
               }
             }
             // UX audit T1 review: this is the one moment the service knows
@@ -8233,7 +8365,10 @@ export class OrchestrationService {
                 // Release transient attribution on a failed acknowledgement.
                 // The durable steer claim stays held because engine acceptance
                 // cannot be ruled out.
-                this.clientOriginTurns.cancel(command.threadId);
+                for (const held of this.clientOriginTurns.cancel(
+                  command.threadId,
+                ))
+                  this.projectAndPublishEvent(held);
                 throw steerError;
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(

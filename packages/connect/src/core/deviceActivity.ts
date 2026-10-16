@@ -176,6 +176,8 @@ export function describeDeviceRevocation(device: PairedDevice): string | null {
     return 'Revocation provenance unavailable';
   }
   if (device.revocation.state === 'recorded') {
+    if (device.revocation.actor === 'device-access')
+      return 'Revoked by a device administrator · Owner request';
     return device.revocation.actor === 'operator-credential'
       ? 'Revoked by the Station operator · Owner request'
       : 'Replaced by the same client instance';

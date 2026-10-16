@@ -1,0 +1,7 @@
+{
+  "revision": "319069f8fc7a632c6838cf24cf7cc2945062bde3",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed screenshot-only fix round at319069f8fc7: the two existing approval journeys now attach images after successful focus return and actual Right-region selection. Assertions, fixture authority, retry/deadline settings and manifest are unchanged. Prior restored focused browser run passed all4affected cases. Final complete smoke receipt must come from a frozen revision; the earlier37passed run was NOT_VERIFIED because source identity changed during execution.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

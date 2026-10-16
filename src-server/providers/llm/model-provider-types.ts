@@ -225,6 +225,9 @@ export interface IEmbeddingProvider {
   getPrerequisites?(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]>;
+  /** Provider kind and model, never credentials or endpoints; mirrors the
+   * contracts `IEmbeddingProvider.embeddingIdentity` (#2727). */
+  embeddingIdentity?(): string;
 }
 
 export interface VectorDocument {

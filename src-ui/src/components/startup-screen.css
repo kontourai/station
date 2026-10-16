@@ -1,12 +1,33 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 
+.station-startup-frame {
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+}
+
+.station-startup-frame::backdrop {
+  background: transparent;
+}
+
 .station-startup {
   position: fixed;
   inset: 0;
   background: var(--k-bg);
   color: var(--k-text);
   font-family: var(--k-font-ui);
+}
+
+.station-startup--leaving {
+  opacity: 0;
+  transition: opacity var(--startup-fade, var(--motion-fast)) var(--ease-out);
 }
 
 .station-startup__canvas {
@@ -27,6 +48,19 @@
   width: calc(var(--k-space-6) * 3);
   height: calc(var(--k-space-6) * 3);
   transform: translate(-50%, -50%);
+}
+
+/* The channel's mark, chosen before first paint by startup-theme.js. */
+:root[data-startup-mark="dev"] .station-startup__logo {
+  content: url("/favicon-dev.png");
+}
+
+:root[data-startup-mark="beta"] .station-startup__logo {
+  content: url("/favicon-beta.png");
+}
+
+:root[data-startup-mark="nightly"] .station-startup__logo {
+  content: url("/favicon-nightly.png");
 }
 
 .station-startup__canvas[data-ready="true"] + .station-startup__logo {

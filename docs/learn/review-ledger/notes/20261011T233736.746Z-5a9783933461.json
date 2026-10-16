@@ -1,0 +1,7 @@
+{
+  "revision": "02615cffd37eb47c6375ee894de22da5362c2f96",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Flagged only because docs/reference/connect.md changed (its environment reset sentence now also names personal access tokens). The glossary's links into connect.md and its Personal access token entry (acts as the person, Read optionally Operate, never exceeds their access, can expire or be revoked, cannot manage Station access or a Project's members) remain accurate; it makes no claim about environment reset.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

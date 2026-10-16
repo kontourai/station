@@ -184,6 +184,45 @@ describe('push routes', () => {
     expect(await response.json()).toEqual(REVOKED_CREDENTIAL_REJECTION.body);
   });
 
+  test('#3557: a personal access token is not a device a notification reaches', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: 'orchestration:read orchestration:operate',
+    });
+    const request = harness.pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Casey phone',
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login: 'casey' },
+    });
+    harness.pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId: 'human:tailscale-serve:casey', kind: 'verified-ingress' },
+    );
+    const casey = harness.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const { secret } = await harness.pairing.mintPersonalToken({
+      name: 'script',
+      binding: casey.device.principalBinding!,
+      ownerPrincipalId: 'human:tailscale-serve:casey',
+      scope: 'orchestration:read orchestration:operate',
+      expiresAt: null,
+    });
+    const refused = await harness.request(
+      '/api/system/push-subscribe',
+      harness.authed(secret, fakeSubscription('token')),
+    );
+    expect(refused.status).toBe(403);
+    expect(harness.pairing.listPushSubscriptions()).toEqual([]);
+  });
+
   test('a paired device can subscribe and its subscription is retrievable for fan-out', async () => {
     const harness = createHarness();
     const paired = await pairDevice(harness);

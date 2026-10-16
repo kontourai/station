@@ -1,0 +1,15 @@
+{
+  "revision": "fb0d16aec5f3a402162df1076607eece31242fb0",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed unchanged hook order, required readiness/CI ownership, code-health disposition and merge-queue composition claims against the Gallery change. Advisory pixel reporting changes no hook, required gate, authority or verification schedule; the updated linked testing guide preserves these requirements.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed unchanged deterministic script and evidence requirements against advisory Gallery reporting. Pixel comparison remains exact; the explicit report-only policy does not suppress missing captures, invalid evidence or zero-comparison refusals. Focused runner and pre-push requirements remain unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed unchanged server route/domain, process, batching, lifecycle and test-effectiveness guidance against the linked testing-guide edit. This change alters no server implementation or authority; the shared Gallery fixture supplies real scoped project responses and retains its routes through capture.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed unchanged UI contract, canonical navigation, real interaction, design-system, 44px and evidence rules. The narrow status portal geometry fix preserves role=status and aria-live and adds no visual masking. The linked testing-guide edit preserves focused browser verification and claim boundaries.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed unchanged real-action, typed fixture, rejection, cleanup and browser-evidence requirements against the shared Gallery repair. Selected Project A must return HTTP 200; fixtures remain until capture/recovery completion and clean up on failure; no forced clicks, hidden assertions or success-on-missing-prerequisite behavior introduced.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

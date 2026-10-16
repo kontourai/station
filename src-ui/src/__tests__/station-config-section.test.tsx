@@ -27,6 +27,10 @@ import { SETTINGS_CATALOG } from '../views/settings/settings-catalog';
 const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'approvalGuardian',
   'telemetryEnabled',
+  'productTelemetryEndpoint',
+  'productTelemetryKeyRef',
+  'otelTelemetryEndpoint',
+  'otelTelemetryKeyRef',
   'defaultMaxTurns',
   'defaultMaxOutputTokens',
   'defaultChatFontSize',
@@ -104,6 +108,40 @@ test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and ro
     onChange,
     'Usage telemetry toggle did not update app config',
   ).toHaveBeenCalledWith(expect.objectContaining({ telemetryEnabled: false }));
+});
+
+test('telemetry destination controls edit separate addresses and references without turning keys into settings values', () => {
+  const onChange = vi.fn();
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+    />,
+  );
+  const values = [
+    [
+      'Product receiver address',
+      'https://receiver.test/v1/product/events',
+      'productTelemetryEndpoint',
+    ],
+    [
+      'Product receiver key reference',
+      'product-source',
+      'productTelemetryKeyRef',
+    ],
+    ['Collector address', 'https://collector.test', 'otelTelemetryEndpoint'],
+    ['Collector key reference', 'otel-source', 'otelTelemetryKeyRef'],
+  ] as const;
+  for (const [label, value, key] of values) {
+    const input = screen.getByRole('textbox', { name: label });
+    expect((input as HTMLInputElement).value).toBe('');
+    fireEvent.change(input, { target: { value } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ [key]: value }),
+    );
+  }
 });
 
 /**

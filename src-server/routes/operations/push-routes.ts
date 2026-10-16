@@ -61,12 +61,15 @@ function isValidSubscription(value: unknown): value is WebPushSubscription {
   );
 }
 
-function extractCredential(req: {
-  header: (name: string) => string | undefined;
-}): string | undefined {
+function extractCredential(
+  req: {
+    header: (name: string) => string | undefined;
+  },
+  identifies: (credential: string) => boolean,
+): string | undefined {
   const bearer = parseStrictBearer(req.header('authorization'));
   if (bearer) return bearer;
-  return parseDeviceSessionCookie(req.header('cookie'));
+  return parseDeviceSessionCookie(req.header('cookie'), identifies);
 }
 
 export function createPushRoutes(deps: PushRouteDeps) {
@@ -87,9 +90,13 @@ export function createPushRoutes(deps: PushRouteDeps) {
   );
 
   app.post('/push-subscribe', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) {
+    // #3557: a personal access token is not a device a notification reaches.
+    if (!device || device.credentialKind === 'personal-token') {
       webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }
@@ -110,9 +117,13 @@ export function createPushRoutes(deps: PushRouteDeps) {
   });
 
   app.post('/push-unsubscribe', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) {
+    // #3557: a personal access token is not a device a notification reaches.
+    if (!device || device.credentialKind === 'personal-token') {
       webPushSubscriptions.add(1, { op: 'unsubscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }

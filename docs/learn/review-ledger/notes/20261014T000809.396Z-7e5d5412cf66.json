@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed after a comment-only edit to station-control-policy.ts project-activity block. The SessionDigest section only names the route serving list_project_activity and get_session_digest; it makes no scope or self-row claim, so it stays accurate.","inputs":["docs/architecture/module-map.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}

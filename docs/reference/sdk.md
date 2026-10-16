@@ -12,6 +12,27 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
+`useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
+These read current-process product and OTel delivery status and request explicit
+content-free connection checks. They receive an API base and request authority;
+query caches partition by API base and authority key. Unsupported or malformed
+responses throw instead of supplying healthy defaults. Product commit receipts
+and collector HTTP acceptance remain distinct from downstream delivery. See
+[Monitoring](../guides/monitoring.md#environment-variables) for the operator
+journey and limits. This surface requires a published SDK version containing it.
+
+`@kontourai/station-sdk/secret-bindings` also exports
+`listTelemetrySecretBindings(apiBase, options?)` and
+`updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.
+The latter accepts `bind` or `unbind`, the exact destination grant and an
+`expectedRevision`; it returns confirmed metadata, never key material. The
+`/secret-bindings-query` subpath provides the corresponding
+`useTelemetrySecretBindingsQuery` and `useTelemetrySecretBindingGrantMutation`
+hooks. Pass the render-captured request scope: caches partition by API base and
+authority key, and old responses cannot update a replacement authority. Existing
+MCP consumer inputs and results retain their own separate client functions.
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution
@@ -470,6 +491,22 @@ Returns a query whose data is the current inbound paired-device registry from
 `GET /api/pairing/devices`. Device names are current read-time values; do not
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
+
+#### `useStationPeopleQuery(apiBase?)` and personal access tokens
+
+`useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
+`useSetStationPersonGroupMutation`, `useMintStationPersonTokenMutation` and
+`useRevokeStationPersonTokenMutation` make the operator's changes. A person's
+own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
+`useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
+`StationAccessError` with the HTTP `status` and the server's `code`:
+`isOperatorCredentialRequired` is the 401 a change without the operator
+credential gets, and `isStationAccessUnavailable` is a read refused as not for
+this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+answers the secret once. The mint mutation holds that answer while observed, so
+call its `reset()` once the secret is captured; the settled mutation is then
+evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
+where `revocations` is keyed by each device whose full access was reset.
 
 #### `useConnectionsQuery()`
 
@@ -1602,7 +1639,8 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 
 For a browser already signed in on the Station's same HTTPS origin, call
 `accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
-browser sends its existing `__Host-station-device` and provider cookies through
+browser sends its existing secure `__Host-station-device-<station-id-hash>`
+(legacy `__Host-station-device` is also accepted) and provider cookies through
 `credentials: 'same-origin'`; the SDK never reads or copies cookie values into
 JavaScript. Adoption returns a short-lived account continuation and a bounded,
 read-only alias for that same approved Device. Keep the alias with its
@@ -1826,7 +1864,8 @@ apart. Member pages read history and document only after that publication
 matches the listed item.
 
 These reads require the current account-bound Device, account session and active
-Project membership. Station rechecks the exact Project, publication and Task
+Project membership; an account-tied personal access token (#3586) stands in
+for the Device and session while its account is current. Station rechecks the exact Project, publication and Task
 incarnation during admission and before response delivery, so membership,
 Device or publication revocation closes an in-flight read. A Project membership
 does not publish every Task. Project owner/admin publication remains pending;
@@ -1946,7 +1985,7 @@ providers return a guidance projection instead of local account controls.
 answer to "what authority is this request acting as": the current public home
 identity, the server-resolved effective principal (kind+id only, no contacts),
 and the verified grant tier (operator, or paired Device with its public Device
-id and granted scopes). The read is authorization-neutral — it describes
+id and the scopes it may use: its grant, capped by its person's Station group). The read is authorization-neutral — it describes
 authority and grants nothing — and fails closed on absent, conflicting, or
 revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
 (request scope, credential, headers) as the caller's other protected requests;
@@ -3375,6 +3414,24 @@ Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
 Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
+`getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
+asks Station what became of one send by its `clientTurnId`, for example after
+the connection dropped before the answer arrived. It is read-only and returns a
+`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+again. A Station without the lookup answers `404`, which throws a refusal
+rather than reading as `not-received`. The
+[Session API](session-api.md) defines each outcome.
+`queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
+the conversation's inbox while its turn runs (#3568). It needs `conversationId`
+and `clientTurnId`, takes no approval pick, and resolves
+`{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
+(`outcome: 'queued'`). A Station that predates the inbox, and any send it
+cannot hold (attachments, a target other than the conversation's binding),
+refuses a busy send as before, so keep the message on
+`provider_turn_in_progress` or `provider_session_starting`.
+`listConversationInbox(apiBase, conversationId)` lists the held messages and
+`cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
+one, or dismisses one that is `unconfirmed` or `refused`.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
@@ -4171,6 +4228,24 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Session read-model deadline
+
+`fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
+explicit 30-second timeout for receiving headers, then a 30-second inactivity
+timeout while consuming the JSON body. Each nonempty chunk resets the inactivity
+timeout, so a slow response can take longer than 30 seconds while progressing.
+A five-minute total cap also bounds responses that keep trickling bytes. This
+allows over seven times the observed ~41-second healthy read on a slow tailnet
+link. Either bound rejects with
+`StationRequestTimeoutError`, allowing the stream's owed refresh to run after the query settles; existing cached sessions remain available
+during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+supersedes the configured total request deadline for this call, while retaining
+the five-minute cap. Both timeout paths preserve cancellation from a `Request`
+input and an explicit `init.signal`. This per-read bound does not
+enable a global browser deadline for uploads or installs. See the
+[fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
+[deadline transport](../../packages/sdk/src/client/http.ts).
+
 ## Orchestration approval deadlines
 
 Orchestration command failures retain HTTP status even when the response omits
@@ -4200,7 +4275,10 @@ checked. `useAgentMcpPromptsQuery(agentSlug)` reads
 `runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
 and returns the text to send; a refusal throws the server's reason as a
 `StationHttpError`, retaining HTTP status, machine code, details and
-`Retry-After` when present. See the [commands guide](../guides/commands.md)
+`Retry-After` when present. The prompt-list query cancels its request when the
+query is cancelled, applies a 30-second request deadline, and disables automatic
+retries by default; `config.retry` can override that policy.
+See the [commands guide](../guides/commands.md)
 for scope and limits.
 
 
@@ -4290,6 +4368,47 @@ on error or lost authority. `fetchUsageRollup(query, options?)` forwards capture
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
 
+### Canonical usage export
+
+The [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
+has a separate request/page type in `@kontourai/station-contracts/usage-export`.
+The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
+Supply a captured `options.requestScope` and `query.expectedStationId` alongside
+the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
+have matching current authority; the client provides no ambient host fallback.
+The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
+receipt shapes and observation clocks within the selected UTC window,
+selected source/window/scope, committed order and page size, with
+a 2 MiB response ceiling. It preserves reported currencies, estimates and their
+pricing snapshots, repeated receipt restatements, missing measurements and
+unknown coverage without folding a page into a total.
+
+For a subsequent page, retain `nextCursor` plus a `query.snapshot` containing
+the previous page's `streamEpoch`, `highWater`, and last observation's
+`globalSequence` as `afterGlobalSequence`. A cursor requires that snapshot;
+changed epoch/watermark or non-advancing observations are refused. These values
+are pagination data, never a credential or authorization grant.
+
+`useUsageExportQuery(requestScope, query, config?)` is available from the lazy
+`@kontourai/station-sdk/usage-export-query` entry. Its key partitions API base,
+authority, expected Station, dates, scope, cursor, page size and snapshot.
+Missing scope disables dispatch; the hook withholds cached data during
+revalidation and on errors, never supplies the preceding key as placeholder
+data, and pauses polling on failure. Its explicit `refetch()` rejects on a
+refusal or a selection change while waiting instead of returning retained rows
+or a replacement page as a successful answer. Hosts must
+change the captured scope when current authority changes.
+
+Server export and request-authority controls have executed against mounted
+runtime composition with controlled identity fixtures; SDK fetcher and hook
+controls provide focused client evidence. These checks do not establish live
+source enrollment, deployment, publication or complete synced history.
+`useUsageRollupQuery` retains its interactive limits and is not a complete
+long-term export. No sync/checkpoint consumer is delivered by this page reader;
+#3459/#3460 retain grant, destination credential custody, deletion, restore and
+durable-index acceptance. These SDK source exports require a published release
+containing them.
+
 ### Station peer enrollment
 
 The React-free client entry and SDK root export
@@ -4326,3 +4445,18 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+## Account preferences
+
+The React-free client entry exports `getAccountPreferences(apiBase, options)`
+and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
+`/api/me/preferences`. Use captured request authority in `options.requestScope`.
+The server derives the owner; callers never supply an account or tenant id.
+The returned `revision` is supplied as `If-Match` when replacing model-picker
+preferences. A stale composite update returns 409. Omitted fields stay unchanged; null resets a field. Engine defaults merge by
+engine, and null for one engine removes only that engine's default. Import uses
+`onlyMissing: true` (the fourth argument) to fill unset fields atomically.
+
+These preferences follow one person across devices connected to the same
+Station. They grant no execution permissions and do not provide cross-Station
+cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).

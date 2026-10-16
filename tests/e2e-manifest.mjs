@@ -136,6 +136,41 @@ function containsRouteFulfill(node) {
 }
 
 /**
+ * A route handler that only reads the request and forwards it to the real
+ * Station (`route.request()`, `route.fetch()`), never fulfilling it or handing
+ * the route to anything else: an intercept that holds or observes a real
+ * send, not a receipt mock. Anything else is treated as a mock.
+ */
+function isPassThroughRouteHandler(handler) {
+  if (
+    !handler ||
+    !(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) ||
+    handler.parameters.length === 0 ||
+    !ts.isIdentifier(handler.parameters[0].name)
+  )
+    return false;
+  const routeName = handler.parameters[0].name.text;
+  let passThrough = !containsRouteFulfill(handler.body);
+  const visit = (candidate) => {
+    if (!passThrough) return;
+    if (ts.isIdentifier(candidate) && candidate.text === routeName) {
+      const parent = candidate.parent;
+      if (
+        !parent ||
+        !ts.isPropertyAccessExpression(parent) ||
+        parent.expression !== candidate ||
+        !['request', 'fetch'].includes(parent.name.text)
+      )
+        passThrough = false;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(handler.body);
+  return passThrough;
+}
+
+/**
  * archive#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
  * its body carries the exact provider turn identity — `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) and the route itself
@@ -179,7 +214,8 @@ export function foregroundReceiptFixtureErrors(filePath, text) {
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === 'route' &&
       node.arguments.length > 0 &&
-      isForegroundChatRouteLiteral(node.arguments[0])
+      isForegroundChatRouteLiteral(node.arguments[0]) &&
+      !isPassThroughRouteHandler(node.arguments[1])
     ) {
       mocksChatRoute = true;
     }
@@ -322,7 +358,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
-    'tests/sidebar-file-intake.spec.ts',
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
@@ -346,6 +381,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -354,6 +390,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
+    'tests/composer-capabilities.spec.ts',
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
@@ -542,6 +579,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/message-delivery-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "A composer send whose page is reloaded (the app closed) while its request is still open: once after Station started the turn and the answer was lost, once before Station received it. The reloaded app must ask the delivery lookup about the same key and end with exactly one turn in the conversation's durable event window: no resend after started, one same-key resend after not-received. Live because the turn ledger, the in-flight record and the event window are the real server's.",
     exceptions: [],
   },
   {
@@ -746,16 +793,6 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/sidebar-file-intake.spec.ts',
-    bucket: 'product',
-    surface: 'Sidebar file intake',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
     exceptions: [],
   },
   {
@@ -988,6 +1025,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/transcript-load-stability.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Transcript geometry while a long Markdown-heavy conversation loads on a CPU-throttled 390x844 phone: the conversation-open read and the late row chunks are held behind explicit gates, and a per-frame sampler proves an unscrolled transcript settles at its newest message, a scrolled-up reader keeps their row, the virtualized handoff never blanks the viewport, and Scroll to bottom glides monotonically to the end. Browser-local page.route fixtures only; writes only testInfo outputs.',
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-replay.spec.ts',
     bucket: 'product',
     surface: 'Chat',
@@ -1102,6 +1149,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#613: proves mid-turn queue reorder, inline edit, and boundary drain (in the reordered order) for a runtime chat session via the mock orchestration SSE harness.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/composer-capabilities.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "One composer capability contract at desktop and 390px: a file attached through the start composer's picker is staged by the new chat and rides its first send, and a running turn keeps the paperclip usable while saying why files cannot steer or queue, blocking the send until the turn ends or they are removed, with Stop at the controls row's edge. Page-scoped HTTP fixtures and the mock orchestration SSE harness.",
     exceptions: [],
   },
   {

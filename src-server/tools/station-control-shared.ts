@@ -11,6 +11,10 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../utils/internal-api-token.js';
+import {
+  STATION_CONTROL_OUT_OF_SCOPE_REASONS,
+  type StationControlOutOfScopeReason,
+} from './station-control-policy.js';
 
 let runtimeControlApiBase: string | undefined;
 const executionContexts = new AsyncLocalStorage<TenantExecutionContext>();
@@ -485,19 +489,34 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
  * `code`, so no route's `errorCode()` and no peer-refusal mapping reads it.
  */
 export class LocalStationRefusal extends Error {
+  /**
+   * Why the scope rule refused (`station_control_out_of_scope`), when this
+   * Station's answer named a reason it defines; anything else is dropped.
+   */
+  readonly refusalReason?: StationControlOutOfScopeReason;
+
   constructor(
     readonly refusalCode: string,
     message: string,
+    reason?: unknown,
   ) {
     super(message);
     this.name = 'LocalStationRefusal';
+    if (
+      refusalCode === 'station_control_out_of_scope' &&
+      typeof reason === 'string' &&
+      (STATION_CONTROL_OUT_OF_SCOPE_REASONS as readonly string[]).includes(
+        reason,
+      )
+    )
+      this.refusalReason = reason as StationControlOutOfScopeReason;
   }
 }
 
-function localRefusalCode(error: unknown): string | undefined {
+function localRefusal(error: unknown): LocalStationRefusal | undefined {
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
-    if (current instanceof LocalStationRefusal) return current.refusalCode;
+    if (current instanceof LocalStationRefusal) return current;
     current = current.cause;
   }
   return undefined;
@@ -508,8 +527,9 @@ function localRefusalCode(error: unknown): string | undefined {
  * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
  * code? }` — marked `isError`, so one tool never fails two ways and every
  * consumer that reads the MCP flag sees the failure. `error` is the tool's own
- * sentence. `code` is present only when a `LocalStationRefusal` is in the
- * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
+ * sentence. `code` (and, for `station_control_out_of_scope`, its `reason`)
+ * is present only when a `LocalStationRefusal` is in the error's cause chain:
+ * this Station decided it. Not `toToolEnvelope` itself:
  * its success arm would wrap these tools' results as `{ success, data }`, and
  * its failure arm relays any `.code`, which on these errors can be a peer's.
  */
@@ -519,13 +539,15 @@ export async function delegationToolResult(
   try {
     return jsonToolResult(await run());
   } catch (error) {
-    const code = localRefusalCode(error);
+    const refusal = localRefusal(error);
     // A `success: false` body, so `jsonToolResult` marks it `isError`
-    // (catch s5-436).
+    // (catch s5-436). A scope refusal's reason rides beside its code, as the
+    // route's own body carries it.
     return jsonToolResult({
       success: false,
       error: error instanceof Error ? error.message : 'Request failed',
-      ...(code === undefined ? {} : { code }),
+      ...(refusal ? { code: refusal.refusalCode } : {}),
+      ...(refusal?.refusalReason ? { reason: refusal.refusalReason } : {}),
     });
   }
 }

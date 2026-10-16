@@ -70,6 +70,10 @@ export class BedrockEmbeddingProvider implements IEmbeddingProvider {
     return 1024;
   }
 
+  embeddingIdentity(): string {
+    return `bedrock-embedding:model=${this.model}:normalize=true`;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       if (this.authMode === 'api-key') {

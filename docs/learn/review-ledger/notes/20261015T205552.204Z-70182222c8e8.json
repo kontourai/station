@@ -1,0 +1,7 @@
+{
+  "revision": "736cf9c110ba2ab1bc14d6d1e1fd811af71f1089",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed only the hosted Gallery baseline delta at 736cf9c110b. Canonical partial regeneration copied four unchanged hosted PNGs from artifact12005373087/run38800945432: desktop settings, both mobile access-error backdrops and the connection-banner page. Independent inspection confirmed those surfaces are explained by the new account section; error-dialog interiors and banner chrome are pixel-identical to their prior captures. The four selected comparator checks pass. The complete comparator remains red for18 other screens; inherited main differences, mixed palette pixels, mobile overview scroll/focus and the33-pixel consent difference were not accepted. Capture/diff scripts, volatility and comparison rules are unchanged; the guide command and evidence-boundary claims remain accurate.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

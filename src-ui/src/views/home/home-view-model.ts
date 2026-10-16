@@ -5,7 +5,10 @@ import {
 import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import {
+  isFirstSendFailure,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -43,6 +46,7 @@ export interface HomeWorkItem {
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
   kindLabel:
     | 'Durable Task'
+    | `Task · ${(typeof TASK_STATUS_LABELS)[TaskRecord['status']]}`
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
@@ -850,14 +854,26 @@ function isPersistedTaskCorrelation(
   );
 }
 
+const TASK_STATUS_LABELS = {
+  todo: 'To do',
+  ready: 'To do',
+  triage: 'To do',
+  in_progress: 'In progress',
+  blocked: 'Blocked',
+  review: 'In review',
+  verification: 'In review',
+  done: SESSION_STATUS_WORDS.done,
+  canceled: 'Canceled',
+} as const satisfies Record<TaskRecord['status'], string>;
+
 function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
   return {
     id: task.id,
     kind: 'task',
-    kindLabel: 'Durable Task',
+    kindLabel: `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
-    agentLabel: task.agentId || 'Agent unavailable',
+    agentLabel: task.agentId || 'No agent assigned',
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
     lifecycleLabel: taskLifecycleLabel(task),
@@ -866,7 +882,8 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
 }
 
 function taskLifecycleLabel(task: TaskRecord): HomeWorkItem['lifecycleLabel'] {
-  if (task.status === 'blocked') return 'Needs attention';
+  if (['blocked', 'review', 'verification'].includes(task.status))
+    return 'Needs attention';
   if (task.status === 'in_progress') return 'Running';
   if (task.status === 'done') return 'Completed';
   if (task.status === 'canceled') return 'Stopped';

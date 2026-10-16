@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed after docs/reference/api.md gained one sentence in Station Control Project Activity (the caller's own conversation is listed whatever its scope). This guide does not describe list_project_activity or the session-activity routes; no prose change needed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

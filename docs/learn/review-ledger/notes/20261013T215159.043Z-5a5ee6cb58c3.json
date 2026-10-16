@@ -1,0 +1,7 @@
+{
+  "revision": "54a521873111e6c9f842ebaaa08f0053b5c20c26",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the status-pill motion lifetime against live-status.css and rendered Gallery/WAAPI control. Only finite pill entry, body morph and details entry use backwards fill; final keyframes opacity1/transformnone match base styles. Infinite orbit, glyph settle, exit and celebration declarations remain unchanged. Before-source control failed retainedCount1; properly admitted fixed-source three-scene capture passes retainedCount0/restnone-opacity1 and primary/aux identicalRGBA. Status component suite12PASS. One earlier fixed-source run was dispatched after CPU refusal and is diagnostic only. Exact Linux3pixel cure, repeat determinism, native/platform and release proof remain unverified.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/status/live-status.css"]}
+  ]
+}

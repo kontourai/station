@@ -624,8 +624,15 @@ other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
-credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
+credentials cannot create pairing offers. An explicitly promoted
+`access:devices` Device can list, change scopes, revoke and remove revoked
+records using the same authenticated principal in the Paired devices panel.
+Only the operator can grant or remove `access:devices`; a person-bound holder
+also needs the Admin group ceiling, and account-bound guest route restrictions
+remain independent. Other scopes, including `approval:full-access`, do not
+confer administration. See [device administration](api.md#administer-paired-device-access).
+A device explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's
 local grant, minted using proof of Station-home possession, can manage pairing
 within its current scope. Browser launcher grants do not inherit that authority.
@@ -634,7 +641,8 @@ The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,
 and prints the new secret to stdout after confirmation. Keep that output out of
 logs and shared terminals. `station environment reset` replaces the environment
-ID and operator credential and clears paired-device authority; its output is
+ID and operator credential and clears paired-device authority and personal
+access tokens; its output is
 metadata rather than the new credential. Both support explicit `--force` to
 bypass the prompt. The separately installed CLI refuses these operations when
 no host security service is supplied; use the host's repository launcher or
@@ -1116,3 +1124,20 @@ triangle. This richer UI state is distinct from `ConnectionStatus`.
 ```tsx
 <ConnectionStatusDot status="connected" size={10} />
 ```
+
+## Browser session isolation on one host
+
+New browser sessions use an HttpOnly cookie whose name includes a stable hash
+of the Station environment identity. Signing in to another Station on the same
+host no longer replaces that cookie. HTTPS retains the `__Host-` prefix,
+Secure, Path=/ and SameSite=Strict; loopback HTTP retains its separate naming.
+The name is a namespace, not authentication: each Station still validates the
+credential, scope, locality and revocation through its own authority.
+
+Legacy cookie names remain readable. With several Station cookies present,
+the reader accepts exactly one credential recognized by the current Station;
+ambiguous current credentials, duplicate names and malformed Station cookies
+are refused. The same selection is used by consent, notification registration
+and secure application-session adoption. Unrelated browser cookies do not
+grant Station authority. A fresh launcher link can also be opened in an
+existing access screen without reloading; consumed links are never replayed.

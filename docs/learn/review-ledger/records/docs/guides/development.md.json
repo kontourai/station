@@ -104,7 +104,13 @@
 
     "package.json#/engines",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    "src-ui/src/components/chat/transcriptLayoutTrace.ts",
+
+    "src-ui/src/components/chat/transcriptLayoutTracer.ts",
+
+    "tests/transcript-load-stability.spec.ts"
   ],
 
   "checks": [

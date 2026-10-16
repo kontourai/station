@@ -147,6 +147,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'account default'
   | 'station default'
   | 'adapter default';
 
@@ -176,12 +177,14 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  personalDefault,
   stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
    * engine whose adapter reads the knob at all — passing it for any other
@@ -211,6 +214,18 @@ export function resolveEffectiveApprovalMode({
       mode: agentDefaultMode,
       label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
       source: 'agent default',
+    };
+  }
+
+  if (
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(personalDefault) &&
+    personalDefault !== 'connection-default'
+  ) {
+    return {
+      mode: personalDefault,
+      label: `${approvalModeLabel(personalDefault)} (your default)`,
+      source: 'account default',
     };
   }
 
@@ -287,6 +302,7 @@ export interface SessionApprovalOverride {
 export interface ApprovalPostureState {
   /** A pick the server has not received yet. A Default pick is a decision too. */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** The latest recorded decision this client has folded. */
   approvalPosture?: ApprovalMode;
   /** Its server global sequence; absent when only this client's send vouches for it. */
