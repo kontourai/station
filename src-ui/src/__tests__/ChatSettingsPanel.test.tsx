@@ -269,9 +269,7 @@ describe('ChatSettingsPanel accessibility', () => {
     });
   });
 
-  // The device-only promise covers the preferences; it must not read as a
-  // claim about the summary action, which runs on the server.
-  test('scopes the device-only caption to preferences and says the summary runs on the server', () => {
+  test('distinguishes account display preferences, device options and server summary actions', () => {
     render(
       <ChatSettingsPanel
         {...props()}
@@ -285,7 +283,7 @@ describe('ChatSettingsPanel accessibility', () => {
     );
     expect(
       screen.getByText(
-        'Preferences are saved to this device only — never sent to the server.',
+        'Chat display preferences sync with your account when signed in. Device-specific options stay on this device.',
       ),
     ).toBeTruthy();
     const group = screen

@@ -100,13 +100,9 @@ export function ChatSettingsPanel({
       <h3 id="chat-settings-title" className="chat-settings-modal__title">
         Chat Settings
       </h3>
-      {/* archive#settings-revamp: the preferences are device-scope
-            (docs/design/settings-architecture.md §3 S4), consistent with the
-            /settings "This device" scope caption. The caption names the
-            preferences, not the panel: "This session" below is an action that
-            runs on the server, and says so. */}
       <p className="chat-settings-modal__caption">
-        Preferences are saved to this device only — never sent to the server.
+        Chat display preferences sync with your account when signed in.
+        Device-specific options stay on this device.
       </p>
 
       <div className="chat-settings-modal__section">
