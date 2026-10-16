@@ -43,6 +43,10 @@ retry, credential singleton, engine loop, or new Agent definition schema.
 
 ## Setup
 
+Task graph requests preserve a refused HTTP status in `StationHttpError.status`.
+For example, proposal acceptance returning 409 requires a fresh matching
+proposal; retrying the same mismatched brief cannot accept it.
+
 The React-free `/client` entry exports
 `readConversation(apiBase, conversationId, query?, options?)` for compact,
 paginated conversation history. `query` accepts `cursor`, `aroundMessageId` and

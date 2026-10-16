@@ -99,7 +99,7 @@ async function fixture(
     readAssistantTurn: read,
     seedProposalBrief: (input) => room.seedProposalBrief(input),
   });
-  const accept = (changes: Partial<typeof input> = {}) =>
+  const accept = (changes: Partial<typeof input> & { agentId?: string } = {}) =>
     app.request('/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -341,4 +341,12 @@ test('a readable ordinary answer cannot attest a proposal', async () => {
   });
   expect((await accept()).status).toBe(409);
   expect(service.listTasks()).toEqual([]);
+});
+
+test('rejects an assigned agent on proposal acceptance without creating a Task', async () => {
+  const { accept, service } = await fixture();
+  const response = await accept({ agentId: 'station' });
+  expect(response.status).toBe(409);
+  expect(service.listTasks()).toEqual([]);
+  expect(service.readSessionRelations('shaping-session').links).toEqual([]);
 });

@@ -1504,7 +1504,7 @@ export function NewChatModal({
               onClick={() => setShaping(false)}
               aria-label="Remove New Task mode"
             >
-              New Task ×
+              Shaping a Task ×
             </Button>
           )}
           <ResponsiveDialogCloseButton

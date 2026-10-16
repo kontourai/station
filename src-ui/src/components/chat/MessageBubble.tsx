@@ -975,6 +975,7 @@ function MessageBubbleComponent({
             <TaskProposalCard
               proposal={taskProposal}
               sessionId={answerSessionId}
+              conversationId={activeSession.conversationId}
               turnId={msg.turnId}
               projectId={activeSession.projectSlug}
             />

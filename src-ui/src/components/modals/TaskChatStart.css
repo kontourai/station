@@ -22,6 +22,10 @@
 }
 
 .task-chat-start__chip {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  margin-inline: var(--k-space-3);
   min-height: 44px;
   min-width: 44px;
 }

@@ -1105,7 +1105,7 @@ export function hydrateActiveChats(
       defaultModelSource: text(
         session.defaultModelSource,
       ) as EffectiveModelSource,
-      taskShaping: session.taskShaping === true,
+      taskShaping: session.taskShaping === true || undefined,
       projectSlug: text(session.projectSlug),
       projectName: text(session.projectName),
       executionMode: text(session.executionMode) as ExecutionMode,

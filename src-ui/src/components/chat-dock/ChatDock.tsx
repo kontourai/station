@@ -2643,7 +2643,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 updateChat(activeSessionId!, { taskShaping: false })
               }
             >
-              New Task ×
+              Shaping a Task ×
             </Button>
           )}
 

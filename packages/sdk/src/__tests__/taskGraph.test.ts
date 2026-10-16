@@ -74,6 +74,25 @@ describe('taskGraph SDK domain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves a proposal refusal status for the accepting UI', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Accepted proposal must match the shaping answer',
+        }),
+        { status: 409 },
+      ),
+    );
+    await expect(
+      createTask({ projectId: 'alpha', title: 'Proposal' }),
+    ).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 409,
+      message: 'Accepted proposal must match the shaping answer',
+    });
+  });
+
   it('fetches tasks for a project', async () => {
     mockJsonResponse({ success: true, data: [{ id: 'task-1' }] });
 

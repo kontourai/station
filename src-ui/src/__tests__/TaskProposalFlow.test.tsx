@@ -4,7 +4,7 @@ import type {
   TaskProposal,
   TaskRecord,
 } from '@kontourai/station-contracts/task-graph';
-import { taskQueries } from '@kontourai/station-sdk';
+import { StationHttpError, taskQueries } from '@kontourai/station-sdk';
 import { QueryClient } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -187,5 +187,91 @@ test('a reloaded accepted card opens its linked Task without accepting again', (
   expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
   expect(host.navigate).toHaveBeenCalledWith('/tasks/accepted-task');
+  expect(host.create).not.toHaveBeenCalled();
+});
+
+test('acceptance clears shaping mode after the conversation moves to a new Session', async () => {
+  activeChatsStore.initChat('conversation-tab', {
+    agentSlug: 'station',
+    agentName: 'Station',
+    title: 'Shaping',
+  });
+  activeChatsStore.updateChat('conversation-tab', {
+    conversationId: 'shape-conversation',
+    currentSessionId: 'replacement-session',
+    taskShaping: true,
+  });
+  activeChatsStore.initChat('other-tab', {
+    agentSlug: 'station',
+    agentName: 'Station',
+    title: 'Other shaping',
+  });
+  activeChatsStore.updateChat('other-tab', {
+    conversationId: 'other-conversation',
+    taskShaping: true,
+  });
+  render(
+    <TaskProposalCard
+      proposal={proposal}
+      sessionId="historical-session"
+      turnId="shape-turn"
+      conversationId="shape-conversation"
+      projectId="alpha"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+  await waitFor(() =>
+    expect(host.navigate).toHaveBeenCalledWith('/tasks/accepted-task'),
+  );
+  expect(activeChatsStore.getSnapshot()['conversation-tab'].taskShaping).toBe(
+    false,
+  );
+  expect(activeChatsStore.getSnapshot()['other-tab'].taskShaping).toBe(true);
+  activeChatsStore.removeChat('conversation-tab');
+  activeChatsStore.removeChat('other-tab');
+});
+
+test('a proposal mismatch asks for a fresh proposal instead of retrying', async () => {
+  host.create.mockRejectedValue(
+    new StationHttpError(
+      409,
+      'Accepted proposal must match the shaping answer',
+    ),
+  );
+  render(
+    <TaskProposalCard
+      proposal={proposal}
+      sessionId="shape-session"
+      turnId="shape-turn"
+      projectId="alpha"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    "This proposal no longer matches the agent's answer. Ask the agent for a fresh proposal.",
+  );
+  expect(host.navigate).not.toHaveBeenCalled();
+});
+
+test('a brief expanded past the limit by checklist formatting asks for a shorter proposal', async () => {
+  const nearLimit = {
+    title: 'Large checklist',
+    goal: 'g'.repeat(11600),
+    doneWhen: Array.from({ length: 32 }, () => 'done'),
+    firstStep: 'Start',
+  };
+  expect(JSON.stringify(nearLimit).length).toBeLessThan(12000);
+  render(
+    <TaskProposalCard
+      proposal={nearLimit}
+      sessionId="shape-session"
+      turnId="shape-turn"
+      projectId="alpha"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Ask the agent for a shorter proposal',
+  );
   expect(host.create).not.toHaveBeenCalled();
 });

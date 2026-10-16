@@ -3,6 +3,7 @@ import {
   taskProposalBrief,
 } from '@kontourai/station-contracts/task-graph';
 import {
+  StationHttpError,
   taskQueries,
   useCreateTaskMutation,
   useQueryClient,
@@ -20,11 +21,13 @@ export function TaskProposalCard({
   sessionId,
   turnId,
   projectId,
+  conversationId,
 }: {
   proposal: TaskProposal;
   sessionId: string;
   turnId: string;
   projectId?: string;
+  conversationId?: string;
 }) {
   const create = useCreateTaskMutation();
   const queryClient = useQueryClient();
@@ -44,7 +47,7 @@ export function TaskProposalCard({
       link.metadata?.proposalBriefSaved === true,
   )?.sourceId;
   const taskId = acceptedId ?? priorId;
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string>();
   async function accept() {
     if (create.isPending) return;
     if (taskId) {
@@ -52,13 +55,20 @@ export function TaskProposalCard({
       return;
     }
     if (!selectedProject) return;
-    setFailed(false);
+    setFailure(undefined);
+    const brief = taskProposalBrief(proposal);
+    if (brief.length > 12_000) {
+      setFailure(
+        'This proposal is too long to save. Ask the agent for a shorter proposal (under 12,000 characters including the checklist).',
+      );
+      return;
+    }
     try {
       const task = await create.mutateAsync({
         projectId: selectedProject,
         title: proposal.title,
         description: proposal.goal,
-        proposalBrief: taskProposalBrief(proposal),
+        proposalBrief: brief,
         createdBy: 'user',
         shapingSource: { sessionId, turnId },
       });
@@ -66,7 +76,11 @@ export function TaskProposalCard({
       for (const [key, chat] of Object.entries(
         activeChatsStore.getSnapshot(),
       )) {
-        if (key === sessionId || chat.currentSessionId === sessionId)
+        if (
+          key === sessionId ||
+          chat.currentSessionId === sessionId ||
+          (conversationId && chat.conversationId === conversationId)
+        )
           activeChatsStore.updateChat(key, { taskShaping: false });
       }
       await queryClient.invalidateQueries({
@@ -78,8 +92,12 @@ export function TaskProposalCard({
         refetchType: 'all',
       });
       navigate(`/tasks/${encodeURIComponent(task.id)}`);
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      setFailure(
+        error instanceof StationHttpError && error.status === 409
+          ? "This proposal no longer matches the agent's answer. Ask the agent for a fresh proposal."
+          : 'Task creation or brief saving did not finish. Your proposal is kept. Retry Create Task to finish saving; an existing Task will be reused.',
+      );
     }
   }
   return (
@@ -121,12 +139,7 @@ export function TaskProposalCard({
         Your chat stays as it is. Creating keeps this brief and links the
         conversation.
       </p>
-      {failed && (
-        <p role="alert">
-          Task creation or brief saving did not finish. Your proposal is kept.
-          Retry Create Task to finish saving; an existing Task will be reused.
-        </p>
-      )}
+      {failure && <p role="alert">{failure}</p>}
       <Button
         variant="primary"
         disabled={!selectedProject && !taskId}
