@@ -705,43 +705,51 @@ describe('status facts for chat, task and merged rows', () => {
   });
 
   it.each([
-    ['todo', 'Task · To do', 'idle', 'idle'],
-    ['ready', 'Task · To do', 'idle', 'idle'],
-    ['triage', 'Task · To do', 'idle', 'idle'],
-    ['in_progress', 'Task · In progress', 'running', 'running'],
-    ['review', 'Task · In review', 'needsYou', 'waiting'],
-    ['verification', 'Task · In review', 'needsYou', 'waiting'],
-    ['blocked', 'Task · Blocked', 'needsYou', 'blocked'],
-    ['done', 'Task · Done', 'finished', 'done'],
-    ['canceled', 'Task · Canceled', 'finished', 'stopped'],
+    ['todo', 'Task · To do', 'idle', 'idle', 'neutral'],
+    ['ready', 'Task · To do', 'idle', 'idle', 'neutral'],
+    ['triage', 'Task · To do', 'idle', 'idle', 'neutral'],
+    ['in_progress', 'Task · In progress', 'idle', 'idle', 'neutral'],
+    ['in_progress', 'Task · In progress', 'running', 'running', 'active', 'T'],
+    ['review', 'Task · In review', 'needsYou', 'waiting', 'attention'],
+    ['verification', 'Task · In review', 'needsYou', 'waiting', 'attention'],
+    ['blocked', 'Task · Blocked', 'needsYou', 'blocked', 'attention'],
+    ['done', 'Task · Done', 'finished', 'done', 'neutral'],
+    ['canceled', 'Task · Canceled', 'finished', 'stopped', 'neutral'],
   ] as const)(
-    'an unassigned %s Task shows Task state without a session lifecycle',
-    (status, line, lane, rung) => {
+    'a %s Task shows Task state using its bound-session evidence',
+    (status, line, lane, rung, tone, sessionId) => {
       const task: TaskRecord = {
         id: 'task-1',
         projectId: 'project-alpha',
         title: 'Plan the release',
         status,
+        sessionId,
         priority: 'normal',
         description: '',
         createdBy: 'user',
         createdAt: '2026-09-30T09:00:00.000Z',
         updatedAt: '2026-09-30T10:00:00.000Z',
       };
-      const row = build(null, [], [task]);
+      const row = build(null, sessionId ? [RUNNING_TOOL] : [], [task]);
       expect(row.item).toMatchObject({
         kind: 'task',
         title: 'Plan the release',
         agentLabel: 'No agent assigned',
-        taskSessionId: undefined,
+        taskSessionId: sessionId,
       });
       expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
         line,
         lane,
         rung,
+        tone,
       });
       // Home partitions without facts; both consumers must name the same state.
-      expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
+      expect(workStatus(row.item, NOW)).toMatchObject({
+        line,
+        lane,
+        rung,
+        tone,
+      });
     },
   );
 

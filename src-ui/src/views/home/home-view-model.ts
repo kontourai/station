@@ -879,7 +879,8 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
 function taskLifecycleLabel(task: TaskRecord): HomeWorkItem['lifecycleLabel'] {
   if (['blocked', 'review', 'verification'].includes(task.status))
     return 'Needs attention';
-  if (task.status === 'in_progress') return 'Running';
+  if (task.status === 'in_progress')
+    return task.sessionId ? 'Running' : 'Ready';
   if (task.status === 'done') return 'Completed';
   if (task.status === 'canceled') return 'Stopped';
   return 'Ready';
