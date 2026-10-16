@@ -3,6 +3,7 @@ import {
   createWholeTaskBasisPaneInstance,
   WORKSPACE_BASIS_PANE_DESCRIPTOR,
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   bindStarterWork,
@@ -917,7 +918,7 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
       <dl className="task-workspace__details">
         <TaskDetail label="Task ID" value={task.id} />
         <TaskDetail label="Title" value={task.title} />
-        <TaskDetail label="Status" value={task.status} />
+        <TaskDetail label="Status" value={taskStatusLabel(task.status)} />
         <TaskDetail label="Project" value={task.projectId} />
         <TaskDetail label="Last action origin" value={originDetail} />
       </dl>

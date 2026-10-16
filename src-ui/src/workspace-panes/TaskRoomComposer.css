@@ -49,7 +49,7 @@
   min-height: calc(var(--k-space-6) + var(--k-space-3));
   display: flex;
   align-items: center;
-  min-width: 0;
+  min-width: max-content;
   gap: var(--k-space-2);
   margin: 0;
   font-size: var(--k-text-xs);
