@@ -3603,6 +3603,9 @@ export class StationRuntime {
           readSecureDeviceCookie: (request) =>
             parseSecureDeviceSessionCookie(
               request.headers.get('cookie') ?? undefined,
+              (candidate) =>
+                this.environmentSecurityService.identifyDevice(candidate) !==
+                null,
             ),
           issueAlias: (parentCredential, deviceId, aliasId) =>
             this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(

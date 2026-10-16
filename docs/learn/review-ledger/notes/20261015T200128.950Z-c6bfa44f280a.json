@@ -1,0 +1,7 @@
+{
+  "revision": "96c7e8cbdf387cfe5f7d6d9faf228cec7e2137b0",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the upstream deploy-ledger JSON and generated Markdown added by the merged main commits as historical release records. No onboarding change modifies those records, generator, release authority or publication behavior. This bounded source review does not requalify any listed publication.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

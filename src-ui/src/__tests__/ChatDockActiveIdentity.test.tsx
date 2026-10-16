@@ -62,7 +62,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     ).toBe('Claude Code · GPT-6.1 Sol · via home-media');
   });
 
-  test('leads with the agent, then the title, with engine and model as one token behind it', () => {
+  test('leads with the conversation title and keeps assistant and model context together', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -74,7 +74,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
 
     // Order is the claim, not just presence: agent → title → engine · model.
     expect(identityText()).toBe(
-      'CodexPolish the Station dockClaude Code · Opus 5 (1M context)',
+      'Polish the Station dockCodexClaude Code · Opus 5 (1M context)',
     );
     expect(
       document.querySelector('.chat-dock__active-identity-engine')?.textContent,
@@ -166,7 +166,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     );
 
     // One "Station", not two: the agent's own name now carries that identity.
-    expect(identityText()).toBe('StationPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockStation');
     expect(
       document.querySelector('.chat-dock__active-identity-engine'),
     ).toBeNull();
@@ -200,7 +200,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       (swatch as HTMLElement).style.getPropertyValue('--identicon-hue'),
     ).toBe(String(identiconHue('release-bot')));
-    expect(identityText()).toBe('Release BotPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockRelease Bot');
   });
 
   test('an unresolved agent still attributes from the session, and claims no engine', () => {
@@ -209,7 +209,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     // `agentName`/`agentSlug` are the session's own committed facts, so the
     // avatar and name survive a catalog miss; the engine is not derivable
     // without the catalog row, so nothing is asserted about it.
-    expect(identityText()).toBe('CodexPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockCodex');
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   buildSetupBannerContent,
   type SetupBannerContent,
+  setupBannerVariant,
   shouldShowSetupBanner,
 } from '../components/onboardingGateUtils';
 import { useSystemStatus } from '../hooks/useSystemStatus';
@@ -202,17 +203,20 @@ export function shouldRenderSetupLauncher({
   setupVisible,
   setupContent,
   pathname,
+  conversationOpen = false,
 }: {
   credentialRequired: boolean;
   setupVisible: boolean;
   setupContent: SetupBannerContent | null;
   pathname: string;
+  conversationOpen?: boolean;
 }): boolean {
   return (
     !credentialRequired &&
     setupVisible &&
     setupContent !== null &&
-    !pathname.startsWith('/connections')
+    pathname === '/' &&
+    !conversationOpen
   );
 }
 
@@ -254,7 +258,10 @@ export function useOnboardingSetupState(): OnboardingSetupState {
   );
   const chapterOpen = useFirstRunChapterOpen();
   const launcherWouldShow =
-    !!status && shouldShowSetupBanner(status) && !dismissed;
+    !!status &&
+    shouldShowSetupBanner(status) &&
+    setupBannerVariant(status) !== 'engine-needs-attention' &&
+    !dismissed;
   // AT MOST ONE FIRST-RUN OVERLAY. The chapter is the newer, modal surface and
   // it is already on top; a launcher rendered under its scrim is unreachable,
   // which is worse than not rendering it at all. When the chapter closes this

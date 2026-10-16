@@ -235,7 +235,7 @@ async function seedAndOpenWorkBoard(
     data?: { id?: string };
   }>(page, `/api/projects/${encodeURIComponent(projectSlug)}`);
   if (!project.success || !project.data?.id)
-    throw new Error('Work Board Project identity is unavailable');
+    throw new Error('Work Board Project name is unavailable');
   let revision = (
     await apiJson<{ success: boolean; data?: SpatialBoardSeed }>(
       page,

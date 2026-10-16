@@ -77,7 +77,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
-| `attachedSessionsOutsideProjects` | boolean | `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
+| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
 ### telemetry destinations
@@ -293,7 +293,7 @@ Defines a single agent. The directory name is the agent's slug.
 | field | type | required | description |
 |---|---|---|---|
 | `name` | string | yes | Display name shown in the UI |
-| `prompt` | string | yes | System prompt for this agent. Supports `{{key}}` template variables |
+| `prompt` | string | yes | Agent instructions. Supports `{{key}}` template variables; delivered through the engine’s system channel where supported, or with the first message on first-turn engines such as Codex. |
 | `description` | string | no | Short description shown in agent pickers |
 | `icon` | string | no | Icon identifier for the UI |
 | `model` | string | no | Legacy model selection fallback. `execution.modelId` and the selected Model connection determine current routing; the ID is not necessarily a Bedrock model. |

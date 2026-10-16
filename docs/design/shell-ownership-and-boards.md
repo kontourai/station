@@ -178,7 +178,7 @@ The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
 the old Customize/System disclosure groups. The October settings simplification
 supersedes that entry-point placement: a separate **Customize** button opens a
-chooser for Agents, Skills, Engines & Models, and Plugins, with Developer gated
+chooser for Agents, Skills, Connections, and Plugins, with Developer gated
 by this device's flag. Schedule is a footer destination. Settings contains only
 settings-topic navigation; its gear remains available from management screens.
 
