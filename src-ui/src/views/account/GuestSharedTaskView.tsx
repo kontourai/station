@@ -272,6 +272,10 @@ export function GuestSharedTaskView({
     [apiBase, client, principalId, project.id, project.slug],
   );
 
+  const refreshTasks = () => {
+    setNotice(undefined);
+    void tasks.refetch();
+  };
   if (scopeLost) return null;
   if (tasks.isPending)
     return <SkeletonList count={1} label="Reading shared Tasks" />;
@@ -288,49 +292,44 @@ export function GuestSharedTaskView({
       className="account-entry__shared-tasks"
       aria-labelledby="shared-tasks-title"
     >
-      <div className="account-entry__shared-tasks-heading">
-        <h4 id="shared-tasks-title">Shared Tasks</h4>
-        <Button
-          onClick={() => {
-            setNotice(undefined);
-            void tasks.refetch();
-          }}
-        >
-          Refresh shared Tasks
-        </Button>
+      <div hidden={!!selected}>
+        <div className="account-entry__shared-tasks-heading">
+          <h4 id="shared-tasks-title">Shared Tasks</h4>
+          <Button onClick={refreshTasks}>Refresh shared Tasks</Button>
+        </div>
+        {notice && <p role="status">{notice}</p>}
+        {tasks.data.length === 0 ? (
+          <Empty
+            variant="compact"
+            label="Tasks are not currently shared from this Project."
+          />
+        ) : (
+          <ul className="account-entry__shared-task-list">
+            {tasks.data.map((summary: ProjectSharedTaskSummary) => (
+              <li key={summary.shareId}>
+                <div>
+                  <strong>{summary.task.title}</strong>
+                  <small>{taskStatusLabel(summary.task.status)}</small>
+                </div>
+                <Button
+                  ref={(element) => {
+                    if (element)
+                      taskTriggers.current.set(summary.task.id, element);
+                    else taskTriggers.current.delete(summary.task.id);
+                  }}
+                  onClick={() => {
+                    setNotice(undefined);
+                    setSelectedTaskId(summary.task.id);
+                    setTab('Chat');
+                  }}
+                >
+                  Read shared Task
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      {notice && <p role="status">{notice}</p>}
-      {tasks.data.length === 0 ? (
-        <Empty
-          variant="compact"
-          label="Tasks are not currently shared from this Project."
-        />
-      ) : (
-        <ul className="account-entry__shared-task-list">
-          {tasks.data.map((summary: ProjectSharedTaskSummary) => (
-            <li key={summary.shareId}>
-              <div>
-                <strong>{summary.task.title}</strong>
-                <small>{taskStatusLabel(summary.task.status)}</small>
-              </div>
-              <Button
-                ref={(element) => {
-                  if (element)
-                    taskTriggers.current.set(summary.task.id, element);
-                  else taskTriggers.current.delete(summary.task.id);
-                }}
-                onClick={() => {
-                  setNotice(undefined);
-                  setSelectedTaskId(summary.task.id);
-                  setTab('Chat');
-                }}
-              >
-                Read shared Task
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
       {selected && (
         <section
           className="account-entry__shared-task-detail task-room-guest"
@@ -338,6 +337,14 @@ export function GuestSharedTaskView({
         >
           <div className="account-entry__shared-task-heading">
             <h5>{selected.task.title}</h5>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Refresh shared Tasks"
+              onClick={refreshTasks}
+            >
+              Refresh
+            </Button>
             <Button
               onClick={() => {
                 const taskId = selected.task.id;
@@ -393,15 +400,15 @@ export function GuestSharedTaskView({
           {(tab === 'Chat' ? history.isPending : document.isPending) && (
             <SkeletonList count={2} label="Reading shared Task content" />
           )}
-          {(tab === 'Chat' ? history.isError : document.isError) && !scopeLost && (
-            <p role="alert">Shared Task content is unavailable.</p>
-          )}
+          {(tab === 'Chat' ? history.isError : document.isError) &&
+            !scopeLost && (
+              <p role="alert">Shared Task content is unavailable.</p>
+            )}
           {history.data?.kind === 'available' ? (
             <div
               className="account-entry__shared-history"
               hidden={tab !== 'Chat'}
             >
-              <h6>Shared messages</h6>
               {history.data.hasMore && (
                 <p role="status">More shared messages are available.</p>
               )}
@@ -419,14 +426,25 @@ export function GuestSharedTaskView({
                   label="Human messages were not published in this page."
                 />
               ) : (
-                <ol>
-                  {history.data.records.map((record) => (
-                    <li key={record.sequence}>
-                      <RoomAvatar name={record.actor.label} />
-                      <strong>{record.actor.label}</strong>
-                      <SharedMessageText text={record.body.text} />
-                    </li>
-                  ))}
+                <ol aria-label="Shared messages">
+                  {history.data.records.map((record, index, records) => {
+                    const grouped =
+                      records[index - 1]?.actor.label === record.actor.label;
+                    return (
+                      <li
+                        key={record.sequence}
+                        className={
+                          grouped
+                            ? 'task-room-guest-message--grouped'
+                            : undefined
+                        }
+                      >
+                        {!grouped && <RoomAvatar name={record.actor.label} />}
+                        {!grouped && <strong>{record.actor.label}</strong>}
+                        <SharedMessageText text={record.body.text} />
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
             </div>
@@ -438,7 +456,6 @@ export function GuestSharedTaskView({
               className="account-entry__shared-document task-room-brief-rendered"
               hidden={tab !== 'Brief'}
             >
-              <h6>Shared document</h6>
               <LazyMarkdown
                 skipHtml
                 loadingProjection={<SkeletonBlock label="Loading brief" />}

@@ -1468,12 +1468,13 @@
   margin-bottom: var(--k-space-4);
 }
 .task-room-guest .account-entry__shared-history ol {
+  gap: var(--k-space-1);
   list-style: none;
   padding: 0;
 }
 .task-room-guest .account-entry__shared-history li {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: var(--k-space-8) minmax(0, 1fr);
   gap: var(--k-space-2) var(--k-space-3);
   padding: var(--k-space-3) 0;
 }
@@ -1601,6 +1602,7 @@
 }
 
 .task-room-guest {
+  font-size: var(--k-text-sm);
   border: 0;
   padding: 0;
   background: transparent;
@@ -1683,4 +1685,21 @@
   position: absolute;
   inset-inline-start: var(--k-space-3);
   inset-block-end: 0;
+}
+
+.task-room-guest .account-entry__shared-task-heading {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  align-items: center;
+}
+.task-room-guest .account-entry__shared-task-heading > h5 {
+  flex: 1 1 0;
+  min-width: 0;
+  font: 600 var(--k-text-md) / var(--k-leading-normal) var(--k-font-ui);
+}
+.task-room-guest
+  .account-entry__shared-history
+  .task-room-guest-message--grouped {
+  padding-block: var(--k-space-1);
 }

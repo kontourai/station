@@ -120,10 +120,14 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Read shared Task' })).toBeNull();
   expect(screen.getByText('@Planner')).toBeTruthy();
   expect(screen.queryByText(/\*\*@Planner/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
   expect(await screen.findByText('Second page message')).toBeTruthy();
+  expect(
+    screen.getAllByText('Project member', { selector: 'strong' }),
+  ).toHaveLength(1);
   expect(screen.getByText('Visible message')).toBeTruthy();
   const chatTab = screen.getByRole('tab', { name: 'Chat' });
   expect(chatTab.tabIndex).toBe(0);
@@ -467,24 +471,35 @@ test('an account replacement closes a delivered shared Task', async () => {
 });
 
 test('a history transport outage stays on Chat while Brief remains readable', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
-    const path = new URL(input).pathname;
-    if (path === '/api/account-auth/session') return account();
-    if (path.endsWith('/shared-work'))
-      return success([summary('project-a', 'alpha', 'Shared planning')]);
-    if (path.endsWith('/history')) return new Response(null, { status: 503 });
-    if (path.endsWith('/document')) return success({
-      kind: 'snapshot',
-      project: { id: 'project-a', slug: 'alpha' },
-      task: { id: taskId, createdAt: '2026-09-20T00:00:00.000Z' },
-      revision: 'revision-1', text: '## Shared goal\n\nThe plan remains readable.',
-    });
-    return new Response(null, { status: 500 });
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/account-auth/session') return account();
+      if (path.endsWith('/shared-work'))
+        return success([summary('project-a', 'alpha', 'Shared planning')]);
+      if (path.endsWith('/history')) return new Response(null, { status: 503 });
+      if (path.endsWith('/document'))
+        return success({
+          kind: 'snapshot',
+          project: { id: 'project-a', slug: 'alpha' },
+          task: { id: taskId, createdAt: '2026-09-20T00:00:00.000Z' },
+          revision: 'revision-1',
+          text: '## Shared goal\n\nThe plan remains readable.',
+        });
+      return new Response(null, { status: 500 });
+    }),
+  );
   mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Read shared Task' }));
-  expect(await screen.findByText('Shared Task content is unavailable.')).toBeTruthy();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read shared Task' }),
+  );
+  expect(
+    await screen.findByText('Shared Task content is unavailable.'),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
-  expect(await screen.findByRole('heading', { name: 'Shared goal' })).toBeTruthy();
+  expect(
+    await screen.findByRole('heading', { name: 'Shared goal' }),
+  ).toBeTruthy();
   expect(screen.queryByText('Shared Task content is unavailable.')).toBeNull();
 });
