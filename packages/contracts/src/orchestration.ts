@@ -39,7 +39,7 @@ export type {
 export interface OrchestrationSendTurnInput
   extends Omit<
     ProviderSendTurnInput,
-    'recoveryCorrelationId' | 'reviewIsolation' | 'confinement'
+    'invocationId' | 'recoveryCorrelationId' | 'reviewIsolation' | 'confinement'
   > {
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */

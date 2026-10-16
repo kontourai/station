@@ -6201,6 +6201,7 @@ export class OrchestrationService {
               ? input.metadata.connectionId
               : undefined;
           const {
+            invocationId: _untrustedInvocationId,
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             ...publicStartInput
