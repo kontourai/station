@@ -562,48 +562,94 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(adapter.turns).toHaveLength(1);
   });
 
-  test('a definitive refusal retains its settlement and input while a new key can start new work', async () => {
-    const { adapter, send, app, root } = station();
-    adapter.nextTurn = 'refuse';
-    const refused = await send('conversation:refused', 'key-refused');
-    expect(refused.status).toBeGreaterThanOrEqual(400);
-    const inspection = await app.request(
-      '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
-    );
-    expect(inspection.status, await inspection.clone().text()).toBe(409);
-    expect(await inspection.json()).toMatchObject({
-      success: false,
-      code: 'client_turn_settled',
-      disposition: 'definitively-refused',
-    });
-    const repeated = await send('conversation:refused', 'key-refused');
-    expect(repeated.status).toBeGreaterThanOrEqual(400);
-    expect(adapter.turns).toHaveLength(0);
-    const db = new DatabaseSync(join(root, 'orchestration.sqlite'), {
-      readOnly: true,
-    });
-    try {
-      const audit = db
-        .prepare(
-          'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
-        )
-        .get('settled');
-      expect(audit?.state).toBe('settled');
-      expect(JSON.parse(String(audit?.prepared_settlement))).toMatchObject({
+  test.each(['acknowledged', 'lost-ack'] as const)(
+    'a definitive refusal retains its settlement and input with %s, while a new key can start work',
+    async (acknowledgement) => {
+      const { adapter, send, app, root } = station();
+      adapter.nextTurn = 'refuse';
+      let lostAck = false;
+      const originalExec = DatabaseSync.prototype.exec;
+      const spy =
+        acknowledgement === 'lost-ack'
+          ? vi.spyOn(DatabaseSync.prototype, 'exec')
+          : undefined;
+      spy?.mockImplementation(function (this: DatabaseSync, sql: string) {
+        originalExec.call(this, sql);
+        if (
+          !lostAck &&
+          sql.trim().toUpperCase() === 'COMMIT' &&
+          this.prepare(
+            "SELECT name FROM sqlite_master WHERE name = 'orchestration_turn_boundaries'",
+          ).get() &&
+          this.prepare(
+            "SELECT boundary_id FROM orchestration_turn_boundaries WHERE state = 'settled'",
+          ).get()
+        ) {
+          lostAck = true;
+          throw new Error('Settlement committed; acknowledgement lost.');
+        }
+      });
+      const refused = await send('conversation:refused', 'key-refused').finally(
+        () => spy?.mockRestore(),
+      );
+      expect(lostAck).toBe(acknowledgement === 'lost-ack');
+      expect(refused.status).toBeGreaterThanOrEqual(400);
+      const inspection = await app.request(
+        '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
+      );
+      expect(inspection.status, await inspection.clone().text()).toBe(409);
+      expect(await inspection.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_settled',
         disposition: 'definitively-refused',
       });
-      expect(
-        db
-          .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
-          .get()?.count,
-      ).toBe(1);
-    } finally {
-      db.close();
-    }
-    const next = await send('conversation:refused', 'key-new-request');
-    expect(next.status, await next.clone().text()).toBe(200);
-    expect(adapter.turns).toHaveLength(1);
-  });
+      const repeated = await send('conversation:refused', 'key-refused');
+      expect(repeated.status).toBeGreaterThanOrEqual(400);
+      expect(adapter.turns).toHaveLength(0);
+      const db = new DatabaseSync(join(root, 'orchestration.sqlite'), {
+        readOnly: true,
+      });
+      let retainedAudit: unknown;
+      try {
+        const audit = db
+          .prepare(
+            'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
+          )
+          .get('settled');
+        expect(audit?.state).toBe('settled');
+        retainedAudit = audit?.prepared_settlement;
+        expect(JSON.parse(String(audit?.prepared_settlement))).toMatchObject({
+          disposition: 'definitively-refused',
+        });
+        expect(
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM orchestration_prepared_turns',
+            )
+            .get()?.count,
+        ).toBe(1);
+      } finally {
+        db.close();
+      }
+      const next = await send('conversation:refused', 'key-new-request');
+      expect(next.status, await next.clone().text()).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      const reopened = new DatabaseSync(join(root, 'orchestration.sqlite'), {
+        readOnly: true,
+      });
+      try {
+        expect(
+          reopened
+            .prepare(
+              "SELECT prepared_settlement FROM orchestration_turn_boundaries WHERE state = 'settled'",
+            )
+            .get()?.prepared_settlement,
+        ).toBe(retainedAudit);
+      } finally {
+        reopened.close();
+      }
+    },
+  );
 
   test('a failed boundary settlement write rolls back the linked dedup audit and retains the effect fence', async () => {
     const { adapter, send, root, lookup } = station();
