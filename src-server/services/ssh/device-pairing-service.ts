@@ -1745,11 +1745,16 @@ export class DevicePairingService {
     };
   }
 
-  denyRequest(requestId: string): DevicePairingRequest {
+  denyRequest(
+    requestId: string,
+    expectedKind?: PairedDeviceKind,
+  ): DevicePairingRequest {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
     );
     if (!offer) throw new DevicePairingError('request_not_found');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     this.#ensureNotExpired(offer);
     if (
       (offer.status !== 'requested' && offer.status !== 'confirmed') ||
@@ -2122,9 +2127,11 @@ export class DevicePairingService {
     return true;
   }
 
-  cancelOffer(offerId: string): void {
+  cancelOffer(offerId: string, expectedKind?: PairedDeviceKind): void {
     const offer = this.#offers.get(offerId);
     if (!offer) throw new DevicePairingError('invalid_offer');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     offer.status = 'cancelled';
   }
 
@@ -2364,6 +2371,12 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null) {
@@ -2540,6 +2553,12 @@ export class DevicePairingService {
     }
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null)
@@ -2636,6 +2655,12 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {

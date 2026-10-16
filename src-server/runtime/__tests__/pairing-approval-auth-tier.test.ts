@@ -879,6 +879,140 @@ test('the desktop home-proven local grant can invite and approve a phone without
   ).toBe(401);
 });
 
+test.each([
+  'offer',
+  'cancel',
+  'request',
+  'deny',
+  'scope',
+  'revoke',
+  'remove',
+] as const)(
+  'host browser device administration cannot manage a peer delegation through %s',
+  async (operation) => {
+    const h = await createHarness();
+    const launcher = await h.request(
+      '/.well-known/station/v1/pairing/mint-ui-bootstrap',
+      h.json({ secret: h.localGrantSecret() }),
+      '127.0.0.1',
+    );
+    expect(launcher.status).toBe(200);
+    const { token } = (await launcher.json()) as { token: string };
+    const browser = await h.request(
+      '/.well-known/station/v1/pairing/ui-bootstrap',
+      {
+        ...h.json({ token }),
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      },
+      '127.0.0.1',
+    );
+    expect(browser.status).toBe(200);
+    const headers = {
+      Origin: ORIGIN,
+      Cookie: browser.headers.get('set-cookie')!.split(';')[0],
+    };
+    if (operation === 'offer' || operation === 'cancel') {
+      const response = await h.request('/api/pairing/offers', {
+        ...h.json(
+          {
+            endpoint: ORIGIN,
+            kind: 'delegation',
+            scope: 'orchestration:read orchestration:operate',
+          },
+          operation === 'cancel' ? h.operatorCredential : undefined,
+        ),
+        ...(operation === 'offer'
+          ? { headers: { ...headers, 'Content-Type': 'application/json' } }
+          : {}),
+      });
+      if (operation === 'offer') {
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({
+          error: 'approval_requires_operator',
+        });
+      } else {
+        expect(response.status).toBe(201);
+        const offer = (await response.json()) as DevicePairingOffer;
+        const cancelled = await h.request(
+          `/api/pairing/offers/${offer.offerId}`,
+          { method: 'DELETE', headers },
+        );
+        expect(cancelled.status).toBe(403);
+        expect(await cancelled.json()).toMatchObject({
+          error: 'approval_requires_operator',
+        });
+      }
+      return;
+    }
+    const requested = await h.request(
+      '/.well-known/station/v1/pairing/access-request',
+      {
+        ...h.json({ deviceName: 'Peer Station', kind: 'delegation' }),
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      },
+    );
+    expect(requested.status).toBe(202);
+    const pending = (await requested.json()) as {
+      requestId: string;
+      offerId: string;
+      proof: string;
+    };
+    const confirmPath = `/api/pairing/requests/${pending.requestId}/confirm`;
+    if (operation === 'request' || operation === 'deny') {
+      // Exercise the bodyless approval path as well as the JSON offer path.
+      const response = await h.request(
+        operation === 'request'
+          ? confirmPath
+          : `/api/pairing/requests/${pending.requestId}`,
+        { method: operation === 'request' ? 'POST' : 'DELETE', headers },
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: 'approval_requires_operator',
+      });
+    }
+    expect(
+      (await h.request(confirmPath, h.json({}, h.operatorCredential))).status,
+    ).toBe(200);
+    const exchanged = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      h.json(pending),
+    );
+    expect(exchanged.status).toBe(200);
+    const { device } = (await exchanged.json()) as { device: PairedDevice };
+    expect(device.kind).toBe('delegation');
+    if (operation === 'request' || operation === 'deny') return;
+    const devicePath = `/api/pairing/devices/${device.id}`;
+    if (operation === 'remove') {
+      expect(
+        (
+          await h.request(devicePath, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${h.operatorCredential}` },
+          })
+        ).status,
+      ).toBe(200);
+    }
+    const response = await h.request(
+      operation === 'scope'
+        ? `${devicePath}/scope`
+        : operation === 'remove'
+          ? `${devicePath}/record`
+          : devicePath,
+      operation === 'scope'
+        ? {
+            ...h.json({ scope: ['orchestration:read'] }),
+            headers: { ...headers, 'Content-Type': 'application/json' },
+          }
+        : { method: 'DELETE', headers },
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: 'approval_requires_operator',
+    });
+  },
+);
+
 test('an operator-created invitation grants its assigned access once without a second approval', async () => {
   const h = await createHarness();
   const scope =

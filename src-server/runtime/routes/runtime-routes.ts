@@ -9074,6 +9074,13 @@ export function configureDevicePairingHostRoutes(
     }
   };
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const isHostBrowser = (request: Request): boolean => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return (
+      principal?.authority === 'device-credential' &&
+      pairing.credentialMayManagePairing(principal.credential)
+    );
+  };
   const currentOperator = (context: unknown, request: Request): boolean => {
     const authority = (context as { get: (key: string) => unknown }).get(
       RUNTIME_CREDENTIAL_AUTHORITY_VAR,
@@ -9187,6 +9194,9 @@ export function configureDevicePairingHostRoutes(
     if (options.isApprovalCurrent?.(c.req.raw) !== true) {
       return approvalRequiresOperator(c);
     }
+    if (body.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+      return approvalRequiresOperator(c);
+    }
     try {
       return c.json(
         pairing.createOffer({
@@ -9206,7 +9216,10 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/offers/:offerId', (c) => {
     try {
-      pairing.cancelOffer(c.req.param('offerId'));
+      pairing.cancelOffer(
+        c.req.param('offerId'),
+        isHostBrowser(c.req.raw) ? 'device' : undefined,
+      );
       return c.body(null, 204);
     } catch (error) {
       return c.json(
@@ -9404,6 +9417,9 @@ export function configureDevicePairingHostRoutes(
         const requested = pairing
           .listRequests()
           .find((candidate) => candidate.requestId === requestId);
+        if (requested?.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         const kept = grantedScope ?? requested?.scope ?? '';
         if (deviceRequestedExtraScopes(kept).length > 0) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
@@ -9510,7 +9526,10 @@ export function configureDevicePairingHostRoutes(
           throw new DevicePairingError('request_not_found');
         request = { ...pending, status: 'denied' };
       } else {
-        request = pairing.denyRequest(requestId);
+        request = pairing.denyRequest(
+          requestId,
+          isHostBrowser(c.req.raw) ? 'device' : undefined,
+        );
       }
       devicePairingRequests.add(1, {
         source: request.source,
