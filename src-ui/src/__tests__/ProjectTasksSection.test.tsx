@@ -470,6 +470,18 @@ describe('ProjectTasksSection', () => {
     },
   );
 
+  test('keeps the linked Session identity inside Details', () => {
+    tasks[0] = { ...tasks[0], sessionId: 'session:fixture-linked-run' };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    expect(screen.queryByText('Session session:fixture-linked-run')).toBeNull();
+    const identity = screen.getByText('session:fixture-linked-run', { exact: true });
+    const details = identity.closest('details');
+    expect(details?.open).toBe(false);
+    fireEvent.click(screen.getByText('Details', { exact: true }));
+    expect(details?.open).toBe(true);
+    expect(details?.contains(identity)).toBe(true);
+  });
+
   test('opens an existing Task and preserves dispatch behavior', async () => {
     dispatchTask.mockResolvedValue({
       task: {

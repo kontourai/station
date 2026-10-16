@@ -613,7 +613,7 @@ export function ProjectTasksSection({
                   </div>
                   <div className="project-page__task-detail-meta">
                     {selectedTask.sessionId
-                      ? `Session ${selectedTask.sessionId}`
+                      ? 'Run linked'
                       : 'No session yet'}
                   </div>
                   {taskClaim?.state === 'claimed-by-me' && (
@@ -707,6 +707,12 @@ export function ProjectTasksSection({
               <details className="project-page__task-record-details">
                 <summary>Details</summary>
                 <dl className="project-page__task-binding">
+                  {selectedTask.sessionId && (
+                    <div>
+                      <dt>Session</dt>
+                      <dd>{selectedTask.sessionId}</dd>
+                    </div>
+                  )}
                   <div>
                     <dt>Working directory</dt>
                     <dd>{binding?.workingDirectory ?? 'Unavailable'}</dd>
