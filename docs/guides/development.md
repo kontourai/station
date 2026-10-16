@@ -344,8 +344,9 @@ Station's pinned workspace dependencies.
 
 ## Commit Messages
 
-The independent required `PR title` check applies the same grammar to the live
-squash title using trusted base code. Title/body edits rerun that small check,
+The required `PR title policy` commit status applies the same grammar to live
+squash titles using trusted workflow code. It validates all open main-target
+PRs sharing a head, so correcting one cannot hide another invalid title. Title/body edits rerun that small check,
 not source CI. A title correction cannot clear an actual source-check failure.
 
 Commit subjects follow the Conventional Commits grammar enforced by the
