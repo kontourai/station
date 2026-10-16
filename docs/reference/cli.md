@@ -2339,7 +2339,8 @@ station environment peers remove <environment-id>
   Standard with the named space- or comma-separated scopes. `--browser-url`
   adds an HTTP(S) browser invitation pointing at the web UI address you supply,
   keeping its one-time proof in the fragment. Supply the web address, which can
-  differ from the API listener; the command does not guess a browser port.
+  differ from the API listener but must proxy that same Station. Browser
+  invitations pair through the web origin; the command does not guess a port.
   `--require-approval` retains the request-and-host-confirmation flow. Neither form gives an invited
   Device the host's private browser-administration authority.
   `--payload-only` is the desktop SSH launcher's machine flow: it names no

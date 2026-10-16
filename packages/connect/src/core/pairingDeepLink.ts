@@ -1,4 +1,7 @@
-import { decodeDevicePairingPayload } from './devicePairing';
+import {
+  decodeDevicePairingPayload,
+  encodeDevicePairingPayload,
+} from './devicePairing';
 import {
   devPairingDeepLinkScheme,
   RELEASE_PAIRING_DEEP_LINK_SCHEMES,
@@ -154,7 +157,18 @@ export function parseBrowserPairingLink(
         'This Station pairing offer is invalid or expired.',
       );
     }
-    return { status: 'ok', payload };
+    const offer = decodeDevicePairingPayload(payload, {
+      requireCanonicalOfferFields: true,
+    })!;
+    // The browser UI proxies this Station's API; a separate API origin would
+    // fail browser pairing provenance and could not install its session cookie.
+    return {
+      status: 'ok',
+      payload: encodeDevicePairingPayload({
+        ...offer,
+        endpoint: parsed.origin,
+      }),
+    };
   } catch {
     return pairingLinkError('This Station pairing link is malformed.');
   }

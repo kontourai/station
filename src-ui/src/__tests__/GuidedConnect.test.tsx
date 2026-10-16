@@ -2,7 +2,10 @@
  * @vitest-environment jsdom
  */
 
-import { encodeDevicePairingPayload } from '@kontourai/station-connect/device-pairing';
+import {
+  decodeDevicePairingPayload,
+  encodeDevicePairingPayload,
+} from '@kontourai/station-connect/device-pairing';
 import { encodeBrowserPairingLink } from '@kontourai/station-connect/pairing-deep-link';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -283,7 +286,7 @@ test('an unpaired browser opens its invitation review before the protected appli
     offerId: 'browser-offer',
     manualCode: 'ABCDE12345',
     challenge: 'browser-proof',
-    endpoint: window.location.origin,
+    endpoint: 'http://127.0.0.1:43141',
     scope: 'orchestration:read',
     expiresAt: Date.now() + 60_000,
   });
@@ -293,11 +296,17 @@ test('an unpaired browser opens its invitation review before the protected appli
     encodeBrowserPairingLink({ payload, browserUrl: window.location.origin }),
   );
   render(<GuidedConnect />);
-  expect(
+  const received = decodeDevicePairingPayload(
     screen
       .getByTestId('connection-manager')
-      .getAttribute('data-pairing-payload'),
-  ).toBe(payload);
+      .getAttribute('data-pairing-payload')!,
+  );
+  expect(received).toMatchObject({
+    environmentId: 'invited-station',
+    offerId: 'browser-offer',
+    challenge: 'browser-proof',
+    endpoint: window.location.origin,
+  });
   expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
   expect(window.location.hash).toBe('');
 });

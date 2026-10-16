@@ -620,9 +620,10 @@ QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
 For another browser, set **Browser app address** to a reachable Station web
-address and choose **Copy browser link**. The web address and the Station
-endpoint can differ: a web UI may proxy its API on a separate listener. The
-link carries the offer in its fragment, opens the invitation review even in an
+address and choose **Copy browser link**. That address must serve the web UI
+and proxy this same Station’s API. Its origin can differ from the API listener;
+the browser invitation uses the selected web origin for pairing and the session
+cookie. The link carries the offer in its fragment, opens the invitation review even in an
 unpaired browser and removes the proof from visible history before proceeding.
 The CLI equivalent is `station environment offer --browser-url=<web-origin>`.
 App links and raw scanner payloads remain available for installed Station apps.
