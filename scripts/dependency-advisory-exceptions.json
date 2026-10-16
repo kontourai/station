@@ -101,7 +101,7 @@
         "package": "node-forge",
         "version": "1.4.0",
         "patchPath": "patches/node-forge-1.4.0.patch",
-        "patchSha256": "d4dab1855e8b93b801217fd9a98a63498a53d7a7580b7a0f0859edc181c966bb",
+        "patchSha256": "c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e",
         "nodeMajor": 24,
         "installedEntrypoints": [
           {
@@ -114,11 +114,11 @@
           },
           {
             "path": "node_modules/node-forge/dist/forge.min.js",
-            "sha256": "1fc4c3a10dc0260fb86cdf446b8b40f9cd366d9d40e68e0e104a4425504ec65d"
+            "sha256": "ef3be90b3604ef95427040949136ebfd440fccef9c0f23db0356988c9ffc6ff6"
           },
           {
             "path": "node_modules/node-forge/dist/forge.all.min.js",
-            "sha256": "3362263519301889ef0aecf2799e8465d8c91e57188002240191d8cb9a73d190"
+            "sha256": "c6f575cd72b56bf78b5a0e4acb274ce8f41e804228c0b508bfe0e3856e704882"
           }
         ]
       }

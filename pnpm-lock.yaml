@@ -48,7 +48,7 @@ patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/server-hono@2.0.14': 1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5
   js-yaml@3.15.2: aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992
-  node-forge@1.4.0: d4dab1855e8b93b801217fd9a98a63498a53d7a7580b7a0f0859edc181c966bb
+  node-forge@1.4.0: c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e
 
 importers:
 
@@ -14293,7 +14293,7 @@ snapshots:
 
   jks-js@1.1.7:
     dependencies:
-      node-forge: 1.4.0(patch_hash=d4dab1855e8b93b801217fd9a98a63498a53d7a7580b7a0f0859edc181c966bb)
+      node-forge: 1.4.0(patch_hash=c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e)
       node-int64: 0.4.0
       node-rsa: 1.1.1
 
@@ -15286,7 +15286,7 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  node-forge@1.4.0(patch_hash=d4dab1855e8b93b801217fd9a98a63498a53d7a7580b7a0f0859edc181c966bb): {}
+  node-forge@1.4.0(patch_hash=c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e): {}
 
   node-gyp@11.5.0(supports-color@7.2.0):
     dependencies:

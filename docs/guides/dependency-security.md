@@ -15,6 +15,9 @@ browser bundles. The threat is an attacker without the private key forging an
 RSA PKCS#1 v1.5 signature, particularly with a low public exponent. The parser
 now requires the algorithm OID plus only its optional NULL parameter, retaining
 the existing outer DigestInfo and padding checks.
+The pnpm patch recreates the two bundles with equivalent `\x01` string escapes
+for their published literal control bytes, keeping the patch visible to text
+scanners without changing those string values.
 
 The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
 exercise the package entrypoint and both browser globals. A retained signature
