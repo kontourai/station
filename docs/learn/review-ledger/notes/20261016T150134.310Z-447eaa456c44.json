@@ -1,0 +1,21 @@
+{
+  "revision": "536001c08875ca17b3505ccb4089b88f201eb07c",
+
+  "notes": [
+    {"path":".agents/skills/test-audit/SKILL.md","note":"Reviewed validation sequence: focused tests and intended-red/restored-green mutation remain required; optional broad local ci:fast is consistent with the root and canonical guide. Normal push hooks and hosted checks remain mandatory.","inputs":[".agents/skills/test-audit/SKILL.md"]},
+
+    {"path":"AGENTS.md","note":"Reviewed the ordinary PR instruction against gate-for, pre-push and hosted workflow ownership. Local ci:fast is optional, focused checks and hosted integration remain required; instruction topology/budget tests passed. Governance block unchanged.","inputs":["AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"CLAUDE.md","note":"Read root import and governance block. CLAUDE imports AGENTS.md and therefore receives the optional-local-diagnostic policy without duplicated instructions; its governance block is unchanged.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed focused policy-test guidance, code-health requirement and normal push-hook boundary. They remain consistent with optional local ci:fast because direct code-health or hosted output remains reviewable; no gate is bypassed.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed gate-for link and native evidence boundary. The routing output still directs focused evidence and required integration; optional broad local CI does not replace physical native proof.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed focused server and test-effectiveness routes against development/testing changes. Required focused proof and normal push hooks remain; broad hosted integration owns the aggregate result.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed focused UI and mounted performance routes. Optional broad local diagnostics do not change user-visible focused evidence or UI authority rules.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed fixture fidelity, resource classification and provisional-selection rules against the new ordinary PR path. Focused/mutation evidence remains required; omitted local diagnostics and deferrals never count as passes.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
