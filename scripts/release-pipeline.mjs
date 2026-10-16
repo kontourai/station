@@ -150,11 +150,8 @@ export async function qualificationAdmission(env = process.env) {
       { env: repositoryEnv },
     );
     for (const run of runs) {
-      if (
-        repository === env.GITHUB_REPOSITORY &&
-        String(run.id) === String(env.GITHUB_RUN_ID)
-      )
-        continue;
+      // The caller can share its run with active CI siblings. Count them and
+      // the admission runner itself; an extra reserved slot is conservative.
       const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
         env: repositoryEnv,
       });

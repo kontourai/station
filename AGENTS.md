@@ -43,7 +43,7 @@ queue is part of it. What that means in practice:
     mergeQueue { entries(first:20) { nodes {
       position state pullRequest { number } } } } } }'
   ```
-- **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
+- **The queue batches** (1 build, up to 3 merges, `ALLGREEN`); a red entry is
   removed and those behind it rebuild.
 - **Automate with the app token, not your quota**
   ([setup](docs/guides/development.md#github-automation-token)); read PR and

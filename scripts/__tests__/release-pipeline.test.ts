@@ -13,6 +13,7 @@ import {
   finalPublicationDecision,
   main as pipelineMain,
   publicationInterval,
+  qualificationAdmission,
   recoveryDisposition,
   runnerProfile,
 } from '../release-pipeline.mjs';
@@ -145,11 +146,12 @@ describe('release pipeline admission', () => {
   });
 });
 
-it('the real CLI observes configured peer jobs before admitting fanout and retains its snapshot', async () => {
+it('admission observes peer and same-run jobs, and the real CLI retains its snapshot', async () => {
   const makeTempDir = trackTempDirs();
   const root = makeTempDir('station-release-admission-');
   const output = join(root, 'output');
   let count = 0;
+  let sameRunCount = 0;
   let failing = false;
   const server = createServer((request, response) => {
     if (failing) {
@@ -162,12 +164,23 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       JSON.stringify(
         request.url?.includes('/jobs')
           ? {
-              jobs: Array.from({ length: count }, () => ({
-                status: 'in_progress',
-                labels: ['ubuntu-22.04'],
-              })),
+              jobs: Array.from(
+                {
+                  length: request.url.includes('/runs/99/')
+                    ? sameRunCount
+                    : count,
+                },
+                () => ({
+                  status: 'in_progress',
+                  labels: ['ubuntu-22.04'],
+                }),
+              ),
             }
-          : { workflow_runs: [{ id: 42 }] },
+          : {
+              workflow_runs: request.url?.includes('/owner/station/')
+                ? [{ id: 42 }, { id: 99 }]
+                : [{ id: 42 }],
+            },
       ),
     );
   });
@@ -197,6 +210,12 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       repositories: ['owner/station', 'owner/peer'],
     });
     expect(readFileSync(output, 'utf8')).toContain('admitted=true');
+    count = 7;
+    sameRunCount = 4;
+    expect(await qualificationAdmission(env)).toMatchObject({
+      occupied: 18,
+      admitted: false,
+    });
     // An unobservable repository fails closed at once; it is never waited on.
     writeFileSync(output, '');
     failing = true;

@@ -243,7 +243,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
-| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
+| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic: Merge integration** | manual full-corpus diagnosis; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
 | [`nightly-gallery.yml`](../../.github/workflows/nightly-gallery.yml) | Nightly gallery | **Nightly: Gallery** | UTC schedule: `30 7 * * *`; manual dispatch. |
@@ -1522,14 +1522,16 @@ changing fleet labels or adding a capacity-leased workflow.
 
 ### Merge integration (required)
 
-The `PR: Merge integration` workflow retains the legacy required context
+The `PR: CI` workflow owns the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
-On each merge-queue candidate the workflow also recomputes the fast-checks
-plan against the queue base, using the same planner and inputs as `fast-checks`.
+On each merge-queue candidate, `fast-checks-plan` computes one plan against
+the queue base. The merge decision consumes those same local bytes; test
+shards consume that run's uploaded plan. There is no second planner install
+or cross-workflow artifact lookup.
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
 then chooses a path:
 
@@ -1542,7 +1544,7 @@ then chooses a path:
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
   on its own SHA, with exact-source reuse allowed. The required check passes
-  only when that run passes.
+  only when that run and `fast-checks` pass.
 - **Fast path.** Any other candidate, including one deferred only to a narrower
   lane, skips the full regression. The check
   reports `no deferred lane: fast path`.
@@ -1550,9 +1552,11 @@ then chooses a path:
 The decision fails closed. A missing, unreadable or invalid plan runs the full
 regression, and so does a plan for another head or base. If the planner or its
 install fails, or the decision step writes nothing, the full regression runs
-too, because it is skipped only when the decision is exactly `false`. Pull
-requests never run it. In this workflow, `pull_request_target` only reports
-the skipped required context.
+too. The fast path requires both a successful plan job and an exact `false`
+decision; an earlier false output cannot hide a failed planner. Old candidates
+without the decision CLI also take the full path. Pull requests do not run
+this regression. The former merge-integration workflow remains available as
+a manual full-corpus diagnostic.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
@@ -2061,7 +2065,11 @@ The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
 `scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
-0–40 use one job, 41–80 two, 81–120 three, and 121+ four. The planner knows
+1–40 use one job, 41–80 two, 81–120 three, and 121+ four. With
+`STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS=true`, an empty plan allocates no shard
+runner. The aggregate independently validates that the exact-head plan is empty
+and requires successful plan/statics jobs; it does not fabricate an execution
+receipt. Without that compatibility opt-in, empty plans retain the old shard path. The planner knows
 file count, not test duration. This is a tunable proxy, justified by #3101's
 2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
 (86% setup) while the 20-job pool was saturated. Hosted runs must establish
