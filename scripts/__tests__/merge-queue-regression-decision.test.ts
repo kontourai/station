@@ -423,16 +423,18 @@ describe('the required aggregate over job results (bash and jq child process)', 
       },
       0,
     ],
-    ...['failure', 'cancelled', 'skipped'].map((result) => [
-      `fast-checks ${result} prevents premature green`,
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', fast),
-        'merge-integration-full-regression': job('skipped'),
-        'fast-checks': job(result),
-      },
-      1,
-    ]),
+    ...['failure', 'cancelled', 'skipped'].map(
+      (result): [string, Record<string, ReturnType<typeof job>>, number] => [
+        `fast-checks ${result} prevents premature green`,
+        {
+          diff: job('success'),
+          'fast-checks-plan': job('success', fast),
+          'merge-integration-full-regression': job('skipped'),
+          'fast-checks': job(result),
+        },
+        1,
+      ],
+    ),
     [
       'deferred candidate whose full regression passed',
       {
