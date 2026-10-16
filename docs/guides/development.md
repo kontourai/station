@@ -503,8 +503,8 @@ The required `fast-checks` result combines job outcomes with exact-plan shard
 receipts. A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused local evidence and normal push hooks, then
-required hosted PR checks. Do not routinely repeat the broad `ci:fast` lane
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Do not routinely repeat the broad `ci:fast` lane
 locally before those checks. An omitted local diagnostic is not a local pass.
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
