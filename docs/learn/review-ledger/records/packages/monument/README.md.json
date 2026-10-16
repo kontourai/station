@@ -50,7 +50,11 @@
 
     "packages/monument/src/__tests__/participants.test.ts",
 
-    "packages/monument/src/__tests__/decisions.test.ts"
+    "packages/monument/src/__tests__/decisions.test.ts",
+
+    "packages/monument/src/decisions/prepared-settlement.ts",
+
+    "packages/monument/src/__tests__/sqlite-prepared-settlement.test.ts"
   ],
 
   "checks": []
