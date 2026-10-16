@@ -3552,7 +3552,11 @@ describe('hosted qualification workflow covers the full regression', () => {
       ['resolve', ...testJobs].sort(),
     );
     for (const job of testJobs)
-      expect(jobs[job].if, job).toBe("needs.resolve.outputs.reuse_run == ''");
+      expect(jobs[job].if, job).toBe(
+        ['exclusive', 'android-viewport'].includes(job)
+          ? "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''"
+          : "needs.resolve.outputs.reuse_run == ''",
+      );
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
     );
