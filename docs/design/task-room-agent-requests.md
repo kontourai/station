@@ -31,14 +31,15 @@ orchestration read grant and POST the existing operate/admission gates. The
 composer refreshes the journal before a fresh request and after its
 acknowledgement. Room SSE refreshes history and Task status; there is no
 five-second polling card. Reconciliation is coalesced. Completed-answer
-reconciliation is scheduled after request responses and runs from canonical turn events. Human message/status recording
+reconciliation is scheduled after request responses and runs from canonical turn
+events. Human message/status recording
 retains its confirmed write boundary, with failures isolated from dispatch
 acknowledgement; duplicate proposals make no history writes or history
 notifications. A private publication hold preserves human prompt before answer
 order even when a completion arrives before the human history write. Refusal and
 failure release the hold; it does not confer execution authority. A bounded
-in-memory set avoids repeated lookups,
-and durable proposal lookup covers restart and cache eviction.
+in-memory set avoids repeated lookups, and durable proposal lookup covers restart
+and cache eviction.
 Existing document/history updates continue using SSE and HTTP.
 
 ## Independent room contributions
@@ -53,7 +54,8 @@ agent principal. The Task's lead agent and current session remain unchanged.
 Startup recovery and an authorized request-list read reconcile start/finish facts
 from the canonical Session projection. A journal row without the durable execution
 binding publishes nothing. The request view rechecks its original Project, Task
-incarnation and requester after reconciliation before delivery. Session exit also
+incarnation and requester after its context read and before delivery; its
+best-effort reconciliation is scheduled after the response. Session exit also
 uses the immutable room binding to find independently requested work. Recovery
 reconciles lifecycle history and agent presence; it never retries provider execution.
 
@@ -69,22 +71,25 @@ implementation receipts, not shipped, browser or actual-provider proof.
 
 Only the initial room-request turn and in-thread reply turns publish their answer text;
 private dock follow-ups on a room-bound Session stay private. Their origin survives
-restart through the canonical turn client identity. These completed turns publish their answer text through the existing
-agent-publish append path. The private principal binds the exact Session; the
+restart through the canonical turn client identity. These completed turns publish
+their answer text through the existing agent-publish append path. The private principal binds the exact Session; the
 envelope retains the turn ID. Browser history exposes that tuple and the
 canonical run identity when available. Answer text over the room body limit is
 shortened with an explicit notice and an Open full run action. Publication
 rechecks the immutable request binding, Task incarnation, Project and owner;
 reconciliation repeats publication idempotently, never provider execution.
 
-Chat hides brief revision links and presence events; Details retains the raw history.
+Chat hides brief revision links and presence events; Details retains the raw
+history. Owner history rebuilds display names and run identities from durable
+principal, agent and Session sources. Guest history retains its anonymized
+Participant/Agent labels and filters owner status and thread fragments.
 Answers are clamped with Show more, and Keep remains disabled after confirmation.
 The Chat view groups replies to an agent answer by its Session. The thread replaces
 the desktop rail and fills the room on narrow screens. A reply uses
 `POST /api/orchestration/delegations/:sessionId/continue` with `taskRoomReply`
 (Task identity, creation time and operation ID). The server verifies the exact
-journal and execution binding before invoking the continuation. The human reply is appended only after a
-successful continuation; a refused or failed send remains visibly Not delivered
+journal and execution binding before invoking the continuation. The human reply
+is appended only after a successful continuation; a refused or failed send remains visibly Not delivered
 in the thread with its draft retained. Existing continuation authority owns
 provider effects. Unknown acknowledgements require full-run inspection instead
 of an automatic resend. The operation ID remains stable for the same send.
