@@ -753,9 +753,13 @@ describe('useSendMessage: durable before the request', () => {
     'during-release',
     'newer-send',
     'other-key',
+    'unkeyed-turn',
     'received',
     'indeterminate',
     'unknown',
+    'late-received',
+    'late-unknown',
+    'late-not-received',
   ] as const)(
     'a late transport failure respects the exact send evidence (%s)',
     async (witness) => {
@@ -769,14 +773,21 @@ describe('useSendMessage: durable before the request', () => {
             rejectSend = reject;
           }),
       );
+      let resolveLookup: (() => void) | undefined;
       getTurnDeliveryMock.mockImplementation(
-        async (_apiBase, conversationId, clientTurnId) => ({
-          outcome: ['received', 'indeterminate', 'unknown'].includes(witness)
-            ? witness
-            : 'started',
-          conversationId,
-          clientTurnId,
-        }),
+        (_apiBase, conversationId, clientTurnId) => {
+          const outcome = witness.startsWith('late-')
+            ? witness.slice('late-'.length)
+            : ['received', 'indeterminate', 'unknown'].includes(witness)
+              ? witness
+              : 'started';
+          const answer = { outcome, conversationId, clientTurnId };
+          return witness.startsWith('late-')
+            ? new Promise((resolve) => {
+                resolveLookup = () => resolve(answer);
+              })
+            : Promise.resolve(answer);
+        },
       );
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       let pending!: Promise<unknown>;
@@ -797,7 +808,7 @@ describe('useSendMessage: durable before the request', () => {
       const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
         clientTurnId: string;
       };
-      const observeStart = () =>
+      const observeStart = (clientTurnId: string | null = body.clientTurnId) =>
         handleTurnStartedEvent({
           provider: 'codex',
           threadId: chat,
@@ -805,7 +816,7 @@ describe('useSendMessage: durable before the request', () => {
           eventId: 'started-event',
           createdAt: '2026-10-16T03:00:00.000Z',
           method: 'turn.started',
-          clientTurnId: body.clientTurnId,
+          ...(clientTurnId ? { clientTurnId } : {}),
           prompt: 'delivered before the response',
         });
       const newerController = new AbortController();
@@ -824,14 +835,25 @@ describe('useSendMessage: durable before the request', () => {
           witness === 'unknown'
         ) {
           await vi.advanceTimersByTimeAsync(5_000);
+        } else if (witness.startsWith('late-')) {
+          await vi.advanceTimersByTimeAsync(5_000);
+          expect(resolveLookup).toBeDefined();
+          observeStart();
+          resolveLookup!();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(
+            activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[
+              body.clientTurnId
+            ],
+          ).toBe('started');
         } else if (witness === 'turn-started') {
           observeStart();
         } else if (witness === 'during-release') {
           storage!.arm(observeStart);
+        } else if (witness === 'unkeyed-turn') {
+          observeStart(null);
         } else {
-          activeChatsStore.updateChat(chat, {
-            deliveryChecks: { 'other-key': 'started' },
-          });
+          observeStart('other-key');
         }
         if (witness === 'newer-send')
           activeChatsStore.updateChat(chat, {
@@ -847,12 +869,11 @@ describe('useSendMessage: durable before the request', () => {
         rejectSend(new TypeError('Failed to fetch'));
         outcome = await pending;
       });
-      const delivered = [
-        'lookup',
-        'turn-started',
-        'during-release',
-        'newer-send',
-      ].includes(witness);
+      const delivered =
+        witness.startsWith('late-') ||
+        ['lookup', 'turn-started', 'during-release', 'newer-send'].includes(
+          witness,
+        );
       const state = activeChatsStore.getSnapshot()[chat];
       expect(outcome).toBe(delivered);
       expect(state?.status).toBe(

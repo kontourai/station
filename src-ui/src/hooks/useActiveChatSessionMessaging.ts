@@ -2,7 +2,6 @@ import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/exec
 import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
-  TurnDeliveryOutcome,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
@@ -66,7 +65,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
-import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
+import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
@@ -307,29 +306,6 @@ function stationAnswered(error: unknown): boolean {
   );
 }
 
-/** Newest-first bound on a chat's remembered delivery answers. */
-const DELIVERY_CHECKS_MAX = 32;
-
-function withDeliveryCheck(
-  chat: ChatUIState | undefined,
-  clientTurnId: string,
-  outcome: TurnDeliveryOutcome,
-): Pick<ChatUIState, 'deliveryChecks' | 'localSendKeys'> {
-  const kept = Object.entries(chat?.deliveryChecks ?? {})
-    .filter(([key]) => key !== clientTurnId)
-    .slice(-(DELIVERY_CHECKS_MAX - 1));
-  return {
-    deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
-    // Started: delivered for good, so the bubble never falls back to
-    // "Not confirmed" once this answer ages out of the bounded record.
-    ...(outcome === 'started'
-      ? {
-          localSendKeys: withoutLocalSendKey(chat?.localSendKeys, clientTurnId),
-        }
-      : {}),
-  };
-}
-
 /** Bound on the keys a chat remembers sending in this session. */
 const LOCAL_SEND_KEYS_MAX = 32;
 
@@ -341,15 +317,6 @@ function withLocalSendKey(
     ...(keys ?? []).filter((key) => key !== clientTurnId),
     clientTurnId,
   ].slice(-LOCAL_SEND_KEYS_MAX);
-}
-
-function withoutLocalSendKey(
-  keys: ChatUIState['localSendKeys'],
-  clientTurnId: string,
-): ChatUIState['localSendKeys'] {
-  return keys?.includes(clientTurnId)
-    ? keys.filter((key) => key !== clientTurnId)
-    : keys;
 }
 
 function withoutDeliveryCheck(
@@ -1083,14 +1050,9 @@ export function useSendMessage(
         stopDeliveryWatch?.();
         const deliveryWasObserved = () => {
           const observedChat = activeChatsStore.getSnapshot()[sessionId];
-          const sentMessage = observedChat?.messages?.find(
-            (message) =>
-              message.role === 'user' && message.clientId === resolvedTurnId,
-          );
           return (
             !options?.dispatch &&
-            sentMessage !== undefined &&
-            messageDeliveryStateFor(observedChat, sentMessage) === 'delivered'
+            observedChat?.deliveryChecks?.[resolvedTurnId] === 'started'
           );
         };
         const settleObservedDelivery = async () => {
