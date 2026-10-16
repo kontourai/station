@@ -132,6 +132,21 @@ function fixtureCli(...args: string[]) {
   );
 }
 
+test('fixture CLI reports assertion codes without exposing private-path failures', () => {
+  const usage = fixtureCli();
+  expect(usage.status).toBe(1);
+  expect(usage.stderr).toBe('native_fresh_fixture_refused: fixture_usage\n');
+
+  const privatePath = join(
+    makeTempDir('native-private-diagnostic-'),
+    'private-marker.json',
+  );
+  const missing = fixtureCli('inspect', privatePath);
+  expect(missing.status).toBe(1);
+  expect(missing.stderr).toBe('native_fresh_fixture_refused\n');
+  expect(missing.stdout).toBe('');
+});
+
 test('explicit cleanup recovery observes expired owner withdrawal and permits only a freshly checked successor without rewriting failure evidence', async () => {
   const f = await completedBrokerFixture(false, true);
   try {
