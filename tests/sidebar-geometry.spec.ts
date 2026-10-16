@@ -40,6 +40,9 @@ async function openDevProject(page: Page) {
   await page.goto('/projects/dev');
   await dismissSetupLauncher(page);
   await expect(page.locator(CHIP).first()).toBeVisible();
+  await expect(
+    page.getByRole('dialog', { name: 'Starting Station', exact: true }),
+  ).toBeHidden();
 }
 
 test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
