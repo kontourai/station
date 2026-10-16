@@ -186,6 +186,14 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Routine documentation readiness runs repository-validation suites, including
+actual ledger/capture freshness, links, generated artifacts and public-content
+checks. The impact, freshness-policy and review-note framework suites use
+disposable fixtures; they run through affected selection for tooling/schema
+changes and full qualification, rather than every readiness invocation.
+Dependency/runtime changes retain full-test escalation. This removes repeated
+framework testing without treating stale repository documentation as valid.
+
 Title and body edits run only the independent `PR title` check in `PR: CI`.
 It reads live metadata once using trusted base code; it never waits for source
 jobs or installs dependencies. Source pushes and base retargets still run the
