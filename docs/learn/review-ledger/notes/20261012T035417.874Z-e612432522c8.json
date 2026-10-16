@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"vite.config.ts adds a station-build-release meta only when STATION_BUILD_VERSION stamps a production build (isReleaseStampedBuild); the build commands, version values, ports and outputs this document describes are unchanged.","inputs":["docs/guides/desktop-build.md","vite.config.ts"]}
+  ]
+}

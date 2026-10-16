@@ -190,6 +190,7 @@ export const BANNER_IDS = {
   pluginRegistry: 'chrome:plugins:registry',
   updateCheck: 'chrome:update:check',
   updateAvailable: 'chrome:update:available',
+  serverOlder: 'chrome:update:server-older',
   desktopUpdateAvailable: 'chrome:update:desktop',
   desktopUpdateInstallFailure: 'chrome:update:desktop-install-failure',
 } as const;

@@ -141,6 +141,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // #2675: runs the Nightly plan step's shell under bash in a temporary dir.
+  'scripts/__tests__/ios-web-build-version.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes

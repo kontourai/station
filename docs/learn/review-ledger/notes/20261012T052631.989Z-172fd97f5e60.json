@@ -1,0 +1,7 @@
+{
+  "revision": "6480aa18203208a0469822584c28311b6485abb3",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Re-reviewed after the plan-cohort web_identity step's bare-version refusal became an explicit ::error:: (and the Nightly guide rewording); it only names a non-Nightly cohort version before failing, and nothing this document states changes.","inputs":["docs/guides/native-releases.md",".github/workflows/nightly-native-stage.yml"]}
+  ]
+}
