@@ -1386,6 +1386,44 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     ],
     reason: 'generated contributor command Interface',
   },
+  // These suites exercise validator policy in disposable repositories rather
+  // than validate Station's current docs. Readiness keeps the real-repository
+  // suites in docs:foundations:test; tooling changes conservatively select all
+  // three here, including child-process and schema inputs outside import graphs.
+  ...[
+    'scripts/**',
+    'schemas/**',
+    '.github/workflows/docs-freshness-sweep.yml',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
+    reason: 'documentation validator framework self-tests',
+  })),
+  // Dependency and test-runtime configuration changes already escalate. Keep
+  // framework qualification there without expanding bounded inline selections.
+  ...[
+    'package.json',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    '.npmrc',
+    'vitest.config.ts',
+    'vitest.setup.ts',
+    'vitest.global-setup.ts',
+    'vite.config.ts',
+    'tsconfig.json',
+    'tsconfig.scripts.json',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    deferredLanes: ['test-full'],
+    reason: 'documentation validator framework runtime qualification',
+  })),
   {
     // Spawned as child processes, outside the import graph (#2923, #2924).
     pattern: 'scripts/check-documentation-freshness.mjs',
@@ -1415,7 +1453,10 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: '.github/workflows/docs-freshness-sweep.yml',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-foundations.test.ts',
+    ],
     reason: 'Nightly freshness sweep schedule and permissions',
   },
   {
