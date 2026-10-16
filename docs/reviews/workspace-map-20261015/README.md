@@ -245,3 +245,27 @@ Home, Agents, Settings, desktop/mobile conversation resync and dock project
 mismatch, including upstream recovery assertions. No local capture is used to
 refresh references or presented as hosted rendering evidence. Fixture guards
 pass 33 tests, and the E2E typecheck passes.
+
+## Merge-queue guardrail repair
+
+Merge group `b1e846f29eb6` failed process-heavy corpus run `38886820657`
+because the positive control in
+`proof-repo-guardrails-fail-closed.test.ts` still required the retired
+`sidebar__collapse-button` source token inside `ProjectSidebarHeader.tsx`.
+The local pre-fix suite reproduced exactly that finding: one positive-control
+failure and 15 passes.
+
+Commit `d33441917cd` removes only the obsolete CSS-token requirement. It
+retains the sidebar-header export and container extraction checks, all other
+guardrail checks, the exact-PASS/exit-zero positive control, and missing-source
+negative fixtures. The executable proof now passes; fail-closed/header owner
+suites pass 27/27. Browser geometry passes 4/4.
+
+On clean `d33441917cd`, temporarily renaming the real Header's toggle event
+made the browser keeper fail at the missing **Expand workspace map** state
+after clicking the visible control. Byte-identical restoration returned that
+case to green. No injected edits remain. The keepers exercise the actual
+header collapse action rather than requiring a removed control's source text.
+Application, capture and reference bytes are unchanged by this repair; earlier
+hosted results retain their exact-head attribution. Fresh hosted/queue
+qualification is still required for the new head.
