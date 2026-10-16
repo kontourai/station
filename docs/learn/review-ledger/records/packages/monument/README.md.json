@@ -48,7 +48,9 @@
 
     "packages/monument/src/__tests__/sqlite-prepared-intent.test.ts",
 
-    "packages/monument/src/__tests__/participants.test.ts"
+    "packages/monument/src/__tests__/participants.test.ts",
+
+    "packages/monument/src/__tests__/decisions.test.ts"
   ],
 
   "checks": []
