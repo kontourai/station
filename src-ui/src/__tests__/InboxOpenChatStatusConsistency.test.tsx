@@ -47,6 +47,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
 }));
+
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { activeChatsStore } from '../contexts/active-chats-store';

@@ -98,10 +98,7 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     // group a step names is still in the list. So a `nav-` anchor is checked
     // against the actual nav registry, which is what decides whether that
     // element renders at all.
-    const sources = [
-      'views/ScheduleView.tsx',
-      'views/SessionsView.tsx',
-    ]
+    const sources = ['views/ScheduleView.tsx', 'views/SessionsView.tsx']
       .map((relative) =>
         readFileSync(join(__dirname, '../../..', relative), 'utf8'),
       )
