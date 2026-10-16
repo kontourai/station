@@ -47,10 +47,10 @@ const service = new OrchestrationService({
   logger: { debug() {}, warn() {} },
 });
 service.initialize();
-await service.dispatch(
-  { type: 'startSession', input: { threadId, provider: 'claude' } },
-  { userId: 'prepared-owner' },
-);
+await service.dispatch({
+  type: 'startSession',
+  input: { threadId, provider: 'claude' },
+});
 
 if (phase === 'prepared') {
   const exec = DatabaseSync.prototype.exec;
@@ -75,7 +75,6 @@ void service
       type: 'sendTurn',
       input: { threadId, clientTurnId, input, ambientContext },
     },
-    { userId: 'prepared-owner' },
   )
   .catch((error: unknown) => {
     report('failed', { message: String(error) });

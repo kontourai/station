@@ -77,6 +77,12 @@ async function killedOwner(
     child.once('exit', failed);
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString();
+      if (output.includes('"step":"failed"')) {
+        clearTimeout(timer);
+        child.removeListener('exit', failed);
+        reject(new Error(`Owner dispatch failed: ${output} ${errors}`));
+        return;
+      }
       if (!output.includes(`"step":"${phase}"`)) return;
       clearTimeout(timer);
       child.removeListener('exit', failed);
@@ -166,7 +172,6 @@ test('a killed invoking owner retains its input and a normal retry invokes nothi
           ambientContext: AMBIENT,
         },
       },
-      { userId: 'prepared-owner' },
     ),
   ).rejects.toMatchObject({ outcome: 'indeterminate' });
   expect(adapter.sent).toHaveLength(0);
