@@ -990,7 +990,10 @@ committing a new baseline until the change is intentional.
 The gallery-wide system-status handler preserves the live status response and
 replaces only the displayed hostname with `Gallery host`. This keeps a Docker
 container's random name out of exact-pixel references without changing readiness
-or device locality. Screen-specific status fixtures retain their declared scenarios.
+or device locality. Screen-specific status fixtures retain their declared scenarios. The conversation
+resync scenarios retain their route fixtures through the screenshot and recovery
+checks, then release them in per-screen cleanup. Unregistering those routes in
+`afterGoto` lets live polling replace the asserted state before it is photographed.
 
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
@@ -1036,30 +1039,32 @@ select only the application source being qualified.
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container
 (#2428, #3342). PRs compare their exact head; the queue compares the combined
-candidate. A gallery-relevant change must carry reviewed reference images from
-that renderer. Irrelevant changes skip the capture job, producing GitHub's
+candidate. Pixel differences are advisory in both workflows: `--report-only` retains the
+exact changed rows and diff PNGs, but exits successfully for visual changes.
+The job summary includes the comparison table and the PR artifact link. An
+unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
+invalid PNGs, missing/corrupt baselines, partial unscoped captures and zero
+actual comparisons still fail. The default local `screenshot:diff` command
+remains strict; advisory mode is explicit and never rewrites references.
+Irrelevant changes skip the capture job, producing GitHub's
 successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
-whole product through `./station start`, not just `src-ui/`. When the diff
-fails, the job summary prints the exact refresh commands: download the run's
-`gallery-pr-<run>-<attempt>` artifact, then
-`npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
-baseline on its own. The check's re-run on that commit catches a baseline
-from any other renderer, as long as the PR does not also change the capture or
-diff scripts; the nightly on main, running trusted code, remains the
-authoritative check. The baseline writer refuses a capture whose screen name is
+whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+When an intentional change should become the new reference, download that
+hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
+Commit reviewed baseline updates separately; they are optional for a green
+Gallery check. Never refresh from a broken capture or a different renderer.
+The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
-its PR and merge-queue contexts from the installed workflow;
-a red advisory check alone cannot prevent visual drift from landing.
-`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
-clears it only when the capture and exact-diff job passes. Skipping the optional
-API image review does not hide that completed pixel check.
+merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+`Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
+intentional pixel changes alone do not open a main incident. Skipping the
+optional API image review does not hide the comparison report.
 
 Two consequences worth stating plainly:
 
