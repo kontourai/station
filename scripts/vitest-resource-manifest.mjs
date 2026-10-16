@@ -1082,6 +1082,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The coding git read routes over real repositories, with plain git as the
   // control for every planted `.git`.
   'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
+  // Task binding mounts the real renderer over a public diff route and real Git fixture.
+  'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
+  'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',

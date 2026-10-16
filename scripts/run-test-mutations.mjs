@@ -56,6 +56,34 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'worktree-diff-untracked-inclusion',
+    test: 'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
+    failure:
+      'public diff includes three untracked additions without changing index or status',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return patch;',
+            "  return await git(['diff', '--no-color'], MAX_PATCH_BYTES);",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'worktree-diff-hardlink-refusal',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+    failure: 'refuses hardlink entries rather than reporting no changes',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) => exactReplace(source, ' || before.nlink !== 1', ''),
+      },
+    ],
+  },
+  {
     id: 'telemetry-hosted-first-write',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:
