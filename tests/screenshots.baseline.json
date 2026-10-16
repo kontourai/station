@@ -29,7 +29,7 @@
       "name": "command-palette-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "7f41e000a29aa4c42694e7a79cbb79fa0a10eea4ca8456d5e069680ea5b6e516"
+      "sha256": "67912b102e89026d5d28733945d3cba47457d6bebe95c2bb5f23c7454f4a2e42"
     },
     {
       "name": "connections",
@@ -62,6 +62,12 @@
       "sha256": "381c9b87824e7492680ac424c2fb3bf522343f32c3aec75294dfb9ee96084d5b"
     },
     {
+      "name": "desktop-conversation-resync",
+      "width": 1440,
+      "height": 901,
+      "sha256": "d60983dbe87aea6003392602c205209fe33289520960d0c81d7750118c4ad9fd"
+    },
+    {
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
@@ -71,7 +77,7 @@
       "name": "home",
       "width": 1440,
       "height": 900,
-      "sha256": "c7e2937c7829ec5e73a93b12eae436e46e235bfcce810917d979763316f8915f"
+      "sha256": "bec36e2eff952162d1b4378f657856f7090e5512fefc432db063e88cc04c337e"
     },
     {
       "name": "mobile-access-request-error-320",
@@ -128,10 +134,16 @@
       "sha256": "44ca7f0520818207aa6fdd97cbaa00600d0b82a6182b3a05d9205d1f42386ef4"
     },
     {
+      "name": "mobile-conversation-resync",
+      "width": 390,
+      "height": 845,
+      "sha256": "ce38556c86f1502c695c9a011c44e076d879d2652bdc636f94693860c32d4ef5"
+    },
+    {
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "de2787fddeb33b3f63b4dd4fad03b19c1ea5bc507bc41b8e5b8cf0a5da2f7fe0"
+      "sha256": "206d438d4a3f399db23dfe8428d3305041807b473d6616c741510f8a2405790c"
     },
     {
       "name": "mobile-http-consent-320",
@@ -149,7 +161,7 @@
       "name": "mobile-onboarding-setup",
       "width": 390,
       "height": 844,
-      "sha256": "3b3220c8876b6f91502fc272e4f16393b724f671001509f22e2047ef01189b56"
+      "sha256": "b00ca56ec6e5dc1aab60798a1c8567d7a1a6d0464dd09cc94d215a085f258eec"
     },
     {
       "name": "mobile-settings-overview",
@@ -161,7 +173,7 @@
       "name": "motion-reduced-mobile-chat",
       "width": 390,
       "height": 844,
-      "sha256": "18fec8825d52c48b0507bd1b2058bdcd9e366b32ab693de6b38702e3b2bc0887"
+      "sha256": "8495b697faebecca68f9a2c5c9c793c7b911d29d7d69cad00d6d747d68f1a2fa"
     },
     {
       "name": "motion-reduced-navigation",
@@ -173,7 +185,7 @@
       "name": "motion-reduced-notification",
       "width": 1440,
       "height": 900,
-      "sha256": "c9cdb94192ba3e73cdd5e07e236b464b097c7253060986f46b03b9f3350036f8"
+      "sha256": "7072ea45d51ab411ae2a74191cfca74703cc905bcfbf9963fd372c043c45b0b9"
     },
     {
       "name": "motion-reduced-schedule-loading",
@@ -203,7 +215,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "011ac8ce9fe311be57a11280fb3e0095f594255f4a1c22b22d8d1ac420b07041"
+      "sha256": "a274f920cd6f2d7d76576b967abc78bfec9729e8dfc3090552fc38f46fa169e9"
     },
     {
       "name": "overlay-confirm-dialog",
@@ -221,19 +233,19 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "9677bcaac45c470e8d8484af609afd13b815f9400f005eb7144957c73eb4cef9"
+      "sha256": "f61f7483802329d34ef920910040b7378ae383249aa8786aed5016517e7beec4"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
-      "height": 900,
-      "sha256": "2d825e74650b3b8194bde444111af8fef5c42372557570e91ab042143b49c821"
+      "height": 901,
+      "sha256": "27bffb9630291d16b472852f658b19e90eb0a202f676c462b96126e7704cc658"
     },
     {
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
-      "sha256": "ba72c786d4bbc07246ae321ce091db863127220fd5afc95d9645350fb972b06d"
+      "sha256": "750a520eadcbd01ce141344471359340bd19d2daa079e986b2aa082f34085e8e"
     },
     {
       "name": "overlay-new-project-layout-control",
@@ -251,25 +263,25 @@
       "name": "overlay-project-switcher-populated",
       "width": 1440,
       "height": 900,
-      "sha256": "e39956c54554f19c76c8f041c8dbd7adff72156dfe621c8f279a86cd36ebc9d6"
+      "sha256": "0aec808ce658a3e75fb7e7f07cb0c758042f1546d860961a58bf4b2ca6bc4c60"
     },
     {
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "584194d1732c8c8a1ee4cf1eab64606c22590f9bc30bc0000cde32aa08f066c1"
+      "sha256": "53880bd2868ea4c703514d122b90af4213ef085116e87d7ba03ac6b35d23ef8d"
     },
     {
       "name": "overlay-toast",
       "width": 1440,
       "height": 900,
-      "sha256": "b2236b33a7ec2108358a20b96f791192a12347ca03e6591775cac618e5960db1"
+      "sha256": "a24a7395484e1e1b75181fd27bf78e2d33051f62899c06cc7a261e84498360f5"
     },
     {
       "name": "overlay-toast-action",
       "width": 1440,
       "height": 900,
-      "sha256": "7daa671257c87f606f698bbd87693ab5db5dd37eb7839254cd891c31e3f3e8ad"
+      "sha256": "5f92c070611fe6f7701f57844f71087d6c12a12d2ec9be3ce89b5a9d890870a2"
     },
     {
       "name": "plugins",
@@ -299,13 +311,13 @@
       "name": "sessions",
       "width": 1440,
       "height": 900,
-      "sha256": "6948c0383fb5d1385346c5850c272f091395d65e383fc612ec64158e73d95a10"
+      "sha256": "8ff4db0a0e9a69dbe9e657324b754935953f148e36c58a6f1632550cb2534888"
     },
     {
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "662833588a1b29f22bc40637e4d80b6c1cc8aaef21af1504783a4c6b233aedc4"
+      "sha256": "a62a1ffe548090ca37e9ed64c7b15c0401300673aef7d3cac66402d17414b668"
     },
     {
       "name": "settings",
