@@ -145,11 +145,9 @@ describe('September 8 visual feedback regressions', () => {
           appName="Station"
           homeLabel="Station Nightly"
           channelBadge="Nightly"
-          collapsed
           isMobile={false}
           onCloseMobile={() => {}}
           onGoHome={() => {}}
-          onToggleCollapse={() => {}}
         />
       </nav>,
     );

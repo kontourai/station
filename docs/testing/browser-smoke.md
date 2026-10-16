@@ -1,9 +1,11 @@
 # Deterministic PR browser smoke
 
 The `fast-checks-statics` job runs `npm run test:e2e:pr-smoke` for
-same-repository pull requests and merge-group candidates. The required
+same-repository source events and merge-group candidates; metadata-only edits
+do not repeat browser verification. The required
 `fast-checks` aggregator requires that job and the affected-test plan/shards to
-succeed; it also validates their exact-plan receipts. Fork pull requests
+succeed; it validates exact-plan receipts or the independently checked empty-plan
+case. Fresh browser startup builds the candidate UI and enforces its bundle budget. Fork pull requests
 use a separate isolated job. The smoke runner creates its own Station instance,
 temporary home, and dynamically allocated loopback API/UI ports, keeping it
 separate from an always-on dogfood environment on the same host.

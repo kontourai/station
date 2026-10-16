@@ -4,19 +4,12 @@ import {
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
 
-// #2063 replaced the nested layout tree with a chip row and retired the
-// expand/collapse chevron with it. The chevron-centering tests archive#1629
-// left here went with the control they measured; what replaces them are the
-// claims a chip row makes that jsdom cannot answer — chips WRAP rather than
-// widen the rail, arrow keys really move focus in a browser, and each chip
-// reaches the 44px touch floor in the phone drawer.
+// Browser geometry and keyboard proof for the Quiet tree workspace map.
 const CENTER_TOLERANCE_PX = 2;
-const CHIP_ROW = '.sidebar__layout-chips';
 const CHIP = '.sidebar__layout-chips .sidebar__layout-chip';
 
 /**
- * Enough layouts, with real-length names, that a ~250px rail cannot hold them
- * on one line. Registered after `seedOrchestrationRoutes` so it wins: a later
+ * Several real-length names exercise the vertical view list. Registered after `seedOrchestrationRoutes` so it wins: a later
  * `page.route` handles before an earlier one.
  */
 async function seedManyLayouts(page: Page) {
@@ -43,11 +36,13 @@ async function seedManyLayouts(page: Page) {
 
 async function openDevProject(page: Page) {
   await seedManyLayouts(page);
-  // The chips belong to the SELECTED project, so the route is what puts them
-  // on screen — there is no expand control to click any more.
+  // Only the selected project renders its configured views.
   await page.goto('/projects/dev');
   await dismissSetupLauncher(page);
   await expect(page.locator(CHIP).first()).toBeVisible();
+  await expect(
+    page.getByRole('dialog', { name: 'Starting Station', exact: true }),
+  ).toBeHidden();
 }
 
 test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
@@ -55,49 +50,30 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
     await seedOrchestrationRoutes(page);
   });
 
-  test('chips stay on one scrolling line inside the rail instead of widening it', async ({
+  test('project views stack vertically without widening the rail', async ({
     page,
   }) => {
     await openDevProject(page);
-
-    // #2150 replaced the wrapping chip row with a single line that scrolls
-    // sideways (`.sidebar__layout-chips`: nowrap + overflow-x). This used to
-    // assert the wrap; the rail's invariant that survives is that the row never
-    // widens the rail, and that the chips the line cannot show stay reachable.
-    const row = await page.locator(CHIP_ROW).boundingBox();
-    const metrics = await page.locator(CHIP_ROW).evaluate((element) => ({
-      overflowX: getComputedStyle(element).overflowX,
-      scrollWidth: element.scrollWidth,
-      clientWidth: element.clientWidth,
-      tops: Array.from(element.children).map((chip) =>
-        Math.round(chip.getBoundingClientRect().top),
-      ),
-    }));
-    if (!row) throw new Error('the chip row did not render a bounding box');
-    expect(metrics.tops.length).toBe(5);
-
-    // One line: every chip shares a top.
-    expect(new Set(metrics.tops).size).toBe(1);
-    // Not vacuous: five chips this wide cannot fit the ~250px rail, so the row
-    // really overflows into its own scroller rather than fitting by luck.
-    expect(metrics.overflowX).toBe('auto');
-    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
-
-    // The overflow stays inside the row's scroller: the rail did not grow.
-    const sidebar = await page.locator('.sidebar').boundingBox();
-    if (!sidebar) throw new Error('the sidebar did not render a bounding box');
-    expect(row.x + row.width).toBeLessThanOrEqual(
-      sidebar.x + sidebar.width + 1,
+    const metrics = await page.locator(CHIP).evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { x: box.x, right: box.right, top: box.top, bottom: box.bottom };
+      }),
     );
-
-    // The chip the line cannot show is still reachable: focusing it scrolls
-    // the row to it.
-    const last = page.locator(CHIP).last();
-    await last.focus();
-    await expect(last).toBeInViewport();
+    expect(metrics).toHaveLength(5);
+    const sidebar = await page.locator('.sidebar').boundingBox();
+    if (!sidebar) throw new Error('workspace map has no bounds');
+    for (const [index, row] of metrics.entries()) {
+      expect(row.x).toBeGreaterThan(sidebar.x);
+      expect(row.right).toBeLessThanOrEqual(sidebar.x + sidebar.width + 1);
+      if (index > 0)
+        expect(row.top).toBeGreaterThanOrEqual(metrics[index - 1].bottom);
+    }
+    await page.locator(CHIP).last().focus();
+    await expect(page.locator(CHIP).last()).toBeInViewport();
   });
 
-  test('the chip row is one tab stop whose arrow keys move focus between chips', async ({
+  test('the view list is one tab stop whose Up and Down keys move focus', async ({
     page,
   }) => {
     await openDevProject(page);
@@ -117,20 +93,22 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
     );
 
     await page.locator(CHIP).first().focus();
-    const focused = () =>
-      page.evaluate(() => document.activeElement?.textContent ?? null);
-    expect(await focused()).toBe('Coding');
+    const viewButton = (name: string) =>
+      page
+        .getByRole('toolbar', { name: 'Dev layouts' })
+        .getByRole('button', { name, exact: true });
+    await expect(viewButton('Coding')).toBeFocused();
 
-    await page.keyboard.press('ArrowRight');
-    expect(await focused()).toBe('Tasks');
-    await page.keyboard.press('ArrowRight');
-    expect(await focused()).toBe('Chat');
-    await page.keyboard.press('ArrowLeft');
-    expect(await focused()).toBe('Tasks');
+    await page.keyboard.press('ArrowDown');
+    await expect(viewButton('Tasks')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(viewButton('Chat')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(viewButton('Tasks')).toBeFocused();
     await page.keyboard.press('End');
-    expect(await focused()).toBe('Release review');
+    await expect(viewButton('Release review')).toBeFocused();
     await page.keyboard.press('Home');
-    expect(await focused()).toBe('Coding');
+    await expect(viewButton('Coding')).toBeFocused();
 
     // The tab stop followed the focus, so Tab re-enters where the reader left.
     expect((await names()).filter((chip) => chip.tabIndex === 0).length).toBe(
@@ -142,70 +120,59 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
   // keeps it from widening the drawer — is swept against a REAL seeded project
   // in `mobile-surface-sweep.spec.ts`, beside the other phone floors.
 
-  test('keeps the collapsed-rail project accent stripe anchored after the row-main wrapper', async ({
+  test('collapsed project tiles stay centered in the rail', async ({
     page,
   }) => {
-    // Plan stop-short risk (archive#1629): the `.sidebar__project-row-main`
-    // wrapper is the nearest `position: relative` ancestor for the
-    // collapsed-rail accent stripe (`.sidebar--collapsed
-    // .sidebar__project-accent { position: absolute; left: 2px; }`) instead
-    // of `.sidebar__project-row` itself. Neither wrapper carries
-    // padding/margin/border, so the accent should still sit 2px from the
-    // row's own left edge — proving the wrapper is a no-op for this
-    // pre-existing absolutely-positioned sibling.
     await page.goto('/agents');
     await dismissSetupLauncher(page);
-
-    await page.getByRole('button', { name: 'Collapse sidebar' }).click();
-    await expect(page.locator('.sidebar')).toHaveClass(/sidebar--collapsed/);
-
-    const row = page.locator('.sidebar__project-row');
-    const accent = page.locator('.sidebar__project-accent');
-    await expect(accent).toBeVisible();
-
-    const rowBox = await row.boundingBox();
-    const accentBox = await accent.boundingBox();
-    if (!rowBox || !accentBox) {
-      throw new Error(
-        'collapsed sidebar project row did not render a bounding box',
-      );
-    }
-    expect(Math.abs(accentBox.x - (rowBox.x + 2))).toBeLessThanOrEqual(
-      CENTER_TOLERANCE_PX,
-    );
+    await page.getByRole('button', { name: 'Collapse workspace map' }).click();
+    const sidebar = page.locator('.sidebar');
+    await expect(sidebar).toHaveClass(/sidebar--collapsed/);
+    await expect(sidebar).toHaveCSS('width', '52px');
+    const rail = await sidebar.boundingBox();
+    const mark = await page
+      .locator('.sidebar__project-row .project-icon')
+      .boundingBox();
+    if (!rail || !mark)
+      throw new Error('collapsed project identity has no bounds');
+    expect(
+      Math.abs(mark.x + mark.width / 2 - (rail.x + rail.width / 2)),
+    ).toBeLessThanOrEqual(CENTER_TOLERANCE_PX);
+    await page.getByRole('button', { name: 'Dev views', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Dev views' })).toBeVisible();
   });
 
-  test('header lockup places the collapse button after the brand name on both the plain and macOS-inset shells', async ({
+  test('the app header owns collapse and aligns with the sidebar header', async ({
     page,
   }) => {
     await page.goto('/agents');
     await dismissSetupLauncher(page);
+    const toggle = page
+      .getByRole('banner')
+      .getByRole('button', { name: 'Collapse workspace map' });
+    await expect(toggle).toBeVisible();
+    const glyph = await toggle.locator('svg').boundingBox();
+    if (!glyph) throw new Error('workspace map glyph has no bounds');
+    expect(glyph.width).toBeGreaterThanOrEqual(16);
+    expect(glyph.height).toBeGreaterThanOrEqual(16);
 
-    const brandName = page.locator('.sidebar__brand-name');
-    const collapseButton = page.locator('.sidebar__collapse-button');
-    await expect(brandName).toBeVisible();
-    await expect(collapseButton).toBeVisible();
-
-    const brandBox = await brandName.boundingBox();
-    const collapseBox = await collapseButton.boundingBox();
-    if (!brandBox || !collapseBox) {
-      throw new Error('sidebar header did not render a bounding box');
-    }
-    // The collapse button's own left edge sits to the right of the brand
-    // name's right edge — proving the reorder pushes the *button* to the
-    // header's right edge instead of pushing the name away from the logo.
-    expect(collapseBox.x).toBeGreaterThan(brandBox.x + brandBox.width);
-
-    // Repeat under the macOS overlay-title-bar shell variant (traffic-light
-    // inset padding), without needing a real Tauri host.
-    await page.evaluate(() => {
-      document.documentElement.classList.add('is-desktop-mac');
-    });
-    const macBrandBox = await brandName.boundingBox();
-    const macCollapseBox = await collapseButton.boundingBox();
-    if (!macBrandBox || !macCollapseBox) {
-      throw new Error('sidebar header did not render a bounding box');
-    }
-    expect(macCollapseBox.x).toBeGreaterThan(macBrandBox.x + macBrandBox.width);
+    await expect(
+      page.getByRole('navigation').getByRole('button', {
+        name: /Collapse workspace map|Collapse sidebar/,
+      }),
+    ).toHaveCount(0);
+    const sidebarHeader = await page.locator('.sidebar__header').boundingBox();
+    const header = await page.getByRole('banner').boundingBox();
+    if (!sidebarHeader || !header)
+      throw new Error('shell headers have no bounds');
+    expect(
+      Math.abs(
+        sidebarHeader.y + sidebarHeader.height - (header.y + header.height),
+      ),
+    ).toBeLessThanOrEqual(CENTER_TOLERANCE_PX);
+    await toggle.click();
+    await expect(
+      page.getByRole('button', { name: 'Expand workspace map' }),
+    ).toBeVisible();
   });
 });

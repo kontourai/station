@@ -265,9 +265,13 @@ permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
 The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work. Customize opens Agents,
-Skills, Connections, and Plugins at their existing routes. Developer joins
-that chooser when enabled on this device. The footer replaces its command-palette chip and duplicate notification bell; the header bell and command-palette shortcut remain available.
+live work in one compact row. A collapsed workspace map puts these utilities
+in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
+no longer appear in Appearance; existing device values remain compatible.
+Customize opens Agents, Skills, Connections, and Plugins at their existing
+routes. Developer joins that chooser when enabled. The footer replaces its
+command-palette chip and duplicate notification bell; the header bell and
+command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings
 gear remains available from management screens. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
