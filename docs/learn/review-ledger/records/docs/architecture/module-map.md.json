@@ -1006,7 +1006,9 @@
 
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "src-server/services/orchestration/thread-inbox.ts"
   ],
 
   "checks": [

@@ -86,7 +86,13 @@
 
     "src-ui/src/components/profile/ToolRequestsPanel.tsx",
 
-    "src-server/routes/tool-library.ts"
+    "src-server/routes/tool-library.ts",
+
+    "src-server/providers/sessions/attached-session-source.ts",
+
+    "src-server/providers/sessions/opencode-session-source.ts",
+
+    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts"
   ],
 
   "checks": [

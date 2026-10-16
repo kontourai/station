@@ -3118,6 +3118,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId',
     },
+    // #3568: a conversation's inbox of held follow-ups. Reading it re-checks
+    // the conversation read ACL, so it keeps the family's read tier. Removing
+    // a held message is its sender's own mutation of a send it already made
+    // at the operate tier, which DELETE inherits from the family.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/inbox',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
+    },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
     // usage figures this Station recorded for sessions the caller can already
