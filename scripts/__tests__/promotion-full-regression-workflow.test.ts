@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { runnerProfile } from '../release-pipeline.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -34,6 +35,7 @@ type WorkflowJob = {
 
 type Workflow = {
   on?: Record<string, any>;
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -84,8 +86,6 @@ describe('promotion full-regression workflow', () => {
       'android-viewport',
     ]) {
       const job = jobs[id];
-      expect(job.needs).toBe('resolve');
-      expect(job.if).toBe("needs.resolve.outputs.reuse_run == ''");
       const checkout = job.steps?.find((step) =>
         step.uses?.startsWith('actions/checkout@'),
       );
@@ -176,6 +176,82 @@ describe('promotion full-regression workflow', () => {
       REUSE_RUN: githubExpression('needs.resolve.outputs.reuse_run'),
     });
     expect(attest).not.toHaveProperty('continue-on-error');
+  });
+
+  test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
+    const reusable = workflow('full-regression.yml');
+    // GitHub's default concurrency queue replaces an older pending run.
+    // Distinct required merge candidates must therefore keep distinct groups.
+    expect(reusable.concurrency).toEqual({
+      group: `hosted-full-regression-${githubExpression('inputs.source_sha')}`,
+      'cancel-in-progress': false,
+    });
+    const jobs = reusable.jobs ?? {};
+    const continueSuites =
+      "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''";
+    expect(jobs.exclusive).toMatchObject({
+      needs: ['resolve', 'static'],
+      if: continueSuites,
+    });
+    expect(jobs['android-viewport']).toMatchObject({
+      needs: ['resolve', 'exclusive'],
+      if: continueSuites,
+    });
+    const ids = Object.keys(jobs);
+    const predecessors = (id: string): Set<string> => {
+      const needs = jobs[id].needs ?? [];
+      const direct = typeof needs === 'string' ? [needs] : needs;
+      return new Set(
+        direct.flatMap((parent) => [parent, ...predecessors(parent)]),
+      );
+    };
+    expect(
+      ids.reduce(
+        (count, id) =>
+          count + (jobs[id].strategy?.matrix?.include?.length ?? 1),
+        0,
+      ),
+    ).toBe(11);
+    for (const [name, total, expectedPeak] of [
+      ['free', '20', 4],
+      ['expanded', '40', 7],
+      ['custom', '20', 3],
+    ] as const) {
+      const profile = runnerProfile({
+        STATION_QUALIFICATION_RUNNER_PROFILE: name,
+        STATION_HOSTED_TOTAL_SLOTS: total,
+        STATION_QUALIFICATION_ORDINARY_SLOTS: '1',
+        STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: '1',
+        STATION_INTEGRATION_RESERVE: '12',
+      });
+      // Enumerate runnable antichains: jobs related by needs cannot overlap.
+      // Matrix caps determine the weight of the two corpus jobs.
+      let peak = 0;
+      for (let mask = 1; mask < 2 ** ids.length; mask++) {
+        const active = ids.filter((_, index) => mask & (1 << index));
+        if (
+          active.some((id) =>
+            active.some((other) => predecessors(id).has(other)),
+          )
+        )
+          continue;
+        peak = Math.max(
+          peak,
+          active.reduce(
+            (sum, id) =>
+              sum +
+              (id === 'ordinary'
+                ? profile.ordinary
+                : id === 'process-heavy'
+                  ? profile.heavy
+                  : 1),
+            0,
+          ),
+        );
+      }
+      expect(peak, name).toBe(expectedPeak);
+      expect(profile.background, name).toBe(peak);
+    }
   });
 
   test('requires an exact-source qualification receipt before promotion', () => {

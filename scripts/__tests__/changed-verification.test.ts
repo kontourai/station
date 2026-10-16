@@ -190,6 +190,12 @@ function splitResourceGroups(files: string[]) {
   };
 }
 
+const DOCS_FRAMEWORK_TESTS = [
+  'scripts/__tests__/documentation-impact.test.ts',
+  'scripts/__tests__/documentation-freshness.test.ts',
+  'scripts/__tests__/documentation-review-notes.test.ts',
+];
+
 describe('changed verification selection', () => {
   test.each([
     'pnpm-lock.yaml',
@@ -297,9 +303,16 @@ describe('changed verification selection', () => {
           },
         ]
       : [];
+    const supplementalDocs = path.startsWith('scripts/')
+      ? [...DOCS_FRAMEWORK_TESTS].sort().map((test) => ({
+          path: test,
+          reasons: [`documentation validator framework self-tests: ${path}`],
+        }))
+      : [];
     expect(selection.tests).toEqual([
       ...supplementalShellChrome,
       ...supplementalVocabulary,
+      ...supplementalDocs,
     ]);
     expect(selection.lanes).toEqual([]);
     expect(selection.escalated, reason).toBe(false);
@@ -468,7 +481,10 @@ describe('changed verification selection', () => {
     // package.json-only change completed on one documentation suite.
     const selection = selectChangedVerification(['package.json']);
     expect(selection.escalated).toBe(true);
-    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+    expect(selection.lanes.map(({ id }) => id)).toEqual([
+      'ci-fast',
+      'test-full',
+    ]);
     expect(selection.tests.map(({ path }) => path)).toEqual(
       expect.arrayContaining([
         'scripts/__tests__/public-doc-contract-examples.test.ts',
@@ -956,7 +972,9 @@ describe('changed verification selection', () => {
     const path = `${scenarios.sourceEdges.dynamicScript}.bak`;
     const selection = selectChangedVerification([path]);
     expect(selection.relatedPaths).toEqual([path]);
-    expect(selection.tests).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual(
+      [...DOCS_FRAMEWORK_TESTS].sort(),
+    );
   });
   test('routes non-code fixture files to a bounded lane instead of related', () => {
     const selection = selectChangedVerification([
@@ -1483,7 +1501,7 @@ describe('changed verification selection', () => {
       expect(
         selection.tests.map(({ path }) => path),
         edge.pattern,
-      ).toEqual([...edge.tests]);
+      ).toEqual([...new Set([...edge.tests, ...DOCS_FRAMEWORK_TESTS])].sort());
       // The explicit tests supplement the import graph rather than replacing
       // it, so a future importing test still selects.
       expect(selection.relatedPaths, edge.pattern).toEqual([edge.pattern]);
@@ -3709,5 +3727,63 @@ describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
     expect(result.receipt.terminal.status).toBe('completed');
     const commands = result.executed.flatMap((execution) => execution.command);
     for (const suite of DOC_SUITES) expect(commands).toContain(`./${suite}`);
+  });
+});
+
+describe('documentation framework affected coverage', () => {
+  test.each([
+    'scripts/check-documentation-freshness.mjs',
+    'scripts/lib/review-binding.mjs',
+    'scripts/generate-station-docs.mjs',
+    'scripts/__tests__/helpers/documentation-freshness-fixture.ts',
+    'scripts/__tests__/documentation-review-notes.test.ts',
+    'schemas/documentation-review.schema.json',
+    '.github/workflows/docs-freshness-sweep.yml',
+  ])('%s retains all fixture suites outside the repeated docs gate', (path) => {
+    const selection = selectChangedVerification([path]);
+    expect(
+      selection.tests.map((entry: { path: string }) => entry.path),
+    ).toEqual(expect.arrayContaining(DOCS_FRAMEWORK_TESTS));
+  });
+
+  test.each([
+    'package.json',
+    'pnpm-lock.yaml',
+    'vitest.config.ts',
+    'vitest.setup.ts',
+  ])(
+    '%s requires full framework qualification without displacing inline evidence',
+    (path) => {
+      const selection = selectChangedVerification([path]);
+      expect(selection.lanes.map((lane: { id: string }) => lane.id)).toContain(
+        'test-full',
+      );
+    },
+  );
+
+  test('an unrelated source edit does not repeat documentation framework fixtures', () => {
+    const selection = selectChangedVerification([
+      'src-server/unrelated-owner.ts',
+    ]);
+    const selectedTests = selection.tests.map(
+      (entry: { path: string }) => entry.path,
+    );
+    for (const framework of DOCS_FRAMEWORK_TESTS)
+      expect(selectedTests).not.toContain(framework);
+  });
+
+  test('unknown and empty diffs still escalate instead of claiming no affected tests', () => {
+    const unknown = selectChangedVerification([
+      'new-tooling/unknown-validator.xyz',
+    ]);
+    expect(unknown.escalated).toBe(true);
+    expect(unknown.lanes.map((lane: { id: string }) => lane.id)).toContain(
+      'ci-fast',
+    );
+    const empty = selectChangedVerification([]);
+    expect(empty.escalated).toBe(true);
+    expect(empty.lanes.map((lane: { id: string }) => lane.id)).toContain(
+      'test-full',
+    );
   });
 });
