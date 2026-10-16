@@ -37,8 +37,8 @@ jobs:
     # Corpus v2 reusable gate, reviewed in actionlint-gate.mjs.
     uses: kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94
     with:
-      # Org-wide Corpus pin (v1 manifests refused, decisions gate), shared with Pages bundle publishing.
-      corpus-ref: 08c62ccd72880ff4bd4c378ae252ad437b4b4fb5
+      # Reviewed Corpus 0.7 source, shared with Pages bundle publishing.
+      corpus-ref: b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
       repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
       ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
     permissions:

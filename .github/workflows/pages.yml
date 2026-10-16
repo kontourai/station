@@ -46,11 +46,11 @@ jobs:
       # The bundle is an add-on, so it fails open: if this step fails, the
       # Station site still publishes, and keep_files leaves the previous
       # docs-bundle.json on gh-pages (stale, shown as behind on the hub).
-      # Same Corpus pin as docs-kit.yml (v1 manifests refused, decisions gate).
+      # Same reviewed Corpus 0.7 source pin as docs-kit.yml.
       - name: Build docs-kit bundle
         continue-on-error: true
         run: >-
-          npx -y github:kontourai/corpus#08c62ccd72880ff4bd4c378ae252ad437b4b4fb5
+          npx -y github:kontourai/corpus#b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
           corpus build
           --out "$RUNNER_TEMP/docs-kit-site"
           --base-url https://kontourai.github.io/station/

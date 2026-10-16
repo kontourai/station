@@ -52,7 +52,11 @@ the hand-authored home). Only its `docs-bundle.json` is published here, and its
 document URLs are the same `docs/<path>.html` pages this builder writes. The
 bundle step fails open: a failed docs-kit build never blocks this site's
 publish, and the previous `docs-bundle.json` stays on `gh-pages` (stale, shown
-as behind on the hub) until a later build succeeds.
+as behind on the hub) until a later build succeeds. The bundle build and advisory
+docs gate both pin Corpus source `b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05`,
+the reviewed 0.7 renderer and v2 bundle implementation. Station continues to
+publish its own HTML and CSS; updating this pin does not replace that renderer
+or install an MCP client.
 
 It also lists the agent-facing manual `docs/reference/station-docs.md` with
 `"publish": false`: the bundle carries it, with its relative links made
