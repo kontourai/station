@@ -33,7 +33,7 @@ export function ProjectTaskBoard({
         if (column.label === 'Canceled' && !items.length)
           return (
             <details
-              className="project-task-board__empty-column"
+              className="project-task-board__canceled-disclosure"
               key={column.label}
             >
               <summary>Canceled · 0</summary>
