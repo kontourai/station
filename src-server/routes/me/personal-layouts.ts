@@ -218,7 +218,7 @@ export function createPersonalLayoutRoutes(
       return c.json({ success: true, data: await operation() });
     } catch (error) {
       if (error instanceof BoardRevisionConflict)
-        return c.json({ success: false, error: error.message }, 409);
+        return c.json({ success: false, error: errorMessage(error) }, 409);
       if (error instanceof FileStorageNotFoundError) return noSuchBoard(c);
       throw error;
     }
@@ -382,7 +382,7 @@ export function createPersonalLayoutRoutes(
         updated = await service.update(owner, layoutSlug, patch);
       } catch (error) {
         if (error instanceof PersonalBoardAuthoringRequired)
-          return c.json({ success: false, error: error.message }, 400);
+          return c.json({ success: false, error: errorMessage(error) }, 400);
         throw error;
       }
       if (updated === undefined) return noSuchBoard(c);
@@ -483,7 +483,7 @@ export function createPersonalLayoutRoutes(
             409,
           );
         if (error instanceof PersonalBoardMoveConflict)
-          return c.json({ success: false, error: error.message }, 409);
+          return c.json({ success: false, error: errorMessage(error) }, 409);
         if (error instanceof ProjectLayoutRefusedError) {
           return c.json(error.body, 400);
         }

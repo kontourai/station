@@ -167,6 +167,45 @@
       "documents": [
         "docs/design/chat-composer.md"
       ]
+    },
+    {
+      "path": "docs/reviews/personal-boards-20261016/setup.jpg",
+      "kind": "image",
+      "digest": "bbcc65a8acab2e7877abd9815c5af224a530b0186e2f1f40ac8261cb8b77049f",
+      "alt": "An empty Personal Board offers starting templates and a chat handoff.",
+      "caption": "Before composing a dashboard.",
+      "scenario": "Personal Board authoring",
+      "evidence": "Actual managed development runtime with isolated temp home at 1280x900 and390x900. Created Board through realAPI, selected Daily brief and edited/previewed/saved throughUI; created a sampleProject/Task through realAPI. Built-inAgent setup attention and reconnecting header are preserved asobserved. This is source-development visual evidence, not Gallerybaseline, externalprovider, physicaldevice, releasequalification or proof of healthyconnection. Setup isbeforecomposing in the newUI, not apre-feature screenshot. See adjacent reviewREADME.",
+      "capturedRevision": "11c41c337a39afb72c3cf21716d187878b560fef",
+      "documents": [
+        "docs/reviews/personal-boards-20261016/README.md"
+      ]
+    },
+    {
+      "path": "docs/reviews/personal-boards-20261016/dashboard.jpg",
+      "kind": "image",
+      "digest": "4a0f2700c7ba3c64ecd5db71486dbcd3a68232c67ca5f79a83e8b1fb933f21ba",
+      "alt": "A saved Personal Board shows live attention and a real sample Task.",
+      "caption": "After previewing and saving a dashboard.",
+      "scenario": "Personal Board authoring",
+      "evidence": "Actual managed development runtime with isolated temp home at 1280x900 and390x900. Created Board through realAPI, selected Daily brief and edited/previewed/saved throughUI; created a sampleProject/Task through realAPI. Built-inAgent setup attention and reconnecting header are preserved asobserved. This is source-development visual evidence, not Gallerybaseline, externalprovider, physicaldevice, releasequalification or proof of healthyconnection. Setup isbeforecomposing in the newUI, not apre-feature screenshot. See adjacent reviewREADME.",
+      "capturedRevision": "11c41c337a39afb72c3cf21716d187878b560fef",
+      "documents": [
+        "docs/reviews/personal-boards-20261016/README.md"
+      ]
+    },
+    {
+      "path": "docs/reviews/personal-boards-20261016/mobile.jpg",
+      "kind": "image",
+      "digest": "30fe16d545f2412eb1bdd6abb37c9727a225e09e4c52fe68cf2a6f4a6f4f19e3",
+      "alt": "The saved Personal Board sections stack at 390 pixels.",
+      "caption": "The saved dashboard on a phone-sized viewport.",
+      "scenario": "Personal Board authoring",
+      "evidence": "Actual managed development runtime with isolated temp home at 1280x900 and390x900. Created Board through realAPI, selected Daily brief and edited/previewed/saved throughUI; created a sampleProject/Task through realAPI. Built-inAgent setup attention and reconnecting header are preserved asobserved. This is source-development visual evidence, not Gallerybaseline, externalprovider, physicaldevice, releasequalification or proof of healthyconnection. Setup isbeforecomposing in the newUI, not apre-feature screenshot. See adjacent reviewREADME.",
+      "capturedRevision": "11c41c337a39afb72c3cf21716d187878b560fef",
+      "documents": [
+        "docs/reviews/personal-boards-20261016/README.md"
+      ]
     }
   ]
 }
