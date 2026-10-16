@@ -717,7 +717,9 @@ describe('status facts for chat, task and merged rows', () => {
     ['canceled', 'Task · Canceled', 'finished', 'stopped', 'neutral'],
   ] as const)(
     'a %s Task shows Task state using its bound-session evidence',
-    (status, line, lane, rung, tone, sessionId) => {
+    (status, line, lane, rung, tone, sessionId:
+      | string
+      | undefined = undefined) => {
       const task: TaskRecord = {
         id: 'task-1',
         projectId: 'project-alpha',
