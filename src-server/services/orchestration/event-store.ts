@@ -294,6 +294,10 @@ import {
   turnDedupKey,
 } from './sqlite-turn-dedup-persistence.js';
 import {
+  createSqliteThreadInboxStore,
+  type ThreadInboxStore,
+} from './thread-inbox.js';
+import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_LABEL_BYTES,
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
@@ -1968,6 +1972,7 @@ export class EventStore {
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
+  private threadInbox?: ThreadInboxStore;
 
   constructor(
     dbPath: string,
@@ -11955,6 +11960,12 @@ export class EventStore {
     return this.delegationResults;
   }
 
+  /** #3568: follow-ups held for a conversation's next turn boundary. */
+  threadInboxStore(): ThreadInboxStore {
+    this.threadInbox ??= createSqliteThreadInboxStore(this.db);
+    return this.threadInbox;
+  }
+
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
   readSteerInput(input: {
     threadId: string;
@@ -12676,6 +12687,9 @@ export class EventStore {
         )
         .all(threadId) as Array<{ blob_ref: string }>
     ).map((row) => row.blob_ref);
+    // #3568: opened before the transaction, because opening it migrates the
+    // inbox's tables in a transaction of its own.
+    const threadInbox = this.threadInboxStore();
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
@@ -12785,6 +12799,10 @@ export class EventStore {
         .run(threadId);
       // #3559: a deleted thread's claims and their tombstones leave with it.
       this.turnDedupPersistence.forgetThread(threadId);
+      // #3568: a deleted conversation's queued follow-ups go with it. A
+      // conversation is keyed by its root Session, so only that deletion
+      // names any entries.
+      threadInbox.forget(threadId);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

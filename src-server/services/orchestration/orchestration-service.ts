@@ -4912,6 +4912,61 @@ export class OrchestrationService {
   }
 
   /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
+  /**
+   * The turn another attempt holds `clientTurnId` for on `threadId`, waited
+   * for (bounded, by the deduplicator's own wait). `given-up` when this
+   * process's own owner gave the key up after it may have reached the engine
+   * (the possible-effect refusal the delivery lookup also gives, never a
+   * resend). Only that: a live owner's claim, however old, may still
+   * deliver, so its resend stays free to join the turn (#3660). A read fault
+   * falls through to `held`, which is safe because a resend meets the same
+   * held claim. `held`: still held, or released without sending.
+   */
+  private async awaitHeldTurnKey(
+    threadId: string,
+    clientTurnId: string,
+    signal?: AbortSignal,
+  ): Promise<{ kind: 'turn'; turnId: string } | { kind: 'given-up' | 'held' }> {
+    const ledger = this.turnDeduplicator;
+    if (!ledger) return { kind: 'held' };
+    const turnId = await raceWithSignal(
+      ledger.awaitResolution({ threadId, clientTurnId }),
+      signal,
+    ).catch(() => undefined);
+    if (turnId) return { kind: 'turn', turnId };
+    let givenUp = false;
+    try {
+      givenUp = ledger.givenUp({ threadId, clientTurnId });
+    } catch {
+      givenUp = false;
+    }
+    return givenUp ? { kind: 'given-up' } : { kind: 'held' };
+  }
+
+  /**
+   * #3568: join the turn a live claim holds `clientTurnId` for on
+   * `sessionId`, as a same-key send meeting that claim in `sendTurn` does:
+   * `started` with its turn once it resolves, `indeterminate` when this
+   * process gave the key up after a possible effect, else `in-flight`.
+   */
+  async joinHeldTurnKey(
+    sessionId: string,
+    clientTurnId: string,
+    /** Stops only this wait (the caller went away); nothing is sent either way. */
+    signal?: AbortSignal,
+  ): Promise<
+    | { outcome: 'started'; turnId: string }
+    | { outcome: 'indeterminate' | 'in-flight' }
+  > {
+    this.initialize();
+    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
+    if (held.kind === 'turn')
+      return { outcome: 'started', turnId: held.turnId };
+    return {
+      outcome: held.kind === 'given-up' ? 'indeterminate' : 'in-flight',
+    };
+  }
+
   inspectTurnDelivery(
     conversationId: string,
     clientTurnId: string,
@@ -7153,34 +7208,16 @@ export class OrchestrationService {
                 throw new SessionTurnStartIndeterminateError();
               }
               if (claim.kind === 'contended') {
-                const existingTurnId =
-                  claim.turnId ??
-                  (await raceWithSignal(
-                    turnDeduplicator!.awaitResolution({
-                      threadId: turnInput.threadId,
+                const held = claim.turnId
+                  ? { kind: 'turn' as const, turnId: claim.turnId }
+                  : await this.awaitHeldTurnKey(
+                      turnInput.threadId,
                       clientTurnId,
-                    }),
-                    turnInput.signal,
-                  ).catch(() => undefined));
-                if (!existingTurnId) {
+                      turnInput.signal,
+                    );
+                if (held.kind !== 'turn') {
                   throwIfAborted(turnInput.signal);
-                  // The other attempt, in this process, gave the key up after
-                  // it may have reached the engine: the possible-effect
-                  // refusal the delivery lookup also gives, never a resend.
-                  // Only that: a live owner's claim, however old, may still
-                  // deliver, so its resend must stay free to join the turn.
-                  // A read fault here falls through to the retryable refusal,
-                  // which is safe because a resend meets the same held claim.
-                  let givenUp = false;
-                  try {
-                    givenUp = turnDeduplicator!.givenUp({
-                      threadId: turnInput.threadId,
-                      clientTurnId,
-                    });
-                  } catch {
-                    givenUp = false;
-                  }
-                  if (givenUp) {
+                  if (held.kind === 'given-up') {
                     orchestrationTurnDedup.add(1, {
                       provider: adapter.provider,
                       outcome: 'indeterminate',
@@ -7192,6 +7229,7 @@ export class OrchestrationService {
                   // retryable, so the client re-sends with the same key.
                   throw new ClientTurnInFlightError();
                 }
+                const existingTurnId = held.turnId;
                 orchestrationTurnDedup.add(1, {
                   provider: adapter.provider,
                   outcome: claim.turnId ? 'hit' : 'hit_inflight',
