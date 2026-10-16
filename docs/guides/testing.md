@@ -194,12 +194,14 @@ changes and full qualification, rather than every readiness invocation.
 Dependency/runtime changes retain full-test escalation. This removes repeated
 framework testing without treating stale repository documentation as valid.
 
-Title and body edits run only the independent `PR title` check in `PR: CI`.
-It reads live metadata once using trusted base code; it never waits for source
-jobs or installs dependencies. Source pushes and base retargets still run the
+Title and body edits run only `PR title status publisher` in `PR: CI`.
+It publishes the mutable commit-status context `PR title policy`, first pending,
+then success or failure after live validation. Trusted workflow code validates
+all open main-target PRs sharing that exact head; a truncated inventory fails.
+Publishers serialize by SHA and never wait for source jobs or install dependencies. Source pushes and base retargets still run the
 source checks. On metadata-only events the skipped source aggregate has a
 different name, so it cannot replace a failing required `fast-checks` result.
-The `PR title` context is required before queue admission. Its merge-group
+The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
 
 `Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the

@@ -553,7 +553,7 @@ describe('persistent runner policy', () => {
       'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        (steps[0].with as Record<string, unknown>).ref =
+        (steps[1].with as Record<string, unknown>).ref =
           '${{ github.event.pull_request.base.sha }}';
       },
     ],
@@ -573,7 +573,7 @@ describe('persistent runner policy', () => {
       'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        (steps[0].with as Record<string, unknown>).ref =
+        (steps[1].with as Record<string, unknown>).ref =
           '${{ github.event.pull_request.head.sha }}';
       },
     ],
@@ -595,7 +595,70 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId,
       message:
-        'Required PR title check must use the exact base-only read-only topology',
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.permissions = {
+        contents: 'read',
+        'pull-requests': 'read',
+        statuses: 'write',
+        checks: 'write',
+      };
+    },
+    (job: Record<string, unknown>) => {
+      (job.concurrency as Record<string, unknown>)['cancel-in-progress'] = true;
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).shift();
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).pop();
+    },
+    (job: Record<string, unknown>) => {
+      job.name = 'PR title policy';
+    },
+  ])('rejects unsafe title status publication topology', (mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('pr-title', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('rejects PR-number-scoped concurrency for a shared-SHA commit status', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('pr-title', (job) => {
+          (job.concurrency as Record<string, unknown>).group =
+            'ci-pr-title-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('does not grant status publication to candidate source jobs', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks-statics', (job) => {
+          job.permissions = { contents: 'read', statuses: 'write' };
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks-statics',
+      message:
+        'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
     });
   });
 
