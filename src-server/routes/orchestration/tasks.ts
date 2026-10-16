@@ -355,6 +355,12 @@ export function createTaskRoutes(
   options: {
     logger?: { warn(message: string, meta?: Record<string, unknown>): void };
     onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
+    onRoomSystemLine?: (input: {
+      task: TaskRecord;
+      request: Request;
+      proposalId: string;
+      text: string;
+    }) => Promise<void>;
     taskDispatcher: TaskDispatcher;
     proposalBriefAvailable?: () => boolean;
     seedProposalBrief?: (input: {
@@ -744,6 +750,12 @@ export function createTaskRoutes(
             503,
           );
         await service.completeProposalAcceptance(data.id, input.shapingSource);
+        await options.onRoomSystemLine?.({
+          task: data,
+          request: c.req.raw,
+          proposalId: `room-created:${data.id}`,
+          text: 'created this Task from a chat',
+        });
       }
       return c.json({ success: true, data }, 201);
     } catch (error) {
@@ -1289,6 +1301,14 @@ export function createTaskRoutes(
               commit: create,
             })
           : await create();
+      const task = service.readTask(param(c, 'taskId'));
+      if (task)
+        await options.onRoomSystemLine?.({
+          task,
+          request: c.req.raw,
+          proposalId: `room-kept:${data.id}`,
+          text: `kept ${input.kind === 'turn' ? 'an answer' : input.kind === 'user-input' ? 'a message' : 'a reference'} in Results`,
+        });
       return c.json({ success: true, data }, 201);
     } catch (error) {
       if (error instanceof AnswerNarrativeUnavailableError) {

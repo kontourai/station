@@ -1194,6 +1194,7 @@ export class ProjectTaskRoomRuntime {
     taskId: string;
     request: Request;
     current: () => Promise<boolean>;
+    cursor?: Parameters<ProjectTaskRoomAuthority['read']>[0]['cursor'];
   }) {
     const grant = await this.#issue(
       input.taskId,
@@ -1202,7 +1203,10 @@ export class ProjectTaskRoomRuntime {
       input.current,
     );
     if (!grant) return { kind: 'not-found' } as const;
-    const result = await this.#history.read({ grant });
+    const result = await this.#history.read({
+      grant,
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+    });
     if (!(await input.current())) return { kind: 'not-found' } as const;
     if (result.kind === 'denied') return { kind: 'not-found' } as const;
     return projectHistory(
@@ -1826,11 +1830,17 @@ export class ProjectTaskRoomRuntime {
         // history port this produces an indeterminate pending intent without
         // dispatching it, so the recovery image below is the authoritative retry
         // record before SQLite can commit `live-work-started`.
-        const prepared = entry.room.announce(
-          { actorId, requestId },
-          authorization,
-          now,
-        );
+        const current = entry.room.snapshotAfterMutation(authorization, now);
+        const published =
+          current.outcome === 'available' &&
+          current.snapshot.participants.some(
+            (participant) =>
+              participant.actor.actorId === actorId &&
+              participant.publication === 'published',
+          );
+        const prepared: LiveWorkMutationOutcome = published
+          ? { outcome: 'refreshed' }
+          : entry.room.announce({ actorId, requestId }, authorization, now);
         if (
           prepared.outcome === 'degraded' &&
           prepared.state === 'indeterminate'
@@ -3939,9 +3949,15 @@ function projectHistory(
       records: value.records
         .filter(
           (record: any) =>
-            !guest ||
-            (!record.correlationId?.startsWith('room-thread:') &&
-              record.correlationId !== 'room-status'),
+            !(
+              (record.body.kind === 'live-work-started' ||
+                record.body.kind === 'live-work-presence-ended') &&
+              record.principal.kind !== 'agent'
+            ) &&
+            (!guest ||
+              (!record.correlationId?.startsWith('room-thread:') &&
+                record.correlationId !== 'room-status' &&
+                record.correlationId !== 'room-system')),
         )
         .map((record: any) => ({
           actor: {
@@ -3990,7 +4006,7 @@ function projectHistory(
               }
             : {}),
           ...(record.principal.kind === 'operator' &&
-          record.correlationId === 'room-status'
+          ['room-status', 'room-system'].includes(record.correlationId)
             ? { system: true }
             : {}),
           body: projectBody(record.body),

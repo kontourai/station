@@ -3218,6 +3218,7 @@ export function createOrchestrationRoutes(
           ...(contextSnapshot
             ? {
                 prompt: formatTaskRoomPrompt(body.prompt, contextSnapshot),
+                title: body.prompt.trim(),
               }
             : {}),
           ...(delegation ? { delegation } : {}),

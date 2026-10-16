@@ -1259,6 +1259,12 @@ describe('ProjectTaskRoomRuntime', () => {
       request,
       command: 'announce',
     });
+    await expect(
+      composed.runtime.live({ taskId: task.id, request, command: 'announce' }),
+    ).resolves.toMatchObject({
+      kind: 'available',
+      result: { outcome: 'refreshed' },
+    });
     await composed.runtime.publishAgentStarted({
       task: associatedTask,
       dispatch: {

@@ -18,6 +18,7 @@ import type {
 
 interface Dependencies {
   graph: Pick<TaskGraphService, 'startTaskRoomWork'>;
+  readAgentLabel?(agentId: string): Promise<string | undefined>;
   work: TaskRoomWorkModule;
   room(): ProjectTaskRoomRuntime | undefined;
   authorize(
@@ -135,7 +136,7 @@ export class TaskRoomConversationModule {
       proposalId: `room-request:${record.operationId}:${record.requesterId}`,
       occurredAt: record.createdAt,
       expectedTaskCreatedAt: record.taskCreatedAt,
-      text: `@${record.agentId} ${record.prompt}`,
+      text: `**@${(await this.deps.readAgentLabel?.(record.agentId)) ?? record.agentId}** ${record.prompt}`,
     });
     const current = await this.deps.authorize(
       record.taskId,

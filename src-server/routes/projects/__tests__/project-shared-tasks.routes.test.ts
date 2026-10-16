@@ -148,7 +148,7 @@ describe('project shared Task routes', () => {
     expect(response.status).toBe(404);
     expect(await response.text()).not.toMatch(/public text|upload\.txt/);
   });
-  test('reports an incomplete bounded room page as unavailable', async () => {
+  test('paginates shared human history instead of refusing a multi-page room', async () => {
     const h = fixture();
     h.room.sharedHistory.mockResolvedValueOnce({
       ...(await h.room.sharedHistory()),
@@ -160,8 +160,28 @@ describe('project shared Task routes', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      data: { kind: 'unavailable' },
+      data: {
+        kind: 'available',
+        hasMore: true,
+        nextCursor: 'next-page',
+        records: [
+          expect.objectContaining({
+            body: { kind: 'human-message', text: 'shared note' },
+          }),
+        ],
+      },
     });
+    const cursor = {
+      schemaVersion: 'station.project-task-room-cursor/v1',
+      afterSeq: 3,
+    };
+    await h.app.request(
+      '/api/projects/example/shared-work/task-1/history?cursor=' +
+        Buffer.from(JSON.stringify(cursor)).toString('base64url'),
+    );
+    expect(h.room.sharedHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor }),
+    );
   });
   test('revocation after worker read returns opaque 404 and no content', async () => {
     const h = fixture();

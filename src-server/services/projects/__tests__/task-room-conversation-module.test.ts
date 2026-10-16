@@ -929,7 +929,7 @@ test.each(['initial', 'reply'] as const)(
         kind === 'reply'
           ? record.correlationId === `room-thread:${sessionId}`
           : record.body.kind === 'human-message' &&
-            record.body.text === '@researcher Investigate',
+            record.body.text === '**@researcher** Investigate',
       );
       const answer = records.find(
         (record) =>

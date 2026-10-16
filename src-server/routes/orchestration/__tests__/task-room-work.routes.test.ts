@@ -231,6 +231,7 @@ test.each([undefined, 'codex'])(
       });
       expect(withContext.status).toBe(200);
       expect(start.mock.calls[1][0].prompt).toContain('Selected shared brief.');
+      expect(start.mock.calls[1][0].title).toBe('Investigate this idea');
       expect(
         (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
       ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });

@@ -1305,6 +1305,13 @@ export function configureRuntimeRoutes(
   const roomConversation = new TaskRoomConversationModule({
     graph: context.taskGraphService,
     work: taskRoomWork,
+    readAgentLabel: async (id) => {
+      try {
+        return (await context.agentService.getAgent(id)).name;
+      } catch {
+        return undefined;
+      }
+    },
     room: () => projectTaskRoomRuntime,
     authorize: (...args) => authorizeTaskRoomWork(...args),
     sessions: context.orchestrationService,
@@ -3873,6 +3880,29 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       logger: context.logger,
+      onRoomSystemLine: async ({ task, request, proposalId, text }) => {
+        try {
+          const result = await projectTaskRoomRuntime?.message({
+            taskId: task.id,
+            request,
+            expectedTaskCreatedAt: task.createdAt,
+            proposalId,
+            correlationId: 'room-system',
+            text,
+            occurredAt: task.updatedAt,
+          });
+          if (result?.kind !== 'committed' && result?.kind !== 'duplicate')
+            context.logger.warn('Task system line could not be published', {
+              taskId: task.id,
+              proposalId,
+            });
+        } catch (error) {
+          context.logger.warn('Task system line publication failed', {
+            taskId: task.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
       onStatusChanged: async (task, request) => {
         await projectTaskRoomRuntime?.message({
           taskId: task.id,

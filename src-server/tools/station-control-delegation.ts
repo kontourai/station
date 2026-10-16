@@ -386,6 +386,8 @@ interface DelegationEnvironmentSelection {
 
 export interface DelegateTaskInput {
   prompt: string;
+  /** Route-owned human message, before appending the Task brief. */
+  title?: string;
   target: ExecutionTarget;
   sessionId?: string;
   /** Task-owned authority checked inside provider start/turn effects; never public JSON. */
@@ -5898,6 +5900,7 @@ export async function delegateTask(
             metadata: {
               agentId: resolved.agentId,
               agentSlug: resolved.agentId,
+              ...(input.title ? { delegationTitle: input.title } : {}),
               ...(resolved.expectedDefinitionFingerprint
                 ? {
                     expectedDefinitionFingerprint:
