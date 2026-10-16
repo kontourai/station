@@ -143,23 +143,22 @@ export function parseBrowserPairingLink(
     const hash = new URLSearchParams(parsed.hash.slice(1));
     if (!hash.has('station-pairing')) return undefined;
     const payload = hash.get('station-pairing');
+    const offer = payload
+      ? decodeDevicePairingPayload(payload, {
+          requireCanonicalOfferFields: true,
+        })
+      : null;
     if (
       (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
       parsed.username ||
       parsed.password ||
       hash.getAll('station-pairing').length !== 1 ||
-      !payload ||
-      !decodeDevicePairingPayload(payload, {
-        requireCanonicalOfferFields: true,
-      })
+      !offer
     ) {
       return pairingLinkError(
         'This Station pairing offer is invalid or expired.',
       );
     }
-    const offer = decodeDevicePairingPayload(payload, {
-      requireCanonicalOfferFields: true,
-    })!;
     // The browser UI proxies this Station's API; a separate API origin would
     // fail browser pairing provenance and could not install its session cookie.
     return {
