@@ -101,3 +101,53 @@ established by this record. Canonical unsaved-navigation seams remain; a full
 live dirty-editor navigation matrix was not repeated. Historical learning
 captures retain their original revisions and now label their old navigation
 chrome explicitly.
+
+## Visual fidelity correction
+
+The initial captures above remain evidence of `7743a0400d5`, which the user
+found did not match the approved mockup closely enough. The corrected sidebar
+and header are implemented at `0bff7654025`; Tasks content is unchanged.
+
+The correction restores project identity tiles, decorative view icons,
+aligned labels, indented views and quiet active-view styling. The app header
+is the sole desktop collapse owner. The expanded footer remains one row.
+Activity uses a timeline glyph, and Personal Boards is separate from project
+Layouts, with its first-create action visible even when empty. The collapsed
+rail has one Personal Boards navigator rather than a stack of Board icons.
+Loading and failed reads remain visible; unavailable lists cannot create a
+Board with a guessed slug. Switching Station authority retires the navigator.
+
+| Corrected state | Real-app capture |
+| --- | --- |
+| Expanded sidebar and retained header | [Expanded](fidelity-expanded.jpg) |
+| 52px rail | [Collapsed](fidelity-collapsed.jpg) |
+| Configured project views | [Project popup](fidelity-project-menu.jpg) |
+| Personal Boards | [Boards popup](fidelity-boards.jpg) |
+| 390px phone drawer | [Mobile](fidelity-mobile.jpg) |
+| Light theme | [Light](fidelity-light.jpg) |
+
+These captures use the same isolated development home on ports 3842/5874,
+with three sample projects and two personal Boards created through the UI.
+Only Coding and Tasks are configured for Station. Default's connection
+indicator is an observation in that isolated instance, not provider evidence.
+Desktop captures are 1440×900; the mobile capture is 390×844. The temporary
+viewport override was reset after capture.
+
+Focused verification: 129 passed across nine UI suites, with one
+missing-browser sentinel skipped because Chromium was available. Six targeted
+browser journeys passed: vertical view containment, Up/Down focus, centered
+rail tiles, aligned headers with one collapse control, collapsed footer
+utilities, and surviving sidebar/chat/help transitions. The first browser
+run found decorative icon text in a raw-text focus assertion and a missing
+knowledge-roots fixture response; corrected owner assertions and the explicit
+read response passed on the second run. The fixture-policy check and UI/E2E
+typechecks passed. The changed-test selector deferred its larger lanes and is
+not a full-regression result.
+
+Independent report-only review inspected the source delta and all six
+captures. Both findings were repaired: obsolete browser assertions now check
+the replacement behavior, and the Boards owner remounts on Station authority
+replacement, covered through the mounted sidebar. No remaining blocker was
+found. Native title-bar geometry and fresh hosted Gallery qualification are
+not established by this correction's local evidence. The PR remains open
+with auto-merge disabled pending visual feedback.
