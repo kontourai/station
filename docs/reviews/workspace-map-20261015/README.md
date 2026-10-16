@@ -206,3 +206,31 @@ code, comparator, mask, threshold or exception changed. Comparing the same
 artifact against the updated references passes 55/55, plus one existing
 volatile skip. This establishes reference consistency, not a fresh hosted
 render on the baseline commit or completion of the merge queue.
+
+## Integration with current main
+
+Merge commit `8dcf4516a96` integrates main `d6c25a3c0728` into the reviewed
+`b09c8b123120` branch without rebasing. All 15 conflicts were screenshot
+references: the manifest and 14 PNGs. Reference selection follows the parent
+deltas: retain branch-only updates, retain main-only updates, and use main's
+newer reviewed reference for overlapping updates. All 55 nonvolatile image
+hashes and dimensions match the resolved manifest; the existing volatile
+entry is unchanged. These are parent capture references, not a fresh render
+of the integrated source.
+
+Main's #3726 Gallery workflow and comparator policy are retained unchanged:
+exact pixel differences are review advisories, while capture and comparison
+integrity failures remain errors. The default local comparator remains
+strict. No new exception, mask or threshold is introduced by this resolution.
+The previously recorded strict hosted Gallery PASS remains bound to
+`b09c8b123120`, not to this merge.
+
+Independent source/resolution review confirmed that the sidebar/header and
+popup lifetime fixes remain unchanged from the branch parent, and upstream
+Gallery fixture-lifetime and viewport fixes remain intact. Auto-merged
+settings retain upstream telemetry controls while keeping the retired
+`sidebar-sections` entry removed. The canonical settings generator produced
+no additional changes. Eight focused files pass 285 tests, including mounted
+sidebar/Boards/footer/header, settings authority, comparator and workflow
+contracts. Fresh hosted qualification of the integrated candidate remains
+outstanding.
