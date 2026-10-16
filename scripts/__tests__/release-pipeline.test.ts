@@ -11,10 +11,12 @@ import {
   ADMISSION_OBSERVE_INTERVAL_MS,
   ADMISSION_WAIT_CEILING_MS,
   finalPublicationDecision,
+  nightlySourceGate,
   main as pipelineMain,
   publicationInterval,
   qualificationAdmission,
   recoveryDisposition,
+  reservationRecovery,
   runnerProfile,
 } from '../release-pipeline.mjs';
 
@@ -102,7 +104,7 @@ describe('release pipeline admission', () => {
           source,
           ledger: [row(channel)],
           ancestor: () => true,
-          qualification: '42',
+          sourceGate: '42',
           now,
         }),
       ).toEqual(expected);
@@ -114,7 +116,7 @@ describe('release pipeline admission', () => {
         source,
         ledger: [row('nightly-desktop', prior)],
         ancestor: () => false,
-        qualification: '42',
+        sourceGate: '42',
         now,
       }),
     ).toThrow(/rollback/);
@@ -123,10 +125,10 @@ describe('release pipeline admission', () => {
         source,
         ledger: [],
         ancestor: () => true,
-        qualification: '',
+        sourceGate: '',
         now,
       }),
-    ).toThrow(/qualification/);
+    ).toThrow(/source gate/);
   });
   it('rechecks cadence under the delivery lock after another source shipped', () => {
     expect(() =>
@@ -139,7 +141,7 @@ describe('release pipeline admission', () => {
           },
         ],
         ancestor: () => true,
-        qualification: '42',
+        sourceGate: '42',
         now,
       }),
     ).toThrow(/cadence/);
@@ -324,7 +326,7 @@ it('retains a just-published native platform across a ledger-only candidate with
           timestampUtc: new Date(now - 1000).toISOString(),
         },
       ],
-      qualification: '42',
+      sourceGate: '42',
       ancestor: () => true,
       now,
     }),
@@ -342,7 +344,7 @@ it('checks the current provider pointers without requiring retired ledger histor
           timestampUtc: '2020-01-01T00:00:00Z',
         },
       ],
-      qualification: '42',
+      sourceGate: '42',
       ancestor: () => false,
       now,
     }),
@@ -509,4 +511,116 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
       'Qualification admission failed: GitHub GET actions/runs: HTTP 502',
     );
   });
+});
+
+it('admits only the trusted current Nightly run and its completed source usability gate', async () => {
+  let run = {
+    ...producer,
+    id: 42,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+    status: 'in_progress',
+    conclusion: null as string | null,
+  };
+  let jobs = [
+    {
+      name: '1 · Source gate (lint, typecheck, browser smoke)',
+      status: 'completed',
+      conclusion: 'success',
+    },
+  ];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(
+      JSON.stringify(request.url?.includes('/jobs') ? { jobs } : run),
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect(await nightlySourceGate(source, env)).toBe(true);
+    const original = { ...run };
+    for (const override of [
+      { head_sha: prior },
+      { head_repository: { full_name: 'foreign/repo' } },
+      { head_branch: 'feature' },
+      { path: '.github/workflows/ci.yml' },
+      { event: 'pull_request' },
+      { status: 'completed', conclusion: 'failure' },
+      { status: 'completed', conclusion: 'cancelled' },
+      { id: 43 },
+    ]) {
+      run = { ...original, ...override };
+      expect(await nightlySourceGate(source, env)).toBe(false);
+    }
+    run = original;
+    const good = jobs[0];
+    for (const rejected of [
+      [],
+      [good, good],
+      [{ ...good, status: 'in_progress' }],
+      [{ ...good, conclusion: 'failure' }],
+      [{ ...good, conclusion: 'cancelled' }],
+      [{ ...good, conclusion: 'skipped' }],
+    ]) {
+      jobs = rejected;
+      expect(await nightlySourceGate(source, env)).toBe(false);
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it('recovers terminal Nightly delivery only after its actual source gate succeeded', async () => {
+  const run = {
+    ...producer,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+  };
+  let jobs = [
+    {
+      name: '1 · Source gate (lint, typecheck, browser smoke)',
+      status: 'completed',
+      conclusion: 'success',
+    },
+  ];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(
+      JSON.stringify(
+        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: [run] },
+      ),
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect((await reservationRecovery(source, env)).recover).toBe(true);
+    const good = jobs[0];
+    for (const rejected of [
+      [],
+      [{ ...good, status: 'in_progress' }],
+      [{ ...good, conclusion: 'failure' }],
+      [{ ...good, conclusion: 'cancelled' }],
+    ]) {
+      jobs = rejected;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
 });

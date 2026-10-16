@@ -574,7 +574,9 @@ compatible version.
 
 ## Title policy publication
 
-Only the trusted title-status job receives `statuses:write`. It checks out the
+The trusted title-status job receives `statuses:write` solely for title policy.
+The isolated source-policy publisher below is a separate exception; jobs that
+execute candidate code retain read-only tokens. The title job checks out the
 running workflow revision for PR events and the protected base for merge groups;
 candidate code never receives this token. It writes only `PR title policy` on
 the exact event head, leaving source-check contexts untouched.
@@ -585,3 +587,23 @@ pending. If both the initial pending and fallback writes are rejected, the
 client cannot revoke an earlier remote success. The diagnostic job reports the
 error; it does not claim that remote admission failed closed. An operator hold
 is needed during such a complete publication outage.
+
+
+## Source policy publication
+
+The isolated [source-policy workflow](../../.github/workflows/source-verification-policy.yml)
+also receives `statuses:write`. It checks out trusted policy, never candidate
+code, and publishes only `Source verification policy` from existing GitHub run
+and job evidence. `PR: CI` calls it after core source checks and before optional
+delivery work for source-changing PR events. Lifecycle reconciliation handles
+requested, in-progress and completed source runs; metadata start events allocate
+no publisher, while metadata completion can reconcile existing proof.
+
+The policy binds the exact head, repository and every current main-target PR
+sharing that head. It checks recorded base ancestry and the current run attempt;
+new main commits do not by themselves invalidate ancestral source evidence.
+Missing, unfinished, failed, cancelled or divergent proof cannot borrow an older
+success. Reconciliation launches no candidate tests. Keep the legacy required
+`fast-checks` context until real publisher statuses are verified, then follow
+[the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
+This source status is not full release qualification.
