@@ -11,9 +11,14 @@ const showToast = vi.fn();
 const getChatForExecutionSession = vi.fn();
 const updateChat = vi.fn();
 const navigate = vi.fn();
+const getSnapshot = vi.fn(() => ({
+  isDockOpen: false,
+  activeChat: null as string | null,
+}));
+const getChatKeyForExecutionSession = vi.fn(() => 'draft-1');
 
 vi.mock('../../../contexts/NavigationContext', () => ({
-  navigationStore: { navigate },
+  navigationStore: { navigate, getSnapshot },
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -24,7 +29,11 @@ vi.mock('../../../contexts/ToastContext', () => ({
   toastStore: { showToolApproval, show: showToast, dismiss: vi.fn() },
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
-  activeChatsStore: { getChatForExecutionSession, updateChat },
+  activeChatsStore: {
+    getChatForExecutionSession,
+    getChatKeyForExecutionSession,
+    updateChat,
+  },
 }));
 
 const {
@@ -35,6 +44,8 @@ const {
 const { forgetApprovalAnswer } = await import('../answerRequest');
 beforeEach(() => {
   forgetApprovalAnswer('thread-1', 'req-1');
+  navigate.mockClear();
+  getSnapshot.mockReturnValue({ isDockOpen: false, activeChat: null });
   vi.mocked(resolveOrchestrationRequest)
     .mockReset()
     .mockResolvedValue(undefined);
@@ -398,12 +409,27 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
   });
 
   test.each([
-    [0, 'accept'],
-    [1, 'acceptForSession'],
-    [2, 'decline'],
+    [0, 'accept', false],
+    [1, 'acceptForSession', false],
+    [2, 'decline', false],
+    [0, 'accept', true],
+    [1, 'acceptForSession', true],
+    [2, 'decline', true],
   ] as const)(
-    'action %i sends %s bound to the request event id',
-    async (index, decision) => {
+    'action %i sends %s bound to the request event id (visible draft: %s)',
+    async (index, decision, visibleDraft) => {
+      if (visibleDraft)
+        getChatForExecutionSession.mockReturnValue({
+          title: 'Conversation',
+          agentName: 'Claude',
+          pendingApprovals: [],
+          conversationId: 'conv-1',
+          currentSessionId: 'thread-1',
+        });
+      getSnapshot.mockReturnValue({
+        isDockOpen: visibleDraft,
+        activeChat: visibleDraft ? 'draft-1' : null,
+      });
       handleRequestOpenedEvent(
         'http://localhost:1',
         requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
@@ -421,10 +447,12 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
         decision,
         timeoutMs: 15_000,
       });
-      expect(navigate).toHaveBeenCalledWith('/', {
-        chat: 'thread-1',
-        dock: 'open',
-      });
+      if (visibleDraft) expect(navigate).not.toHaveBeenCalled();
+      else
+        expect(navigate).toHaveBeenCalledWith('/', {
+          chat: 'thread-1',
+          dock: 'open',
+        });
     },
   );
 });

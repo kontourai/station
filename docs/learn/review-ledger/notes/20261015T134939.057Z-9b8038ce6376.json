@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Reviewed Choose an SDK surface, source-distribution and telemetry-delivery/destination-grant sections against root/query barrels, additive usage-export-query and telemetry-delivery/usage-export contracts. Existing root hook and separate secret-binding metadata claims remain accurate; version/publication limits retained. Canonical usage-export API stays documented in SDK reference; focused SDK and credential tests passed, not deployed proof.","inputs":["packages/sdk/README.md","packages/sdk/package.json#/exports"]}
+  ]
+}

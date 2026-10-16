@@ -15,10 +15,21 @@
  * is why no skill could be attached to anything on a fresh home.
  */
 
-import { act, renderHook, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render as renderComponent,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
+import {
+  OPEN_NEW_CHAT_EVENT,
+  readNewChatIntent,
+} from '../../../lib/newChatIntent';
 
 const state = {
   agents: [] as AgentData[],
@@ -238,6 +249,36 @@ test('a pending tools query does not prevent fresh agent detail from becoming ed
   expect(result.current.integrationTools).toEqual({});
   rerender();
   expect(result.current.form.name).toBe('Writer');
+});
+
+test('Chat on a project-owned Agent carries its identity and project through the dock parser', () => {
+  state.agents = [
+    agent({
+      slug: 'project-helper',
+      name: 'Project Helper',
+      project: 'demo',
+      available: true,
+    }),
+  ];
+  const { result } = render();
+  const received: ReturnType<typeof readNewChatIntent>[] = [];
+  const listener = (event: Event) => {
+    received.push(readNewChatIntent(event));
+    event.preventDefault();
+  };
+  window.addEventListener(OPEN_NEW_CHAT_EVENT, listener);
+  try {
+    renderComponent(<>{result.current.listItems[0].trailing}</>);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Chat with Project Helper' }),
+    );
+    expect(received[0]?.selection).toEqual({
+      context: 'demo',
+      agentSlug: 'project-helper',
+    });
+  } finally {
+    window.removeEventListener(OPEN_NEW_CHAT_EVENT, listener);
+  }
 });
 
 describe('AC5 — a created Agent is in the list and selected, with no reload', () => {

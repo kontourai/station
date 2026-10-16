@@ -231,12 +231,14 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
-| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), shaped for publication but `private: true` until its first, owner-gated publish (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite. Station runs its turn dedup and session-control request keys on it, over its own tables; turn boundaries are still Station's |
+| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite. Station consumes these over its existing tables and supplies host admission, terminal facts and owner liveness |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The contracts, SDK, shared, and Monument packages ship raw TypeScript source, so their
+The contracts, SDK, and shared packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
-constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
+constraint. Monument publishes compiled `dist/` (build it with
+`npm run build:monument`, smoke the packed tarball with `npm run monument-pack:smoke`),
+and its README says why only pnpm packs it correctly. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
 
@@ -341,6 +343,10 @@ That example is not a root-checkout install command or a way to replace
 Station's pinned workspace dependencies.
 
 ## Commit Messages
+
+The independent required `PR title` check applies the same grammar to the live
+squash title using trusted base code. Title/body edits rerun that small check,
+not source CI. A title correction cannot clear an actual source-check failure.
 
 Commit subjects follow the Conventional Commits grammar enforced by the
 repository hooks:
@@ -488,7 +494,7 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
-Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
+`npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
@@ -500,7 +506,8 @@ The required `fast-checks` result combines job outcomes with exact-plan shard
 receipts. A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Follow the [local feedback rule](testing.md#what-counts-as-tested).
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.

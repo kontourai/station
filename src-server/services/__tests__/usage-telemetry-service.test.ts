@@ -10,10 +10,15 @@ import {
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import type { AppConfig } from '@kontourai/station-contracts/config';
+import type {
+  ProductTelemetryBatch,
+  ProductTelemetryCommitReceipt,
+} from '@kontourai/station-contracts/product-telemetry';
 import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
+import { FileSecretBindingAdministration } from '../secrets/secret-binding-administration.js';
 import {
   assertUsageTelemetryInventoryContract,
   renderUsageTelemetryInventory,
@@ -53,6 +58,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const homes: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   renameHook.afterRename = undefined;
   readHook.beforeRead = undefined;
   await Promise.all(
@@ -67,24 +73,336 @@ async function home(): Promise<string> {
 function logger() {
   return { warn: vi.fn() };
 }
+function configuredApp(overrides: Partial<AppConfig> = {}): AppConfig {
+  return {
+    defaultModel: 'configured-model',
+    invokeModel: 'configured-model',
+    structureModel: 'configured-model',
+    ...overrides,
+  };
+}
+function committedReceipt(
+  batch: ProductTelemetryBatch,
+): ProductTelemetryCommitReceipt {
+  return {
+    protocol: 'station-product-commit/v1',
+    receiptId: '11111111-2222-4333-8444-555555555555',
+    sourceId: '22222222-2222-4333-8444-555555555555',
+    eventIds: batch.events.map((event) => event.event_id),
+    inserted: batch.events.length,
+    alreadyPresent: 0,
+    storedAt: '2026-10-10T12:00:00.000Z',
+  };
+}
+async function acceptProductBatch(
+  _input: Parameters<typeof globalThis.fetch>[0],
+  init?: RequestInit,
+) {
+  const batch = JSON.parse(String(init?.body)) as ProductTelemetryBatch;
+  return Response.json({ receipt: committedReceipt(batch) }, { status: 202 });
+}
 async function service(
   options: Partial<ConstructorParameters<typeof UsageTelemetryService>[0]> = {},
 ) {
   const subject = new UsageTelemetryService({
     homeDir: await home(),
-    appConfig: {} as any,
+    appConfig: configuredApp(),
     version: '1.2.3',
     logger: logger(),
     ...options,
   });
   // Existing transport tests exercise post-disclosure behavior; receipt-gate
   // tests below deliberately construct a service without this acknowledgement.
-  if (options.env?.STATION_TELEMETRY_ENDPOINT)
+  if (
+    options.appConfig?.productTelemetryEndpoint ||
+    options.env?.STATION_PRODUCT_TELEMETRY_ENDPOINT ||
+    options.env?.STATION_TELEMETRY_ENDPOINT
+  )
     await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
   return subject;
 }
 
 describe('UsageTelemetryService', () => {
+  test('saved exact-destination authority supplies the product key and revocation during delivery retains the batch without environment fallback', async () => {
+    const root = await home();
+    const destination = 'https://saved-receiver.test/v1/product/events';
+    const bindings = new FileSecretBindingAdministration(root, {
+      environment: { PRODUCT_KEY: 'saved-product-material' },
+    });
+    await bindings.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    await bindings.grant({
+      id: 'product-source',
+      expectedRevision: 1,
+      grant: {
+        kind: 'instance-telemetry-destination',
+        transport: 'product',
+        destination,
+      },
+    });
+    let release!: () => void;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      (input, init) =>
+        new Promise<Response>((resolve) => {
+          release = () => {
+            void acceptProductBatch(input, init).then(resolve);
+          };
+        }),
+    );
+    const subject = await service({
+      homeDir: root,
+      appConfig: configuredApp({
+        productTelemetryEndpoint: destination,
+        productTelemetryKeyRef: 'product-source',
+      }),
+      env: {
+        STATION_PRODUCT_TELEMETRY_ENDPOINT:
+          'https://unselected-env.test/events',
+        STATION_PRODUCT_TELEMETRY_KEY: 'unselected-env-key',
+      },
+      telemetrySecretResolver: bindings,
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      await subject.stationStarted();
+      const flushing = subject.flush();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      expect(String(fetch.mock.calls[0][0])).toBe(destination);
+      expect(fetch.mock.calls[0][1]?.headers).toMatchObject({
+        'x-api-key': 'saved-product-material',
+      });
+      await bindings.revoke({ id: 'product-source', expectedRevision: 2 });
+      release();
+      await flushing;
+      expect(await subject.deliveryStatus()).toMatchObject({
+        phase: 'failed',
+        queued: 1,
+        counts: { acknowledged: 0 },
+        lastFailure: { code: 'credential_unavailable' },
+      });
+      await subject.flush();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(subject.bufferedCount).toBe(1);
+    } finally {
+      subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+      await subject.shutdown();
+    }
+  });
+
+  test('changing a saved destination fences a late response and discards its destination-bound observations', async () => {
+    let release!: () => void;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      (input, init) =>
+        new Promise<Response>((resolve) => {
+          release = () => {
+            void acceptProductBatch(input, init).then(resolve);
+          };
+        }),
+    );
+    const subject = await service({
+      appConfig: configuredApp({
+        productTelemetryEndpoint: 'https://receiver-one.test/events',
+      }),
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      await subject.stationStarted();
+      const flushing = subject.flush();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      subject.reconfigure(
+        configuredApp({
+          productTelemetryEndpoint: 'https://receiver-two.test/events',
+        }),
+      );
+      release();
+      await flushing;
+      expect(await subject.deliveryStatus()).toMatchObject({
+        phase: 'ready',
+        queued: 0,
+        lastAcknowledged: null,
+        lastFailure: null,
+        counts: { acknowledged: 0, withdrawn: 1 },
+        probe: { phase: 'never' },
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+      await subject.shutdown();
+    }
+  });
+  test.each([
+    ['canonical on wins', 'on', 'off', undefined, true, 'env'],
+    ['canonical off wins', 'off', 'on', undefined, false, 'env'],
+    ['empty canonical uses alias', ' ', 'off', undefined, false, 'env'],
+    [
+      'invalid canonical uses valid alias',
+      'invalid',
+      'off',
+      undefined,
+      false,
+      'env',
+    ],
+    [
+      'invalid values use default',
+      'invalid',
+      'invalid',
+      undefined,
+      true,
+      'default',
+    ],
+    ['saved off wins', 'on', 'on', false, false, 'config'],
+    ['saved on wins', 'off', 'off', true, true, 'config'],
+  ] as const)(
+    'product environment: %s',
+    async (_name, canonical, legacy, saved, enabled, source) => {
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const log = logger();
+      const subject = await service({
+        appConfig: configuredApp({ telemetryEnabled: saved }),
+        logger: log,
+        fetch,
+        env: {
+          STATION_PRODUCT_TELEMETRY_ENDPOINT:
+            'https://canonical-product.test/v1/product/events',
+          STATION_TELEMETRY_ENDPOINT: 'https://legacy-product.test/events',
+          STATION_PRODUCT_TELEMETRY_KEY: 'canonical-product-key',
+          STATION_USAGE_TELEMETRY_KEY: 'legacy-product-key',
+          STATION_OTEL_API_KEY: 'canonical-otel-key',
+          STATION_TELEMETRY_API_KEY: 'legacy-otel-key',
+          STATION_PRODUCT_TELEMETRY_ENABLED: canonical,
+          STATION_TELEMETRY_ENABLED: legacy,
+        },
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      try {
+        expect(await subject.disclosure()).toMatchObject({
+          telemetryEnabled: enabled,
+          enabledSource: source,
+        });
+        await subject.stationStarted();
+        await subject.flush();
+        if (enabled) {
+          expect(fetch).toHaveBeenCalledTimes(1);
+          expect(fetch.mock.calls[0][0]).toBe(
+            'https://canonical-product.test/v1/product/events',
+          );
+          expect(fetch.mock.calls[0][1].headers).toMatchObject({
+            'x-api-key': 'canonical-product-key',
+          });
+          expect((await subject.deliveryStatus()).counts.acknowledged).toBe(1);
+        } else expect(fetch).not.toHaveBeenCalled();
+        const warnings = JSON.stringify(log.warn.mock.calls);
+        for (const material of [
+          'canonical-product-key',
+          'legacy-product-key',
+          'canonical-otel-key',
+          'legacy-otel-key',
+          'https://canonical-product.test',
+        ])
+          expect(warnings).not.toContain(material);
+      } finally {
+        await subject.shutdown();
+      }
+    },
+  );
+
+  test.each([
+    'empty',
+    'generic',
+    'wrong-events',
+    'partial-count',
+    'wrong-protocol',
+    'invalid-source',
+    'invalid-time',
+    'duplicate-events',
+    'negative-count',
+    'oversized',
+    'malformed-json',
+  ] as const)(
+    'an unverified %s 202 retains its observations for retry',
+    async (kind) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementation(async (_input, init) => {
+          const sent = JSON.parse(String(init?.body)) as ProductTelemetryBatch;
+          const receipt = {
+            protocol: 'station-product-commit/v1',
+            receiptId: '11111111-2222-4333-8444-555555555555',
+            sourceId: '22222222-2222-4333-8444-555555555555',
+            eventIds: sent.events.map((event) => event.event_id),
+            inserted: sent.events.length,
+            alreadyPresent: 0,
+            storedAt: '2026-10-10T12:00:02.000Z',
+          };
+          if (kind === 'empty') return new Response(null, { status: 202 });
+          if (kind === 'generic')
+            return Response.json({ accepted: true }, { status: 202 });
+          if (kind === 'oversized')
+            return new Response('x'.repeat(8193), { status: 202 });
+          if (kind === 'malformed-json')
+            return new Response('{', { status: 202 });
+          if (kind === 'wrong-events')
+            receipt.eventIds = ['33333333-2222-4333-8444-555555555555'];
+          if (kind === 'partial-count') receipt.inserted = 0;
+          if (kind === 'wrong-protocol')
+            receipt.protocol = 'station-product-commit/v2';
+          if (kind === 'invalid-source') receipt.sourceId = 'not-a-source';
+          if (kind === 'invalid-time')
+            receipt.storedAt = '2026-02-30T12:00:00.000Z';
+          if (kind === 'duplicate-events') {
+            receipt.eventIds.push(receipt.eventIds[0]);
+            receipt.inserted++;
+          }
+          if (kind === 'negative-count') {
+            receipt.inserted = -1;
+            receipt.alreadyPresent = 2;
+          }
+          return Response.json({ receipt }, { status: 202 });
+        });
+      const subject = await service({
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+      });
+      try {
+        await subject.track('engine_turn', {
+          engine: 'codex',
+          outcome: 'completed',
+        });
+        await subject.flush();
+        expect(subject.bufferedCount).toBe(1);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(await subject.deliveryStatus()).toMatchObject({
+          scope: 'current-process',
+          phase: 'failed',
+          queued: 1,
+          counts: {
+            buffered: 1,
+            acknowledged: 0,
+            attempts: 1,
+            failedAttempts: 1,
+          },
+          lastAcknowledged: null,
+          lastFailure: {
+            code:
+              kind === 'oversized'
+                ? 'response_too_large'
+                : kind === 'empty' || kind === 'malformed-json'
+                  ? 'response_invalid'
+                  : 'receipt_invalid',
+          },
+        });
+      } finally {
+        subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+        await subject.shutdown();
+      }
+    },
+  );
+
   test('stale displayed inventory cannot publish a current consent receipt', async () => {
     const subject = await service();
     await expect(
@@ -93,8 +411,187 @@ describe('UsageTelemetryService', () => {
     expect((await subject.disclosure()).acknowledged).toBe(false);
   });
 
+  test.each(['transport', 'response body'] as const)(
+    'a stalled %s settles its deadline and retains the batch',
+    async (stalled) => {
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let bodyCancelled = false;
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementation(async () => {
+          entered();
+          if (stalled === 'transport') return new Promise<Response>(() => {});
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{'));
+              },
+              cancel() {
+                bodyCancelled = true;
+              },
+            }),
+            { status: 202 },
+          );
+        });
+      const subject = await service({
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      await subject.stationStarted();
+      vi.useFakeTimers();
+      try {
+        const flushing = subject.flush();
+        await started;
+        await vi.advanceTimersByTimeAsync(1001);
+        await flushing;
+        expect(await subject.deliveryStatus()).toMatchObject({
+          phase: 'failed',
+          queued: 1,
+          sending: false,
+          counts: { attempts: 1, failedAttempts: 1, acknowledged: 0 },
+          lastFailure: { code: 'request_timeout' },
+        });
+        if (stalled === 'response body') expect(bodyCancelled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+        subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+        await subject.shutdown();
+      }
+    },
+  );
+
+  test('a source connection check does not consent, derive an installation ID, or send an observation', async () => {
+    let release!: (value: Response) => void;
+    let dispatched!: () => void;
+    const dispatch = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+          dispatched();
+        }),
+    );
+    const root = await home();
+    const subject = new UsageTelemetryService({
+      homeDir: root,
+      appConfig: configuredApp(),
+      version: '1.2.3',
+      logger: logger(),
+      env: {
+        STATION_TELEMETRY_ENDPOINT: 'https://ingest.test/v1/product/events',
+        STATION_USAGE_TELEMETRY_KEY: 'source-only-key',
+      },
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      const first = subject.checkConnection();
+      const joined = subject.checkConnection();
+      await dispatch;
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const [url, request] = fetch.mock.calls[0];
+      expect(String(url)).toBe('https://ingest.test/v1/product/probes');
+      expect(request).toMatchObject({
+        method: 'POST',
+        redirect: 'error',
+        headers: { 'x-api-key': 'source-only-key' },
+      });
+      expect(JSON.parse(String(request?.body))).toEqual({
+        protocol: 'station-product-probe/v1',
+        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      });
+      release(
+        Response.json({
+          probe: {
+            protocol: 'station-product-probe/v1',
+            sourceId: '22222222-2222-4333-8444-555555555555',
+            inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+            checkedAt: '2026-10-10T12:00:00.000Z',
+            storage: 'postgres-schema-v1',
+          },
+        }),
+      );
+      for (const result of await Promise.all([first, joined]))
+        expect(result).toMatchObject({
+          phase: 'ready',
+          scope: 'postgres-schema-v1',
+          failure: null,
+        });
+      await subject.stationStarted();
+      expect(await subject.deliveryStatus()).toMatchObject({
+        phase: 'awaiting-disclosure',
+        disclosureAcknowledged: false,
+        queued: 0,
+        counts: { buffered: 0, acknowledged: 0, attempts: 0 },
+        probe: { phase: 'ready', scope: 'postgres-schema-v1' },
+      });
+      for (const name of [
+        'usage-telemetry-id',
+        'usage-telemetry-disclosure.json',
+      ])
+        await expect(access(join(root, 'config', name))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      await subject.shutdown();
+    }
+  });
+
+  test('withdrawal and re-enable cannot accept a late receipt for the withdrawn batch', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      (input, init) =>
+        new Promise<Response>((resolve) => {
+          release = () => {
+            void acceptProductBatch(input, init).then(resolve);
+          };
+          entered();
+        }),
+    );
+    const subject = await service({
+      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      await subject.stationStarted();
+      const flushing = subject.flush();
+      await started;
+      subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+      subject.reconfigure(configuredApp({ telemetryEnabled: true }));
+      release();
+      await flushing;
+      expect(await subject.deliveryStatus()).toMatchObject({
+        phase: 'ready',
+        queued: 0,
+        counts: {
+          acknowledged: 0,
+          withdrawn: 1,
+          attempts: 1,
+          failedAttempts: 0,
+        },
+        lastAcknowledged: null,
+        lastFailure: null,
+      });
+    } finally {
+      subject.reconfigure(configuredApp({ telemetryEnabled: false }));
+      await subject.shutdown();
+    }
+  });
+
   test('non-full checkout hashes remain missing on terminal events', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = await service({
       env: {
         STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
@@ -117,12 +614,21 @@ describe('UsageTelemetryService', () => {
 
   test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
     const bodies: ProductTelemetryBatch[] = [];
+    const receivedKeys: Array<string | string[] | undefined> = [];
     const receiver = createServer(async (request, response) => {
+      receivedKeys.push(request.headers['x-api-key']);
       let raw = '';
       for await (const chunk of request) raw += chunk;
       bodies.push(parseProductTelemetryBatch(JSON.parse(raw)));
       if (bodies.length === 1) request.socket.destroy();
-      else response.writeHead(202).end();
+      else {
+        const receipt = committedReceipt(bodies.at(-1)!);
+        receipt.inserted = 0;
+        receipt.alreadyPresent = receipt.eventIds.length;
+        response
+          .writeHead(202, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ receipt }));
+      }
     });
     await new Promise<void>((resolve) =>
       receiver.listen(0, '127.0.0.1', resolve),
@@ -132,7 +638,11 @@ describe('UsageTelemetryService', () => {
       throw new Error('receiver did not listen');
     const subject = await service({
       env: {
-        STATION_TELEMETRY_ENDPOINT: `http://127.0.0.1:${address.port}`,
+        STATION_PRODUCT_TELEMETRY_ENDPOINT: `http://127.0.0.1:${address.port}`,
+        STATION_TELEMETRY_ENDPOINT: 'http://legacy-unselected.test/events',
+        STATION_PRODUCT_TELEMETRY_KEY: 'canonical-product-source-key',
+        STATION_USAGE_TELEMETRY_KEY: 'legacy-unselected-key',
+        STATION_OTEL_API_KEY: 'otel-only-key',
         STATION_BUILD_SHA: 'a'.repeat(40),
         STATION_BUILD_BRANCH: 'private-project-branch',
         STATION_INSTANCE_ID: 'private-host-label',
@@ -149,7 +659,26 @@ describe('UsageTelemetryService', () => {
       expect(subject.bufferedCount).toBe(1);
       await subject.flush();
       expect(subject.bufferedCount).toBe(0);
+      expect(await subject.deliveryStatus()).toMatchObject({
+        scope: 'current-process',
+        phase: 'acknowledged',
+        queued: 0,
+        counts: {
+          buffered: 1,
+          acknowledged: 1,
+          attempts: 2,
+          failedAttempts: 1,
+        },
+        lastAcknowledged: {
+          eventCount: 1,
+          storedAt: '2026-10-10T12:00:00.000Z',
+        },
+      });
       expect(bodies).toHaveLength(2);
+      expect(receivedKeys).toEqual([
+        'canonical-product-source-key',
+        'canonical-product-source-key',
+      ]);
       expect((await subject.disclosure()).envelope).toContain('event_id');
       expect(bodies[1]).toEqual(bodies[0]);
       expect(bodies[0].events[0]).toMatchObject({
@@ -335,7 +864,7 @@ describe('UsageTelemetryService', () => {
     ).toBe(0);
   });
   test('DISCLOSURE RECEIPT DEFECT: acknowledgement persists and permits emission', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: await home(),
       appConfig: {} as any,
@@ -479,7 +1008,7 @@ describe('UsageTelemetryService', () => {
     ).not.toHaveBeenCalled();
   });
   test('CREDENTIAL BOUNDARY DEFECT: the OTLP key is never sent to product ingestion', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = await service({
       env: {
         STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
@@ -550,7 +1079,7 @@ describe('UsageTelemetryService', () => {
     });
     const subject = await service({
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
-      fetch: vi.fn().mockResolvedValue({ ok: true, status: 202 }),
+      fetch: vi.fn().mockImplementation(acceptProductBatch),
       setInterval: vi.fn() as any,
     });
     await writeFile(
@@ -595,7 +1124,7 @@ describe('UsageTelemetryService', () => {
     });
     const subject = await service({
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
-      fetch: vi.fn().mockResolvedValue({ ok: true, status: 202 }),
+      fetch: vi.fn().mockImplementation(acceptProductBatch),
       setInterval: vi.fn() as any,
     });
     readHook.beforeRead = async (path) => {
@@ -626,7 +1155,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce({ ok: false, status: 503 })
-      .mockResolvedValueOnce({ ok: true, status: 202 });
+      .mockImplementationOnce(acceptProductBatch);
     const subject = await service({
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
       fetch,
@@ -648,7 +1177,7 @@ describe('UsageTelemetryService', () => {
     ).toHaveBeenCalledTimes(2);
   });
   test('SHUTDOWN FLUSH DEFECT: shutdown sends the pending batch', async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = await service({
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
       fetch,
@@ -668,11 +1197,11 @@ describe('UsageTelemetryService', () => {
     });
     const fetch = vi
       .fn()
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce(async (input, init) => {
         await first;
-        return { ok: true, status: 202 };
+        return acceptProductBatch(input, init);
       })
-      .mockResolvedValue({ ok: true, status: 202 });
+      .mockImplementation(acceptProductBatch);
     const subject = await service({
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
       fetch,
@@ -697,7 +1226,9 @@ describe('UsageTelemetryService', () => {
       (_url, init: RequestInit) =>
         new Promise((resolve) => {
           requestSignal = init.signal ?? undefined;
-          release = () => resolve({ ok: true, status: 202 });
+          release = () => {
+            void acceptProductBatch(_url, init).then(resolve);
+          };
         }),
     );
     const add = vi.spyOn(usageTelemetryOutcomes, 'add');
@@ -907,7 +1438,7 @@ describe('UsageTelemetryService', () => {
   });
   test('IDENTITY DEFECT: persisted random id is stable, and only its hash is sent', async () => {
     const root = await home();
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const opts = {
       homeDir: root,
       appConfig: {} as any,
@@ -1040,9 +1571,11 @@ describe('UsageTelemetryService', () => {
   test('ACKNOWLEDGEMENT DEFECT: overflow during a slow batch retains newer unsent events', async () => {
     let release: (() => void) | undefined;
     const fetch = vi.fn().mockImplementationOnce(
-      () =>
+      (_url, init: RequestInit) =>
         new Promise((resolve) => {
-          release = () => resolve({ ok: true, status: 202 });
+          release = () => {
+            void acceptProductBatch(_url, init).then(resolve);
+          };
         }),
     );
     const subject = await service({
@@ -1067,7 +1600,7 @@ describe('UsageTelemetryService', () => {
   test('IDENTITY RACE DEFECT: concurrent creation converges on one UUID', async () => {
     const root = await home();
     await mkdir(join(root, 'config'));
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
       appConfig: {} as any,
@@ -1095,7 +1628,7 @@ describe('UsageTelemetryService', () => {
     const root = await home();
     await mkdir(join(root, 'config'));
     await writeFile(join(root, 'config', 'usage-telemetry-id'), 'partial');
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: root,
       appConfig: {} as any,
@@ -1125,7 +1658,7 @@ describe('UsageTelemetryService', () => {
     const root = await home();
     await mkdir(join(root, 'config'));
     await writeFile(join(root, 'config', 'usage-telemetry-id'), 'partial');
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
       appConfig: {} as any,
@@ -1181,7 +1714,7 @@ describe('UsageTelemetryService', () => {
         `${winner}\n`,
       );
     };
-    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = await service({
       homeDir: root,
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },

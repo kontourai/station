@@ -545,6 +545,7 @@ export type ChatUIState = {
    * pick survives a reload and rides the next send.
    */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /**
    * #2436: the latest server-recorded posture decision this client has
    * folded, and its server global sequence. Persisted as a cache of the
@@ -794,6 +795,7 @@ export type PersistedActiveChat = {
   requestedProviderOptions?: Record<string, unknown>;
   /** See ChatUIState.queuedApprovalMode (#2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
   /**
@@ -1094,7 +1096,18 @@ export function hydrateActiveChats(
         const queued = isApprovalMode(session.queuedApprovalMode)
           ? session.queuedApprovalMode
           : migratedApprovalPick(session);
-        return queued ? { queuedApprovalMode: queued } : {};
+        return queued
+          ? {
+              queuedApprovalMode: queued,
+              ...(typeof session.queuedApprovalDefaultNamespace === 'string' &&
+              session.queuedApprovalDefaultNamespace.length <= 2048
+                ? {
+                    queuedApprovalDefaultNamespace:
+                      session.queuedApprovalDefaultNamespace,
+                  }
+                : {}),
+            }
+          : {};
       })(),
       ...(isApprovalMode(session.approvalPosture)
         ? {
@@ -1284,7 +1297,15 @@ export function serializeActiveChats(
       // folded posture is a cache of the server's record, ordered by its
       // sequence, so a newer recorded event replaces it.
       ...(chat.queuedApprovalMode
-        ? { queuedApprovalMode: chat.queuedApprovalMode }
+        ? {
+            queuedApprovalMode: chat.queuedApprovalMode,
+            ...(chat.queuedApprovalDefaultNamespace
+              ? {
+                  queuedApprovalDefaultNamespace:
+                    chat.queuedApprovalDefaultNamespace,
+                }
+              : {}),
+          }
         : {}),
       ...(chat.approvalPosture
         ? {
@@ -1392,10 +1413,15 @@ export function mergeChatUpdates(
    */
   droppedQueuedMessages: string[];
 } {
-  const nextUpdates =
+  let nextUpdates =
     'input' in updates && !('historyIndex' in updates)
       ? { ...updates, historyIndex: -1 }
       : updates;
+  if (
+    'queuedApprovalMode' in nextUpdates &&
+    !('queuedApprovalDefaultNamespace' in nextUpdates)
+  )
+    nextUpdates = { ...nextUpdates, queuedApprovalDefaultNamespace: undefined };
   const bounded =
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)

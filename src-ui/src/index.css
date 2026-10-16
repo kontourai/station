@@ -189,7 +189,7 @@
 
 :root {
   --chat-dock-header-height: 38px;
-  --app-toolbar-height: 46px;
+  --app-toolbar-height: calc(var(--k-space-5) * 2);
   /* Safe area insets for mobile/APK */
   --safe-top: env(safe-area-inset-top, 0px);
   /* What the toolbar actually occupies. The toolbar pads itself down by the
@@ -787,6 +787,7 @@ button:hover {
 .app-toolbar {
   display: flex;
   align-items: center;
+  min-height: var(--app-toolbar-total-height);
   /* Denser, flatter native-titlebar feel: tighter gutters + gap, a
      single hairline, no fill beyond the surface token. */
   gap: 14px;
@@ -1184,7 +1185,17 @@ button:hover {
 
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
-  display: none;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
 }
 .app-toolbar__lockup {
   display: none;
@@ -3433,80 +3444,6 @@ button:hover {
 }
 
 /* Activity indicator */
-.chat-dock__activity {
-  position: relative;
-}
-
-.chat-dock__activity-btn {
-  background: transparent;
-  border: none;
-  color: var(--success-text);
-  cursor: pointer;
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-sm);
-}
-
-.chat-dock__activity-dropdown {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 4px);
-  right: 0;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  z-index: calc(var(--layer-popover) + 1);
-}
-
-/* Invisible bridge to prevent hover gap */
-.chat-dock__activity-dropdown::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: 8px;
-}
-
-.chat-dock__activity:hover .chat-dock__activity-dropdown {
-  display: block;
-}
-
-.chat-dock__activity-item {
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  border-bottom: 1px solid var(--border-primary);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-dock__activity-item:last-child {
-  border-bottom: none;
-}
-
-.chat-dock__activity-item:hover {
-  background: var(--bg-hover);
-}
-
-.chat-dock__activity-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Maximize button */
 .chat-dock__maximize-btn {
   display: inline-flex;
@@ -3549,93 +3486,59 @@ button:hover {
 
 .chat-dock__active-identity-text {
   display: flex;
-  /* Grows as well as shrinks: the title inside it is the row's flexible
-     element, and a `0 1 auto` wrapper would never hand it the spare width. */
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
+  gap: 0;
 }
-
-/* archive#3309: agent-first. The avatar and the agent's name hold their size.
-   #1536 F: what yields is the engine/model token, not the title — the title is
-   the label that changes per chat, and on a project page it was down to about
-   one character. */
 .chat-dock__active-identity-avatar {
   flex-shrink: 0;
 }
-
-.chat-dock__active-identity-agent {
-  /* Shrinks, with a floor. It held its full width at every size, which on a
-     280px side dock (`MIN_DOCK_WIDTH`) left the conversation title 5px — worse
-     than the overprint this arc set out to fix. The avatar beside it also
-     carries the agent's identity, and this arc's finding is that the title is
-     the row's subject; #3309's claim is that the agent is NAMED, not that it is
-     never abbreviated. Four times the title's shrink factor, so it gives way
-     earlier, and never below ~5 glyphs. */
-  flex: 0 4 auto;
-  min-width: 40px;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Separated from the identity ahead of it by a hairline rather than another
-   glyph — the title is a different KIND of fact from the agent/engine/model
-   triple, not a fourth member of it. */
 .chat-dock__active-identity-title {
-  flex: 1 1 auto;
+  display: block;
   min-width: 0;
   overflow: hidden;
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--border-primary);
-  /* #1536 F: the row's primary label, so it takes the primary text colour and
-     the weight — it was the muted secondary tone while the engine/model chip
-     beside it read louder than the thing that distinguishes one chat from the
-     next. */
-  color: var(--text-primary);
-  /* #1552 D3: 14px at weight 500. It was 11px/600 — the smallest type in the
-     bar carrying the bar's SUBJECT, and bold to compensate, which reads as
-     shouting rather than as primacy. Size is what makes it primary; the weight
-     comes back down so the row has one emphatic thing in it, not two. */
-  font-size: var(--text-lg);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
   font-weight: 500;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Engine and model as ONE muted token behind the title. Both used to be
-   `flex-shrink: 0` spans, which in an `overflow: hidden` row does not truncate
-   — it overflows, and the two printed on top of each other ("Claude Code" over
-   "Opus 5"). A shrink factor two orders of magnitude above the title's is what
-   makes this give way FIRST rather than merely give way.
-
-   The floor is the other half of that: with `min-width: 0` the token reached
-   ZERO before the title lost a character, so on a ~400px side dock nothing
-   named the engine or the model and the `title` tooltip had no box left to
-   hover. 64px is measured, not chosen — the token's own font-size renders
-   "Claude…" in it, so what survives is a legible identity and a hover target,
-   and the title yields after that. */
+.chat-dock__active-identity-context {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  line-height: 1.3;
+}
+.chat-dock__active-identity-agent,
 .chat-dock__active-identity-engine {
-  flex: 0 100 auto;
-  min-width: 48px;
+  min-width: 0;
   overflow: hidden;
-  /* #1552 D3: 12px muted, one step below the 14px title rather than two below
-     it — the token is a fact about the chat, not a footnote, and at 10px it was
-     the smallest thing in a bar that already had a legibility problem. */
-  color: var(--text-muted);
-  font-size: var(--text-base);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
+.chat-dock__active-identity-agent {
+  flex: 0 1 auto;
+}
+.chat-dock__active-identity-engine {
+  flex: 0 2 auto;
+}
 .chat-dock__active-identity-origin {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  flex: 0 1 auto;
-  min-width: min(165px, 35%);
+  gap: var(--k-space-2);
+}
+.chat-dock__header-identity {
+  flex: 1 1 auto;
+}
+.chat-dock__header-identity--pane .chat-dock__active-identity-title,
+.chat-dock__header-identity--pane .chat-dock__active-identity-close {
+  display: none;
 }
 
 /* #1552 D3: quiet until the row is engaged.
@@ -7623,8 +7526,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .app-toolbar__breadcrumb {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: var(--text-base);
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-right: 8px;
 }
@@ -9332,9 +9235,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-identity {
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 80px;
-  text-align: center;
+  text-align: left;
 }
 
 .chat-dock__mobile-overflow-trigger {
@@ -9353,7 +9256,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-identity .chat-dock__mobile-identity-lines {
-  align-items: center;
+  align-items: flex-start;
 }
 
 .chat-dock__mobile-identity:hover,
@@ -9398,11 +9301,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-title-text {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-dock__mobile-activity.is-active {

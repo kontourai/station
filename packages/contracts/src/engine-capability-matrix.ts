@@ -5,7 +5,10 @@ import {
   engineId as toEngineId,
 } from './agent-identity.js';
 import { engineDisplayLabel } from './engine-display.js';
-import type { AttachedSessionSourceMetadata } from './provider.js';
+import type {
+  AttachedSessionSourceMetadata,
+  ProviderDurabilityProfile,
+} from './provider.js';
 
 /**
  * The honest, single-source capability
@@ -330,8 +333,112 @@ export type BuiltInToolControlCell =
   | { state: 'station-owned' }
   | { state: 'none'; note?: string };
 
+/** Shared current limits. None of these cells authorizes automatic effect replay. */
+export const EXTERNAL_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  steerPlacement: {
+    state: 'none',
+    detail: 'Additional input cannot join a running turn.',
+  },
+  crashContinuation: {
+    state: 'none',
+    detail: 'A running turn cannot continue after a Station restart.',
+  },
+  toolReplay: {
+    state: 'none',
+    detail: 'Interrupted tool calls are not automatically replayed.',
+  },
+  pendingApprovals: {
+    state: 'none',
+    detail: 'Pending approvals do not survive an engine restart.',
+  },
+  contextCarriage: {
+    state: 'emulated',
+    detail:
+      'Station can supply context as text; delivery is not acknowledged across restarts.',
+  },
+  fork: { state: 'none', detail: 'No native conversation fork is declared.' },
+  compaction: {
+    state: 'none',
+    owner: 'engine',
+    detail:
+      'The engine owns compaction; Station does not checkpoint it for recovery.',
+  },
+  partialOutput: {
+    state: 'emulated',
+    detail:
+      'Station keeps observed output; partial output is not a completed answer.',
+  },
+  usage: {
+    state: 'emulated',
+    detail:
+      'Usage is engine-reported when available; missing usage remains unknown.',
+  },
+};
+
+export const STEERING_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  ...EXTERNAL_ENGINE_DURABILITY,
+  steerPlacement: {
+    state: 'native',
+    detail:
+      'Additional input joins through the engine’s live steering channel; placement is engine-defined.',
+  },
+};
+
+export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  ...EXTERNAL_ENGINE_DURABILITY,
+  steerPlacement: {
+    state: 'emulated',
+    detail:
+      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
+  },
+};
+
+export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  ...EXTERNAL_ENGINE_DURABILITY,
+  compaction: {
+    state: 'none',
+    owner: 'station',
+    detail:
+      'Station owns context management, but compaction is not a crash-recovery checkpoint.',
+  },
+  contextCarriage: {
+    state: 'emulated',
+    detail:
+      'Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable.',
+  },
+  fork: {
+    state: 'emulated',
+    detail:
+      'A new conversation receives replayed history rather than a native fork.',
+  },
+};
+
+export const UNKNOWN_ENGINE_DURABILITY: ProviderDurabilityProfile = {
+  ...EXTERNAL_ENGINE_DURABILITY,
+  compaction: {
+    state: 'none',
+    owner: 'unknown',
+    detail:
+      'Compaction ownership and recovery have not been established for this engine.',
+  },
+  contextCarriage: {
+    state: 'none',
+    detail: 'Context delivery has not been established for this engine.',
+  },
+  partialOutput: {
+    state: 'none',
+    detail:
+      'Partial-output persistence has not been established for this engine.',
+  },
+  usage: {
+    state: 'none',
+    detail: 'Usage reporting has not been established for this engine.',
+  },
+};
+
 export interface EngineCapabilityMatrix {
   engineId: EngineId;
+  durability: ProviderDurabilityProfile;
   /** Independent native child from an external transcript, never control of its original process. */
   externalSessionContinuation?:
     | {
@@ -677,6 +784,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 > = {
   station: {
     engineId: toEngineId('station'),
+    durability: STATION_ENGINE_DURABILITY,
     systemPrompt: { state: 'native' },
     // Native systemPrompt already delivers the authored prompt; the
     // first-turn fallback is never reached.
@@ -717,6 +825,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   claude: {
     engineId: toEngineId('claude'),
+    durability: STEERING_ENGINE_DURABILITY,
     externalSessionContinuation: {
       state: 'native',
       basis: 'declared',
@@ -822,6 +931,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   codex: {
     engineId: toEngineId('codex'),
+    durability: STEERING_ENGINE_DURABILITY,
     externalSessionContinuation: {
       state: 'native',
       basis: 'declared',
@@ -965,6 +1075,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   muse: {
     engineId: toEngineId('muse'),
+    durability: EXTERNAL_ENGINE_DURABILITY,
     // Slice 1 is deliberately narrow. `muse exec` is a one-prompt-per-process
     // headless runner; nothing in its flag surface or its observed JSONL
     // stream delivers an authored system prompt, MCP tool servers, skills, or
@@ -1044,6 +1155,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   acp: {
     engineId: toEngineId('acp'),
+    durability: ACP_ENGINE_DURABILITY,
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every
@@ -1158,6 +1270,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
  */
 export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   engineId: toEngineId('unknown'),
+  durability: UNKNOWN_ENGINE_DURABILITY,
   // Never guessed for an unknown engine class: an engine Station has no
   // adapter for reports nothing it knows how to read, and controls nothing.
   subagentObservability: {

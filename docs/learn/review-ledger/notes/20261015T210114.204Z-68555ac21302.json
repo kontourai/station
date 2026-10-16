@@ -1,0 +1,7 @@
+{
+  "revision": "af1c4f309be515641dfaec327841c34566a5af92",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Follow-up visual review of mobile-settings-overview from artifact12005373087/run38800945432. At390x844 in an isolated source runtime with production UI bytes matching85d9dfe, the explicit overview deep link produced activeElement section-overview, content top49, search top-104 and heading top-176. Transparent scroll/focus wrappers around an ordinary canonical navigationStore navigation recorded the existing useSectionNavigation scrollIntoView(block:start) then focus(preventScroll:true) calls. Independent review accepted this fifth untouched hosted PNG after that attribution gap was resolved. Canonical partial baseline generation and selected five-screen comparison passed. Capture/diff code and production sources are unchanged. Full Gallery remains red for17 differences:15 inherited-main captures, the mixed palette capture and the33-pixel consent difference; no pixel waiver or blanket rebaseline.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

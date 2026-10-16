@@ -23,11 +23,12 @@ import type { TaskAssignmentClaimActor, TaskStatus } from './task-graph.js';
  * package's public `workItemStatuses`; Station's explicit local `triage` and
  * `canceled` values remain valid only in this projection.
  *
- * Write-back (status/field mutations) is out of scope this slice — it is an
- * upstream Flow Agents engine contract extension (epic #580 Decision 4,
- * flow-agents FA2, kontourai/flow-agents#776). Flow Agents 5.7 exports its
- * work-item interfaces, but Station deliberately keeps this presentation
- * seam read-only until it has an authorized provider mutation contract.
+ * Flow Agents 6.5.1 exports mutation adapters, but its live read CLI returns
+ * a filtered ready queue, not the exact-item observation needed for safe
+ * write-back. This presentation seam remains read-only pending that upstream
+ * contract (kontourai/flow-agents#1508; Decision 4 in
+ * docs/design/work-plane-composition.md). Gaps are recorded in
+ * docs/plans/task-tracker-sync-upstream-gaps.md.
  * `WorkItemProviderCapabilities` below is how a backend declares that today;
  * both shipped backends declare `supportsStatusWrite: false`.
  */

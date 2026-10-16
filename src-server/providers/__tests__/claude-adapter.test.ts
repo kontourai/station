@@ -1055,6 +1055,7 @@ describe('ClaudeAdapter', () => {
   test('steerTurn binds to the live SDK streaming-input queue', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
+    expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
     const events = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'claude',

@@ -10,5 +10,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
+- [onboarding-improvement-rounds.md](onboarding-improvement-rounds.md) — Onboarding improvement rounds
 - [shared-work-delivery.md](shared-work-delivery.md) — Shared work delivery ledger
+- [task-tracker-sync-upstream-gaps.md](task-tracker-sync-upstream-gaps.md) — Task tracker sync: published-contract gaps
 <!-- docs-index:end -->

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 /**
@@ -58,10 +58,9 @@ describe('activity dropdown per-session chords (#1649)', () => {
       active('b', 'Second'),
     ]);
 
+    fireEvent.click(screen.getByRole('button', { name: '2 chats working' }));
     const badges = Array.from(
-      container.querySelectorAll(
-        '.chat-dock__activity-item .chat-dock__subtitle',
-      ),
+      document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
 
     expect(badges).toEqual(['Ctrl+1', 'Ctrl+2']);
@@ -75,23 +74,27 @@ describe('activity dropdown per-session chords (#1649)', () => {
     // are registered by `ChatDock`, which a header rendered alone does not
     // have. `.chat-dock__subtitle:empty` is what hides the badge; the
     // contract this pins is that nothing invents a chord for it.
-    const { container } = renderHeader([
+    renderHeader([
       active('a', 'First'),
       active('b', 'Second'),
       active('c', 'Third'),
     ]);
 
+    fireEvent.click(screen.getByRole('button', { name: '3 chats working' }));
     const badges = Array.from(
-      container.querySelectorAll(
-        '.chat-dock__activity-item .chat-dock__subtitle',
-      ),
+      document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
 
-    expect(badges).toEqual(['Ctrl+1', 'Ctrl+2', '']);
+    expect(badges).toEqual(['Ctrl+1', 'Ctrl+2']);
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Third' })
+        .getAttribute('aria-keyshortcuts'),
+    ).toBeNull();
   });
 
   test('a background-only session appears in the activity badge and list', () => {
-    const { container } = renderHeader([
+    renderHeader([
       {
         id: 'background',
         title: 'Background research',
@@ -103,10 +106,15 @@ describe('activity dropdown per-session chords (#1649)', () => {
         },
       },
     ]);
-    expect(container.querySelector('.chat-dock__activity-btn')).not.toBeNull();
     expect(
-      container.querySelector('.chat-dock__activity-btn')?.textContent,
+      screen.getByRole('button', { name: '1 chat working' }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: '1 chat working' })?.textContent,
     ).toContain('1');
-    expect(screen.getByText('Background research')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '1 chat working' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Background research' }),
+    ).toBeTruthy();
   });
 });

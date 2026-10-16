@@ -52,7 +52,7 @@ function useCachedSlugConflictNotice(
 
 export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const { apiBase } = useApiBase();
-  const { setProject } = useNavigation();
+  const { setProject, setLayout } = useNavigation();
   const draft = useNewProjectDraft(isOpen);
   // Local artwork discovery reads the folder's own files, so it stays on the
   // deliberate "the user finished a folder path" signal. Repo discovery owns
@@ -115,8 +115,9 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     normalizedDirectory: draft.normalizedDirectory,
     starterLayoutId: starter.selectedLayoutId,
     verifySlugAvailability,
-    onComplete: (slug) => {
-      setProject(slug);
+    onComplete: (slug, layoutSlug) => {
+      if (layoutSlug) setLayout(slug, layoutSlug);
+      else setProject(slug);
       onClose();
     },
   });

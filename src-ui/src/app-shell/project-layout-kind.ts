@@ -116,18 +116,17 @@ export function rendersChatWorkspaceLayout(
  *   page of its navigation stack). The ambient `chat` surface is SUSPENDED —
  *   not moved — while the other region panes keep rendering.
  * - `none`: Chat stays wherever the region model placed it. That includes a
- *   bottom-only device (a phone or any coarse/narrow viewport) on the Coding
- *   layout, whose Chat is the maximized dock, and any plugin or withheld
- *   layout that merely carries the word `coding` or `chat`.
+ *   plugin or withheld layout that merely carries the word `coding` or `chat`.
+ *   Built-in Coding keeps Chat in the workbench on phones as well; the
+ *   keyboard must not squeeze a second dock above an empty chat page.
  */
 export type LayoutChatPlacement = 'viewport' | 'center' | 'none';
 
 export function resolveLayoutChatPlacement(
   layout: ProjectLayoutRendererFacts | null | undefined,
-  { bottomOnly }: { bottomOnly: boolean },
 ): LayoutChatPlacement {
   const kind = resolveProjectLayoutRendererKind(layout);
   if (kind === 'chat') return 'viewport';
-  if (kind === 'coding' && !bottomOnly) return 'center';
+  if (kind === 'coding') return 'center';
   return 'none';
 }

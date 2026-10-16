@@ -99,8 +99,9 @@ list never loads, whatever is pasted.
   `'operator-credential'` (`device-pairing-service.ts:380`).
 - Credential selection: a strict bearer wins. Otherwise the device-session
   cookie is used (`src-server/runtime/bootstrap/runtime-http.ts:847-853`).
-  Cookie names are `__Host-station-device` and `station-device`
-  (`runtime-http.ts:92-93, 1298-1320`).
+  New cookie names are `__Host-station-device-<station-id-hash>` (HTTPS) and
+  `station-device-<station-id-hash>` (loopback HTTP); legacy unscoped names
+  remain accepted. Only one credential recognized by this Station may be present.
 - A recognized credential that is refused admission gets 403, not 401
   (`runtime-http.ts:1047-1060`). The panel maps only 401 to its "needs
   review" text (`PairedDevicesPanel.tsx:104-108`). The issue reports a 401.

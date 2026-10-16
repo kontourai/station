@@ -240,7 +240,7 @@ async function seedRoutes(
       );
     }),
     // Upload staging, in the shapes the staging client reads (the same
-    // fixture as sidebar-file-intake.spec.ts).
+    // composer attachment staging fixture).
     page.route('**/api/orchestration/attachment-staging/capability', (route) =>
       route.fulfill(
         json({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),

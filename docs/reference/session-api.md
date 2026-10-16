@@ -156,8 +156,9 @@ refused with `400`; any other lookup answers `200` with `data.outcome`:
 
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
-| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). | Yes — the same key can only ever make one turn. |
-| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. An unresolved claim reads `received` for at most 15 minutes, then `indeterminate` (an engine accepts a turn in seconds). | No — wait and ask again. |
+| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). Also the answer for a message the conversation's [inbox](#let-station-hold-a-follow-up) refused or that was withdrawn. | Yes — the same key can only ever make one turn. A refused held message is likely to be refused again: read its `reasonCode` in the inbox first. |
+| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. An unresolved claim reads `received` for at most 15 minutes, then `indeterminate` (an engine accepts a turn in seconds). A message the conversation's inbox is sending right now also reads `received`. | No — wait and ask again. |
+| `queued` | The conversation's [inbox](#let-station-hold-a-follow-up) holds the message you sent behind a running turn, and Station sends it itself when that turn ends. It is safe to close the app. | No — withdraw it through the inbox instead. |
 | `started` | The engine accepted the turn; `data.sessionId` and `data.turnId` name it. | No. |
 | `indeterminate` | The turn may have reached the engine and nothing can prove it either way (its owner died after it began invoking, or gave the claim up after a failed engine call). | No — inspect the conversation. |
 | `expired` | The turn was sent and retention evicted its record. | No. |
@@ -183,6 +184,143 @@ it with, stamped by Station (an engine cannot supply one): the send's
 `clientTurnId`, or for a handoff `handoff:<idempotencyKey>`, the key the
 handoff dialog names its message by, rather than the conversation-derived key
 Station deduplicates the handoff under.
+
+A key is one send for the whole conversation, not only for one of its
+Sessions. A continuation can move to a new Session (the one it used ended, or
+the request names a model its engine cannot switch to mid-Session), so before
+it may do that Station reads the turn ledger for the key across every Session
+of the conversation. A key whose turn already started is answered with that
+turn (`providerTurnId`), whatever the retry changed, and staged attachments
+the retry carries are bound to that turn. A key another attempt still holds
+joins that attempt: the retry waits (bounded) for its turn and answers with
+it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
+it does not resolve in time. That includes a claim the delivery lookup calls
+`indeterminate` only because it is old, its owner alive or unknown (#3660): it
+may still deliver. Only a key that may have reached the agent with nothing left
+to resolve it (the attempt gave it up after a possible effect, its process
+died after it may have invoked the engine, or its record expired) is refused
+`409` with `code: "foreground_message_indeterminate"`. Nothing new is sent in
+any of these cases. A handoff is deduplicated under its own key and is not
+part of this check.
+
+### Let Station hold a follow-up
+
+A follow-up sent to a conversation whose turn is still running is refused
+today, and the client holds it until the turn ends. A send to `POST /chat` that
+adds `"whenBusy": "queue"` (with its `conversationId` and `clientTurnId`)
+asks Station to hold it instead, in the conversation's durable inbox. The
+message is stored before the answer arrives, so it survives a closed tab,
+another device and a restart.
+
+- When the conversation is busy (its current Session has a turn open, or
+  earlier follow-ups are still waiting), the send is held and answered `202`
+  with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
+  once, with the usual receipt. A send refused because the engine opened a turn
+  itself (`provider_turn_in_progress`) or is still starting
+  (`provider_session_starting`) is held too.
+- The same body sent again under the same key, while the conversation is still
+  busy or holds other messages, answers the same entry (`sent`, with its
+  `turnId`, once Station sent it). Sent when the conversation is idle and
+  holds nothing, it takes the live path, whose turn claim answers with the
+  turn already started. The same key with a different message is refused
+  `409` with `code: "inbox_key_conflict"`. A send to `POST /chat` or
+  `POST /chat/<conversationId>/continue`, held or not, under a key
+  the inbox holds for someone else in a state it may still send (`queued`,
+  `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
+  so nobody takes the turn another person's message waits for. Only a caller
+  who may read the conversation is told so; anyone else gets the dispatch's
+  ordinary refusal for a conversation they may not read. While Station is
+  sending a held message (from the moment its send begins, and past the point
+  where Station gives up waiting for it, below), a send under its key that
+  would take the live path is refused `409` with the retryable
+  `code: "client_turn_in_flight"`. That goes to its own sender (anyone else
+  is refused `inbox_key_held` first), or to anyone once the message is
+  dismissed: dismissing it does not stop a send already under way, so the
+  key stays refused until that send answers or Station restarts. Retry with
+  the same key after that. While a conversation is moving to a new Session,
+  Station cannot hold a follow-up, so a `whenBusy` send then takes the live
+  path too. An inbox holds at most 50 unsettled
+  messages; past that a send is refused `409` with
+  `code: "conversation_inbox_full"`.
+- Only a plain continuation can be held: no attachments, approval pick, input
+  reply, visual skill start, engine or Agent-definition precondition
+  (`expectedEngine`, `expectedDefinitionFingerprint`), delegated or background
+  send, and no target on another Station. Its `target.agent` and
+  `target.workspace` must name exactly the conversation's binding, since that
+  binding is what the message is sent through later. The sender must be one
+  Station would let send it then: the conversation's owner, or a reader the
+  personal Station lets continue it, from a paired device or personal access
+  token that is still live and still holds the scope `POST /chat` requires
+  (`orchestration:operate`). A device or token tied to an account also needs
+  that account enabled; Station checks this through its own local-account
+  directory, so a Station without one (an account-tied person signed in
+  through any other provider) never holds a follow-up from an account-bound
+  device, and that send takes the live path. Any other busy send, and every send to a Station
+  without an inbox (a hosted Station, or one that predates it, which ignores
+  the field), is answered as before.
+
+Station sends held messages one at a time, in the order received, each after
+the turn before it ends, as the person who sent it, through the conversation's
+persisted binding. Just before sending it checks again that the sender may
+still send to the conversation and that their device is still paired with
+the scope to (for one tied to an account, that the account is enabled and
+was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
+`device_not_permitted`) and nothing is sent. It never stores a full-access
+grant: an engine restarted to take a held message starts confined. Each
+message keeps its `clientTurnId`, so the
+[delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
+reads that same ledger, across every Session of the conversation, before each
+send: a message an earlier attempt already started is settled `sent` without
+sending it again, even when the conversation has since moved to a new
+Session. A message that may have reached the agent without Station being able
+to prove it (it stopped mid-send) is `unconfirmed`: it is never sent again,
+and the messages behind it wait until someone dismisses it. One whose send
+did not answer within ten minutes is `unconfirmed` with `start_deadline`
+until Station can tell: it becomes `sent` if the ledger shows its turn
+started, or waits again if no Session took its key, but only once that send
+has answered, so the abandoned send and a new one never run together. A
+send that never answers at all leaves its message `unconfirmed`, holding the
+messages behind it, until someone dismisses it or Station restarts (after a
+restart the old send is gone, and the ledger decides). While a held message
+waits on a Session that is starting, Station looks again when the Session
+reports a change, and on a schedule (2, 10, 30 and 120 seconds, then every two
+minutes): at most 30 such re-checks until a message is sent or a new one is
+accepted. A held message whose key another attempt still holds, including a
+claim that is only old (owner alive or unknown, which may still deliver),
+stays `queued` and is never sent twice. It holds the messages behind it until
+that attempt resolves or its sender withdraws it.
+
+```
+GET    /api/orchestration/conversations/<conversationId>/inbox
+DELETE /api/orchestration/conversations/<conversationId>/inbox/<clientTurnId>
+```
+
+`GET` lists the conversation's held messages (`ConversationInboxEntry`:
+`state` is `queued`, `sending`, `sent`, `unconfirmed`, `refused` or
+`cancelled`, with `position` among those still waiting, and for a `refused`
+or `unconfirmed` one a `reasonCode` and a fixed `reason`, never the refusal's
+own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
+`may_have_been_sent`, `start_deadline`, `unreadable_entry`, `session_ended`,
+`execution_engine_changed`, `provider_session_start_failed`,
+`model_not_advertised`, `continuation_workspace_unbound`,
+`continuation_workspace_direct_mismatch`,
+`continuation_workspace_project_context_missing`,
+`continuation_workspace_corrupt_worktree_binding`,
+`continuation_workspace_worktree_gone`,
+`continuation_workspace_different_project`,
+`continuation_workspace_worktree_moved`, or `start_refused` for any other
+refusal. Every client of the conversation sees the same list, except that
+someone else's message that may still be sent (`queued`, `sending`,
+`unconfirmed`) is shown without its `clientTurnId`. A
+conversation you may not read, or a Station without an inbox, answers `404`.
+`DELETE` withdraws a waiting message (its sender only), or dismisses an
+`unconfirmed` or `refused` one (anyone who may send to the conversation, so
+one person's possibly-sent message cannot hold everyone's). Anyone else gets
+`404`. A message being sent right now answers `409` with
+`code: "inbox_entry_sending"`, and one already sent `inbox_entry_sent`.
+Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
+exposes these as `queueExecutionMessage`, `listConversationInbox` and
+`cancelConversationInboxEntry`.
 
 ### State the engine you expect
 
@@ -819,7 +957,23 @@ inspect, so an untouched old session in such a tree can take a few minutes to
 appear. A single working directory with more session folders than that is
 only partly listed.
 
-Claude transcript observation persists a bounded, source-owned ancestry map
+Before observing a Claude transcript page, the follower persists its initial
+window start (the last 2 MiB by default, or an explicit zero for a smaller file)
+through the yielding EventStore write path. Failed page writes replay from that
+anchor even after the file grows, the source is rediscovered, the follower's
+bounded cache evicts the thread, or Station restarts. The anchor is reusable
+only for the same source handle and configuration-home affinity. It stores no
+page contents and cannot recover deleted or truncated source bytes. If the file
+shrinks below the saved offset, the source logs a warning and the follower pins a
+new initial window on the next poll so following resumes; bytes before that window
+remain outside retention. Records without a `uuid` are identified by byte offset,
+so after a rewrite one may be skipped as a duplicate or imported twice. A legacy attachment without configuration-home affinity keeps
+its migration anchor in memory until its first read that does not throw,
+preserving the old durable cursor and affinity when the read throws. Codex and Grok start at byte zero;
+OpenCode starts before the first message in its ordered database query. Their
+cold cursors do not move with append-only growth.
+
+Claude transcript observation also persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
 unknown or evicted parents leave the current turn's usage accumulator intact.
 An older aggregation cursor without ancestry uses one bounded look-behind to
