@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-16T06:39:30Z | nightly-npm | 0.7.0-nightly.2480.38855252661 | `7fda30b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38855252661) |
 | 2026-10-16T04:22:38Z | nightly-npm | 0.7.0-nightly.2480.38843412932 | `ee138f0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38843412932) |
 | 2026-10-16T03:34:50Z | nightly-npm | 0.7.0-nightly.2480.38829988957 | `1904a3c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38829988957) |
 | 2026-10-16T01:55:26Z | nightly-npm | 0.7.0-nightly.2480.38829290506 | `1de76d4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38829290506) |
@@ -278,6 +279,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-16T06:39:30Z · nightly-npm · 0.7.0-nightly.2480.38855252661
+
+- Ship SHA: `7fda30be189f190ff11279c2d5fcabc7ec2283c0`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2480.38855252661 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ee138f0` ([full sha](https://github.com/kontourai/station/commit/ee138f0d3f440e17320e66f0478603ee03997436)):
+
+**Features**
+
+- [#3664](https://github.com/kontourai/station/pull/3664) feat(orchestration): hold a busy conversation's follow-ups in a durable server inbox (#3568)
 
 ## 2026-10-16T04:22:38Z · nightly-npm · 0.7.0-nightly.2480.38843412932
 
