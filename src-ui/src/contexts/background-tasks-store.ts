@@ -376,6 +376,7 @@ function foldSessionLifecycle(
     {
       chatThreadId: parentTaskId,
       startedAt: parseTime(event.createdAt, Date.now()),
+      title: metaString(event.metadata, 'delegationTitle'),
     },
   );
   return {
@@ -395,7 +396,10 @@ function foldDelegateTurnStarted(
     Boolean(parentTaskId) || existing?.source === 'delegate-session';
   if (!isKnownDelegate) return state;
 
-  const title = firstLine(event.prompt) ?? existing?.title ?? 'Delegated task';
+  const title =
+    (existing?.title !== 'Delegated task' ? existing?.title : undefined) ??
+    firstLine(event.prompt) ??
+    'Delegated task';
   if (existing) {
     if (existing.state === 'running' && existing.title === title) return state;
     const reopened = existing.state !== 'running';

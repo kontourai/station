@@ -163,9 +163,7 @@ function parseTimestamp(value: string | undefined): number {
 
 export function sessionKindLabel(session: OrchestrationSessionSummary): string {
   if (!session.delegation) return 'Session';
-  return session.delegation.mode === 'isolated-child'
-    ? 'Delegated worker'
-    : 'Delegated task';
+  return session.assignedAgentSlug ?? session.delegation.targetId ?? 'Agent';
 }
 
 /**

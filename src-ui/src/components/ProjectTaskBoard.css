@@ -74,3 +74,17 @@
 .project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
 }
+
+.project-task-board__card strong {
+  display: -webkit-box;
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.project-page__task-detail a {
+  color: var(--k-action);
+}
+.project-page__task-grid--board {
+  margin-top: var(--k-space-3);
+}

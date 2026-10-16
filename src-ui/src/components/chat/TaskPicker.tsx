@@ -1,4 +1,6 @@
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import type { TaskRecord } from '@kontourai/station-sdk';
+import { StatusBadge } from '@kontourai/ui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../Button';
@@ -52,7 +54,7 @@ function sortTasks(tasks: readonly TaskPickerTask[]): TaskPickerTask[] {
 }
 
 function taskDescription(task: TaskPickerTask): string {
-  return task.status ? `${task.id} · ${task.status}` : task.id;
+  return task.status ? taskStatusLabel(task.status) : '';
 }
 
 /** Shared explicit-Task chooser with a captured dialog target. */
@@ -258,6 +260,7 @@ export function TaskPicker<TTarget>({
                         <button
                           type="button"
                           className={`task-picker__task${selected ? ' task-picker__task--selected' : ''}`}
+                          title={task.id}
                           aria-pressed={selected}
                           onClick={() => setSelectedTaskId(task.id)}
                         >
@@ -265,7 +268,12 @@ export function TaskPicker<TTarget>({
                             {task.title}
                           </span>
                           <span className="task-picker__task-meta">
-                            {taskDescription(task)}
+                            {task.status && (
+                              <StatusBadge
+                                tone="neutral"
+                                status={taskDescription(task)}
+                              />
+                            )}
                           </span>
                         </button>
                       </li>
@@ -281,7 +289,7 @@ export function TaskPicker<TTarget>({
                     onNewTask(captured);
                   }}
                 >
-                  New Task from this…
+                  New Task from this
                 </Button>
               )}
               {submissionFailed && (

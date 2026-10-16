@@ -1847,17 +1847,17 @@ not imply edit, execution or administration support.
 `@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
-`readProjectSharedTaskHistory(...)` returns bounded `human-message` bodies with
-human or agent attribution; this body-kind filter does not mean every author is
-human. Structured tool events, attachment metadata and room
-write authority are excluded. Human messages and shared documents are returned
-verbatim without redaction and may themselves contain paths, secrets, or other
-private text. `readProjectSharedTaskDocument(...)` returns the current text
-snapshot. Each response is limited to one MiB and validated without extra
-fields. The current server reports an incomplete history page as `unavailable`.
-Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
-unavailable and too-large results retain their named states. None is an empty
-complete history, and none permits inferring private records.
+`readProjectSharedTaskHistory(apiBase, slug, taskId, options?)` returns bounded
+human-authored room messages. It excludes agent answers, structured tool events,
+attachment metadata, private thread fragments and room write authority. Human
+messages and shared documents are returned verbatim without redaction and may
+contain private text. `readProjectSharedTaskDocument(...)` returns the current
+text snapshot. Each response is limited to one MiB and validated without extra
+fields. When history returns `hasMore: true`, pass `nextCursor` as
+`options.cursor` to read the next page. Keep the pages in sequence; an empty
+filtered page does not mean the room is empty. Gap, stale, invalid-cursor,
+unavailable and too-large results retain their named states and never imply a
+complete history or permission to infer private records.
 `getProjectSharedTaskPublication(...)` gives a member
 `{ kind: 'shared', publication }`, where `publication` is the same summary the
 list returns for that Task. An unshared, stale, unknown or other-scope Task

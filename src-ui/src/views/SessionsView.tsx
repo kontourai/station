@@ -169,7 +169,15 @@ function ActivityRowMeta({
   now: number;
   foldedTurnCount?: number;
 }) {
-  const status = sessionWorkStatus(session, agents, now);
+  const observedStatus = sessionWorkStatus(session, agents, now);
+  const status =
+    observedStatus.rung === 'quiet'
+      ? {
+          ...observedStatus,
+          word: 'Waiting for activity',
+          tone: 'neutral' as const,
+        }
+      : observedStatus;
   // The server attaches `terminalAttribution` only once a failed session has
   // closed; while it is still loaded the reason lives in the same two fields
   // the detail's failure text folds (`sessionFailureText`), so a fresh
@@ -204,7 +212,7 @@ function ActivityRowMeta({
     : origin;
   const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];
-  if (session.delegation)
+  if (session.delegation && sessionKindLabel(session) !== agentName)
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
   if (agentName) segments.push({ key: 'agent', text: agentName });
   if (project) segments.push({ key: 'project', text: project });
@@ -244,9 +252,11 @@ function ActivityRowMeta({
             <WorkStatusLineText status={status} />
           )}
         </span>
-        {status.reason && status.rung !== 'stopped' && (
-          <span className="sr-only">{` · ${status.reason}`}</span>
-        )}
+        {status.reason &&
+          status.rung !== 'stopped' &&
+          status.reason !== status.detail && (
+            <span className="sr-only">{` · ${status.reason}`}</span>
+          )}
       </span>
       {terminalAttribution && !attributedInLine && (
         <>

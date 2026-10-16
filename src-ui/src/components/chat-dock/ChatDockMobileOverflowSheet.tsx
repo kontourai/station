@@ -102,7 +102,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onTurnIntoTask!)}
           >
-            Turn into Task
+            {overflow.turnIntoTaskLabel ?? 'New Task from this'}
           </button>
         )}
         {overflow.onOpenConversationHistory && (

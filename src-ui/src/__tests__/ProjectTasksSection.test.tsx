@@ -231,12 +231,12 @@ describe('ProjectTasksSection', () => {
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
     render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Existing task, todo' }),
+      screen.getByRole('button', { name: 'Existing task, To do' }),
     );
     expect(dispatchTask).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh tasks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Tasks' }));
     expect(refetchTasks).toHaveBeenCalledOnce();
   });
 
@@ -1026,7 +1026,7 @@ describe('ProjectTasksSection error state (Review H1)', () => {
     expect(screen.queryByText('No tasks yet.')).toBeNull();
   });
 
-  test('a settled-empty read still renders "No tasks yet.", with no error state', () => {
+  test('a settled-empty read offers creating a Task without an error state', () => {
     useTasksQuery.mockImplementation(() => ({
       data: [],
       error: undefined,
@@ -1035,7 +1035,7 @@ describe('ProjectTasksSection error state (Review H1)', () => {
 
     render(<ProjectTasksSection slug="project-alpha" />);
 
-    expect(screen.getByText('No tasks yet.')).toBeTruthy();
+    expect(screen.getByText('Start a Task')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

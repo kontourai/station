@@ -2313,6 +2313,13 @@ mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
 `ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
+The provider serializes join, announce and departure across mount replacement;
+reannouncing an already-published viewer refreshes it. Browser message history
+filters human presence lifecycle facts separately from the internal history.
+Shared history pages retain their continuation cursor and human-only filter.
+Room dispatch records a human-authored title separately from the provider prompt
+that includes the brief. Failed runs retain retry and inspection controls.
+
 `WorkspacePaneHost` remains in Details for Basis, rendering its pane only after
 an explicit open action. Identity and workspace fields are collapsed by default.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)

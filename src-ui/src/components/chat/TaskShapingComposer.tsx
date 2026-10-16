@@ -30,7 +30,7 @@ export function TaskShapingHost() {
   const start = useEffectEvent(async (request: TaskShapingRequest) => {
     if (pending.current) return;
     if (!request.source) {
-      showChatPageOrDock(() => navigation.setDockState(true));
+      showChatPageOrDock(() => navigation.setDockState(true, true));
       if (
         !dispatchNewChatIntent({
           taskShaping: true,
@@ -70,13 +70,13 @@ export function TaskShapingHost() {
         }
         if (!entry)
           throw new Error(
-            'Open this conversation in chat, then choose Turn into Task.',
+            'Open this conversation in chat, then choose New Task from this.',
           );
         const [key, chat] = entry;
         const agent = chat.agentSlug;
         if (!agent) throw new Error('The conversation has no selected Agent.');
         navigation.setActiveChat(key);
-        showChatPageOrDock(() => navigation.setDockState(true));
+        showChatPageOrDock(() => navigation.setDockState(true, true));
         // An explicit promotion sends a new turn, without consuming a person's unsent draft or files.
         updateChat(key, { taskShaping: true });
         const focusedMessage = chat.messages?.find((message) =>

@@ -329,3 +329,18 @@ from the kept-answer controls; it does not fetch or show a whole-Task error pane
 before that action. Chromeless Basis omits the portable MCP App control. Keeping
 a local file confirms it in Details; the Results count updates without changing
 the active tab.
+
+## Room polish behavior
+
+The room and thread share Enter-to-send behavior with Shift+Enter for newlines
+and IME composition preserved. Only the message scroller follows new messages;
+readers above the newest message can jump back. Hidden presence facts do not
+suppress the empty state. Failed run facts retain the original request and
+same-Session retry, with the server's normal admission checks. Joining and
+announcing are serialized with departure, including StrictMode remounts. The
+server refreshes a viewer who is already published instead of refusing a repeat
+announcement. Room dispatch carries the person's message as its display title;
+the appended brief remains provider context. Guest history uses bounded pages
+and continuation cursors instead of treating a second page as unavailable.
+These are implementation claims; local checks, rendered fixtures, live-provider
+acceptance and hosted qualification remain distinct evidence.
