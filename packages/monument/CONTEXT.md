@@ -23,6 +23,7 @@ takes no model dependency.
 | Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
 | Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
+| Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
 Each operation is one command, executed as one atomic transaction by an
@@ -96,6 +97,11 @@ vite or vitest configs are accepted limits, left to review.
   decision, never claim the key afresh. Past the TTL it stops holding a quota
   slot, so a claim that can never resolve does not lock its caller out of the
   per-caller cap, or everyone out of the store-wide one.
+- **Inbox:** a submit first forgets the inbox's settled entries (`placed`,
+  `refused`, `cancelled`) last updated before `inboxSettledRetentionMs`. An
+  inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past it
+  answers `capacity` and writes nothing. `inbox.forget` removes one inbox
+  outright, for a host whose conversation was deleted.
 - **Terminal-turn facts:** by default the kernel records provider turn ids a
   thread has seen end, which make a later acceptance of the same id
   `ambiguous`. Those default facts are retired by `turnBoundary.forgetThread`.

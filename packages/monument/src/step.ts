@@ -4,6 +4,14 @@ import type {
   KernelResults,
   ParticipantRefusal,
 } from './commands.js';
+import {
+  decideInboxCancel,
+  decideInboxClaimNext,
+  decideInboxRelease,
+  decideInboxResolveUnconfirmed,
+  decideInboxSettle,
+  decideInboxSubmit,
+} from './decisions/inbox.js';
 import { decideRequestKeyClaim } from './decisions/request-keys.js';
 import {
   decideTurnBoundaryCreate,
@@ -340,6 +348,76 @@ function dispatch(
       tx.requestKeys.delete(command.id);
       return { kind: 'released' };
     }
+
+    case 'inbox.submit': {
+      tx.inbox.deleteSettledBefore(
+        command.inboxId,
+        command.now - limits.inboxSettledRetentionMs,
+      );
+      const decision = decideInboxSubmit(
+        {
+          existing: tx.inbox.get(command.inboxId, command.key),
+          entries: tx.inbox.listInbox(command.inboxId),
+          maxUnsettled: limits.inboxMaxUnsettled,
+        },
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.claimNext': {
+      const decision = decideInboxClaimNext(
+        tx.inbox.listInbox(command.inboxId),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.settle': {
+      const decision = decideInboxSettle(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.release': {
+      const decision = decideInboxRelease(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.resolveUnconfirmed': {
+      const decision = decideInboxResolveUnconfirmed(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.cancel': {
+      const decision = decideInboxCancel(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.read': {
+      const entry = tx.inbox.get(command.inboxId, command.key);
+      return entry ? { kind: 'found', entry } : { kind: 'absent' };
+    }
+    case 'inbox.list':
+      return { kind: 'entries', entries: tx.inbox.listInbox(command.inboxId) };
+    case 'inbox.listOpen':
+      return { kind: 'entries', entries: tx.inbox.listOpen() };
+    case 'inbox.forget':
+      return {
+        kind: 'applied',
+        removed: tx.inbox.deleteInbox(command.inboxId),
+      };
   }
 }
 
@@ -369,6 +447,16 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'requestKeys.recordDecision': false,
   'requestKeys.complete': false,
   'requestKeys.release': false,
+  'inbox.submit': false,
+  'inbox.claimNext': false,
+  'inbox.settle': false,
+  'inbox.release': false,
+  'inbox.cancel': false,
+  'inbox.read': true,
+  'inbox.list': true,
+  'inbox.listOpen': true,
+  'inbox.forget': false,
+  'inbox.resolveUnconfirmed': false,
 });
 
 /** Commands that write nothing, whatever their result. */
