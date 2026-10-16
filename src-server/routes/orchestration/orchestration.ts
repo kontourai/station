@@ -3043,7 +3043,7 @@ export function createOrchestrationRoutes(
           return c.json(
             {
               success: false,
-              error: error.message,
+              error: errorMessage(error),
               code: error.code,
               disposition: error.disposition,
             },

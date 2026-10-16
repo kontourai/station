@@ -1006,7 +1006,9 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         configLoader: loader,
         usageTelemetry: undefined,
         getUsageTelemetry: () => runtime.usageTelemetry,
-        applyAgentConfigurationMutation: diagnose ? observedMutation : runMutation,
+        applyAgentConfigurationMutation: diagnose
+          ? observedMutation
+          : runMutation,
       }),
     );
     await mounted.kitLifecycleReady;
@@ -1131,29 +1133,32 @@ describe('product telemetry constructed after a persisted startup edit', () => {
             mark('request:fulfilled');
             request.body = '[pending clone read]';
             try {
-              void response.clone().json().then(
-                (body: unknown) => {
-                  // Never retain the returned config, keys, tokens or arbitrary errors.
-                  request.body =
-                    body && typeof body === 'object'
-                      ? {
-                          success: 'success' in body && body.success === true,
-                          error: summarize(
-                            'error' in body ? body.error : undefined,
-                          ),
-                          activationPending:
-                            'configurationActivation' in body &&
-                            body.configurationActivation !== undefined,
-                          otherFields: '[omitted]',
-                        }
-                      : '[non-object body omitted]';
-                  mark('request:body-read');
-                },
-                (error: unknown) => {
-                  request.body = { readError: summarize(error) };
-                  mark('request:body-rejected', error);
-                },
-              );
+              void response
+                .clone()
+                .json()
+                .then(
+                  (body: unknown) => {
+                    // Never retain the returned config, keys, tokens or arbitrary errors.
+                    request.body =
+                      body && typeof body === 'object'
+                        ? {
+                            success: 'success' in body && body.success === true,
+                            error: summarize(
+                              'error' in body ? body.error : undefined,
+                            ),
+                            activationPending:
+                              'configurationActivation' in body &&
+                              body.configurationActivation !== undefined,
+                            otherFields: '[omitted]',
+                          }
+                        : '[non-object body omitted]';
+                    mark('request:body-read');
+                  },
+                  (error: unknown) => {
+                    request.body = { readError: summarize(error) };
+                    mark('request:body-rejected', error);
+                  },
+                );
             } catch (error) {
               request.body = { cloneError: summarize(error) };
               mark('request:clone-threw', error);
