@@ -7,9 +7,9 @@
       "advisory": "GHSA-86w9-cpqp-85rv",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Unpatched upstream (digitalbazaar/forge#1152 open). Production-graph transitive via @voltagent/core -> @mymediset/sap-ai-provider -> @sap-cloud-sdk -> jks-js, reached only when the SAP provider is explicitly configured, and only to parse an operator-supplied local JKS keystore. Station verifies no attacker-controlled RSA signatures through this chain, so the forgery primitive in CVE-2026-85393 has no reachable target. Re-run npm run audit:policy on every VoltAgent core or @mymediset/sap-ai-provider update.",
+      "reason": "Brian Anderson explicitly approved temporary acceptance until exclusive 2026-10-17T00:00:00Z, recorded in https://github.com/kontourai/station/issues/3122#issuecomment-6207936292. node-forge 1.4.0 remains affected by remote RSA PKCS#1 v1.5 signature forgery with applicable low-exponent keys; no patched npm release exists at source review. The root production chain runs through VoltAgent/SAP to jks-js 1.1.7. The inspected converter parses destination-supplied JKS/PKCS#12 data and serializes PEM; its inspected calls do not invoke forge RSA signature verification. Destination content is not limited to local files. Dynamic/plugin/temporary-model and endpoint exposure remain NOT_VERIFIED. This is time-boxed risk acceptance, not remediation or a universal nonreachability claim. Reassess on any VoltAgent/SAP/jks/forge or provider/config boundary change; keep #3122 open while the upstream residual remains.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3122",
-      "expires": "2026-10-16"
+      "expires": "2026-10-17"
     },
     {
       "scope": "root",
