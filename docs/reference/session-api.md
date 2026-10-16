@@ -211,7 +211,9 @@ provider effect: changed input returns `client_turn_input_conflict`. Matching in
 can replay a started turn (`providerTurnId`); authorized staged attachments
 are bound to that turn. Staged bytes are authorized against the earlier claim's
 Session and read without binding before digest comparison, including retained,
-dead-invoked and reclaimable claims. Only after a safe start or replay is chosen
+dead-invoked and reclaimable claims. The production continuation uses the caller's
+read authority across every materialized Session; an unavailable or unreadable
+lineage fails closed before key inspection or staged hydration. Only after a safe start or replay is chosen
 are they bound to its actual Session; tombstones retain no input proof.
 An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with

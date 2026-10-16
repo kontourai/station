@@ -39,6 +39,7 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../../services/orchestration/adopted-child-execution-binding.js';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -512,6 +513,7 @@ async function fixture(options: { engineAgent: boolean }) {
   };
 
   return {
+    root,
     operator,
     security,
     loader,
@@ -628,6 +630,152 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       const other = engine === 'claude' ? 'codex' : 'claude';
       expect(f.engines[other].turns).toEqual([]);
       expect(f.engines[other].starts).toEqual([]);
+    },
+  );
+
+  test.each([
+    ['retained', false],
+    ['reclaimable', false],
+    ['retained', true],
+    ['reclaimable', true],
+  ] as const)(
+    '#3567: production continuation authorizes every materialized Session before staged proof (%s, readable=%s)',
+    async (state, readable) => {
+      const f = await fixture({ engineAgent: true });
+      const root = await f.adopt(f.attached('claude', f.project));
+      const authority = sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      );
+      const metadata = f.service.firstStartedMetadataOfThread(root);
+      if (!metadata) throw new Error('Expected adopted root binding');
+      let predecessor = root;
+      const middle = `${root}:private-middle`;
+      const current = `${root}:current`;
+      for (const id of [middle, current]) {
+        const now = new Date().toISOString();
+        f.store.reserveNextConversationSession({
+          conversationId: root,
+          predecessorSessionId: predecessor,
+          proposedSessionId: id,
+          createdAt: now,
+        });
+        f.store.upsertSession({
+          provider: 'claude',
+          threadId: id,
+          status: 'ready',
+          cwd: f.project,
+          createdAt: now,
+          updatedAt: now,
+        });
+        f.store.appendEvent({
+          eventId: `${id}:started`,
+          provider: 'claude',
+          threadId: id,
+          sessionId: id,
+          createdAt: now,
+          method: 'session.started',
+          metadata: {
+            ...metadata,
+            conversationId: root,
+            userId: id === middle && !readable ? 'foreign-person' : 'operator',
+          },
+        });
+        predecessor = id;
+      }
+      expect(await f.service.readSession(root, authority)).not.toBeNull();
+      expect(await f.service.readSession(current, authority)).not.toBeNull();
+      expect(Boolean(await f.service.readSession(middle, authority))).toBe(
+        readable,
+      );
+      const peer =
+        state === 'reclaimable'
+          ? new EventStore(join(f.root, 'orchestration.sqlite'), 512, {
+              exact: () => ({ pid: 2147483647, start: 'dead-private-owner' }),
+              probe: () => ({ state: 'dead' as const }),
+            })
+          : undefined;
+      const owner = (peer ?? f.store).createTurnDeduplicator().claim({
+        threadId: middle,
+        clientTurnId: 'private-staged-key',
+        inputDigest: 'original-private-input',
+      });
+      if (owner.kind !== 'owner')
+        throw new Error('Expected original private owner');
+      if (state === 'retained') {
+        owner.claim.beginInvocation();
+        owner.claim.retain();
+      }
+      peer?.close();
+      const staging = new AttachmentStagingService();
+      try {
+        const prepared = staging.prepare(
+          { principalId: 'operator' },
+          {
+            clientAttachmentId: 'authority-stage',
+            kind: 'file',
+            name: 'note.txt',
+            mimeType: 'text/plain',
+            size: 2,
+          },
+        );
+        const reference = staging.upload(
+          prepared.stageId,
+          prepared.uploadGrant,
+          'data:text/plain;base64,aGk=',
+        );
+        const resolveAttachments = vi.fn(
+          (
+            binding: { threadId: string; clientTurnId: string },
+            options?: { inspectOnly?: true },
+          ) =>
+            staging.bindAndHydrate(
+              { principalId: 'operator' },
+              [reference],
+              binding,
+              options,
+            ),
+        );
+        const inspect = vi.spyOn(f.service, 'inspectTurnDelivery');
+        const beforeStarts = f.engines.claude.starts.length;
+        const { continueExecutionTargetMessage } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        let failure: unknown;
+        await continueExecutionTargetMessage(
+          {
+            conversationId: root,
+            clientTurnId: 'private-staged-key',
+            message: 'different input',
+            userId: 'operator',
+            readAuthority: authority,
+            resolveAttachments,
+          },
+          f.service,
+        ).catch((error: unknown) => {
+          failure = error;
+        });
+        if (readable)
+          expect(resolveAttachments).toHaveBeenCalledWith(
+            { threadId: middle, clientTurnId: 'private-staged-key' },
+            { inspectOnly: true },
+          );
+        else {
+          expect(resolveAttachments).not.toHaveBeenCalled();
+          expect(inspect).not.toHaveBeenCalled();
+        }
+        expect(failure).toMatchObject(
+          readable
+            ? { code: 'client_turn_input_conflict' }
+            : { message: 'The requested conversation is unavailable.' },
+        );
+        expect(f.engines.claude.starts).toHaveLength(beforeStarts);
+        expect(f.engines.claude.turns).toEqual([]);
+        expect(f.store.conversationSessions(root)).toHaveLength(3);
+      } finally {
+        staging.dispose();
+      }
     },
   );
 

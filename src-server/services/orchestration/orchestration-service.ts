@@ -5015,7 +5015,7 @@ export class OrchestrationService {
         authority,
       ) === null
     )
-      return undefined;
+      throw new Error('The requested conversation is unavailable.');
     const pending = this.options.eventStore?.readPendingThreadInboxSubmission(
       conversationId,
       clientTurnId,

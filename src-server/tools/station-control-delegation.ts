@@ -6492,27 +6492,37 @@ export async function executeExecutionTargetMessage(
       conversationId: string,
       clientTurnId: string,
       userId?: string,
-    ) =>
-      orchestrationService.readPendingConversationSubmission?.(
+    ) => {
+      if (
+        typeof orchestrationService.readPendingConversationSubmission !==
+        'function'
+      )
+        throw new Error('The requested conversation is unavailable.');
+      return orchestrationService.readPendingConversationSubmission(
         conversationId,
         clientTurnId,
         readAuthority,
         userId,
-      ),
+      );
+    },
     inspectConversationTurnKey: (
       _access: EnvironmentAccess,
       conversationId: string,
       clientTurnId: string,
       inputDigest?: string,
-    ) =>
-      typeof orchestrationService.inspectTurnDelivery === 'function'
-        ? orchestrationService.inspectTurnDelivery(
-            conversationId,
-            clientTurnId,
-            INTERNAL_SESSION_READ_SCOPE,
-            inputDigest,
-          )
-        : undefined,
+    ) => {
+      if (typeof orchestrationService.inspectTurnDelivery !== 'function')
+        throw new Error('The requested conversation is unavailable.');
+      const inspection = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        inputDigest,
+      );
+      if (inspection === null)
+        throw new Error('The requested conversation is unavailable.');
+      return inspection;
+    },
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,

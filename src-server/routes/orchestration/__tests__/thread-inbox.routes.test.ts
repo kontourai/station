@@ -836,9 +836,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             target,
           }),
         );
-        expect(wrongOwner.status).not.toBe(200);
-        expect(await wrongOwner.json()).not.toMatchObject({
-          code: 'client_turn_input_conflict',
+        expect(wrongOwner.status).toBe(400);
+        expect(await wrongOwner.json()).toMatchObject({
+          code: 'stage_forbidden',
         });
         expect(world.adapter.starts).toHaveLength(startsBefore);
       }
