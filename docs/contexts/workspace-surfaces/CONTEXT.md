@@ -181,7 +181,8 @@ rather than returning a partial patch, for unsafe paths, symlinks, hardlinks,
 special files, credential-like names, changing files or exceeded limits. Limits
 are 128 untracked files, 256 KiB per new file, 2 MiB of new contents, 4 MiB of
 patch output, 64 KiB of path-list output and a 30-second service deadline.
-The special-file scan skips ignored directories and nested repositories and
+The special-file scan skips ignored directories and indexed submodule markers,
+refuses other nested `.git` markers without entering them, and
 caps traversal at 16,384 entries, 4,096 entries per directory and 128 pending
 directories. Refusals reach the pane's error and Retry state. Path/descriptor
 identity checks detect observed races; they are not an atomic filesystem snapshot.

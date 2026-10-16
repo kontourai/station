@@ -6,6 +6,7 @@ import {
   linkSync,
   lstatSync,
   openSync,
+  readFileSync,
   readSync,
   realpathSync,
   renameSync,
@@ -169,6 +170,53 @@ describe('bounded worktree additions', () => {
       expect(body.error).not.toContain('credential secret');
     },
   );
+
+  test.skipIf(process.platform === 'win32').each([false, true])(
+    'malformed nested git marker refuses a FIFO even with ordinary sibling=%s',
+    async (withSibling) => {
+      const f = fixture();
+      f.put('sub/.git', '');
+      execFileSync('mkfifo', [join(f.root, 'sub/entry.pipe')], {
+        windowsHide: true,
+        timeout: 5000,
+      });
+      if (withSibling)
+        f.put('sub/new.txt', 'must not return a partial patch\n');
+      const before = f.state();
+      const { response, body } = await patch(f);
+      expect(response.status).toBe(400);
+      expect(body.success).toBe(false);
+      expect(body.data).toBeUndefined();
+      expect(body.error).toContain('Worktree diff unavailable:');
+      expect(f.state()).toEqual(before);
+    },
+  );
+
+  test('indexed submodule contents are never entered even with an invalid marker', async () => {
+    const f = fixture();
+    f.git([
+      'update-index',
+      '--add',
+      '--cacheinfo',
+      `160000,${f.git(['rev-parse', 'HEAD']).trim()},sub`,
+    ]);
+    f.put('sub/.git', 'not a valid gitfile');
+    f.put('sub/.env', 'submodule contents must not be read\n');
+    const state = () => ({
+      index: readFileSync(join(f.root, '.git/index')).toString('hex'),
+      status: f.git([
+        'status',
+        '--porcelain=v1',
+        '-z',
+        '--ignore-submodules=all',
+      ]),
+    });
+    const before = state();
+    const { response, body } = await patch(f);
+    expect(response.status).toBe(200);
+    expect(body.data?.diff).toBe('');
+    expect(state()).toEqual(before);
+  });
 
   test.each([
     'file-symlink',

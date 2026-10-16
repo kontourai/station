@@ -283,12 +283,31 @@ export async function readWorkspaceDiff(
       if (entry.special)
         refuse('an untracked special file cannot be represented');
       const child = join(directory, entry.name);
-      // A nested repository is represented by Git's own listing; never enter it.
+      // Marker existence does not prove Git recognizes a nested repository:
+      // malformed .git files plus special files disappear from ls-files.
+      let marker = false;
       try {
         fs.lstat(join(child, '.git'));
-        continue;
+        marker = true;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (marker) {
+        const indexed = await git(
+          ['ls-files', '--stage', '-z', '--', `:(literal)${paths[index]}`],
+          MAX_LIST_BYTES,
+        );
+        const records = indexed.split('\0').filter(Boolean);
+        const record = records[0];
+        const tab = record?.indexOf('\t') ?? -1;
+        if (
+          records.length === 1 &&
+          record.startsWith('160000 ') &&
+          record.slice(0, tab).endsWith(' 0') &&
+          record.slice(tab + 1) === paths[index]
+        )
+          continue;
+        refuse('an unverified nested git marker prevents a complete read');
       }
       pending.push(child);
       if (pending.length > 128) refuse('more than 128 pending directories');
