@@ -58,6 +58,7 @@ const FIXTURE = `<!doctype html><html><head><title>agent fixture</title>
 </head><body>
 <p id="out">idle</p>
 <button id="go">Go</button>
+<button id="hidden" style="display:none">Hidden control</button>
 <label for="name" style="position:absolute;left:40px;top:190px">Your name</label>
 <input id="name" aria-label="Your name">
 <p id="greet" style="position:absolute;top:300px"></p>
@@ -227,6 +228,12 @@ describe('browser tools against a real installed Chromium', () => {
         timeoutMs: 10_000,
       }),
     ).toMatchObject({ ok: true, matched: 'locator' });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        locator: 'css=#hidden',
+        timeoutMs: 500,
+      }),
+    ).toMatchObject({ ok: false, code: 'timeout', pageBusy: false });
 
     // A person moves the mouse over the page while the agent is mid-action.
     const long = automation.type(authority, browserSessionId, {
