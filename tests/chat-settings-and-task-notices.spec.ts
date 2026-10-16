@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import {
@@ -39,6 +40,19 @@ const PHONE = { width: 390, height: 844 } as const;
 const DESKTOP = { width: 1280, height: 800 } as const;
 
 async function seedChat(page: Page, several = false) {
+  const preferences: AccountPreferencesView = {
+    schemaVersion: 1,
+    values: { developerToolsEnabled: true },
+  };
+  await page.route(/\/api\/me\/preferences(?:\?.*)?$/, (route) => {
+    if (route.request().method() === 'PATCH') {
+      preferences.values = {
+        ...preferences.values,
+        ...route.request().postDataJSON(),
+      };
+    }
+    return route.fulfill({ json: { success: true, data: preferences } });
+  });
   // Presence reporting is outside this journey; keep it off the shared server.
   await page.route('**/api/presence/focus', (route) =>
     route.fulfill({ status: 204 }),
@@ -480,7 +494,9 @@ test('working chat selection keeps composer focus when its turn completes', asyn
 
   await activity.click();
   await expect(chats).toBeVisible();
-  await activity.click();
+  await page
+    .getByRole('button', { name: 'Close 1 chat working', exact: true })
+    .click();
   await expect(chats).toBeHidden();
   await activity.focus();
   await page.keyboard.press('Enter');
