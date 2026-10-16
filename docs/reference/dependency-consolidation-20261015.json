@@ -739,8 +739,9 @@
           "1.63.0"
         ]
       ],
-      "integratedSpecifier": "1.64.0",
-      "resolvedCandidate": "1.64.0"
+      "integratedSpecifier": "1.64.1",
+      "resolvedCandidate": "1.64.1",
+      "adoption": "Compatible companion patch aligns the direct core and accessibility peer with locked @playwright/test/playwright 1.64.1; source intent retained above."
     },
     {
       "sourcePR": 3681,
