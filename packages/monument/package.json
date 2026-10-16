@@ -15,10 +15,13 @@
     "./adapter": "./src/adapter.ts",
     "./testing": "./src/testing/index.ts"
   },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json"
+  },
   "files": [
-    "src",
-    "!src/__tests__",
-    "!src/**/*.test.ts",
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.test.*",
     "README.md",
     "CONTEXT.md",
     "LICENSE"
@@ -37,6 +40,26 @@
     "directory": "packages/monument"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./sqlite": {
+        "types": "./dist/sqlite.d.ts",
+        "default": "./dist/sqlite.js"
+      },
+      "./adapter": {
+        "types": "./dist/adapter.d.ts",
+        "default": "./dist/adapter.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      }
+    }
   }
 }

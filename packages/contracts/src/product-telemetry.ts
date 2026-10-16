@@ -188,3 +188,28 @@ export interface ProductTelemetryBatch {
   distinct_id: string;
   events: ProductTelemetryObservation[];
 }
+
+/** Receiver acknowledgement returned only after the bounded storage transaction commits. */
+export interface ProductTelemetryCommitReceipt {
+  protocol: 'station-product-commit/v1';
+  receiptId: string;
+  sourceId: string;
+  eventIds: string[];
+  inserted: number;
+  alreadyPresent: number;
+  storedAt: string;
+}
+
+export interface ProductTelemetryProbeRequest {
+  protocol: 'station-product-probe/v1';
+  inventoryRevision: string;
+}
+
+/** A source-authorized storage query; no product observation or commit receipt is inserted. */
+export interface ProductTelemetryProbeReceipt {
+  protocol: 'station-product-probe/v1';
+  sourceId: string;
+  inventoryRevision: string;
+  checkedAt: string;
+  storage: 'postgres-schema-v1';
+}

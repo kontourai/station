@@ -468,7 +468,7 @@ export function useTaskClaimQuery(
 
 export function useCreateTaskMutation() {
   return useApiMutation(createTask, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
   });
 }
 
@@ -490,13 +490,13 @@ export function useCreateTaskReferenceMutation(
 
 export function useUpdateTaskStatusMutation() {
   return useApiMutation(updateTaskStatus, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
   });
 }
 
 export function useDispatchTaskMutation() {
   return useApiMutation(dispatchTask, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
   });
 }
 

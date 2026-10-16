@@ -79,6 +79,11 @@ beforeEach(() => {
 });
 
 test('a proposal stays provisional until Create Task, then submits its brief and exact source and opens the Task', async () => {
+  host.navigate.mockImplementation(() => {
+    expect(
+      queryClient.getQueryData(taskQueries.list('alpha').queryKey),
+    ).toEqual([acceptedTask]);
+  });
   activeChatsStore.initChat('shape-session', {
     agentSlug: 'station',
     agentName: 'Station',

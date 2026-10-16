@@ -409,6 +409,15 @@ describe('ProjectTasksSection', () => {
       starter: 'start-task',
       starterLink: 'not-verified',
     });
+    const listInvalidation = invalidateQueries.mock.calls.findIndex(
+      ([filters]) =>
+        JSON.stringify(filters.queryKey) ===
+        JSON.stringify(['tasks', 'project-alpha']),
+    );
+    expect(listInvalidation).toBeGreaterThanOrEqual(0);
+    expect(
+      invalidateQueries.mock.invocationCallOrder[listInvalidation],
+    ).toBeLessThan(navigate.mock.invocationCallOrder[0]);
     remove.mockRestore();
     window.history.pushState({}, '', '/');
   });
@@ -425,6 +434,89 @@ describe('ProjectTasksSection', () => {
     expect(createTask).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('Task title')).toBeNull();
     window.removeEventListener('station:shape-task', listener);
+  });
+
+  test.each([undefined, '  '])(
+    'disables Dispatch with a reason when the Task has no agent (%s)',
+    (agentId) => {
+      tasks[0] = { ...tasks[0], agentId };
+      render(<ProjectTasksSection slug="project-alpha" />);
+
+      const button = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Dispatch',
+      });
+      expect(button.disabled).toBe(true);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Dispatch needs an agent, and this Task has none.',
+      );
+      const reason = screen.getByRole('status');
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(reason.textContent).toContain('See Project settings › Agents.');
+      fireEvent.click(button);
+      expect(dispatchTask).not.toHaveBeenCalled();
+      expect(tasks[0].status).toBe('todo');
+      const settingsLink = screen.getByRole('link', {
+        name: 'Project settings › Agents',
+      });
+      expect(settingsLink.getAttribute('href')).toBe(
+        '/projects/project-alpha/edit?section=agents',
+      );
+      fireEvent.click(settingsLink, { metaKey: true });
+      expect(navigate).not.toHaveBeenCalled();
+      fireEvent.click(settingsLink);
+      expect(navigate).toHaveBeenCalledWith('/projects/project-alpha/edit', {
+        section: 'agents',
+      });
+    },
+  );
+
+  test('opens an existing Task and preserves dispatch behavior', async () => {
+    dispatchTask.mockResolvedValue({
+      task: {
+        ...tasks[0],
+        status: 'ready',
+        sessionId: 'task-task-1-1',
+      },
+    });
+
+    render(
+      <ProjectTasksSection
+        slug="project-alpha"
+        projectWorkingDirectory="/tmp/project-alpha"
+        gitStatus={{
+          isRepo: true,
+          branch: 'feature/task-workspace',
+          changes: [],
+          staged: 0,
+          unstaged: 0,
+          untracked: 0,
+          lastCommit: null,
+          ahead: 0,
+          behind: 0,
+          repoRoot: '/tmp/project-alpha-worktree',
+        }}
+        agents={['agent-one']}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
+    expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
+
+    await screen.findByRole('button', { name: 'Dispatch' });
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    await waitFor(() =>
+      expect(dispatchTask).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        dispatch: {
+          agentId: 'agent-one',
+          skillName: undefined,
+          runtimeConfig: { cwd: '/tmp/project-alpha' },
+          sourceSurface: 'project-page',
+        },
+      }),
+    );
+    expect(screen.getByText(/spawned session/)).toBeTruthy();
   });
 
   test('shows a compact workflow line, tagged "matched by title", on a title-heuristic match', async () => {

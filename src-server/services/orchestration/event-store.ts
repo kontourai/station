@@ -5071,6 +5071,105 @@ export class EventStore {
     };
   }
 
+  /** Committed-order selection for paged canonical usage, distinct from interactive rollups. */
+  readUsageReceiptExportPage(options: {
+    ownerUserIds: readonly string[];
+    tenantId?: string;
+    from: string;
+    to: string;
+    after: number;
+    highWater?: number;
+    streamEpoch?: string;
+    limit: number;
+  }): {
+    streamEpoch: string;
+    highWater: number;
+    rows: Array<{ globalSequence: number; usage: UsageReceiptEventRow }>;
+    hasMore: boolean;
+  } {
+    if (
+      !Number.isSafeInteger(options.after) ||
+      options.after < 0 ||
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100 ||
+      (options.highWater !== undefined &&
+        (!Number.isSafeInteger(options.highWater) ||
+          options.highWater < options.after))
+    )
+      throw new Error('Invalid usage export bounds');
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    this.db.exec('BEGIN');
+    try {
+      const streamEpoch = this.streamEpoch();
+      const head = this.headGlobalSequence();
+      const highWater = options.highWater ?? head;
+      if (
+        (options.streamEpoch !== undefined &&
+          options.streamEpoch !== streamEpoch) ||
+        highWater > head
+      )
+        throw new Error('Usage export source changed');
+      const rows = this.db
+        .prepare(
+          `${USAGE_RECEIPT_EVENT_SELECT}
+           FROM orchestration_events e
+           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
+          WHERE e.method = 'token-usage.updated'
+            AND e.global_sequence > ? AND e.global_sequence <= ?
+            AND e.observed_at >= ? AND e.observed_at <= ?
+            AND h.owner_user_id IN (${owners})
+            AND ((? IS NULL AND h.tenant_id IS NULL) OR h.tenant_id = ?)
+          ORDER BY e.global_sequence ASC LIMIT ?`,
+        )
+        .all(
+          options.after,
+          highWater,
+          `${options.from}T00:00:00.000Z`,
+          `${options.to}T23:59:59.999Z`,
+          ...options.ownerUserIds,
+          options.tenantId ?? null,
+          options.tenantId ?? null,
+          options.limit + 1,
+        ) as Array<Record<string, unknown>>;
+      const selected = rows.slice(0, options.limit);
+      const cumulativeThreads = selected
+        .filter(
+          (row) =>
+            typeof row.provider === 'string' &&
+            providerCostScope(row.provider) === 'engine-process-cumulative',
+        )
+        .map((row) => {
+          if (typeof row.thread_id !== 'string')
+            throw new Error('Invalid usage export thread');
+          return row.thread_id;
+        });
+      const segments = this.cumulativeCostSegmentsFor(cumulativeThreads, 1000);
+      const page = selected.map((row) => {
+        if (
+          typeof row.global_sequence !== 'number' ||
+          !Number.isSafeInteger(row.global_sequence)
+        )
+          throw new Error('Invalid usage export sequence');
+        return {
+          globalSequence: row.global_sequence,
+          usage: this.mapUsageReceiptEventRow(row, segments),
+        };
+      });
+      this.db.exec('COMMIT');
+      return {
+        streamEpoch,
+        highWater,
+        rows: page,
+        hasMore: rows.length > options.limit,
+      };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   /**
    * Every usage observation of the given session threads, in observation
    * order, with the same receipt facts {@link listUsageReceiptEvents} joins.
@@ -5241,8 +5340,28 @@ export class EventStore {
    */
   private cumulativeCostSegmentsFor(
     threadIds: readonly string[],
+    maximumSequenceBudget?: number,
   ): Map<string, string> {
     const segments = new Map<string, string>();
+    let remainingEvidenceRows = maximumSequenceBudget;
+    if (maximumSequenceBudget !== undefined) {
+      let sequences = 0;
+      for (const threadId of new Set(threadIds)) {
+        const latest = this.db
+          .prepare(
+            'SELECT sequence FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1',
+          )
+          .get(threadId) as { sequence: number } | undefined;
+        const sequence = latest?.sequence ?? 0;
+        if (!Number.isSafeInteger(sequence) || sequence < 0)
+          throw new Error('Invalid cumulative usage sequence');
+        sequences += sequence;
+        if (sequences > maximumSequenceBudget)
+          throw new Error(
+            'Cumulative usage projection exceeds its sequence budget',
+          );
+      }
+    }
     // Chunks partition by THREAD, never inside one, so every thread's whole
     // history still replays through one segmenter in sequence order.
     for (const chunk of this.chunkArray(
@@ -5263,9 +5382,14 @@ export class EventStore {
               AND json_valid(payload)
               AND (method = 'session.started'
                 OR json_type(payload, '$.reportedCostUsd') IN ('integer', 'real'))
-            ORDER BY thread_id, sequence`,
+            ORDER BY thread_id, sequence ${remainingEvidenceRows === undefined ? '' : 'LIMIT ?'}`,
         )
-        .all(...chunk) as Array<{
+        .all(
+          ...chunk,
+          ...(remainingEvidenceRows === undefined
+            ? []
+            : [remainingEvidenceRows + 1]),
+        ) as Array<{
         id: string;
         thread_id: string;
         provider: string;
@@ -5273,6 +5397,13 @@ export class EventStore {
         resumed: number;
         cost: unknown;
       }>;
+      if (remainingEvidenceRows !== undefined) {
+        if (evidence.length > remainingEvidenceRows)
+          throw new Error(
+            'Cumulative usage projection exceeds its evidence budget',
+          );
+        remainingEvidenceRows -= evidence.length;
+      }
       let thread: string | undefined;
       let segmenter = new CumulativeCostSegments();
       for (const row of evidence) {

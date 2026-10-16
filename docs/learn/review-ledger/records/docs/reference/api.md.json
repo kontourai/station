@@ -428,7 +428,21 @@
 
     "src-server/routes/orchestration/tasks.ts",
 
-    "src-ui/src/contexts/active-chats-state.ts"
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts"
   ],
 
   "checks": [
