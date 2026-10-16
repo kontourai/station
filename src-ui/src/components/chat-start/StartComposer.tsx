@@ -179,9 +179,11 @@ function fitCompactTextarea(element: HTMLTextAreaElement) {
  */
 export function StartComposer({
   prompt,
+  placeholder = 'Tell Station what you want done…',
   onPromptChange,
   textareaRef,
   compact = false,
+  heading,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -202,10 +204,12 @@ export function StartComposer({
   children,
 }: {
   prompt: string;
+  placeholder?: string;
   onPromptChange: (value: string) => void;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
+  heading?: string;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -258,7 +262,9 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>{compact ? 'Start work' : 'What would you like to do?'}</h2>
+        <h2>
+          {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
+        </h2>
         {project.status === 'ready' && (
           <button
             type="button"
@@ -322,7 +328,7 @@ export function StartComposer({
           ref={fieldRef}
           className="editor-textarea start-composer__input"
           aria-label="What would you like done?"
-          placeholder="Tell Station what you want done…"
+          placeholder={placeholder}
           rows={compact ? 1 : 3}
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}

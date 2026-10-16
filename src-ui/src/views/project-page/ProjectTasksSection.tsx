@@ -26,6 +26,7 @@ import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
+import { requestTaskShaping } from '../../lib/task-shaping';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
@@ -387,32 +388,39 @@ export function ProjectTasksSection({
         </p>
       ) : null}
 
-      <form className="project-page__task-form" onSubmit={createTask}>
-        {starterId === 'start-task' && (
+      {starterId !== 'start-task' ? (
+        <Button
+          variant="primary"
+          onClick={() => requestTaskShaping({ projectSlug: slug })}
+        >
+          New Task
+        </Button>
+      ) : (
+        <form className="project-page__task-form" onSubmit={createTask}>
           <p role="status">
             Create a focused starter task. Station will link the exact task
             after it is created.
           </p>
-        )}
-        <input
-          className="project-page__task-input"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Create a task"
-          aria-label="Task title"
-        />
-        <button
-          className="project-page__add-btn project-page__add-btn--primary"
-          type="submit"
-          disabled={
-            !title.trim() ||
-            createTaskMutation.isPending ||
-            launchStarterMutation.isPending
-          }
-        >
-          Add task
-        </button>
-      </form>
+          <input
+            className="project-page__task-input"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Create a task"
+            aria-label="Task title"
+          />
+          <button
+            className="project-page__add-btn project-page__add-btn--primary"
+            type="submit"
+            disabled={
+              !title.trim() ||
+              createTaskMutation.isPending ||
+              launchStarterMutation.isPending
+            }
+          >
+            Add task
+          </button>
+        </form>
+      )}
       {/*
         station#3965: these six sentences are what a person reads after
         pressing "Add task", and every one of them used to name the mechanism
@@ -621,8 +629,7 @@ export function ProjectTasksSection({
                       role="status"
                       id={dispatchReasonId}
                     >
-                      Dispatch needs an agent, and this Task has none. New Tasks
-                      use the first agent selected in{' '}
+                      Dispatch needs an agent, and this Task has none. See{' '}
                       <a
                         href={`/projects/${encodeURIComponent(slug)}/edit?section=agents`}
                         onClick={(event) => {

@@ -1847,6 +1847,22 @@ export function configureRuntimeRoutes(
   // indistinguishable to the reader below, and both fail closed to
   // `{ kind: 'revoked' }`, never a default identity.
   const roomRequestPrincipals = new WeakMap<Request, PrincipalRef>();
+  const primeRoomRequestPrincipal = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    try {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+    } catch {
+      // Unresolved: no cache entry, so `requestAuthority.resolve` above
+      // revokes rather than reading a stale or default principal.
+    }
+    await next();
+  };
+
   // The registry is process-wide, but each decision remains bound to either a
   // tenant-validated session or the authority minted in its current ingress
   // context. Install this before any route or agent registration can create a
@@ -3836,6 +3852,10 @@ export function configureRuntimeRoutes(
       navigationAudience: agentOwnerIdForRequest,
     }),
   );
+  // Proposal acceptance writes the Task document before returning from POST /api/tasks.
+  // Prime the same room principal before that route can consume the request.
+  if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
+    context.app.use('/api/tasks', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskOutputRoutes(taskOutputs, {
@@ -3848,21 +3868,6 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
-  const primeRoomRequestPrincipal = async (
-    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-    next: () => Promise<void>,
-  ) => {
-    try {
-      roomRequestPrincipals.set(
-        c.req.raw,
-        resolveOrchestrationRequestPrincipal(c),
-      );
-    } catch {
-      // Unresolved: no cache entry, so `requestAuthority.resolve` above
-      // revokes rather than reading a stale or default principal.
-    }
-    await next();
-  };
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
@@ -3880,6 +3885,10 @@ export function configureRuntimeRoutes(
         });
       },
       taskDispatcher: context.taskDispatcher,
+      proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
+      seedProposalBrief: (input) =>
+        projectTaskRoomRuntime?.seedProposalBrief(input) ??
+        Promise.resolve(false),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
@@ -4208,34 +4217,7 @@ export function configureRuntimeRoutes(
         ]),
       )
       .then(() => undefined);
-    // station#4075 stage 3 slice 1: resolve the calling principal once, here,
-    // where the real Hono `c` (env + headers) is available, and cache it on
-    // `c.req.raw` for `requestAuthority.resolve` above — see the
-    // `roomRequestPrincipals` docs above `resolveOrchestrationRequestPrincipal`
-    // for why the room runtime cannot do this resolution itself. A resolution
-    // failure is deliberately left uncached (fail closed), matching
-    // `resolveActorPrincipal`'s documented contract in
-    // `routes/orchestration/orchestration.ts` that an unresolvable caller
-    // throws rather than falling back to a default identity.
-    //
-    // Fix round (station#4075 stage 3 slice 1 review): every public
-    // `ProjectTaskRoomRuntime` method that reaches `requestAuthority.resolve`
-    // (via the private `#principal`) is invoked from exactly one of two
-    // mounts — `discover`/`document`/`subscribe`/`subscriptionAlive`/
-    // `subscriptionCadence`/`message`/`live`/`editPlan`/`submitBatch`/
-    // `history` all come from `createProjectTaskRoomRoutes` under
-    // `/api/tasks/*` (`routes/orchestration/project-task-rooms.ts`), and
-    // `liveActivity` comes from `createLiveActivityRoutes` under
-    // `/api/live-activity` (`routes/orchestration/live-activity.ts:23-25`,
-    // mounted below at the unconditional `context.app.route('/api/live-
-    // activity', ...)` call). `recovery` is never called from a live HTTP
-    // route (system-only). The prime-principal middleware below MUST cover
-    // both mounts — priming `/api/tasks/*` alone left every
-    // `/api/live-activity` request with no cached principal, so `#principal`
-    // always resolved `undefined`, `#authorizedDocument` always returned
-    // undefined, and `liveActivity()` silently returned an empty
-    // participants projection for every caller instead of revoking or
-    // granting honestly.
+    // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route(

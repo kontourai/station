@@ -1000,6 +1000,42 @@
 
     "src-server/analytics/usage-export-reader.ts",
 
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/modals/TaskChatStart.css",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
+
+    "src-ui/src/lib/newChatIntent.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
 
     "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",

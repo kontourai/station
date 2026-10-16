@@ -3465,6 +3465,21 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
+**Chat proposal acceptance.** The [shaping prompt](../../src-ui/src/lib/task-shaping.ts),
+[shared proposal contract](../../packages/contracts/src/task-graph.ts),
+[entry host](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
+and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
+Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
+authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
+The source link also deduplicates repeated acceptance. Tests in
+`task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
+`TaskShapingComposer.test.tsx` cover those separate boundaries. This Station
+prompt seam makes no Builder Kit invocation or breakdown-gate claim; a
+published shaping-result contract and selected-Agent delivery proof are still
+needed for that adapter.
+
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.

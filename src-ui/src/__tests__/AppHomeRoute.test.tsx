@@ -19,6 +19,10 @@ import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
+vi.mock('../components/chat/TaskShapingComposer', () => ({
+  TaskShapingHost: () => null,
+}));
+
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
     focus: vi.fn(),

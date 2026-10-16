@@ -23,9 +23,12 @@ See the [application walkthrough](../learn/walkthroughs.md#projects-and-tasks) f
 
 When Home offers **Start your first task**, it appears only after the durable
 first-run decision is completed and Station has confirmed a real Project. The
-action opens that Project's ordinary Task form; it does not create a second
-onboarding task type. In Starter mode, submitting the form calls the Starter
-launch API with a saved operation identity. The server checks readiness,
+action opens that Project's guided Starter, retaining its focused title entry
+and saved launch identity. This separate onboarding path does not create a
+second Task type. General **New Task** entry points instead
+[shape an idea in chat](../reference/station-docs.md#tasks-and-the-task-workspace)
+and wait for proposal acceptance without dispatching implementation work.
+Submitting the guided Starter calls the Starter launch API with a saved operation identity. The server checks readiness,
 creates or retrieves the exact Task idempotently, binds it to the Starter,
 then requests the ordinary Task dispatcher once. If the initial readiness check reports the Agent as deferred or
 unavailable, Station creates no Task and shows the recoverable readiness reason;
