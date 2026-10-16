@@ -367,7 +367,11 @@ import {
   trackOrchestrationSession,
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
-import { captureTurnIntent } from './prepared-turn-intent.js';
+import {
+  captureTurnIntent,
+  type PreparedTurnIntentView,
+  samePreparedValue,
+} from './prepared-turn-intent.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
@@ -7567,7 +7571,21 @@ export class OrchestrationService {
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
                             if (boundary.prepareIntent) {
-                              const captured = captureTurnIntent(turnInput);
+                              const captured = captureTurnIntent(turnInput, {
+                                binding: this.preparedTurnBinding(
+                                  turnInput.threadId,
+                                ),
+                                requiresFreshCompanions: Boolean(
+                                  nativeMemory ||
+                                    nativeOutputRelay ||
+                                    nativeForeground ||
+                                    experienceReference ||
+                                    internal?.receiverExecutionAdmission ||
+                                    internal?.foregroundInvocationAdmission ||
+                                    internal?.nativeMemoryReadAuthority ||
+                                    command.input.expectedInputRequest,
+                                ),
+                              });
                               const prepared = boundary.prepareIntent(
                                 captured,
                                 ownedClientTurnClaim,
@@ -12268,6 +12286,175 @@ export class OrchestrationService {
   /** The configured local owner can supply native prompt history across Session boundaries. */
   supportsNativeMemoryContinuity(): boolean {
     return this.options.eventStore !== undefined;
+  }
+
+  async readPreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<PreparedTurnIntentView | null> {
+    this.initialize();
+    if (
+      !isSessionReadAuthority(authority) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (!stored || !this.sessionAuthz.canReadSession(threadId, authority))
+      return null;
+    return {
+      invocationId,
+      threadId,
+      clientTurnId: stored.capture.clientTurnId,
+      inputDigest: stored.capture.intent.inputDigest,
+      intentDigest: stored.capture.intent.intentDigest,
+      state: stored.state,
+      input: stored.capture.input,
+    };
+  }
+
+  private preparedTurnBinding(threadId: string): Record<string, unknown> {
+    const session =
+      this.options.eventStore?.readSessionByThread(threadId) ??
+      this.sessionReadModel.get(threadId);
+    if (!session) throw new Error('Prepared turn input is unavailable.');
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    const start = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    const nativeBindingKey =
+      start?.method === 'session.started'
+        ? start.metadata?.nativeResumeBindingKey
+        : undefined;
+    return {
+      provider: session.provider,
+      resumeCursor: session.resumeCursor ?? null,
+      cwd: session.cwd ?? null,
+      environmentId: metadata?.environmentId ?? null,
+      nativeBindingKey: nativeBindingKey ?? null,
+      connectionId: metadata?.connectionId ?? null,
+      agentId: metadata?.agentSlug ?? null,
+    };
+  }
+
+  /** Explicit replay of never-begun retained bytes; dormant engines require their own start protocol. */
+  async resumePreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<ProviderTurnStartResult> {
+    const unavailable = () => new Error('Prepared turn input is unavailable.');
+    const authorized = () =>
+      isSessionReadAuthority(authority) &&
+      this.sessionAuthz.canReadSession(threadId, authority) &&
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isReadOnlyAttachedSession(threadId);
+    this.initialize();
+    if (!authorized()) throw unavailable();
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (
+      stored?.state !== 'prepared' ||
+      stored.capture.resumeGuard.requiresFreshCompanions ||
+      stored.capture.adapterInput.confinement === 'host' ||
+      stored.capture.adapterInput.reviewIsolation ||
+      typeof stored.capture.resumeGuard.binding.nativeBindingKey !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(
+        stored.capture.resumeGuard.binding.nativeBindingKey,
+      ) ||
+      stored.capture.resumeGuard.binding.resumeCursor === null ||
+      !samePreparedValue(
+        stored.capture.resumeGuard.binding,
+        this.preparedTurnBinding(threadId),
+      )
+    )
+      throw unavailable();
+    this.assertTurnAdmitted(threadId);
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const adapter = provider && this.options.adapterRegistry.get(provider);
+    if (!adapter || !(await adapter.hasSession(threadId)) || !authorized())
+      throw unavailable();
+    const live = (await adapter.listSessions()).find(
+      (session) => session.threadId === threadId,
+    );
+    if (
+      !live ||
+      live.status === 'closed' ||
+      live.status === 'dead' ||
+      !samePreparedValue(
+        live.resumeCursor ?? null,
+        stored.capture.resumeGuard.binding.resumeCursor,
+      ) ||
+      !authorized()
+    )
+      throw unavailable();
+    const freshOptions = await this.replayModelOptionsWithPosture(
+      threadId,
+      adapter.provider,
+      stored.capture.adapterInput.modelOptions,
+    );
+    if (
+      !samePreparedValue(
+        freshOptions ?? null,
+        stored.capture.adapterInput.modelOptions ?? null,
+      ) ||
+      !authorized()
+    )
+      throw unavailable();
+    const cwd = this.options.eventStore?.readSessionByThread(threadId)?.cwd;
+    const workspace = cwd
+      ? await resolveWorkspaceIdentity(cwd, 'local')
+      : undefined;
+    return this.sessionExecutionCoordinator.runPreparedTurnStart(
+      threadId,
+      async () => {
+        if (
+          !authorized() ||
+          !this.isAdapterCurrent(adapter) ||
+          !samePreparedValue(
+            stored.capture.resumeGuard.binding,
+            this.preparedTurnBinding(threadId),
+          )
+        )
+          throw unavailable();
+        const owned = this.sessionStartBoundaries.resumePrepared?.(
+          stored.capture,
+          new Date().toISOString(),
+        );
+        if (owned?.kind !== 'owner') throw unavailable();
+        const begun = owned.claim.beginInvocation(new Date().toISOString());
+        if (begun.kind !== 'applied') {
+          owned.turnClaim?.retain();
+          throw unavailable();
+        }
+        try {
+          const result = await adapter.sendTurn(stored.capture.adapterInput);
+          if (
+            owned.claim.accepted(result.turnId, new Date().toISOString())
+              .kind !== 'applied'
+          )
+            throw unavailable();
+          owned.turnClaim?.resolve(result.turnId);
+          this.sessionExecutionCoordinator.markTurnAccepted(
+            threadId,
+            result.turnId,
+          );
+          return result;
+        } catch {
+          owned.claim.indeterminate(new Date().toISOString());
+          owned.turnClaim?.retain();
+          throw new SessionTurnStartIndeterminateError();
+        }
+      },
+      workspace && workspace.kind !== 'remote' ? workspace.key : undefined,
+    );
   }
 
   private async captureNativeMemoryHistory(

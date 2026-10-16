@@ -1,8 +1,80 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { PreparedTurnIntent } from '@kontourai/monument';
+import {
+  CHAT_FILE_MIME_TYPES,
+  CHAT_IMAGE_MIME_TYPES,
+} from '@kontourai/station-contracts/chat-attachment';
+import { z } from 'zod';
 import type { ProviderSendTurnInput } from '../../providers/adapter-shape.js';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+
+const retainedInputSchema = z
+  .object({
+    text: z.string(),
+    displayInput: z.string().optional(),
+    ambientContext: z.string().optional(),
+    modelId: z.string().optional(),
+    modelOptions: z.record(z.string(), z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    recoveryCorrelationId: z.string().optional(),
+    confinement: z.enum(['host', 'workspace']).optional(),
+    reviewIsolation: z
+      .object({
+        workspaceAccess: z.literal('read-only'),
+        requestId: z.string(),
+        reviewerId: z.string(),
+      })
+      .strict()
+      .optional(),
+    attachments: z
+      .array(
+        z
+          .object({
+            kind: z.enum(['image', 'file']),
+            name: z.string(),
+            mimeType: z.enum([
+              ...CHAT_IMAGE_MIME_TYPES,
+              ...CHAT_FILE_MIME_TYPES,
+            ]),
+            size: z.number().int().nonnegative(),
+            dataUrl: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+const retainedEnvelopeSchema = z
+  .object({
+    schema: z.literal('station.prepared-turn/v1'),
+    invocationId: z.uuid(),
+    threadId: z.string(),
+    clientTurnId: z.string().optional(),
+    input: retainedInputSchema,
+    resumeGuard: z
+      .object({
+        binding: z.record(z.string(), z.unknown()),
+        requiresFreshCompanions: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export type PreparedTurnIntentView = {
+  invocationId: string;
+  threadId: string;
+  clientTurnId?: string;
+  inputDigest: string;
+  intentDigest: string;
+  state:
+    | 'reserved'
+    | 'prepared'
+    | 'invoking'
+    | 'accepted'
+    | 'indeterminate'
+    | 'lifecycle';
+  input: z.infer<typeof retainedInputSchema>;
+};
 
 /** Reject values JSON would silently drop or reinterpret before retaining an input. */
 function canonical(value: unknown, ancestors = new Set<object>()): string {
@@ -15,6 +87,8 @@ function canonical(value: unknown, ancestors = new Set<object>()): string {
       'Prepared turn input must contain only finite JSON values.',
     );
   const prototype = Object.getPrototypeOf(value);
+  if (Array.isArray(value) && prototype !== Array.prototype)
+    throw new Error('Prepared turn input cannot contain array subclasses.');
   if (
     prototype !== Object.prototype &&
     prototype !== null &&
@@ -30,7 +104,13 @@ function canonical(value: unknown, ancestors = new Set<object>()): string {
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      if (Object.keys(value).length !== value.length)
+      if (
+        Reflect.ownKeys(value).length !== value.length + 1 ||
+        Array.from(
+          { length: value.length },
+          (_, index) => descriptors[index],
+        ).some((descriptor) => !descriptor?.enumerable)
+      )
         throw new Error(
           'Prepared turn input cannot contain sparse or decorated arrays.',
         );
@@ -59,11 +139,16 @@ export interface CapturedTurnIntent {
   readonly clientTurnId?: string;
   readonly byteLength: number;
   readonly adapterInput: ProviderSendTurnInput;
+  readonly resumeGuard: {
+    binding: Record<string, unknown>;
+    requiresFreshCompanions: boolean;
+  };
 }
 
 /** Capture at the final effect seam. Signals and live capabilities never enter the DTO. */
 export function captureTurnIntent(
   input: ProviderSendTurnInput,
+  resumeGuard: CapturedTurnIntent['resumeGuard'],
 ): CapturedTurnIntent {
   const dto: Record<string, unknown> = { text: input.input };
   for (const key of [
@@ -90,6 +175,7 @@ export function captureTurnIntent(
       ? {}
       : { clientTurnId: input.clientTurnId }),
     input: JSON.parse(inputJson) as Json,
+    resumeGuard,
   });
   const intentDigest = digest(
     'station.prepared-turn-envelope/v1',
@@ -115,5 +201,55 @@ export function captureTurnIntent(
         : { clientTurnId: input.clientTurnId }),
       ...(input.signal ? { signal: input.signal } : {}),
     },
+    resumeGuard: JSON.parse(canonical(resumeGuard)),
   };
+}
+
+/** Retained bytes are checked against both digest domains before any resume decision. */
+export function decodeTurnIntent(row: {
+  envelopeJson: string;
+  inputDigest: string;
+  intentDigest: string;
+  invocationId: string;
+  threadId: string;
+}): CapturedTurnIntent & { input: z.infer<typeof retainedInputSchema> } {
+  const envelope = retainedEnvelopeSchema.parse(JSON.parse(row.envelopeJson));
+  if (
+    envelope.invocationId !== row.invocationId ||
+    envelope.threadId !== row.threadId ||
+    canonical(envelope) !== row.envelopeJson ||
+    digest('station.prepared-turn-input/v1', canonical(envelope.input)) !==
+      row.inputDigest ||
+    digest('station.prepared-turn-envelope/v1', row.envelopeJson) !==
+      row.intentDigest
+  )
+    throw new Error('Prepared turn input is unavailable.');
+  const { text, ...options } = envelope.input;
+  return {
+    intent: {
+      invocationId: row.invocationId,
+      inputDigest: row.inputDigest,
+      intentDigest: row.intentDigest,
+      bodyRef: row.intentDigest,
+    },
+    envelopeJson: row.envelopeJson,
+    threadId: row.threadId,
+    input: envelope.input,
+    resumeGuard: envelope.resumeGuard,
+    clientTurnId: envelope.clientTurnId,
+    byteLength: Buffer.byteLength(row.envelopeJson),
+    adapterInput: {
+      ...options,
+      input: text,
+      threadId: row.threadId,
+      ...(envelope.clientTurnId === undefined
+        ? {}
+        : { clientTurnId: envelope.clientTurnId }),
+    },
+  };
+}
+
+/** Compare fresh preparation facts without changing the captured adapter payload. */
+export function samePreparedValue(left: unknown, right: unknown): boolean {
+  return canonical(left) === canonical(right);
 }

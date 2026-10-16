@@ -115,6 +115,11 @@ export class TurnIdempotencyStore {
   bindPreparedClaim(key: string, claim: object): void {
     preparedClaimCustody.set(claim, { key, owner: this.owner });
   }
+  composePreparedClaims<T>(
+    compose: (binding: { owner: OwnerIdentity; liveness: OwnerLiveness }) => T,
+  ): T {
+    return compose({ owner: this.owner, liveness: this.liveness });
+  }
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
     processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,

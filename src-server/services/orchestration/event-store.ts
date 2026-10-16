@@ -221,6 +221,7 @@ import {
   DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
+import { decodeTurnIntent } from './prepared-turn-intent.js';
 import {
   PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
   type ProjectTaskRoomAppendReceiptReadResult,
@@ -311,6 +312,7 @@ import {
   queryTranscriptMessages,
 } from './transcript-search-queries.js';
 import {
+  createPreparedTurnClaim,
   createTurnDeduplicator,
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
@@ -11345,6 +11347,38 @@ export class EventStore {
     return this.sessionTurnBoundaries;
   }
 
+  /** Private persistence read; the service supplies current Session authority before calling. */
+  readPreparedTurnIntent(threadId: string, invocationId: string) {
+    const row = this.db
+      .prepare(`SELECT envelope_json, input_digest, intent_digest
+      FROM orchestration_prepared_turns WHERE thread_id = ? AND invocation_id = ?`)
+      .get(threadId, invocationId) as
+      | {
+          envelope_json: string;
+          input_digest: string;
+          intent_digest: string;
+        }
+      | undefined;
+    if (!row) return null;
+    const capture = decodeTurnIntent({
+      envelopeJson: row.envelope_json,
+      inputDigest: row.input_digest,
+      intentDigest: row.intent_digest,
+      invocationId,
+      threadId,
+    });
+    const state =
+      (
+        this.db
+          .prepare(`SELECT state FROM orchestration_turn_boundaries
+      WHERE thread_id = ? AND invocation_id = ?`)
+          .get(threadId, invocationId) as
+          | { state: SessionTurnBoundaryRecord['state'] }
+          | undefined
+      )?.state ?? 'indeterminate';
+    return { capture, state };
+  }
+
   /**
    * Route composition does not publish until this startup gate is available.
    * A short bounded backoff handles transient SQLite ownership hand-off; a
@@ -11392,16 +11426,22 @@ export class EventStore {
 
   private composeSessionTurnBoundaries(): SessionTurnBoundaryAuthority {
     return createSessionTurnBoundaryAuthority({
-      coordinator: createSqliteSessionTurnBoundaryCoordinator({
-        db: this.db,
-        head: () => this.headGlobalSequence(),
-        retiredBoundaryIds: (threadId) =>
-          this.retiredSessionTurnBoundaryIds(threadId),
-        reconcileTerminals: (threadId) =>
-          this.reconcileSessionTurnTerminalsFromEvents(threadId),
-        transactionLost: (cause) =>
-          new EventAppendTransactionLostError({ cause }),
-      }),
+      coordinator: this.turnIdempotence.composePreparedClaims((binding) =>
+        createSqliteSessionTurnBoundaryCoordinator({
+          db: this.db,
+          head: () => this.headGlobalSequence(),
+          retiredBoundaryIds: (threadId) =>
+            this.retiredSessionTurnBoundaryIds(threadId),
+          reconcileTerminals: (threadId) =>
+            this.reconcileSessionTurnTerminalsFromEvents(threadId),
+          transactionLost: (cause) =>
+            new EventAppendTransactionLostError({ cause }),
+          preparedClaims: {
+            ...binding,
+            adopt: (key) => createPreparedTurnClaim(this.turnIdempotence, key),
+          },
+        }),
+      ),
       owner: this.recoveryLedgerOwner,
       processIdentity: this.recoveryProcessIdentity,
     });

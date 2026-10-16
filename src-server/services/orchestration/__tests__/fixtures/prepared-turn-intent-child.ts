@@ -31,9 +31,12 @@ class InterruptedAdapter extends GateTestAdapter {
       threadId: value.threadId,
       sessionId: value.threadId,
       createdAt: new Date().toISOString(),
-      metadata: value.metadata,
+      metadata: { ...value.metadata, nativeResumeBindingKey: 'b'.repeat(64) },
     });
-    return super.startSession(value);
+    return {
+      ...(await super.startSession(value)),
+      resumeCursor: { sessionId: 'prepared-native-session' },
+    };
   }
 
   override async hasSession(id?: string) {
@@ -57,7 +60,14 @@ const service = new OrchestrationService({
 });
 service.initialize();
 await service.dispatch(
-  { type: 'startSession', input: { threadId, provider: 'claude' } },
+  {
+    type: 'startSession',
+    input: {
+      threadId,
+      provider: 'claude',
+      metadata: { userId: 'prepared-owner' },
+    },
+  },
   { userId: 'prepared-owner' },
 );
 const ownerDeadline = Date.now() + 20_000;
@@ -87,7 +97,37 @@ if (phase === 'prepared') {
 void service
   .dispatch({
     type: 'sendTurn',
-    input: { threadId, clientTurnId, input, ambientContext },
+    input: {
+      threadId,
+      clientTurnId,
+      input,
+      ambientContext,
+      ...(phase === 'sparse-array'
+        ? {
+            metadata: {
+              preparedStrictArray: Object.assign(Array(1), {
+                extra: 'must not disappear',
+              }),
+            },
+          }
+        : {}),
+      ...(phase === 'array-subclass'
+        ? {
+            metadata: {
+              preparedStrictArray: new (class extends Array<string> {})(
+                'must not reinterpret',
+              ),
+            },
+          }
+        : {}),
+      ...(phase === 'dense-array'
+        ? {
+            metadata: {
+              preparedStrictArray: ['keep', { nested: [1, null, true] }],
+            },
+          }
+        : {}),
+    },
   })
   .catch((error: unknown) => {
     report('failed', { message: String(error) });

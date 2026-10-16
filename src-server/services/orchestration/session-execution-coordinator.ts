@@ -79,6 +79,29 @@ export class SessionExecutionCoordinator {
     return this.runThreadTurnStart(threadId, operation);
   }
 
+  /** Uses the same local/workspace barriers while a guarded resume adopts its durable fence. */
+  async runPreparedTurnStart<T>(
+    threadId: string,
+    operation: () => Promise<T>,
+    workspaceKey?: string,
+  ): Promise<T> {
+    if (workspaceKey)
+      return this.workspaces.runTurnStart(
+        workspaceKey,
+        threadId,
+        () => this.runPreparedTurnStart(threadId, operation),
+        () => this.hasActiveTurn(threadId),
+      );
+    await this.acquireTurnStart(threadId);
+    try {
+      if (!this.retryPendingLifecycleRelease(threadId))
+        throw new Error('Prepared turn input is unavailable.');
+      return await operation();
+    } finally {
+      this.releaseTurnStart(threadId);
+    }
+  }
+
   private async runThreadTurnStart<T>(
     threadId: string,
     operation: (claim: SessionTurnBoundaryClaim) => Promise<T>,

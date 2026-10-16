@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PreparedTurnIntent } from '@kontourai/monument';
+import type { OwnerIdentity, PreparedTurnIntent } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type { CapturedTurnIntent } from './prepared-turn-intent.js';
@@ -59,6 +59,17 @@ export type SessionTurnBoundaryTransition =
   | { kind: 'unavailable' };
 
 export interface SessionTurnBoundaryCoordinator {
+  resumePrepared?(input: {
+    capture: CapturedTurnIntent;
+    owner: OwnerIdentity;
+    now: string;
+  }):
+    | {
+        kind: 'applied';
+        record: SessionTurnBoundaryRecord;
+        turnClaim?: TurnClaim;
+      }
+    | { kind: 'stale' | 'unavailable' };
   create(
     record: SessionTurnBoundaryRecord & {
       state: 'lifecycle' | 'reserved' | 'prepared';
@@ -244,6 +255,12 @@ export interface TaskDispatchBoundaryClaim {
 }
 
 export interface SessionTurnBoundaryAuthority {
+  resumePrepared?(
+    capture: CapturedTurnIntent,
+    now: string,
+  ):
+    | { kind: 'owner'; claim: SessionTurnBoundaryClaim; turnClaim?: TurnClaim }
+    | { kind: 'stale' | 'unavailable' };
   /** Boot composition supplies proof from graph, provider and publication owners. */
   recoverCompletedDispatch(
     threadId: string,
@@ -560,16 +577,24 @@ export function createSessionTurnBoundaryAuthority(options: {
     threadId: string,
     now: string,
     reserve = false,
+    adopted?: {
+      record: SessionTurnBoundaryRecord;
+      capture: CapturedTurnIntent;
+      turnClaim?: TurnClaim;
+    },
   ): ReturnType<SessionTurnBoundaryAuthority['claim']> => {
-    const record = {
+    const freshRecord = {
       ...preparedRecord(threadId, now, 'turn-boundary'),
       state:
         reserve && options.coordinator.prepareIntent
           ? ('reserved' as const)
           : ('prepared' as const),
     };
+    const record = adopted?.record ?? freshRecord;
     const boundaryId = record.boundaryId;
-    const created = createWithRecovery(record);
+    const created = adopted
+      ? { kind: 'applied' as const }
+      : createWithRecovery(freshRecord);
     if (created.kind !== 'applied') {
       return {
         kind: created.kind === 'busy' ? 'busy' : 'unavailable',
@@ -580,7 +605,9 @@ export function createSessionTurnBoundaryAuthority(options: {
     let invocationAttempted = false;
     let prepared:
       | { capture: CapturedTurnIntent; claim?: TurnClaim }
-      | undefined;
+      | undefined = adopted
+      ? { capture: adopted.capture, claim: adopted.turnClaim }
+      : undefined;
     let terminalIntent:
       | { kind: 'accepted'; turnId: string; now: string }
       | { kind: 'terminal-observed'; turnId: string }
@@ -739,6 +766,38 @@ export function createSessionTurnBoundaryAuthority(options: {
   };
 
   return {
+    ...(options.coordinator.resumePrepared
+      ? {
+          resumePrepared(capture: CapturedTurnIntent, now: string) {
+            const owner: OwnerIdentity =
+              options.owner.identityKind === 'exact'
+                ? {
+                    id: options.owner.id,
+                    pid: options.owner.pid,
+                    identityKind: 'exact',
+                    birth: options.owner.birth,
+                  }
+                : {
+                    id: options.owner.id,
+                    pid: options.owner.pid,
+                    identityKind: 'unverified',
+                  };
+            const resumed = options.coordinator.resumePrepared!({
+              capture,
+              owner,
+              now,
+            });
+            if (resumed.kind !== 'applied') return resumed;
+            const claimed = claimTurn(capture.threadId, now, true, {
+              ...resumed,
+              capture,
+            });
+            return claimed.kind === 'owner'
+              ? { ...claimed, turnClaim: resumed.turnClaim }
+              : { kind: 'unavailable' as const };
+          },
+        }
+      : {}),
     async recoverCompletedDispatch(threadId, verify) {
       try {
         const candidates = options.coordinator

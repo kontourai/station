@@ -2,6 +2,7 @@ import type {
   KernelCommand,
   KernelResult,
   OwnerIdentity,
+  OwnerLiveness,
 } from '@kontourai/monument';
 import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import { readPreparedClaimCustody } from '../turn-idempotency.js';
@@ -26,12 +27,18 @@ export function createSqliteSessionTurnBoundaryCoordinator({
   reconcileTerminals,
   retiredBoundaryIds,
   transactionLost,
+  preparedClaims,
 }: {
   db: SqliteDatabase & { readonly isTransaction?: boolean };
   head(): number;
   reconcileTerminals(threadId: string): void;
   retiredBoundaryIds(threadId: string): readonly string[];
   transactionLost(cause: unknown): Error;
+  preparedClaims?: {
+    owner: OwnerIdentity;
+    liveness: OwnerLiveness;
+    adopt(key: string): TurnClaim;
+  };
 }): SessionTurnBoundaryCoordinator {
   const kernel = openSqliteKernelStorage({
     database: db,
@@ -169,6 +176,115 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     };
   }
   return {
+    ...(preparedClaims
+      ? {
+          resumePrepared({
+            capture,
+            owner: nextOwner,
+            now,
+          }: {
+            capture: CapturedTurnIntent;
+            owner: OwnerIdentity;
+            now: string;
+          }) {
+            try {
+              const found = execute({ type: 'turnBoundary.list' });
+              if (found.kind !== 'records')
+                return { kind: 'unavailable' as const };
+              const current = found.records.find(
+                (record) =>
+                  record.threadId === capture.threadId &&
+                  record.intent?.invocationId === capture.intent.invocationId,
+              );
+              if (
+                !current?.intent ||
+                current.state !== 'prepared' ||
+                current.intent.inputDigest !== capture.intent.inputDigest ||
+                current.intent.intentDigest !== capture.intent.intentDigest ||
+                current.intent.bodyRef !== capture.intent.bodyRef
+              )
+                return { kind: 'stale' as const };
+              const verdicts = new Map<string, ReturnType<OwnerLiveness>>();
+              verdicts.set(
+                JSON.stringify(current.owner),
+                preparedClaims.liveness(current.owner),
+              );
+              const key = current.intent.dedupKey;
+              const dedup =
+                key === undefined
+                  ? undefined
+                  : execute({ type: 'turnDedup.read', key });
+              if (
+                key !== undefined &&
+                (dedup?.kind !== 'found' ||
+                  !dedup.record.owner ||
+                  !dedup.record.preparedUpdatedAt)
+              )
+                return { kind: 'stale' as const };
+              const previous =
+                dedup?.kind === 'found' ? dedup.record : undefined;
+              if (previous?.owner)
+                verdicts.set(
+                  JSON.stringify(previous.owner),
+                  preparedClaims.liveness(previous.owner),
+                );
+              const result = kernel.executeSync(
+                {
+                  type: 'turnBoundary.resumePrepared',
+                  boundaryId: current.boundaryId,
+                  intent: current.intent,
+                  observed: {
+                    owner: current.owner,
+                    createdAt: current.createdAt,
+                    updatedAt: current.updatedAt,
+                    verdict: 'dead',
+                  },
+                  owner: nextOwner,
+                  now,
+                  ...(previous?.owner && previous.preparedUpdatedAt
+                    ? {
+                        dedup: {
+                          previousOwner: previous.owner,
+                          createdAt: previous.createdAt,
+                          updatedAt: previous.preparedUpdatedAt,
+                          owner: preparedClaims.owner,
+                        },
+                      }
+                    : {}),
+                },
+                {
+                  ...context,
+                  liveness: (owner) =>
+                    verdicts.get(JSON.stringify(owner)) ?? 'unknown',
+                },
+              );
+              if (result.kind !== 'applied') return { kind: 'stale' as const };
+              return {
+                kind: 'applied' as const,
+                record: {
+                  boundaryId: current.boundaryId,
+                  threadId: current.threadId,
+                  state: 'prepared' as const,
+                  intent: current.intent,
+                  ownerId: nextOwner.id,
+                  ownerPid: nextOwner.pid,
+                  ownerIdentityKind: nextOwner.identityKind,
+                  ...(nextOwner.identityKind === 'exact'
+                    ? { ownerBirth: nextOwner.birth }
+                    : {}),
+                  createdAt: current.createdAt,
+                  updatedAt: now,
+                },
+                ...(key === undefined
+                  ? {}
+                  : { turnClaim: preparedClaims.adopt(key) }),
+              };
+            } catch {
+              return { kind: 'unavailable' as const };
+            }
+          },
+        }
+      : {}),
     prepareIntent({ boundaryId, ownerId, capture, claim, now }) {
       let inTransaction = false;
       try {

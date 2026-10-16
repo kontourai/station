@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { join, resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test } from 'vitest';
@@ -36,8 +37,21 @@ afterEach(async () => {
 
 async function killedOwner(
   databasePath: string,
-  phase: 'prepared' | 'invoked',
+  phase:
+    | 'prepared'
+    | 'invoked'
+    | 'sparse-array'
+    | 'array-subclass'
+    | 'dense-array',
 ) {
+  const expected =
+    phase === 'sparse-array' || phase === 'array-subclass'
+      ? 'failed'
+      : phase === 'dense-array'
+        ? 'invoked'
+        : phase;
+  const home = join(dirname(databasePath), 'fixture-home');
+  mkdirSync(home, { recursive: true });
   const child = spawn(
     process.execPath,
     [
@@ -57,6 +71,14 @@ async function killedOwner(
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CONFIG_HOME: join(home, 'config'),
+        XDG_CACHE_HOME: join(home, 'cache'),
+        STATION_HOME: join(home, 'station'),
+      },
     },
   );
   children.push(child);
@@ -78,13 +100,19 @@ async function killedOwner(
     child.once('exit', failed);
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString();
-      if (output.includes('"step":"failed"')) {
+      if (expected !== 'failed' && output.includes('"step":"failed"')) {
         clearTimeout(timer);
         child.removeListener('exit', failed);
         reject(new Error(`Owner dispatch failed: ${output} ${errors}`));
         return;
       }
-      if (!output.includes(`"step":"${phase}"`)) return;
+      if (expected === 'failed' && output.includes('"step":"invoked"')) {
+        clearTimeout(timer);
+        child.removeListener('exit', failed);
+        reject(new Error(`Invalid input reached the adapter: ${output}`));
+        return;
+      }
+      if (!output.includes(`"step":"${expected}"`)) return;
       clearTimeout(timer);
       child.removeListener('exit', failed);
       resolveStep();
@@ -140,6 +168,46 @@ test('a killed prepared owner leaves the exact final input retrievable without i
   });
 }, 90_000);
 
+test.each(['sparse-array', 'array-subclass'] as const)(
+  'dispatch refuses %s JSON options before adapter entry',
+  async (phase) => {
+    const path = join(
+      makeTempDir('prepared-invalid-options-'),
+      'events.sqlite',
+    );
+    const observed = await killedOwner(path, phase);
+    expect(observed).toContain('"step":"failed"');
+    expect(observed).toContain('Prepared turn input');
+    expect(observed).not.toContain('"step":"invoked"');
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      expect(
+        db
+          .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
+          .get()?.count,
+      ).toBe(0);
+      expect(
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM orchestration_turn_boundaries',
+          )
+          .get()?.count,
+      ).toBe(0);
+    } finally {
+      db.close();
+    }
+  },
+  90_000,
+);
+
+test('dispatch retains dense JSON-array options without changing their values', async () => {
+  const path = join(makeTempDir('prepared-dense-options-'), 'events.sqlite');
+  await killedOwner(path, 'dense-array');
+  expect(
+    storedIntent(path).envelope.input.metadata.preparedStrictArray,
+  ).toEqual(['keep', { nested: [1, null, true] }]);
+}, 90_000);
+
 test('a killed invoking owner retains its input and a normal retry invokes nothing', async () => {
   const path = join(makeTempDir('invoking-intent-crash-'), 'events.sqlite');
   const observed = await killedOwner(path, 'invoked');
@@ -181,15 +249,38 @@ test('a killed invoking owner retains its input and a normal retry invokes nothi
 test('explicit prepared resume reauthorizes the retained input and sends its original bytes exactly once', async () => {
   const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
   await killedOwner(path, 'prepared');
-  const { row } = storedIntent(path);
+  const { row, envelope } = storedIntent(path);
+  expect(envelope.resumeGuard).toMatchObject({
+    binding: {
+      nativeBindingKey: 'b'.repeat(64),
+      resumeCursor: { sessionId: 'prepared-native-session' },
+    },
+    requiresFreshCompanions: false,
+  });
   class ResumeAdapter extends GateTestAdapter {
     readonly sent: ProviderSendTurnInput[] = [];
+    override async hasSession() {
+      return true;
+    }
+    override async listSessions() {
+      return [
+        {
+          provider: 'claude' as const,
+          threadId: THREAD,
+          status: 'ready' as const,
+          resumeCursor: { sessionId: 'prepared-native-session' },
+          createdAt: '2026-10-16T00:00:00Z',
+          updatedAt: '2026-10-16T00:00:00Z',
+        },
+      ];
+    }
     override async sendTurn(input: ProviderSendTurnInput) {
       this.sent.push(input);
       return { threadId: input.threadId, turnId: 'resumed-original' };
     }
   }
   const store = new EventStore(path);
+  expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
   stores.push(store);
   const adapter = new ResumeAdapter();
   const service = new OrchestrationService({
