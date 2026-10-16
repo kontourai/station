@@ -369,10 +369,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Keep one ancillary job beside the corpus matrices. always() lets later
+  # suites run after a predecessor fails; the final attestation still requires
+  # every job to succeed. Reuse skips the whole chain.
   exclusive:
     name: Exclusive corpora
-    needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    needs: [resolve, static]
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -473,8 +476,8 @@ jobs:
   # otherwise runs only after an Android build on main.
   android-viewport:
     name: Mobile Playwright (Android viewport)
-    needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    needs: [resolve, exclusive]
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:

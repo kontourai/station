@@ -210,6 +210,21 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
       reentries[classification]++;
     }
   }
+  const candidateKey = (run) => `${run.head_branch}:${run.head_sha}`;
+  const ownsIntegration = (run) =>
+    run.name === 'PR: CI' &&
+    jobs.some(
+      (job) =>
+        job.name === 'Merge-queue regression' &&
+        job.health_run_key === `${run.id}:${run.run_attempt ?? 1}`,
+    );
+  // PR: CI predates integration ownership; the attempt-bound aggregate job
+  // distinguishes it. Select before filtering cancelled/unfinished evidence.
+  const currentOwners = new Set(
+    runs
+      .filter((r) => r.event === 'merge_group' && ownsIntegration(r))
+      .map(candidateKey),
+  );
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
@@ -217,7 +232,11 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
         'Merge-queue regression',
         'Merge integration',
         'PR: Merge integration',
+        'PR: CI',
       ].includes(r.name) &&
+      (r.name === 'PR: CI'
+        ? ownsIntegration(r)
+        : !currentOwners.has(candidateKey(r))) &&
       r.conclusion != null &&
       r.conclusion !== 'cancelled' &&
       r.run_started_at &&

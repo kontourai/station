@@ -186,6 +186,22 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Routine documentation readiness runs repository-validation suites, including
+actual ledger/capture freshness, links, generated artifacts and public-content
+checks. The impact, freshness-policy and review-note framework suites use
+disposable fixtures; they run through affected selection for tooling/schema
+changes and full qualification, rather than every readiness invocation.
+Dependency/runtime changes retain full-test escalation. This removes repeated
+framework testing without treating stale repository documentation as valid.
+
+Title and body edits run only the independent `PR title` check in `PR: CI`.
+It reads live metadata once using trusted base code; it never waits for source
+jobs or installs dependencies. Source pushes and base retargets still run the
+source checks. On metadata-only events the skipped source aggregate has a
+different name, so it cannot replace a failing required `fast-checks` result.
+The `PR title` context is required before queue admission. Its merge-group
+job acknowledges that admission; it does not revalidate titles after enqueue.
+
 `Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the
 current same-repository PR head and cancels queued or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
@@ -243,7 +259,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
-| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
+| [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic: Merge integration** | manual full-corpus diagnosis; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
 | [`nightly-gallery.yml`](../../.github/workflows/nightly-gallery.yml) | Nightly gallery | **Nightly: Gallery** | UTC schedule: `30 7 * * *`; manual dispatch. |
@@ -334,7 +350,7 @@ comments into a trend table; `--json` also works for history.
 | Measure | Definition |
 | --- | --- |
 | Merge groups built, failed, failure rate | Distinct queue branches across workflows; a group fails if any workflow run attempt concludes `failure`. Groups with cancelled or timed-out runs have separate counts (which may overlap failed groups). Rate divides failed groups by all built groups, including unfinished groups. |
-| Integration failures and duration | Failed groups containing the legacy required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled `PR: Merge integration` or historical `Merge integration` / `Merge-queue regression` workflow attempts (`run_started_at` to `updated_at`, including runner waits), not the short aggregator job. |
+| Integration failures and duration | Failed groups containing the required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled owning workflow attempts (`run_started_at` to `updated_at`, including runner waits). `PR: CI` owns new candidates only when that exact attempt contains the integration aggregate. Legacy integration workflows remain measurable; mixed candidates prefer the new owner without counting both. |
 | PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
 | Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
 | Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
@@ -1524,14 +1540,16 @@ changing fleet labels or adding a capacity-leased workflow.
 
 ### Merge integration (required)
 
-The `PR: Merge integration` workflow retains the legacy required context
+The `PR: CI` workflow owns the legacy required context
 `Merge-queue regression` for ruleset compatibility. It checks the combined
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
-On each merge-queue candidate the workflow also recomputes the fast-checks
-plan against the queue base, using the same planner and inputs as `fast-checks`.
+On each merge-queue candidate, `fast-checks-plan` computes one plan against
+the queue base. The merge decision consumes those same local bytes; test
+shards consume that run's uploaded plan. There is no second planner install
+or cross-workflow artifact lookup.
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
 then chooses a path:
 
@@ -1544,7 +1562,7 @@ then chooses a path:
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
   on its own SHA, with exact-source reuse allowed. The required check passes
-  only when that run passes.
+  only when that run and `fast-checks` pass.
 - **Fast path.** Any other candidate, including one deferred only to a narrower
   lane, skips the full regression. The check
   reports `no deferred lane: fast path`.
@@ -1552,9 +1570,11 @@ then chooses a path:
 The decision fails closed. A missing, unreadable or invalid plan runs the full
 regression, and so does a plan for another head or base. If the planner or its
 install fails, or the decision step writes nothing, the full regression runs
-too, because it is skipped only when the decision is exactly `false`. Pull
-requests never run it. In this workflow, `pull_request_target` only reports
-the skipped required context.
+too. The fast path requires both a successful plan job and an exact `false`
+decision; an earlier false output cannot hide a failed planner. Old candidates
+without the decision CLI also take the full path. Pull requests do not run
+this regression. The former merge-integration workflow remains available as
+a manual full-corpus diagnostic.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
@@ -2063,7 +2083,11 @@ The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
 `scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
-0–40 use one job, 41–80 two, 81–120 three, and 121+ four. The planner knows
+1–40 use one job, 41–80 two, 81–120 three, and 121+ four. With
+`STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS=true`, an empty plan allocates no shard
+runner. The aggregate independently validates that the exact-head plan is empty
+and requires successful plan/statics jobs; it does not fabricate an execution
+receipt. Without that compatibility opt-in, empty plans retain the old shard path. The planner knows
 file count, not test duration. This is a tunable proxy, justified by #3101's
 2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
 (86% setup) while the 20-job pool was saturated. Hosted runs must establish
@@ -2072,14 +2096,15 @@ only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
 workflow. Older candidates that emit no adaptive outputs also retain four shards.
-Each slice runs inside the fifteen-minute budget and
+Each allocated slice runs inside the fifteen-minute budget and
 writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
-UI bundle budget. `fast-checks` fails unless every part job succeeded and
-the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
-slice of that plan; a skipped or cancelled part, a missing receipt, or a
-receipt for another plan or head fails it. A deferred selection (the
+UI bundle budget, enforced by the fresh browser startup build rather than a
+second standalone UI build. `fast-checks` requires successful plan/statics jobs.
+The `aggregate` command independently validates empty-plan omission or proves
+that each allocated shard ran its exact slice. An unexpected skip, cancellation,
+missing receipt, or receipt for another plan or head fails the check. A deferred selection (the
 selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no

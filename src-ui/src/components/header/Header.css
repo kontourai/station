@@ -1,0 +1,9 @@
+.app-toolbar__sidebar-toggle[aria-expanded] {
+  padding: 0;
+}
+
+.app-toolbar__sidebar-toggle[aria-expanded] > svg {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  flex: 0 0 var(--k-space-4);
+}
