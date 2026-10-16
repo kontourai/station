@@ -794,7 +794,18 @@ inspect, so an untouched old session in such a tree can take a few minutes to
 appear. A single working directory with more session folders than that is
 only partly listed.
 
-Claude transcript observation persists a bounded, source-owned ancestry map
+Before observing a Claude transcript page, the follower persists its initial
+window start (the last 2 MiB by default, or an explicit zero for a smaller file)
+through the yielding EventStore write path. Failed page writes replay from that
+anchor even after the file grows, the source is rediscovered, the follower's
+bounded cache evicts the thread, or Station restarts. The anchor is reusable
+only for the same source handle and configuration-home affinity. It stores no
+page contents and cannot recover deleted or truncated source bytes; bytes before
+the initial window remain outside retention. Codex and Grok start at byte zero;
+OpenCode starts before the first message in its ordered database query. Their
+cold cursors do not move with append-only growth.
+
+Claude transcript observation also persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
 unknown or evicted parents leave the current turn's usage accumulator intact.
 An older aggregation cursor without ancestry uses one bounded look-behind to

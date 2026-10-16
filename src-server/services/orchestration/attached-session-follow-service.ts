@@ -676,9 +676,35 @@ export class AttachedSessionFollowService {
     }
 
     const priorCursor = state.cursors.get(sourceCursorKey(source));
-    const reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
+    let reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
       ? priorCursor.cursor
       : undefined;
+    if (
+      source.initialCursor &&
+      (reusableCursor === undefined || reusableCursor === 0)
+    ) {
+      const anchor = await source.initialCursor(descriptor);
+      if (anchor === undefined) return;
+      if (!validAttachedSessionCursor(anchor)) {
+        throw new Error(
+          'Attached session source returned an invalid initial cursor.',
+        );
+      }
+      // #3708: no observable page may depend on a moving cold-read window.
+      // Commit before read(), and retain the anchor in memory only after the
+      // yielding write succeeds. Restart and LRU eviction restore the same row.
+      await this.persistAttachedSession(source, descriptor, snapshot, anchor);
+      reusableCursor = anchor;
+      state.cursors.set(sourceCursorKey(source), {
+        provider: source.provider,
+        sourceKind: source.kind,
+        sourceHandle: descriptor.sourceHandle,
+        ...(descriptor.affinity
+          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+          : {}),
+        cursor: anchor,
+      });
+    }
     let read: AttachedSessionReadResult;
     try {
       read = await source.read(descriptor, reusableCursor);

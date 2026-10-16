@@ -226,6 +226,31 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     return { outcome, sessions };
   }
 
+  async initialCursor(
+    session: AttachedSessionDescriptor,
+  ): Promise<AttachedSessionCursor | undefined> {
+    const file = this.handles.get(session.sourceHandle);
+    const home = this.resolveSourceHome(session.affinity);
+    const root = home ? this.canonicalProjectsRoot(home) : null;
+    const canonical =
+      file && root ? this.canonicalRegularFile(root, file) : null;
+    if (!canonical || session.provider !== this.provider) return undefined;
+    try {
+      const offset = Math.max(0, lstatSync(canonical).size - this.maxBytes);
+      return {
+        offset,
+        usageAggregationVersion: 1,
+        ...(offset > 0 ? { usageDeferred: true } : {}),
+        sourceState: {
+          ...encodeRecordTurns(new Map()),
+          ...(offset > 0 ? { skipPartialLine: true } : {}),
+        },
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   async read(
     session: AttachedSessionDescriptor,
     previousCursor: AttachedSessionCursor = 0,
@@ -285,8 +310,18 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     let byteLimited = false;
     try {
       const stat = lstatSync(canonical);
+      // Object cursors include durable cold-window anchors, including zero.
+      // A shortened source cannot satisfy that anchor; never silently slide it.
+      if (typeof previousCursor !== 'number' && cursorOffset > stat.size) {
+        return {
+          outcome: 'rejected_candidate',
+          events: [],
+          cursor: previousCursor,
+        };
+      }
       windowStart =
-        cursorOffset > 0 && cursorOffset <= stat.size
+        (cursorOffset > 0 || typeof previousCursor !== 'number') &&
+        cursorOffset <= stat.size
           ? cursorOffset
           : Math.max(0, stat.size - this.maxBytes);
       if (
@@ -316,10 +351,26 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       };
     }
     let start = 0;
-    if (windowStart > 0 && cursorOffset === 0) {
+    const skipPartialLine =
+      (windowStart > 0 && cursorOffset === 0) ||
+      (typeof previousCursor !== 'number' &&
+        previousCursor.sourceState?.skipPartialLine === true);
+    if (skipPartialLine) {
       const firstNewline = content.indexOf(0x0a);
       if (firstNewline < 0) {
-        return { outcome: 'byte_limit', events: [], cursor: windowStart };
+        return {
+          outcome: 'byte_limit',
+          events: [],
+          cursor: {
+            offset: windowStart + content.length,
+            usageAggregationVersion: 1,
+            usageDeferred: true,
+            sourceState: {
+              ...encodeRecordTurns(recordTurns),
+              skipPartialLine: true,
+            },
+          },
+        };
       }
       start = firstNewline + 1;
     }
@@ -745,6 +796,8 @@ function decodeRecordTurns(
   if (
     !isRecord(raw) ||
     raw.version !== 1 ||
+    (raw.skipPartialLine !== undefined &&
+      typeof raw.skipPartialLine !== 'boolean') ||
     !Array.isArray(raw.recordTurns) ||
     raw.recordTurns.length > MAX_RECORD_TURNS ||
     Buffer.byteLength(JSON.stringify(raw), 'utf8') > MAX_RECORD_TURN_STATE_BYTES

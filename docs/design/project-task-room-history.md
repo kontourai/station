@@ -131,14 +131,19 @@ deletion. Each synchronous attempt temporarily sets `busy_timeout=0`, completes
 or rolls back, and restores the prior timeout before an asynchronous backoff
 (2–64 ms). A Session FIFO preserves background write order. Each queued write
 has a five-second contention budget once it reaches the front; exhaustion
-rejects the poll without advancing its cursor. An established nonzero cursor
-lets a later poll re-read the source page; existing event IDs suppress duplicate
-inserts. Claude's initial zero cursor selects a moving tail window. Append-only
-growth beyond that window after a failed write can omit already-observed events
-even while their source bytes remain. This pre-existing limitation is tracked in
-[#3708](https://github.com/kontourai/station/issues/3708); it requires a durable
-page queue or a source-owned stable initial replay anchor. Deterministic ingress
-refusals keep their existing logged-skip policy.
+rejects the poll without advancing its cursor. Before reading Claude's first
+page, the follower durably pins the source's initial window start through the
+same yielding write path, including an explicit zero anchor for a small file.
+An interrupted page replays from that anchor after append-only growth,
+rediscovery, cache eviction or restart; existing event IDs suppress duplicate
+inserts. The anchor remains bound to the source handle and configuration-home
+affinity. It retains bounded cursor state rather than page contents. This fixes
+[#3708](https://github.com/kontourai/station/issues/3708) while preserving the
+initial 2 MiB retention window: older bytes outside it are not backfilled, and
+source deletion or truncation cannot be recovered from a cursor alone.
+Codex and Grok already start at byte zero; OpenCode starts before the first
+message in its ordered database query, so they have no moving cold window.
+Deterministic ingress refusals keep their existing logged-skip policy.
 
 Scheduled message-search imports use the same yielding path. Their projection
 and watermark commit in one transaction. On contention budget exhaustion, the
