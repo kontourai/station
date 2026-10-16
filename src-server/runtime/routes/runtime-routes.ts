@@ -4511,13 +4511,16 @@ export function configureRuntimeRoutes(
       },
       deviceMaySend: (deviceId, since) =>
         context.environmentSecurityService.deviceMaySendChat(deviceId, since),
-      inspectDelivery: (conversationId, clientTurnId, inputDigest) =>
-        service.inspectTurnDelivery(
+      inspectDelivery: (conversationId, clientTurnId, inputDigest, userId) => {
+        if (!userId)
+          throw new Error('The requested conversation is unavailable.');
+        return service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
-          INTERNAL_SESSION_READ_SCOPE,
+          readAuthorityForExecution(userId),
           inputDigest,
-        ),
+        );
+      },
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(

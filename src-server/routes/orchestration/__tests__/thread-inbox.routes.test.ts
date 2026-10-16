@@ -471,13 +471,21 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           ) === userId ||
           service.canUserReadSession(conversationId, authority(userId)),
         deviceMaySend: () => true,
-        inspectDelivery: (conversationId, clientTurnId, inputDigest) =>
-          service.inspectTurnDelivery(
+        inspectDelivery: (
+          conversationId,
+          clientTurnId,
+          inputDigest,
+          userId,
+        ) => {
+          if (!userId)
+            throw new Error('The requested conversation is unavailable.');
+          return service.inspectTurnDelivery(
             conversationId,
             clientTurnId,
-            INTERNAL_SESSION_READ_SCOPE,
+            authority(userId),
             inputDigest,
-          ),
+          );
+        },
         // The continuation a placement makes, through the same foreground
         // execution the route uses, as the recorded sender.
         start: async ({ conversationId, payload, clientTurnId }) => {
@@ -732,6 +740,126 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       prompts,
     };
   }
+
+  test.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    '#3567: queue admission authorizes every materialized Session before mutation (readable=%s, known=%s)',
+    async (readable, known) => {
+      const world = station();
+      expect((await world.send('queue-setup', 'setup')).status).toBe(200);
+      const metadata = world.service.firstStartedMetadataOfThread(CONVERSATION);
+      if (!metadata) throw new Error('Expected root execution binding');
+      let predecessor = CONVERSATION;
+      const middle = `${CONVERSATION}:queue-middle`;
+      const current = `${CONVERSATION}:queue-current`;
+      for (const id of [middle, current]) {
+        const now = new Date().toISOString();
+        world.store.reserveNextConversationSession({
+          conversationId: CONVERSATION,
+          predecessorSessionId: predecessor,
+          proposedSessionId: id,
+          createdAt: now,
+        });
+        world.store.upsertSession({
+          provider: 'claude',
+          threadId: id,
+          status: 'ready',
+          createdAt: now,
+          updatedAt: now,
+        });
+        world.store.appendEvent({
+          eventId: `${id}:started`,
+          provider: 'claude',
+          threadId: id,
+          sessionId: id,
+          createdAt: now,
+          method: 'session.started',
+          metadata: {
+            ...metadata,
+            conversationId: CONVERSATION,
+            userId: id === middle && !readable ? STRANGER : OWNER,
+          },
+        });
+        predecessor = id;
+      }
+      const authority = sessionReadAuthorityFromRequest(
+        OWNER,
+        undefined,
+        undefined,
+      );
+      expect(world.service.canUserReadSession(CONVERSATION, authority)).toBe(
+        true,
+      );
+      expect(world.service.canUserReadSession(current, authority)).toBe(true);
+      expect(world.service.canUserReadSession(middle, authority)).toBe(
+        readable,
+      );
+      if (known) {
+        const claim = world.store.createTurnDeduplicator().claim({
+          threadId: middle,
+          clientTurnId: 'queue-key',
+          inputDigest: foregroundTurnSubmissionDigest({
+            message: 'original',
+            target: { environment: { kind: 'current' }, agent: AGENT },
+          }),
+        });
+        if (claim.kind !== 'owner') throw new Error('Expected original claim');
+      }
+      world.store.appendEvent({
+        eventId: `${current}:busy`,
+        provider: 'claude',
+        threadId: current,
+        turnId: 'engine-busy-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'An engine turn already runs.',
+      });
+      expect(world.inbox.mustQueue(CONVERSATION)).toBe(true);
+      const starts = world.adapter.starts.length;
+      const answer = await world.send(
+        'queue-key',
+        readable ? 'original' : 'changed',
+        { whenBusy: 'queue' },
+      );
+      const body = await answer.json();
+      if (readable) {
+        expect({ status: answer.status, body }).toMatchObject({
+          status: 202,
+          body: { data: { outcome: 'queued' } },
+        });
+        expect(world.inbox.list(CONVERSATION)).toMatchObject([
+          { state: 'queued', message: 'original' },
+        ]);
+      } else {
+        expect({ status: answer.status, body }).toMatchObject({
+          status: 400,
+          body: { error: 'The requested conversation is unavailable.' },
+        });
+        expect(world.inbox.list(CONVERSATION)).toEqual([]);
+        expect(() =>
+          world.inbox.submit({
+            conversationId: CONVERSATION,
+            clientTurnId: 'queue-key',
+            payload: {
+              message: 'changed',
+              inputDigest: foregroundTurnSubmissionDigest({
+                message: 'changed',
+                target: { environment: { kind: 'current' }, agent: AGENT },
+              }),
+              actor: { userId: OWNER },
+            },
+          }),
+        ).toThrow('The requested conversation is unavailable.');
+        expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      }
+      expect(world.adapter.starts).toHaveLength(starts);
+      expect(world.adapter.turns).toHaveLength(1);
+    },
+  );
 
   test.each([
     'retained',

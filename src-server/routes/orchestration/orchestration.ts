@@ -2694,12 +2694,15 @@ export function createOrchestrationRoutes(
       ) {
         const inbox = deps.threadInbox!;
         const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
-        orchestrationService.inspectTurnDelivery(
-          followUp.conversationId,
-          followUp.clientTurnId,
-          readAuthorityFor(c),
-          inputDigest,
-        );
+        if (
+          orchestrationService.inspectTurnDelivery(
+            followUp.conversationId,
+            followUp.clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          ) === null
+        )
+          throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () =>
           queuedFollowUpResponse(
             c,

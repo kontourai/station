@@ -213,7 +213,10 @@ are bound to that turn. Staged bytes are authorized against the earlier claim's
 Session and read without binding before digest comparison, including retained,
 dead-invoked and reclaimable claims. The production continuation uses the caller's
 read authority across every materialized Session; an unavailable or unreadable
-lineage fails closed before key inspection or staged hydration. Only after a safe start or replay is chosen
+lineage fails closed before key inspection or staged hydration. The same rule
+applies before inbox admission and to the recorded sender's inspections during
+placement and abandoned-start recovery; an unavailable result is never an empty
+ledger or permission to send. Only after a safe start or replay is chosen
 are they bound to its actual Session; tombstones retain no input proof.
 An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with

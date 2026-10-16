@@ -505,6 +505,7 @@ export interface ThreadInboxDeliveryPorts {
     conversationId: string,
     clientTurnId: string,
     inputDigest?: string,
+    userId?: string,
   ): ConversationKeyInspection;
   /**
    * Continue the conversation with the entry's input, as its recorded actor.
@@ -694,6 +695,22 @@ export class ThreadInboxDelivery {
       );
   }
 
+  private inspectDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    payload: ThreadInboxPayload,
+  ) {
+    const inspection = this.ports.inspectDelivery(
+      conversationId,
+      clientTurnId,
+      payload.inputDigest,
+      payload.actor.userId,
+    );
+    if (inspection === null || inspection === undefined)
+      throw new Error('The requested conversation is unavailable.');
+    return inspection;
+  }
+
   /**
    * Accept a follow-up, durable before this returns, and try to place it. A
    * sender placement would refuse is never accepted.
@@ -707,6 +724,7 @@ export class ThreadInboxDelivery {
     const now = this.now();
     if (this.refusalFor(inbox, input.payload, now))
       return { outcome: 'not-permitted' };
+    this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
     const priorDigest = prior
       ? decodePayload(prior.payload)?.inputDigest
@@ -717,11 +735,6 @@ export class ThreadInboxDelivery {
       priorDigest !== input.payload.inputDigest
     )
       throw new ClientTurnInputConflictError();
-    this.ports.inspectDelivery(
-      inbox,
-      input.clientTurnId,
-      input.payload.inputDigest,
-    );
     const result = this.ports.store.submit({
       ...input,
       conversationId: inbox,
@@ -1020,11 +1033,10 @@ export class ThreadInboxDelivery {
   ): boolean {
     if (decodeOutcome(head.outcome).reasonCode !== 'start_deadline')
       return false;
-    const held = this.ports.inspectDelivery(
-      conversationId,
-      head.key,
-      decodePayload(head.payload)?.inputDigest,
-    );
+    const payload = decodePayload(head.payload);
+    if (!payload)
+      throw new Error('Station could not read this queued message.');
+    const held = this.inspectDelivery(conversationId, head.key, payload);
     if (held?.outcome === 'started') {
       this.ports.store.resolveUnconfirmed(
         head,
@@ -1118,11 +1130,7 @@ export class ThreadInboxDelivery {
           startUnlessDelivered({
             conversationId,
             inspect: () =>
-              this.ports.inspectDelivery(
-                conversationId,
-                entry.key,
-                payload.inputDigest,
-              ),
+              this.inspectDelivery(conversationId, entry.key, payload),
             start: () =>
               this.ports.start({
                 conversationId,
