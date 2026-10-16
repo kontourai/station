@@ -359,3 +359,33 @@ repaired only when an existing captured principal matches the original
 announcement's retained history receipt, actor, Session and policy. Missing
 history or a mismatched policy remains unavailable. Failed recovery is retryable
 after its backing state changes; recovery never infers authority from a label.
+
+## Draft acceptance diagnostics (2026-10-16)
+
+The `eaabb0c266b` isolated production build fixes caller attribution on a room
+follow-up: `continueDelegatedTask` retains the route's authenticated principal
+and client origin. The existing route-to-runtime fixture fails without that
+handoff. A rendered same-process follow-up on the Station-agent path now records
+its admitted `room-reply` client turn ID and principal, then publishes the
+subsequent agent answer into the same room thread. The deterministic upstream
+is a local scripted model, not a real-provider qualification.
+
+Two acceptance blockers remain; green CI does not close them:
+
+- Multi-chunk streaming can lose durable deltas during SQLite contention. A
+  1,356-character response emitted in 32-character chunks produced only 1,292
+  characters in canonical deltas and the room answer, alongside `Content delta
+  could not be published: database is locked`. The terminal event retained all
+  1,356 characters. An earlier complete run does not qualify this failure. The
+  timer flush in `DeltaCoalescer` currently warns and drops failed text; unlike
+  synchronous offer flushes, it does not retain retryable uncommitted content.
+- Continuing the existing Session after a server restart is still refused with
+  `Portable execution authority changed before forwarding.` The reply draft
+  remains visible as Not delivered and no new turn is observed. The exact
+  pre-effect refusal source remains under investigation; authority checks must
+  remain intact.
+
+These are local runtime observations, with raw event/history and build receipts
+retained by the owning acceptance run. They establish neither native-device nor
+public-sharing/provider acceptance. Keep the room redesign in draft until both
+paths pass through the rendered room with complete retained answer text.
