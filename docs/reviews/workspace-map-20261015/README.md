@@ -298,3 +298,28 @@ green. No injected edits remain. A local Home/Settings/mobile-Settings capture
 passes and was visually inspected; it is not used for reference generation.
 All hosted qualification claims above remain bound to their recorded heads;
 the new integration still needs hosted and merge-queue qualification.
+
+
+## Onboarding integration
+
+This merge integrates main `9658fa21a33e` into `4efaa71d1549` without
+rebasing. It retains the compact workspace-map footer, Personal Boards and
+retired Open chats/Drafts settings while adopting upstream Connections naming,
+phone pairing and Coding/chat chrome. Developer chooser visibility follows the
+Developer setting, including its account overlay; the old device-only wording
+was corrected after independent review.
+
+The three conflict resolutions preserve both parents' intent: settings prose
+combines the footer contract with Connections naming, and the screenshot
+manifest retains independent parent changes while main wins the sole overlapping
+New Project modal reference. All 55 nonvolatile reference hashes and dimensions
+match the selected parent images; the volatile entry is unchanged. These are
+historical parent references, not proof of this merged rendering. Sidebar/Header
+owner source and the queue guardrail repair are unchanged.
+
+Independent source/reference review found no blocker after the wording correction.
+Ten focused files pass 206 tests with one skipped test. E2E types and 33 fixture
+guards pass. All four sidebar geometry cases pass. Local captures of Home,
+New Project, a project-bound dock and the 320px mobile chat header pass and were
+visually inspected. They are not used to regenerate references or represented as
+hosted evidence. Fresh hosted and merge-queue qualification remain required.

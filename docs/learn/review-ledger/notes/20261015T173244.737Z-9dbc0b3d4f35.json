@@ -1,0 +1,7 @@
+{
+  "revision": "7dfd9fa0cf7f42bd3df6c573e9bf120ecb981d10",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed phone central Coding placement and toolbar ownership against App, CodingWorkbench and ChatDock. Final header retains direct Project and conversation switching, verified by the 320/390/412 browser journey. Native/coarse connection-first onboarding remains distinct from narrow desktop access. Safari simulator evidence does not qualify physical devices or native shells.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}

@@ -2194,7 +2194,8 @@ if [ "$release_complete" = false ] && [ "$release_kind" = archive ]; then
   fi
   node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' \
     "$release_stage/station" "$incoming_release"
-  rmdir "$release_stage"
+  # Finder can add .DS_Store after extraction. This is our private stage.
+  safe_remove_tree "$release_stage"
   # The files extracted are the ones whose identity was read above.
   if ! cmp -s "$candidate/.station-release.json" "$incoming_release/.station-release.json" || \
     ! cmp -s "$candidate/$PREBUILT_ARCHIVE_MARKER" "$incoming_release/$PREBUILT_ARCHIVE_MARKER"; then

@@ -1124,3 +1124,20 @@ triangle. This richer UI state is distinct from `ConnectionStatus`.
 ```tsx
 <ConnectionStatusDot status="connected" size={10} />
 ```
+
+## Browser session isolation on one host
+
+New browser sessions use an HttpOnly cookie whose name includes a stable hash
+of the Station environment identity. Signing in to another Station on the same
+host no longer replaces that cookie. HTTPS retains the `__Host-` prefix,
+Secure, Path=/ and SameSite=Strict; loopback HTTP retains its separate naming.
+The name is a namespace, not authentication: each Station still validates the
+credential, scope, locality and revocation through its own authority.
+
+Legacy cookie names remain readable. With several Station cookies present,
+the reader accepts exactly one credential recognized by the current Station;
+ambiguous current credentials, duplicate names and malformed Station cookies
+are refused. The same selection is used by consent, notification registration
+and secure application-session adoption. Unrelated browser cookies do not
+grant Station authority. A fresh launcher link can also be opened in an
+existing access screen without reloading; consumed links are never replayed.

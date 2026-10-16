@@ -327,17 +327,21 @@ export function useAgentMcpPromptsQuery(
 ) {
   return useApiQuery(
     agentMcpPromptsQueryKey(agentSlug ?? ''),
-    async () => {
+    async (signal) => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
         `${apiBase}/agents/${encodeURIComponent(agentSlug!)}/mcp-prompts`,
+        { signal, timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
       );
-      const result = await response.json();
-      if (!response.ok || !result.success)
-        throw new Error(apiErrorMessage(result, 'Failed to list MCP prompts'));
-      return result.data as AgentMcpPromptListing;
+      return (await readEnvelopeOrThrow<AgentMcpPromptListing>(
+        response,
+      )) as AgentMcpPromptListing;
     },
-    { ...config, enabled: !!agentSlug && (config?.enabled ?? true) },
+    {
+      retry: false,
+      ...config,
+      enabled: !!agentSlug && (config?.enabled ?? true),
+    },
   );
 }
 
@@ -644,4 +648,8 @@ export function useStatsQuery(
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import {
+  authenticatedFetch,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  readEnvelopeOrThrow,
+} from '../client/http';

@@ -1436,7 +1436,7 @@ describe('App home route resolution', () => {
       expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
     });
 
-    test('a bottom-only device keeps Chat in its dock', async () => {
+    test('a phone reads Coding chat in the workbench without a second dock controller', async () => {
       const width = window.innerWidth;
       Object.defineProperty(window, 'innerWidth', {
         configurable: true,
@@ -1450,7 +1450,7 @@ describe('App home route resolution', () => {
         render(<App />);
         await act(async () => undefined);
 
-        expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+        expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
       } finally {
         Object.defineProperty(window, 'innerWidth', {
           configurable: true,

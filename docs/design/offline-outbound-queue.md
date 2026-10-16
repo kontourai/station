@@ -26,7 +26,13 @@ a refusal removes it and hands the text back to the composer; Station's
 "may have started" answer keeps it as unconfirmed (never resent, and it no
 longer holds back later messages in the chat); anything else, including a
 proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
-Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send).
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send). A foreground send that
+already has an exact-key `started` answer, or an explicitly keyed turn-start event
+matching its authored bubble, remains delivered if the original response later
+fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
+lookup already in flight cannot erase a witnessed start. Acceptance retires the
+key and removes its overlapping attempts together. Durable flush dispatches
+(`options.dispatch`) retain their separate provider-turn settlement rules.
 While it waits, the message reads "No answer yet · sends once Station confirms
 it never arrived" on its bubble and in the outbox list, and its chat notice's and
 the list's Discard… withdraw it only after the shared confirmation, which says
