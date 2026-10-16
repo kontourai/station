@@ -51,6 +51,22 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
 }));
 
 const createProposalTask = vi.hoisted(() => vi.fn());
+const proposalCardProps = vi.hoisted(
+  () => [] as Array<{ conversationId?: string; sessionId: string }>,
+);
+vi.mock('../components/chat/TaskProposalCard', async (original) => {
+  const actual =
+    await original<typeof import('../components/chat/TaskProposalCard')>();
+  return {
+    ...actual,
+    TaskProposalCard: (
+      props: Parameters<typeof actual.TaskProposalCard>[0],
+    ) => {
+      proposalCardProps.push(props);
+      return actual.TaskProposalCard(props);
+    },
+  };
+});
 vi.mock('@kontourai/station-sdk', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk')>()),
   useQueryClient: () => ({
@@ -215,6 +231,26 @@ test('a completed chat answer renders a provisional Task card; user text and inc
     }),
   );
   expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+});
+
+test('the proposal card receives the conversation so acceptance can clear shaping after a Session change', () => {
+  proposalCardProps.length = 0;
+  render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        sessionId: 'original-session',
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(proposalCardProps.at(-1)).toMatchObject({
+    conversationId: 'conversation-1',
+    sessionId: 'original-session',
+  });
 });
 
 test('a proposal with unknown source identity stays readable without offering acceptance', () => {
