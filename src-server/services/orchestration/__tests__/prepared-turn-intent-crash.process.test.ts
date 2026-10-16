@@ -439,3 +439,50 @@ test('resume refuses posture tightened after validation while its real coordinat
     before.close();
   }
 }, 90_000);
+
+test('resume refuses a different live engine binding even when its native cursor is reused', async () => {
+  const path = join(
+    makeTempDir('prepared-live-binding-change-'),
+    'events.sqlite',
+  );
+  await killedOwner(path, 'prepared');
+  const { row } = storedIntent(path);
+  const store = new EventStore(path);
+  stores.push(store);
+  const adapter = new LiveResumeAdapter();
+  adapter.bindingKey = 'c'.repeat(64);
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug() {}, warn() {} },
+  });
+  services.push(service);
+  const owner = sessionReadAuthorityFromRequest(
+    'prepared-owner',
+    undefined,
+    undefined,
+  );
+  await service.readSession(THREAD, owner);
+  const db = new DatabaseSync(path, { readOnly: true });
+  const boundary = () =>
+    db
+      .prepare(
+        'SELECT owner_id, updated_at, state FROM orchestration_turn_boundaries WHERE thread_id = ?',
+      )
+      .get(THREAD);
+  const before = boundary();
+  try {
+    await expect(
+      service.resumePreparedTurnIntent(
+        THREAD,
+        String(row.invocation_id),
+        owner,
+      ),
+    ).rejects.toThrow('unavailable');
+    expect(adapter.sent).toHaveLength(0);
+    expect(boundary()).toEqual(before);
+  } finally {
+    db.close();
+  }
+}, 90_000);
