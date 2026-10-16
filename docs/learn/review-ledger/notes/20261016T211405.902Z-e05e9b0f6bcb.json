@@ -1,0 +1,7 @@
+{
+  "revision": "73d9e2bb1628f609a181f1c6e20b2b23ee7790b2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the server-only adapter boundary and cross-package ownership claims against adapter-shape.ts at 73d9e2. respondToRequest adds optional context sessionGrantScope: server; the Claude implementation only widens acceptForSession for an offered, currently verified authentic in-process Station browser request, and later calls recheck authenticity. It creates no independent tool-name grant and other adapters retain existing behavior. The optional server adapter context does not move service implementation or authorization into station-contracts; its boundary guidance and module inventory remain accurate. User-facing scope is documented in session-api and SDK references. This is source review, not current-head behavior/browser/CI proof.","inputs":["docs/reference/contracts.md","src-server/providers/adapter-shape.ts"]}
+  ]
+}
