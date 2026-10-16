@@ -24,6 +24,15 @@ class InterruptedAdapter extends GateTestAdapter {
     value: Parameters<GateTestAdapter['startSession']>[0],
   ) {
     this.sessions.add(value.threadId);
+    this.events.push({
+      method: 'session.started',
+      eventId: `started:${value.threadId}`,
+      provider: this.provider,
+      threadId: value.threadId,
+      sessionId: value.threadId,
+      createdAt: new Date().toISOString(),
+      metadata: value.metadata,
+    });
     return super.startSession(value);
   }
 
@@ -47,10 +56,16 @@ const service = new OrchestrationService({
   logger: { debug() {}, warn() {} },
 });
 service.initialize();
-await service.dispatch({
-  type: 'startSession',
-  input: { threadId, provider: 'claude' },
-});
+await service.dispatch(
+  { type: 'startSession', input: { threadId, provider: 'claude' } },
+  { userId: 'prepared-owner' },
+);
+const ownerDeadline = Date.now() + 20_000;
+while (!store.readSessionByThread(threadId)) {
+  if (Date.now() >= ownerDeadline)
+    throw new Error('Session start was not persisted.');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
 
 if (phase === 'prepared') {
   const exec = DatabaseSync.prototype.exec;

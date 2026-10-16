@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test } from 'vitest';
 import {
   createGateTestRegistry,
@@ -162,19 +163,83 @@ test('a killed invoking owner retains its input and a normal retry invokes nothi
   services.push(service);
   service.initialize();
   await expect(
-    service.dispatch(
-      {
-        type: 'sendTurn',
-        input: {
-          threadId: THREAD,
-          clientTurnId: KEY,
-          input: INPUT,
-          ambientContext: AMBIENT,
-        },
+    service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: THREAD,
+        clientTurnId: KEY,
+        input: INPUT,
+        ambientContext: AMBIENT,
       },
-    ),
+    }),
   ).rejects.toMatchObject({ outcome: 'indeterminate' });
   expect(adapter.sent).toHaveLength(0);
   const { envelope } = storedIntent(path);
   expect(envelope.input.text).toBe('pinned context\n\n  keep these bytes\n');
+}, 90_000);
+
+test('explicit prepared resume reauthorizes the retained input and sends its original bytes exactly once', async () => {
+  const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
+  await killedOwner(path, 'prepared');
+  const { row } = storedIntent(path);
+  class ResumeAdapter extends GateTestAdapter {
+    readonly sent: ProviderSendTurnInput[] = [];
+    override async sendTurn(input: ProviderSendTurnInput) {
+      this.sent.push(input);
+      return { threadId: input.threadId, turnId: 'resumed-original' };
+    }
+  }
+  const store = new EventStore(path);
+  stores.push(store);
+  const adapter = new ResumeAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug() {}, warn() {} },
+  });
+  services.push(service);
+  service.initialize();
+  const owner = sessionReadAuthorityFromRequest(
+    'prepared-owner',
+    undefined,
+    undefined,
+  );
+  const stranger = sessionReadAuthorityFromRequest(
+    'prepared-stranger',
+    undefined,
+    undefined,
+  );
+  const invocationId = String(row.invocation_id);
+  expect(
+    await service.readPreparedTurnIntent(THREAD, invocationId, stranger),
+  ).toBeNull();
+  await expect(
+    service.resumePreparedTurnIntent(THREAD, invocationId, stranger),
+  ).rejects.toThrow('unavailable');
+  expect(adapter.sent).toHaveLength(0);
+  expect(
+    await service.readPreparedTurnIntent(THREAD, invocationId, owner),
+  ).toMatchObject({
+    state: 'prepared',
+    inputDigest: row.input_digest,
+    input: { text: 'pinned context\n\n  keep these bytes\n' },
+  });
+  await expect(
+    service.resumePreparedTurnIntent(THREAD, invocationId, owner),
+  ).resolves.toMatchObject({
+    turnId: 'resumed-original',
+  });
+  expect(adapter.sent).toHaveLength(1);
+  expect(adapter.sent[0]).toMatchObject({
+    threadId: THREAD,
+    clientTurnId: KEY,
+    input: 'pinned context\n\n  keep these bytes\n',
+    displayInput: INPUT,
+    ambientContext: AMBIENT,
+  });
+  await expect(
+    service.resumePreparedTurnIntent(THREAD, invocationId, owner),
+  ).rejects.toThrow('unavailable');
+  expect(adapter.sent).toHaveLength(1);
 }, 90_000);
