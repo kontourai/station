@@ -589,9 +589,12 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
           throw new Error('Settlement committed; acknowledgement lost.');
         }
       });
-      const refused = await send('conversation:refused', 'key-refused').finally(
-        () => spy?.mockRestore(),
-      );
+      let refused: Response;
+      try {
+        refused = await send('conversation:refused', 'key-refused');
+      } finally {
+        spy?.mockRestore();
+      }
       expect(lostAck).toBe(acknowledgement === 'lost-ack');
       expect(refused.status).toBeGreaterThanOrEqual(400);
       const inspection = await app.request(
