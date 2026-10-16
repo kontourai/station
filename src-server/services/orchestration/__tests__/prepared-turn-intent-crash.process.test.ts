@@ -309,6 +309,28 @@ test.each(['begun', 'invoked'] as const)(
   90_000,
 );
 
+test('a non-persistent send cannot forward a caller-provided invocation identity', async () => {
+  const adapter = new LiveResumeAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    logger: { debug() {}, warn() {} },
+  });
+  services.push(service);
+  await service.dispatch({
+    type: 'startSession',
+    input: { threadId: THREAD, provider: 'claude' },
+  });
+  const spoofed = {
+    threadId: THREAD,
+    input: INPUT,
+    invocationId: 'untrusted-caller-invocation',
+  };
+  await service.dispatch({ type: 'sendTurn', input: spoofed });
+  expect(adapter.sent).toHaveLength(1);
+  expect(adapter.sent[0]).not.toHaveProperty('invocationId');
+});
+
 test('explicit prepared resume reauthorizes the retained input and sends its original bytes exactly once', async () => {
   const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
   await killedOwner(path, 'prepared');
