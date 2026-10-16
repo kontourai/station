@@ -539,9 +539,7 @@ describe('TaskRoomEditorPane', () => {
     expect(unload.defaultPrevented).toBe(true);
     await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
     await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toBe(
-        'Shared document saved.',
-      ),
+      expect(screen.getByRole('status').textContent).toBe('Saved'),
     );
     const cleanUnload = new Event('beforeunload', { cancelable: true });
     fireEvent(window, cleanUnload);
@@ -635,11 +633,7 @@ describe('TaskRoomEditorPane', () => {
         expect((editor() as HTMLTextAreaElement).value).toBe('server settled'),
       );
       expect(
-        screen.getByText(
-          kind === 'committed'
-            ? 'Shared document saved.'
-            : 'This exact edit was already saved.',
-        ),
+        screen.getByText(kind === 'committed' ? 'Saved' : 'Saved'),
       ).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Retry identical batch' }),
@@ -675,7 +669,7 @@ describe('TaskRoomEditorPane', () => {
       mocks.queryClient,
       'task-1',
     );
-    expect(screen.getByText('This exact edit was already saved.')).toBeTruthy();
+    expect(screen.getByText('Saved')).toBeTruthy();
   });
 
   test('committed settlement falls back to a no-cache authoritative read for a cache gap', async () => {
@@ -720,7 +714,7 @@ describe('TaskRoomEditorPane', () => {
       await screen.findByRole('button', { name: 'Retry identical batch' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
-    expect(screen.queryByText('This exact edit was already saved.')).toBeNull();
+    expect(screen.queryByText('Saved')).toBeNull();
     expect(mocks.refetchAuthoritative).toHaveBeenCalledWith(
       mocks.queryClient,
       'task-1',
@@ -746,7 +740,7 @@ describe('TaskRoomEditorPane', () => {
       await screen.findByRole('button', { name: 'Retry identical batch' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('gap custody draft');
-    expect(screen.queryByText('This exact edit was already saved.')).toBeNull();
+    expect(screen.queryByText('Saved')).toBeNull();
   });
 
   test.each([

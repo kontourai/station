@@ -130,20 +130,13 @@ test('header edits the title and offers only permitted status transitions, shari
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
     task.title,
   );
-  const select = screen.getByRole('combobox', { name: 'Task status' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'In progress · Task status' }),
+  );
   expect(
-    Array.from((select as HTMLSelectElement).options).map(
-      (option) => option.value,
-    ),
-  ).toEqual([
-    'in_progress',
-    'blocked',
-    'review',
-    'verification',
-    'done',
-    'canceled',
-  ]);
-  fireEvent.change(select, { target: { value: 'done' } });
+    screen.getAllByRole('menuitemradio').map((item) => item.textContent),
+  ).toEqual(['In progress', 'Blocked', 'In review', 'Done', 'Canceled']);
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Done' }));
   await waitFor(() =>
     expect(mocks.status).toHaveBeenCalledWith({
       taskId: task.id,
@@ -166,7 +159,8 @@ test('header edits the title and offers only permitted status transitions, shari
       { title: 'A calmer room', expectedCreatedAt: task.createdAt },
     ),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Task details' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Task actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Task details' }));
   expect(details).toHaveBeenCalledOnce();
 });
 test('rail derives the goal and completion checklist from the saved shared document', () => {

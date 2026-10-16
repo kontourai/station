@@ -404,12 +404,18 @@ function TaskWorkspaceContent({
               ...action,
               open: (...args) => {
                 const outcome = action.open(...args);
-                if (outcome.ok) setBasisVisible(true);
+                if (outcome.ok) {
+                  setBasisVisible(true);
+                  setTab('Details');
+                }
                 return outcome;
               },
               focusExisting: (id) => {
                 const focused = action.focusExisting?.(id) ?? false;
-                if (focused) setBasisVisible(true);
+                if (focused) {
+                  setBasisVisible(true);
+                  setTab('Details');
+                }
                 return focused;
               },
             }
@@ -546,10 +552,6 @@ function TaskWorkspaceContent({
         id="task-panel-Brief"
         aria-labelledby="task-tab-Brief"
       >
-        <h2>Brief</h2>
-        <p className="task-room-hint">
-          The shared plan for this Task. Changes save automatically.
-        </p>
         <TaskRoomEditorPane taskId={taskId} startInPreview />
       </div>
       <div
@@ -560,6 +562,15 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Results"
       >
         <TaskRoomResults task={graph.task} />
+        <details className="task-workspace__record-details">
+          <summary>Answer details</summary>
+          <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
+            <TaskTurnReferenceView
+              taskId={taskId}
+              projectId={graph.task.projectId}
+            />
+          </WorkspacePaneHostOpenContext.Provider>
+        </details>
       </div>
       <div
         className="task-room-panel"
@@ -592,12 +603,6 @@ function TaskWorkspaceContent({
           onOpenActionChange={captureBasisHostOpen}
           visible={basisVisible}
         />
-        <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
-          <TaskTurnReferenceView
-            taskId={taskId}
-            projectId={graph.task.projectId}
-          />
-        </WorkspacePaneHostOpenContext.Provider>
         <TaskUserInputReferences taskId={taskId} />
         <TaskOutputsSection
           task={graph.task}

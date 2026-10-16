@@ -2,7 +2,7 @@
 
 import type { ProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { useLayoutEffect, useState } from 'react';
+import { StrictMode, useLayoutEffect, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -369,6 +369,7 @@ test('opening the Task joins and publishes presence; pagehide and unmount depart
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
   mocks.command.mockClear();
   view.unmount();
+  await act(async () => {});
   expect(mocks.command).toHaveBeenCalledTimes(1);
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
 });
@@ -408,4 +409,37 @@ test('restoring the Task from bfcache rejoins and republishes presence', async (
     'join',
     'announce',
   ]);
+});
+
+test('StrictMode teardown cannot depart a replacement viewer before its announce', async () => {
+  let joined = false;
+  mocks.command.mockImplementation(async ({ command }) => {
+    if (command === 'join') joined = true;
+    if (command === 'depart') joined = false;
+    return {
+      kind: 'available',
+      snapshot: {
+        ...snapshot('Alice'),
+        result: {
+          outcome:
+            command === 'join'
+              ? 'joined'
+              : command === 'announce' && !joined
+                ? 'forbidden'
+                : 'updated',
+        },
+      },
+    };
+  });
+  render(
+    <StrictMode>
+      <ProjectTaskRoomProvider taskId="task-1">
+        <Consumer />
+      </ProjectTaskRoomProvider>
+    </StrictMode>,
+  );
+  await act(async () => {});
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'announce' });
+  expect(joined).toBe(true);
+  expect(screen.queryByRole('alert')).toBeNull();
 });

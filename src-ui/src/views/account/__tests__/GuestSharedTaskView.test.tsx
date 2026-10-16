@@ -87,7 +87,23 @@ test('opens only the clicked shared Task human history and document', async () =
       if (path === '/api/account-auth/session') return account();
       if (path.endsWith('/shared-work'))
         return success([summary('project-a', 'alpha', 'Shared planning')]);
-      if (path.endsWith('/history')) return success(history('Visible message'));
+      if (path.endsWith('/history')) {
+        const cursor = new URL(input).searchParams.get('cursor');
+        return success(
+          cursor
+            ? {
+                ...history('Second page message'),
+                records: history('Second page message').records.map(
+                  (record) => ({ ...record, sequence: 2 }),
+                ),
+              }
+            : {
+                ...history('Visible message'),
+                hasMore: true,
+                nextCursor: 'page-two',
+              },
+        );
+      }
       if (path.endsWith('/document'))
         return success({
           kind: 'snapshot',
@@ -104,6 +120,9 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
+  expect(await screen.findByText('Second page message')).toBeTruthy();
+  expect(screen.getByText('Visible message')).toBeTruthy();
   const chatTab = screen.getByRole('tab', { name: 'Chat' });
   expect(chatTab.tabIndex).toBe(0);
   expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
@@ -274,6 +293,11 @@ test.each([
       await screen.findByRole('button', { name: 'Read shared Task' }),
     );
     expect(await screen.findByText(new RegExp(copy))).toBeTruthy();
+    expect(
+      screen.queryByText('Shared document is too large to display.'),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    expect(screen.queryByText(new RegExp(copy))).toBeNull();
     expect(
       screen.getByText('Shared document is too large to display.'),
     ).toBeTruthy();

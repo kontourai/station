@@ -1,11 +1,19 @@
-import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import type {
+  ProjectSharedTaskHistory,
+  ProjectSharedTaskSummary,
+} from '@kontourai/station-contracts/project-shared-task';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { StationHttpError } from '@kontourai/station-sdk';
 import {
   listProjectSharedTasks,
   readProjectSharedTaskDocument,
   readProjectSharedTaskHistory,
 } from '@kontourai/station-sdk/project-shared-tasks';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
@@ -136,9 +144,12 @@ export function GuestSharedTaskView({
     )
       throw new GuestSharedScopeLost();
   };
-  const history = useQuery({
+  const historyPages = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectSharedTaskHistory) =>
+      page.kind === 'available' && page.hasMore ? page.nextCursor : undefined,
     queryKey: ['guest-shared-task-history', ...projectKey, ...selectedKey],
-    queryFn: ({ signal }) => {
+    queryFn: ({ signal, pageParam }) => {
       if (!selected) throw new GuestSharedScopeLost();
       requirePublication(selected);
       return authorizedRead(apiBase, principalId, signal, async () => {
@@ -146,7 +157,10 @@ export function GuestSharedTaskView({
           apiBase,
           project.slug,
           selected.task.id,
-          requestOptions(signal),
+          {
+            ...requestOptions(signal),
+            ...(pageParam ? { cursor: pageParam } : {}),
+          },
         );
         requirePublication(selected);
         return value;
@@ -156,6 +170,20 @@ export function GuestSharedTaskView({
     retry: false,
     gcTime: 0,
   });
+  const lastHistoryPage = historyPages.data?.pages.at(-1);
+  const history = {
+    ...historyPages,
+    data:
+      lastHistoryPage?.kind === 'available'
+        ? {
+            ...lastHistoryPage,
+            records:
+              historyPages.data?.pages.flatMap((page) =>
+                page.kind === 'available' ? page.records : [],
+              ) ?? [],
+          }
+        : lastHistoryPage,
+  };
   const document = useQuery({
     queryKey: ['guest-shared-task-document', ...projectKey, ...selectedKey],
     queryFn: ({ signal }) => {
@@ -267,7 +295,7 @@ export function GuestSharedTaskView({
             <li key={summary.shareId}>
               <div>
                 <strong>{summary.task.title}</strong>
-                <small>{summary.task.status.replaceAll('_', ' ')}</small>
+                <small>{taskStatusLabel(summary.task.status)}</small>
               </div>
               <Button
                 ref={(element) => {
@@ -359,10 +387,15 @@ export function GuestSharedTaskView({
             >
               <h6>Shared messages</h6>
               {history.data.hasMore && (
-                <p role="status">
-                  Shared history is incomplete; only the available page is
-                  shown.
-                </p>
+                <p role="status">More shared messages are available.</p>
+              )}
+              {history.hasNextPage && (
+                <Button
+                  onClick={() => void history.fetchNextPage()}
+                  pending={history.isFetchingNextPage}
+                >
+                  Load more messages
+                </Button>
               )}
               {history.data.records.length === 0 ? (
                 <Empty
@@ -381,12 +414,12 @@ export function GuestSharedTaskView({
                 </ol>
               )}
             </div>
-          ) : history.data ? (
+          ) : history.data && tab === 'Chat' ? (
             <p role="status">{historyState(history.data.kind)}</p>
           ) : null}
           {document.data?.kind === 'snapshot' ? (
             <div
-              className="account-entry__shared-document"
+              className="account-entry__shared-document task-room-brief-rendered"
               hidden={tab !== 'Brief'}
             >
               <h6>Shared document</h6>
@@ -397,7 +430,7 @@ export function GuestSharedTaskView({
                 {document.data.text}
               </LazyMarkdown>
             </div>
-          ) : document.data ? (
+          ) : document.data && tab === 'Brief' ? (
             <p role="status">{documentState(document.data.kind)}</p>
           ) : null}
         </section>

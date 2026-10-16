@@ -1183,9 +1183,9 @@ export function createTaskSessionId(
 export function taskStatusLabel(status: TaskStatus): string {
   return {
     todo: 'To do',
-    ready: 'Ready',
-    triage: 'Triage',
-    verification: 'Verification',
+    ready: 'To do',
+    triage: 'To do',
+    verification: 'In review',
     in_progress: 'In progress',
     review: 'In review',
     blocked: 'Blocked',

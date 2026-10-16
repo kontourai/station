@@ -16,9 +16,14 @@ import { useProjectTaskRoomDocumentQuery } from '@kontourai/station-sdk/project-
 import { useTaskOutputsQuery } from '@kontourai/station-sdk/task-outputs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckGlyph, glyph } from '../../components/icons/Glyph';
+import { ActionOverflowMenu } from '../../components/ActionOverflowMenu';
+import {
+  ArrowDownGlyph,
+  CheckGlyph,
+  glyph,
+} from '../../components/icons/Glyph';
 import { PageFrameActions, usePageHeader } from '../../components/page-frame';
-import { SkeletonBlock, SkeletonList } from '../../components/state';
+import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
 
 const ChecklistBoxGlyph = glyph('M3 3h10v10H3Z');
 const ChecklistBulletGlyph = glyph('M7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0');
@@ -135,75 +140,67 @@ export function TaskRoomHeader({
   usePageHeader(header);
   return (
     <PageFrameActions>
-      <label className="task-room-status">
-        <span className="sr-only">Task status</span>
-        <select
-          aria-label="Task status"
-          value={task.status}
-          disabled={status.isPending}
-          onChange={async (event) => {
-            try {
-              setNotice('');
-              await status.mutateAsync({
-                taskId: task.id,
-                status: event.target.value as TaskStatus,
-                apiBase: scope?.apiBase,
-              });
-              await cache.invalidateQueries({
-                queryKey: ['task-graph', task.id],
-              });
-            } catch (error) {
-              setNotice(
-                error instanceof Error
-                  ? error.message
-                  : 'Status update failed.',
-              );
-            }
-          }}
-        >
-          {TASK_STATUSES.filter((candidate) =>
-            canTransitionTaskStatus(task.status, candidate),
-          ).map((candidate) => (
-            <option key={candidate} value={candidate}>
-              {taskStatusLabel(candidate)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <ProjectTaskRoomPresence taskId={task.id} compact />
-      <details className="task-room-share">
-        <summary>Share</summary>
-        <ProjectTaskSharingControl
-          slug={projectSlug}
-          projectId={projectId}
-          task={task}
+      <span className="task-room-status">
+        <ActionOverflowMenu
+          label={`${taskStatusLabel(task.status)} · Task status`}
+          triggerText={taskStatusLabel(task.status)}
+          triggerGlyph={<ArrowDownGlyph className="choice-caret" />}
+          triggerClassName="choice-trigger task-room-status-pill"
+          actions={TASK_STATUSES.filter(
+            (candidate, index, statuses) =>
+              canTransitionTaskStatus(task.status, candidate) &&
+              statuses.findIndex(
+                (item) =>
+                  taskStatusLabel(item) === taskStatusLabel(candidate) &&
+                  canTransitionTaskStatus(task.status, item),
+              ) === index,
+          ).map((candidate) => ({
+            key: candidate,
+            label: taskStatusLabel(candidate),
+            checked:
+              taskStatusLabel(candidate) === taskStatusLabel(task.status),
+            exclusive: true,
+            disabled: status.isPending,
+            onSelect: () => {
+              void status
+                .mutateAsync({
+                  taskId: task.id,
+                  status: candidate as TaskStatus,
+                  apiBase: scope?.apiBase,
+                })
+                .then(() =>
+                  cache.invalidateQueries({
+                    queryKey: ['task-graph', task.id],
+                  }),
+                )
+                .catch((error: Error) => setNotice(error.message));
+            },
+          }))}
         />
-      </details>
-      <details className="task-room-overflow">
-        <summary aria-label="Task actions">⋯</summary>
-        <div>
-          <Button
-            onClick={(event) => {
-              onDetails();
-              event.currentTarget.closest('details')?.removeAttribute('open');
-            }}
-          >
-            Task details
-          </Button>
-          <Button
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-                setNotice('Task link copied.');
-              } catch {
-                setNotice('The Task link could not be copied.');
-              }
-            }}
-          >
-            Copy link
-          </Button>
-        </div>
-      </details>
+      </span>
+      <ProjectTaskRoomPresence taskId={task.id} compact />
+      <ProjectTaskSharingControl
+        slug={projectSlug}
+        projectId={projectId}
+        task={task}
+        compact
+      />
+      <ActionOverflowMenu
+        label="Task actions"
+        actions={[
+          { key: 'details', label: 'Task details', onSelect: onDetails },
+          {
+            key: 'copy',
+            label: 'Copy link',
+            onSelect: () => {
+              void navigator.clipboard
+                .writeText(window.location.href)
+                .then(() => setNotice('Task link copied.'))
+                .catch(() => setNotice('The Task link could not be copied.'));
+            },
+          },
+        ]}
+      />
       {notice && (
         <p className="task-room-inline-status" role="alert">
           {notice}
@@ -391,7 +388,7 @@ export function TaskRoomRail({
     .slice(0, firstHeading < 0 ? undefined : firstHeading)
     .join('\n')
     .trim();
-  const goal = goalSection ?? prose.slice(0, 800);
+  const goal = (goalSection ?? prose).split(/\n\s*\n/)[0];
   const checklist = (doneSection ?? '').split('\n').flatMap((line) => {
     const match = /^\s*(?:[-*+]|\d+\.)\s+(?:\[([ xX])\]\s+)?(.+)$/.exec(line);
     return match
@@ -409,11 +406,13 @@ export function TaskRoomRail({
       <section>
         <h3>Goal</h3>
         {goal ? (
-          <LazyMarkdown
-            loadingProjection={<SkeletonBlock label="Loading brief" />}
-          >
-            {goal}
-          </LazyMarkdown>
+          <div className="task-room-goal">
+            <LazyMarkdown
+              loadingProjection={<SkeletonBlock label="Loading brief" />}
+            >
+              {goal}
+            </LazyMarkdown>
+          </div>
         ) : document.isLoading ? (
           <SkeletonBlock label="Loading brief" />
         ) : (
@@ -431,7 +430,7 @@ export function TaskRoomRail({
               <li key={index}>
                 <span
                   className="task-room-checklist-mark"
-                  role={item.done === null ? undefined : 'img'}
+                  role="img"
                   aria-hidden={item.done === null || undefined}
                   aria-label={
                     item.done === null
@@ -464,13 +463,17 @@ export function TaskRoomRail({
       </section>
       <section>
         <h3>Results</h3>
-        <Button onClick={onResults} size="sm">
-          {loading
-            ? 'Loading results…'
-            : unavailable
-              ? 'Results unavailable'
-              : `${count} kept ${count === 1 ? 'result' : 'results'}`}
-        </Button>
+        {!loading && !unavailable && count === 0 ? (
+          <Empty label="No results yet" />
+        ) : (
+          <Button onClick={onResults} size="sm">
+            {loading
+              ? 'Loading results…'
+              : unavailable
+                ? 'Results unavailable'
+                : `${count} kept ${count === 1 ? 'result' : 'results'}`}
+          </Button>
+        )}
       </section>
       {!loading && !unavailable && count > 0 && (
         <ul className="task-room-result-summary">

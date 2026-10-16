@@ -14,24 +14,29 @@ import {
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { IconButton } from '../components/IconButton';
+import { CloseGlyph } from '../components/icons/Glyph';
 import { SplitPaneCompanion } from '../components/SplitPaneLayout';
+import { Empty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { RoomAvatar } from './ProjectTaskRoomPresence';
 import { TaskRoomComposer } from './TaskRoomComposer';
+import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 
-function Time({ at }: { at?: string }) {
+function Time({ at, compact = false }: { at?: string; compact?: boolean }) {
   return at && Number.isFinite(Date.parse(at)) ? (
     <time dateTime={at} title={new Date(at).toLocaleString()}>
       {new Date(at).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
+        ...(compact ? { hour12: false } : {}),
       })}
     </time>
   ) : null;
@@ -109,14 +114,65 @@ export function ProjectTaskRoomConversation({
         participant.publication === 'published' &&
         participant.actor.kind === 'agent',
     ) ?? [];
-  const bottom = useRef<HTMLDivElement>(null);
+  const messages = useRef<HTMLDivElement>(null);
+  const anchored = useRef(true);
+  const [jumpToLatest, setJumpToLatest] = useState(false);
+  const previousHeight = useRef<number | undefined>(undefined);
+  const [historyWindow, setHistoryWindow] = useState(50);
   const lastSequence = records.at(-1)?.sequence;
   const runningCount = running.length;
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
+    if (!runningCount) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [runningCount]);
+  const goLatest = () => {
+    const list = messages.current;
+    if (list) list.scrollTop = list.scrollHeight;
+    anchored.current = true;
+    setJumpToLatest(false);
+  };
+  useLayoutEffect(() => {
     void lastSequence;
     void runningCount;
-    bottom.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [lastSequence, runningCount]);
+    void records.length;
+    void historyWindow;
+    const list = messages.current;
+    if (!list) return;
+    if (previousHeight.current !== undefined) {
+      list.scrollTop += list.scrollHeight - previousHeight.current;
+      previousHeight.current = undefined;
+    } else if (anchored.current) list.scrollTop = list.scrollHeight;
+    else setJumpToLatest(true);
+  }, [lastSequence, runningCount, records.length, historyWindow]);
+  // The history contract pages forward through a fixed checkpoint. Read to that
+  // checkpoint before presenting its newest messages; reveal older rows locally.
+  useEffect(() => {
+    if (history.hasNextPage && !history.isFetchingNextPage && !history.isError)
+      void history.fetchNextPage();
+  }, [
+    history.hasNextPage,
+    history.isFetchingNextPage,
+    history.isError,
+    history.fetchNextPage,
+  ]);
+  const loadEarlier = () => {
+    previousHeight.current = messages.current?.scrollHeight;
+    setHistoryWindow((count) => count + 50);
+  };
+  useLayoutEffect(() => {
+    void thread;
+    const list = messages.current;
+    if (!list || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (anchored.current) list.scrollTop = list.scrollHeight;
+    });
+    observer.observe(list);
+    const content = list.querySelector('ol');
+    if (content) observer.observe(content);
+    return () => observer.disconnect();
+  }, [thread]);
   const followup = useMutation({
     mutationFn: async () => {
       if (!scope?.isCurrent() || !thread || !taskCreatedAt)
@@ -182,22 +238,54 @@ export function ProjectTaskRoomConversation({
     },
     onError: (error) => setNotice(error.message),
   });
+  const retryFailed = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const request = requests.data?.records.find(
+        (item) => item.sessionId === sessionId,
+      );
+      if (!scope?.isCurrent() || !request || !taskCreatedAt)
+        throw new Error(
+          'The original request is unavailable. Open the run to continue.',
+        );
+      return continueDelegatedTask(
+        scope.apiBase,
+        sessionId,
+        {
+          message: request.prompt,
+          taskRoomReply: {
+            taskId,
+            taskCreatedAt,
+            operationId: randomCorrelationId(),
+            attachBrief: !!request.context,
+          },
+        },
+        { requestScope: scope },
+      );
+    },
+    onSuccess: () => {
+      void history.refetch();
+      void requests.refetch();
+    },
+    onError: (error) => setNotice(error.message),
+  });
   const roots = new Map<string, number>();
   for (const record of records)
     if (record.execution && !roots.has(record.execution.sessionId))
       roots.set(record.execution.sessionId, record.sequence);
-  const visible = records.filter(
+  const allVisible = records.filter(
     (record) =>
       ![
         'live-work-started',
         'live-work-presence-ended',
-        'live-work-finished',
         'outcome-link',
       ].includes(record.body.kind) &&
+      (record.body.kind !== 'live-work-finished' ||
+        record.body.outcome === 'failed') &&
       !record.threadSessionId &&
       (!record.execution ||
         roots.get(record.execution.sessionId) === record.sequence),
   );
+  const visible = allVisible.slice(-historyWindow);
   const threadRecords = thread
     ? records.filter(
         (record) =>
@@ -208,11 +296,46 @@ export function ProjectTaskRoomConversation({
   const message = (
     record: ProjectTaskRoomBrowserRecord,
     previous?: ProjectTaskRoomBrowserRecord,
+    threadParent = false,
   ) => {
+    if (
+      record.body.kind === 'live-work-finished' &&
+      record.body.outcome === 'failed'
+    ) {
+      const sessionId = record.body.sessionId;
+      return (
+        <li className="task-room-system task-room-failed" key={record.sequence}>
+          <span>{record.actor.label} couldn’t finish</span>
+          <Time at={record.occurredAt} />
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={
+              !writable ||
+              retryFailed.isPending ||
+              !requests.data?.records.some(
+                (item) => item.sessionId === sessionId,
+              )
+            }
+            onClick={() => retryFailed.mutate(sessionId)}
+          >
+            Retry
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void openRun(sessionId)}
+          >
+            Open run
+          </Button>
+        </li>
+      );
+    }
     if (record.system || record.body.kind !== 'human-message')
       return (
         <li className="task-room-system" key={record.sequence}>
-          {systemText(record)} <Time at={record.occurredAt} />
+          {record.system && <span>{record.actor.label} · </span>}
+          <span>{systemText(record)}</span> <Time at={record.occurredAt} />
         </li>
       );
     const grouped =
@@ -222,6 +345,7 @@ export function ProjectTaskRoomConversation({
         (record.actor.id ?? record.actor.label) &&
       previous.actor.kind === record.actor.kind;
     const execution = record.execution;
+    const mention = /^\*\*@(.+?)\*\*\s+/.exec(record.body.text);
     const replies = execution
       ? records.filter(
           (item) =>
@@ -251,20 +375,32 @@ export function ProjectTaskRoomConversation({
                 )}
               </>
             )}
-            <Time at={record.occurredAt} />
+            <Time at={record.occurredAt} compact={grouped} />
           </header>
           <div className="task-room-message-content">
             <div
+              inert={!!execution && !expanded.has(record.sequence)}
               className={
                 execution
                   ? `task-room-answer${expanded.has(record.sequence) ? '' : ' task-room-answer--clamped'}`
                   : 'task-room-message-text'
               }
             >
-              <LazyMarkdown>{record.body.text}</LazyMarkdown>
+              {mention ? (
+                <>
+                  <span className="task-room-mention">@{mention[1]}</span>
+                  <LazyMarkdown>
+                    {record.body.text.slice(mention[0].length)}
+                  </LazyMarkdown>
+                </>
+              ) : (
+                <LazyMarkdown>{record.body.text}</LazyMarkdown>
+              )}
             </div>
             {execution && (
               <Button
+                variant="ghost"
+                className="task-room-expand"
                 size="sm"
                 onClick={() =>
                   setExpanded((current) => {
@@ -279,11 +415,12 @@ export function ProjectTaskRoomConversation({
               </Button>
             )}
           </div>
-          {execution && (
+          {execution && !threadParent && (
             <ActionRow
               className="task-room-message-actions"
               primary={
                 <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() =>
                     guard(() => {
@@ -300,6 +437,7 @@ export function ProjectTaskRoomConversation({
               }
               secondary={
                 <Button
+                  variant="ghost"
                   size="sm"
                   disabled={
                     keep.isPending ||
@@ -375,13 +513,16 @@ export function ProjectTaskRoomConversation({
             <section className="task-room-thread" aria-label="Agent thread">
               <header className="split-pane-companion__detail-header">
                 <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
-                <Button onClick={() => guard(() => setThread(undefined))}>
-                  Close thread
-                </Button>
+                <IconButton
+                  aria-label="Close thread"
+                  onClick={() => guard(() => setThread(undefined))}
+                >
+                  <CloseGlyph />
+                </IconButton>
               </header>
               <ol className="task-room-thread-messages">
                 {threadRecords.map((record, index) =>
-                  message(record, threadRecords[index - 1]),
+                  message(record, threadRecords[index - 1], index === 0),
                 )}
               </ol>
               <form
@@ -394,7 +535,16 @@ export function ProjectTaskRoomConversation({
                 <label className="sr-only" htmlFor="task-thread-reply">
                   Reply to this agent
                 </label>
-                <textarea
+                <TaskRoomMessageInput
+                  onSend={() => {
+                    if (
+                      writable &&
+                      reply.trim() &&
+                      !followup.isPending &&
+                      !uncertain
+                    )
+                      followup.mutate();
+                  }}
                   id="task-thread-reply"
                   value={reply}
                   rows={1}
@@ -406,28 +556,30 @@ export function ProjectTaskRoomConversation({
                   }}
                   readOnly={!writable || followup.isPending || uncertain}
                 />
-                <label className="task-room-brief-choice">
-                  <input
-                    type="checkbox"
-                    checked={attachBrief}
-                    disabled={followup.isPending || uncertain}
-                    onChange={(event) => setAttachBrief(event.target.checked)}
-                  />
-                  Brief
-                </label>
-                <Button
-                  className="task-room-send"
-                  aria-label="Send reply"
-                  type="submit"
-                  disabled={
-                    !writable ||
-                    !reply.trim() ||
-                    followup.isPending ||
-                    uncertain
-                  }
-                >
-                  ↑
-                </Button>
+                <div className="task-room-composer-actions">
+                  <label className="task-room-brief-choice">
+                    <input
+                      type="checkbox"
+                      checked={attachBrief}
+                      disabled={followup.isPending || uncertain}
+                      onChange={(event) => setAttachBrief(event.target.checked)}
+                    />
+                    Brief attached
+                  </label>
+                  <Button
+                    className="task-room-send"
+                    aria-label="Send reply"
+                    type="submit"
+                    disabled={
+                      !writable ||
+                      !reply.trim() ||
+                      followup.isPending ||
+                      uncertain
+                    }
+                  >
+                    Send
+                  </Button>
+                </div>
               </form>
               {attachBrief &&
                 requests.data?.context?.text.includes(
@@ -452,8 +604,31 @@ export function ProjectTaskRoomConversation({
           ) : null
         }
       >
-        {shared?.presenceError && <p role="alert">{shared.presenceError}</p>}
-        <div className="task-room-messages">
+        <div
+          className="task-room-messages"
+          ref={messages}
+          onScroll={() => {
+            const list = messages.current;
+            if (!list) return;
+            anchored.current =
+              list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+            setJumpToLatest(!anchored.current);
+            if (
+              list.scrollTop === 0 &&
+              !anchored.current &&
+              allVisible.length > historyWindow
+            )
+              loadEarlier();
+          }}
+        >
+          {allVisible.length > historyWindow && (
+            <Button variant="ghost" onClick={loadEarlier}>
+              Load earlier messages
+            </Button>
+          )}
+          {history.isLoading && (
+            <SkeletonList count={2} label="Loading messages" />
+          )}
           {history.isError && (
             <p role="alert">
               Room history is unavailable.{' '}
@@ -463,15 +638,17 @@ export function ProjectTaskRoomConversation({
           {capabilities && !capabilities.historyRead && (
             <p role="status">History is not shared with this connection.</p>
           )}
-          {!records.length && !history.isLoading && (
-            <div className="task-room-chat-empty">
-              <h2>Start the conversation</h2>
-              <p>
-                Share a thought, shape the brief, or ask an agent to work on
-                this Task.
-              </p>
-            </div>
-          )}
+          {!visible.length &&
+            !history.isLoading &&
+            !history.hasNextPage &&
+            !history.isError &&
+            capabilities?.historyRead && (
+              <Empty
+                variant="compact"
+                label="Start the conversation"
+                description="Share a thought, shape the brief, or ask an agent to work on this Task."
+              />
+            )}
           <ol aria-live="polite" aria-label="Task room history">
             {visible.map((record, index) =>
               message(record, visible[index - 1]),
@@ -490,6 +667,7 @@ export function ProjectTaskRoomConversation({
                 <>
                   <span>Answer couldn't be posted ·</span>
                   <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => void openRun(participant.work.sessionId)}
                   >
@@ -499,13 +677,29 @@ export function ProjectTaskRoomConversation({
               ) : (
                 <>
                   <span>is {participant.work.workState}</span>
+                  {participant.work.startedAt && (
+                    <span>
+                      ·{' '}
+                      {Math.max(
+                        0,
+                        Math.floor((now - participant.work.startedAt) / 60000),
+                      )}
+                      m
+                    </span>
+                  )}
+                  {participant.work.workName &&
+                    participant.work.workName !== 'Project task work' && (
+                      <span>· {participant.work.workName}</span>
+                    )}
                   <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() => void openRun(participant.work.sessionId)}
                   >
                     Watch
                   </Button>
                   <Button
+                    variant="ghost"
                     size="sm"
                     disabled={!writable || stop.isPending}
                     onClick={() => stop.mutate(participant.work.sessionId)}
@@ -519,16 +713,12 @@ export function ProjectTaskRoomConversation({
           {pages.some((page) => page.kind === 'gap') && (
             <p role="alert">Earlier room history is unavailable.</p>
           )}
-          {history.hasNextPage && (
-            <Button
-              onClick={() => void history.fetchNextPage()}
-              disabled={history.isFetchingNextPage}
-            >
-              Load more messages
-            </Button>
-          )}
-          <div ref={bottom} />
         </div>
+        {jumpToLatest && (
+          <Button variant="ghost" className="task-room-jump" onClick={goLatest}>
+            Jump to latest
+          </Button>
+        )}
         {records
           .filter(
             (record) =>
@@ -552,6 +742,7 @@ export function ProjectTaskRoomConversation({
                 >
                   Answer couldn't be posted ·{' '}
                   <Button
+                    variant="ghost"
                     size="sm"
                     onClick={() =>
                       record.body.kind === 'live-work-finished' &&

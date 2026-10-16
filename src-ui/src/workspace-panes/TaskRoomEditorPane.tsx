@@ -727,16 +727,34 @@ export function TaskRoomEditorPane({
                       : settlement === 'unchanged'
                         ? 'No changes were needed; your draft already matches the shared document.'
                         : settlement === 'committed'
-                          ? 'Shared document saved.'
+                          ? 'Saved'
                           : settlement === 'duplicate'
-                            ? 'This exact edit was already saved.'
+                            ? 'Saved'
                             : rejection
                               ? 'Save refused. Your draft is retained for retry.'
                               : dirty
                                 ? 'Saving brief…'
-                                : 'Shared document ready.';
+                                : '';
   return (
     <section className="task-room-editor" aria-label="Task room editor">
+      <div className="task-room-brief-heading">
+        {startInPreview && <h2>Brief</h2>}
+        {startInPreview && (
+          <Button
+            onClick={() => {
+              if (editing) void saveLatest.current();
+              setEditing(!editing);
+            }}
+          >
+            {editing ? 'View brief' : 'Edit brief'}
+          </Button>
+        )}
+      </div>
+      {startInPreview && (
+        <p className="task-room-hint">
+          The shared plan for this Task. Changes save automatically.
+        </p>
+      )}
       <p
         className="task-room-inline-status"
         id={`task-room-editor-status-${id}`}
@@ -752,16 +770,6 @@ export function TaskRoomEditorPane({
       {document.isError ? (
         <p role="alert">The latest shared document read failed.</p>
       ) : null}
-      {startInPreview && (
-        <Button
-          onClick={() => {
-            if (editing) void saveLatest.current();
-            setEditing(!editing);
-          }}
-        >
-          {editing ? 'View brief' : 'Edit brief'}
-        </Button>
-      )}
       {!editing && (
         <div className="task-room-brief-rendered">
           {text ? (
@@ -828,7 +836,7 @@ export function TaskRoomEditorPane({
           readOnly={!writable}
           aria-describedby={`task-room-editor-status-${id}`}
         />
-        <aside aria-label="Remote selections">
+        <aside aria-label="Remote selections" hidden={!remoteCursors.length}>
           {remoteCursors.length ? (
             <ul>
               {remoteCursors.map((cursor) => {
@@ -844,17 +852,20 @@ export function TaskRoomEditorPane({
                 );
               })}
             </ul>
-          ) : (
-            <p>Remote selections appear here.</p>
-          )}
+          ) : null}
         </aside>
-        <button
-          type="button"
-          onClick={() => void document.refetch()}
-          disabled={document.isFetching}
-        >
-          Resync document
-        </button>
+        {(document.isError ||
+          possibleEffect ||
+          rejection ||
+          document.data?.kind === 'gap') && (
+          <button
+            type="button"
+            onClick={() => void document.refetch()}
+            disabled={document.isFetching}
+          >
+            Reload brief
+          </button>
+        )}
       </div>
       {rejection ? (
         <button

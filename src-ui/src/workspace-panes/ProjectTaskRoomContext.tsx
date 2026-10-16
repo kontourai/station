@@ -37,6 +37,7 @@ type RoomContextValue = {
   ): Promise<ProjectTaskRoomLiveResult>;
   commandPending: boolean;
   presenceError?: string;
+  retryPresence(): void;
   subscribeDocument(
     listener: (document: AuthoritativeRoomDocument) => void,
   ): () => void;
@@ -231,27 +232,31 @@ export function ProjectTaskRoomProvider({
     (value: ProjectTaskRoomLiveCommand) => mutation.mutateAsync(value),
     [mutation.mutateAsync],
   );
+  const presenceChain = useRef<Promise<void>>(Promise.resolve());
+  const [presenceAttempt, setPresenceAttempt] = useState(0);
+  const retryPresence = useCallback(
+    () => setPresenceAttempt((value) => value + 1),
+    [],
+  );
   const liveAvailable =
     discovery.data?.kind === 'opened' || discovery.data?.kind === 'existing'
       ? discovery.data.capabilities.live
       : false;
   useEffect(() => {
     void taskId;
+    void presenceAttempt;
     if (!liveAvailable) return;
     let departed = false;
     const join = async () => {
+      if (departed) return;
+      setPresenceError(undefined);
       const joined = await command({ command: 'join' });
-      if (departed) {
-        await command({ command: 'depart' });
-        return;
-      }
+      if (departed) return;
       if (
         joined.kind !== 'available' ||
         !['joined', 'refreshed'].includes(joined.snapshot.result?.outcome ?? '')
       ) {
-        setPresenceError(
-          'Presence could not join this Task. Reopen the Task to retry.',
-        );
+        setPresenceError('Presence could not join this Task. Try again.');
         return;
       }
       // Announcing publishes the otherwise private join in the room projection.
@@ -263,27 +268,32 @@ export function ProjectTaskRoomProvider({
             published.snapshot.result?.outcome ?? '',
           )
           ? undefined
-          : 'Presence could not be published. Reopen the Task to retry.',
+          : 'Presence could not be published. Try again.',
       );
     };
-    void join().catch(() => {
-      if (!departed)
-        setPresenceError(
-          'Presence could not connect. Reopen the Task to retry.',
-        );
-    });
+    const connect = () => {
+      presenceChain.current = presenceChain.current
+        .catch(() => {})
+        .then(join)
+        .catch(() => {
+          if (!departed)
+            setPresenceError('Presence could not connect. Try again.');
+        });
+    };
+    connect();
     const depart = () => {
       departed = true;
-      void command({ command: 'depart' }).catch(() => {});
+      presenceChain.current = presenceChain.current
+        .catch(() => {})
+        .then(async () => {
+          await command({ command: 'depart' });
+        })
+        .catch(() => {});
     };
     const restore = (event: PageTransitionEvent) => {
       if (event.persisted) {
         departed = false;
-        void join().catch(() =>
-          setPresenceError(
-            'Presence could not reconnect. Reopen the Task to retry.',
-          ),
-        );
+        connect();
       }
     };
     window.addEventListener('pageshow', restore);
@@ -293,7 +303,7 @@ export function ProjectTaskRoomProvider({
       window.removeEventListener('pagehide', depart);
       depart();
     };
-  }, [command, liveAvailable, taskId]);
+  }, [command, liveAvailable, taskId, presenceAttempt]);
   const subscribeDocument = useCallback(
     (listener: (document: AuthoritativeRoomDocument) => void) => {
       documentListeners.current.add(listener);
@@ -345,6 +355,7 @@ export function ProjectTaskRoomProvider({
       command,
       commandPending: mutation.isPending,
       presenceError,
+      retryPresence,
       subscribeDocument,
     });
     return rooms;
@@ -355,6 +366,7 @@ export function ProjectTaskRoomProvider({
     mutation.isPending,
     ownActorId,
     presenceError,
+    retryPresence,
     parent,
     stream,
     subscribeDocument,

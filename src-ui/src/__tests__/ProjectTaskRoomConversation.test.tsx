@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   running: false,
   failedAnswer: false,
   contextText: '',
+  requestRecords: [] as { sessionId: string; prompt: string }[],
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useTaskTurnReferencesQuery: () => ({ data: [] }),
@@ -70,6 +71,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   }),
   useTaskRoomAgentRequestsQuery: () => ({
     data: {
+      records: mocks.requestRecords,
       context: {
         version: 'station.task-room-context/v1',
         digest: 'a'.repeat(64),
@@ -143,6 +145,7 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
 }
 beforeEach(() => {
   mocks.records = [];
+  mocks.requestRecords = [];
   mocks.writable = true;
   mocks.stream = 'live';
   mocks.running = false;
@@ -370,7 +373,9 @@ test('a shortened brief is disclosed before sending a thread reply and can be de
   expect(
     within(thread).getByText(/brief exceeds 16,000 characters/),
   ).toBeTruthy();
-  fireEvent.click(within(thread).getByRole('checkbox', { name: 'Brief' }));
+  fireEvent.click(
+    within(thread).getByRole('checkbox', { name: 'Brief attached' }),
+  );
   expect(
     within(thread).queryByText(/brief exceeds 16,000 characters/),
   ).toBeNull();
@@ -393,4 +398,104 @@ test('Chat filters completed live-work facts while retaining actual conversation
   expect(within(history).getAllByRole('listitem')).toHaveLength(1);
   expect(within(history).getByText('Hello room')).toBeTruthy();
   expect(history.textContent).not.toContain('completed');
+});
+
+test('presence-only history shows the room empty state', () => {
+  mocks.records = [
+    { ...record(1), body: { kind: 'live-work-started', sessionId: 'viewer' } },
+    {
+      ...record(2),
+      body: {
+        kind: 'live-work-presence-ended',
+        sessionId: 'viewer',
+        reason: 'departed',
+      },
+    },
+  ];
+  mount();
+  expect(screen.getByText('Start the conversation')).toBeTruthy();
+});
+
+test('failed agent requests retain a quiet line and retry the original request in the same run', async () => {
+  mocks.requestRecords = [
+    { sessionId: 'failed-run', prompt: 'Check the settings' },
+  ];
+  mocks.records = [
+    {
+      ...record(1, true),
+      execution: undefined,
+      body: {
+        kind: 'live-work-finished',
+        sessionId: 'failed-run',
+        outcome: 'failed',
+      },
+    },
+  ];
+  mount();
+  expect(screen.getByText('Claude couldn’t finish')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open run' }));
+  expect(mocks.openConversation).toHaveBeenCalledWith('failed-run');
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() =>
+    expect(mocks.continue).toHaveBeenCalledWith(
+      'http://station',
+      'failed-run',
+      expect.objectContaining({ message: 'Check the settings' }),
+      expect.anything(),
+    ),
+  );
+});
+
+test('new messages follow only the message scroller and preserve a reader who scrolled up', () => {
+  mocks.records = [record(1)];
+  const view = mount();
+  const list = screen.getByRole('list', { name: 'Task room history' })
+    .parentElement!;
+  Object.defineProperties(list, {
+    scrollHeight: { configurable: true, value: 1000 },
+    clientHeight: { configurable: true, value: 200 },
+  });
+  list.scrollTop = 800;
+  fireEvent.scroll(list);
+  mocks.records = [record(1), record(2)];
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  expect(list.scrollTop).toBe(1000);
+  list.scrollTop = 100;
+  fireEvent.scroll(list);
+  mocks.records = [record(1), record(2), record(3)];
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  expect(list.scrollTop).toBe(100);
+  fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+  expect(list.scrollTop).toBe(1000);
+});
+
+test('thread Enter sends while Shift+Enter and IME keep the reply draft', async () => {
+  mocks.records = [record(1, true)];
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  const textbox = within(
+    screen.getByRole('region', { name: 'Agent thread' }),
+  ).getByRole('textbox');
+  fireEvent.change(textbox, { target: { value: 'Refine this answer' } });
+  fireEvent.keyDown(textbox, { key: 'Enter', shiftKey: true });
+  fireEvent.keyDown(textbox, { key: 'Enter', isComposing: true });
+  expect(mocks.continue).not.toHaveBeenCalled();
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() => expect(mocks.continue).toHaveBeenCalledOnce());
 });

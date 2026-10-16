@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react';
 import { useLayoutEffect } from 'react';
+import { Button } from '../components/Button';
 import {
   browserEpochMs,
   emitRoomPresenceCommitPerformanceMark,
@@ -16,17 +18,34 @@ export function RoomAvatar({
   name: string;
   agent?: boolean;
 }) {
+  const hash = [...name].reduce(
+    (value, char) => (value * 31 + char.charCodeAt(0)) >>> 0,
+    0,
+  );
+  const initials =
+    name.trim().split(/\s+/).length > 1
+      ? name
+          .trim()
+          .split(/\s+/)
+          .map((word) => word[0])
+          .slice(0, 2)
+          .join('')
+      : name.slice(0, 2);
   return (
     <span
       className={`task-room-avatar${agent ? ' task-room-avatar--agent' : ''}`}
+      style={
+        {
+          '--room-avatar-ink': [
+            'var(--k-text)',
+            'var(--k-brand)',
+            'var(--k-action)',
+          ][hash % 3],
+        } as CSSProperties
+      }
       aria-hidden="true"
     >
-      {name
-        .split(/\s+/)
-        .map((word) => word[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()}
+      {initials.toUpperCase()}
     </span>
   );
 }
@@ -92,7 +111,12 @@ export function ProjectTaskRoomPresence({
         ))}
       </ul>
       {!compact && room?.presenceError && (
-        <p role="alert">{room.presenceError}</p>
+        <p className="task-room-inline-status" role="alert">
+          {room.presenceError}{' '}
+          <Button variant="ghost" size="sm" onClick={room.retryPresence}>
+            Retry
+          </Button>
+        </p>
       )}
       {!compact && !room?.presenceError && !published?.length && (
         <p role="status">

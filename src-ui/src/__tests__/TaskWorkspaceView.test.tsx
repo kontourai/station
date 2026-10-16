@@ -273,6 +273,11 @@ function render(
   return view;
 }
 
+function openAnswerDetails() {
+  fireEvent.click(screen.getByRole('tab', { name: /^Results/ }));
+  fireEvent.click(screen.getByText('Answer details', { selector: 'summary' }));
+}
+
 function graph(overrides: Record<string, unknown> = {}) {
   return {
     task: {
@@ -659,9 +664,10 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
+    openAnswerDetails();
 
     expect(
-      within(screen.getByRole('tabpanel', { name: 'Details' })).getByText(
+      within(screen.getByRole('region', { name: 'Answer details' })).getByText(
         'The exact completed answer.',
       ),
     ).toBeTruthy();
@@ -774,6 +780,7 @@ describe('TaskWorkspaceView', () => {
       },
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
 
     expect(screen.getByText('Current standing')).toBeTruthy();
     expect(screen.getByText('claim-a')).toBeTruthy();
@@ -841,6 +848,7 @@ describe('TaskWorkspaceView', () => {
     ];
     createAnswerSupportMutation.mutateAsync.mockResolvedValue({});
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
 
     fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
     expect(
@@ -874,6 +882,7 @@ describe('TaskWorkspaceView', () => {
       new Error('bundle-secret 500'),
     );
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
     fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
@@ -910,6 +919,7 @@ describe('TaskWorkspaceView', () => {
       },
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
     fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
     expect(
       screen.getByRole('dialog').querySelector('.station-dialog__subtitle')
@@ -938,6 +948,7 @@ describe('TaskWorkspaceView', () => {
       },
     ];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
     fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
@@ -976,6 +987,7 @@ describe('TaskWorkspaceView', () => {
       },
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
     const trigger = screen.getByRole('button', { name: 'Associate support' });
     trigger.focus();
     fireEvent.click(trigger);
@@ -1024,6 +1036,7 @@ describe('TaskWorkspaceView', () => {
     replaceAnswerSupportMutation.mutateAsync.mockResolvedValue({});
     removeAnswerSupportMutation.mutateAsync.mockResolvedValue({});
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
 
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
@@ -1125,6 +1138,7 @@ describe('TaskWorkspaceView', () => {
         },
       ];
       render(<TaskWorkspaceView taskId="task-alpha" />);
+      openAnswerDetails();
       expect(screen.getByText(label)).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Associate support' }),
@@ -1161,15 +1175,18 @@ describe('TaskWorkspaceView', () => {
     ];
 
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
 
     expect(
-      within(screen.getByRole('tabpanel', { name: 'Details' })).getByText(
+      within(screen.getByRole('region', { name: 'Answer details' })).getByText(
         'The answer is still readable.',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Open Basis' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Open Whole Task Basis' }),
+      screen.getByRole('button', { name: 'Inspect evidence' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Inspect Task evidence' }),
     ).toBeTruthy();
     expect(
       screen.getByText(
@@ -1230,8 +1247,11 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
+    openAnswerDetails();
     expect(screen.queryByTestId('task-basis-pane')).toBeNull();
-    const open = await screen.findByRole('button', { name: 'Open Basis' });
+    const open = await screen.findByRole('button', {
+      name: 'Inspect evidence',
+    });
     await waitFor(() => expect(request).toHaveBeenCalled());
     await act(async () => {});
     fireEvent.click(open);
@@ -1249,8 +1269,9 @@ describe('TaskWorkspaceView', () => {
     ];
 
     render(<TaskWorkspaceView taskId="task-alpha" />);
+    openAnswerDetails();
 
-    const basis = screen.getByRole('region', { name: 'Kept answers' });
+    const basis = screen.getByRole('region', { name: 'Answer details' });
     expect(basis.textContent).toContain('An answer is unavailable');
     expect(basis.textContent).toContain(
       'A pinned answer cannot be reopened by this Station.',
@@ -1942,7 +1963,7 @@ describe('TaskWorkspaceView', () => {
     );
   });
 
-  test('renders pinned inputs directly after Kept answers with authored content and disclosed origin', () => {
+  test('keeps pinned inputs in Details with authored content and disclosed origin', () => {
     turnReferencesResult.data = [];
     userInputReferencesResult.data = [
       {
@@ -1960,11 +1981,13 @@ describe('TaskWorkspaceView', () => {
       },
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
-    const basis = screen.getByRole('region', { name: 'Kept answers' });
-    const inputs = screen.getByRole('region', { name: 'Pinned inputs' });
+    const details = screen.getByRole('tabpanel', { name: 'Details' });
+    const inputs = within(details).getByRole('region', {
+      name: 'Pinned inputs',
+    });
     expect(
-      basis.compareDocumentPosition(inputs) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      within(details).queryByRole('region', { name: 'Answer details' }),
+    ).toBeNull();
     expect(inputs.textContent).toContain(
       'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
     );
@@ -1977,7 +2000,7 @@ describe('TaskWorkspaceView', () => {
     expect(inputs.textContent).toContain('session-origin');
     expect(inputs.textContent).toContain('turn-origin');
     expect(inputs.textContent).toContain('event-origin');
-    expect(basis.contains(inputs)).toBe(false);
+    expect(details.contains(inputs)).toBe(true);
   });
 
   test('withholds unavailable pinned-input identity and cached detail', () => {

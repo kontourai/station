@@ -367,3 +367,18 @@ test('dispatch acknowledgement is a compact transient status that clears after a
     vi.useRealTimers();
   }
 });
+
+test('Enter sends the room message while Shift+Enter and IME retain the draft', async () => {
+  render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  fireEvent.change(textbox, { target: { value: 'Hello team' } });
+  fireEvent.keyDown(textbox, { key: 'Enter', shiftKey: true });
+  fireEvent.keyDown(textbox, { key: 'Enter', isComposing: true });
+  expect(mocks.message).not.toHaveBeenCalled();
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  await waitFor(() =>
+    expect(mocks.message).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Hello team' }),
+    ),
+  );
+});

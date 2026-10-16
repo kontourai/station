@@ -18,6 +18,7 @@ import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
+import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 import './TaskRoomComposer.css';
 
 export function TaskRoomComposer({
@@ -318,57 +319,15 @@ export function TaskRoomComposer({
   };
   return (
     <div className="task-room-composer">
-      {recipient ? (
-        <fieldset aria-label="Agent recipient">
-          Asking <strong>@{recipient.name}</strong>
-          <Button
-            size="sm"
-            disabled={locked}
-            aria-label={`Remove ${recipient.name}`}
-            onClick={() => {
-              briefSelection.current += 1;
-              setRecipient(undefined);
-            }}
-          >
-            Remove
-          </Button>
-        </fieldset>
-      ) : (
-        <Button
-          size="sm"
-          className="task-room-agent-action"
-          disabled={!writable || locked}
-          onClick={() => {
-            setDraftOwner(owner);
-            setMention({ start: draft.length, end: draft.length, query: '' });
-            setActive(0);
-            textarea.current?.focus();
-          }}
-        >
-          Ask an agent
-        </Button>
-      )}
-      <label className="task-room-brief-choice">
-        <input
-          type="checkbox"
-          checked={includeBrief}
-          disabled={locked}
-          onChange={(event) => setIncludeBrief(event.currentTarget.checked)}
-        />
-        Brief attached to agent requests
-      </label>
-      {recipient && brief?.text.includes('Brief shortened to fit') && (
-        <p role="status">
-          The brief exceeds 16,000 characters. A shortened version with a notice
-          will be attached.
-        </p>
-      )}
       <label className="task-room-message-label" htmlFor={`${id}-message`}>
         Message the Task
       </label>
-      <textarea
+      <TaskRoomMessageInput
+        onSend={() => {
+          if (!composing && !locked && writable && draft.trim()) void submit();
+        }}
         id={`${id}-message`}
-        placeholder="Message the Task… @ for agents and people, / for commands"
+        placeholder="Message the Task…"
         ref={textarea}
         value={draft}
         disabled={!writable || locked || !scope}
@@ -401,7 +360,7 @@ export function TaskRoomComposer({
           )
         }
         onKeyDown={(event) => {
-          if (!picker || event.nativeEvent.isComposing) return;
+          if (!picker || composing || event.nativeEvent.isComposing) return;
           if (event.key === 'Escape') {
             event.preventDefault();
             setMention(undefined);
@@ -418,15 +377,88 @@ export function TaskRoomComposer({
               ),
             );
           }
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             select(selected);
           }
         }}
       />
+      <div className="task-room-composer-actions">
+        {recipient ? (
+          <fieldset aria-label="Agent recipient">
+            Asking <strong>@{recipient.name}</strong>
+            <Button
+              size="sm"
+              disabled={locked}
+              aria-label={`Remove ${recipient.name}`}
+              onClick={() => {
+                briefSelection.current += 1;
+                setRecipient(undefined);
+              }}
+            >
+              Remove
+            </Button>
+          </fieldset>
+        ) : (
+          <Button
+            size="sm"
+            className="task-room-agent-action"
+            disabled={!writable || locked}
+            onClick={() => {
+              setDraftOwner(owner);
+              setMention({ start: draft.length, end: draft.length, query: '' });
+              setActive(0);
+              textarea.current?.focus();
+            }}
+          >
+            Ask an agent
+          </Button>
+        )}
+        <label className="task-room-brief-choice">
+          <input
+            type="checkbox"
+            aria-label="Brief attached to agent requests"
+            checked={includeBrief}
+            disabled={locked}
+            onChange={(event) => setIncludeBrief(event.currentTarget.checked)}
+          />
+          <span className="task-room-brief-long">
+            Brief attached to agent requests
+          </span>
+          <span className="task-room-brief-short">Brief attached</span>
+        </label>
+        <Button
+          className="task-room-send"
+          aria-label={
+            unconfirmed
+              ? 'Retry same agent request'
+              : recipient
+                ? `Ask ${recipient.name}`
+                : 'Send to task room'
+          }
+          pending={pending}
+          pendingLabel="Sending…"
+          disabled={
+            !writable ||
+            connectionChanged ||
+            !scope ||
+            !draft.trim() ||
+            (recipient && (!requests.data || requests.isError))
+          }
+          onClick={() => void submit()}
+        >
+          {unconfirmed ? 'Retry' : recipient ? `Ask ${recipient.name}` : 'Send'}
+        </Button>
+      </div>
+      {recipient && brief?.text.includes('Brief shortened to fit') && (
+        <p role="status">
+          The brief exceeds 16,000 characters. A shortened version with a notice
+          will be attached.
+        </p>
+      )}
       <p className="task-room-composer-help" id={`${id}-help`}>
-        Type @ to choose an agent. Send starts the request; ordinary messages go
-        to the team.
+        Enter to send, Shift+Enter for a new line. Type @ for agents and people,
+        / for commands.
       </p>
       {picker ? (
         <div id={`${id}-agents`} role="listbox" aria-label="Choose an agent">
@@ -483,27 +515,6 @@ export function TaskRoomComposer({
           ))}
         </div>
       ) : null}
-      <Button
-        className="task-room-send"
-        aria-label={
-          unconfirmed
-            ? 'Retry same agent request'
-            : recipient
-              ? `Ask ${recipient.name}`
-              : 'Send to task room'
-        }
-        pending={pending}
-        disabled={
-          !writable ||
-          connectionChanged ||
-          !scope ||
-          !draft.trim() ||
-          (recipient && (!requests.data || requests.isError))
-        }
-        onClick={() => void submit()}
-      >
-        {unconfirmed ? 'Retry' : 'Send'}
-      </Button>
       {notice ? (
         <p className="task-room-inline-status" role="status">
           {notice}
