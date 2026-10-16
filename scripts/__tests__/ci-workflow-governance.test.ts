@@ -425,7 +425,7 @@ describe('primary CI workflow governance', () => {
     expect(actionlintStepIndex).toBeGreaterThanOrEqual(0);
     expect(forkSmokeIndex).toBeGreaterThan(actionlintStepIndex ?? 0);
     const fastSteps = fastChecks?.steps as
-      | Array<{ name?: string; run?: string }>
+      | Array<{ name?: string; run?: string; env?: Record<string, unknown> }>
       | undefined;
     expect(
       (
@@ -442,11 +442,17 @@ describe('primary CI workflow governance', () => {
       repository: `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
       ref: `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`,
     });
+    // The required smoke's clean startup builds and gates its own UI. A
+    // standalone UI build repeats that cost without adding an assertion.
     expect(
-      fastSteps?.find(
-        (step) => step.name === 'Enforce candidate UI bundle budget',
-      )?.run,
-    ).toBe('npm run build:ui');
+      fastSteps?.filter((step) => step.run === 'npm run build:ui'),
+    ).toHaveLength(0);
+    expect(
+      fastSteps?.find((step) => step.run === 'npm run test:e2e:pr-smoke')?.env,
+    ).toMatchObject({
+      STATION_UI_BUNDLE_BUDGET: 'enforce',
+      VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE: '0',
+    });
     const fastActionlintIndex = fastSteps?.findIndex(
       (step) => step.name === 'Install pinned actionlint',
     );

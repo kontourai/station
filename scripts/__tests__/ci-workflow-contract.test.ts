@@ -2091,16 +2091,6 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
     expect(fastChecks).toContain('run: npm run ci:fast');
-    expect(fastChecks).toContain('name: Enforce candidate UI bundle budget');
-    expect(fastChecks).toContain('run: npm run build:ui');
-    expect(fastChecks.indexOf('run: npm run ci:fast')).toBeLessThan(
-      fastChecks.indexOf('name: Enforce candidate UI bundle budget'),
-    );
-    expect(
-      fastChecks.indexOf('name: Enforce candidate UI bundle budget'),
-    ).toBeLessThan(
-      fastChecks.indexOf('name: Upload bounded fast-feedback diagnostics'),
-    );
     // #1703: the bundle delta report is a separate job, off this critical
     // path; fast-checks must not grow a second install and build.
     expect(fastChecks).not.toContain('ui-bundle-delta-report');
