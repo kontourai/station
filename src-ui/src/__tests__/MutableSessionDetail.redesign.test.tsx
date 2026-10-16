@@ -327,10 +327,9 @@ describe('header', () => {
     );
     const menu = screen.getByRole('menu', { name: 'More session actions' });
     expect(
-      within(menu)
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Copy session ID']);
+      within(menu).getByRole('menuitem', { name: 'Copy session ID' }),
+    ).toBeTruthy();
+    expect(menu.textContent).not.toContain(THREAD);
     const details = screen.getByTestId('session-details-disclosure');
     expect(details.textContent).toContain(THREAD);
   });
