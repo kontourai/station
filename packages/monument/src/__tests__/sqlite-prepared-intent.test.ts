@@ -39,6 +39,120 @@ const cases = kernelConformanceCasesFor(['turnDedup', 'turnBoundary']).filter(
 );
 
 for (const via of ['execute', 'executeSync'] as const) {
+  for (const invocation of [
+    'pending',
+    'begun',
+    'untracked',
+    'future-tag',
+  ] as const) {
+    it(`${via}: complete prepared backlink with ${invocation} cannot be released and claimed as an ordinary key`, async () => {
+      const location = createSqliteKernelLocation();
+      let storage = openSqliteKernelStorage({ path: location.path });
+      const processes = createFakeProcessTable();
+      const owner = processes.spawn();
+      const successor = processes.spawn();
+      const context = { liveness: processes.liveness };
+      const run = async <C extends KernelCommand>(
+        command: C,
+      ): Promise<KernelResult<C>> =>
+        via === 'executeSync'
+          ? storage.executeSync(command, context)
+          : storage.execute(command, context);
+      try {
+        expect(
+          await run({
+            type: 'turnDedup.claim',
+            key: 'k',
+            owner,
+            tracking: 'tracked',
+            now: 1,
+          }),
+        ).toEqual({ kind: 'claimed', reclaimed: false });
+        expect(
+          await run({
+            type: 'turnBoundary.create',
+            boundaryId: 'b',
+            threadId: 't',
+            state: 'reserved',
+            purpose: 'turn',
+            owner,
+            now: '1',
+          }),
+        ).toEqual({ kind: 'applied' });
+        expect(
+          await run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            dedupOwnerId: owner.id,
+            intent,
+            now: '2',
+          }),
+        ).toEqual({ kind: 'applied' });
+        await storage.close();
+        const corrupt = new DatabaseSync(location.path);
+        try {
+          corrupt
+            .prepare(
+              "UPDATE monument_turn_dedup SET owner_json = json_set(owner_json, '$.invocation', ?) WHERE dedup_key = 'k'",
+            )
+            .run(invocation);
+        } finally {
+          corrupt.close();
+        }
+        processes.kill(owner);
+        storage = openSqliteKernelStorage({ path: location.path });
+        expect(
+          await run({
+            type: 'turnDedup.release',
+            key: 'k',
+            ownerId: owner.id,
+            now: 3,
+          }),
+        ).toEqual({ kind: 'stale' });
+        expect(
+          await run({
+            type: 'turnDedup.claim',
+            key: 'k',
+            owner: successor,
+            tracking: 'tracked',
+            now: 3,
+          }),
+        ).toEqual(
+          invocation === 'pending'
+            ? { kind: 'prepared', invocationId: 'i' }
+            : { kind: 'indeterminate' },
+        );
+        expect(
+          await run({
+            type: 'turnDedup.beginInvocation',
+            key: 'k',
+            ownerId: owner.id,
+            now: 3,
+          }),
+        ).toEqual({ kind: 'refused' });
+        expect(
+          await run({
+            type: 'turnDedup.beginInvocation',
+            key: 'k',
+            ownerId: successor.id,
+            now: 3,
+          }),
+        ).toEqual({ kind: 'refused' });
+        expect(await run({ type: 'turnDedup.read', key: 'k' })).toMatchObject({
+          kind: 'found',
+          record: { preparedInvocationId: 'i', preparedUpdatedAt: '2', owner },
+        });
+        expect(await run({ type: 'turnBoundary.list' })).toMatchObject({
+          kind: 'records',
+          records: [{ state: 'prepared', owner, intent }],
+        });
+      } finally {
+        await storage.close();
+        await location.dispose();
+      }
+    });
+  }
   for (const missing of [
     'preparedInvocationId',
     'preparedUpdatedAt',

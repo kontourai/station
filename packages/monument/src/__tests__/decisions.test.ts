@@ -15,6 +15,62 @@ import type { TurnDedupRecord } from '../records.js';
 import { createFakeProcessTable } from '../testing/index.js';
 
 describe('pure decisions', () => {
+  for (const invocation of [
+    'pending',
+    'begun',
+    'untracked',
+    undefined,
+  ] as const) {
+    it(`complete prepared links fence ordinary release/claim/begin with invocation ${invocation ?? 'unknown'}`, () => {
+      const processes = createFakeProcessTable();
+      const owner = processes.spawn();
+      processes.kill(owner);
+      const record: TurnDedupRecord = {
+        key: 'k',
+        value: null,
+        createdAt: 1,
+        owner,
+        invocation,
+        preparedInvocationId: 'i',
+        preparedUpdatedAt: '2',
+      };
+      expect(
+        decideTurnDedupRelease(record, {
+          type: 'turnDedup.release',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'stale' } });
+      expect(
+        decideTurnDedupClaim(
+          record,
+          {
+            type: 'turnDedup.claim',
+            key: 'k',
+            owner: processes.spawn(),
+            now: 3,
+            tracking: 'tracked',
+          },
+          processes.liveness,
+        ),
+      ).toEqual({
+        write: { kind: 'none' },
+        result:
+          invocation === 'pending'
+            ? { kind: 'prepared', invocationId: 'i' }
+            : { kind: 'indeterminate' },
+      });
+      expect(
+        decideTurnDedupBeginInvocation(record, {
+          type: 'turnDedup.beginInvocation',
+          key: 'k',
+          ownerId: owner.id,
+          now: 3,
+        }),
+      ).toEqual({ write: { kind: 'none' }, result: { kind: 'refused' } });
+    });
+  }
   for (const metadata of [
     { preparedUpdatedAt: '2' },
     { preparedInvocationId: 'i' },
