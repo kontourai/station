@@ -509,7 +509,9 @@ existing in source does not mean the published CLI can execute it locally.
 ### `src-ui/` — Web UI
 
 React/Vite UI consumes SDK/Connect plus Station-owned navigation, cache and
-Device settings. The UI may be served with an API proxy or packaged in a native
+account preferences and device settings. Account choices are partitioned by the
+verified person on the connected Station; hardware, grants and geometry remain
+device-local. The UI may be served with an API proxy or packaged in a native
 shell; that choice does not merge every HTTP, SSE and dedicated WebSocket
 transport. [Frontend patterns](patterns/frontend.md), [theming](guides/theming.md)
 and [responsive contracts](guides/responsive-ui.md) locate the shared owners.

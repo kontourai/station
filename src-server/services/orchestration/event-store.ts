@@ -342,6 +342,48 @@ class EventAppendTransactionLostError extends Error {
   }
 }
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
+
+// The polling projection and writer cleanup must classify exactly the same rows.
+const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND purpose != 'task-dispatch'
+            AND (? IS NULL OR thread_id = ?)
+            AND EXISTS (
+              SELECT 1 FROM orchestration_events AS event
+               WHERE event.thread_id = orchestration_turn_boundaries.thread_id
+                 AND (
+                   (
+                     (event.method = 'session.exited'
+                      OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                          AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
+                     AND (
+                       (orchestration_turn_boundaries.created_sequence IS NULL
+                        AND event.created_at >= orchestration_turn_boundaries.created_at)
+                       OR event.global_sequence > orchestration_turn_boundaries.created_sequence
+                     )
+                   )
+                   OR (
+                     orchestration_turn_boundaries.state = 'accepted'
+                     AND event.created_at >= orchestration_turn_boundaries.created_at
+                     AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
+                     AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
+                     -- station#2235: a recovery-synthesized abort
+                     -- (the recoveryTerminal marker field) is the recovery's
+                     -- own terminal fact for the dead turn, published mid-flow
+                     -- before its banner/FileMemory/explicit-close sequence
+                     -- completes. Retiring the row on it would delete the very
+                     -- record the next boot needs to finish that sequence
+                     -- after a mid-flow crash. Matched on the marker field,
+                     -- never on prose, same precedent as the code extraction
+                     -- one clause up.
+                     AND NOT (
+                       event.method = 'turn.aborted'
+                       AND COALESCE(
+                         json_extract(event.payload, '$.recoveryTerminal'),
+                         0
+                       ) = 1
+                     )
+                   )
+                 )
+            )`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
@@ -11351,6 +11393,8 @@ export class EventStore {
       coordinator: createSqliteSessionTurnBoundaryCoordinator({
         db: this.db,
         head: () => this.headGlobalSequence(),
+        retiredBoundaryIds: (threadId) =>
+          this.retiredSessionTurnBoundaryIds(threadId),
         reconcileTerminals: (threadId) =>
           this.reconcileSessionTurnTerminalsFromEvents(threadId),
         transactionLost: (cause) =>
@@ -11457,50 +11501,24 @@ export class EventStore {
    * crash or transient boundary-delete fault. Session terminals use the
    * creation fence; legacy rows and turn-id generation checks retain timestamps.
    */
+  private retiredSessionTurnBoundaryIds(threadId: string): readonly string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT boundary_id FROM orchestration_turn_boundaries
+        WHERE ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
+        )
+        .all(threadId, threadId, SESSION_START_INDETERMINATE_CODE) as Array<{
+        boundary_id: string;
+      }>
+    ).map((row) => row.boundary_id);
+  }
+
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE state != 'lifecycle' AND purpose != 'task-dispatch'
-            AND (? IS NULL OR thread_id = ?)
-            AND EXISTS (
-              SELECT 1 FROM orchestration_events AS event
-               WHERE event.thread_id = orchestration_turn_boundaries.thread_id
-                 AND (
-                   (
-                     (event.method = 'session.exited'
-                      OR (event.method = 'runtime.error' AND event.turn_id IS NULL
-                          AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
-                     AND (
-                       (orchestration_turn_boundaries.created_sequence IS NULL
-                        AND event.created_at >= orchestration_turn_boundaries.created_at)
-                       OR event.global_sequence > orchestration_turn_boundaries.created_sequence
-                     )
-                   )
-                   OR (
-                     orchestration_turn_boundaries.state = 'accepted'
-                     AND event.created_at >= orchestration_turn_boundaries.created_at
-                     AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
-                     AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
-                     -- station#2235: a recovery-synthesized abort
-                     -- (the recoveryTerminal marker field) is the recovery's
-                     -- own terminal fact for the dead turn, published mid-flow
-                     -- before its banner/FileMemory/explicit-close sequence
-                     -- completes. Retiring the row on it would delete the very
-                     -- record the next boot needs to finish that sequence
-                     -- after a mid-flow crash. Matched on the marker field,
-                     -- never on prose, same precedent as the code extraction
-                     -- one clause up.
-                     AND NOT (
-                       event.method = 'turn.aborted'
-                       AND COALESCE(
-                         json_extract(event.payload, '$.recoveryTerminal'),
-                         0
-                       ) = 1
-                     )
-                   )
-                 )
-            )`,
+          WHERE ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
       )
       .run(
         threadId ?? null,

@@ -4,7 +4,12 @@ import type { KernelStorageLocation } from './crash-point-store.js';
 
 /** A host supplies its durable head independently of the kernel commands. */
 export interface HostBoundaryConformanceHarness {
-  createLocation(facts: Required<KernelTerminalFacts>): Promise<
+  createLocation(
+    facts: Required<
+      Pick<KernelTerminalFacts, 'terminalSeen' | 'terminalSequence'>
+    > &
+      Pick<KernelTerminalFacts, 'retiredBoundaryIds'>,
+  ): Promise<
     KernelStorageLocation & {
       setCreationSequence(sequence: number): Promise<void>;
     }
@@ -187,6 +192,151 @@ hostBoundaryConformanceCases.push({
           { kind: threadId === 'other' ? 'ambiguous' : 'applied' },
         );
       }
+    } finally {
+      await storage?.close();
+      await location.dispose();
+    }
+  },
+});
+
+hostBoundaryConformanceCases.push({
+  name: 'host boundary projection: polling filters live facts while listing and recovery retain raw rows across reopen',
+  async run(harness: HostBoundaryConformanceHarness): Promise<void> {
+    let retired: readonly string[] = [];
+    const location = await harness.createLocation({
+      terminalSeen: () => false,
+      terminalSequence: () => undefined,
+      retiredBoundaryIds: (thread) => (thread === 'thread' ? retired : []),
+    });
+    let storage: KernelStorage | undefined;
+    try {
+      await location.setCreationSequence(0);
+      storage = await location.open();
+      const owner = {
+        id: 'owner',
+        pid: 123,
+        identityKind: 'unverified',
+      } as const;
+      const context = { liveness: () => 'unknown' as const };
+      for (const threadId of ['thread', 'other']) {
+        assert.deepEqual(
+          await storage.execute(
+            {
+              type: 'turnBoundary.create',
+              boundaryId: threadId,
+              threadId,
+              state: 'prepared',
+              purpose: 'turn',
+              owner,
+              now: '2030',
+            },
+            context,
+          ),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await storage.execute(
+            {
+              type: 'turnBoundary.transition',
+              boundaryId: threadId,
+              ownerId: owner.id,
+              from: ['prepared'],
+              to: 'invoking',
+              now: '2031',
+            },
+            context,
+          ),
+          { kind: 'applied' },
+        );
+      }
+      assert.deepEqual(
+        await storage.execute(
+          {
+            type: 'turnBoundary.hasPossibleEffect',
+            threadId: 'thread',
+          },
+          context,
+        ),
+        { kind: 'available', active: true },
+      );
+      retired = ['thread', 'other'];
+      assert.deepEqual(
+        await storage.execute(
+          {
+            type: 'turnBoundary.hasPossibleEffect',
+            threadId: 'thread',
+          },
+          context,
+        ),
+        { kind: 'available', active: false },
+      );
+      assert.deepEqual(
+        await storage.execute(
+          {
+            type: 'turnBoundary.hasPossibleEffect',
+            threadId: 'other',
+          },
+          context,
+        ),
+        { kind: 'available', active: true },
+      );
+      const listed = await storage.execute(
+        { type: 'turnBoundary.list' },
+        context,
+      );
+      assert.equal(listed.kind, 'records');
+      if (listed.kind !== 'records') throw new Error('Expected raw records');
+      assert.deepEqual(listed.records.map((row) => row.boundaryId).sort(), [
+        'other',
+        'thread',
+      ]);
+      const recovered = await storage.execute(
+        {
+          type: 'turnBoundary.reconcile',
+          now: '2032',
+          observed: listed.records.map((row) => ({
+            boundaryId: row.boundaryId,
+            owner: row.owner,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            verdict: 'dead' as const,
+          })),
+        },
+        context,
+      );
+      assert.equal(recovered.kind, 'reconciled');
+      if (recovered.kind !== 'reconciled')
+        throw new Error('Expected raw recovery');
+      assert.deepEqual(
+        recovered.interrupted.map((row) => [row.boundaryId, row.state]).sort(),
+        [
+          ['other', 'indeterminate'],
+          ['thread', 'indeterminate'],
+        ],
+      );
+      await storage.close();
+      storage = await location.open();
+      assert.deepEqual(
+        await storage.execute(
+          {
+            type: 'turnBoundary.hasPossibleEffect',
+            threadId: 'thread',
+          },
+          context,
+        ),
+        { kind: 'available', active: false },
+      );
+      retired = [];
+      assert.deepEqual(
+        await storage.execute(
+          {
+            type: 'turnBoundary.hasPossibleEffect',
+            threadId: 'thread',
+          },
+          context,
+        ),
+        { kind: 'available', active: true },
+      );
     } finally {
       await storage?.close();
       await location.dispose();

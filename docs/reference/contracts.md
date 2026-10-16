@@ -203,6 +203,15 @@ Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
 
+## Account preferences
+
+`@kontourai/station-contracts/account-preferences` declares portable preference
+keys, the partial account document and field-patch/reset semantics. The scope is
+one verified person within one Station and trusted tenant boundary. Account
+preferences contain no credentials, Device grants or Project/Station policy.
+Interactive approval defaults are per engine; their presence does not authorize
+execution. Device-only keys are refused by the personal preferences route.
+
 ## Native relay and account composition
 
 The [native relay link contract](../../packages/contracts/src/native-relay-link.ts)
