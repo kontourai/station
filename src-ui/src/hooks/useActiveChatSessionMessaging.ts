@@ -2,7 +2,6 @@ import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/exec
 import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
-  TurnDeliveryOutcome,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
@@ -28,6 +27,7 @@ import {
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
+import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -66,6 +66,7 @@ import {
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
+import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
 import { isReplayThread } from './orchestration/replay/replay-registry';
@@ -306,20 +307,17 @@ function stationAnswered(error: unknown): boolean {
   );
 }
 
-/** Newest-first bound on a chat's remembered delivery answers. */
-const DELIVERY_CHECKS_MAX = 32;
+/** Bound on the keys a chat remembers sending in this session. */
+const LOCAL_SEND_KEYS_MAX = 32;
 
-function withDeliveryCheck(
-  chat: ChatUIState | undefined,
+function withLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
   clientTurnId: string,
-  outcome: TurnDeliveryOutcome,
-): Pick<ChatUIState, 'deliveryChecks'> {
-  const kept = Object.entries(chat?.deliveryChecks ?? {})
-    .filter(([key]) => key !== clientTurnId)
-    .slice(-(DELIVERY_CHECKS_MAX - 1));
-  return {
-    deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
-  };
+): ChatUIState['localSendKeys'] {
+  return [
+    ...(keys ?? []).filter((key) => key !== clientTurnId),
+    clientTurnId,
+  ].slice(-LOCAL_SEND_KEYS_MAX);
 }
 
 function withoutDeliveryCheck(
@@ -355,6 +353,7 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
+  const accountPreferences = useAccountPreferences();
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
@@ -405,6 +404,7 @@ export function useSendMessage(
         onDurable?: () => void;
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
+        skipPersonalApprovalDefault?: boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -421,7 +421,57 @@ export function useSendMessage(
       if (isReplayThread(sessionId))
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
-      const currentState = allChats[sessionId];
+      let currentState = allChats[sessionId];
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
+        (!experienceNamespace || experienceAuthorityStatus !== 'verified')
+      ) {
+        if (options?.dispatch)
+          return {
+            kind: 'deferred',
+            reason: 'Waiting for account verification.',
+          } satisfies OutboundDispatchTransportResult;
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: 'Connect to this chat’s account before sending.',
+        });
+        return false;
+      }
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
+        currentState.queuedApprovalDefaultNamespace !== experienceNamespace
+      ) {
+        currentState = {
+          ...currentState,
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        };
+        updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        });
+      }
+
+      const firstInteractiveSend =
+        !conversationId &&
+        !currentState?.conversationId &&
+        !currentState?.orchestrationSessionStarted &&
+        !options?.dispatch;
+      if (
+        firstInteractiveSend &&
+        (accountPreferences.status === 'loading' ||
+          accountPreferences.status === 'error' ||
+          accountPreferences.saving)
+      ) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content:
+            accountPreferences.status === 'error'
+              ? 'Account preferences could not be loaded. Reload saved preferences in Settings before starting this chat.'
+              : 'Wait for account preferences to finish loading or saving before starting this chat.',
+        });
+        return false;
+      }
       const submittedDraft = content;
       const experienceDraft = options?.dispatch
         ? undefined
@@ -499,9 +549,13 @@ export function useSendMessage(
           return false;
         }
         if (options?.skipInMemoryQueueOnBusy) {
+          // A turn still running is a temporary gate, not a refusal: the
+          // message waits without spending one of its attempts, so a queue
+          // replayed during a long turn never wears out to failed.
           return options?.dispatch
             ? ({
-                kind: 'not-invoked',
+                kind: 'deferred',
+                reason: 'A turn is still running in this conversation.',
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
@@ -690,6 +744,55 @@ export function useSendMessage(
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one. It is also the bubble's id, so the
       // turn's `turn.started` (which carries it) matches this message.
+      if (
+        currentState &&
+        firstInteractiveSend &&
+        !options?.skipPersonalApprovalDefault &&
+        currentState.queuedApprovalMode === undefined &&
+        (options?.executionSnapshot
+          ? options.executionSnapshot.executionOnCurrentStation
+          : currentState?.executionOnCurrentStation) !== false
+      ) {
+        if (
+          accountPreferences.requestScope &&
+          !accountPreferences.requestScope.isCurrent()
+        )
+          return false;
+        const catalog = queryClient.getQueryData<ObservedAgentCatalog>([
+          'agents',
+        ]);
+        const selectedAgent =
+          (options?.executionSnapshot
+            ? options.executionSnapshot.executionAgentId
+            : currentState?.executionAgentId) ?? agentSlug;
+        const engine = observedEngine(catalog, selectedAgent);
+        const engineId =
+          engine?.kind === 'connection' ? engine.connectionId : undefined;
+        const agentDefault = catalog?.agents?.find(
+          (agent) => agent.slug === selectedAgent,
+        )?.execution?.approvalMode;
+        const personalDefault =
+          (!agentDefault || agentDefault === 'connection-default') &&
+          (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
+            ? engineId === 'codex'
+              ? accountPreferences.data?.values.interactiveApprovalModes?.codex
+              : engineId === 'claude'
+                ? accountPreferences.data?.values.interactiveApprovalModes
+                    ?.claude
+                : accountPreferences.data?.values.interactiveApprovalModes?.muse
+            : undefined;
+        if (personalDefault) {
+          currentState = {
+            ...currentState,
+            queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          };
+          updateChat(sessionId, {
+            queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          });
+        }
+      }
       const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
         state: currentState,
@@ -721,6 +824,20 @@ export function useSendMessage(
         pendingClientTurnId: resolvedTurnId,
         attachments: [],
         attachmentStages: [],
+        // A new attempt for this key: a lookup answer about an earlier one
+        // (a `received` whose refusal was lost in transit, before the
+        // lookup-driven resend) describes nothing in flight now.
+        deliveryChecks: withoutDeliveryCheck(
+          activeChatsStore.getSnapshot()[sessionId]?.deliveryChecks,
+          resolvedTurnId,
+        ),
+        // This window's own message: without any later fact it reads "Not
+        // confirmed", never delivered.
+        localSendKeys: withLocalSendKey(
+          activeChatsStore.getSnapshot()[sessionId]?.localSendKeys,
+          resolvedTurnId,
+        ),
+        durableClientTurnId: undefined,
       });
 
       // Durable BEFORE the request: from here until Station answers, the
@@ -839,6 +956,7 @@ export function useSendMessage(
           live = undefined;
         }
         if (live) {
+          updateChat(sessionId, { durableClientTurnId: resolvedTurnId });
           try {
             options?.onDurable?.();
           } catch {
@@ -939,7 +1057,7 @@ export function useSendMessage(
             experienceDraft?.attachmentAssignments,
           requestScope: sourceStart
             ? options?.experienceRequestScope
-            : undefined,
+            : accountPreferences.requestScope,
         });
 
         stopDeliveryWatch?.();
@@ -1032,6 +1150,31 @@ export function useSendMessage(
           : true;
       } catch (error) {
         stopDeliveryWatch?.();
+        const deliveryWasObserved = () => {
+          const observedChat = activeChatsStore.getSnapshot()[sessionId];
+          return (
+            !options?.dispatch &&
+            observedChat?.deliveryChecks?.[resolvedTurnId] === 'started'
+          );
+        };
+        const settleObservedDelivery = async () => {
+          await live?.accepted();
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (latest?.abortController === abortController)
+            updateChat(sessionId, {
+              abortController: undefined,
+              ...(latest.pendingClientTurnId === resolvedTurnId
+                ? {
+                    pendingClientTurnId: undefined,
+                    sendAwaitingTurnStart: undefined,
+                  }
+                : {}),
+            });
+          options?.onAdmission?.('accepted');
+          return true;
+        };
+        // A witnessed start outranks a later failure of this HTTP response.
+        if (deliveryWasObserved()) return settleObservedDelivery();
         // The outbox row follows what the answer proves. Any response is
         // Station's own answer: a refusal started nothing (the composer gets
         // the text back below), and a may-have-started answer keeps the row
@@ -1171,6 +1314,7 @@ export function useSendMessage(
                               queueOnBusy: options?.queueOnBusy,
                               onAdmission,
                               claimRetry: options?.claimRetry,
+                              skipPersonalApprovalDefault: true,
                             },
                           ),
                         options?.onAdmission,
@@ -1210,15 +1354,14 @@ export function useSendMessage(
           };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
-        // archive#1224 (offline): a genuinely offline send (the
-        // browser already knows it has no network) or a network-level fetch
-        // failure (the request never reached the server at all — a real
-        // HTTP error response, which DOES reach the server, is deliberately
-        // excluded; see `isNetworkLevelSendError`'s doc comment) is queued
-        // for automatic replay instead of surfacing as a dead-end error.
-        // The optimistic user message (already rendered above) is kept
-        // as-is — never rolled back — so it visibly sits in the
-        // conversation with a pending affordance until it sends for real.
+        // archive#1224 (offline), as #3652 refined it: a send that produced
+        // no answer from Station (a thrown fetch, a proxy's or tunnel's
+        // response, or a browser that reports no network) is not a refusal.
+        // `classifyUndeliverableSend` names which; none proves the request
+        // never arrived. A live send's row is released for Station's
+        // delivery lookup (sent once only if Station never received it); any
+        // other send is queued under its key. The optimistic bubble is kept,
+        // never rolled back, and reads as waiting for Station until it goes.
         // A queue chunk outage is itself an unavailable durable path. Keep
         // the foreground error total rather than stranding the composer in
         // `sending` because its error classifier could not load.
@@ -1230,7 +1373,9 @@ export function useSendMessage(
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
-            // A live send's own row already went back to pending above.
+            // A live send already has its outbox row, settled by the outcome
+            // branch above (with no answer, `live.unanswered()` released it
+            // for Station's delivery lookup), so it is not queued again.
             if (!live)
               await outboundDispatch.enqueue(
                 {
@@ -1309,6 +1454,8 @@ export function useSendMessage(
             });
             return false;
           }
+          // A turn can arrive while the durable claim above is released.
+          if (deliveryWasObserved()) return settleObservedDelivery();
           clearStreamingMessage(sessionId);
           updateChat(sessionId, {
             status: 'queued',
@@ -1334,13 +1481,23 @@ export function useSendMessage(
                 ? 'Your browser reports no network — queued to retry automatically'
                 : "Send wasn't confirmed — queued to retry automatically",
             action: {
-              label: 'Discard',
+              // No answer came back, so the message may already have
+              // reached Station: Discard asks first, with the risk stated
+              // (`UnconfirmedDiscardConfirm`).
+              label: 'Discard…',
+              confirm: 'unconfirmed-discard',
               handler: async () => {
                 try {
-                  const { outboundDispatch } = await import(
-                    '../lib/outboundQueue'
+                  const { discardMessage } = await import(
+                    '../lib/messageDeliveryActions'
                   );
-                  await outboundDispatch.discard(resolvedTurnId);
+                  // A live send's row awaits the lookup and is only ever
+                  // withdrawn explicitly; a queued one is a plain discard.
+                  await discardMessage(
+                    sessionId,
+                    resolvedTurnId,
+                    live ? 'unconfirmed' : 'not-sent',
+                  );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {
                   updateChat(sessionId, {
@@ -1599,6 +1756,10 @@ export function useSendMessage(
     },
     [
       addEphemeralMessage,
+      accountPreferences.data,
+      accountPreferences.requestScope,
+      accountPreferences.status,
+      accountPreferences.saving,
       experienceNamespace,
       experienceAuthorityStatus,
       agentConnections,

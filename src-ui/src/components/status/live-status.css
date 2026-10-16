@@ -221,6 +221,15 @@ button.chat-status-pill {
   text-align: right;
 }
 
+/* The verb a resync pill performs, so the remedy is visible, not only named
+   to assistive technology. */
+.chat-status-pill__action {
+  flex-shrink: 0;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .chat-status-pill__count {
   display: inline-grid;
   min-width: 20px;

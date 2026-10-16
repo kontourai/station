@@ -2,10 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { replaceRuntimeTemplateVariables } from '../../../runtime/agents/runtime-template-variables.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   configOps: { add: vi.fn() },
@@ -944,6 +946,147 @@ describe('Config Routes', () => {
 // (the on-load purge in `loadAppConfigFile`, the null-clearing merge in
 // `mergeAppConfigUpdate`) — a mock loader can't exercise either.
 describe('Config Routes (real ConfigLoader + filesystem)', () => {
+  test('the internal Station principal cannot change telemetry destinations even with manage scope', async () => {
+    const loader = createMockConfigLoader();
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'internal-test',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+      setGrantedPairingScope(
+        c as never,
+        'orchestration:read orchestration:operate access:manage',
+      );
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as never, mockLogger));
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        otelTelemetryEndpoint: 'https://collector.test',
+        region: 'eu-west-1',
+      }),
+    });
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  test('operator saves distinct product and collector destinations/references and a fresh loader reads only metadata', async () => {
+    const home = makeTempDir('station-telemetry-config-route-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    await loader.loadAppConfig();
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    const saved = {
+      productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
+      productTelemetryKeyRef: 'product-source',
+      otelTelemetryEndpoint: 'https://collector.test',
+      otelTelemetryKeyRef: 'otel-source',
+    };
+    const request = (payload: unknown) =>
+      app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    try {
+      const response = await request(saved);
+      expect(response.status).toBe(200);
+      expect(await json(response)).toMatchObject({
+        success: true,
+        data: saved,
+      });
+      const persisted = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+      expect(JSON.parse(persisted)).toMatchObject(saved);
+      const restarted = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      try {
+        expect(await restarted.loadAppConfig()).toMatchObject(saved);
+      } finally {
+        restarted.dispose();
+      }
+      for (const address of [
+        'https://user:private-key@receiver.test/events',
+        'https://receiver.test/events?key=private-key',
+        'https://receiver.test/events#private-key',
+        'file:///private/key',
+      ]) {
+        const rejected = await request({
+          productTelemetryEndpoint: address,
+          defaultMaxTurns: 7,
+        });
+        expect(rejected.status).toBe(400);
+        expect(await rejected.text()).not.toContain('private-key');
+        expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+          persisted,
+        );
+      }
+      const cleared = await request({
+        productTelemetryEndpoint: null,
+        productTelemetryKeyRef: null,
+        otelTelemetryEndpoint: null,
+        otelTelemetryKeyRef: null,
+      });
+      expect(cleared.status).toBe(200);
+      const after = JSON.parse(
+        readFileSync(join(home, 'config', 'app.json'), 'utf8'),
+      );
+      for (const key of Object.keys(saved))
+        expect(after).not.toHaveProperty(key);
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test.each([
+    undefined,
+    'orchestration:read orchestration:operate',
+    'orchestration:read orchestration:operate access:manage',
+  ])(
+    'telemetry settings require authenticated operator or explicit manage authority (%s)',
+    async (scope) => {
+      const loader = createMockConfigLoader();
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        if (scope !== undefined) setGrantedPairingScope(c as never, scope);
+        await next();
+      });
+      outer.route('/', createConfigRoutes(loader as never, mockLogger));
+      const response = await outer.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
+          productTelemetryKeyRef: 'product-source',
+          region: 'eu-west-1',
+        }),
+      });
+      if (scope?.includes('access:manage')) {
+        expect(response.status).toBe(200);
+        expect(loader.updateAppConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ productTelemetryKeyRef: 'product-source' }),
+        );
+      } else {
+        expect(response.status).toBe(403);
+        expect(loader.updateAppConfig).not.toHaveBeenCalled();
+        const unrelated = await outer.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ region: 'eu-west-1' }),
+        });
+        expect(unrelated.status).toBe(200);
+      }
+    },
+  );
+
   test('date formats are rejected before persistence, while valid JSON options reach runtime instructions', async () => {
     const home = makeTempDir('station-template-format-route-');
     const loader = new ConfigLoader({

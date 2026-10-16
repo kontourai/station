@@ -194,7 +194,12 @@ export type ChatMessage = {
 };
 
 export type EphemeralMessage = ChatMessage & {
-  action?: { label: string; handler: () => void };
+  action?: {
+    label: string;
+    handler: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: 'unconfirmed-discard';
+  };
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
@@ -351,6 +356,16 @@ export type ChatUIState = {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /**
+     * Pending, but an earlier row of the same chat was not sent: the outbox
+     * keeps a chat's order, so this one waits until that one is retried or
+     * discarded.
+     */
+    behindUnsent?: true;
+    /** No answer came back; Station's delivery lookup decides it. */
+    awaitingLookup?: true;
+    /** Claimed by a renderer still running: its send is under way there. */
+    sendUnderWay?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;
@@ -401,6 +416,20 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * Keys this window sent in this session whose turn Station has not started
+   * (as far as this window knows), newest last and bounded. A bubble whose key
+   * is here but which has no other delivery fact reads "Not confirmed" rather
+   * than delivered. Session-scoped and not persisted, like `deliveryChecks`.
+   */
+  localSendKeys?: readonly string[];
+  /**
+   * The pending send's key when its outbox row was written before the
+   * request (the send survives the app closing). Absent when the send went
+   * without one: attachments, a visual skill, or storage that failed or was
+   * too slow.
+   */
+  durableClientTurnId?: string;
   /**
    * What Station said about this chat's own sends, by send key: the delivery
    * lookup's answer while a request is slow, and `started` once Station
@@ -513,6 +542,7 @@ export type ChatUIState = {
    * pick survives a reload and rides the next send.
    */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /**
    * #2436: the latest server-recorded posture decision this client has
    * folded, and its server global sequence. Persisted as a cache of the
@@ -762,6 +792,7 @@ export type PersistedActiveChat = {
   requestedProviderOptions?: Record<string, unknown>;
   /** See ChatUIState.queuedApprovalMode (#2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
   /**
@@ -1062,7 +1093,18 @@ export function hydrateActiveChats(
         const queued = isApprovalMode(session.queuedApprovalMode)
           ? session.queuedApprovalMode
           : migratedApprovalPick(session);
-        return queued ? { queuedApprovalMode: queued } : {};
+        return queued
+          ? {
+              queuedApprovalMode: queued,
+              ...(typeof session.queuedApprovalDefaultNamespace === 'string' &&
+              session.queuedApprovalDefaultNamespace.length <= 2048
+                ? {
+                    queuedApprovalDefaultNamespace:
+                      session.queuedApprovalDefaultNamespace,
+                  }
+                : {}),
+            }
+          : {};
       })(),
       ...(isApprovalMode(session.approvalPosture)
         ? {
@@ -1252,7 +1294,15 @@ export function serializeActiveChats(
       // folded posture is a cache of the server's record, ordered by its
       // sequence, so a newer recorded event replaces it.
       ...(chat.queuedApprovalMode
-        ? { queuedApprovalMode: chat.queuedApprovalMode }
+        ? {
+            queuedApprovalMode: chat.queuedApprovalMode,
+            ...(chat.queuedApprovalDefaultNamespace
+              ? {
+                  queuedApprovalDefaultNamespace:
+                    chat.queuedApprovalDefaultNamespace,
+                }
+              : {}),
+          }
         : {}),
       ...(chat.approvalPosture
         ? {
@@ -1360,10 +1410,15 @@ export function mergeChatUpdates(
    */
   droppedQueuedMessages: string[];
 } {
-  const nextUpdates =
+  let nextUpdates =
     'input' in updates && !('historyIndex' in updates)
       ? { ...updates, historyIndex: -1 }
       : updates;
+  if (
+    'queuedApprovalMode' in nextUpdates &&
+    !('queuedApprovalDefaultNamespace' in nextUpdates)
+  )
+    nextUpdates = { ...nextUpdates, queuedApprovalDefaultNamespace: undefined };
   const bounded =
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)
@@ -1672,7 +1727,12 @@ export function createEphemeralMessageState(
     role: ChatRole;
     content: string;
     attachments?: any[];
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
     sendFailure?: boolean;
     queuedRetry?: boolean;
     childWorkKey?: string;

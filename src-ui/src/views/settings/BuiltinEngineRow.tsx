@@ -46,13 +46,13 @@ import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { LazyBoundary } from '../../components/LazyBoundary';
-import { PageRow } from '../../components/PageRow';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import {
   builtinEngineDisplay,
   isStationChatReady,
 } from '../../utils/engineBinding';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 
 const loadEnginePicker = () =>
   import('../../components/EnginePicker').then((m) => ({

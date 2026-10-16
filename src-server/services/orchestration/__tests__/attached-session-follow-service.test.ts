@@ -2129,61 +2129,71 @@ describe('AttachedSessionFollowService', () => {
     );
   });
 
-  test('does not record affinity when the first affinity-bound read of a legacy attachment fails', async () => {
-    const legacySource: AttachedSessionSource = {
-      provider: 'claude',
-      kind: 'claude-transcript',
-      discover: vi
-        .fn()
-        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
-      read: vi.fn().mockResolvedValue({
-        outcome: 'ok',
-        events: [],
-        cursor: 40,
-      }),
-    };
-    const options = {
-      eventStore: store,
-      eventBus,
-      listProjects: () => [
-        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
-      ],
-    };
-    await new AttachedSessionFollowService({
-      ...options,
-      sources: [legacySource],
-    }).pollNow();
+  test.each([
+    { label: 'without initialCursor', anchor: undefined },
+    {
+      label: 'with initialCursor',
+      anchor: { offset: 0, usageAggregationVersion: 1 },
+    },
+  ])(
+    'does not record affinity when the first affinity-bound read of a legacy attachment fails ($label)',
+    async ({ anchor }) => {
+      const legacySource: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+        read: vi.fn().mockResolvedValue({
+          outcome: 'ok',
+          events: [],
+          cursor: 40,
+        }),
+      };
+      const options = {
+        eventStore: store,
+        eventBus,
+        listProjects: () => [
+          { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+        ],
+      };
+      await new AttachedSessionFollowService({
+        ...options,
+        sources: [legacySource],
+      }).pollNow();
 
-    const descriptor = {
-      ...session,
-      affinity: { kind: 'claude-config-home', ref: 'f'.repeat(64) },
-    };
-    const failedSource: AttachedSessionSource = {
-      provider: 'claude',
-      kind: 'claude-transcript',
-      discover: vi
-        .fn()
-        .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
-      read: vi.fn().mockRejectedValue(new Error('read failed')),
-    };
-    await new AttachedSessionFollowService({
-      ...options,
-      sources: [failedSource],
-    }).pollNow();
+      const descriptor = {
+        ...session,
+        affinity: { kind: 'claude-config-home', ref: 'f'.repeat(64) },
+      };
+      const failedSource: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', sessions: [descriptor] }),
+        ...(anchor ? { initialCursor: vi.fn().mockResolvedValue(anchor) } : {}),
+        read: vi.fn().mockRejectedValue(new Error('read failed')),
+      };
+      await new AttachedSessionFollowService({
+        ...options,
+        sources: [failedSource],
+      }).pollNow();
 
-    expect(failedSource.read).toHaveBeenCalledWith(descriptor, undefined);
-    expect(
-      store.readSessions().find((item) => item.threadId === session.threadId),
-    ).toEqual(
-      expect.objectContaining({
-        attachedSource: {
-          kind: 'claude-transcript',
-          externalSessionId: session.sessionId,
-        },
-        resumeCursor: expect.objectContaining({ cursor: 40 }),
-      }),
-    );
-  });
+      expect(failedSource.read).toHaveBeenCalledWith(descriptor, anchor);
+      expect(
+        store.readSessions().find((item) => item.threadId === session.threadId),
+      ).toEqual(
+        expect.objectContaining({
+          attachedSource: {
+            kind: 'claude-transcript',
+            externalSessionId: session.sessionId,
+          },
+          resumeCursor: expect.objectContaining({ cursor: 40 }),
+        }),
+      );
+    },
+  );
 
   test('replays an interrupted import page after restart before advancing its cursor', async () => {
     const source: AttachedSessionSource = {

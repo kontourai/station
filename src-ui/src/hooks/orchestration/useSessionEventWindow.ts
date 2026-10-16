@@ -69,7 +69,7 @@ interface SessionEventWindowReader {
   error?: Error;
 }
 
-async function readConversationWindow(
+async function fetchConversationWindow(
   conversationId: string,
   apiBase: string,
   input: { cursor?: string; turnLimit?: number },
@@ -105,6 +105,49 @@ async function readConversationWindow(
       handoffs: [],
       contextBoundaries: [],
     };
+  }
+}
+
+// JSON history reads expose no progress callback. Allow slow remote reads well
+// beyond 30 seconds, but never hold a recovery control indefinitely.
+const HISTORY_READ_DEADLINE_MS = 120_000;
+
+async function readConversationWindow(
+  ...args: Parameters<typeof fetchConversationWindow>
+) {
+  const parentSignal = args[3].signal;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel: () => void = () => {};
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    cancel = () => {
+      controller.abort(parentSignal.reason);
+      reject(parentSignal.reason);
+    };
+    parentSignal.addEventListener('abort', cancel, { once: true });
+    timer = setTimeout(() => {
+      const error = new Error(
+        'Session history read timed out after 120 seconds. Try Resync again.',
+      );
+      controller.abort(error);
+      reject(error);
+    }, HISTORY_READ_DEADLINE_MS);
+  });
+  try {
+    parentSignal.throwIfAborted();
+    return await Promise.race([
+      fetchConversationWindow(
+        args[0],
+        args[1],
+        args[2],
+        { signal: controller.signal },
+        args[4],
+      ),
+      cancelled,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    parentSignal.removeEventListener('abort', cancel);
   }
 }
 
@@ -164,11 +207,15 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
-    setError(undefined);
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
+      if (
+        requestGeneration !== generation.current ||
+        requestSerial !== requestSerialRef.current ||
+        controller.signal.aborted
+      )
+        return;
       if (capability !== true) {
-        if (requestGeneration !== generation.current) return;
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(
@@ -227,6 +274,7 @@ export function useSessionEventWindow(
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
+      setError(undefined);
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (

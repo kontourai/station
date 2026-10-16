@@ -228,9 +228,11 @@ function sameDeviceValue(a: unknown, b: unknown): boolean {
 
 export function buildDeviceResetPlan(
   settings: Partial<DeviceSettings> | undefined,
+  excludedKeys: readonly (keyof DeviceSettings)[] = [],
 ): DeviceResetPlan {
   const keys = (PREFERENCE_DEVICE_KEYS as readonly (keyof DeviceSettings)[])
     .filter((key) => DEVICE_REGISTRY_BY_KEY.has(key))
+    .filter((key) => !excludedKeys.includes(key))
     .filter((key) => {
       const value = settings?.[key];
       if (value === undefined) return false;

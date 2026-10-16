@@ -1,0 +1,59 @@
+/* One look for the unconfirmed-message discard, in a bubble and in the
+   outbox list: sentence-case risk, then two buttons, the danger one last. */
+.unconfirmed-discard {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-primary);
+  font-size: var(--k-text-xs);
+  font-weight: normal;
+  letter-spacing: normal;
+  line-height: 1.4;
+  text-transform: none;
+}
+.unconfirmed-discard__risk {
+  margin: 0;
+}
+.unconfirmed-discard__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+}
+.unconfirmed-discard__button {
+  padding: 2px var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.unconfirmed-discard__button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+.unconfirmed-discard__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.unconfirmed-discard__button--danger {
+  border-color: var(--k-negative);
+  color: var(--error-text, var(--k-negative));
+}
+/* A 44px hit area always, without a page-local media query (as ActionRow):
+   the button keeps its drawn size and a finger gets the full target. A
+   phone bubble also draws them at 44px (`.message-row--compact` in chat.css). */
+.unconfirmed-discard__button {
+  position: relative;
+}
+.unconfirmed-discard__button::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}

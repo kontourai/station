@@ -64,6 +64,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import {
   _resetOutboundQueueStorage,
@@ -162,6 +163,42 @@ describe('useSendMessage: durable before the request', () => {
     expect(
       messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble!),
     ).toBe('delivered');
+  });
+
+  it("no answer: the notice's Discard asks first, then withdraws the row awaiting Station's lookup", async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'no answer came back');
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    const notice = activeChatsStore
+      .getSnapshot()
+      [chat]?.ephemeralMessages?.find(
+        (message) => message.action?.label === 'Discard…',
+      );
+    expect(notice?.content).toContain(
+      "Send wasn't confirmed — queued to retry automatically",
+    );
+    // The message may already have reached Station: the shared confirmation
+    // states the risk before the handler runs.
+    expect(notice?.action?.confirm).toBe('unconfirmed-discard');
+    await act(async () => {
+      await notice!.action!.handler();
+    });
+    expect(activeChatsStore.getSnapshot()[chat]?.error).toBeUndefined();
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [chat]?.messages?.some(
+          (message) => message.clientId === body.clientTurnId,
+        ),
+    ).toBe(false);
   });
 
   it("no answer at all: the row is released for Station's lookup under the SAME key, never resent blind", async () => {
@@ -710,6 +747,201 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 
+  it.each([
+    'lookup',
+    'turn-started',
+    'during-release',
+    'newer-send',
+    'other-key',
+    'unkeyed-turn',
+    'received',
+    'indeterminate',
+    'unknown',
+    'late-received',
+    'late-unknown',
+    'late-not-received',
+  ] as const)(
+    'a late transport failure respects the exact send evidence (%s)',
+    async (witness) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const storage =
+        witness === 'during-release' ? armableStorage() : undefined;
+      let rejectSend!: (reason: Error) => void;
+      sendExecutionMessageMock.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSend = reject;
+          }),
+      );
+      let resolveLookup: (() => void) | undefined;
+      getTurnDeliveryMock.mockImplementation(
+        (_apiBase, conversationId, clientTurnId) => {
+          const outcome = witness.startsWith('late-')
+            ? witness.slice('late-'.length)
+            : ['received', 'indeterminate', 'unknown'].includes(witness)
+              ? witness
+              : 'started';
+          const answer = { outcome, conversationId, clientTurnId };
+          return witness.startsWith('late-')
+            ? new Promise((resolve) => {
+                resolveLookup = () => resolve(answer);
+              })
+            : Promise.resolve(answer);
+        },
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      let pending!: Promise<unknown>;
+      const onAdmission = vi.fn();
+      await act(async () => {
+        pending = result.current(
+          chat,
+          'codex',
+          undefined,
+          'delivered before the response',
+          undefined,
+          undefined,
+          undefined,
+          { onAdmission },
+        );
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+        clientTurnId: string;
+      };
+      const observeStart = (clientTurnId: string | null = body.clientTurnId) =>
+        handleTurnStartedEvent({
+          provider: 'codex',
+          threadId: chat,
+          turnId: 'provider-turn-1',
+          eventId: 'started-event',
+          createdAt: '2026-10-16T03:00:00.000Z',
+          method: 'turn.started',
+          ...(clientTurnId ? { clientTurnId } : {}),
+          prompt: 'delivered before the response',
+        });
+      const newerController = new AbortController();
+      await act(async () => {
+        if (witness === 'lookup' || witness === 'newer-send') {
+          await vi.advanceTimersByTimeAsync(5_000);
+          expect(
+            activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[
+              body.clientTurnId
+            ],
+          ).toBe('started');
+          activeChatsStore.updateChat(chat, { status: 'idle' });
+        } else if (
+          witness === 'received' ||
+          witness === 'indeterminate' ||
+          witness === 'unknown'
+        ) {
+          await vi.advanceTimersByTimeAsync(5_000);
+        } else if (witness.startsWith('late-')) {
+          await vi.advanceTimersByTimeAsync(5_000);
+          expect(resolveLookup).toBeDefined();
+          observeStart();
+          resolveLookup!();
+          await vi.advanceTimersByTimeAsync(0);
+          expect(
+            activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[
+              body.clientTurnId
+            ],
+          ).toBe('started');
+        } else if (witness === 'turn-started') {
+          observeStart();
+        } else if (witness === 'during-release') {
+          storage!.arm(observeStart);
+        } else if (witness === 'unkeyed-turn') {
+          observeStart(null);
+        } else {
+          observeStart('other-key');
+        }
+        if (witness === 'newer-send')
+          activeChatsStore.updateChat(chat, {
+            status: 'sending',
+            abortController: newerController,
+            pendingClientTurnId: 'newer-key',
+            sendAwaitingTurnStart: true,
+            input: 'newer draft',
+          });
+      });
+      let outcome: unknown;
+      await act(async () => {
+        rejectSend(new TypeError('Failed to fetch'));
+        outcome = await pending;
+      });
+      const delivered =
+        witness.startsWith('late-') ||
+        ['lookup', 'turn-started', 'during-release', 'newer-send'].includes(
+          witness,
+        );
+      const state = activeChatsStore.getSnapshot()[chat];
+      expect(outcome).toBe(delivered);
+      expect(state?.status).toBe(
+        !delivered ? 'queued' : witness === 'lookup' ? 'idle' : 'sending',
+      );
+      expect(
+        state?.ephemeralMessages?.some((message) => message.queuedRetry) ??
+          false,
+      ).toBe(!delivered);
+      if (delivered) {
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        expect((await outboundDispatch.retiredKeys()).accepted).toContain(
+          body.clientTurnId,
+        );
+        await outboundDispatch.flush(async () => {
+          throw new Error('Delivered message must not be resent');
+        });
+      } else {
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: body.clientTurnId,
+            status: 'invoking',
+          }),
+        ]);
+      }
+      if (witness === 'newer-send')
+        expect(state).toMatchObject({
+          abortController: newerController,
+          pendingClientTurnId: 'newer-key',
+          sendAwaitingTurnStart: true,
+          input: 'newer draft',
+        });
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      expect(onAdmission).toHaveBeenCalledWith('accepted');
+    },
+  );
+
+  it("records this window's own send, and whether it was saved on the device, until Station starts it", async () => {
+    let answer!: (value: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(chat, 'codex', undefined, 'mine');
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+      );
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    const state = () => activeChatsStore.getSnapshot()[chat];
+    expect(state()?.localSendKeys).toEqual([body.clientTurnId]);
+    // Its outbox row was written before the request.
+    expect(state()?.durableClientTurnId).toBe(body.clientTurnId);
+    await act(async () => {
+      answer(receipt());
+      await pending;
+    });
+    // Started: delivered for good, never "Not confirmed" later.
+    expect(state()?.localSendKeys).toEqual([]);
+  });
+
   it('a send that waited on a starting session and went back to the queue loses its earlier "received"', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let refuse!: (error: unknown) => void;
@@ -755,5 +987,101 @@ describe('useSendMessage: durable before the request', () => {
       status: 'pending',
     });
     expect(row?.deliveryCheck).toBeUndefined();
+  });
+
+  it('a resend of a key drops the earlier "received": a refusal lost in transit does not label the lookup-driven resend', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let lose!: (error: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          lose = reject;
+        }),
+    );
+    getTurnDeliveryMock.mockImplementation(
+      async (_apiBase, conversationId, clientTurnId) => ({
+        outcome: 'received',
+        conversationId,
+        clientTurnId,
+      }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let first!: Promise<unknown>;
+    await act(async () => {
+      first = result.current(chat, 'codex', undefined, 'refusal lost');
+      // The request goes out after the outbox write and lazy imports.
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    // Station's refusal never arrives: the request just fails.
+    await act(async () => {
+      lose(new TypeError('Failed to fetch'));
+      await first;
+    });
+    const bubble = () =>
+      activeChatsStore
+        .getSnapshot()
+        [chat]!.messages!.find(
+          (message) =>
+            message.role === 'user' && message.clientId === body.clientTurnId,
+        )!;
+    // The earlier attempt's answer is still on record.
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
+    ).toBe('received');
+    // Station says it never got it: the outbox resends it under the same key.
+    await outboundDispatch.reconcile(
+      async (turn) => ({
+        outcome: 'not-received',
+        conversationId: turn.conversationId!,
+        clientTurnId: turn.clientTurnId,
+      }),
+      { station: { apiBase: 'http://api.test' } },
+    );
+    let answer!: (value: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    let resend!: Promise<unknown>;
+    await act(async () => {
+      resend = result.current(
+        chat,
+        'codex',
+        undefined,
+        'refusal lost',
+        undefined,
+        undefined,
+        body.clientTurnId,
+        {
+          skipInMemoryQueueOnBusy: true,
+          dispatch: { indeterminate: async () => 'applied' as const },
+        },
+      );
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+      );
+    });
+    // The resend is on its way, not something Station already has.
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
+    ).toBeUndefined();
+    expect(
+      messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
+    ).toBe('sending');
+    await act(async () => {
+      answer(receipt());
+      await resend;
+    });
+    expect(
+      messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
+    ).toBe('delivered');
   });
 });

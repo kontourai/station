@@ -4,6 +4,14 @@ import type {
   KernelResults,
   ParticipantRefusal,
 } from './commands.js';
+import {
+  decideInboxCancel,
+  decideInboxClaimNext,
+  decideInboxRelease,
+  decideInboxResolveUnconfirmed,
+  decideInboxSettle,
+  decideInboxSubmit,
+} from './decisions/inbox.js';
 import { decideRequestKeyClaim } from './decisions/request-keys.js';
 import {
   decideTurnBoundaryCreate,
@@ -27,6 +35,7 @@ import {
   DEFAULT_KERNEL_LIMITS,
   type KernelContext,
   type KernelLimits,
+  type KernelTerminalFacts,
   type KernelTransaction,
 } from './port.js';
 
@@ -92,14 +101,16 @@ function runKernelCommand<C extends KernelCommand>(
   command: C,
   context: KernelContext,
   tx: KernelTransaction,
+  facts?: KernelTerminalFacts,
 ): KernelResults[C['type']] {
-  return dispatch(command, context, tx) as KernelResults[C['type']];
+  return dispatch(command, context, tx, facts) as KernelResults[C['type']];
 }
 
 function dispatch(
   command: KernelCommand,
   context: KernelContext,
   tx: KernelTransaction,
+  facts?: KernelTerminalFacts,
 ): KernelResults[KernelCommand['type']] {
   const limits = resolveKernelLimits(context.limits);
   // One probe per process within a command, however many rows it reads.
@@ -216,7 +227,9 @@ function dispatch(
         current ? tx.turnBoundary.listThread(current.threadId) : [],
         current !== undefined &&
           command.providerTurnId !== undefined &&
-          tx.turnTerminals.has(current.threadId, command.providerTurnId),
+          (facts
+            ? facts.terminalSeen(current.threadId, command.providerTurnId)
+            : tx.turnTerminals.has(current.threadId, command.providerTurnId)),
       );
       const decision = decideTurnBoundaryTransition(
         current,
@@ -236,23 +249,30 @@ function dispatch(
       return decision.result;
     }
     case 'turnBoundary.observeTerminal': {
-      if (command.providerTurnId !== undefined)
+      if (command.providerTurnId !== undefined && !facts)
         tx.turnTerminals.add(command.threadId, command.providerTurnId);
       const decision = decideTurnBoundaryObserveTerminal(
         tx.turnBoundary.listThread(command.threadId),
         command,
+        command.sessionTerminal
+          ? facts?.terminalSequence?.(command.threadId, command.terminalEventId)
+          : undefined,
       );
       for (const boundaryId of decision.retire)
         tx.turnBoundary.delete(boundaryId);
       return { kind: 'applied' };
     }
-    case 'turnBoundary.hasPossibleEffect':
+    case 'turnBoundary.hasPossibleEffect': {
+      const retired = new Set(facts?.retiredBoundaryIds?.(command.threadId));
       return {
         kind: 'available',
         active: tx.turnBoundary
           .listThread(command.threadId)
-          .some((row) => row.state !== 'lifecycle'),
+          .some(
+            (row) => row.state !== 'lifecycle' && !retired.has(row.boundaryId),
+          ),
       };
+    }
     case 'turnBoundary.list':
       return { kind: 'records', records: tx.turnBoundary.listAll() };
     case 'turnBoundary.reconcile': {
@@ -270,7 +290,7 @@ function dispatch(
       for (const row of tx.turnBoundary.listThread(command.threadId))
         if (row.state !== 'lifecycle') tx.turnBoundary.delete(row.boundaryId);
       // Terminal facts retire with the thread's boundaries (see README).
-      tx.turnTerminals.deleteThread(command.threadId);
+      if (!facts) tx.turnTerminals.deleteThread(command.threadId);
       return { kind: 'applied' };
     }
 
@@ -328,6 +348,76 @@ function dispatch(
       tx.requestKeys.delete(command.id);
       return { kind: 'released' };
     }
+
+    case 'inbox.submit': {
+      tx.inbox.deleteSettledBefore(
+        command.inboxId,
+        command.now - limits.inboxSettledRetentionMs,
+      );
+      const decision = decideInboxSubmit(
+        {
+          existing: tx.inbox.get(command.inboxId, command.key),
+          entries: tx.inbox.listInbox(command.inboxId),
+          maxUnsettled: limits.inboxMaxUnsettled,
+        },
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.claimNext': {
+      const decision = decideInboxClaimNext(
+        tx.inbox.listInbox(command.inboxId),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.settle': {
+      const decision = decideInboxSettle(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.release': {
+      const decision = decideInboxRelease(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.resolveUnconfirmed': {
+      const decision = decideInboxResolveUnconfirmed(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.cancel': {
+      const decision = decideInboxCancel(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
+    case 'inbox.read': {
+      const entry = tx.inbox.get(command.inboxId, command.key);
+      return entry ? { kind: 'found', entry } : { kind: 'absent' };
+    }
+    case 'inbox.list':
+      return { kind: 'entries', entries: tx.inbox.listInbox(command.inboxId) };
+    case 'inbox.listOpen':
+      return { kind: 'entries', entries: tx.inbox.listOpen() };
+    case 'inbox.forget':
+      return {
+        kind: 'applied',
+        removed: tx.inbox.deleteInbox(command.inboxId),
+      };
   }
 }
 
@@ -357,6 +447,16 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'requestKeys.recordDecision': false,
   'requestKeys.complete': false,
   'requestKeys.release': false,
+  'inbox.submit': false,
+  'inbox.claimNext': false,
+  'inbox.settle': false,
+  'inbox.release': false,
+  'inbox.cancel': false,
+  'inbox.read': true,
+  'inbox.list': true,
+  'inbox.listOpen': true,
+  'inbox.forget': false,
+  'inbox.resolveUnconfirmed': false,
 });
 
 /** Commands that write nothing, whatever their result. */
@@ -391,6 +491,7 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
   tx: KernelTransaction,
   participants: readonly CommitParticipant<Host>[],
   host: Host,
+  facts?: KernelTerminalFacts,
 ): KernelResult<C> {
   const readOnly = isReadOnlyKernelCommand(command);
   const joined = readOnly
@@ -405,7 +506,7 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
         reason: verdict.refuse,
       } satisfies ParticipantRefusal;
   }
-  const result = runKernelCommand(command, context, tx);
+  const result = runKernelCommand(command, context, tx, facts);
   for (const participant of joined)
     participant.commit?.({ command, result }, host);
   return result;

@@ -180,8 +180,8 @@ with two explicit, structurally identical exceptions, both off by default and ne
 
 ## Tasks & work items
 
-- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `triage`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `canceled` kept as a documented **Station-local extension** (a task a user abandons before completion; the neutral contract itself has no such state).
-- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals.
+- **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `triage` (local intake) and `canceled` (a task a user abandons before completion) kept as explicit **Station-local extensions**. Neither has an automatic mapping to a shared status.
+- **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals. The [tracker sync handoff](plans/task-tracker-sync-upstream-gaps.md) records the published-contract gaps blocking write-back and ChangeProvider close-out.
 - The direction of travel from the Session Board to a Console board (a work-item-aware view) is governed by epic **#580** — this glossary entry documents the vocabulary alignment (issue **#581**); the board convergence itself is tracked separately under that epic.
 
 ## The three "planes"
@@ -272,8 +272,7 @@ retired names.
   [design/placement.md](design/placement.md)) — Coding and Chat kinds render
   in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
-  page, listed in the left panel's `Boards` section between Activity and
-  Projects and rendered by the same layout renderer a project Layout is
+  page, listed in the left panel's `Boards` section after Projects and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone

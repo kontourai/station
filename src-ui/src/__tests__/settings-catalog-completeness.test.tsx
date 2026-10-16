@@ -206,6 +206,14 @@ vi.mock('@kontourai/station-sdk', async () => {
     // about.
     useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
     useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useTelemetryDeliveryStatusQuery: () => {
+      throw new Error('Catalog fixture has no captured telemetry authority');
+    },
+    useCheckTelemetryConnectionMutation: () => {
+      throw new Error(
+        'Catalog fixture must not initiate a telemetry connection check',
+      );
+    },
     useInvalidateQuery: () => invalidateQuery,
     useSystemStatusForApiBaseQuery: () => ({
       data: {
@@ -718,7 +726,8 @@ describe('settings catalog completeness', () => {
   describe('scope-group captions', () => {
     const CONTROL_CAPTION = 'Saved to this Station.';
     const STATION_CAPTION = 'Saved to this Station.';
-    const DEVICE_CAPTION = 'Saved to this device.';
+    const DEVICE_CAPTION =
+      'Personal choices follow your account when signed in. Device capabilities and layout stay here; each setting shows its scope.';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -1340,7 +1349,9 @@ describe('settings catalog completeness', () => {
     expectExactCatalog(
       rendered,
       SETTINGS_CATALOG.filter((entry) =>
-        ['permissions', 'agent-runs'].includes(entry.section),
+        ['account-preferences', 'permissions', 'agent-runs'].includes(
+          entry.section,
+        ),
       ).map((entry) => entry.id),
     );
     expect(window.location.search).toBe('');
@@ -1723,7 +1734,7 @@ describe('settings catalog completeness', () => {
     expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
       'This Station settings',
       'Control settings',
-      'This device settings',
+      'Personal and device settings',
       'Knowledge settings',
     ]);
     // Named regions, not styling wrappers: the name has to reach the

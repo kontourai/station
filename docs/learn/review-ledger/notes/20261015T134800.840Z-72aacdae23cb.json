@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed contracts export-map delta: telemetry-delivery and usage-export are additive domain modules; task-room-work and request/record protocols, route admission and publication owners are unchanged. Task-room historical source/runtime limits remain unchanged; no prose edit or additional task-room acceptance claimed.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]}
+  ]
+}

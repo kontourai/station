@@ -1,0 +1,7 @@
+{
+  "revision": "d160175cd844d375c7e75276c2bfdd8b7d272c7a",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed the generator type repair after statics rejected a combined completed/aborted discriminant. Separate canonical variants preserve terminal selection, replay ordering, sequence equality and all boundary assertions; completed events now omit the abort-only reason. Re-read the README host-fence/conformance claims against these fixtures; the fixed-schema/open-validation contract and explicit production deferrals remain accurate.","inputs":["packages/monument/README.md","src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"]}
+  ]
+}

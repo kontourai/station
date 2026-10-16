@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -90,9 +90,16 @@ describe('tauri context', () => {
       }
     } else {
       for (const tool of tools) {
+        // The pid file is renamed into place, so a reader never sees it
+        // half-written. The stub exits on its own after 11s, so a cleanup
+        // that never ran leaks nothing for long.
+        const pidFile = pidDirectory ? join(pidDirectory, tool) : undefined;
+        const reportPid = pidFile
+          ? `const fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(`${pidFile}.tmp`)}, process.pid + '\\n');\nfs.renameSync(${JSON.stringify(`${pidFile}.tmp`)}, ${JSON.stringify(pidFile)});\n`
+          : '';
         writeFileSync(
           join(directory, tool),
-          `#!${process.execPath}\n${pidDirectory ? `require('node:fs').writeFileSync(${JSON.stringify(join(pidDirectory, tool))}, String(process.pid));\n` : ''}setTimeout(() => {}, 11000);\n`,
+          `#!${process.execPath}\n${reportPid}setTimeout(() => {}, 11000);\n`,
           { mode: 0o755 },
         );
       }
@@ -137,7 +144,48 @@ describe('tauri context', () => {
     }
   });
 
-  function stopFixture(pid: number) {
+  /**
+   * Only an integer pid above 1 that is not this process names one other
+   * process. `process.kill(0, …)` signals this runner's whole process group,
+   * and an empty pid file parses as `Number('') === 0`: an attached CI shell
+   * would be killed and the failure hidden (#3623).
+   */
+  function isSignalablePid(pid: number): boolean {
+    return Number.isInteger(pid) && pid > 1 && pid !== process.pid;
+  }
+
+  /** A pid file holds exactly one integer and a newline, or nothing usable. */
+  function parsePidFile(file: string): number {
+    if (!existsSync(file)) return Number.NaN;
+    const text = readFileSync(file, 'utf8');
+    return /^\d+\n$/.test(text) ? Number(text.trim()) : Number.NaN;
+  }
+
+  /** Wait for a stub's pid file to hold one complete, signalable pid. */
+  async function readPidFile(file: string, context: () => string) {
+    const deadline = Date.now() + 5_000;
+    let pid = parsePidFile(file);
+    while (!isSignalablePid(pid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      pid = parsePidFile(file);
+    }
+    expect(isSignalablePid(pid), `pid file ${file}: ${context()}`).toBe(true);
+    return pid;
+  }
+
+  function processGroupOf(pid: number): number {
+    return Number(
+      execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5_000,
+      }).trim(),
+    );
+  }
+
+  /** Kill one stub by exact pid, never this runner or its group's leader. */
+  function stopFixture(pid: number, ownGroup: number) {
+    if (!isSignalablePid(pid) || pid === ownGroup) return;
     try {
       process.kill(pid, 'SIGKILL');
     } catch (error) {
@@ -154,6 +202,8 @@ describe('tauri context', () => {
     'settles active owned probes before exiting on %s',
     async (signal) => {
       const directory = makeTempDir('station-tauri-cancelled-');
+      // Resolved before spawning: a failing `ps` must not strand the child.
+      const ownGroup = processGroupOf(process.pid);
       const child = spawn(
         process.execPath,
         [
@@ -186,17 +236,14 @@ describe('tauri context', () => {
       const tools = ['rustc', 'cargo', 'rustup'];
       const pids: number[] = [];
       try {
-        const deadline = Date.now() + 5_000;
-        while (!tools.every((tool) => existsSync(join(directory, tool)))) {
-          if (Date.now() >= deadline)
-            throw new Error(`Stalled probes did not start: ${stderr}`);
-          await new Promise((resolve) => setTimeout(resolve, 25));
+        for (const tool of tools) {
+          pids.push(
+            await readPidFile(
+              join(directory, tool),
+              () => `no signalable stub pid; probe trace: ${stderr}`,
+            ),
+          );
         }
-        pids.push(
-          ...tools.map((tool) =>
-            Number(readFileSync(join(directory, tool), 'utf8')),
-          ),
-        );
         expect(child.kill(signal)).toBe(true);
         let timer: ReturnType<typeof setTimeout> | undefined;
         let status: number | null;
@@ -216,6 +263,9 @@ describe('tauri context', () => {
         }
         expect(stdout).toBe('');
         for (const pid of pids) {
+          // readPidFile admitted only signalable pids; signal 0 to pid 0
+          // would probe this runner's own group and never throw.
+          expect(isSignalablePid(pid) && pid !== ownGroup).toBe(true);
           expect(() => process.kill(pid, 0)).toThrow(
             expect.objectContaining({ code: 'ESRCH' }),
           );
@@ -233,11 +283,11 @@ describe('tauri context', () => {
       } finally {
         if (child.exitCode === null && child.signalCode === null)
           child.kill('SIGKILL');
-        for (const tool of tools) {
-          if (!existsSync(join(directory, tool))) continue;
-          const pid = Number(readFileSync(join(directory, tool), 'utf8'));
-          stopFixture(pid);
-        }
+        // Pids recorded before a failure, plus any whose file landed since;
+        // stopFixture refuses anything that is not one other process.
+        for (const tool of tools)
+          pids.push(parsePidFile(join(directory, tool)));
+        for (const pid of new Set(pids)) stopFixture(pid, ownGroup);
         await closed;
       }
     },

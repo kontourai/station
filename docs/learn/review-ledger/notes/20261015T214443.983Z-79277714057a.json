@@ -1,0 +1,7 @@
+{
+  "revision": "fe76e091bd406af48311ad4e5510b66c39015ff9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the #3709 fixture budget repair against JsonFileMutationAuthority, runner config/setup and the production async lock: the test now carries task.timeout after setup scrubs liveness environment, derives readiness and parent guards from that budget, and caps the IPC acknowledgement watchdog at five seconds below the unchanged ten-second production acquisition deadline. The canonical asynchronous serialization and both-writer persistence claims remain accurate; no product prose changes. Three focused cases and server-test typecheck pass at fe76e091bd4. A controlled 1.5-second IPC delay at scale four fails the prior one-second watchdog. Fixed-delay, synchronous-blocking and restored evidence remain pending and will be recorded separately; no hosted or broad qualification claimed.","inputs":["docs/architecture/module-map.md","src-server/domain/__tests__/config-loader-storage.process.test.ts"]}
+  ]
+}

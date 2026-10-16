@@ -877,6 +877,104 @@
   color: var(--text-muted);
 }
 
+/* The user's own message before the agent has it: outlined, with no fill,
+   and a short delivery line (`MessageDeliveryNote`). The outline is drawn
+   inside the bubble so the bubble keeps its size when it fills on delivery.
+   The line style carries meaning beside colour: dashed while it is on its
+   way, solid once it needs the user (not sent, may have reached the agent).
+   Only a send under way keeps the accent; a send with no answer reads as a
+   caution. */
+.message.user {
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+.message.user.message--undelivered {
+  background: transparent;
+  color: var(--text-primary);
+  outline: 1px dashed var(--accent-primary);
+  outline-offset: -1px;
+}
+.message.user.message--delivery-not-sent {
+  outline: 1px solid var(--k-negative);
+}
+.message.user.message--delivery-unanswered,
+.message.user.message--delivery-awaiting-confirmation {
+  outline-color: var(--k-caution);
+}
+.message.user.message--delivery-unconfirmed {
+  outline: 1px solid var(--k-caution);
+}
+.message-delivery {
+  display: grid;
+  gap: var(--k-space-1);
+  margin-top: var(--k-space-1);
+  color: var(--text-secondary);
+  font-size: var(--k-text-xs);
+  line-height: 1.4;
+}
+.message-delivery__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+/* The two states that need the user name themselves in their tone as well as
+   in words (AA on the page background in both themes). */
+.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label,
+.message-delivery[data-delivery-state="unanswered"] .message-delivery__label,
+.message-delivery[data-delivery-state="awaiting-confirmation"]
+  .message-delivery__label {
+  color: var(--k-caution);
+  font-weight: 500;
+}
+.message-delivery[data-delivery-state="not-sent"] .message-delivery__label {
+  color: var(--error-text, var(--k-negative));
+  font-weight: 500;
+}
+/* The status regions stay in the accessibility tree while empty (so their
+   first text is announced), but take no space in the line or the grid. */
+.message-delivery__status:empty,
+.message-delivery__notice:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.message-delivery__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+}
+.message-delivery__action {
+  padding: 2px var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.message-delivery__action:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+.message-delivery__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.message-delivery__action--danger {
+  border-color: var(--k-negative);
+  color: var(--error-text, var(--k-negative));
+}
+.message-delivery__notice {
+  color: var(--text-primary);
+}
+/* Phone: every delivery action is a full 44px target. */
+.message-row--compact .message-delivery__action,
+.message-row--compact .unconfirmed-discard__button {
+  min-height: 44px;
+  padding-inline: var(--k-space-3);
+}
+
 /* A steer that stopped the running step says so inside its own bubble, on
    the bubble's accent background. */
 .message__steer-note {
@@ -1499,6 +1597,10 @@
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
+  /* The stack aligns its lines to the start, which sizes each to its own
+     unwrapped text; without this cap a long name ran out of the chip and
+     under its caret instead of ending in an ellipsis. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2573,6 +2675,12 @@
 .chat-input .chat-input__stop-btn:hover:not(:disabled) {
   background: var(--k-negative-soft);
 }
+/* Trailing Stop (phone layout, see ChatInputArea): its gap sits before it. */
+.chat-input
+  .chat-input__send-group[data-stop-placement="trailing"]
+  .chat-input__stop-btn {
+  margin-inline: var(--k-space-1) 0;
+}
 .chat-input__send-group {
   gap: 0;
 }
@@ -3073,6 +3181,12 @@
     flex-basis: 100%;
   }
 
+  /* #3050: a narrow composer gives up the Agent's route before its name. The
+     chip's accessible name and tooltip keep the route. */
+  .chat-input__agent-route {
+    display: none;
+  }
+
   .chat-input__activity .chat-scroll-to-bottom,
   .chat-input__activity .chat-status-pill-host .chat-status-pill {
     min-width: 44px;
@@ -3151,4 +3265,38 @@
   transform: none;
   box-shadow: none;
   background: var(--k-panel-raised);
+}
+
+/* The queued notice's Discard confirmation: in the transcript notice a row
+   of its own under its Discard…; in the composer, its popover's content. */
+.ephemeral-message__confirm {
+  margin-top: var(--k-space-2);
+}
+.composer-popover-panel.chat-input__queued-retry-confirm {
+  padding: var(--k-space-3);
+}
+
+/* The phone sheet lists a user message's actions directly. */
+/* A fieldset (a group of buttons, not a menu) without its default chrome. */
+.message-details__menu {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.message-details__menu > button {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.message-details__menu > .turn-footer__overflow-item--danger {
+  color: var(--error-text, var(--k-negative));
 }

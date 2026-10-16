@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   acceptModelLaunchPlan,
   type EngineId,
@@ -82,6 +83,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       displayName: 'Ollama',
       description: 'Direct chat with locally running Ollama models.',
       capabilities: ['agent-runtime', 'session-lifecycle'],
+      durability: STATION_ENGINE_DURABILITY,
       continuity: {
         resume: 'same-session',
         fork: 'replay-seed',

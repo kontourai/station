@@ -79,6 +79,26 @@ describe('GuidedConnect', () => {
     native.productName = 'Station';
   });
 
+  test('a phone starts with pairing and provides a setup handoff without desktop-app instructions', () => {
+    native.isMobile = true;
+    render(<GuidedConnect />);
+    expect(
+      screen.getByRole('heading', { name: 'Connect your phone' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Open in the Station app' }),
+    ).toBeNull();
+    expect(document.querySelector('details')?.open).toBe(false);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I haven’t set up a Station yet' }),
+    );
+    expect(
+      screen.getByRole('link', { name: 'Get Station for your computer' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pair with a code' }));
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  });
+
   test('offers only the production app, even from a Nightly web build', () => {
     vi.stubEnv('VITE_NATIVE_APP_UPDATE_CHANNEL', 'nightly');
     render(<GuidedConnect />);
@@ -110,6 +130,7 @@ describe('GuidedConnect', () => {
         screen.queryByRole('link', { name: 'Open in the Station app' }),
       ).toBeNull();
       expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
+      fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(
         screen.getByRole('button', { name: 'Set up a broker route' }),
       );
@@ -156,6 +177,7 @@ describe('GuidedConnect', () => {
 
   test('lets a fresh browser open broker trust and invitation setup before pairing', async () => {
     render(<GuidedConnect />);
+    fireEvent.click(screen.getByText('Other ways to connect'));
     fireEvent.click(
       screen.getByRole('button', { name: 'Use a broker invitation' }),
     );
@@ -174,6 +196,8 @@ describe('GuidedConnect', () => {
     (label, panel) => {
       render(<GuidedConnect />);
 
+      if (label === 'Enter a host address')
+        fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(screen.getByRole('button', { name: label }));
 
       expect(screen.getByText(`Connection manager: ${panel}`)).toBeTruthy();
