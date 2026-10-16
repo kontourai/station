@@ -112,6 +112,12 @@ const HEX64 = 'a'.repeat(64);
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  get_personal_board: { slug: 'daily' },
+  propose_personal_board: {
+    slug: 'daily',
+    revision: null,
+    definition: { version: 1, name: 'Daily', description: '', sections: [] },
+  },
   get_agent: { slug: 'a' },
   create_agent: { name: 'A', slug: 'a' },
   update_agent: { slug: 'a', name: 'A' },

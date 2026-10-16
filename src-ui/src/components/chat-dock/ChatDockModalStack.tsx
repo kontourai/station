@@ -61,7 +61,7 @@ interface ChatDockModalStackProps {
   projects: ProjectMetadata[];
   activeProjectSlug?: string | null;
   newChatProjectOverride?: {
-    slug: string;
+    slug: string | null;
     name: string;
     composerDraft?: ProjectChatComposerDraft;
   } | null;
@@ -210,8 +210,9 @@ export function ChatDockModalStack({
             projectIconBySlug,
             startSurface: true,
             recentChats,
-            activeProjectSlug:
-              newChatProjectOverride?.slug ?? activeProjectSlug,
+            activeProjectSlug: newChatProjectOverride
+              ? newChatProjectOverride.slug
+              : activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
             onTaskStarted: onNewTaskStarted,

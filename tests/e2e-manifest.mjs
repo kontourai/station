@@ -486,6 +486,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // and re-creates two projects by fixed slug. Both are instance-wide
     // mutations no sibling spec can be running alongside.
     'tests/notifications-attention.spec.ts',
+    'tests/personal-board-authoring.spec.ts',
     'tests/board-visibility.spec.ts',
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
@@ -1902,6 +1903,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#3806 real browser journey: Project add-pane admission, all-kind references, pointer and keyboard geometry, title/camera, exact missing-only cleanup, undo, and reload persistence through the real board routes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/personal-board-authoring.spec.ts',
+    bucket: 'product',
+    surface: 'Personal Boards',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real owner-scoped API and desktop/mobile authoring: template, edit, preview-before-save, reload persistence, arriving proposal and explicit Apply.',
     exceptions: [],
   },
   {

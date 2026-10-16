@@ -565,7 +565,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [hasImmutableProjectScope],
   );
   const [newChatProjectOverride, setNewChatProjectOverride] = useState<{
-    slug: string;
+    slug: string | null;
     name: string;
     composerDraft?: ProjectChatComposerDraft;
   } | null>(null);
@@ -1960,8 +1960,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     const openProjectChats = (event: Event) => {
       const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
-      if (!detail?.projectSlug) return;
-      const projectName = detail.projectName || detail.projectSlug;
+      if (!detail) return;
+      const projectName =
+        detail.projectName || detail.projectSlug || 'No Project';
       // A composer draft is for a NEW chat. Focusing an existing chat, or
       // routing to a scoped layout's own pane, would drop the text the
       // requester asked to offer, so the claiming pane opens its picker
@@ -1973,13 +1974,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         const claimed = claimComposerDraftRequest(event, {
           hasImmutableProjectScope,
           projectSlug,
+          authorityKey: requestAuthority?.authorityKey,
         });
         if (!claimed) return;
-        setProjectFilter(detail.projectSlug);
+        setProjectFilter(claimed.projectSlug);
         setActiveSessionId(null);
         setActiveChat(null);
         setNewChatProjectOverride({
-          slug: detail.projectSlug,
+          slug: claimed.projectSlug,
           name: projectName,
           composerDraft: detail.composerDraft,
         });
@@ -1987,10 +1989,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         telemetry.track('ui.chat.entry', {
           source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
           outcome: 'new-chat',
-          projectScoped: 1,
+          projectScoped: claimed.projectSlug ? 1 : 0,
         });
         return;
       }
+      if (!detail.projectSlug) return;
       if (routeToScopedChatProject(detail.projectSlug)) return;
 
       setProjectFilter(detail.projectSlug);
@@ -2059,6 +2062,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setActiveSessionId,
     setProjectFilter,
     setShowNewChatModal,
+    requestAuthority?.authorityKey,
   ]);
 
   // A global launcher (header help, skill chords, share intake) can activate a

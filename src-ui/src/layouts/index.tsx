@@ -17,6 +17,7 @@ import { useNavigationOptional } from '../contexts/NavigationContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
+import { PersonalBoardDashboard } from '../views/personal-board/PersonalBoardDashboard';
 
 export interface AgentLayoutProps {
   agent?: AgentSummary;
@@ -467,6 +468,9 @@ export function LayoutRenderer({
   try {
     return (
       <>
+        {layout?.dashboard && (
+          <PersonalBoardDashboard definition={layout.dashboard} />
+        )}
         {layout && (
           <LayoutHeader
             layoutName={layout.name}
@@ -548,6 +552,7 @@ export function LayoutRenderer({
             })
           : // Fallback for layouts without tabs
             (() => {
+              if (layout?.dashboard) return null;
               const Component = resolveLayoutComponent(componentId);
               return (
                 <Component

@@ -68,6 +68,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
+| [Personal Board authoring](#personal-board-authoring) | Preview, edit and publish personal dashboards through user and chat authoring. | `src-server/services/layouts/personal-board-authoring.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
 | [Shared live surface](#shared-live-surface) | Fan out current frames and arbitrate input through producer-owned authorization and a fenced lease. | `src-server/services/live-surface/registry.ts` |
@@ -4070,6 +4071,39 @@ lease against arbitrary external editors/processes. The chat SDK selects only
 [restore tests](../../src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts).
 These tests use isolated repositories; they do not prove a packaged app or a
 restore in the user's working tree.
+
+## Personal Board authoring
+
+Personal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)
+uses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)
+for edits, proposals, deletion and promotion. Queue identity uses principal ID,
+not display name. Saved definitions and pending proposals occupy separate config
+fields; a whole-record revision precondition is checked inside the storage
+mutation. Apply saves exactly the reviewed definition and clears the proposal.
+This serializes one running Station process over its store; it is not a claim
+of cross-process coordination.
+
+The [personal routes](../../src-server/routes/me/personal-layouts.ts) resolve the
+request's authenticated principal. Agent tools can list, read and propose through
+[dedicated tools](../../src-server/tools/station-control-personal-board-tools.ts)
+and the canonical SDK transport. Agent-originated requests cannot publish.
+The [runtime schema](../../packages/sdk/src/personal-board.ts) bounds section
+kinds, count, sizing, text and URL schemes. Generic Layout writes cannot replace
+reserved dashboard fields. Promotion refuses unpublished proposals.
+
+The [visual authoring host](../../src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx)
+and [shared dashboard renderer](../../src-ui/src/views/personal-board/PersonalBoardDashboard.tsx)
+serve editing and preview in Main, while `LayoutRenderer` supports the same saved
+content in docked Boards and promoted Project Layouts. Legacy Layout tabs are
+retained. Live sections read scoped Task, attention, recent-work and Project
+queries; the Board persists configuration rather than copies of their records.
+
+See [Personal Boards](../user/personal-boards.md) and the
+[SDK contract](../reference/sdk.md#personal-board-authoring). Route tests cover
+ownership, revision conflicts, publication, rename and move. Browser journeys
+cover desktop/phone authoring, live Task visibility, persistence and explicit
+proposal Apply. These are controlled runtime journeys, not physical multi-device
+or external Agent-provider evidence.
 
 ## Personal Work Board
 

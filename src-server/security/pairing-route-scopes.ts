@@ -2605,6 +2605,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/boards/:layoutSlug' },
+    { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
+    { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },

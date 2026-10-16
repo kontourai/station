@@ -1205,6 +1205,12 @@ export {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from './query-domains/peerEnrollments';
+export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,
