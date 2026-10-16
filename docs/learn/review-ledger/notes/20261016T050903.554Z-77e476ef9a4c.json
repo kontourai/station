@@ -1,0 +1,7 @@
+{
+  "revision": "c8d4cf0b56150e9100c56628947d8f0076ec4d7c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the Home source delta and current starting/resuming and shared-row claims against home-view-model.ts, useHomeViewModel.ts, work-status.ts, HomeSurface.tsx, HomeView.test.tsx and work-status.test.ts. Unbound In-progress Tasks use Ready/Idle with neutral stationary MoonGlyph; Tasks with live bound sessions retain Running. Continue skips Done/Canceled Tasks, chooses the newest unfinished item, and remains absent for finished-only Tasks. Shared row anatomy and the conditional single-item Continue/Recent work explanation remain accurate; no prose change needed. Unmapped Home test and selection changes are covered by this review. Executed four focused Home files: 234 tests pass; one reverted status fix fails on lane/rung/tone and one reverted Continue fix fails for both Done/Canceled, then restored green. No native/provider/hosted qualification or docs:truth run.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}
