@@ -20,31 +20,22 @@ import type {
   SessionTurnBoundaryCoordinator,
   SessionTurnBoundaryRecord,
 } from '../session-turn-boundary.js';
+import { createSqliteSessionTurnBoundaryCoordinator } from '../sqlite-session-turn-boundary.js';
+import { legacyTurnBoundaryCoordinator } from './fixtures/legacy-turn-boundary.js';
 import {
   at,
   context,
-  open,
+  open as openStore,
   owner,
   tables,
 } from './fixtures/monument-boundary.js';
 
-// Observe the coordinator EventStore really composes; its SQL remains the oracle.
-const captured: { current?: SessionTurnBoundaryCoordinator } = vi.hoisted(
-  () => ({}),
-);
-vi.mock('../session-turn-boundary.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../session-turn-boundary.js')>();
-  return {
-    ...actual,
-    createSessionTurnBoundaryAuthority(
-      options: Parameters<typeof actual.createSessionTurnBoundaryAuthority>[0],
-    ) {
-      captured.current = options.coordinator;
-      return actual.createSessionTurnBoundaryAuthority(options);
-    },
-  };
-});
+const captured: { current?: SessionTurnBoundaryCoordinator } = {};
+function open(path: string) {
+  const store = openStore(path);
+  captured.current = legacyTurnBoundaryCoordinator(store['db'], () => {});
+  return store;
+}
 const metrics = vi.hoisted(() => ({ count: vi.fn(), duration: vi.fn() }));
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
@@ -215,7 +206,6 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
         ? existing[pick(existing.length)].id
         : 'absent';
       let command: BoundaryCommand;
-      let observedEvent: CanonicalRuntimeEvent | undefined;
       // Claim after a persisted terminal, replay at equality, advance the head,
       // replace the claim, then replay that same terminal below the new fence.
       switch (step < 11 ? [4, 0, 4, 2, 4, 0, 4, 4, 4, 4, 4][step] : pick(6)) {
@@ -345,7 +335,6 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
             current!.appendEvent(event);
             persisted.push(event);
           }
-          observedEvent = event;
           command = terminalCommand(event);
           break;
         }
@@ -394,8 +383,9 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
             }
           : answer;
       expect(observable, JSON.stringify({ seed, step, command })).toEqual(
-        observedEvent
-          ? old.sessionTurnBoundaryAuthority().observe(observedEvent)
+        command.type === 'turnBoundary.observeTerminal' &&
+          command.retire === false
+          ? { kind: 'applied' }
           : legacy(coordinator, command),
       );
       expect(rows(current!['db'])).toEqual(rows(old['db']));
@@ -457,7 +447,7 @@ test('a backward transition out of accepted violates the host constraint without
   expect(rows(old['db'])).toEqual(before);
 });
 
-test('alternating old SQL and new kernel writers share one database for 400 turns', async () => {
+test('alternating frozen SQL and the production Monument coordinator share one database for 400 turns', async () => {
   const root = makeTempDir('monument-mixed-boundaries-');
   const reference = open(join(root, 'reference.sqlite'));
   closes.push(() => {
@@ -473,13 +463,27 @@ test('alternating old SQL and new kernel writers share one database for 400 turn
     throw new Error('Expected production SQL coordinators');
   const peer = new DatabaseSync(join(root, 'shared.sqlite'));
   closes.push(() => peer.close());
-  const kernel = openSqliteKernelStorage({ database: peer, tables });
+  const migratedWriter = createSqliteSessionTurnBoundaryCoordinator({
+    db: peer,
+    head: () =>
+      Number(
+        (
+          peer
+            .prepare(
+              'SELECT high_water FROM orchestration_stream_identity WHERE singleton = 1',
+            )
+            .get() as { high_water: number }
+        ).high_water,
+      ),
+    reconcileTerminals: () => {},
+    transactionLost: (cause) => new Error('Host transaction lost', { cause }),
+  });
   let ordinal = 0;
   const compare = async (command: BoundaryCommand) => {
     const answer =
       ordinal++ % 2 === 0
         ? legacy(oldWriter, command)
-        : await kernel.execute(command, context());
+        : legacy(migratedWriter, command);
     expect(answer).toEqual(legacy(referenceCoordinator, command));
     expect(rows(peer)).toEqual(rows(reference['db']));
   };

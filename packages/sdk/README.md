@@ -76,6 +76,27 @@ Plugin install mutations expose typed current parent/dependency permission statu
 through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
 for older-server unknown-status handling and registry result types.
 
+## Telemetry delivery and destination grants
+
+The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
+`useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
+They describe the connected Station's current process. Product commit receipts
+and OTel callback/probe acceptance remain separate from downstream collection
+and personal usage accounting. Unsupported or malformed responses throw;
+refreshing or failed status must not display cached success as current.
+
+The `/secret-bindings` and `/secret-bindings-query` subpaths expose the separate
+telemetry destination grant operations and hooks. Callers supply the API base,
+captured request authority, exact product/collector address and current binding
+revision. Saving a destination or choosing a reference grants no authority;
+the operator's instance grant is explicit. These APIs read and return reference
+metadata, never key material, and leave MCP consumer APIs separate.
+
+See the [SDK reference](../../docs/reference/sdk.md) and
+[usage telemetry contract](../../docs/reference/usage-telemetry.md#delivery-status-and-connection-checks).
+Use a published package containing these exports and a server supporting their
+response protocol; source availability is not publication or runtime proof.
+
 ## Workspace Pane authoring
 
 Import `@kontourai/station-sdk/workspace-pane` for the opt-in portable Pane

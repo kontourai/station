@@ -125,6 +125,18 @@ feature flags (env-derived ones shown **read-only with provenance**, e.g.
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
+Telemetry destinations and SecretBinding references also use S1. Product
+observations need their own disclosure; operator metrics/traces use a separate
+collector configuration. Saved references require explicit instance destination
+grants and never store key material in `app.json`. Product changes fence the
+old queue and requests; collector changes fence old exports and activate after
+restart. Current-process health and connection checks are derived status rows,
+not additional persisted settings. Their queries retain the connected Station's
+authority and withdraw cached success during refresh or failure. The
+[config reference](../reference/config.md#telemetry-destinations) and
+[usage guide](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
+own these contracts and evidence limits.
+
 ### S2. Defaults — workspace-wide fallbacks that entities override
 Default model, default region, default system prompt, template variables — the
 current "Agent defaults" section, kept distinct from S1 because these are not

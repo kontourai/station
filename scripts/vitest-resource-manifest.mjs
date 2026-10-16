@@ -31,6 +31,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
   // independently resolved npm-tarball consumer. It owns packages/cli/dist.
   'packages/cli/src/__tests__/bundle.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
+  // #3565: builds packages/monument/dist (it removes the directory first),
+  // packs it and installs the tarballs into scratch consumers. It owns
+  // packages/monument/dist.
+  'scripts/__tests__/monument-pack-smoke.test.ts',
   // Reads exact generated-policy documentation while other corpus members may
   // regenerate it; one serial lane makes that read a stable input.
   'scripts/__tests__/verification-policy-gate.test.ts',
@@ -123,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
+  'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
   'src-server/__tests__/telemetry.test.ts',
   // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
@@ -1173,6 +1179,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
+  // Runs real canvas/React startup handoffs with Chromium's controlled clock.
+  'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone

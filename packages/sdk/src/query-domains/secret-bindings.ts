@@ -1,6 +1,7 @@
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
+import type { ClientRequestOptions } from '../client/http';
 import {
   bindSecretBinding,
   createSecretBinding,
@@ -8,10 +9,13 @@ import {
   getSecretBinding,
   type IntegrationSecretBindingProjection,
   listSecretBindings,
+  listTelemetrySecretBindings,
   replaceSecretBinding,
   revokeSecretBinding,
   type SecretBindingConsumerInput,
+  type TelemetrySecretBindingInput,
   unbindSecretBinding,
+  updateTelemetrySecretBindingGrant,
 } from '../client/secret-bindings';
 import type { QueryConfig } from '../query-core';
 
@@ -38,6 +42,51 @@ export function useSecretBindingsQuery(
   config?: QueryConfig<SecretBindingView[]>,
 ) {
   return useQuery({ ...secretBindingQueries.list(), ...config });
+}
+
+const telemetryBindingKey = (apiBase: string, options?: ClientRequestOptions) =>
+  [
+    'secret-bindings',
+    'telemetry',
+    options?.requestScope?.apiBase ?? apiBase,
+    options?.requestScope?.authorityKey ?? 'default',
+  ] as const;
+
+export function useTelemetrySecretBindingsQuery(
+  apiBase: string,
+  options?: ClientRequestOptions,
+) {
+  return useQuery({
+    queryKey: telemetryBindingKey(apiBase, options),
+    queryFn: (context) =>
+      listTelemetrySecretBindings(apiBase, {
+        ...options,
+        signal: context.signal,
+      }),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    retry: false,
+  });
+}
+
+export function useTelemetrySecretBindingGrantMutation(
+  apiBase: string,
+  options?: ClientRequestOptions,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      operation,
+      ...input
+    }: TelemetrySecretBindingInput & {
+      id: string;
+      operation: 'bind' | 'unbind';
+    }) =>
+      updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ['secret-bindings'] }),
+  });
 }
 export function useSecretBindingQuery(
   id: string | undefined,

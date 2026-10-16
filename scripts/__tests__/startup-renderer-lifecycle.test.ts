@@ -24,6 +24,7 @@ function renderer({ reduced = false, channel = 'stable' } = {}) {
   let paints = 0;
   let nextFrame = 0;
   const frames = new Map<number, (time: number) => void>();
+  const times: number[] = [];
   const listeners = new Map<string, () => void>();
   const observers: { callback: () => void; disconnected: boolean }[] = [];
   const images: ImageFixture[] = [];
@@ -149,6 +150,9 @@ function renderer({ reduced = false, channel = 'stable' } = {}) {
     Image: ImageFixture,
     MutationObserver: Observer,
     ResizeObserver: Observer,
+    recordFrame(time: number) {
+      times.push(time);
+    },
     requestAnimationFrame(callback: (time: number) => void) {
       const id = ++nextFrame;
       frames.set(id, callback);
@@ -159,6 +163,10 @@ function renderer({ reduced = false, channel = 'stable' } = {}) {
     },
   });
   vm.runInContext(source, sandbox);
+  vm.runInContext(
+    'globalThis.stopStartup = startStartupAnimation(document.querySelector("canvas"), {onFrame: recordFrame})',
+    sandbox,
+  );
   images.at(-1)?.onload?.();
   return {
     motion,
@@ -167,6 +175,7 @@ function renderer({ reduced = false, channel = 'stable' } = {}) {
     observers,
     images,
     frames,
+    times,
     paints: () => paints,
     tick(time: number) {
       const callbacks = [...frames.values()];
@@ -174,7 +183,7 @@ function renderer({ reduced = false, channel = 'stable' } = {}) {
       for (const callback of callbacks) callback(time);
     },
     release() {
-      vm.runInContext('releaseInitialStartupAnimation()', sandbox);
+      vm.runInContext('stopStartup()', sandbox);
     },
   };
 }
@@ -222,3 +231,20 @@ test.each(['stable', 'dev', 'beta', 'nightly'])(
     scene.release();
   },
 );
+
+test('a hidden document pauses the intro clock rather than spending the reveal off screen', () => {
+  const scene = renderer();
+  scene.tick(1000);
+  scene.tick(1200);
+  expect(scene.times).toEqual([0, 200]);
+  scene.document.hidden = true;
+  scene.listeners.get('visibilitychange')?.();
+  scene.tick(8000);
+  expect(scene.times).toEqual([0, 200]);
+  scene.document.hidden = false;
+  scene.listeners.get('visibilitychange')?.();
+  scene.tick(9000);
+  scene.tick(9200);
+  expect(scene.times).toEqual([0, 200, 200, 400]);
+  scene.release();
+});
