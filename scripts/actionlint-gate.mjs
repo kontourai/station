@@ -1605,11 +1605,17 @@ function ciCredentialFindings(file, jobs) {
     .filter(([jobId, job]) => {
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
-      const step = withoutReadToken.steps?.find(
-        (entry) => entry.name === 'Validate live pull-request title',
-      );
-      if (step?.env?.GH_TOKEN === `\${{ github.token }}`)
-        delete step.env.GH_TOKEN;
+      for (const step of withoutReadToken.steps ?? []) {
+        if (
+          [
+            'Mark title policy pending before setup',
+            'Publish live title policy',
+            'Fail title policy after publication or setup error',
+          ].includes(step.name) &&
+          step.env?.GH_TOKEN === `\${{ github.token }}`
+        )
+          delete step.env.GH_TOKEN;
+      }
       return referencesCredential(withoutReadToken);
     })
     .map(([jobId]) => ({ file, jobId, message: CI_CREDENTIAL_MESSAGE }));
@@ -2482,6 +2488,7 @@ function primaryCiRouterFindings(file, document) {
           JSON.stringify({
             contents: 'read',
             'pull-requests': 'read',
+            statuses: 'write',
           })
       ) &&
       !(
@@ -2578,42 +2585,64 @@ function primaryCiRouterFindings(file, document) {
     });
   const title = jobs['pr-title'];
   const expectedTitle = {
-    name: 'PR title',
-    if: `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`,
-    permissions: { contents: 'read', 'pull-requests': 'read' },
+    name: 'PR title status publisher',
+    if: "${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
+    permissions: {
+      contents: 'read',
+      'pull-requests': 'read',
+      statuses: 'write',
+    },
     concurrency: {
-      group: `ci-pr-title-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
-      'cancel-in-progress': true,
+      group:
+        'ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+      'cancel-in-progress': false,
     },
     'runs-on': 'ubuntu-22.04',
     'timeout-minutes': 3,
     steps: [
       {
-        name: 'Check out base policy for pull-request title',
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        uses: CHECKOUT_ACTION,
+        name: 'Mark title policy pending before setup',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          STATUS_SHA:
+            '${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+        },
+        run: "node --input-type=module <<'NODE'\nconst response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {\n  method: 'POST',\n  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ context: 'PR title policy', state: 'pending', description: 'Validating live title policy' }),\n  signal: AbortSignal.timeout(30000),\n});\nif (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);\nNODE\n",
+      },
+      {
+        name: 'Check out workflow policy for pull-request title',
+        uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
         with: {
           'fetch-depth': 1,
           'persist-credentials': false,
-          repository: `\${{ github.repository }}`,
-          ref: `\${{ github.event.pull_request.base.sha }}`,
+          repository: '${{ github.repository }}',
+          ref: "${{ github.event_name == 'pull_request_target' && github.workflow_sha || github.event.merge_group.base_sha }}",
         },
       },
       {
         uses: SETUP_NODE_ACTION,
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        with: { 'node-version-file': '.nvmrc', 'package-manager-cache': false },
+        with: {
+          'node-version-file': '.nvmrc',
+          'package-manager-cache': false,
+        },
       },
       {
-        name: 'Validate live pull-request title',
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        env: { GH_TOKEN: `\${{ github.token }}` },
+        name: 'Publish live title policy',
+        id: 'policy',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+        },
         run: 'node scripts/pr-title-check.mjs',
       },
       {
-        name: 'Acknowledge title checks at queue admission',
-        if: `\${{ github.event_name == 'merge_group' }}`,
-        run: 'echo "PR titles are required before merge-queue admission."',
+        name: 'Fail title policy after publication or setup error',
+        if: "${{ always() && steps.policy.outcome != 'success' }}",
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          STATUS_SHA:
+            '${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+        },
+        run: "node --input-type=module <<'NODE'\nconst response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {\n  method: 'POST',\n  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ context: 'PR title policy', state: 'failure', description: 'Title policy validation or publication failed' }),\n  signal: AbortSignal.timeout(30000),\n});\nif (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);\nNODE\n",
       },
     ],
   };
@@ -2622,7 +2651,7 @@ function primaryCiRouterFindings(file, document) {
       file,
       jobId: 'pr-title',
       message:
-        'Required PR title check must use the exact base-only read-only topology',
+        'Title status publisher must use the exact trusted-policy topology',
     });
   if (
     jobs['fast-checks']?.name !==

@@ -630,44 +630,72 @@ jobs:
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
 
   pr-title:
-    name: PR title
+    # This check run is diagnostic. The required context is a mutable commit
+    # status so a corrected title can replace failure on the same source head.
+    name: PR title status publisher
     if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
     permissions:
       contents: read
       pull-requests: read
+      statuses: write
     concurrency:
-      # Delayed edits validate the live title, never their stale payload.
-      group: ci-pr-title-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
-      cancel-in-progress: true
+      # Status ownership is repository + SHA + context, across PR numbers.
+      group: ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     timeout-minutes: 3
     steps:
-      - name: Check out base policy for pull-request title
-        if: ${{ github.event_name == 'pull_request_target' }}
+      - name: Mark title policy pending before setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: 'PR title policy', state: 'pending', description: 'Validating live title policy' }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);
+          NODE
+
+      - name: Check out workflow policy for pull-request title
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
           repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.workflow_sha || github.event.merge_group.base_sha }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: ${{ github.event_name == 'pull_request_target' }}
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      - name: Validate live pull-request title
-        if: ${{ github.event_name == 'pull_request_target' }}
+      - name: Publish live title policy
+        id: policy
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/pr-title-check.mjs
 
-      # The required title check gates each PR before queue admission. The
-      # synthesized merge group has no PR title; source checks still run.
-      - name: Acknowledge title checks at queue admission
-        if: ${{ github.event_name == 'merge_group' }}
-        run: echo "PR titles are required before merge-queue admission."
+      # Best-effort failure also covers bootstrap/setup errors. Once pending
+      # was accepted, a rejected terminal write cannot restore earlier success.
+      - name: Fail title policy after publication or setup error
+        if: ${{ always() && steps.policy.outcome != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: 'PR title policy', state: 'failure', description: 'Title policy validation or publication failed' }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);
+          NODE
 
   ui-bundle-delta:
     name: UI entry bundle delta (report only)

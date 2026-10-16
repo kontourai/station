@@ -110,12 +110,14 @@ blind rerun.
 
 ## Qualification cadence and evidence reuse
 
-The `PR title` context must be required alongside the existing source checks.
-When activating this split, hold integration until the workflow and ruleset
-agree, then initialize existing PR heads through real metadata events and verify
-their title results before admission. Never manufacture source success to clear
-an old title-related source failure. The merge-group title check acknowledges
-prior admission and does not validate later title edits.
+Require the mutable commit-status context `PR title policy` alongside all six
+source requirements. `PR title status publisher` is diagnostic and must not be
+required. Replace the old `PR title` check-run requirement only after deploying
+the publisher and observing its real statuses. Keep integration held during the
+transition and initialize heads through metadata events. Historical failed check
+runs remain visible; they no longer own title admission. Never manufacture
+source success. Queue publication acknowledges title enforcement at admission,
+not revalidation of constituent titles after enqueue.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 after main source changes and at minute 17 of every UTC hour. It tests one exact workflow-event SHA from
