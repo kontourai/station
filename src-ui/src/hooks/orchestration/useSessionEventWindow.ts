@@ -209,8 +209,13 @@ export function useSessionEventWindow(
     setSettled(false);
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
+      if (
+        requestGeneration !== generation.current ||
+        requestSerial !== requestSerialRef.current ||
+        controller.signal.aborted
+      )
+        return;
       if (capability !== true) {
-        if (requestGeneration !== generation.current) return;
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(

@@ -109,7 +109,8 @@ and implement idempotent resource closure.
 - `displayName` is presentation only.
 - `sessionCookies` names one to four account cookies. Use names unique to this
   Station authority, including when several Stations share a hostname. Existing
-  Station device-cookie names are reserved. Multiple presented account cookies
+  The `station-device` and `__Host-station-device` names and their hyphenated
+  namespaces are reserved. Multiple presented account cookies
   are a conflict; no credential is selected by precedence.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
@@ -202,6 +203,12 @@ continue to require their existing credential and authorization. Current
 account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
+
+A verified person can read and patch their own `/api/me/preferences` from an
+account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
+paths. Account preferences are partitioned by person and trusted tenant on this
+Station, and grant no Device or execution authority. See
+[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 ### Account-bound collaborator Devices
 
@@ -418,7 +425,8 @@ app is installed or that a device has been approved.
 `station.application-session/v1`. The SDK implementation is
 `@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
 HttpOnly cookies. A same-origin HTTPS browser can explicitly adopt its current
-`__Host-station-device` cookie and provider account cookie into a read-only alias
+`__Host-station-device-<station-id-hash>` cookie (or legacy
+`__Host-station-device`) and provider account cookie into a read-only alias
 for that same approved Device plus an exact alias-bound continuation. The SDK's
 `ApplicationSessionClient.adoptCookies()` sends them only through the browser's
 same-origin cookie handling; cookie values are never read by JavaScript or

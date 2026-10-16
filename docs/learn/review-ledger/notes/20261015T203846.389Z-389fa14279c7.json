@@ -1,0 +1,7 @@
+{
+  "revision": "8bbdc05ae4c17ba6893fd9725406b52e19add630",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Fix round 1 follow-up at 8bbdc05ae4c: checked the disabled Dispatch explanation and its Project settings Agents link. The link uses the canonical /projects/:slug/settings route with section=agents through navigate; isPlainLeftClick retains browser handling for modified clicks. The text explicitly describes new-Task agent selection and promises no assignment action for existing Tasks. Earlier source review remains applicable to creation, list invalidation and board presentation. No Starter launch contract or guide prose change. Real UI link verification and provider execution are separate evidence.","inputs":["docs/guides/starter-work.md","src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
+  ]
+}

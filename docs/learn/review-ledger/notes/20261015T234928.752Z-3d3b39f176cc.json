@@ -1,0 +1,9 @@
+{
+  "revision": "0709e51ee1c342fcc435a8d7a1a70ccb361fb5b3",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed bounded E2E runner bootstrap compatibility delta0709e51ee1c: launcher exchange now accepts legacy station-device or the exact16lowercasehex Station namespace issued by runtime-routes/deviceSessionCookieName, retaining credential validation and the same UI-port/Origin ceremony. No suite selection, browser health, timing, retry, authorization, fixture class or comparison policy changed; existing documentation remains accurate.99focusedchecks passed; old runner reproduces1intendedcookie assertion failure/98passed. Canonical screenshot runner with --screens=home completed real bootstrap and capture; local macOS subset does not establish hosted Linux full Gallery pixels. Failed hosted Gallery job116728419584 produced no capture/artifact and never ran baseline comparison; no baseline changed.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed bounded E2E runner bootstrap compatibility delta0709e51ee1c: launcher exchange now accepts legacy station-device or the exact16lowercasehex Station namespace issued by runtime-routes/deviceSessionCookieName, retaining credential validation and the same UI-port/Origin ceremony. No suite selection, browser health, timing, retry, authorization, fixture class or comparison policy changed; existing documentation remains accurate.99focusedchecks passed; old runner reproduces1intendedcookie assertion failure/98passed. Canonical screenshot runner with --screens=home completed real bootstrap and capture; local macOS subset does not establish hosted Linux full Gallery pixels. Failed hosted Gallery job116728419584 produced no capture/artifact and never ran baseline comparison; no baseline changed.","inputs":["docs/testing/browser-smoke.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "636258fdb9285d09c6e902ec934f3b23a670b862",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Corrected that the source logs the shrink warning; disclosed offset-based identity for uuid-less records after a rewrite and narrowed the legacy affinity rule to reads that do not throw (independent review L1/L2).","inputs":["docs/reference/session-api.md"]}
+  ]
+}

@@ -112,7 +112,8 @@ The review ledger records document purpose separately from source review.
 
 `docs:truth:gate` already includes the ledger freshness test through
 `docs:foundations:test`. It is selected as required Veritas evidence, including
-through `ci:fast`'s readiness call and the pre-push hook. There, freshness is
+through required hosted `fast-checks-statics` and its `ci:fast` readiness call.
+There, freshness is
 scoped: a stale record blocks when the change's own diff touches its document,
 a recorded source or the record itself. In the merge queue, on `main` and in
 Nightly static verification the same test only reports staleness, so another

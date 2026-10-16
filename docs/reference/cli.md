@@ -2322,7 +2322,7 @@ station environment peers remove <environment-id>
 - `environment offer` discovers the active local Station through its
   owner-validated local service record, verifies the loopback listener's identity and
   proof before sending the operator credential, then creates the existing
-  device-pairing offer and prints its expiry, plaintext
+  device-pairing offer and prints its expiry, short manual pairing code, plaintext
   `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
   `--tailscale` reads the active machine's MagicDNS name and HTTPS Serve status,

@@ -6,8 +6,6 @@ import {
 } from './startup-mark-geometry';
 
 const MARK = STARTUP_MARK_SIZE;
-let startedAt: number | undefined;
-let firstPaintCleanup: (() => void) | undefined;
 
 const fraction = (value: number) => Math.max(0, Math.min(1, value));
 const ease = (value: number) => 1 - (1 - fraction(value)) ** 3;
@@ -39,12 +37,25 @@ function trackPath(
   context.closePath();
 }
 
-/** Paints the boot surface without owning readiness or delaying its removal. */
-export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
-  releaseInitialStartupAnimation();
+/** Paints only visible time; the launch presentation owns its handoff. */
+export function startStartupAnimation(
+  canvas: HTMLCanvasElement,
+  {
+    isVisible = (): boolean => true,
+    onFrame = (_elapsed: number) => {},
+    onUnavailable = () => {},
+  }: {
+    isVisible?: () => boolean;
+    onFrame?: (elapsed: number) => void;
+    onUnavailable?: () => void;
+  } = {},
+): () => void {
   const candidate = canvas.getContext('2d');
   const parent = canvas.parentElement;
-  if (!candidate || !parent) return () => {};
+  if (!candidate || !parent) {
+    onUnavailable();
+    return () => {};
+  }
   const context = candidate;
   const surface = parent;
 
@@ -55,7 +66,10 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   const layer = document.createElement('canvas');
   layer.width = layer.height = MARK;
   const candidateFlow = layer.getContext('2d');
-  if (!candidateFlow) return () => {};
+  if (!candidateFlow) {
+    onUnavailable();
+    return () => {};
+  }
   const flowContext = candidateFlow;
 
   const swatch = document.createElement('span');
@@ -71,6 +85,8 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   let stopped = false;
   let frameId = 0;
   let lastPaint = 0;
+  let elapsed = 0;
+  let previous: number | undefined;
 
   function readTheme() {
     const styles = getComputedStyle(surface);
@@ -123,7 +139,10 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
       ready = true;
       schedule();
     };
-    next.onerror = dispose;
+    next.onerror = () => {
+      dispose();
+      onUnavailable();
+    };
   }
 
   function draw(time: number) {
@@ -299,13 +318,26 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
     if (
       ready &&
       !document.hidden &&
+      isVisible() &&
+      canvas.clientWidth > 0 &&
+      canvas.clientHeight > 0 &&
       (motion.matches || now - lastPaint >= 1000 / 30)
     ) {
-      startedAt ??= now;
-      draw(motion.matches ? 3 : (now - startedAt) / 1000);
+      if (previous !== undefined) elapsed += now - previous;
+      previous = now;
+      draw(motion.matches ? 3 : elapsed / 1000);
       canvas.dataset.ready = 'true';
       lastPaint = now;
+      onFrame(elapsed);
     }
+    if (
+      !ready ||
+      document.hidden ||
+      !isVisible() ||
+      canvas.clientWidth === 0 ||
+      canvas.clientHeight === 0
+    )
+      previous = undefined;
     if (!document.hidden && (!ready || !motion.matches)) schedule();
   }
 
@@ -314,6 +346,7 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   }
 
   function visibility() {
+    previous = undefined;
     cancelAnimationFrame(frameId);
     frameId = 0;
     if (!document.hidden) schedule();
@@ -336,14 +369,3 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
   });
   return dispose;
 }
-
-export function releaseInitialStartupAnimation(): void {
-  firstPaintCleanup?.();
-  firstPaintCleanup = undefined;
-}
-
-const firstPaintCanvas = document.querySelector<HTMLCanvasElement>(
-  '#root .station-startup__canvas',
-);
-if (firstPaintCanvas)
-  firstPaintCleanup = startStartupAnimation(firstPaintCanvas);

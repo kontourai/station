@@ -413,6 +413,42 @@ describe('ProjectTasksSection', () => {
     window.history.pushState({}, '', '/');
   });
 
+  test.each([undefined, '  '])(
+    'disables Dispatch with a reason when the Task has no agent (%s)',
+    (agentId) => {
+      tasks[0] = { ...tasks[0], agentId };
+      render(<ProjectTasksSection slug="project-alpha" />);
+
+      const button = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Dispatch',
+      });
+      expect(button.disabled).toBe(true);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Dispatch needs an agent, and this Task has none.',
+      );
+      const reason = screen.getByRole('status');
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(reason.textContent).toContain(
+        'New Tasks use the first agent selected in Project settings › Agents.',
+      );
+      fireEvent.click(button);
+      expect(dispatchTask).not.toHaveBeenCalled();
+      expect(tasks[0].status).toBe('todo');
+      const settingsLink = screen.getByRole('link', {
+        name: 'Project settings › Agents',
+      });
+      expect(settingsLink.getAttribute('href')).toBe(
+        '/projects/project-alpha/edit?section=agents',
+      );
+      fireEvent.click(settingsLink, { metaKey: true });
+      expect(navigate).not.toHaveBeenCalled();
+      fireEvent.click(settingsLink);
+      expect(navigate).toHaveBeenCalledWith('/projects/project-alpha/edit', {
+        section: 'agents',
+      });
+    },
+  );
+
   test('creates a bound task, opens it, and preserves dispatch behavior', async () => {
     createTask.mockImplementation(async () => {
       const task = {
@@ -473,6 +509,15 @@ describe('ProjectTasksSection', () => {
     );
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/tasks/task-2'));
+    const listInvalidation = invalidateQueries.mock.calls.findIndex(
+      ([filters]) =>
+        JSON.stringify(filters.queryKey) ===
+        JSON.stringify(['tasks', 'project-alpha']),
+    );
+    expect(listInvalidation).toBeGreaterThanOrEqual(0);
+    expect(
+      invalidateQueries.mock.invocationCallOrder[listInvalidation],
+    ).toBeLessThan(navigate.mock.invocationCallOrder[0]);
 
     navigate.mockReset();
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));

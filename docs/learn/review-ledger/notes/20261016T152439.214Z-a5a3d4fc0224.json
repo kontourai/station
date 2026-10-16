@@ -1,0 +1,27 @@
+{
+  "revision": "afe9b771fdb1a610c8dfbc011245afc0a6811c97",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the changed readiness/documentation ownership statement against run-ci-fast FAST_STATIC_COMMANDS and the required fast-checks-statics job and aggregate. The readiness call remains hosted; docs truth retains its scoped freshness semantics. Protected Standards and governance block are unchanged.","inputs":[".veritas/README.md",".githooks/pre-push","scripts/__tests__/prepush-typecheck.test.ts"]},
+
+    {"path":"AGENTS.md","note":"Reviewed hook/full-typecheck ownership correction against executable pre-push, gate-for and ci.yml. Required hosted statics owns readiness/all types; local focused and scoped hook evidence remains. No governance-block edit; no broad local diagnostic default change in this lane.","inputs":["AGENTS.md",".githooks/pre-push","scripts/gate-for.mjs"]},
+
+    {"path":"CLAUDE.md","note":"Reviewed complete import and protected governance block against AGENTS.md. It continues importing the canonical instructions; neither its governance block nor the AGENTS governance block changed.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed push-related commit-range and transfer-baseline statements against retained commit-message and transfer hook calls. Both contracts remain executable; no prose correction needed for this bounded hook change. Parent owns broader local CI default wording reconciliation.","inputs":["docs/guides/development.md",".githooks/pre-push"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed hook ownership and pure-merge paragraphs against pre-push, gate-for, run-ci-fast FAST_STATIC_COMMANDS and ci.yml aggregate. Readiness/all types move to existing required hosted statics; pure merges still skip scoped transfer/static/SDK checks. Real-push tests prove normal calls, cheap-check refusals, deletion-only and mixed-update behavior; restored mutation test is green. Full hosted execution is not local proof.","inputs":["docs/guides/testing.md",".githooks/pre-push","scripts/__tests__/prepush-typecheck.test.ts","scripts/evidence-check-execution-gate.mjs"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed generated-validator pre-push claim against retained check-prepush-static-gates call. This repair removes only readiness and typecheck; agent-plugin validators remain scoped local static evidence. No validator/schema/runtime change or prose correction needed.","inputs":["docs/reference/agent-plugins.md",".githooks/pre-push"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed complete instructions against bounded tooling changes: deterministic fail-closed readiness routing now requires ci:fast, existing child-process test fixtures reused, focused baseline/red/restored evidence and read-only lint executed. No change to resource or process requirements.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed complete native routing instructions after gate-for drops the broad local typecheck obligation. Focused native selection and physical-device proof boundaries remain correct; no native implementation changed.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed complete server instructions and testing-guide references. Hook ownership edits do not change route/domain, process-launch, batching, installed-integrity or focused-test obligations; no prose change needed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed complete UI instructions and testing-guide references. Hook ownership edits do not change navigation, UI state, design-system, focused-test or performance evidence obligations; no prose change needed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed complete test instructions and linked testing-guide routes. Focused hermetic fixture and explicit typecheck:e2e requirements are preserved; removal of broad every-push types does not waive browser-fixture evidence.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9be7f1bcd762b7e726cc8bec1151ad6e54621c1c",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed qualification-evidence API helper delta: responseBody defaults to JSON and all existing qualification and release callers retain that default. Only PR cancellation opts into no response body. Exact-source reuse, receipt age, failed producer refusal and publication authority are unchanged; qualification-evidence focused tests passed.","inputs":["docs/guides/releasing.md","scripts/qualification-evidence.mjs"]}
+  ]
+}

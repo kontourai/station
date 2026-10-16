@@ -165,7 +165,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const forceRefetch = useForceRefetchSystemStatus(apiBase);
   const profile = usePlatformProfile();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
-  const { navigate, pathname } = useNavigation();
+  const { navigate, pathname, activeChat } = useNavigation();
   const { showToast } = useToast();
   const bootstrapRecoveryError = nativeProfileBootstrapRecoveryError();
   const [showModal, setShowModal] = useState(false);
@@ -613,7 +613,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           {
             label: 'Request access',
             onClick: () => {
-              setConnectionModalMode('list');
+              setConnectionModalMode('request-access');
               setShowModal(true);
             },
             variant: 'secondary',
@@ -735,6 +735,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       setupVisible: setupBannerVisible,
       setupContent: setupBannerContent,
       pathname,
+      conversationOpen: Boolean(activeChat),
     }) && setupBannerContent;
   const connectedNotice: ReactNode = setupLauncherVisible ? (
     <SetupLauncher

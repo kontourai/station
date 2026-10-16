@@ -9,6 +9,10 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../../../contexts/navigation-store';
 
+vi.mock('../TelemetryDestinationGrants', () => ({
+  TelemetryDestinationGrants: () => null,
+}));
+
 const mocks = vi.hoisted(() => ({
   create: vi.fn().mockResolvedValue(undefined),
   replace: vi.fn().mockResolvedValue(undefined),
