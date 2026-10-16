@@ -390,10 +390,10 @@ export function GuestSharedTaskView({
               </Button>
             ))}
           </div>
-          {(history.isPending || document.isPending) && (
+          {(tab === 'Chat' ? history.isPending : document.isPending) && (
             <SkeletonList count={2} label="Reading shared Task content" />
           )}
-          {(history.isError || document.isError) && !scopeLost && (
+          {(tab === 'Chat' ? history.isError : document.isError) && !scopeLost && (
             <p role="alert">Shared Task content is unavailable.</p>
           )}
           {history.data?.kind === 'available' ? (
