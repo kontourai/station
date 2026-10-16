@@ -308,8 +308,6 @@
     "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
   },
   "dependencies": {
-    "@hpke/core": "1.9.0",
-    "canonicalize": "5.1.0",
     "@agentclientprotocol/sdk": "^1.7.0",
     "@ai-sdk/amazon-bedrock": "^4.0.191",
     "@ai-sdk/anthropic": "^3.0.127",
@@ -323,7 +321,9 @@
     "@aws-sdk/client-pricing": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/credential-providers": "^3.1146.0",
+    "@cedar-policy/cedar-wasm": "4.13.0",
     "@hono/node-server": "^2.1.3",
+    "@hpke/core": "1.9.0",
     "@kontourai/conduit": "0.7.1",
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/console-server": "^1.0.0",
@@ -385,6 +385,7 @@
     "ai": "^6.0.300",
     "ajv": "^8.20.0",
     "better-auth": "1.7.7",
+    "canonicalize": "5.1.0",
     "chokidar": "^5.0.0",
     "debug": "^4.4.3",
     "dompurify": "^3.4.16",
