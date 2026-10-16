@@ -199,6 +199,7 @@ function showApprovalToast(
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
     if (
       !isChatInForeground({
+        chatKey: activeChatsStore.getChatKeyForExecutionSession(event.threadId),
         threadId: event.threadId,
         conversationId: chat?.conversationId,
       })
