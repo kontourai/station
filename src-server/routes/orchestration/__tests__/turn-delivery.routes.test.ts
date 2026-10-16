@@ -605,6 +605,51 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(adapter.turns).toHaveLength(1);
   });
 
+  test('a failed boundary settlement write rolls back the linked dedup audit and retains the effect fence', async () => {
+    const { adapter, send, root, lookup } = station();
+    const db = new DatabaseSync(join(root, 'orchestration.sqlite'));
+    try {
+      db.exec(`CREATE TRIGGER abort_host_refusal BEFORE UPDATE OF state ON orchestration_turn_boundaries
+        WHEN NEW.state = 'settled' BEGIN SELECT RAISE(ABORT, 'host refusal write aborted'); END`);
+      adapter.nextTurn = 'refuse';
+      const refused = await send(
+        'conversation:refusal-abort',
+        'key-refusal-abort',
+      );
+      expect(refused.status).toBe(409);
+      expect(
+        await lookup('conversation:refusal-abort', 'key-refusal-abort'),
+      ).toMatchObject({
+        outcome: 'indeterminate',
+      });
+      expect(adapter.turns).toHaveLength(0);
+      expect(
+        db
+          .prepare(
+            'SELECT state, prepared_settlement FROM orchestration_turn_boundaries',
+          )
+          .get(),
+      ).toMatchObject({
+        state: 'invoking',
+        prepared_settlement: null,
+      });
+      const dedup = db
+        .prepare('SELECT owner_json, value FROM orchestration_turn_dedup')
+        .get();
+      expect(dedup?.value).toBeNull();
+      const owner = JSON.parse(String(dedup?.owner_json));
+      expect(owner.invocation).toBe('begun');
+      expect(owner).not.toHaveProperty('settlement');
+      expect(
+        db
+          .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
+          .get()?.count,
+      ).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
   test('a send that failed after the engine may have taken it is indeterminate while this Station lives, never received', async () => {
     const { adapter, send, lookup } = station();
     adapter.nextTurn = 'fail';
