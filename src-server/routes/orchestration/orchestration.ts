@@ -1879,6 +1879,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
+      options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -2626,8 +2627,18 @@ export function createOrchestrationRoutes(
         delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
-              resolveAttachments: (binding) =>
+              resolveAttachments: (
+                binding: { threadId: string; clientTurnId: string },
+                options?: { inspectOnly?: true },
+              ) =>
                 (() => {
+                  if (options?.inspectOnly)
+                    return deps.hydrateStagedAttachments!(
+                      principal!,
+                      stagedAttachments,
+                      binding,
+                      options,
+                    );
                   stagedBinding = binding;
                   stagedBindingForRelease = binding;
                   stagedAttachmentsForRelease = stagedAttachments;

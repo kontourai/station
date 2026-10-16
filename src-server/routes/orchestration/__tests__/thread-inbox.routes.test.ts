@@ -37,13 +37,16 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
 import type { ConversationKeyInspection } from '../../../services/orchestration/session-message-delivery.js';
+import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
+import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
@@ -74,6 +77,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
   };
   readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly starts: ProviderSessionStartInput[] = [];
   /** Leave each turn running until `complete` ends it. */
   holdTurns = false;
   /** Refuse the next send as a turn the engine opened itself. */
@@ -87,6 +91,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
   private open: { threadId: string; turnId: string } | undefined;
 
   async startSession(input: ProviderSessionStartInput) {
+    this.starts.push(input);
     const now = new Date().toISOString();
     for (const method of ['session.started', 'session.configured'] as const)
       this.events.push({
@@ -229,6 +234,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     options: {
       inbox?: boolean;
       continueThroughExecutor?: true;
+      stagedAttachments?: true;
       /** Reopen another process's home (a restart). */
       root?: string;
       /** This process's birth: an earlier birth's claims read as dead. */
@@ -260,6 +266,13 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         : []),
     );
     const adapter = new ScriptedAdapter();
+    if (options.stagedAttachments)
+      adapter.metadata.capabilities = [
+        ...adapter.metadata.capabilities,
+        'file-input',
+      ];
+    const staging = new AttachmentStagingService();
+    cleanup.push(() => staging.dispose());
     if (options.modelPerTurn === false && adapter.metadata.modelLaunch)
       (
         adapter.metadata.modelLaunch as { overridePerTurn: boolean }
@@ -542,6 +555,39 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         eventBus: bus,
         logger: { debug: vi.fn() },
         getUserId: () => caller,
+        ...(options.stagedAttachments
+          ? {
+              resolvePrincipal: () => ({
+                id: caller,
+                kind: 'human' as const,
+                display: caller,
+              }),
+              hydrateStagedAttachments: (
+                principal,
+                references,
+                binding,
+                options,
+              ) =>
+                staging.bindAndHydrate(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                  options,
+                ),
+              releaseStagedAttachments: (principal, references, binding) =>
+                staging.releaseBinding(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                ),
+              acceptStagedAttachments: (principal, references, binding) =>
+                staging.acceptBinding(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                ),
+            }
+          : {}),
         executeForegroundMessage: (input) =>
           executeForegroundMessage(input, deps),
         continueForegroundMessage: async (input) => {
@@ -660,6 +706,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         }),
       });
     return {
+      staging,
       sendAbortable,
       continueRefusal,
       lookupData,
@@ -685,6 +732,162 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       prompts,
     };
   }
+
+  test.each([
+    'retained',
+    'dead-invoked',
+    'reclaimable',
+    'legacy',
+    'tombstone',
+  ] as const)(
+    '#3567: staged input checks authorized original proof before %s disposition or successor reservation',
+    async (state) => {
+      const first = station({
+        birth: 'original-owner',
+        stagedAttachments: true,
+        modelPerTurn: false,
+      });
+      expect((await first.send('setup', 'setup')).status).toBe(200);
+      const sessionId =
+        first.service.currentConversationSessionId(CONVERSATION);
+      const attachment = {
+        kind: 'file' as const,
+        name: 'note.txt',
+        mimeType: 'text/plain' as const,
+        size: 2,
+        dataUrl: 'data:text/plain;base64,aGk=',
+      };
+      const original = {
+        target: { environment: { kind: 'current' as const }, agent: AGENT },
+        message: ' original ',
+        attachments: [attachment],
+      };
+      if (state === 'tombstone') {
+        first.store['db']
+          .prepare(
+            'INSERT INTO orchestration_turn_dedup_expired (dedup_key, expired_at) VALUES (?, ?)',
+          )
+          .run(turnDedupKey(sessionId, 'staged-key'), Date.now());
+      } else {
+        const claim = first.store.createTurnDeduplicator().claim({
+          threadId: sessionId,
+          clientTurnId: 'staged-key',
+          ...(state === 'legacy'
+            ? {}
+            : { inputDigest: foregroundTurnSubmissionDigest(original) }),
+        });
+        if (claim.kind !== 'owner')
+          throw new Error('Expected original pending owner');
+        if (state === 'retained' || state === 'dead-invoked')
+          claim.claim.beginInvocation();
+        if (state === 'retained') claim.claim.retain();
+      }
+      if (state !== 'retained' && state !== 'tombstone') {
+        first.adapter.events.push({
+          eventId: `${sessionId}:staged-owner-exited`,
+          provider: 'claude',
+          threadId: sessionId,
+          sessionId,
+          createdAt: new Date().toISOString(),
+          method: 'session.exited',
+          exitKind: 'error',
+        } as CanonicalRuntimeEvent);
+        await eventually(() =>
+          expect(
+            first.store
+              .listEvents(sessionId)
+              .some((entry) => entry.payload.method === 'session.exited'),
+          ).toBe(true),
+        );
+      }
+      const world =
+        state === 'retained' || state === 'tombstone'
+          ? first
+          : station({
+              root: first.root,
+              birth: 'replacement-owner',
+              stagedAttachments: true,
+              modelPerTurn: false,
+            });
+      const prepared = world.staging.prepare(
+        { principalId: OWNER },
+        {
+          clientAttachmentId: 'staged-proof',
+          kind: attachment.kind,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+        },
+      );
+      const reference = world.staging.upload(
+        prepared.stageId,
+        prepared.uploadGrant,
+        attachment.dataUrl,
+      );
+      const target = {
+        ...original.target,
+        model: { override: 'claude-other-model' },
+      };
+      const startsBefore = world.adapter.starts.length;
+      if (state === 'retained') {
+        const wrongOwner = await world.as(READER, () =>
+          world.send('staged-key', 'original', {
+            attachmentRefs: [reference],
+            target,
+          }),
+        );
+        expect(wrongOwner.status).not.toBe(200);
+        expect(await wrongOwner.json()).not.toMatchObject({
+          code: 'client_turn_input_conflict',
+        });
+        expect(world.adapter.starts).toHaveLength(startsBefore);
+      }
+      const changed = await world.send('staged-key', 'original', {
+        attachmentRefs: [reference],
+        target,
+      });
+      const changedAnswer = {
+        status: changed.status,
+        body: await changed.json(),
+      };
+      if (state === 'legacy') {
+        expect(changedAnswer.status).toBe(200);
+        expect(world.adapter.turns).toHaveLength(1);
+        expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+          2,
+        );
+        return;
+      }
+      expect(changedAnswer).toMatchObject({
+        status: 409,
+        body: {
+          code:
+            state === 'tombstone'
+              ? 'foreground_message_indeterminate'
+              : 'client_turn_input_conflict',
+        },
+      });
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+      expect(world.adapter.starts).toHaveLength(startsBefore);
+      expect(world.adapter.turns).toHaveLength(world === first ? 1 : 0);
+      const matching = await world.send('staged-key', original.message, {
+        attachmentRefs: [reference],
+      });
+      expect(matching.status, await matching.clone().text()).toBe(
+        state === 'reclaimable' ? 200 : 409,
+      );
+      if (state !== 'reclaimable')
+        expect(await matching.json()).toMatchObject({
+          code: 'foreground_message_indeterminate',
+        });
+      expect([
+        ...first.adapter.turns,
+        ...(world === first ? [] : world.adapter.turns),
+      ]).toHaveLength(state === 'reclaimable' ? 2 : 1);
+    },
+  );
 
   test.each([false, true])(
     '#3567: known input conflicts before conversation replay or busy queue acceptance (queue=%s)',

@@ -149,8 +149,10 @@ Conversation-wide replay and live-key joins compare retained original proof
 before returning a prior turn or reserving a successor Session. Inbox admission
 also compares known proof before answering queued; queued placement retains that
 server-captured digest through restart. Accepted handoff replay compares retained
-original input proof without starting or sending again. Its legacy marker alone binds prepared effects, including
-trimmed text; it cannot establish the original raw input. Legacy rows
+original input proof without starting or sending again. While the inbox is actively placing a key, its route guard
+may refuse a retry with `client_turn_in_flight` before this comparison; that
+transient refusal accepts, queues and replays nothing. The legacy handoff marker
+alone binds prepared effects, including trimmed text; it cannot establish the original raw input. Legacy rows
 without original digest proof remain unknown, and older binaries cannot enforce
 these conflicts. Keys remain optional outside surfaces that already require
 one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
@@ -204,10 +206,14 @@ A key is one send for the whole conversation, not only for one of its
 Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
-of the conversation. Known original input is compared first: changed input
-returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
+of the conversation. Known original input is compared before replay or a new
+provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
 can replay a started turn (`providerTurnId`); authorized staged attachments
-are bound to that turn. An identical key another attempt still holds
+are bound to that turn. Staged bytes are authorized against the earlier claim's
+Session and read without binding before digest comparison, including retained,
+dead-invoked and reclaimable claims. Only after a safe start or replay is chosen
+are they bound to its actual Session; tombstones retain no input proof.
+An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
 it does not resolve in time. That includes a claim the delivery lookup calls

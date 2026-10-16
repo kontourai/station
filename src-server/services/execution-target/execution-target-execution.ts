@@ -94,11 +94,14 @@ export interface ForegroundMessageInput {
   message: string;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
-  /** Server-only resolver that runs after Environment and child-session resolution. */
-  resolveAttachments?: (binding: {
-    threadId: string;
-    clientTurnId: string;
-  }) => ChatAttachmentInput[];
+  /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
+  resolveAttachments?: (
+    binding: {
+      threadId: string;
+      clientTurnId: string;
+    },
+    options?: { inspectOnly?: true },
+  ) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
   /**
@@ -684,12 +687,17 @@ export async function executeForegroundMessage(
     : input.clientTurnId;
   let attachments: ChatAttachmentInput[] | undefined;
   let submissionDigest: string | undefined;
-  const captureSubmission = (sessionId: string) => {
+  let inspectedAttachments = false;
+  const captureSubmission = (sessionId: string, inspectOnly = false) => {
+    inspectedAttachments = inspectOnly;
+    const binding = {
+      threadId: sessionId,
+      clientTurnId: effectiveClientTurnId ?? '',
+    };
     attachments = input.resolveAttachments
-      ? input.resolveAttachments({
-          threadId: sessionId,
-          clientTurnId: effectiveClientTurnId ?? '',
-        })
+      ? inspectOnly
+        ? input.resolveAttachments(binding, { inspectOnly: true })
+        : input.resolveAttachments(binding)
       : input.attachments;
     if (effectiveClientTurnId && attachments)
       attachments = snapshotTurnSubmissionValue(attachments);
@@ -858,20 +866,20 @@ export async function executeForegroundMessage(
       throw new ConversationTurnQueuedError(queued.entry);
     }
     if (!input.resolveAttachments) captureSubmission(conversationId);
-    let decision = conversationKeyDecision(
-      deps.inspectConversationTurnKey?.(
-        resolved.access,
-        conversationId,
-        clientTurnId,
-        submissionDigest,
-      ),
+    const inspection = deps.inspectConversationTurnKey?.(
+      resolved.access,
+      conversationId,
+      clientTurnId,
+      submissionDigest,
     );
+    let decision = conversationKeyDecision(inspection);
     if (
       input.resolveAttachments &&
-      'sessionId' in decision &&
-      decision.sessionId
+      inspection &&
+      'sessionId' in inspection &&
+      typeof inspection.sessionId === 'string'
     ) {
-      captureSubmission(decision.sessionId);
+      captureSubmission(inspection.sessionId, true);
       decision = conversationKeyDecision(
         deps.inspectConversationTurnKey?.(
           resolved.access,
@@ -908,6 +916,11 @@ export async function executeForegroundMessage(
       // send that went through, so the route accepts (rather than strands)
       // the references this retry carries.
       if (submissionDigest === undefined) captureSubmission(decision.sessionId);
+      else if (inspectedAttachments)
+        input.resolveAttachments?.({
+          threadId: decision.sessionId,
+          clientTurnId,
+        });
       return {
         conversationId,
         sessionId: decision.sessionId,
@@ -1331,6 +1344,11 @@ export async function executeForegroundMessage(
     }
   }
   if (submissionDigest === undefined) captureSubmission(sessionId);
+  else if (inspectedAttachments && effectiveClientTurnId)
+    input.resolveAttachments?.({
+      threadId: sessionId,
+      clientTurnId: effectiveClientTurnId,
+    });
   const transcriptSeed =
     resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
       ? undefined

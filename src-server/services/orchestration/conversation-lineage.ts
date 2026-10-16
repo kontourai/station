@@ -966,7 +966,7 @@ export class ConversationLineage {
     authority: SessionReadScope,
     inputDigest?: string,
   ):
-    | { outcome: 'not-received' | 'expired' }
+    | { outcome: 'not-received' | 'expired'; sessionId?: string }
     | {
         outcome: 'received' | 'indeterminate';
         /** The Session whose claim it is, when one live claim holds it. */
@@ -1003,12 +1003,11 @@ export class ConversationLineage {
     const has = (state: string) =>
       found.some(({ claim }) => claim.state === state);
     // A possible effect anywhere outranks a claim that may still resolve.
-    if (
-      found.some(
-        ({ claim }) => claim.state === 'indeterminate' && !claim.ageOnly,
-      )
-    )
-      return { outcome: 'indeterminate' };
+    const indeterminate = found.find(
+      ({ claim }) => claim.state === 'indeterminate' && !claim.ageOnly,
+    );
+    if (indeterminate)
+      return { outcome: 'indeterminate', sessionId: indeterminate.sessionId };
     if (has('expired')) return { outcome: 'expired' };
     // #3660: a live owner's claim, however old, may still deliver. It reads
     // indeterminate to the lookup, but names its Session so a resend can
@@ -1022,7 +1021,13 @@ export class ConversationLineage {
       };
     const held = found.find(({ claim }) => claim.state === 'in-flight');
     if (held) return { outcome: 'received', sessionId: held.sessionId };
-    return { outcome: 'not-received' };
+    const reclaimable = found.find(
+      ({ claim }) => claim.state === 'reclaimable',
+    );
+    return {
+      outcome: 'not-received',
+      ...(reclaimable ? { sessionId: reclaimable.sessionId } : {}),
+    };
   }
 
   /**

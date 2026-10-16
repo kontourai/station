@@ -4763,7 +4763,7 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
-      hydrateStagedAttachments: (principal, references, binding) =>
+      hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {
             principalId: principal.id,
@@ -4773,6 +4773,7 @@ export function configureRuntimeRoutes(
           },
           references,
           binding,
+          options,
         ),
       releaseStagedAttachments: (principal, references, binding) =>
         attachmentStaging.releaseBinding(
