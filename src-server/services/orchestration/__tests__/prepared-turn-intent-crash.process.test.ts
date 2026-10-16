@@ -38,6 +38,13 @@ afterEach(async () => {
 });
 
 class LiveResumeAdapter extends GateTestAdapter {
+  bindingKey = 'b'.repeat(64);
+  preparedTurnBinding() {
+    return {
+      bindingKey: this.bindingKey,
+      nativeIdentity: { sessionId: 'prepared-native-session' },
+    };
+  }
   readonly sent: ProviderSendTurnInput[] = [];
   override async hasSession() {
     return true;
@@ -385,7 +392,6 @@ test('resume refuses posture tightened after validation while its real coordinat
   const hold = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const original = SessionExecutionCoordinator.prototype.runPreparedTurnStart;
   const spy = vi.spyOn(
     SessionExecutionCoordinator.prototype,
     'runPreparedTurnStart',
@@ -399,7 +405,7 @@ test('resume refuses posture tightened after validation while its real coordinat
     entered();
     await hold;
     spy.mockRestore();
-    return original.call(this, threadId, operation, workspaceKey) as Promise<T>;
+    return this.runPreparedTurnStart(threadId, operation, workspaceKey);
   });
   const before = new DatabaseSync(path, { readOnly: true });
   const owners = () =>
@@ -420,6 +426,7 @@ test('resume refuses posture tightened after validation while its real coordinat
       type: 'setApprovalMode',
       threadId: THREAD,
       approvalMode: 'ask',
+      basedOnSequence: null,
     });
   } finally {
     release();

@@ -63,6 +63,7 @@ export interface SessionTurnBoundaryCoordinator {
     capture: CapturedTurnIntent;
     owner: OwnerIdentity;
     now: string;
+    current: () => boolean;
   }):
     | {
         kind: 'applied';
@@ -88,6 +89,7 @@ export interface SessionTurnBoundaryCoordinator {
     capture: CapturedTurnIntent;
     claim?: TurnClaim;
     now: string;
+    current?: () => boolean;
   }): SessionTurnBoundaryTransition;
   transition(input: {
     boundaryId: string;
@@ -258,6 +260,7 @@ export interface SessionTurnBoundaryAuthority {
   resumePrepared?(
     capture: CapturedTurnIntent,
     now: string,
+    current: () => boolean,
   ):
     | { kind: 'owner'; claim: SessionTurnBoundaryClaim; turnClaim?: TurnClaim }
     | { kind: 'stale' | 'unavailable' };
@@ -581,6 +584,7 @@ export function createSessionTurnBoundaryAuthority(options: {
       record: SessionTurnBoundaryRecord;
       capture: CapturedTurnIntent;
       turnClaim?: TurnClaim;
+      current?: () => boolean;
     },
   ): ReturnType<SessionTurnBoundaryAuthority['claim']> => {
     const freshRecord = {
@@ -604,9 +608,17 @@ export function createSessionTurnBoundaryAuthority(options: {
     let invocationStarted = false;
     let invocationAttempted = false;
     let prepared:
-      | { capture: CapturedTurnIntent; claim?: TurnClaim }
+      | {
+          capture: CapturedTurnIntent;
+          claim?: TurnClaim;
+          current?: () => boolean;
+        }
       | undefined = adopted
-      ? { capture: adopted.capture, claim: adopted.turnClaim }
+      ? {
+          capture: adopted.capture,
+          claim: adopted.turnClaim,
+          current: adopted.current,
+        }
       : undefined;
     let terminalIntent:
       | { kind: 'accepted'; turnId: string; now: string }
@@ -768,7 +780,11 @@ export function createSessionTurnBoundaryAuthority(options: {
   return {
     ...(options.coordinator.resumePrepared
       ? {
-          resumePrepared(capture: CapturedTurnIntent, now: string) {
+          resumePrepared(
+            capture: CapturedTurnIntent,
+            now: string,
+            current: () => boolean,
+          ) {
             const owner: OwnerIdentity =
               options.owner.identityKind === 'exact'
                 ? {
@@ -786,11 +802,13 @@ export function createSessionTurnBoundaryAuthority(options: {
               capture,
               owner,
               now,
+              current,
             });
             if (resumed.kind !== 'applied') return resumed;
             const claimed = claimTurn(capture.threadId, now, true, {
               ...resumed,
               capture,
+              current,
             });
             return claimed.kind === 'owner'
               ? { ...claimed, turnClaim: resumed.turnClaim }

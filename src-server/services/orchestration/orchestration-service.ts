@@ -12395,6 +12395,33 @@ export class OrchestrationService {
       !authorized()
     )
       throw unavailable();
+    const posture = this.approvalPosture.decision(threadId);
+    if (posture?.approvalMode === 'connection-default') throw unavailable();
+    const confinement = this.approvalPosture.standingConfinement(
+      threadId,
+      this.readStartConfinementStamp(threadId),
+    );
+    const current = () => {
+      try {
+        this.assertTurnAdmitted(threadId);
+        return (
+          authorized() &&
+          this.isAdapterCurrent(adapter) &&
+          this.approvalPosture.decision(threadId)?.sequence ===
+            posture?.sequence &&
+          this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStamp(threadId),
+          ) === confinement &&
+          samePreparedValue(
+            stored.capture.resumeGuard.binding,
+            this.preparedTurnBinding(threadId),
+          )
+        );
+      } catch {
+        return false;
+      }
+    };
     const freshOptions = await this.replayModelOptionsWithPosture(
       threadId,
       adapter.provider,
@@ -12405,7 +12432,7 @@ export class OrchestrationService {
         freshOptions ?? null,
         stored.capture.adapterInput.modelOptions ?? null,
       ) ||
-      !authorized()
+      !current()
     )
       throw unavailable();
     const cwd = this.options.eventStore?.readSessionByThread(threadId)?.cwd;
@@ -12415,18 +12442,11 @@ export class OrchestrationService {
     return this.sessionExecutionCoordinator.runPreparedTurnStart(
       threadId,
       async () => {
-        if (
-          !authorized() ||
-          !this.isAdapterCurrent(adapter) ||
-          !samePreparedValue(
-            stored.capture.resumeGuard.binding,
-            this.preparedTurnBinding(threadId),
-          )
-        )
-          throw unavailable();
+        if (!current()) throw unavailable();
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
           new Date().toISOString(),
+          current,
         );
         if (owned?.kind !== 'owner') throw unavailable();
         const begun = owned.claim.beginInvocation(new Date().toISOString());

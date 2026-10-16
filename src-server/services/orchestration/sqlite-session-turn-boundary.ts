@@ -40,6 +40,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     adopt(key: string): TurnClaim;
   };
 }): SessionTurnBoundaryCoordinator {
+  let preparedCurrent: (() => boolean) | undefined;
   const kernel = openSqliteKernelStorage({
     database: db,
     tables: {
@@ -87,6 +88,13 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         name: 'station-boundary-admission',
         admit(command) {
           if (
+            (command.type === 'turnBoundary.resumePrepared' ||
+              command.type === 'turnBoundary.beginInvocation') &&
+            preparedCurrent &&
+            !preparedCurrent()
+          )
+            return { refuse: 'prepared-authority-changed' };
+          if (
             command.type === 'turnBoundary.create' ||
             command.type === 'turnBoundary.recordAccepted'
           )
@@ -113,6 +121,18 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     return kernel.executeSync(command, context, {
       withinHostTransaction: nested,
     });
+  }
+  function withPreparedCurrent<T>(
+    current: (() => boolean) | undefined,
+    operation: () => T,
+  ): T {
+    const previous = preparedCurrent;
+    preparedCurrent = current;
+    try {
+      return operation();
+    } finally {
+      preparedCurrent = previous;
+    }
   }
   function owner(record: SessionTurnBoundaryRecord): OwnerIdentity {
     return record.ownerIdentityKind === 'exact' && record.ownerBirth
@@ -182,10 +202,12 @@ export function createSqliteSessionTurnBoundaryCoordinator({
             capture,
             owner: nextOwner,
             now,
+            current: admission,
           }: {
             capture: CapturedTurnIntent;
             owner: OwnerIdentity;
             now: string;
+            current: () => boolean;
           }) {
             try {
               const found = execute({ type: 'turnBoundary.list' });
@@ -228,35 +250,38 @@ export function createSqliteSessionTurnBoundaryCoordinator({
                   JSON.stringify(previous.owner),
                   preparedClaims.liveness(previous.owner),
                 );
-              const result = kernel.executeSync(
-                {
-                  type: 'turnBoundary.resumePrepared',
-                  boundaryId: current.boundaryId,
-                  intent: current.intent,
-                  observed: {
-                    owner: current.owner,
-                    createdAt: current.createdAt,
-                    updatedAt: current.updatedAt,
-                    verdict: 'dead',
+              const intent = current.intent;
+              const result = withPreparedCurrent(admission, () =>
+                kernel.executeSync(
+                  {
+                    type: 'turnBoundary.resumePrepared',
+                    boundaryId: current.boundaryId,
+                    intent,
+                    observed: {
+                      owner: current.owner,
+                      createdAt: current.createdAt,
+                      updatedAt: current.updatedAt,
+                      verdict: 'dead',
+                    },
+                    owner: nextOwner,
+                    now,
+                    ...(previous?.owner && previous.preparedUpdatedAt
+                      ? {
+                          dedup: {
+                            previousOwner: previous.owner,
+                            createdAt: previous.createdAt,
+                            updatedAt: previous.preparedUpdatedAt,
+                            owner: preparedClaims.owner,
+                          },
+                        }
+                      : {}),
                   },
-                  owner: nextOwner,
-                  now,
-                  ...(previous?.owner && previous.preparedUpdatedAt
-                    ? {
-                        dedup: {
-                          previousOwner: previous.owner,
-                          createdAt: previous.createdAt,
-                          updatedAt: previous.preparedUpdatedAt,
-                          owner: preparedClaims.owner,
-                        },
-                      }
-                    : {}),
-                },
-                {
-                  ...context,
-                  liveness: (owner) =>
-                    verdicts.get(JSON.stringify(owner)) ?? 'unknown',
-                },
+                  {
+                    ...context,
+                    liveness: (owner) =>
+                      verdicts.get(JSON.stringify(owner)) ?? 'unknown',
+                  },
+                ),
               );
               if (result.kind !== 'applied') return { kind: 'stale' as const };
               return {
@@ -343,15 +368,17 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         return { kind: 'unavailable' };
       }
     },
-    beginPrepared({ boundaryId, ownerId, capture, claim, now }) {
+    beginPrepared({ boundaryId, ownerId, capture, claim, now, current }) {
       try {
-        const result = execute({
-          type: 'turnBoundary.beginInvocation',
-          boundaryId,
-          ownerId,
-          ...linked(capture, claim),
-          now,
-        });
+        const result = withPreparedCurrent(current, () =>
+          execute({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId,
+            ownerId,
+            ...linked(capture, claim),
+            now,
+          }),
+        );
         return result.kind === 'applied' ? result : { kind: 'stale' };
       } catch {
         return { kind: 'unavailable' };
