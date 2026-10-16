@@ -590,6 +590,10 @@ This authority comes from the server's private host-possession and
 `ui-bootstrap` mint record, not from an ordinary paired Device carrying that
 scope. Invited Devices do not inherit it. It does not grant operator identity,
 passkey management or the native desktop consent broker's local-grant authority.
+The host browser cannot introduce protected management or consent scopes into
+an invitation, a pending request's final approved scope, or another Device's
+permissions. Ordinary Device-use grants, including running commands and full
+access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
 to the selected Station server. The existing client and the phone both connect

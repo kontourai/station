@@ -2334,6 +2334,10 @@ station environment peers remove <environment-id>
   never changes Serve and Station never enables Funnel. The printed QR and
   link grant **Standard** (`orchestration:read orchestration:operate
   terminal:operate`), the same grant the **Paired devices** panel offers.
+  Preapproved invitations cannot carry protected management or consent scopes
+  such as `relay:manage`, `access:approve` or `consent:decide`; those permissions
+  need their separate operator promotion. Running commands and full Device
+  access remain supported explicit grants.
   Creating the invitation approves its selected access: the recipient can
   redeem it once before expiry without a second approval. `--scope` replaces
   Standard with the named space- or comma-separated scopes. `--browser-url`

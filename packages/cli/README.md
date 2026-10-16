@@ -211,6 +211,8 @@ owner-only home and the loopback listener; it does not create a missing home.
 Bare host-approval commands prefer the live listener in the selected local home
 before project or saved-default Stations; explicit targets keep their precedence.
 `environment offer` creates a single-use invitation with Standard access. Choose
+ordinary Device-use permissions; protected management and consent permissions
+require a separate operator promotion after pairing. Choose
 `--scope` to change that access, `--require-approval` to review the recipient first,
 or `--browser-url=<web-origin>` to print a link for the web UI.
 For a saved paired Station, `environment access devices|scope|revoke|remove`

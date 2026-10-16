@@ -3696,7 +3696,9 @@ record is private server state. `DELETE /api/pairing/offers/:offerId` cancels it
 The default is `on-request` for older callers and the desktop SSH flow. Public
 access requests always need confirmation; a requester cannot set its own
 approval policy. Preapproved offers must be ordinary Devices with an explicit
-scope that excludes `access:manage`, `home:control` and `access:devices`.
+scope that excludes `access:manage` and protected operator-promotion scopes,
+including `relay:manage`, `access:approve` and `consent:decide`. Explicit
+`coding:exec` and `approval:full-access` Device-use grants remain available.
 Invitations do not grant the creator's private host-possession provenance.
 
 A host-issued browser session may create/cancel invitations, decide pending
@@ -3705,6 +3707,10 @@ requests and manage already-paired Devices while retaining its effective
 mint kind distinguish it from an ordinary Device with the same wire scope.
 This does not grant operator identity, people/account administration, passkey
 administration, or the native consent broker's `local-grant` authority.
+The browser cannot transfer protected management or consent scopes through
+either offer mode, final request approval, or newly added Device permissions.
+Existing operator request-time approval and explicitly promoted Device
+administrators keep their separate authority.
 
 ## Decide a pending paired-device request
 
