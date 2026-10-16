@@ -6,6 +6,7 @@
  * owner are the real ones.
  */
 import { join } from 'node:path';
+import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import {
   agentId,
   engineConnectionId,
@@ -34,6 +35,10 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import {
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+  turnDedupKey,
+} from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { authorizeStationControlRequest } from '../../../tools/station-control-policy.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -330,8 +335,173 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         caller = previous;
       }
     };
-    return { root, store, adapter, service, send, lookup };
+    return { root, store, adapter, service, app, send, lookup };
   }
+
+  test.each(['cancelled', 'definitively-refused'] as const)(
+    'a %s key answers a closed 409 to its reader and rejects replay without exposing it to another caller',
+    async (disposition) => {
+      const { store, adapter, service, app, send, lookup } = station();
+      const conversationId = `conversation:${disposition}`;
+      const sent = await send(conversationId, 'initial-key');
+      expect(sent.status, await sent.clone().text()).toBe(200);
+      const { sessionId } = (
+        (await sent.json()) as { data: { sessionId: string } }
+      ).data;
+      const clientTurnId = 'settled-key';
+      expect(
+        store
+          .createTurnDeduplicator()
+          .claim({ threadId: sessionId, clientTurnId }).kind,
+      ).toBe('owner');
+      const kernel = openSqliteKernelStorage({
+        database: store['db'],
+        tables: {
+          turnDedup: STATION_TURN_DEDUP_KERNEL_TABLES.turnDedup,
+          requestKeys: 'unused',
+          inbox: 'unused',
+        },
+      });
+      const context = { liveness: () => 'unknown' as const };
+      const key = turnDedupKey(sessionId, clientTurnId);
+      const read = kernel.executeSync({ type: 'turnDedup.read', key }, context);
+      if (read.kind !== 'found' || !read.record.owner)
+        throw new Error('Expected the actual Station claim owner.');
+      const owner = read.record.owner;
+      const at = (n: number) => new Date(n).toISOString();
+      const intent = {
+        invocationId: 'delivery-invocation',
+        inputDigest: 'input',
+        intentDigest: 'intent',
+        bodyRef: 'retained-body',
+        dedupKey: key,
+      };
+      expect(
+        kernel.executeSync(
+          {
+            type: 'turnBoundary.create',
+            boundaryId: key,
+            threadId: sessionId,
+            state: 'reserved',
+            purpose: 'turn',
+            owner,
+            now: at(2),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      expect(
+        kernel.executeSync(
+          {
+            type: 'turnBoundary.prepare',
+            boundaryId: key,
+            ownerId: owner.id,
+            dedupOwnerId: owner.id,
+            intent,
+            now: at(3),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      if (disposition === 'definitively-refused')
+        expect(
+          kernel.executeSync(
+            {
+              type: 'turnBoundary.beginInvocation',
+              boundaryId: key,
+              ownerId: owner.id,
+              dedupOwnerId: owner.id,
+              intent,
+              now: at(4),
+            },
+            context,
+          ),
+        ).toEqual({ kind: 'applied' });
+      expect(
+        kernel.executeSync(
+          {
+            type:
+              disposition === 'cancelled'
+                ? 'turnBoundary.cancelPrepared'
+                : 'turnBoundary.recordDefinitiveRefusal',
+            boundaryId: key,
+            intent,
+            boundary: {
+              owner,
+              createdAt: at(2),
+              updatedAt: at(disposition === 'cancelled' ? 3 : 4),
+            },
+            dedup: {
+              owner,
+              createdAt: read.record.createdAt,
+              updatedAt: at(3),
+            },
+            settlementId: 'delivery-settlement',
+            now: at(5),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      const before = kernel.executeSync(
+        { type: 'turnDedup.read', key },
+        context,
+      );
+      const boundaryBefore = kernel.executeSync(
+        { type: 'turnBoundary.list' },
+        context,
+      );
+      const response = await app.request(
+        `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${clientTurnId}`,
+      );
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toEqual({
+        success: false,
+        error: `This turn was ${disposition === 'cancelled' ? 'cancelled' : 'definitively refused'}. A new request requires a new turn key.`,
+        code: 'client_turn_settled',
+        disposition,
+      });
+      expect(await lookup(conversationId, clientTurnId, STRANGER)).toEqual({
+        outcome: 'not-received',
+        conversationId,
+        clientTurnId,
+      });
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: sessionId, clientTurnId, input: 'retry' },
+          },
+          { userId: OWNER },
+        ),
+      ).rejects.toMatchObject({
+        code: 'client_turn_settled',
+        retryable: false,
+        receipt: { status: 'rejected' },
+      });
+      expect(adapter.turns).toHaveLength(1);
+      expect(
+        kernel.executeSync({ type: 'turnDedup.read', key }, context),
+      ).toEqual(before);
+      expect(
+        kernel.executeSync({ type: 'turnBoundary.list' }, context),
+      ).toEqual(boundaryBefore);
+    },
+  );
+
+  test('does not normalize an unrelated lookup error carrying a settlement-shaped code', async () => {
+    const { service, app } = station();
+    vi.spyOn(service, 'inspectTurnDelivery').mockImplementation(() => {
+      throw Object.assign(new Error('Unexpected storage failure'), {
+        code: 'client_turn_settled',
+        disposition: 'cancelled',
+      });
+    });
+    const response = await app.request(
+      '/api/orchestration/conversations/c/turn-deliveries/k',
+    );
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe('Internal Server Error');
+  });
 
   test('answers received while the session start is held open, then started once the engine has the turn; a same-key resend sends nothing', async () => {
     const { adapter, send, lookup } = station();

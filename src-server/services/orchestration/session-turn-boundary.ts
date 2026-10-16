@@ -96,10 +96,7 @@ export interface SessionTurnBoundaryCoordinator {
     boundaryId: string;
     ownerId: string;
     from: BoundaryState[];
-    to: Exclude<
-      BoundaryState,
-      'lifecycle' | 'reserved' | 'prepared' | 'settled'
-    >;
+    to: 'invoking' | 'accepted' | 'indeterminate';
     now: string;
     providerTurnId?: string;
   }): SessionTurnBoundaryTransition;
@@ -637,10 +634,7 @@ export function createSessionTurnBoundaryAuthority(options: {
     let terminalApplied = false;
     const transition = (
       from: BoundaryState[],
-      to: Exclude<
-        BoundaryState,
-        'lifecycle' | 'reserved' | 'prepared' | 'settled'
-      >,
+      to: 'invoking' | 'accepted' | 'indeterminate',
       transitionNow: string,
       providerTurnId?: string,
     ) =>
@@ -1055,6 +1049,7 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
       const record = records.get(input.boundaryId);
       if (
         !record ||
+        record.state === 'settled' ||
         record.ownerId !== input.ownerId ||
         !input.from.includes(record.state)
       ) {
@@ -1094,6 +1089,7 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
       const record = records.get(input.boundaryId);
       if (!record) return { kind: 'applied' };
       if (
+        record.state === 'settled' ||
         record.ownerId !== input.ownerId ||
         !input.from.includes(record.state)
       ) {
@@ -1142,7 +1138,9 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
     recordAccepted(record) {
       if (
         [...records.values()].filter(
-          (candidate) => candidate.threadId === record.threadId,
+          (candidate) =>
+            candidate.threadId === record.threadId &&
+            candidate.state !== 'settled',
         ).length >= SESSION_TURN_ACCEPTED_CAPACITY
       ) {
         return { kind: 'busy' };

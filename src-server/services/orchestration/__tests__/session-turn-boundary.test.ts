@@ -31,6 +31,59 @@ function terminal(threadId: string, turnId: string): CanonicalRuntimeEvent {
 }
 
 describe('SessionTurnBoundaryAuthority', () => {
+  test('an unbound settled row survives host terminal cleanup but deliberate thread deletion removes it', () => {
+    const store = new EventStore(':memory:');
+    try {
+      const authority = store.sessionTurnBoundaryAuthority();
+      expect(
+        authority.claim('settled-audit', '2030-01-01T00:00:00.000Z').kind,
+      ).toBe('owner');
+      // The legacy binding cannot decode or author settlement. Its kernel
+      // must refuse this tag, while host terminal SQL must preserve it.
+      store['db'].exec('PRAGMA ignore_check_constraints = ON');
+      store['db']
+        .prepare(
+          "UPDATE orchestration_turn_boundaries SET state = 'settled' WHERE thread_id = ?",
+        )
+        .run('settled-audit');
+      store['db'].exec('PRAGMA ignore_check_constraints = OFF');
+      const rows = () =>
+        store['db']
+          .prepare(
+            'SELECT * FROM orchestration_turn_boundaries WHERE thread_id = ?',
+          )
+          .all('settled-audit');
+      const before = rows();
+      expect(before).toHaveLength(1);
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'settled-audit-exited',
+        provider: 'claude',
+        threadId: 'settled-audit',
+        sessionId: 'settled-audit',
+        method: 'session.exited',
+        exitCode: 0,
+        createdAt: '2030-01-01T00:00:01.000Z',
+      };
+      store.appendEvent(exited);
+      expect(authority.observe(exited)).toEqual({ kind: 'unavailable' });
+      expect(authority.hasPossibleEffect('settled-audit')).toEqual({
+        kind: 'unavailable',
+      });
+      expect(rows()).toEqual(before);
+      // A write admission also joins EventStore's persisted-terminal cleanup.
+      const lifecycle = authority.claimLifecycle(
+        'settled-audit',
+        '2030-01-01T00:00:02.000Z',
+      );
+      expect(rows()).toEqual(before);
+      expect(lifecycle.kind).toBe('unavailable');
+      store.deleteThread('settled-audit');
+      expect(rows()).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+
   test('an indeterminate start keeps the engine message a sentence of its own', () => {
     // Codex's text carries no terminal punctuation; the explanation used to
     // run straight on ("…an active writer Provider session creation…").

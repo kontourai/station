@@ -186,6 +186,7 @@ export class TurnIdempotencyStore {
         }
         turnDedupClaims.add(1, { outcome: 'contended' });
         return { claimed: false };
+      case 'prepared':
       case 'indeterminate':
       case 'prepared':
         turnDedupClaims.add(1, { outcome: 'indeterminate' });
