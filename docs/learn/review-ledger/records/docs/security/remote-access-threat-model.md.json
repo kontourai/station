@@ -118,6 +118,10 @@
 
     "src-ui/src/views/account/guest-account-authority.ts",
 
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
     "package.json#/dependencies/better-auth",
 
     "package.json#/dependencies/jose",

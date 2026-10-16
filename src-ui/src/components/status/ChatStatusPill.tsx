@@ -304,7 +304,12 @@ export function ChatStatusPill({
     <>
       {/* The narrow composer hides an empty status rail, including its descendants. */}
       {createPortal(
-        <span className="sr-only" role="status" aria-live="polite">
+        <span
+          className="sr-only"
+          style={{ position: 'fixed', top: 0, left: 0 }}
+          role="status"
+          aria-live="polite"
+        >
           {liveAnnouncement}
         </span>,
         document.body,

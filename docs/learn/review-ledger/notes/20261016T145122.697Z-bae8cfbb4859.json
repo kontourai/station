@@ -1,0 +1,15 @@
+{
+  "revision": "0517007f7541d644a94dc78eac29e9b20ef73407",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed push and merge-queue guidance: the new trusted supersession sweep cancels only obsolete PR heads and preserves required checks, current-head verification, and composition freshness. No change needed to those contributor claims.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed resource classification and process-test guidance against the new loopback CLI test; it is classified process-heavy and uses windowsHide. Supersession documentation does not change lane ownership, focused commands or failure evidence.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed focused server testing and mutation/profiling references. Testing-guide delta only adds hosted obsolete-PR cancellation; server execution and evidence instructions remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed focused UI testing and runtime-evidence references. Testing-guide delta only adds hosted obsolete-PR cancellation; mounted behavior, UI authority and evidence instructions are unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed fixture, resource and deferred-selection instructions against the guide delta. Obsolete PR cancellation does not make deferred selection a pass or alter browser fixture requirements.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

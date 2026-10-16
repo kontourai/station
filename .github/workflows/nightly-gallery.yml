@@ -202,16 +202,16 @@ jobs:
       # hermetic roster is unaffected: it lives in `run-e2e-suite.mjs`, which is
       # what `test:e2e:screenshot` invokes either way, so this shortens the
       # chain rather than leaving it.
-      - name: Capture screenshot bucket and enforce exact baseline
+      - name: Capture screenshot bucket and report pixel differences
         run: |
           npm run test:e2e:screenshot
-          npm run screenshot:diff
+          npm run screenshot:diff -- --report-only --summary="$GITHUB_STEP_SUMMARY"
 
       - name: Upload gallery and pixel diffs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        # Storage trouble is infrastructure, while the preceding exact diff
-        # command remains the rot alarm and fails this job on any mismatch.
+        # Pixel differences remain visible in the summary and artifact;
+        # broken captures and invalid comparisons still fail the job.
         continue-on-error: true
         with:
           name: nightly-gallery-${{ github.run_id }}

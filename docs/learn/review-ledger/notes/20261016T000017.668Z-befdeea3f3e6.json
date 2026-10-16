@@ -1,0 +1,7 @@
+{
+  "revision": "943e91545674c618c511b9615ed23bf962e600af",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"No impact from #3568: its runtime-routes.ts changes add the thread-inbox and delegated-result delivery wiring (ports, mayContinue, deviceMaySend with its queue time, the start port) and nothing in the usage-telemetry, disclosure acknowledgement or engine_turn paths this reference documents; the diff has no telemetry, usage or acknowledgement lines.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a81a796373b314ac5f9adfc50055a606093a200f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after merging #3695 with #3568: the production turn-boundary storage (sqlite-session-turn-boundary.ts) now also declares inbox: 'unused', since the inbox's own storage (createSqliteThreadInboxStore) owns that machine on the same EventStore connection. The module map's boundary and Held follow-ups text stays accurate; session-turn-boundary.test.ts pins that a boundary write creates no inbox table.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/sqlite-session-turn-boundary.ts"]}
+  ]
+}

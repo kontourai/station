@@ -2462,3 +2462,54 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     ]);
   });
 });
+
+describe('#3568: a same-key retry that lands in another Session', () => {
+  test('through the production composition, a retry changing to a model the engine cannot switch per turn answers the first turn, and the engine gets it once', async () => {
+    const f = await fixture();
+    f.claude.completeTurns = true;
+    // An engine that cannot change model per turn: a send naming another
+    // model continues in a new Session. It reports the model it started
+    // with, as such an engine does.
+    (f.claude as { metadata: ProviderAdapterMetadata }).metadata = {
+      ...f.claude.metadata,
+      modelLaunch: {
+        defaultAtStart: 'engine-selected',
+        omissionAtResume: 'engine-selected',
+        omissionPerTurn: 'engine-selected',
+        overrideAtStart: true,
+        overrideAtResume: true,
+        overridePerTurn: false,
+      },
+    };
+    const start = f.claude.startSession.bind(f.claude);
+    f.claude.startSession = async (input) => ({
+      ...(await start(input)),
+      ...(input.modelId ? { model: input.modelId } : {}),
+    });
+    const headers = f.bearer(f.operator.credential);
+    const target = { environment: { kind: 'current' }, agent: 'claude-agent' };
+    const first = await f.request(headers, '/api/orchestration/chat', {
+      message: 'send this once',
+      clientTurnId: 'retry-key',
+      target,
+    });
+    expect(first.status, first.text).toBe(200);
+    const { conversationId, providerTurnId } = first.body.data as {
+      conversationId: string;
+      providerTurnId: string;
+    };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const retry = await f.request(headers, '/api/orchestration/chat', {
+      message: 'send this once',
+      conversationId,
+      clientTurnId: 'retry-key',
+      target: { ...target, model: { override: 'claude-other-model' } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      f.claude.turns.filter((turn) => turn.input.endsWith('send this once')),
+    ).toHaveLength(1);
+    expect(retry.status, retry.text).toBe(200);
+    expect(retry.body.data.providerTurnId).toBe(providerTurnId);
+  });
+});

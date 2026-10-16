@@ -186,6 +186,18 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+`Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the
+current same-repository PR head and cancels queued or running checks for older
+heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
+cancellation rechecks the PR head and run attempt. It never cancels merge-group,
+main-push, manual diagnostic or publication runs. Missing PR attribution leaves
+a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+cancellation API, so the final head read bounds rather than eliminates the race
+with a concurrent force-push. Existing per-SHA concurrency groups remain in
+place to prevent delayed events from cancelling newer-head checks (#1445).
+The sweep checks out only the workflow's trusted revision and installs no
+dependencies. Its owner is `scripts/pr-ci-supersession.mjs`.
+
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
 after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
@@ -203,6 +215,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
@@ -480,10 +493,11 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
-evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
-invariants, not the global static/build chain or full corpus.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Run local `npm run ci:fast` only to reproduce a specific failure or when
+explicitly requested. It runs affected tests and fixed invariants within a
+fifteen-minute budget. Normal push hooks and required hosted checks own the
+broad verification; do not add a routine local pass before them.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
 The iOS relevance check compares pull-request and merge-queue candidates from
 their merge base to the candidate head, so changes added only to a newer base
@@ -644,7 +658,7 @@ unless the push is a pure merge of main (below).
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel, Veritas readiness and typecheck; biome, the governance proof and the
+barrel; biome, the governance proof and the
 commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
@@ -990,7 +1004,10 @@ committing a new baseline until the change is intentional.
 The gallery-wide system-status handler preserves the live status response and
 replaces only the displayed hostname with `Gallery host`. This keeps a Docker
 container's random name out of exact-pixel references without changing readiness
-or device locality. Screen-specific status fixtures retain their declared scenarios.
+or device locality. Screen-specific status fixtures retain their declared scenarios. The conversation
+resync scenarios retain their route fixtures through the screenshot and recovery
+checks, then release them in per-screen cleanup. Unregistering those routes in
+`afterGoto` lets live polling replace the asserted state before it is photographed.
 
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
@@ -1036,30 +1053,32 @@ select only the application source being qualified.
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container
 (#2428, #3342). PRs compare their exact head; the queue compares the combined
-candidate. A gallery-relevant change must carry reviewed reference images from
-that renderer. Irrelevant changes skip the capture job, producing GitHub's
+candidate. Pixel differences are advisory in both workflows: `--report-only` retains the
+exact changed rows and diff PNGs, but exits successfully for visual changes.
+The job summary includes the comparison table and the PR artifact link. An
+unchanged capture has no `REVIEW` advisory. Capture failures, missing screens,
+invalid PNGs, missing/corrupt baselines, partial unscoped captures and zero
+actual comparisons still fail. The default local `screenshot:diff` command
+remains strict; advisory mode is explicit and never rewrites references.
+Irrelevant changes skip the capture job, producing GitHub's
 successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
-whole product through `./station start`, not just `src-ui/`. When the diff
-fails, the job summary prints the exact refresh commands: download the run's
-`gallery-pr-<run>-<attempt>` artifact, then
-`npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
-baseline on its own. The check's re-run on that commit catches a baseline
-from any other renderer, as long as the PR does not also change the capture or
-diff scripts; the nightly on main, running trusted code, remains the
-authoritative check. The baseline writer refuses a capture whose screen name is
+whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+When an intentional change should become the new reference, download that
+hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
+Commit reviewed baseline updates separately; they are optional for a green
+Gallery check. Never refresh from a broken capture or a different renderer.
+The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
-its PR and merge-queue contexts from the installed workflow;
-a red advisory check alone cannot prevent visual drift from landing.
-`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
-clears it only when the capture and exact-diff job passes. Skipping the optional
-API image review does not hide that completed pixel check.
+merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+`Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
+intentional pixel changes alone do not open a main incident. Skipping the
+optional API image review does not hide the comparison report.
 
 Two consequences worth stating plainly:
 
@@ -1288,14 +1307,15 @@ and its share of available CPUs across the host's compiler slots. It writes no
 build metadata or declaration output. Run `npm run dist:freshness` first when
 the selected project consumes package builds.
 
-This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+This command is diagnostic; `ci:fast` and required hosted checks use
 TypeScript 7. Bun has no persistent incremental cache, and a single project
 check does not replace the typecheck aggregate or the scripts coverage gate.
 Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
 Compare diagnostics before treating a disagreement as a Station defect.
 
 
-The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+Required hosted `fast-checks-statics` owns Veritas readiness and the full
+typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
@@ -1387,7 +1407,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | Lane | Command | Trigger | Expected scope | Resource class | Evidence | Invalidated by |
 | --- | --- | --- | --- | --- | --- | --- |
 | `full-regression` | `npm run full:regression` | promotion / explicit diagnosis | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
-| `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
+| `ci-fast` | `npm run ci:fast` | hosted feedback / explicit local diagnosis | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |

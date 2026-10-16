@@ -16,6 +16,8 @@
 }
 
 .station-connect-modal-panel {
+  box-sizing: border-box;
+  min-width: 0;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
@@ -607,6 +609,13 @@
 /* Mobile: pin to the visual viewport so the on-screen keyboard cannot hide
    the dialog, and honor safe-area insets. */
 @media (max-width: 768px) {
+  /* iOS zooms focused inputs below 16px and leaves the waiting panel clipped. */
+  .station-connect-modal-panel input,
+  .station-connect-modal-panel select,
+  .station-connect-modal-panel textarea {
+    font-size: max(16px, 1rem) !important;
+  }
+
   .station-connect-modal-overlay {
     top: var(--responsive-visual-viewport-top);
     bottom: auto;

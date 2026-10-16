@@ -174,13 +174,29 @@
 
     "packages/contracts/src/product-telemetry.ts",
 
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/contracts/src/secret-binding.ts",
+
+    "packages/shared/src/product-telemetry.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
     "src-server/services/orchestration/delta-coalescer.ts",
 
     "packages/contracts/package.json#/name",
 
     "packages/contracts/package.json#/exports",
 
-    "packages/contracts/package.json#/files"
+    "packages/contracts/package.json#/files",
+
+    "src-server/providers/adapter-shape.ts",
+
+    "src-server/providers/__tests__/engine-durability-profile.test.ts",
+
+    "src-ui/src/components/acp-connections/EngineCapabilitySummary.tsx",
+
+    "src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx"
   ],
 
   "checks": [

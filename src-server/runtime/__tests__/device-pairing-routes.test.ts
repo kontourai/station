@@ -130,6 +130,7 @@ type TestBindings = HttpBindings & {
 
 function createHarness(
   options: {
+    environmentId?: string;
     maxActiveOffers?: number;
     maxActiveCredentialsWithoutVerifiedIdentity?: number;
     localGrant?: boolean;
@@ -162,7 +163,7 @@ function createHarness(
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
     homeDir,
-    environmentId: ENVIRONMENT_ID,
+    environmentId: options.environmentId ?? ENVIRONMENT_ID,
     maxActiveOffers: options.maxActiveOffers,
     maxActiveCredentialsWithoutVerifiedIdentity:
       options.maxActiveCredentialsWithoutVerifiedIdentity,
@@ -2050,7 +2051,7 @@ describe('device pairing routes', () => {
     expect(result).not.toHaveProperty('credential');
 
     const setCookie = exchange.headers.get('set-cookie');
-    expect(setCookie).toContain('__Host-station-device=');
+    expect(setCookie).toMatch(/^__Host-station-device-[a-f0-9]{16}=/);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Secure');
     expect(setCookie).toContain('SameSite=Strict');
@@ -3803,6 +3804,71 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   describe('launcher UI bootstrap capability (station#2093)', () => {
+    test('two Stations on one browser host keep independent sessions and revoking one leaves the other usable', async () => {
+      const first = createHarness({
+        uiBootstrapToken: 'first-launcher-token',
+        environmentId: 'station-first',
+      });
+      const second = createHarness({
+        uiBootstrapToken: 'second-launcher-token',
+        environmentId: 'station-second',
+      });
+      const jar = new Map<string, string>();
+      for (const [harness, token] of [
+        [first, 'first-launcher-token'],
+        [second, 'second-launcher-token'],
+      ] as const) {
+        const response = await harness.request(
+          PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: 'https://station.example.test',
+            },
+            body: JSON.stringify({ token }),
+          },
+        );
+        expect(response.status).toBe(200);
+        const cookie = response.headers.get('set-cookie')!.split(';')[0]!;
+        const separator = cookie.indexOf('=');
+        jar.set(cookie.slice(0, separator), cookie.slice(separator + 1));
+      }
+      const cookie = [...jar]
+        .map(([name, value]) => `${name}=${value}`)
+        .join('; ');
+      expect(
+        (await first.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await second.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+      const firstCredential = [...jar.values()].find((candidate) =>
+        first.pairing.identifyDevice(candidate),
+      );
+      expect(firstCredential).toBeDefined();
+      expect(
+        (
+          await first.request('/api/projects', {
+            headers: { Cookie: `${cookie}; station-device=${firstCredential}` },
+          })
+        ).status,
+      ).toBe(401);
+      const [device] = first.pairing.listDevices();
+      expect(device).toBeDefined();
+      first.pairing.revokeDevice(device!.id, 'operator-credential');
+      expect(
+        (await first.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(401);
+      expect(
+        (await second.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+    });
+
     test('exchanges an explicit one-time capability for an HttpOnly browser session without trusting proxy position', async () => {
       // The proxy hop here attests an OFF-BOX client (archive#3876): the
       // browser is a phone on the UI port, so the session it mints is a
@@ -3832,9 +3898,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         environmentId: ENVIRONMENT_ID,
         delivery: 'browser-cookie',
       });
-      const proxiedCredential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        bootstrap.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const proxiedCredential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          bootstrap.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(proxiedCredential).toEqual(expect.any(String));
       expect(
         harness.pairing.credentialLocality(proxiedCredential as string),
@@ -3894,9 +3961,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         directPeer,
       );
       expect(response.status).toBe(200);
-      const credential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        response.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const credential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          response.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(credential).toEqual(expect.any(String));
       return harness.pairing.credentialLocality(credential as string);
     };
@@ -4012,9 +4080,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       );
 
       expect(bootstrap.status).toBe(200);
-      const credential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        bootstrap.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const credential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          bootstrap.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(credential).toEqual(expect.any(String));
       expect(harness.pairing.credentialLocality(credential as string)).toBe(
         'home-possession',

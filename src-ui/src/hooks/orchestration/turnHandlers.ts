@@ -17,6 +17,7 @@ import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -219,6 +220,13 @@ export function handleTurnStartedEvent(
     reconciledEphemerals.length < ephemerals.length &&
     (currentChat?.input ?? '') === event.prompt;
   store.updateChat(event.threadId, {
+    ...(event.clientTurnId &&
+    currentChat?.messages?.some(
+      (message) =>
+        message.role === 'user' && message.clientId === event.clientTurnId,
+    )
+      ? withDeliveryCheck(currentChat, event.clientTurnId, 'started')
+      : {}),
     ...(userMessages !== currentChat?.messages
       ? { messages: userMessages }
       : {}),
