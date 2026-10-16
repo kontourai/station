@@ -41,6 +41,8 @@ type Job = {
 };
 type Context = {
   event: string;
+  action?: string;
+  retarget?: boolean;
   repository: string;
   headRepository: string;
 };
@@ -220,6 +222,9 @@ function simulate(
       if (head === 'github') {
         const key = rest.join('.');
         if (key === 'event_name') return context.event;
+        if (key === 'event.action') return context.action ?? 'synchronize';
+        if (key === 'event.changes.base')
+          return context.retarget ? { ref: { from: 'release' } } : undefined;
         if (key === 'repository') return context.repository;
         if (key === 'event.pull_request.head.repo.full_name')
           return context.event === 'pull_request_target'
@@ -448,6 +453,40 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(aggregatorPartResults(jobs, failedLegacy)).toBe(1);
     },
   );
+
+  test.each(['title', 'body'])(
+    'a metadata-only %s edit admits only the required verdict',
+    () => {
+      const state = simulate(readJobs(), {
+        ...sameRepositoryPr,
+        action: 'edited',
+      });
+      expect(
+        [...state.results]
+          .filter(([, result]) => result !== 'skipped')
+          .map(([id]) => id),
+      ).toEqual(['pr-verdict']);
+      expect(state.shards.size).toBe(0);
+    },
+  );
+
+  test('base retarget keeps the complete source graph', () => {
+    const state = simulate(
+      readJobs(),
+      { ...sameRepositoryPr, action: 'edited', retarget: true },
+      {
+        outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+      },
+    );
+    for (const id of [
+      ...PARTS,
+      'fast-checks',
+      'pr-verdict',
+      'repo-scans',
+      'ui-bundle-delta',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+  });
 
   test('a fork pull request runs fork-smoke and none of the fast-checks graph', () => {
     const state = simulate(jobs, {

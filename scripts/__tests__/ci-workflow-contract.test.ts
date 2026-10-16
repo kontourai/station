@@ -1685,7 +1685,7 @@ describe('CI verification workflow contracts', () => {
     };
     const job = document.jobs['ui-bundle-delta'];
     expect(job.if).toBe(
-      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}",
     );
     expect(job.if).not.toContain('merge_group');
     // Parallel to fast-checks, never behind it.
@@ -1777,12 +1777,16 @@ describe('CI verification workflow contracts', () => {
     };
     const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
       .jobs;
-    // The required status check is the job's display name. The aggregator
-    // keeps the bare id with no `name:`, so its check is exactly
-    // `fast-checks`, and no other job may report under that name.
-    expect(jobs['fast-checks'].name).toBeUndefined();
+    // The PR verdict owns the required context; the source aggregate retains
+    // the same required name on non-PR events (including the merge queue).
+    expect(jobs['pr-verdict'].name).toBe(
+      "${{ github.event_name == 'pull_request_target' && 'fast-checks' || 'PR metadata (not applicable)' }}",
+    );
+    expect(jobs['fast-checks'].name).toBe(
+      "${{ github.event_name == 'pull_request_target' && 'fast-checks source' || 'fast-checks' }}",
+    );
     for (const [id, job] of Object.entries(jobs))
-      if (id !== 'fast-checks')
+      if (!['fast-checks', 'pr-verdict'].includes(id))
         expect(job.name ?? id, id).not.toBe('fast-checks');
     expect(jobs['fast-checks'].needs).toEqual([
       'classify',
@@ -1985,30 +1989,12 @@ describe('CI verification workflow contracts', () => {
       )
       .map((step) => step.run);
     expect(shaping.length).toBeGreaterThanOrEqual(3);
-    // Action steps before the lane, compared with their inputs. Excluded, by
-    // name and with the reason: the base-policy checkout exists only for the
-    // pull-request title gate (fast-checks-statics owns that gate) and is
-    // overwritten by the candidate checkout before any test runs.
-    const REVIEWED_ACTION_EXCLUSIONS = new Map([
-      [
-        'Check out base policy for pull-request title gate',
-        'title gate only; the candidate checkout replaces it before the lane',
-      ],
-    ]);
     const laneActions = statics
       .slice(0, laneIndex)
-      .filter(
-        (step) => step.uses && !REVIEWED_ACTION_EXCLUSIONS.has(step.name ?? ''),
-      )
+      .filter((step) => step.uses)
       .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
     // Checkout, pnpm and Node: a shrinking list would pass vacuously.
     expect(laneActions).toHaveLength(3);
-    for (const name of REVIEWED_ACTION_EXCLUSIONS.keys())
-      expect(
-        statics.some((step) => step.name === name),
-        name,
-      ).toBe(true);
-
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
       ['fast-checks-plan', 'Plan the affected-test selection'],
@@ -2136,56 +2122,6 @@ describe('CI verification workflow contracts', () => {
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).not.toContain('run: npm run full:regression');
-  });
-
-  it('validates pull-request titles from exact base policy before either candidate checkout', () => {
-    const ci = workflow('ci.yml');
-    const trigger = ci.slice(
-      ci.indexOf('  pull_request_target:'),
-      ci.indexOf('  workflow_dispatch:'),
-    );
-    expect(trigger).toContain('types: [opened, synchronize, reopened, edited]');
-
-    const fastChecks = staticsJobText(ci);
-    const forkSmoke = ci.slice(
-      ci.indexOf('  fork-smoke:'),
-      ci.indexOf('  full-regression:'),
-    );
-    for (const [job, candidateRepository, conditional] of [
-      [
-        fastChecks,
-        `repository: \${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
-        `if: \${{ github.event_name == 'pull_request_target' }}`,
-      ],
-      [
-        forkSmoke,
-        `repository: \${{ github.event.pull_request.head.repo.full_name }}`,
-        undefined,
-      ],
-    ] as const) {
-      const baseCheckout = job.indexOf(
-        'name: Check out base policy for pull-request title gate',
-      );
-      const titleGate = job.indexOf(
-        'name: Validate base-controlled pull-request title',
-      );
-      const candidateCheckout = job.indexOf(candidateRepository);
-      expect(baseCheckout).toBeGreaterThan(-1);
-      expect(titleGate).toBeGreaterThan(baseCheckout);
-      expect(candidateCheckout).toBeGreaterThan(titleGate);
-      expect(job).toContain(`repository: \${{ github.repository }}`);
-      expect(job).toContain(`ref: \${{ github.event.pull_request.base.sha }}`);
-      expect(job).toContain(
-        `PULL_REQUEST_TITLE: \${{ github.event.pull_request.title }}`,
-      );
-      expect(job).toContain(
-        `PULL_REQUEST_NUMBER: \${{ github.event.pull_request.number }}`,
-      );
-      expect(job).toContain(
-        'node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"',
-      );
-      if (conditional) expect(job).toContain(conditional);
-    }
   });
 
   it('runs required checks against the synthesized merge-group candidate', () => {

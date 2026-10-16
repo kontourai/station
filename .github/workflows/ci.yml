@@ -1,4 +1,7 @@
 name: "PR: CI"
+# Immutable routing identity lets the cheap verdict find source work without
+# trusting candidate artifacts or treating a metadata run as source evidence.
+run-name: ci-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.ref }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action != 'edited' && 'source' || github.event.changes.base && 'source' || 'metadata' }}
 
 on:
   push:
@@ -62,12 +65,12 @@ jobs:
     needs: classify
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
       # Head sha in the identity for the same reason as fast-checks (#1445).
-      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
@@ -211,7 +214,7 @@ jobs:
       contents: read
     concurrency:
       # The shard is part of the identity, or the legs would cancel each other.
-      group: ci-fast-shard-${{ matrix.shard }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-fast-shard-${{ matrix.shard }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
@@ -365,7 +368,7 @@ jobs:
     needs: classify
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -382,11 +385,8 @@ jobs:
       # check in a state that is neither pass nor fail. #1348 had auto-merge
       # armed and merged within minutes of a manual re-run.
       #
-      # `cancel-in-progress` is kept and still does real work: it collapses
-      # duplicate runs for the SAME sha, which is what `edited` firing beside
-      # `synchronize` produces. What it can no longer do is cancel a run for a
-      # commit it is not about.
-      group: ci-fast-statics-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      # Metadata-only edits never enter source-job concurrency groups.
+      group: ci-fast-statics-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The declared bounds sum to 53 minutes: actionlint install (5), a
@@ -398,22 +398,6 @@ jobs:
     # ci-workflow-contract.test.ts pins that it covers their sum.
     timeout-minutes: 55
     steps:
-      - name: Check out base policy for pull-request title gate
-        if: ${{ github.event_name == 'pull_request_target' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Validate base-controlled pull-request title
-        if: ${{ github.event_name == 'pull_request_target' }}
-        env:
-          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Veritas binds evidence to the PR base/head diff; a depth-1 merge
@@ -543,14 +527,16 @@ jobs:
           retention-days: 14
 
   fast-checks:
+    name: ${{ github.event_name == 'pull_request_target' && 'fast-checks source' || 'fast-checks' }}
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
-    # The required check. `always()` without `!cancelled()`, deliberately: a
+    # Source aggregate (the required check on non-PR events). `always()`
+    # without `!cancelled()`, deliberately: a
     # skipped required check reports success, so an aggregator that skipped
     # itself when a run was cancelled would let a cancelled run read green.
     # Running on cancellation instead fails it on the cancelled parts. The
     # event clause matches the part jobs', so pushes that are not heavy and
     # fork pull requests (fork-smoke) skip it exactly as before (#2709).
-    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -560,7 +546,7 @@ jobs:
       # request (#1445): without it, runs for one PR at different heads share
       # a group and `cancel-in-progress` resolves the collision by arrival
       # order, which is not commit recency.
-      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -630,6 +616,40 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
 
+  pr-verdict:
+    name: ${{ github.event_name == 'pull_request_target' && 'fast-checks' || 'PR metadata (not applicable)' }}
+    needs: [fast-checks, fork-smoke]
+    if: ${{ always() && github.event_name == 'pull_request_target' }}
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    concurrency:
+      # Event arrival order is not title recency. Every replacement reads live
+      # metadata, and never cancels source work in a different group.
+      group: ci-pr-verdict-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      cancel-in-progress: true
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out base policy for pull-request verdict
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Require exact source checks and live pull-request title
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-ci-verdict.mjs
+
   ui-bundle-delta:
     name: UI entry bundle delta (report only)
     # #1703: attribute entry-bundle bytes to the pull request that added them.
@@ -643,7 +663,7 @@ jobs:
     # minutes. Not a required check. The script scopes itself first (a PR
     # that touches no UI build input ends in seconds) and exits zero once
     # started, naming the reason in a notice when it cannot measure.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
@@ -680,7 +700,7 @@ jobs:
     name: Fork pull-request smoke
     # This is intentionally exact: untrusted fork code is admitted only to an
     # ephemeral hosted runner, never to the persistent self-hosted fleet.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
     runs-on: ubuntu-22.04
@@ -690,20 +710,6 @@ jobs:
     # bounded steps + 3 minutes = 18; twenty leaves room for a slow install.
     timeout-minutes: 20
     steps:
-      - name: Check out base policy for pull-request title gate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Validate base-controlled pull-request title
-        env:
-          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -843,13 +849,13 @@ jobs:
     # than inside it, so they neither spend its twelve-minute budget nor wait
     # on it. Not a required check (yet): a red here is feedback, and the
     # merge-queue regression still runs the same suites.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
       # Same identity rule as fast-checks: the head sha is part of it, so a
       # run for an older commit can never cancel the current head's run.
-      group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # 53 suites measured at 73s wall on a dev host at load ~30 (82-125s at
