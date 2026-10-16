@@ -57,9 +57,21 @@ test.each([undefined, 'codex'])(
       requesterId: principal.id,
     };
     const warn = vi.fn();
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const onRecorded = vi
       .fn()
       .mockRejectedValue(new Error('Controlled publication failure'));
+    const continued = vi.fn(async () => {
+      enter();
+      await held;
+    });
+    let pendingFirst: Promise<Response> | undefined;
     const app = createOrchestrationRoutes(service, {
       eventBus,
       logger: { debug: vi.fn(), warn },
@@ -67,6 +79,7 @@ test.each([undefined, 'codex'])(
       delegateTask: start,
       taskRoomWork: {
         onRecorded,
+        continued,
         module,
         authorize: async () => scope,
         resolveContext: async () =>
@@ -124,7 +137,15 @@ test.each([undefined, 'codex'])(
       const staleTask = await send('demo', '2026-09-29T12:00:00.000Z');
       expect(staleTask.status).toBe(403);
       expect(start).not.toHaveBeenCalled();
-      const first = await send('demo');
+      let received: Response | undefined;
+      pendingFirst = Promise.resolve(send('demo')).then((response) => {
+        received = response;
+        return response;
+      });
+      await entered;
+      expect(received?.status).toBe(200);
+      release();
+      const first = await pendingFirst;
       expect(first.status).toBe(200);
       await vi.waitFor(() =>
         expect(warn).toHaveBeenCalledWith(
@@ -213,6 +234,8 @@ test.each([undefined, 'codex'])(
         (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
       ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });
     } finally {
+      release();
+      await pendingFirst?.catch(() => undefined);
       await service.shutdown();
       eventStore.close();
     }
@@ -495,5 +518,82 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     vi.unstubAllEnvs();
     await service.shutdown();
     eventStore.close();
+  }
+});
+
+test('a continued response completes while post-response reconciliation is still held', async () => {
+  const directory = makeTempDir('room-continued-response-');
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  const eventBus = new EventBus();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    eventBus,
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  const principal = humanPrincipal('test', 'alice', 'Alice');
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const app = createOrchestrationRoutes(service, {
+    eventBus,
+    logger: { debug: vi.fn() },
+    resolvePrincipal: () => principal,
+    continueDelegatedTask: async () => ({
+      sessionId: 'session',
+      status: 'dispatched',
+    }),
+    taskRoomWork: {
+      module: new TaskRoomWorkModule(join(directory, 'work.json')),
+      authorize: async () => ({
+        projectId: 'project',
+        projectSlug: 'project',
+        roomProjectId: 'project',
+        taskCreatedAt: '2026-10-15T00:00:00.000Z',
+        requesterId: principal.id,
+      }),
+      admitReply: async () => ({
+        expectedSessionId: 'session',
+        roomBinding: { projectId: 'project', taskId: 'task' },
+        recheck: async () => {},
+      }),
+      onReply: async () => true,
+      continued: async () => {
+        enter();
+        await held;
+      },
+    },
+  });
+  let received: Response | undefined;
+  const pending = Promise.resolve(
+    app.request('/delegations/session/continue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Reply',
+        taskRoomReply: {
+          taskId: 'task',
+          taskCreatedAt: '2026-10-15T00:00:00.000Z',
+          operationId: 'reply',
+          attachBrief: false,
+        },
+      }),
+    }),
+  ).then((response) => {
+    received = response;
+    return response;
+  });
+  try {
+    await entered;
+    expect(received?.status).toBe(200);
+  } finally {
+    release();
+    await pending;
+    await service.shutdown();
+    store.close();
   }
 });

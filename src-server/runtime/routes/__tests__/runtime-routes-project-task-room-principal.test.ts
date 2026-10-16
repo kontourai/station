@@ -17,6 +17,7 @@ import type { TaskRoomContextSnapshot } from '@kontourai/station-contracts/task-
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import * as auth from '../../../routes/system/auth.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import {
   type RuntimeAuthenticatedRequestPrincipal,
@@ -401,6 +402,104 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       }
     },
   );
+
+  test('an agent-request list response completes while deferred reconciliation is still held', async () => {
+    const { app, roomRuntime, store, setCaller } = await setup(
+      'list-publication-device',
+    );
+    setCaller({
+      credential: 'list-publication-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(roomRuntime, 'reconcileAgentLifecycles').mockImplementationOnce(
+      async () => {
+        enter();
+        await held;
+      },
+    );
+    let received: Response | undefined;
+    const pending = Promise.resolve(
+      app.fetch(
+        new Request(`http://station/api/tasks/${task.id}/room/agent-requests`),
+        loopbackEnv(),
+      ),
+    ).then((response) => {
+      received = response;
+      return response;
+    });
+    try {
+      await entered;
+      expect(received?.status).toBe(200);
+    } finally {
+      release();
+      await pending;
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('history resolves the local operator display independently of the current reading device', async () => {
+    const { app, roomRuntime, store, setCaller } = await setup(
+      'history-reader-device',
+    );
+    setCaller({
+      credential: 'operator-secret',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    try {
+      const author = new Request(`http://station/api/tasks/${task.id}/room`);
+      expect((await app.fetch(author, loopbackEnv())).status).toBe(200);
+      expect(
+        await roomRuntime.message({
+          taskId: task.id,
+          request: author,
+          proposalId: 'operator-message',
+          text: 'Operator authored this',
+        }),
+      ).toMatchObject({ kind: 'committed' });
+      vi.spyOn(auth, 'getCachedUser').mockReturnValue({
+        ...getCachedUser(),
+        alias: 'Operator display after restart',
+      });
+      setCaller({
+        credential: 'history-reader-device',
+        authority: 'device-credential',
+        source: 'bearer',
+      });
+      const reader = new Request(`http://station/api/tasks/${task.id}/room`);
+      expect((await app.fetch(reader, loopbackEnv())).status).toBe(200);
+      expect(
+        await roomRuntime.history({
+          taskId: task.id,
+          request: reader,
+          project: true,
+        }),
+      ).toMatchObject({
+        kind: 'available',
+        records: [
+          expect.objectContaining({
+            actor: expect.objectContaining({
+              label: 'Operator display after restart',
+            }),
+          }),
+        ],
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
 
   test('the mounted manual status route writes the same human-readable status system line as room start', async () => {
     const { app, store, roomRuntime, setCaller } = await setup('status-device');

@@ -535,6 +535,7 @@ describe('TaskRoomEditorPane', () => {
     });
     const unload = new Event('beforeunload', { cancelable: true });
     fireEvent(window, unload);
+    expect(mocks.plan).toHaveBeenCalledOnce();
     expect(unload.defaultPrevented).toBe(true);
     await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
     await waitFor(() =>

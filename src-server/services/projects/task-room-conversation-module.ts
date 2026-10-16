@@ -41,6 +41,35 @@ export class TaskRoomConversationModule {
     string,
     { again: boolean; done: Promise<void> }
   >();
+  private readonly publicationHolds = new Map<
+    string,
+    { count: number; ready: Promise<void>; finish(): void }
+  >();
+
+  holdPublication(taskId: string): () => void {
+    let held = this.publicationHolds.get(taskId);
+    if (!held) {
+      let finish!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      held = { count: 0, ready, finish };
+      this.publicationHolds.set(taskId, held);
+    }
+    held.count += 1;
+    const lease = held;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      lease.count -= 1;
+      if (lease.count === 0) {
+        this.publicationHolds.delete(taskId);
+        lease.finish();
+      }
+    };
+  }
+
   constructor(private readonly deps: Dependencies) {}
 
   async waitForPublication(taskId: string): Promise<void> {
@@ -48,6 +77,8 @@ export class TaskRoomConversationModule {
   }
 
   reconcile(taskId: string): Promise<void> {
+    const held = this.publicationHolds.get(taskId);
+    if (held) return held.ready.then(() => this.reconcile(taskId));
     const current = this.publications.get(taskId);
     if (current) {
       current.again = true;
@@ -118,7 +149,6 @@ export class TaskRoomConversationModule {
         correlationId: 'room-status',
         text: `Status → ${taskStatusLabel(started.task.status)}`,
       });
-    await this.reconcile(record.taskId);
   }
 
   async reply(
@@ -234,8 +264,16 @@ export class TaskRoomConversationModule {
           'Agent Session access changed before reply invocation.',
         );
     };
-    await recheck();
+    const releasePublication = this.holdPublication(input.taskId);
+    try {
+      await this.waitForPublication(input.taskId);
+      await recheck();
+    } catch (error) {
+      releasePublication();
+      throw error;
+    }
     return {
+      releasePublication,
       expectedSessionId: input.sessionId,
       clientTurnId: `room-reply:${admitted.requesterId}:${input.operationId}`,
       roomBinding: { projectId: admitted.roomProjectId, taskId: input.taskId },

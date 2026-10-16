@@ -20,41 +20,66 @@ const task = {
   updatedAt: '2026-08-20T00:00:00.000Z',
 } as const;
 
-test('replacing a Task while completed answers are read publishes nothing', async () => {
-  const directory = makeTempDir('room-answer-recheck-');
-  const store = new EventStore(join(directory, 'events.sqlite'));
-  let current: TaskRecord = { ...task, agentId: 'agent', sessionId: 'session' };
-  const runtime = new ProjectTaskRoomRuntime({
-    taskGraph: { readTaskView: () => current },
-    projectForId: (id) => ({ id, slug: 'project' }),
-    history: (authority) => store.createProjectTaskRoomHistory(authority),
-    working: store.createProjectTaskRoomWorkingState(),
-    requestAuthority: {
-      resolve: async () => ({
-        kind: 'granted',
-        operatorId: 'operator',
-        deviceId: 'device',
-        policyRevision: 'test',
-      }),
-    },
-    readAgentAnswers: async () => {
-      current = { ...current, createdAt: '2026-10-15T00:00:00.000Z' };
-      return [
-        { turnId: 'turn-1', text: 'Stale answer', occurredAt: task.createdAt },
-      ];
-    },
-  });
-  const request = new Request('http://station');
-  try {
-    await runtime.discover({ taskId: task.id, request });
-    await runtime.publishAgentAnswers(task.id, 'session');
-    const history = await runtime.history({ taskId: task.id, request });
-    expect(history).toMatchObject({ kind: 'available', records: [] });
-  } finally {
-    await runtime.close();
-    store.close();
-  }
-});
+test.each(['answer-read', 'room-open'] as const)(
+  'replacing a Task during %s publishes nothing',
+  async (boundary) => {
+    const directory = makeTempDir('room-answer-recheck-');
+    const store = new EventStore(join(directory, 'events.sqlite'));
+    let current: TaskRecord = {
+      ...task,
+      agentId: 'agent',
+      sessionId: 'session',
+    };
+    let answersRead = false;
+    const runtime = new ProjectTaskRoomRuntime({
+      taskGraph: { readTaskView: () => current },
+      projectForId: (id) => ({ id, slug: 'project' }),
+      history: (authority) => {
+        const history = store.createProjectTaskRoomHistory(authority);
+        return {
+          ...history,
+          open: async (input) => {
+            const result = await history.open(input);
+            if (answersRead && boundary === 'room-open')
+              current = { ...current, createdAt: '2026-10-15T00:00:00.000Z' };
+            return result;
+          },
+        };
+      },
+      working: store.createProjectTaskRoomWorkingState(),
+      requestAuthority: {
+        resolve: async () => ({
+          kind: 'granted',
+          operatorId: 'operator',
+          deviceId: 'device',
+          policyRevision: 'test',
+        }),
+      },
+      readAgentAnswers: async () => {
+        answersRead = true;
+        if (boundary === 'answer-read')
+          current = { ...current, createdAt: '2026-10-15T00:00:00.000Z' };
+        return [
+          {
+            turnId: 'turn-1',
+            text: 'Stale answer',
+            occurredAt: task.createdAt,
+          },
+        ];
+      },
+    });
+    const request = new Request('http://station');
+    try {
+      await runtime.discover({ taskId: task.id, request });
+      await runtime.publishAgentAnswers(task.id, 'session');
+      const history = await runtime.history({ taskId: task.id, request });
+      expect(history).toMatchObject({ kind: 'available', records: [] });
+    } finally {
+      await runtime.close();
+      store.close();
+    }
+  },
+);
 
 test('a reconcile with no new answers performs no history open or append, including after restart', async () => {
   const directory = makeTempDir('room-quiet-reconcile-');

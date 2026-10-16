@@ -4102,7 +4102,10 @@ export function configureRuntimeRoutes(
       readDisplayName: async (id) =>
         context.environmentSecurityService.devicePairing
           .listKnownPrincipals()
-          .find((principal) => principal.id === id)?.display,
+          .find((principal) => principal.id === id)?.display ??
+        (id === LOCAL_OPERATOR_PRINCIPAL_ID
+          ? getCachedUser().alias
+          : undefined),
       readAgentLabel: async (agentId) => {
         try {
           return (await context.agentService.getAgent(agentId)).name;
@@ -4216,6 +4219,10 @@ export function configureRuntimeRoutes(
           };
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
+          const contextSnapshot = principal
+            ? await resolveTaskRoomContext(taskId, request, principal)
+            : undefined;
+          if (!(await authorize())) return { kind: 'refused' as const };
           setTimeout(
             () =>
               void roomConversation.reconcile(taskId).catch((error) =>
@@ -4225,16 +4232,11 @@ export function configureRuntimeRoutes(
               ),
             0,
           );
-          const contextSnapshot = principal
-            ? await resolveTaskRoomContext(taskId, request, principal)
-            : undefined;
-          return (await authorize())
-            ? {
-                ...result,
-                contextVersion: TASK_ROOM_CONTEXT_VERSION,
-                context: contextSnapshot ?? null,
-              }
-            : { kind: 'refused' as const };
+          return {
+            ...result,
+            contextVersion: TASK_ROOM_CONTEXT_VERSION,
+            context: contextSnapshot ?? null,
+          };
         },
       }),
     );
@@ -4573,6 +4575,7 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        holdPublication: (taskId) => roomConversation.holdPublication(taskId),
         beforeInvocation: (taskId) =>
           roomConversation.waitForPublication(taskId),
         continued: (taskId) => roomConversation.reconcile(taskId),

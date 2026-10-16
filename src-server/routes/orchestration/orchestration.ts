@@ -1746,6 +1746,7 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      holdPublication?(taskId: string): () => void;
       beforeInvocation?(taskId: string): Promise<void>;
       continued?(taskId: string): Promise<void>;
       admitReply?(
@@ -3200,14 +3201,18 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
+      let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
       ) => {
-        if (roomRequest)
+        if (roomRequest) {
+          releaseRoomRequestPublication ??=
+            deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
+        }
         return delegate({
           ...request,
           ...(contextSnapshot
@@ -3305,74 +3310,89 @@ export function createOrchestrationRoutes(
             ? scope
             : undefined;
         };
-        const outcome = await work.module.submit(
-          roomRequest.taskId,
-          userId,
-          {
-            operationId: roomRequest.operationId,
-            ...(body.target.model ? { model: body.target.model } : {}),
-            agentId: executionProfileAgentId(
-              normalizeExecutionTarget(body.target).agent,
-            ),
-            ...(typeof body.target.agent !== 'string'
-              ? {
-                  executionAgentId: body.target.agent.executionAgent,
-                  ...(body.target.agent.expectedDefinitionFingerprint
-                    ? {
-                        expectedDefinitionFingerprint:
-                          body.target.agent.expectedDefinitionFingerprint,
-                      }
-                    : {}),
-                }
-              : {}),
-            prompt: body.prompt,
-            ...(roomRequest.context ? { context: roomRequest.context } : {}),
-          },
-          authorize,
-          async (sessionId, scope, recheck, contextSnapshot) => {
-            const handle = await dispatch(
-              sessionId,
-              recheck,
-              {
-                projectId: scope.roomProjectId,
-                taskId: roomRequest.taskId,
-              },
-              contextSnapshot,
-            );
-            if (
-              !handle ||
-              typeof handle !== 'object' ||
-              !('sessionId' in handle) ||
-              typeof handle.sessionId !== 'string'
-            )
-              throw new Error('Agent execution identity was not returned.');
-            return { sessionId: handle.sessionId };
-          },
-          () =>
-            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
-            Promise.resolve(undefined),
-        );
-        if (outcome.kind === 'recorded' && outcome.record.state !== 'refused') {
-          setTimeout(
+        try {
+          const outcome = await work.module.submit(
+            roomRequest.taskId,
+            userId,
+            {
+              operationId: roomRequest.operationId,
+              ...(body.target.model ? { model: body.target.model } : {}),
+              agentId: executionProfileAgentId(
+                normalizeExecutionTarget(body.target).agent,
+              ),
+              ...(typeof body.target.agent !== 'string'
+                ? {
+                    executionAgentId: body.target.agent.executionAgent,
+                    ...(body.target.agent.expectedDefinitionFingerprint
+                      ? {
+                          expectedDefinitionFingerprint:
+                            body.target.agent.expectedDefinitionFingerprint,
+                        }
+                      : {}),
+                  }
+                : {}),
+              prompt: body.prompt,
+              ...(roomRequest.context ? { context: roomRequest.context } : {}),
+            },
+            authorize,
+            async (sessionId, scope, recheck, contextSnapshot) => {
+              const handle = await dispatch(
+                sessionId,
+                recheck,
+                {
+                  projectId: scope.roomProjectId,
+                  taskId: roomRequest.taskId,
+                },
+                contextSnapshot,
+              );
+              if (
+                !handle ||
+                typeof handle !== 'object' ||
+                !('sessionId' in handle) ||
+                typeof handle.sessionId !== 'string'
+              )
+                throw new Error('Agent execution identity was not returned.');
+              return { sessionId: handle.sessionId };
+            },
             () =>
-              void work
-                .onRecorded?.(outcome.record, c.req.raw, principal)
-                .catch((error) => {
-                  deps.logger.warn?.('Task room request publication failed', {
-                    error: errorMessage(error),
-                  });
-                }),
-            0,
+              work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+              Promise.resolve(undefined),
           );
+          if (
+            outcome.kind === 'recorded' &&
+            outcome.record.state !== 'refused'
+          ) {
+            try {
+              await work.onRecorded?.(outcome.record, c.req.raw, principal);
+            } catch (error) {
+              deps.logger.warn?.('Task room request publication failed', {
+                error: errorMessage(error),
+              });
+            }
+            const release = releaseRoomRequestPublication;
+            releaseRoomRequestPublication = undefined;
+            setTimeout(() => {
+              release?.();
+              void Promise.resolve()
+                .then(() => work.continued?.(roomRequest.taskId))
+                .catch((error) =>
+                  deps.logger.warn?.('Task room reconciliation failed', {
+                    error: errorMessage(error),
+                  }),
+                );
+            }, 0);
+          }
+          return c.json(
+            { success: outcome.kind === 'recorded', data: outcome },
+            outcome.kind === 'recorded'
+              ? 200
+              : outcome.reason === 'access'
+                ? 403
+                : 409,
+          );
+        } finally {
+          releaseRoomRequestPublication?.();
         }
-        return c.json(
-          { success: outcome.kind === 'recorded', data: outcome },
-          outcome.kind === 'recorded'
-            ? 200
-            : outcome.reason === 'access'
-              ? 403
-              : 409,
-        );
       }
       const data = await dispatch();
       bestEffortDelegationResult(deps.logger, 'arm', () =>
@@ -3835,70 +3855,77 @@ export function createOrchestrationRoutes(
             },
             403,
           );
-        const data = await deps.continueDelegatedTask({
-          ...(roomAdmission
-            ? { taskRoomInvocationAdmission: roomAdmission }
-            : {}),
-          ...getBody(c),
-          message: continuationMessage,
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
-          // No-onward-hop + sender authority, from the verified
-          // credential — never body/userId. The follow-up body carries
-          // no portable signal, so both ride every follow-up: the tool
-          // enforces the hop guard and the post-resolution currency
-          // probe before any outbound forward.
-          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-          isRequestAuthorityCurrent: () =>
-            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-        });
-        let roomReplyDelivery: 'posted' | 'unpublished' | undefined;
-        if (roomReply && principal) {
-          roomReplyDelivery = 'unpublished';
-          try {
-            const posted = await deps.taskRoomWork?.onReply?.(
-              {
-                ...roomReply,
-                sessionId: param(c, 'taskId'),
-                message: getBody(c).message,
-              },
-              c.req.raw,
-              principal,
-            );
-            if (posted) roomReplyDelivery = 'posted';
-            if (!posted)
-              deps.logger.warn?.('Task room reply publication refused', {
-                taskId: roomReply.taskId,
+        try {
+          const data = await deps.continueDelegatedTask({
+            ...(roomAdmission
+              ? { taskRoomInvocationAdmission: roomAdmission }
+              : {}),
+            ...getBody(c),
+            message: continuationMessage,
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            fullAccessGrant,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+            ...(authorizeReceiverExecution
+              ? { authorizeReceiverExecution }
+              : {}),
+            // No-onward-hop + sender authority, from the verified
+            // credential — never body/userId. The follow-up body carries
+            // no portable signal, so both ride every follow-up: the tool
+            // enforces the hop guard and the post-resolution currency
+            // probe before any outbound forward.
+            inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+            isRequestAuthorityCurrent: () =>
+              deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+          });
+          let roomReplyDelivery: 'posted' | 'unpublished' | undefined;
+          if (roomReply && principal) {
+            roomReplyDelivery = 'unpublished';
+            try {
+              const posted = await deps.taskRoomWork?.onReply?.(
+                {
+                  ...roomReply,
+                  sessionId: param(c, 'taskId'),
+                  message: getBody(c).message,
+                },
+                c.req.raw,
+                principal,
+              );
+              if (posted) roomReplyDelivery = 'posted';
+              if (!posted)
+                deps.logger.warn?.('Task room reply publication refused', {
+                  taskId: roomReply.taskId,
+                });
+            } catch (error) {
+              deps.logger.warn?.('Task room reply publication failed', {
+                error: errorMessage(error),
               });
-          } catch (error) {
-            deps.logger.warn?.('Task room reply publication failed', {
-              error: errorMessage(error),
-            });
+            }
+            setTimeout(
+              () =>
+                void deps.taskRoomWork
+                  ?.continued?.(roomReply.taskId)
+                  .catch((error) => {
+                    deps.logger.warn?.('Task room reconciliation failed', {
+                      error: errorMessage(error),
+                    });
+                  }),
+              0,
+            );
           }
-          setTimeout(
-            () =>
-              void deps.taskRoomWork
-                ?.continued?.(roomReply.taskId)
-                .catch((error) => {
-                  deps.logger.warn?.('Task room reconciliation failed', {
-                    error: errorMessage(error),
-                  });
-                }),
-            0,
-          );
+          return c.json({
+            success: true,
+            data:
+              roomReplyDelivery && data && typeof data === 'object'
+                ? { ...data, taskRoomReplyDelivery: roomReplyDelivery }
+                : data,
+          });
+        } finally {
+          if (roomAdmission?.releasePublication)
+            setTimeout(roomAdmission.releasePublication, 0);
         }
-        return c.json({
-          success: true,
-          data:
-            roomReplyDelivery && data && typeof data === 'object'
-              ? { ...data, taskRoomReplyDelivery: roomReplyDelivery }
-              : data,
-        });
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.

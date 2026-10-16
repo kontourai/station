@@ -30,9 +30,14 @@ This path is mounted in the personal runtime. GET retains the existing
 orchestration read grant and POST the existing operate/admission gates. The
 composer refreshes the journal before a fresh request and after its
 acknowledgement. Room SSE refreshes history and Task status; there is no
-five-second polling card. Reconciliation is coalesced. Answer publication is scheduled after request
-responses and runs from canonical turn events; duplicate proposals make no history
-writes or history notifications. A bounded in-memory set avoids repeated lookups,
+five-second polling card. Reconciliation is coalesced. Completed-answer
+reconciliation is scheduled after request responses and runs from canonical turn events. Human message/status recording
+retains its confirmed write boundary, with failures isolated from dispatch
+acknowledgement; duplicate proposals make no history writes or history
+notifications. A private publication hold preserves human prompt before answer
+order even when a completion arrives before the human history write. Refusal and
+failure release the hold; it does not confer execution authority. A bounded
+in-memory set avoids repeated lookups,
 and durable proposal lookup covers restart and cache eviction.
 Existing document/history updates continue using SSE and HTTP.
 

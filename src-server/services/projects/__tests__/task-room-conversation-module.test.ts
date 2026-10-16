@@ -79,6 +79,7 @@ class RoomAdapter extends GateTestAdapter {
       threadId: input.threadId,
       turnId,
       method: 'turn.started',
+      prompt: input.displayInput ?? input.input,
       createdAt,
     });
     return { threadId: input.threadId, turnId };
@@ -276,12 +277,18 @@ async function fixture() {
         : undefined;
     },
   });
+  const starts = new Map<string, () => void>();
   const completions = new Map<string, () => void>();
   const failures: unknown[] = [];
   const publications = new Set<Promise<void>>();
   const unsubscribe = bus.subscribe((frame) => {
     if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
     const event = frame.data?.event as CanonicalRuntimeEvent;
+    if (event.method === 'turn.started' && event.turnId) {
+      const key = `${event.threadId}:${event.turnId}`;
+      starts.get(key)?.();
+      starts.delete(key);
+    }
     if (event.method === 'turn.completed' && event.turnId) {
       const key = `${event.threadId}:${event.turnId}`;
       completions.get(key)?.();
@@ -294,7 +301,18 @@ async function fixture() {
     void pending.finally(() => publications.delete(pending));
   });
   const request = new Request('http://station.test');
-  await room.discover({ taskId: task.id, request });
+  const discovery = await room.discover({ taskId: task.id, request });
+  if (discovery.kind !== 'opened' && discovery.kind !== 'existing') {
+    unsubscribe();
+    await room.close();
+    await sessions.shutdown();
+    store.close();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    throw new Error(
+      `Task-room fixture prerequisite failed: ${JSON.stringify(discovery)}`,
+    );
+  }
   const app = createOrchestrationRoutes(sessions, {
     eventBus: bus,
     logger: { debug: vi.fn() },
@@ -310,6 +328,7 @@ async function fixture() {
     },
     continueDelegatedTask: (input) => continueDelegatedTask(input, sessions),
     taskRoomWork: {
+      holdPublication: (taskId) => conversation.holdPublication(taskId),
       beforeInvocation: (taskId) => conversation.waitForPublication(taskId),
       continued: (taskId) => conversation.reconcile(taskId),
       module: work,
@@ -331,11 +350,26 @@ async function fixture() {
     if (result.kind !== 'available') throw new Error(`History ${result.kind}`);
     return result.records;
   };
+  const fStarted = (sessionId: string, turnId: string) =>
+    new Promise<void>((resolve) => {
+      if (
+        store
+          .listEvents(sessionId)
+          .some(
+            (event) =>
+              event.payload.method === 'turn.started' &&
+              event.payload.turnId === turnId,
+          )
+      )
+        resolve();
+      else starts.set(`${sessionId}:${turnId}`, resolve);
+    });
   return {
     task,
     graph,
     room,
     adapter,
+    started: (sessionId: string, turnId: string) => fStarted(sessionId, turnId),
     complete: (sessionId: string, turnId: string, text: string) =>
       new Promise<void>((resolve) => {
         completions.set(`${sessionId}:${turnId}`, resolve);
@@ -628,16 +662,6 @@ async function requestAgent(f: Awaited<ReturnType<typeof fixture>>) {
   if (body.data.kind !== 'recorded') throw new Error('Missing request record');
   expect(body.data.record.state, JSON.stringify(f.failures)).toBe('dispatched');
   expect(f.adapter.turns).toHaveLength(1);
-  await vi.waitFor(async () =>
-    expect(
-      (
-        await f.sessions.readSession(
-          body.data.kind === 'recorded' ? body.data.record.sessionId : '',
-          INTERNAL_SESSION_READ_SCOPE,
-        )
-      )?.events.some((event) => event.method === 'turn.started'),
-    ).toBe(true),
-  );
   await vi.waitFor(() =>
     expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
   );
@@ -783,3 +807,83 @@ test('a continued provider turn remains acknowledged when posting its human repl
     await f.close();
   }
 });
+
+test.each(['initial', 'reply'] as const)(
+  'a fast %s completion before human history publication preserves prompt-before-answer order',
+  async (kind) => {
+    const f = await fixture();
+    const fastCompletions: Promise<void>[] = [];
+    try {
+      let sessionId: string | undefined;
+      if (kind === 'reply') {
+        sessionId = await requestAgent(f);
+        await f.complete(sessionId, 'turn-1', 'Initial answer');
+        await f.conversation.reconcile(f.task.id);
+      }
+      const send = f.adapter.sendTurn.bind(f.adapter);
+      vi.spyOn(f.adapter, 'sendTurn').mockImplementation(async (input) => {
+        const turn = await send(input);
+        fastCompletions.push(
+          f
+            .started(input.threadId, turn.turnId)
+            .then(() =>
+              f.complete(
+                input.threadId,
+                turn.turnId,
+                'Immediate canonical answer',
+              ),
+            ),
+        );
+        return turn;
+      });
+      if (kind === 'initial') {
+        const recorded = f.conversation.recorded.bind(f.conversation);
+        vi.spyOn(f.conversation, 'recorded').mockImplementation(
+          async (...args) => {
+            await Promise.all(fastCompletions);
+            return recorded(...args);
+          },
+        );
+        sessionId = await requestAgent(f);
+      } else {
+        const reply = f.conversation.reply.bind(f.conversation);
+        vi.spyOn(f.conversation, 'reply').mockImplementation(
+          async (...args) => {
+            await Promise.all(fastCompletions);
+            return reply(...args);
+          },
+        );
+        const response = await f.post(`/delegations/${sessionId}/continue`, {
+          message: 'Fast reply prompt',
+          taskRoomReply: {
+            taskId: f.task.id,
+            taskCreatedAt: f.task.createdAt,
+            operationId: 'fast-reply',
+            attachBrief: false,
+          },
+        });
+        expect(response.status, await response.clone().text()).toBe(200);
+      }
+      await Promise.all(fastCompletions);
+      await f.conversation.reconcile(f.task.id);
+      const records = await f.history();
+      const prompt = records.find((record) =>
+        kind === 'reply'
+          ? record.correlationId === `room-thread:${sessionId}`
+          : record.body.kind === 'human-message' &&
+            record.body.text === '@researcher Investigate',
+      );
+      const answer = records.find(
+        (record) =>
+          record.body.kind === 'human-message' &&
+          record.body.text === 'Immediate canonical answer',
+      );
+      expect(prompt).toBeDefined();
+      expect(answer, JSON.stringify(f.failures)).toBeDefined();
+      expect(prompt!.envelope.seq).toBeLessThan(answer!.envelope.seq);
+    } finally {
+      vi.restoreAllMocks();
+      await f.close();
+    }
+  },
+);

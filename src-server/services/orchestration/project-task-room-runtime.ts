@@ -383,11 +383,12 @@ export class ProjectTaskRoomRuntime {
     scope: ProjectTaskRoomScope,
     principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
     proposalId: string,
+    taskCreatedAt: string,
   ) {
     const key = this.#publicationKey(scope, proposalId);
     if (this.#published.has(key)) return true;
     const existing = await this.#history.findByProposal?.({
-      grant: this.#issueAgent(scope, principal, 'history-read'),
+      grant: this.#issueAgent(scope, principal, 'history-read', taskCreatedAt),
       proposalId,
     });
     if (existing) this.#rememberPublication(key);
@@ -742,11 +743,23 @@ export class ProjectTaskRoomRuntime {
             ),
           };
         const proposalId = `room-answer:${sessionId}:${answer.turnId}`;
-        if (await this.#alreadyPublished(current.scope, principal, proposalId))
+        if (
+          await this.#alreadyPublished(
+            current.scope,
+            principal,
+            proposalId,
+            current.task.createdAt,
+          )
+        )
           continue;
         if (!opened) {
           const result = await this.#history.open({
-            grant: this.#issueAgent(current.scope, principal, 'discover'),
+            grant: this.#issueAgent(
+              current.scope,
+              principal,
+              'discover',
+              current.task.createdAt,
+            ),
           });
           if (result.kind !== 'opened' && result.kind !== 'existing') {
             complete = false;
@@ -779,7 +792,12 @@ export class ProjectTaskRoomRuntime {
           } while (!fits(text));
         }
         const result = await this.#history.append({
-          grant: this.#issueAgent(current.scope, principal, 'agent-publish'),
+          grant: this.#issueAgent(
+            current.scope,
+            principal,
+            'agent-publish',
+            current.task.createdAt,
+          ),
           intent: {
             proposalId,
             occurredAt: answer.occurredAt,
@@ -806,14 +824,21 @@ export class ProjectTaskRoomRuntime {
     } finally {
       if (complete) this.#unpostedAnswers.delete(sessionId);
       else {
-        this.#unpostedAnswers.add(sessionId);
-        this.#publishAgentPresence({
-          task: current.task,
-          scope: current.scope,
-          agentId: current.agentId,
-          sessionId,
-          startedAt: Date.parse(current.task.createdAt),
-        });
+        const final = await this.#lifecycleAssociation(taskId, sessionId);
+        if (
+          final &&
+          final.task.createdAt === current.task.createdAt &&
+          sameScope(final.scope, current.scope)
+        ) {
+          this.#unpostedAnswers.add(sessionId);
+          this.#publishAgentPresence({
+            task: final.task,
+            scope: final.scope,
+            agentId: final.agentId,
+            sessionId,
+            startedAt: Date.parse(final.task.createdAt),
+          });
+        }
       }
     }
   }
@@ -1147,7 +1172,11 @@ export class ProjectTaskRoomRuntime {
     });
     if (result.kind === 'denied' || result.kind === 'not-found')
       return { kind: 'not-found' };
-    if (input.project) await this.#hydrateHistoryLabels(result);
+    if (input.project) {
+      await this.#hydrateHistoryLabels(result);
+      if ((await this.#resolveGrant(grant, 'history-read')).kind !== 'granted')
+        return { kind: 'not-found' };
+    }
     return input.project
       ? (projectHistory(
           result,
@@ -2357,7 +2386,9 @@ export class ProjectTaskRoomRuntime {
       authorizationReceiptId: lifecycle.authorizationReceiptId,
     };
     const proposalId = `agent:${lifecycle.outcome}:${lifecycle.sessionId}`;
-    if (await this.#alreadyPublished(scope, principal, proposalId)) {
+    if (
+      await this.#alreadyPublished(scope, principal, proposalId, task.createdAt)
+    ) {
       if (pending)
         await this.#deps.working.removeAgentLifecycle({
           scope: { ...scope, documentId: documentIdFor(scope) },
@@ -2377,10 +2408,20 @@ export class ProjectTaskRoomRuntime {
     }
     // The channel must exist before append. This is a private server grant;
     // the browser never receives it and cannot select the agent identity.
-    const opened = this.#issueAgent(scope, principal, 'discover');
+    const opened = this.#issueAgent(
+      scope,
+      principal,
+      'discover',
+      task.createdAt,
+    );
     const open = await this.#history.open({ grant: opened });
     if (open.kind !== 'opened' && open.kind !== 'existing') return;
-    const grant = this.#issueAgent(scope, principal, 'agent-publish');
+    const grant = this.#issueAgent(
+      scope,
+      principal,
+      'agent-publish',
+      task.createdAt,
+    );
     const append = await this.#history.append({
       grant,
       intent: {
@@ -2592,6 +2633,7 @@ export class ProjectTaskRoomRuntime {
     scope: ProjectTaskRoomScope,
     principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
     capability: K,
+    expectedTaskCreatedAt: string,
   ): ProjectTaskRoomGrant<K> {
     const token = randomUUID();
     while (this.#issued.size >= 256)
@@ -2600,6 +2642,7 @@ export class ProjectTaskRoomRuntime {
       capability,
       scope,
       principal,
+      expectedTaskCreatedAt,
       receiptId: principal.authorizationReceiptId,
     });
     return Object.freeze({
@@ -3525,6 +3568,7 @@ export class ProjectTaskRoomRuntime {
         (await this.#lifecycleAssociation(issued.scope.taskId, sessionId));
       if (
         !association ||
+        association.task.createdAt !== issued.expectedTaskCreatedAt ||
         !sameScope(association.scope, issued.scope) ||
         issued.receiptId !== issued.principal.authorizationReceiptId ||
         association.agentId !== issued.principal.agentId ||
