@@ -62,12 +62,6 @@
       "sha256": "381c9b87824e7492680ac424c2fb3bf522343f32c3aec75294dfb9ee96084d5b"
     },
     {
-      "name": "desktop-conversation-resync",
-      "width": 1440,
-      "height": 901,
-      "sha256": "d60983dbe87aea6003392602c205209fe33289520960d0c81d7750118c4ad9fd"
-    },
-    {
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
@@ -238,8 +232,8 @@
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
-      "height": 901,
-      "sha256": "27bffb9630291d16b472852f658b19e90eb0a202f676c462b96126e7704cc658"
+      "height": 900,
+      "sha256": "2d825e74650b3b8194bde444111af8fef5c42372557570e91ab042143b49c821"
     },
     {
       "name": "overlay-mobile-sheet",
