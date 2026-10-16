@@ -1050,7 +1050,7 @@ function seedActiveChatSession(
  * `fulfillSessionsFilteredEmptyFixture`'s doc comment for the established
  * per-screen `page.route`-override-then-unroute idiom this generalizes).
  * Every screen below that registers a route MUST call the returned cleanup
- * in `afterCapture` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
+ * in `cleanup` or `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
  * run (a stray "Demo Project" can survive three screens later
  * and change Home's guidance-card content under an unrelated screen name).
@@ -1391,7 +1391,7 @@ function projectDetailFixture(
 /** Keep the selected Project fixture available through both captures. */
 function overlayDockProjectMismatchHooks(
   resyncOnly = false,
-): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'afterCapture'> {
+): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
@@ -1573,7 +1573,9 @@ function overlayDockProjectMismatchHooks(
         'settled conversation status must not extend the document',
       ).toBe(page.viewportSize()?.height);
     },
-    afterCapture: async () => {
+    cleanup: async () => {
+      // Polling must see the scenario's fixtures until its image and recovery
+      // checks finish; removing them in afterGoto races the screenshot.
       for (const cleanup of cleanups) await cleanup();
       cleanups = [];
     },
@@ -1633,8 +1635,8 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
-  /** Release screen fixtures after capture, including failed captures. */
-  afterCapture?: () => Promise<void>;
+  /** Release screen fixtures after capture and interaction checks, even on failure. */
+  cleanup?: () => Promise<void>;
   /**
    * This screen deliberately captures a loading skeleton (@kontourai/ui's
    * `.skeleton`) itself — opt out of the universal
@@ -3560,7 +3562,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        await screen.afterCapture?.();
+        await screen.cleanup?.();
       }
     }
   } finally {

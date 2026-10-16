@@ -140,7 +140,9 @@
 
     "src-ui/src/hooks/useSTT.ts",
 
-    "src-ui/src/components/chat-start/useStartDictation.ts"
+    "src-ui/src/components/chat-start/useStartDictation.ts",
+
+    "src-ui/src/views/home/home-view-model.ts"
   ],
 
   "checks": [
