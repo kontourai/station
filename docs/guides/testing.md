@@ -530,10 +530,8 @@ Do not run `npm run full:regression`
 locally merely because `main` moved.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged
-Preview/Stable use it: every canonical phase and Android viewport test must
-succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of
-`PR: CI` remains the explicit full-corpus diagnostic escape hatch.
+exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native

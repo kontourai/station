@@ -451,8 +451,9 @@ the artifact-path contract.
 
 The [testing guide](../guides/testing.md#available-escalation-lanes) owns when
 to run each lane. Ordinary pull requests use focused local evidence, normal
-push hooks and required hosted PR and merge-queue checks. Hosted Nightly/tagged promotions own
-canonical full-regression completion. A local `full:regression` run is an
+push hooks and required hosted PR and merge-queue checks. Scheduled main qualification and tagged Preview/Stable promotions own
+canonical full-regression completion. Nightly uses a distinct exact-source
+usability gate and does not emit full qualification evidence. A local `full:regression` run is an
 explicit diagnostic escalation, not a routine response to upstream movement.
 
 Only one lane can certify the final exact workspace: `full-regression`, whose
