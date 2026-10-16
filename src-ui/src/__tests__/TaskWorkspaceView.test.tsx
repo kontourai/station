@@ -482,6 +482,15 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByRole('list', { name: 'Kept results' })).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(screen.getByText('Raw room history')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Task document' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Task conversation' })).toBeNull();
+    expect(
+      screen.queryByText('Workspace pane changes are saved in this tab.'),
+    ).toBeNull();
+    const details = screen.getByRole('tabpanel', { name: 'Details' });
+    expect(
+      details.lastElementChild?.querySelector('summary')?.textContent,
+    ).toBe('Raw room history');
   });
 
   test('renders a retained Task as orphaned when its Project has been deleted', () => {

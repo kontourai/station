@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   running: false,
   failedAnswer: false,
+  contextText: '',
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useTaskTurnReferencesQuery: () => ({ data: [] }),
@@ -67,7 +68,19 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
     data: { pages: [{ kind: 'available', records: mocks.records }] },
     refetch: vi.fn(),
   }),
-  useTaskRoomAgentRequestsQuery: () => ({ refetch: vi.fn() }),
+  useTaskRoomAgentRequestsQuery: () => ({
+    data: {
+      context: {
+        version: 'station.task-room-context/v1',
+        digest: 'a'.repeat(64),
+        title: 'Brief',
+        description: '',
+        documentRevision: 'revision-1',
+        text: mocks.contextText,
+      },
+    },
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   useProjectTaskRoomContext: () => ({
@@ -134,6 +147,7 @@ beforeEach(() => {
   mocks.stream = 'live';
   mocks.running = false;
   mocks.failedAnswer = false;
+  mocks.contextText = '';
   mocks.keep.mockReset().mockResolvedValue({});
   mocks.continue.mockReset().mockResolvedValue({ sessionId: 'session-1' });
   mocks.openConversation.mockReset().mockResolvedValue(true);
@@ -342,4 +356,20 @@ test('an accepted turn with an unpublished human reply keeps its visible draft a
   expect(
     (within(thread).getByRole('textbox') as HTMLTextAreaElement).readOnly,
   ).toBe(true);
+});
+
+test('a shortened brief is disclosed before sending a thread reply and can be detached', () => {
+  mocks.records = [record(1, true)];
+  mocks.contextText =
+    'Plan excerpt. Brief shortened to fit the agent context limit.';
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  const thread = screen.getByRole('region', { name: 'Agent thread' });
+  expect(
+    within(thread).getByText(/brief exceeds 16,000 characters/),
+  ).toBeTruthy();
+  fireEvent.click(within(thread).getByRole('checkbox', { name: 'Brief' }));
+  expect(
+    within(thread).queryByText(/brief exceeds 16,000 characters/),
+  ).toBeNull();
 });

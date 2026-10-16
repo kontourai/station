@@ -345,3 +345,25 @@ test('slash status changes rely on the server system line without a second compo
   );
   expect(screen.queryByText(/Status →/)).toBeNull();
 });
+
+test('dispatch acknowledgement is a compact transient status that clears after a few seconds', async () => {
+  vi.useFakeTimers();
+  try {
+    render(<TaskRoomComposer {...props} />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '@researcher Investigate' },
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send to task room' }),
+      );
+    });
+    expect(screen.getByText('Agent request dispatched.')).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.queryByText('Agent request dispatched.')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
