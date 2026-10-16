@@ -70,8 +70,6 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => false,
 }));
-// The sessions the sidebar reads, and the sidebar footer's and Boards
-// section's reads, answered the way `ProjectSidebar.test.tsx` answers them.
 const historyRead = vi.hoisted(() => vi.fn());
 const openRead = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk/conversation-open', () => ({

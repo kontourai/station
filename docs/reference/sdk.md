@@ -395,7 +395,8 @@ const sessionId = createSession('my-agent', 'My Agent');
 
 The default callback requires `conversationId`, `agentSlug` and `agentName`;
 it also accepts optional Project/execution/hydration context and returns
-`Promise<string | null>`. A null result means message hydration failed. Opening
+`Promise<string | null>`. A null result means message hydration failed or its
+command was superseded. Opening
 a Dock entry is not proof that continuation is authorized; use canonical
 conversation resolution and current server execution evidence, not mutable
 Agent defaults, when a host supplies that context.

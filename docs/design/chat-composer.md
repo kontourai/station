@@ -209,7 +209,7 @@ current state has not been verified. Check connection, Reconnecting, and Catchin
 priority while the transport needs recovery; explicit stream resync respects
 the 30-second auth-refusal retry floor. Background work the session record last reported
 reads as "Last known: …" without animated dots while its observation is
-unverified. The inbox, sidebar, Home, and mobile picker share this freshness:
+unverified. The inbox, Home, and mobile picker share this freshness:
 a failed conversation read marks only that conversation; a failed inbox read
 marks the retained list. Rows prefix the computed status with "Last known:"
 and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
