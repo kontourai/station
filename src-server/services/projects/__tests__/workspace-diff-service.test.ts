@@ -17,8 +17,8 @@ import {
 import { join } from 'node:path';
 import { parsePatchFiles } from '@pierre/diffs';
 import { describe, expect, test } from 'vitest';
-import { codingDiffFixture } from '../../../__test-utils__/coding-worktree-diff.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { codingDiffFixture } from '../../../routes/projects/__tests__/fixtures/coding-worktree-diff.js';
 import { readProjectRepository } from '../git-read-repository.js';
 import { readWorkspaceDiff } from '../workspace-diff-service.js';
 import type { WorkspaceFilePreviewFsPort } from '../workspace-file-preview-service.js';

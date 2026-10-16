@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import { dirname, join } from 'node:path';
-import { createCodingRoutes } from '../routes/projects/coding.js';
-import { FileTreeService } from '../services/projects/file-tree-service.js';
+import { FileTreeService } from '../../../../services/projects/file-tree-service.js';
+import { createCodingRoutes } from '../../coding.js';
 
 /** Real committed repository and public route shared by server and Task renderer tests. */
 export function codingDiffFixture(directory: string) {

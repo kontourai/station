@@ -25,11 +25,11 @@ import { createServer } from 'node:net';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   codingDiffFixture,
   THREE_NEW_FILES,
-} from '../../../__test-utils__/coding-worktree-diff.js';
-import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+} from './fixtures/coding-worktree-diff.js';
 
 /**
  * A hook on every git call Station makes, so a test can change the

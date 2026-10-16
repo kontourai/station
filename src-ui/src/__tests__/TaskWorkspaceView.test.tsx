@@ -16,11 +16,11 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import {
   codingDiffFixture,
   THREE_NEW_FILES,
-} from '../../../src-server/__test-utils__/coding-worktree-diff';
-import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
+} from '../../../src-server/routes/projects/__tests__/fixtures/coding-worktree-diff';
 
 const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
