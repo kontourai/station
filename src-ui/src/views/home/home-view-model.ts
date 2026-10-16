@@ -4,7 +4,10 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import {
+  isFirstSendFailure,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -41,7 +44,7 @@ export interface HomeWorkItem {
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
   kindLabel:
     | 'Durable Task'
-    | `Task · ${'To do' | 'In progress' | 'In review' | 'Blocked' | 'Done' | 'Canceled'}`
+    | `Task · ${(typeof TASK_STATUS_LABELS)[TaskRecord['status']]}`
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
@@ -854,7 +857,7 @@ const TASK_STATUS_LABELS = {
   blocked: 'Blocked',
   review: 'In review',
   verification: 'In review',
-  done: 'Done',
+  done: SESSION_STATUS_WORDS.done,
   canceled: 'Canceled',
 } as const satisfies Record<TaskRecord['status'], string>;
 
