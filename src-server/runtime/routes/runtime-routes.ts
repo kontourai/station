@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
@@ -3823,6 +3824,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      logger: context.logger,
       onStatusChanged: async (task, request) => {
         await projectTaskRoomRuntime?.message({
           taskId: task.id,
@@ -3831,7 +3833,7 @@ export function configureRuntimeRoutes(
           proposalId: `room-status:${task.id}:${task.updatedAt}`,
           occurredAt: task.updatedAt,
           correlationId: 'room-status',
-          text: `Status → ${task.status.replaceAll('_', ' ')}`,
+          text: `Status → ${taskStatusLabel(task.status)}`,
         });
       },
       taskDispatcher: context.taskDispatcher,
@@ -4097,6 +4099,10 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readDisplayName: async (id) =>
+        context.environmentSecurityService.devicePairing
+          .listKnownPrincipals()
+          .find((principal) => principal.id === id)?.display,
       readAgentLabel: async (agentId) => {
         try {
           return (await context.agentService.getAgent(agentId)).name;
@@ -4210,7 +4216,15 @@ export function configureRuntimeRoutes(
           };
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
-          await roomConversation.reconcile(taskId);
+          setTimeout(
+            () =>
+              void roomConversation.reconcile(taskId).catch((error) =>
+                context.logger.warn('Task room reconciliation failed', {
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            0,
+          );
           const contextSnapshot = principal
             ? await resolveTaskRoomContext(taskId, request, principal)
             : undefined;

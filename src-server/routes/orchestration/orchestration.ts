@@ -1749,7 +1749,12 @@ export function createOrchestrationRoutes(
       beforeInvocation?(taskId: string): Promise<void>;
       continued?(taskId: string): Promise<void>;
       admitReply?(
-        input: { taskId: string; taskCreatedAt: string; sessionId: string },
+        input: {
+          taskId: string;
+          taskCreatedAt: string;
+          sessionId: string;
+          operationId: string;
+        },
         request: Request,
         principal: PrincipalRef,
       ): Promise<TaskRoomInvocationAdmission | undefined>;
@@ -3347,8 +3352,19 @@ export function createOrchestrationRoutes(
             work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
             Promise.resolve(undefined),
         );
-        if (outcome.kind === 'recorded' && outcome.record.state !== 'refused')
-          await work.onRecorded?.(outcome.record, c.req.raw, principal);
+        if (outcome.kind === 'recorded' && outcome.record.state !== 'refused') {
+          setTimeout(
+            () =>
+              void work
+                .onRecorded?.(outcome.record, c.req.raw, principal)
+                .catch((error) => {
+                  deps.logger.warn?.('Task room request publication failed', {
+                    error: errorMessage(error),
+                  });
+                }),
+            0,
+          );
+        }
         return c.json(
           { success: outcome.kind === 'recorded', data: outcome },
           outcome.kind === 'recorded'
@@ -3796,34 +3812,13 @@ export function createOrchestrationRoutes(
             context,
           );
         }
-        if (roomReply) {
-          if (
-            !principal ||
-            !deps.taskRoomWork?.onReply ||
-            !(await deps.taskRoomWork.onReply(
-              {
-                ...roomReply,
-                sessionId: param(c, 'taskId'),
-                message: getBody(c).message,
-              },
-              c.req.raw,
-              principal,
-            ))
-          )
-            return c.json(
-              {
-                success: false,
-                error: 'This agent thread is no longer available in this Task.',
-              },
-              403,
-            );
-        }
         const roomAdmission =
           roomReply && principal
             ? await deps.taskRoomWork?.admitReply?.(
                 {
                   taskId: roomReply.taskId,
                   taskCreatedAt: roomReply.taskCreatedAt,
+                  operationId: roomReply.operationId,
                   sessionId: param(c, 'taskId'),
                 },
                 c.req.raw,
@@ -3862,8 +3857,48 @@ export function createOrchestrationRoutes(
           isRequestAuthorityCurrent: () =>
             deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
-        if (roomReply) await deps.taskRoomWork?.continued?.(roomReply.taskId);
-        return c.json({ success: true, data });
+        let roomReplyDelivery: 'posted' | 'unpublished' | undefined;
+        if (roomReply && principal) {
+          roomReplyDelivery = 'unpublished';
+          try {
+            const posted = await deps.taskRoomWork?.onReply?.(
+              {
+                ...roomReply,
+                sessionId: param(c, 'taskId'),
+                message: getBody(c).message,
+              },
+              c.req.raw,
+              principal,
+            );
+            if (posted) roomReplyDelivery = 'posted';
+            if (!posted)
+              deps.logger.warn?.('Task room reply publication refused', {
+                taskId: roomReply.taskId,
+              });
+          } catch (error) {
+            deps.logger.warn?.('Task room reply publication failed', {
+              error: errorMessage(error),
+            });
+          }
+          setTimeout(
+            () =>
+              void deps.taskRoomWork
+                ?.continued?.(roomReply.taskId)
+                .catch((error) => {
+                  deps.logger.warn?.('Task room reconciliation failed', {
+                    error: errorMessage(error),
+                  });
+                }),
+            0,
+          );
+        }
+        return c.json({
+          success: true,
+          data:
+            roomReplyDelivery && data && typeof data === 'object'
+              ? { ...data, taskRoomReplyDelivery: roomReplyDelivery }
+              : data,
+        });
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.

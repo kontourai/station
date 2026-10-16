@@ -166,6 +166,7 @@ interface ProjectTaskRoomRuntimeDeps {
       }
     | undefined
   >;
+  readonly readDisplayName?: (id: string) => Promise<string | undefined>;
   readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
   readonly readAgentAnswers?: (input: {
     sessionId: string;
@@ -257,7 +258,7 @@ interface LiveRoomEntry {
         readonly sessionId: string;
         readonly runId?: string;
         readonly workName: string;
-        readonly workState: 'working';
+        readonly workState: 'working' | 'blocked';
         readonly startedAt: number;
       };
       readonly publication: 'published';
@@ -346,6 +347,8 @@ export class ProjectTaskRoomRuntime {
   readonly #sessionRuns = new Map<string, string>();
   readonly #agentNames = new Map<string, string>();
   readonly #displayNames = new Map<string, string>();
+  readonly #published = new Set<string>();
+  readonly #unpostedAnswers = new Set<string>();
   #closed = false;
 
   constructor(deps: ProjectTaskRoomRuntimeDeps) {
@@ -360,6 +363,71 @@ export class ProjectTaskRoomRuntime {
       agents: { revalidate: (receipt) => this.#revalidateAgent(receipt) },
       ...(deps.revisionEvidence ? { links: deps.revisionEvidence.links } : {}),
     });
+  }
+
+  #publicationKey(scope: ProjectTaskRoomScope, proposalId: string): string {
+    return JSON.stringify([
+      scope,
+      this.#deps.taskGraph.readTaskView(scope.taskId)?.createdAt,
+      proposalId,
+    ]);
+  }
+
+  #rememberPublication(key: string) {
+    while (this.#published.size >= 4096)
+      this.#published.delete(this.#published.keys().next().value!);
+    this.#published.add(key);
+  }
+
+  async #alreadyPublished(
+    scope: ProjectTaskRoomScope,
+    principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
+    proposalId: string,
+  ) {
+    const key = this.#publicationKey(scope, proposalId);
+    if (this.#published.has(key)) return true;
+    const existing = await this.#history.findByProposal?.({
+      grant: this.#issueAgent(scope, principal, 'history-read'),
+      proposalId,
+    });
+    if (existing) this.#rememberPublication(key);
+    return Boolean(existing);
+  }
+
+  async #hydrateHistoryLabels(result: ProjectTaskRoomReadOutcome) {
+    if (result.kind !== 'available') return;
+    const people = new Set<string>();
+    const agents = new Set<string>();
+    const sessions = new Set<string>();
+    for (const record of result.records) {
+      if (
+        record.principal.kind === 'operator' &&
+        !people.has(record.principal.operatorId)
+      ) {
+        people.add(record.principal.operatorId);
+        const name = await this.#deps.readDisplayName?.(
+          record.principal.operatorId,
+        );
+        if (name) this.#displayNames.set(record.principal.operatorId, name);
+      } else if (record.principal.kind === 'agent') {
+        if (!agents.has(record.principal.agentId)) {
+          agents.add(record.principal.agentId);
+          const name = await this.#deps.readAgentLabel?.(
+            record.principal.agentId,
+          );
+          if (name) this.#agentNames.set(record.principal.agentId, name);
+        }
+        const sessionId = agentSessionId(record.principal);
+        if (!sessionId || sessions.has(sessionId)) continue;
+        sessions.add(sessionId);
+        const session = await this.#deps.readAgentLifecycle?.({ sessionId });
+        if (sessionId && session)
+          this.#sessionRuns.set(
+            sessionId,
+            createOrchestrationRunId(session.provider, sessionId),
+          );
+      }
+    }
   }
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
@@ -621,10 +689,32 @@ export class ProjectTaskRoomRuntime {
   async publishAgentAnswers(taskId: string, sessionId: string): Promise<void> {
     const association = await this.#lifecycleAssociation(taskId, sessionId);
     if (!association || !this.#deps.readAgentAnswers) return;
-    const answers = await this.#deps.readAgentAnswers({
-      sessionId,
-      ownerOperatorId: association.ownerOperatorId,
-    });
+    let answers: Awaited<
+      ReturnType<NonNullable<ProjectTaskRoomRuntimeDeps['readAgentAnswers']>>
+    >;
+    try {
+      answers = await this.#deps.readAgentAnswers({
+        sessionId,
+        ownerOperatorId: association.ownerOperatorId,
+      });
+    } catch (error) {
+      const current = await this.#lifecycleAssociation(taskId, sessionId);
+      if (
+        current &&
+        current.task.createdAt === association.task.createdAt &&
+        sameScope(current.scope, association.scope)
+      ) {
+        this.#unpostedAnswers.add(sessionId);
+        this.#publishAgentPresence({
+          task: current.task,
+          scope: current.scope,
+          agentId: current.agentId,
+          sessionId,
+          startedAt: Date.parse(current.task.createdAt),
+        });
+      }
+      throw error;
+    }
     const current = await this.#lifecycleAssociation(taskId, sessionId);
     if (
       !current ||
@@ -634,57 +724,95 @@ export class ProjectTaskRoomRuntime {
       current.ownerOperatorId !== association.ownerOperatorId
     )
       return;
-    for (const answer of answers) {
-      const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
-        kind: 'agent',
-        agentId: current.agentId,
-        ownerOperatorId: current.ownerOperatorId,
-        deviceId: `agent-session:${sessionId}`,
-        authorizationReceiptId: agentLifecycleReceiptId(
-          taskId,
-          sessionId,
-          'completed',
-        ),
-      };
-      const opened = await this.#history.open({
-        grant: this.#issueAgent(current.scope, principal, 'discover'),
-      });
-      if (opened.kind !== 'opened' && opened.kind !== 'existing') return;
-      // The existing text body accepts agent-publish authority. Envelope correlation
-      // retains exact Session/turn identity without a new history storage format.
-      const fits = (value: string) =>
-        value.length <= PROJECT_TASK_ROOM_LIMITS.stringBytes &&
-        Buffer.byteLength(
-          JSON.stringify({ kind: 'human-message', text: value }),
-          'utf8',
-        ) <= PROJECT_TASK_ROOM_LIMITS.bodyBytes;
-      let text = answer.text;
-      if (!fits(text)) {
-        const notice =
-          '\n\n_Answer shortened for the room. Open full run for the complete answer._';
-        let end = Math.min(
-          answer.text.length,
-          PROJECT_TASK_ROOM_LIMITS.stringBytes - notice.length,
-        );
-        do {
-          text = answer.text.slice(0, end) + notice;
-          end = Math.floor(end / 2);
-        } while (!fits(text));
+    let opened = false;
+    let changed = false;
+    let complete = true;
+    try {
+      for (const answer of answers) {
+        const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> =
+          {
+            kind: 'agent',
+            agentId: current.agentId,
+            ownerOperatorId: current.ownerOperatorId,
+            deviceId: `agent-session:${sessionId}`,
+            authorizationReceiptId: agentLifecycleReceiptId(
+              taskId,
+              sessionId,
+              'completed',
+            ),
+          };
+        const proposalId = `room-answer:${sessionId}:${answer.turnId}`;
+        if (await this.#alreadyPublished(current.scope, principal, proposalId))
+          continue;
+        if (!opened) {
+          const result = await this.#history.open({
+            grant: this.#issueAgent(current.scope, principal, 'discover'),
+          });
+          if (result.kind !== 'opened' && result.kind !== 'existing') {
+            complete = false;
+            return;
+          }
+          opened = true;
+        }
+        // The existing text body accepts agent-publish authority. Envelope correlation
+        // retains exact Session/turn identity without a new history storage format.
+        const fits = (value: string) =>
+          value.length <= PROJECT_TASK_ROOM_LIMITS.stringBytes &&
+          Buffer.byteLength(
+            JSON.stringify({ kind: 'human-message', text: value }),
+            'utf8',
+          ) <= PROJECT_TASK_ROOM_LIMITS.bodyBytes;
+        let text = answer.text;
+        if (!fits(text)) {
+          const notice =
+            '\n\n_Answer shortened for the room. Open full run for the complete answer._';
+          let end = Math.min(
+            answer.text.length,
+            PROJECT_TASK_ROOM_LIMITS.stringBytes - notice.length,
+          );
+          do {
+            text =
+              Array.from(answer.text.slice(0, end))
+                .filter((part) => !/^[\uD800-\uDFFF]$/.test(part))
+                .join('') + notice;
+            end = Math.floor(end / 2);
+          } while (!fits(text));
+        }
+        const result = await this.#history.append({
+          grant: this.#issueAgent(current.scope, principal, 'agent-publish'),
+          intent: {
+            proposalId,
+            occurredAt: answer.occurredAt,
+            correlationId: `room-answer:${sessionId}`,
+            causationId: answer.turnId,
+            body: { kind: 'human-message', text },
+          },
+        });
+        if (result.kind === 'committed' || result.kind === 'duplicate') {
+          this.#rememberPublication(
+            this.#publicationKey(current.scope, proposalId),
+          );
+          changed ||= result.kind === 'committed';
+        } else complete = false;
       }
-      const result = await this.#history.append({
-        grant: this.#issueAgent(current.scope, principal, 'agent-publish'),
-        intent: {
-          proposalId: `room-answer:${sessionId}:${answer.turnId}`,
-          occurredAt: answer.occurredAt,
-          correlationId: `room-answer:${sessionId}`,
-          causationId: answer.turnId,
-          body: { kind: 'human-message', text },
-        },
-      });
-      if (result.kind === 'committed' || result.kind === 'duplicate') {
+      if (changed)
         await this.#publishHistory({
           ...current.scope,
           documentId: documentIdFor(current.scope),
+        });
+    } catch (error) {
+      complete = false;
+      throw error;
+    } finally {
+      if (complete) this.#unpostedAnswers.delete(sessionId);
+      else {
+        this.#unpostedAnswers.add(sessionId);
+        this.#publishAgentPresence({
+          task: current.task,
+          scope: current.scope,
+          agentId: current.agentId,
+          sessionId,
+          startedAt: Date.parse(current.task.createdAt),
         });
       }
     }
@@ -732,7 +860,7 @@ export class ProjectTaskRoomRuntime {
       for (const record of pending) {
         const lifecycle = parsePendingAgentLifecycle(record.value);
         if (!lifecycle || lifecycle.taskId !== taskId) continue;
-        await this.#publishAgentLifecycle(lifecycle);
+        await this.#publishAgentLifecycle(lifecycle, true);
       }
       for (const request of (await this.#deps.readAgentRequests?.(taskId)) ??
         []) {
@@ -1019,6 +1147,7 @@ export class ProjectTaskRoomRuntime {
     });
     if (result.kind === 'denied' || result.kind === 'not-found')
       return { kind: 'not-found' };
+    if (input.project) await this.#hydrateHistoryLabels(result);
     return input.project
       ? (projectHistory(
           result,
@@ -1046,9 +1175,10 @@ export class ProjectTaskRoomRuntime {
     if (result.kind === 'denied') return { kind: 'not-found' } as const;
     return projectHistory(
       result,
-      (id: string) => this.#displayNames.get(id),
-      (id: string) => this.#agentNames.get(id),
-      (id: string) => this.#sessionRuns.get(id),
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      true,
     ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
   }
   async sharedDocument(input: {
@@ -2185,6 +2315,15 @@ export class ProjectTaskRoomRuntime {
     if (this.#closed || this.#deps.hosted?.()) return 'unavailable';
     const scope = this.#scope(lifecycle.taskId);
     if (!scope) return 'unavailable';
+    if (
+      this.#published.has(
+        this.#publicationKey(
+          scope,
+          `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
+        ),
+      )
+    )
+      return 'stored';
     return this.#deps.working.agentLifecycle({
       scope: { ...scope, documentId: documentIdFor(scope) },
       intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
@@ -2194,6 +2333,7 @@ export class ProjectTaskRoomRuntime {
 
   async #publishAgentLifecycle(
     lifecycle: PendingAgentLifecycle,
+    pending = false,
   ): Promise<void> {
     if (this.#closed || this.#deps.hosted?.()) return;
     const association = await this.#lifecycleAssociation(
@@ -2216,6 +2356,25 @@ export class ProjectTaskRoomRuntime {
       deviceId: `agent-session:${lifecycle.sessionId}`,
       authorizationReceiptId: lifecycle.authorizationReceiptId,
     };
+    const proposalId = `agent:${lifecycle.outcome}:${lifecycle.sessionId}`;
+    if (await this.#alreadyPublished(scope, principal, proposalId)) {
+      if (pending)
+        await this.#deps.working.removeAgentLifecycle({
+          scope: { ...scope, documentId: documentIdFor(scope) },
+          intentId: proposalId,
+        });
+      if (lifecycle.outcome === 'started')
+        this.#publishAgentPresence({
+          task,
+          scope,
+          agentId,
+          sessionId: lifecycle.sessionId,
+          provider: lifecycle.provider,
+          startedAt: Date.parse(lifecycle.occurredAt),
+        });
+      else this.#removeAgentPresence(scope, agentId, lifecycle.sessionId);
+      return;
+    }
     // The channel must exist before append. This is a private server grant;
     // the browser never receives it and cannot select the agent identity.
     const opened = this.#issueAgent(scope, principal, 'discover');
@@ -2225,7 +2384,7 @@ export class ProjectTaskRoomRuntime {
     const append = await this.#history.append({
       grant,
       intent: {
-        proposalId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
+        proposalId,
         occurredAt: lifecycle.occurredAt,
         correlationId: lifecycle.sessionId,
         causationId: lifecycle.dispatchId,
@@ -2240,6 +2399,7 @@ export class ProjectTaskRoomRuntime {
       },
     });
     if (append.kind === 'committed' || append.kind === 'duplicate') {
+      this.#rememberPublication(this.#publicationKey(scope, proposalId));
       if (lifecycle.outcome === 'started')
         this.#publishAgentPresence({
           task,
@@ -2254,11 +2414,12 @@ export class ProjectTaskRoomRuntime {
         scope: { ...scope, documentId: documentIdFor(scope) },
         intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
       });
-      await this.#publishHistory({
-        projectId: scope.projectId,
-        taskId: scope.taskId,
-        documentId: documentIdFor(scope),
-      });
+      if (append.kind === 'committed')
+        await this.#publishHistory({
+          projectId: scope.projectId,
+          taskId: scope.taskId,
+          documentId: documentIdFor(scope),
+        });
     }
   }
 
@@ -2364,8 +2525,12 @@ export class ProjectTaskRoomRuntime {
       work: {
         sessionId: input.sessionId,
         ...(runId ? { runId } : {}),
-        workName: input.task.title,
-        workState: 'working',
+        workName: this.#unpostedAnswers.has(input.sessionId)
+          ? "Answer couldn't be posted"
+          : input.task.title,
+        workState: this.#unpostedAnswers.has(input.sessionId)
+          ? 'blocked'
+          : 'working',
         startedAt:
           Number.isSafeInteger(input.startedAt) && input.startedAt >= 0
             ? input.startedAt
@@ -2390,6 +2555,27 @@ export class ProjectTaskRoomRuntime {
     const document = { ...scope, documentId: documentIdFor(scope) };
     const entry = this.#live.get(documentKey(document));
     if (!entry) return;
+    if (this.#unpostedAnswers.has(sessionId)) {
+      const actorId = agentActorId(scope.taskId, agentId, sessionId);
+      const participant = entry.agentParticipants.get(actorId);
+      if (participant)
+        entry.agentParticipants.set(actorId, {
+          ...participant,
+          work: {
+            ...participant.work,
+            workState: 'blocked',
+            workName: "Answer couldn't be posted",
+          },
+        });
+      this.#notify(document, {
+        type: 'live',
+        kind: 'available',
+        generation: entry.generation,
+        result: { outcome: 'updated' },
+        snapshot: { outcome: 'available' },
+      });
+      return;
+    }
     entry.agentParticipants.delete(
       agentActorId(scope.taskId, agentId, sessionId),
     );
@@ -2402,7 +2588,7 @@ export class ProjectTaskRoomRuntime {
     });
   }
 
-  #issueAgent<K extends 'discover' | 'agent-publish'>(
+  #issueAgent<K extends 'discover' | 'agent-publish' | 'history-read'>(
     scope: ProjectTaskRoomScope,
     principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
     capability: K,
@@ -3664,63 +3850,75 @@ function projectHistory(
   displayName: (id: string) => string | undefined,
   agentName: (id: string) => string | undefined,
   runId: (id: string) => string | undefined,
+  guest = false,
 ): unknown {
   if (value?.kind === 'available') {
     return {
       kind: 'available',
-      records: value.records.map((record: any) => ({
-        actor: {
-          kind: record.principal.kind === 'agent' ? 'agent' : 'human',
-          id:
-            record.principal.kind === 'agent'
-              ? agentActorId(
-                  record.scope.taskId,
-                  record.principal.agentId,
-                  agentSessionId(record.principal) ?? '',
-                )
-              : actorIdFor(record.principal),
-          label:
-            record.principal.kind === 'agent'
-              ? (agentName(record.principal.agentId) ??
-                record.principal.agentId)
-              : (displayName(record.principal.operatorId) ?? 'Teammate'),
-        },
-        sequence: record.envelope.seq,
-        occurredAt: record.envelope.proposal.happenedAt,
-        ...(record.principal.kind === 'agent' &&
-        record.body.kind === 'human-message' &&
-        record.correlationId ===
-          `room-answer:${agentSessionId(record.principal)}` &&
-        record.causationId
-          ? {
-              execution: {
-                sessionId: agentSessionId(record.principal),
-                turnId: record.causationId,
-                ...(runId(agentSessionId(record.principal)!)
-                  ? { runId: runId(agentSessionId(record.principal)!) }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(record.principal.kind === 'operator' &&
-        record.correlationId?.startsWith('room-thread:')
-          ? {
-              threadSessionId: record.correlationId.slice(
-                'room-thread:'.length,
-              ),
-            }
-          : {}),
-        ...(record.principal.kind === 'operator' &&
-        record.correlationId === 'room-status'
-          ? { system: true }
-          : {}),
-        body: projectBody(record.body),
-        digests: {
-          proposal: record.envelope.proposalDigest,
-          checkpoint: record.checkpointDigest,
-        },
-        integrity: 'L0',
-      })),
+      records: value.records
+        .filter(
+          (record: any) =>
+            !guest ||
+            (!record.correlationId?.startsWith('room-thread:') &&
+              record.correlationId !== 'room-status'),
+        )
+        .map((record: any) => ({
+          actor: {
+            kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+            id:
+              record.principal.kind === 'agent'
+                ? agentActorId(
+                    record.scope.taskId,
+                    record.principal.agentId,
+                    agentSessionId(record.principal) ?? '',
+                  )
+                : actorIdFor(record.principal),
+            label:
+              record.principal.kind === 'agent'
+                ? guest
+                  ? `Agent ${record.principal.agentId}`
+                  : (agentName(record.principal.agentId) ??
+                    record.principal.agentId)
+                : guest
+                  ? `Participant ${createHash('sha256').update(`${record.principal.operatorId}\u0000${record.principal.deviceId}`).digest('hex').slice(-12)}`
+                  : (displayName(record.principal.operatorId) ?? 'Teammate'),
+          },
+          sequence: record.envelope.seq,
+          occurredAt: record.envelope.proposal.happenedAt,
+          ...(record.principal.kind === 'agent' &&
+          record.body.kind === 'human-message' &&
+          record.correlationId ===
+            `room-answer:${agentSessionId(record.principal)}` &&
+          record.causationId
+            ? {
+                execution: {
+                  sessionId: agentSessionId(record.principal),
+                  turnId: record.causationId,
+                  ...(runId(agentSessionId(record.principal)!)
+                    ? { runId: runId(agentSessionId(record.principal)!) }
+                    : {}),
+                },
+              }
+            : {}),
+          ...(record.principal.kind === 'operator' &&
+          record.correlationId?.startsWith('room-thread:')
+            ? {
+                threadSessionId: record.correlationId.slice(
+                  'room-thread:'.length,
+                ),
+              }
+            : {}),
+          ...(record.principal.kind === 'operator' &&
+          record.correlationId === 'room-status'
+            ? { system: true }
+            : {}),
+          body: projectBody(record.body),
+          digests: {
+            proposal: record.envelope.proposalDigest,
+            checkpoint: record.checkpointDigest,
+          },
+          integrity: 'L0',
+        })),
       checkpoint: projectCheckpoint(value.checkpoint),
       hasMore: value.hasMore === true,
       ...(value.nextCursor

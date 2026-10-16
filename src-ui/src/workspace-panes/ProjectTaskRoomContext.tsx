@@ -276,8 +276,20 @@ export function ProjectTaskRoomProvider({
       departed = true;
       void command({ command: 'depart' }).catch(() => {});
     };
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        departed = false;
+        void join().catch(() =>
+          setPresenceError(
+            'Presence could not reconnect. Reopen the Task to retry.',
+          ),
+        );
+      }
+    };
+    window.addEventListener('pageshow', restore);
     window.addEventListener('pagehide', depart);
     return () => {
+      window.removeEventListener('pageshow', restore);
       window.removeEventListener('pagehide', depart);
       depart();
     };

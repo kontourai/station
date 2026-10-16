@@ -644,6 +644,8 @@ export interface ContinueDelegatedTaskInput
 }
 
 export interface DelegatedTaskFollowUpHandle {
+  /** The turn can be accepted while its shared human reply could not be posted. */
+  taskRoomReplyDelivery?: 'posted' | 'unpublished';
   conversationId: string;
   taskId: string;
   sessionId: string;

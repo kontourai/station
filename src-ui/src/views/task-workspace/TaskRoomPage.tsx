@@ -4,6 +4,7 @@ import {
   type TaskKeptDeclaredPullRequest,
   type TaskRecord,
   type TaskStatus,
+  taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
 import {
   getJson,
@@ -22,11 +23,6 @@ import { openChatsStore } from '../../contexts/open-chats-store';
 import { ProjectTaskRoomPresence } from '../../workspace-panes/ProjectTaskRoomPresence';
 import { ProjectTaskSharingControl } from '../project-page/ProjectTaskSharingControl';
 import { TaskOutputRow } from './TaskOutputsSection';
-
-const statusLabel = (status: string) =>
-  status === 'todo'
-    ? 'To do'
-    : status[0].toUpperCase() + status.slice(1).replaceAll('_', ' ');
 
 async function readResult<T>(response: Response): Promise<T> {
   const body = await response.json();
@@ -52,6 +48,11 @@ export function TaskRoomHeader({
   const [editing, setEditing] = useState(false);
   const status = useUpdateTaskStatusMutation();
   const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   useEffect(() => {
     if (!editing) setTitle(task.title);
   }, [task.title, editing]);
@@ -145,7 +146,7 @@ export function TaskRoomHeader({
             canTransitionTaskStatus(task.status, candidate),
           ).map((candidate) => (
             <option key={candidate} value={candidate}>
-              {statusLabel(candidate)}
+              {taskStatusLabel(candidate)}
             </option>
           ))}
         </select>
@@ -184,7 +185,11 @@ export function TaskRoomHeader({
           </Button>
         </div>
       </details>
-      {notice && <p role="alert">{notice}</p>}
+      {notice && (
+        <p className="task-room-inline-status" role="alert">
+          {notice}
+        </p>
+      )}
     </header>
   );
 }

@@ -56,12 +56,17 @@ test.each([undefined, 'codex'])(
       taskCreatedAt: '2026-09-30T12:00:00.000Z',
       requesterId: principal.id,
     };
+    const warn = vi.fn();
+    const onRecorded = vi
+      .fn()
+      .mockRejectedValue(new Error('Controlled publication failure'));
     const app = createOrchestrationRoutes(service, {
       eventBus,
-      logger: { debug: vi.fn() },
+      logger: { debug: vi.fn(), warn },
       resolvePrincipal: () => principal,
       delegateTask: start,
       taskRoomWork: {
+        onRecorded,
         module,
         authorize: async () => scope,
         resolveContext: async () =>
@@ -121,6 +126,12 @@ test.each([undefined, 'codex'])(
       expect(start).not.toHaveBeenCalled();
       const first = await send('demo');
       expect(first.status).toBe(200);
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          'Task room request publication failed',
+          expect.objectContaining({ error: 'Controlled publication failure' }),
+        ),
+      );
       const firstBody = await readJson<{ data: TaskRoomWorkOutcome }>(first);
       if (firstBody.data.kind !== 'recorded')
         throw new Error('expected recorded request');

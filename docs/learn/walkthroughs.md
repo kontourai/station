@@ -32,7 +32,7 @@ The Task
 document capture was replaced after actual single-user save/send/reopen checks.
 The current Task
 workspace leads with the objective and shared room, keeps technical identity
-behind **Task and workspace details**, and gives the editor and message field
+in **Details › Workspace & branch**, and gives the editor and message field
 responsive width. The captures above do not verify agent participation,
 two-human collaboration, or every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
 records the broader channel, board, agent and preview work still to deliver.

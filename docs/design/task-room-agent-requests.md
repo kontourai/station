@@ -30,8 +30,10 @@ This path is mounted in the personal runtime. GET retains the existing
 orchestration read grant and POST the existing operate/admission gates. The
 composer refreshes the journal before a fresh request and after its
 acknowledgement. Room SSE refreshes history and Task status; there is no
-five-second polling card. Reconciliation is coalesced and awaited before
-provider invocation, avoiding duplicate publication during Session writes.
+five-second polling card. Reconciliation is coalesced. Answer publication is scheduled after request
+responses and runs from canonical turn events; duplicate proposals make no history
+writes or history notifications. A bounded in-memory set avoids repeated lookups,
+and durable proposal lookup covers restart and cache eviction.
 Existing document/history updates continue using SSE and HTTP.
 
 ## Independent room contributions
@@ -60,7 +62,9 @@ only the final canonical Project check committed a stale agent record. Restoring
 the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
-Completed canonical turns also publish their answer text through the existing
+Only the initial room-request turn and in-thread reply turns publish their answer text;
+private dock follow-ups on a room-bound Session stay private. Their origin survives
+restart through the canonical turn client identity. These completed turns publish their answer text through the existing
 agent-publish append path. The private principal binds the exact Session; the
 envelope retains the turn ID. Browser history exposes that tuple and the
 canonical run identity when available. Answer text over the room body limit is
@@ -68,12 +72,17 @@ shortened with an explicit notice and an Open full run action. Publication
 rechecks the immutable request binding, Task incarnation, Project and owner;
 reconciliation repeats publication idempotently, never provider execution.
 
-The Chat view groups replies to an agent answer by its Session. A reply uses
+Chat hides brief revision links and presence events; Details retains the raw history.
+Answers are clamped with Show more, and Keep remains disabled after confirmation.
+The Chat view groups replies to an agent answer by its Session. The thread replaces
+the desktop rail and fills the room on narrow screens. A reply uses
 `POST /api/orchestration/delegations/:sessionId/continue` with `taskRoomReply`
 (Task identity, creation time and operation ID). The server verifies the exact
-journal and execution binding before appending the human reply. Existing
-continuation authority still owns provider effects. Follow-up errors retain an
-uncertain draft for full-run inspection instead of retrying automatically.
+journal and execution binding before invoking the continuation. The human reply is appended only after a
+successful continuation; a refused or failed send remains visibly Not delivered
+in the thread with its draft retained. Existing continuation authority owns
+provider effects. Unknown acknowledgements require full-run inspection instead
+of an automatic resend. The operation ID remains stable for the same send.
 The latest saved brief is attached by default; the thread checkbox can opt out.
 
 The shared Task document is the canonical brief. The Chat rail reads its `Goal`
@@ -115,8 +124,10 @@ retire an in-flight preflight; unknown acknowledgements retain the exact saved
 operation and context for retry. The agent receives readable markdown rather
 than serialized snapshot JSON. The Brief tab autosaves through the existing
 server edit-plan/batch protocol, keeps its draft mounted across tabs and retains
-new typing while an older commit settles. Navigation guards protect unsaved or
-uncertain edits.
+new typing while an older commit settles. In-app navigation flushes pending autosaves before committing its destination.
+Failed or uncertain saves retain the draft in place. Co-editing plan rejection
+refreshes and retries automatically at most three times; explicit retry remains
+available after that bound. Browser close/reload retains beforeunload protection.
 
 A context-bearing create sends only `{ version, digest }` beside its operation.
 The server resolves that reference under the journal's mutation lock before
@@ -282,3 +293,14 @@ eliminate this write-time failure. Latest-build end-to-end thread publication
 is therefore **NOT_VERIFIED** pending investigation/integration with #3701's
 storage lane. No history storage or worker internals were changed here. Live
 provider, complete invited/public and native acceptance remain unverified.
+
+## Fix-round implementation boundaries
+
+Authorized history resolves human labels from the durable pairing registry and
+Agent names and run identities from the Agent/Session owners. Shared guest history
+keeps the pre-room anonymized Participant labels and excludes standalone status
+and thread-reply fragments. Publication side-effect failures are logged and do
+not turn an acknowledged dispatch or saved status into a client error. An answer
+that cannot be published retains a blocked room line with Open full run. These
+are local implementation contracts; rendered, live-provider and hosted evidence
+remain separate receipts.

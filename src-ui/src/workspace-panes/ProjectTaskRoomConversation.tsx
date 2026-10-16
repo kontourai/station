@@ -1,5 +1,8 @@
 import type { ProjectTaskRoomBrowserRecord } from '@kontourai/station-contracts/project-task-room-browser';
-import { useCreateTaskReferenceMutation } from '@kontourai/station-sdk';
+import {
+  useCreateTaskReferenceMutation,
+  useTaskTurnReferencesQuery,
+} from '@kontourai/station-sdk';
 import {
   continueDelegatedTask,
   interruptDelegatedTask,
@@ -79,6 +82,11 @@ export function ProjectTaskRoomConversation({
   const [reply, setReply] = useState('');
   const [attachBrief, setAttachBrief] = useState(true);
   const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice || notice.startsWith('Not delivered')) return;
+    const timer = window.setTimeout(() => setNotice(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const openRun = async (sessionId: string) => {
     setNotice('');
     if (!(await openChatsStore.openConversation(sessionId)))
@@ -86,6 +94,10 @@ export function ProjectTaskRoomConversation({
         'This run could not be opened. Try again when the chat dock is ready.',
       );
   };
+  const replyOperation = useRef<string | undefined>(undefined);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [kept, setKept] = useState<Set<string>>(new Set());
+  const references = useTaskTurnReferencesQuery(taskId);
   const [uncertain, setUncertain] = useState(false);
   const keep = useCreateTaskReferenceMutation();
   const { DiscardModal, guard } = useUnsavedGuard(!!reply);
@@ -107,6 +119,7 @@ export function ProjectTaskRoomConversation({
     mutationFn: async () => {
       if (!scope?.isCurrent() || !thread || !taskCreatedAt)
         throw new Error('Task connection changed.');
+      replyOperation.current ??= randomCorrelationId();
       const result = await continueDelegatedTask(
         scope.apiBase,
         thread,
@@ -115,7 +128,7 @@ export function ProjectTaskRoomConversation({
           taskRoomReply: {
             taskId,
             taskCreatedAt,
-            operationId: randomCorrelationId(),
+            operationId: replyOperation.current,
             attachBrief,
           },
         },
@@ -128,20 +141,30 @@ export function ProjectTaskRoomConversation({
         );
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.taskRoomReplyDelivery === 'unpublished') {
+        setUncertain(true);
+        setNotice(
+          "Not delivered to room · The agent received your reply, but it couldn't be posted here. Check the full run before resending.",
+        );
+        return;
+      }
       setReply('');
+      replyOperation.current = undefined;
+      setUncertain(false);
       setNotice('Reply sent to the same agent session.');
       void history.refetch();
       void requests.refetch();
     },
     onError: (error) => {
+      const code = 'code' in error ? error.code : undefined;
       const notSent =
-        'code' in error && error.code === 'task_room_context_unavailable';
+        code === 'task_room_context_unavailable' ||
+        code === 'task_room_reply_refused' ||
+        code === 'receiver_execution_authority_changed';
       setUncertain(!notSent);
       setNotice(
-        notSent
-          ? error.message
-          : `${error.message} Check the full run before resending.`,
+        `Not delivered · ${error.message}${notSent ? '' : ' Check the full run before resending.'}`,
       );
     },
   });
@@ -163,6 +186,12 @@ export function ProjectTaskRoomConversation({
       roots.set(record.execution.sessionId, record.sequence);
   const visible = records.filter(
     (record) =>
+      ![
+        'live-work-started',
+        'live-work-presence-ended',
+        'live-work-finished',
+        'outcome-link',
+      ].includes(record.body.kind) &&
       !record.threadSessionId &&
       (!record.execution ||
         roots.get(record.execution.sessionId) === record.sequence),
@@ -224,11 +253,28 @@ export function ProjectTaskRoomConversation({
           </header>
           <div
             className={
-              execution ? 'task-room-answer' : 'task-room-message-text'
+              execution
+                ? `task-room-answer${expanded.has(record.sequence) ? '' : ' task-room-answer--clamped'}`
+                : 'task-room-message-text'
             }
           >
             <LazyMarkdown>{record.body.text}</LazyMarkdown>
           </div>
+          {execution && (
+            <Button
+              size="sm"
+              onClick={() =>
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  if (next.has(record.sequence)) next.delete(record.sequence);
+                  else next.add(record.sequence);
+                  return next;
+                })
+              }
+            >
+              {expanded.has(record.sequence) ? 'Show less' : 'Show more'}
+            </Button>
+          )}
           {execution && (
             <div className="task-room-message-actions">
               <Button
@@ -247,7 +293,16 @@ export function ProjectTaskRoomConversation({
               </Button>
               <Button
                 size="sm"
-                disabled={keep.isPending}
+                disabled={
+                  keep.isPending ||
+                  kept.has(`${execution.sessionId}:${execution.turnId}`) ||
+                  references.data?.some(
+                    (reference) =>
+                      reference.state === 'available' &&
+                      reference.sessionId === execution.sessionId &&
+                      reference.turnId === execution.turnId,
+                  )
+                }
                 onClick={async () => {
                   try {
                     await keep.mutateAsync({
@@ -257,6 +312,11 @@ export function ProjectTaskRoomConversation({
                       turnId: execution.turnId,
                       sourceSurface: 'task-room',
                     });
+                    setKept((current) =>
+                      new Set(current).add(
+                        `${execution.sessionId}:${execution.turnId}`,
+                      ),
+                    );
                     setNotice('Answer kept in Results.');
                   } catch (error) {
                     setNotice(
@@ -267,7 +327,15 @@ export function ProjectTaskRoomConversation({
                   }
                 }}
               >
-                Keep
+                {kept.has(`${execution.sessionId}:${execution.turnId}`) ||
+                references.data?.some(
+                  (reference) =>
+                    reference.state === 'available' &&
+                    reference.sessionId === execution.sessionId &&
+                    reference.turnId === execution.turnId,
+                )
+                  ? 'Kept'
+                  : 'Keep'}
               </Button>
               <Button
                 size="sm"
@@ -283,7 +351,7 @@ export function ProjectTaskRoomConversation({
   };
   return (
     <section
-      className="project-task-room-conversation"
+      className={`project-task-room-conversation${thread ? ' task-room-conversation--thread-open' : ''}`}
       aria-label="Task room conversation"
     >
       {shared?.presenceError && <p role="alert">{shared.presenceError}</p>}
@@ -317,20 +385,35 @@ export function ProjectTaskRoomConversation({
           >
             <span className="task-room-live-dot" />
             <strong>{participant.actor.label}</strong>
-            <span>is {participant.work.workState}</span>
-            <Button
-              size="sm"
-              onClick={() => void openRun(participant.work.sessionId)}
-            >
-              Watch
-            </Button>
-            <Button
-              size="sm"
-              disabled={!writable || stop.isPending}
-              onClick={() => stop.mutate(participant.work.sessionId)}
-            >
-              Stop
-            </Button>
+            {participant.work.workState === 'blocked' &&
+            participant.work.workName === "Answer couldn't be posted" ? (
+              <>
+                <span>Answer couldn't be posted ·</span>
+                <Button
+                  size="sm"
+                  onClick={() => void openRun(participant.work.sessionId)}
+                >
+                  Open full run
+                </Button>
+              </>
+            ) : (
+              <>
+                <span>is {participant.work.workState}</span>
+                <Button
+                  size="sm"
+                  onClick={() => void openRun(participant.work.sessionId)}
+                >
+                  Watch
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!writable || stop.isPending}
+                  onClick={() => stop.mutate(participant.work.sessionId)}
+                >
+                  Stop
+                </Button>
+              </>
+            )}
           </div>
         ))}
         {pages.some((page) => page.kind === 'gap') && (
@@ -346,30 +429,76 @@ export function ProjectTaskRoomConversation({
         )}
         <div ref={bottom} />
       </div>
+      {records
+        .filter(
+          (record) =>
+            record.body.kind === 'live-work-finished' &&
+            record.body.outcome === 'completed' &&
+            !records.some(
+              (answer) =>
+                answer.execution?.sessionId ===
+                (record.body.kind === 'live-work-finished'
+                  ? record.body.sessionId
+                  : undefined),
+            ),
+        )
+        .map(
+          (record) =>
+            record.body.kind === 'live-work-finished' && (
+              <p
+                key={`unposted:${record.sequence}`}
+                className="task-room-inline-status"
+                role="status"
+              >
+                Answer couldn't be posted ·{' '}
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    record.body.kind === 'live-work-finished' &&
+                    void openRun(record.body.sessionId)
+                  }
+                >
+                  Open full run
+                </Button>
+              </p>
+            ),
+        )}
       {thread && (
         <section className="task-room-thread" aria-label="Agent thread">
           <header>
-            <h3>Thread</h3>
+            <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
             <Button onClick={() => guard(() => setThread(undefined))}>
               Close thread
             </Button>
           </header>
-          <ol>
+          <ol className="task-room-thread-messages">
             {threadRecords.map((record, index) =>
               message(record, threadRecords[index - 1]),
             )}
           </ol>
           <form
+            className="task-room-composer task-room-thread-composer"
             onSubmit={(event) => {
               event.preventDefault();
               followup.mutate();
             }}
           >
-            <label htmlFor="task-thread-reply">Reply to this agent</label>
+            <label
+              className="task-room-message-label"
+              htmlFor="task-thread-reply"
+            >
+              Reply to this agent
+            </label>
             <textarea
               id="task-thread-reply"
               value={reply}
-              onChange={(event) => setReply(event.target.value)}
+              rows={1}
+              placeholder="Reply…"
+              onChange={(event) => {
+                setReply(event.target.value);
+                setNotice('');
+                replyOperation.current = undefined;
+              }}
               readOnly={!writable || followup.isPending || uncertain}
             />
             <label className="task-room-brief-choice">
@@ -379,20 +508,43 @@ export function ProjectTaskRoomConversation({
                 disabled={followup.isPending || uncertain}
                 onChange={(event) => setAttachBrief(event.target.checked)}
               />
-              Latest saved brief attached
+              Brief
             </label>
             <Button
+              className="task-room-send"
+              aria-label="Send reply"
               type="submit"
               disabled={
                 !writable || !reply.trim() || followup.isPending || uncertain
               }
             >
-              Send reply
+              ↑
             </Button>
           </form>
+          {attachBrief &&
+            requests.data?.context?.text.includes('Brief shortened to fit') && (
+              <p className="task-room-inline-status" role="status">
+                The brief exceeds 16,000 characters. A shortened version with a
+                notice will be attached.
+              </p>
+            )}
+          {notice && (
+            <p className="task-room-inline-status" role="status">
+              {notice}{' '}
+              {uncertain && (
+                <Button size="sm" onClick={() => void openRun(thread)}>
+                  Open full run
+                </Button>
+              )}
+            </p>
+          )}
         </section>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {!thread && notice && (
+        <p className="task-room-inline-status" role="status">
+          {notice}
+        </p>
+      )}
       <TaskRoomComposer
         taskId={taskId}
         projectSlug={projectSlug ?? ''}

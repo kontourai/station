@@ -1166,3 +1166,18 @@ export function createTaskSessionId(
 ): string {
   return `task-${taskId}-${dispatchIndex}`;
 }
+
+/** Shared wording for Task controls and server-authored room status lines. */
+export function taskStatusLabel(status: TaskStatus): string {
+  return {
+    todo: 'To do',
+    ready: 'Ready',
+    triage: 'Triage',
+    verification: 'Verification',
+    in_progress: 'In progress',
+    review: 'In review',
+    blocked: 'Blocked',
+    done: 'Done',
+    canceled: 'Canceled',
+  }[status];
+}

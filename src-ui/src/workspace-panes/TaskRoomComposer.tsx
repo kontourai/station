@@ -12,7 +12,7 @@ import {
   useTaskRoomAgentRequestsQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -63,6 +63,11 @@ export function TaskRoomComposer({
   const [composing, setComposing] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState<TaskRoomWorkInput>();
   const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [preparing, setPreparing] = useState(false);
   const sendInFlight = useRef(false);
   const [includeBrief, setIncludeBrief] = useState(true);
@@ -181,7 +186,7 @@ export function TaskRoomComposer({
           await updateTaskStatus({ taskId, status, apiBase: scope.apiBase });
           if (currentOwner.current !== owner || !scope.isCurrent()) return;
           setDraft((current) => (current === draft ? '' : current));
-          setNotice(`Status → ${status.replaceAll('_', ' ')}`);
+          setNotice('');
         } catch (error) {
           if (currentOwner.current === owner)
             setNotice(
@@ -192,7 +197,30 @@ export function TaskRoomComposer({
         }
         return;
       }
-      if (recipient) {
+      let selectedRecipient = recipient;
+      let selectedDraft = draft;
+      if (!selectedRecipient && !unconfirmed) {
+        const typed = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
+        if (typed) {
+          const matches =
+            options.data?.targets.filter(
+              (target) =>
+                target.ready &&
+                (target.id.toLowerCase() === typed[1].toLowerCase() ||
+                  target.name.toLowerCase() === typed[1].toLowerCase()),
+            ) ?? [];
+          if (matches.length !== 1) {
+            setNotice('Pick an agent from the list to send a request');
+            return;
+          }
+          selectedRecipient = matches[0];
+          selectedDraft = typed[2];
+        } else if (/^@/.test(draft.trim())) {
+          setNotice('Pick an agent from the list to send a request');
+          return;
+        }
+      }
+      if (selectedRecipient) {
         if (!requests.data || requests.isError || !scope?.isCurrent()) {
           setNotice(
             'Agent requests are unavailable on this connection. Draft retained.',
@@ -222,8 +250,8 @@ export function TaskRoomComposer({
         }
         const input = unconfirmed ?? {
           operationId: randomCorrelationId(),
-          agentId: recipient.id,
-          prompt: draft.trim(),
+          agentId: selectedRecipient.id,
+          prompt: selectedDraft.trim(),
           ...(includeBrief && latestBrief
             ? {
                 context: {
@@ -358,6 +386,7 @@ export function TaskRoomComposer({
           );
         }}
         onChange={(event) => {
+          setNotice('');
           setDraftOwner(owner);
           setDraft(event.currentTarget.value);
           findMention(
@@ -475,7 +504,11 @@ export function TaskRoomComposer({
       >
         {unconfirmed ? 'Retry' : 'Send'}
       </Button>
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? (
+        <p className="task-room-inline-status" role="status">
+          {notice}
+        </p>
+      ) : null}
       {connectionChanged ? (
         <p role="alert">
           This draft belongs to the previous connection or Task. Reopen that

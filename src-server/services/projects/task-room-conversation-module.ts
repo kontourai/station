@@ -1,5 +1,6 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import type { TaskRoomWorkRecord } from '@kontourai/station-contracts/task-room-work';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -115,7 +116,7 @@ export class TaskRoomConversationModule {
         proposalId: `room-status:${record.taskId}:${started.task.updatedAt}`,
         occurredAt: started.task.updatedAt,
         correlationId: 'room-status',
-        text: 'Status → In progress',
+        text: `Status → ${taskStatusLabel(started.task.status)}`,
       });
     await this.reconcile(record.taskId);
   }
@@ -167,7 +168,12 @@ export class TaskRoomConversationModule {
   }
 
   async admission(
-    input: { taskId: string; taskCreatedAt: string; sessionId: string },
+    input: {
+      taskId: string;
+      taskCreatedAt: string;
+      sessionId: string;
+      operationId: string;
+    },
     request: Request,
     principal: PrincipalRef,
   ): Promise<TaskRoomInvocationAdmission | undefined> {
@@ -185,6 +191,21 @@ export class TaskRoomConversationModule {
         request,
         principal,
       );
+      const requests = await this.deps.work.list(input.taskId, () =>
+        this.deps.authorize(input.taskId, request, principal),
+      );
+      if (
+        requests.kind !== 'available' ||
+        !requests.records.some(
+          (record) =>
+            record.sessionId === input.sessionId &&
+            record.taskCreatedAt === input.taskCreatedAt,
+        )
+      )
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_authority_changed',
+          'This agent Session no longer belongs to this Task request.',
+        );
       const binding = this.deps.readBinding(input.sessionId);
       if (
         !current ||
@@ -216,6 +237,7 @@ export class TaskRoomConversationModule {
     await recheck();
     return {
       expectedSessionId: input.sessionId,
+      clientTurnId: `room-reply:${admitted.requesterId}:${input.operationId}`,
       roomBinding: { projectId: admitted.roomProjectId, taskId: input.taskId },
       recheck,
     };
@@ -233,10 +255,22 @@ export class TaskRoomConversationModule {
       INTERNAL_SESSION_READ_SCOPE,
     );
     if (!detail) return [];
+    const starts = detail.events.filter(
+      (event) => event.method === 'turn.started',
+    );
+    const roomTurns = new Set(
+      starts
+        .filter(
+          (event, index) =>
+            index === 0 || event.clientTurnId?.startsWith('room-reply:'),
+        )
+        .map((event) => event.turnId),
+    );
     const completions = detail.events.filter(
       (event) =>
         event.method === 'turn.completed' &&
         event.turnId &&
+        roomTurns.has(event.turnId) &&
         event.finishReason !== 'cancelled',
     );
     const answers = [];
@@ -245,6 +279,8 @@ export class TaskRoomConversationModule {
         { type: 'assistant-turn', threadId: sessionId, turnId: event.turnId! },
         this.deps.authorityForOwner(ownerOperatorId),
       );
+      if (answer.status === 'unavailable')
+        throw new Error('Completed Task answer is unavailable.');
       if (answer.status !== 'found') continue;
       const text = answer.message.parts
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))

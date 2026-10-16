@@ -104,7 +104,13 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
-  fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+  const chatTab = screen.getByRole('tab', { name: 'Chat' });
+  expect(chatTab.tabIndex).toBe(0);
+  expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
+  fireEvent.keyDown(chatTab, { key: 'ArrowRight' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('tab', { name: 'Brief' }),
+  );
   expect(
     await screen.findByRole('heading', { name: 'Shared goal' }),
   ).toBeTruthy();

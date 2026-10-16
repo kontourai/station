@@ -1,10 +1,9 @@
 import { resolveWorkspaceBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
-import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import {
-  WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID,
-  WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID,
-} from '@kontourai/station-contracts/workspace-task-room';
-import { composeTaskRoomWorkspace } from '@kontourai/station-contracts/workspace-task-room-composition';
+  createWholeTaskBasisPaneInstance,
+  WORKSPACE_BASIS_PANE_DESCRIPTOR,
+} from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   bindStarterWork,
   type RelationGraphLink,
@@ -455,6 +454,7 @@ function TaskWorkspaceContent({
           <Button
             key={name}
             role="tab"
+            tabIndex={tab === name ? 0 : -1}
             aria-selected={tab === name}
             aria-controls={`task-panel-${name}`}
             id={`task-tab-${name}`}
@@ -554,27 +554,21 @@ function TaskWorkspaceContent({
         id="task-panel-Details"
         aria-labelledby="task-tab-Details"
       >
+        <section aria-label="Workspace and branch">
+          <h2>Workspace &amp; branch</h2>
+          <TaskIdentitySection task={graph.task} />
+          <WorkspaceBindingSection task={graph.task} />
+        </section>
         <TaskRoomWorkspaceSection
           task={graph.task}
           onOpenActionChange={captureBasisHostOpen}
         />
-        <TaskExperienceNavigation
-          experiences={experiences}
-          activeExperienceId={activeExperience.id}
-          onSelect={setActiveExperienceId}
-        />
-        <details className="task-workspace__record-details">
-          <summary>Task and workspace details</summary>
-          <TaskIdentitySection task={graph.task} />
-          <WorkspaceBindingSection task={graph.task} />
-        </details>
         <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
           <TaskTurnReferenceView
             taskId={taskId}
             projectId={graph.task.projectId}
           />
         </WorkspacePaneHostOpenContext.Provider>
-        <TaskRoomHistoryDetails taskId={taskId} />
         <TaskUserInputReferences taskId={taskId} />
         <TaskOutputsSection
           task={graph.task}
@@ -586,6 +580,11 @@ function TaskWorkspaceContent({
             }
             setOutputPromotion(null);
           }}
+        />
+        <TaskExperienceNavigation
+          experiences={experiences}
+          activeExperienceId={activeExperience.id}
+          onSelect={setActiveExperienceId}
         />
         {activeExperience.id === 'direct' ? (
           <>
@@ -622,6 +621,7 @@ function TaskWorkspaceContent({
         ) : (
           <TaskExperienceBoundary experience={activeExperience} />
         )}
+        <TaskRoomHistoryDetails taskId={taskId} />
       </div>
     </div>
   );
@@ -660,31 +660,28 @@ function TaskRoomWorkspaceSection({
   // would discard the exact async context they are designed to preserve.
   const workspaceCapabilities =
     capabilities ?? retainedCapabilities.current?.value;
-  const composition = composeTaskRoomWorkspace({
-    projectId: task.projectId,
-    taskId: task.id,
-    layoutId: `task-${task.id}`,
-    capabilities: {
-      documentRead: workspaceCapabilities?.documentRead === true,
-      documentWrite: workspaceCapabilities?.documentWrite === true,
-      roomRead: workspaceCapabilities?.historyRead === true,
-      roomLive: workspaceCapabilities?.live === true,
-    },
-  });
+  const basis = createWholeTaskBasisPaneInstance(task.projectId, task.id);
+  const document =
+    basis && workspaceCapabilities?.documentRead
+      ? createWorkspacePaneHostBaselineDocument(
+          `task-details-${task.id}`,
+          {
+            kind: 'task',
+            projectId: task.projectId,
+            taskId: task.id,
+            layoutId: `task-${task.id}`,
+          },
+          [basis],
+        )
+      : null;
   if (discovery.isLoading)
     return <SkeletonBlock count={2} label="Checking Task room capabilities" />;
-  if (!composition.document)
-    return <p role="status">Task room document is unavailable.</p>;
+  if (!document) return <p role="status">Task room document is unavailable.</p>;
   return (
     <section className="task-workspace__room" aria-label="Task room workspace">
-      {composition.degradedCapabilities.length ? (
-        <p role="status">
-          Task room degraded: {composition.degradedCapabilities.join(', ')}.
-        </p>
-      ) : null}
-
       <WorkspacePaneHost
-        document={composition.document}
+        document={document}
+        presentation="chromeless"
         runtime={hostRuntime}
         onOpenActionChange={onOpenActionChange}
         presentationLabel={(instance) =>
@@ -694,12 +691,7 @@ function TaskRoomWorkspaceSection({
         renderPane={(instance) => {
           const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
           return instance.descriptorId ===
-            WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID ? (
-            <p>The shared document is in the Brief tab.</p>
-          ) : instance.descriptorId ===
-            WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID ? (
-            <p>The conversation is in the Chat tab.</p>
-          ) : instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
+            WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
             <Suspense
               fallback={<SkeletonBlock count={3} label="Loading Basis" />}
             >

@@ -195,6 +195,7 @@ test.describe
       expect(dispatch.success).toBe(true);
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
@@ -209,6 +210,10 @@ test.describe
         name: 'Keep local.md as output',
       });
       await keepLocalOutput.click();
+      await expect(
+        page.getByRole('tab', { name: 'Results', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText('Kept “local.md” as an immutable Task output.'),
       ).toBeVisible();
@@ -282,6 +287,7 @@ test.describe
         secondaryRepo,
         'task-secondary',
       );
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
@@ -306,6 +312,7 @@ test.describe
       );
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
@@ -319,6 +326,7 @@ test.describe
       await stopStation(live);
       await startStation(live, false);
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);

@@ -144,3 +144,14 @@
   align-self: center;
   min-height: 44px;
 }
+
+.task-room-inline-status {
+  margin: var(--k-space-1) var(--k-space-3);
+  color: var(--k-text-muted);
+  font: var(--k-text-xs) / var(--k-leading-normal) var(--k-font-ui);
+  overflow-wrap: anywhere;
+  width: auto;
+}
+.task-room-inline-status[role="alert"] {
+  color: var(--k-negative);
+}

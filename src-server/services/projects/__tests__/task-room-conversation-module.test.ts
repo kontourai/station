@@ -125,11 +125,12 @@ async function fixture() {
   const store = new EventStore(join(directory, 'events.sqlite'));
   const bus = new EventBus();
   const adapter = new RoomAdapter();
+  const warnings = vi.fn();
   const sessions = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: bus,
     eventStore: store,
-    logger: { debug: vi.fn(), warn: vi.fn() },
+    logger: { debug: vi.fn(), warn: warnings },
     resolveSessionAgent: async (input) => ({
       ...input,
       agent: { slug: 'researcher' },
@@ -330,6 +331,11 @@ async function fixture() {
     room,
     adapter,
     post,
+    principal,
+    warnings,
+    sessions,
+    store,
+    conversation,
     history,
     failures,
     agentCount: async () => {
@@ -390,14 +396,18 @@ test('room requests start the Task and publish canonical answers and continued t
     expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     expect(f.adapter.turns[0].input).toContain('Brief shortened to fit');
     expect(f.adapter.turns[0].input).not.toContain('"documentRevision"');
-    expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress');
-    expect(
-      (await f.history()).filter(
-        (record) => record.correlationId === 'room-status',
-      ),
-    ).toMatchObject([
-      { body: { kind: 'human-message', text: 'Status → In progress' } },
-    ]);
+    await vi.waitFor(() =>
+      expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
+    );
+    await vi.waitFor(async () =>
+      expect(
+        (await f.history()).filter(
+          (record) => record.correlationId === 'room-status',
+        ),
+      ).toMatchObject([
+        { body: { kind: 'human-message', text: 'Status → In progress' } },
+      ]),
+    );
     f.adapter.answer(
       sessionId,
       'turn-1',
@@ -453,7 +463,7 @@ test('room requests start the Task and publish canonical answers and continued t
     expect(f.adapter.turns[1].threadId).toBe(sessionId);
     expect(f.adapter.turns[1].input).toContain('Please refine it');
     expect(f.adapter.turns[1].input).toContain('# Task brief: Make the room');
-    expect(await f.agentCount()).toBe(1);
+    await vi.waitFor(async () => expect(await f.agentCount()).toBe(1));
     f.adapter.answer(
       sessionId,
       'turn-2',
@@ -489,6 +499,40 @@ test('room requests start the Task and publish canonical answers and continued t
       ),
     ).toHaveLength(2);
     await vi.waitFor(async () => expect(await f.agentCount()).toBe(0));
+    const privateReply = await f.post(`/delegations/${sessionId}/continue`, {
+      message: 'Private dock follow-up',
+    });
+    expect(privateReply.status, await privateReply.clone().text()).toBe(200);
+    expect(f.adapter.turns).toHaveLength(3);
+    f.adapter.answer(
+      sessionId,
+      'turn-3',
+      'This private dock answer must stay private',
+    );
+    await vi.waitFor(async () => {
+      const detail = await f.sessions.readSession(
+        sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(
+        detail?.events.some(
+          (event) =>
+            event.method === 'turn.completed' && event.turnId === 'turn-3',
+        ),
+      ).toBe(true);
+    });
+    await f.conversation.reconcile(f.task.id);
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'This private dock answer must stay private',
+    );
+    const shared = await f.room.sharedHistory({
+      taskId: f.task.id,
+      request: new Request('http://station'),
+      current: async () => true,
+    });
+    expect(JSON.stringify(shared)).not.toContain('Alice');
+    expect(JSON.stringify(shared)).not.toContain('Please refine it');
+    expect(JSON.stringify(shared)).not.toContain('Status →');
     f.revokeDuringResolution();
     const duringResolution = await f.post(
       `/delegations/${sessionId}/continue`,
@@ -503,7 +547,7 @@ test('room requests start the Task and publish canonical answers and continued t
       },
     );
     expect(duringResolution.status).not.toBe(200);
-    expect(f.adapter.turns).toHaveLength(2);
+    expect(f.adapter.turns).toHaveLength(3);
     f.revoke();
     const forbidden = await f.post(`/delegations/${sessionId}/continue`, {
       message: 'Unauthorized',
@@ -514,7 +558,7 @@ test('room requests start the Task and publish canonical answers and continued t
       },
     });
     expect(forbidden.status).toBe(403);
-    expect(f.adapter.turns).toHaveLength(2);
+    expect(f.adapter.turns).toHaveLength(3);
     expect(f.failures).toEqual([]);
   } finally {
     await f.close();
@@ -552,4 +596,227 @@ test('Task title edits persist for the exact incarnation; room start accepts Rea
     changed: false,
     task: { status: 'blocked' },
   });
+});
+
+async function requestAgent(f: Awaited<ReturnType<typeof fixture>>) {
+  const response = await f.post('/delegations', {
+    prompt: 'Investigate',
+    target: {
+      environment: { kind: 'current' },
+      agent: 'researcher',
+      workspace: { kind: 'project', projectSlug: 'project' },
+    },
+    taskRoomRequest: {
+      taskId: f.task.id,
+      taskCreatedAt: f.task.createdAt,
+      operationId: 'request',
+    },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+  const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+  if (body.data.kind !== 'recorded') throw new Error('Missing request record');
+  expect(body.data.record.state, JSON.stringify(f.failures)).toBe('dispatched');
+  expect(f.adapter.turns).toHaveLength(1);
+  await vi.waitFor(async () =>
+    expect(
+      (
+        await f.sessions.readSession(
+          body.data.kind === 'recorded' ? body.data.record.sessionId : '',
+          INTERNAL_SESSION_READ_SCOPE,
+        )
+      )?.events.some((event) => event.method === 'turn.started'),
+    ).toBe(true),
+  );
+  await vi.waitFor(() =>
+    expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
+  );
+  await f.conversation.waitForPublication(f.task.id);
+  return body.data.record.sessionId;
+}
+
+test('an exact raw Session with a successor refuses a room reply with 403 before posting or invoking a turn', async () => {
+  const f = await fixture();
+  try {
+    const sessionId = await requestAgent(f);
+    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+        )?.events.some(
+          (event) =>
+            event.method === 'turn.completed' && event.turnId === 'turn-1',
+        ),
+        JSON.stringify({
+          events: f.store.listEvents(sessionId).map((event) => ({
+            method: event.payload.method,
+            turnId: event.payload.turnId,
+          })),
+          warnings: f.warnings.mock.calls,
+        }),
+      ).toBe(true),
+    );
+    await f.conversation.reconcile(f.task.id);
+    expect(
+      (await f.history()).some((record) => record.causationId === 'turn-1'),
+      JSON.stringify(f.failures),
+    ).toBe(true);
+    const root = f.store.conversationForSession(sessionId)!;
+    f.store.reserveNextConversationSession({
+      conversationId: root.conversationId,
+      predecessorSessionId: sessionId,
+      proposedSessionId: 'successor',
+      createdAt: new Date().toISOString(),
+    });
+    await f.sessions.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          provider: 'claude',
+          threadId: 'successor',
+          cwd: f.adapter.sessions.get(sessionId)!.cwd,
+        },
+      },
+      { userId: f.principal.id },
+    );
+    await expect(
+      f.conversation.admission(
+        {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          sessionId,
+          operationId: 'successor-admission',
+        },
+        new Request('http://station'),
+        f.principal,
+      ),
+    ).rejects.toThrow('Task authority or agent Session changed');
+    const response = await f.post(`/delegations/${sessionId}/continue`, {
+      message: 'Refused successor reply',
+      taskRoomReply: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'successor-reply',
+        attachBrief: false,
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(f.adapter.turns).toHaveLength(1);
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'Refused successor reply',
+    );
+    // The continuation command also enforces the exact raw identity, independently of route admission.
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: sessionId,
+          message: 'Refused direct continuation',
+          userId: f.principal.id,
+          principal: f.principal,
+          taskRoomInvocationAdmission: {
+            expectedSessionId: sessionId,
+            roomBinding: { taskId: f.task.id, projectId: 'project' },
+            recheck: async () => {},
+          },
+        },
+        f.sessions,
+      ),
+    ).rejects.toThrow(/room reply.*Session/);
+    expect(f.adapter.turns).toHaveLength(1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a continuation failure after admission posts no human reply', async () => {
+  const f = await fixture();
+  try {
+    const sessionId = await requestAgent(f);
+    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+        )?.events.some(
+          (event) =>
+            event.method === 'turn.completed' && event.turnId === 'turn-1',
+        ),
+        JSON.stringify({
+          events: f.store.listEvents(sessionId).map((event) => ({
+            method: event.payload.method,
+            turnId: event.payload.turnId,
+          })),
+          warnings: f.warnings.mock.calls,
+        }),
+      ).toBe(true),
+    );
+    await f.conversation.reconcile(f.task.id);
+    expect(
+      (await f.history()).some((record) => record.causationId === 'turn-1'),
+      JSON.stringify(f.failures),
+    ).toBe(true);
+    const send = vi
+      .spyOn(f.adapter, 'sendTurn')
+      .mockRejectedValueOnce(new Error('Controlled provider refusal'));
+    const response = await f.post(`/delegations/${sessionId}/continue`, {
+      message: 'Failed delivery',
+      taskRoomReply: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'failed-delivery',
+        attachBrief: false,
+      },
+    });
+    expect(response.status).not.toBe(200);
+    expect(send).toHaveBeenCalledOnce();
+    expect(JSON.stringify(await f.history())).not.toContain('Failed delivery');
+  } finally {
+    await f.close();
+  }
+});
+
+test('a continued provider turn remains acknowledged when posting its human reply fails', async () => {
+  const f = await fixture();
+  try {
+    const sessionId = await requestAgent(f);
+    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+        )?.events.some((event) => event.method === 'turn.completed'),
+        JSON.stringify({
+          events: f.store.listEvents(sessionId).map((event) => ({
+            method: event.payload.method,
+            turnId: event.payload.turnId,
+          })),
+          warnings: f.warnings.mock.calls,
+        }),
+      ).toBe(true),
+    );
+    await f.conversation.reconcile(f.task.id);
+    vi.spyOn(f.conversation, 'reply').mockRejectedValueOnce(
+      new Error('Controlled history failure'),
+    );
+    const response = await f.post(`/delegations/${sessionId}/continue`, {
+      message: 'Accepted but unposted',
+      taskRoomReply: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'unposted-reply',
+        attachBrief: false,
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await readJson(response)).toMatchObject({
+      data: { taskRoomReplyDelivery: 'unpublished', sessionId },
+    });
+    expect(f.adapter.turns).toHaveLength(2);
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'Accepted but unposted',
+    );
+  } finally {
+    vi.restoreAllMocks();
+    await f.close();
+  }
 });

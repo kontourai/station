@@ -2304,8 +2304,9 @@ identity and execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock.
 The request journal refreshes before fresh submissions and after acknowledgements.
 Live presence and history use room SSE. Publication reconciliation is coalesced
-and awaited before this lane enters provider invocation; duplicate lifecycle
-publication cannot cause an SSE/request-list feedback loop.
+and scheduled after HTTP responses. A bounded proposal cache and durable lookup
+skip duplicate writes and history notifications, including after restart. Only
+room-origin turns publish answers; private dock follow-ups stay private.
 Shared Task projection continues to publish human messages and the document;
 it excludes agent answers and private execution metadata. Invited/public agent
 results and actual-provider acceptance remain separate qualification scopes.
@@ -2324,8 +2325,9 @@ The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
 normalization. The [editor](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
-keeps unsaved text and an exact possible-effect receipt locally. It uses host
-and navigation close guards, rechecks Task/authority generations after awaits,
+keeps unsaved text and an exact possible-effect receipt locally. It flushes pending saves before in-app navigation and retains failed or uncertain
+drafts in place. Co-editing plan rejection refreshes and retries at most three
+times. It uses host and browser-close guards, rechecks Task/authority generations after awaits,
 and recovers from authoritative reads. A query gap or unavailable/error state
 revokes edit authority even when previously applied text remains visible.
 Terminal streams clear live presence; reconnect, duplicate/gap handling and

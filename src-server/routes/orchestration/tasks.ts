@@ -341,6 +341,7 @@ const taskBasisAppRevokeSchema = z
 export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
+    logger?: { warn(message: string, meta?: Record<string, unknown>): void };
     onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
     taskDispatcher: TaskDispatcher;
     /**
@@ -1983,7 +1984,13 @@ export function createTaskRoutes(
         getBody(c).status,
         resolveClientOriginForRequest(c.req.raw),
       );
-      await options.onStatusChanged?.(data, c.req.raw);
+      try {
+        await options.onStatusChanged?.(data, c.req.raw);
+      } catch (error) {
+        options.logger?.warn('Task status publication failed', {
+          error: errorMessage(error),
+        });
+      }
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

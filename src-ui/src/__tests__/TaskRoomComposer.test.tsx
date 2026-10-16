@@ -142,7 +142,7 @@ test('keyboard autocomplete selects an exact recipient and only Send invokes it'
   expect(mocks.message).not.toHaveBeenCalled();
 });
 
-test('Escape and composing input keep literal mentions as human discussion', async () => {
+test('Escape and composing input retain the draft and an incomplete agent mention shows a picker hint', async () => {
   render(<TaskRoomComposer {...props} />);
   const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.compositionStart(textbox);
@@ -152,8 +152,10 @@ test('Escape and composing input keep literal mentions as human discussion', asy
   fireEvent.compositionEnd(textbox);
   fireEvent.keyDown(textbox, { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
-  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
-  expect(mocks.message.mock.calls[0][0].text).toBe('@res');
+  expect(
+    await screen.findByText('Pick an agent from the list to send a request'),
+  ).toBeTruthy();
+  expect(mocks.message).not.toHaveBeenCalled();
   expect(mocks.agent).not.toHaveBeenCalled();
 });
 
@@ -312,4 +314,34 @@ test('a message acknowledgement preserves text entered for the next message', as
   fireEvent.change(textbox, { target: { value: 'Next thought' } });
   await act(async () => acknowledge({ kind: 'committed' }));
   expect((textbox as HTMLTextAreaElement).value).toBe('Next thought');
+});
+
+test('a hand-typed exact agent mention sends the request without selecting a picker item', async () => {
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@researcher Explore the backlog' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledOnce());
+  expect(mocks.agent.mock.calls[0][0]).toMatchObject({
+    agentId: 'researcher',
+    prompt: 'Explore the backlog',
+  });
+  expect(mocks.message).not.toHaveBeenCalled();
+});
+test('slash status changes rely on the server system line without a second composer status notice', async () => {
+  mocks.status.mockResolvedValue({});
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '/review' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await waitFor(() =>
+    expect(mocks.status).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      status: 'review',
+      apiBase: 'http://station.test',
+    }),
+  );
+  expect(screen.queryByText(/Status →/)).toBeNull();
 });

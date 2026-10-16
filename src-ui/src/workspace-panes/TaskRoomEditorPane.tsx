@@ -11,10 +11,18 @@ import {
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from '../components/Button';
 import { LazyMarkdown } from '../components/chat/LazyMarkdown';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { navigationStore } from '../contexts/navigation-store';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import {
   browserEpochMs,
   clearInteractiveWorkspacePerformanceBookkeeping,
@@ -29,6 +37,8 @@ import {
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { projectTaskRoomEditorPaneId } from './ProjectTaskRoomPresence';
 import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
+
+import './TaskRoomComposer.css';
 
 type AuthoritativeRoomDocument = Extract<
   ProjectTaskRoomDocument,
@@ -156,7 +166,38 @@ export function TaskRoomEditorPane({
   const applyAuthoritativeDocumentRef = useRef(applyAuthoritativeDocument);
   applyAuthoritativeDocumentRef.current = applyAuthoritativeDocument;
   const dirty = text !== authoritativeText;
-  const { DiscardModal } = useUnsavedGuard(dirty);
+  const pendingNavigation = useRef<(() => void) | undefined>(undefined);
+  const navigationIdentity = useRef(Symbol('brief-save-navigation'));
+  const navigationOwner = useContext(UnsavedGuardOwnerContext);
+  const retryCount = useRef(0);
+  useEffect(() => {
+    if (!dirty && !possibleEffect) {
+      const proceed = pendingNavigation.current;
+      pendingNavigation.current = undefined;
+      proceed?.();
+    }
+  }, [dirty, possibleEffect]);
+  const guardNeeded = dirty || !!possibleEffect;
+  useEffect(() => {
+    if (!guardNeeded) return;
+    return navigationStore.registerNavigationGuard(
+      navigationIdentity.current,
+      (proceed) => {
+        pendingNavigation.current = proceed;
+        void saveLatest.current();
+      },
+      navigationOwner,
+    );
+  }, [guardNeeded, navigationOwner]);
+  useLayoutEffect(() => {
+    if (!dirty && !possibleEffect) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      void saveLatest.current();
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty, possibleEffect]);
   useLayoutEffect(() => {
     if (displayedTaskId.current === taskId) return;
     displayedTaskId.current = taskId;
@@ -615,6 +656,33 @@ export function TaskRoomEditorPane({
   const saveLatest = useRef(save);
   saveLatest.current = save;
   useEffect(() => {
+    if (
+      !rejection ||
+      !dirty ||
+      !writable ||
+      possibleEffect ||
+      retryCount.current >= 3
+    )
+      return;
+    const timer = window.setTimeout(async () => {
+      retryCount.current += 1;
+      try {
+        const refreshed = await refetchAuthoritativeProjectTaskRoomDocument(
+          queryClient,
+          taskId,
+        );
+        if (refreshed.kind === 'snapshot' || refreshed.kind === 'delta')
+          applyAuthoritativeDocumentRef.current(refreshed);
+        setRejection(undefined);
+      } catch {
+        setRejection(
+          'Autosave could not refresh the shared brief. Your draft is retained.',
+        );
+      }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [rejection, dirty, writable, possibleEffect, queryClient, taskId]);
+  useEffect(() => {
     void text;
     if (
       !dirty ||
@@ -668,11 +736,15 @@ export function TaskRoomEditorPane({
                                 : 'Shared document ready.';
   return (
     <section className="task-room-editor" aria-label="Task room editor">
-      <p id={`task-room-editor-status-${id}`} role="status">
+      <p
+        className="task-room-inline-status"
+        id={`task-room-editor-status-${id}`}
+        role="status"
+      >
         {status}
       </p>
       {rejection ? (
-        <p role="alert">
+        <p className="task-room-inline-status" role="alert">
           {rejection} Draft retained; the shared document was not changed.
         </p>
       ) : null}
@@ -714,6 +786,7 @@ export function TaskRoomEditorPane({
           onChange={(event) => {
             const enteredEpochMs = browserEpochMs();
             const nextText = event.currentTarget.value;
+            retryCount.current = 0;
             setText(nextText);
             setRejection(undefined);
             setSettlement(undefined);
@@ -798,7 +871,6 @@ export function TaskRoomEditorPane({
           Retry identical batch
         </button>
       ) : null}
-      <DiscardModal />
     </section>
   );
 }

@@ -315,8 +315,32 @@ export function GuestSharedTaskView({
               <Button
                 key={name}
                 role="tab"
+                tabIndex={tab === name ? 0 : -1}
                 aria-selected={tab === name}
                 onClick={() => setTab(name)}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  const next =
+                    event.key === 'Home'
+                      ? 'Chat'
+                      : event.key === 'End'
+                        ? 'Brief'
+                        : name === 'Chat'
+                          ? 'Brief'
+                          : 'Chat';
+                  setTab(next);
+                  const tabs =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      '[role="tab"]',
+                    );
+                  tabs?.[next === 'Chat' ? 0 : 1]?.focus();
+                }}
               >
                 {name}
               </Button>

@@ -40,6 +40,7 @@ export type TaskRoomWorkScope = {
 };
 export type TaskRoomInvocationAdmission = ReceiverExecutionEffectAdmission & {
   readonly expectedSessionId?: string;
+  readonly clientTurnId?: string;
   readonly roomBinding: { readonly projectId: string; readonly taskId: string };
 };
 type Scope = TaskRoomWorkScope;

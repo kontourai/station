@@ -343,3 +343,22 @@ test('settlement refuses a valid but substituted brief after invocation', async 
   ).rejects.toThrow('identity changed before settlement');
   expect(start).toHaveBeenCalledOnce();
 });
+
+test('a shortened brief preserves Unicode code points at the context boundary', () => {
+  const context = createTaskRoomContext(
+    {
+      taskId: 'task',
+      projectId: 'project',
+      taskCreatedAt: '2026-10-15T00:00:00.000Z',
+    },
+    {
+      title: 'Unicode brief',
+      description: '',
+      documentRevision: 'revision',
+      text: 'a'.repeat(15699) + '🚀'.repeat(800),
+    },
+  );
+  expect(context?.text).toContain('Brief shortened to fit');
+  expect(context?.text.length).toBeLessThanOrEqual(16000);
+  expect(context?.text).not.toMatch(/[\uD800-\uDFFF]/u);
+});

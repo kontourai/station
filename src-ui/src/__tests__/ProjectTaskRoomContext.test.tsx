@@ -367,7 +367,9 @@ test('opening the Task joins and publishes presence; pagehide and unmount depart
   fireEvent(window, new Event('pagehide'));
   await act(async () => {});
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
+  mocks.command.mockClear();
   view.unmount();
+  expect(mocks.command).toHaveBeenCalledTimes(1);
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
 });
 
@@ -387,5 +389,23 @@ test('a refused implicit join remains visible and cannot announce membership it 
   );
   expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
     'join',
+  ]);
+});
+
+test('restoring the Task from bfcache rejoins and republishes presence', async () => {
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  fireEvent(window, new Event('pagehide'));
+  await act(async () => {});
+  mocks.command.mockClear();
+  fireEvent(window, new PageTransitionEvent('pageshow', { persisted: true }));
+  await act(async () => {});
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+    'announce',
   ]);
 });

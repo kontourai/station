@@ -363,6 +363,7 @@ test.describe
             .click();
           await guest.getByRole('button', { name: 'Read shared Task' }).click();
           await expect(guest.getByText(messageMarker)).toBeVisible();
+          await guest.getByRole('tab', { name: 'Brief', exact: true }).click();
           await expect(guest.getByText(documentMarker)).toBeVisible();
         };
 

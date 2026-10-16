@@ -4371,3 +4371,8 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
+'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
+Keep the human draft visible and inspect the full run before resending; the field
+does not grant retry or execution authority.

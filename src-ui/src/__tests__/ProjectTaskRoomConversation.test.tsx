@@ -19,8 +19,10 @@ const mocks = vi.hoisted(() => ({
   openConversation: vi.fn().mockResolvedValue(true),
   stop: vi.fn(),
   running: false,
+  failedAnswer: false,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useTaskTurnReferencesQuery: () => ({ data: [] }),
   useCreateTaskReferenceMutation: () => ({
     mutateAsync: mocks.keep,
     isPending: false,
@@ -76,7 +78,13 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
             {
               publication: 'published',
               actor: { actorId: 'claude', kind: 'agent', label: 'Claude' },
-              work: { sessionId: 'session-1', workState: 'working' },
+              work: {
+                sessionId: 'session-1',
+                workState: mocks.failedAnswer ? 'blocked' : 'working',
+                workName: mocks.failedAnswer
+                  ? "Answer couldn't be posted"
+                  : 'Task',
+              },
             },
           ]
         : [],
@@ -125,6 +133,7 @@ beforeEach(() => {
   mocks.writable = true;
   mocks.stream = 'live';
   mocks.running = false;
+  mocks.failedAnswer = false;
   mocks.keep.mockReset().mockResolvedValue({});
   mocks.continue.mockReset().mockResolvedValue({ sessionId: 'session-1' });
   mocks.openConversation.mockReset().mockResolvedValue(true);
@@ -195,4 +204,142 @@ test('terminal authorization disables the composer', () => {
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(
     true,
   );
+});
+
+test.each(['task_room_reply_refused', 'receiver_execution_authority_changed'])(
+  'a refused exact-session reply stays visibly not delivered (%s)',
+  async (code) => {
+    mocks.records = [record(1, true)];
+    mocks.continue.mockRejectedValue(
+      Object.assign(new Error('This Session has a successor.'), { code }),
+    );
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+    const thread = screen.getByRole('region', { name: 'Agent thread' });
+    fireEvent.change(within(thread).getByRole('textbox'), {
+      target: { value: 'Do not lose this reply' },
+    });
+    fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
+    expect(
+      await within(thread).findByText(/Not delivered.*successor/),
+    ).toBeTruthy();
+    expect(
+      (within(thread).getByRole('textbox') as HTMLTextAreaElement).value,
+    ).toBe('Do not lose this reply');
+    expect(
+      within(thread).queryByText('Reply sent to the same agent session.'),
+    ).toBeNull();
+    fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
+    await waitFor(() => expect(mocks.continue).toHaveBeenCalledTimes(2));
+    expect(mocks.continue.mock.calls[1][2].taskRoomReply.operationId).toBe(
+      mocks.continue.mock.calls[0][2].taskRoomReply.operationId,
+    );
+  },
+);
+test('an uncertain reply retains its draft and offers full-run inspection', async () => {
+  mocks.records = [record(1, true)];
+  mocks.continue.mockRejectedValue(new Error('Connection lost'));
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  const thread = screen.getByRole('region', { name: 'Agent thread' });
+  fireEvent.change(within(thread).getByRole('textbox'), {
+    target: { value: 'Retained reply' },
+  });
+  fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
+  expect(
+    await within(thread).findByText(/Not delivered.*Connection lost/),
+  ).toBeTruthy();
+  expect(
+    (within(thread).getByRole('textbox') as HTMLTextAreaElement).readOnly,
+  ).toBe(true);
+  expect(
+    within(thread).getAllByRole('button', { name: 'Open full run' }).length,
+  ).toBeGreaterThan(0);
+});
+test('brief revisions and presence never fill Chat; status changes remain visible and Keep cannot repeat', async () => {
+  mocks.records = [
+    record(1, true),
+    {
+      ...record(2),
+      system: true,
+      body: { kind: 'human-message', text: 'Status → In review' },
+    },
+    {
+      ...record(3),
+      body: {
+        kind: 'outcome-link',
+        link: {
+          kind: 'revision',
+          stableId: 'revision-1',
+          digest: 'a'.repeat(64),
+        },
+      },
+    },
+    {
+      ...record(4),
+      body: { kind: 'live-work-started', sessionId: 'presence-1' },
+    },
+    {
+      ...record(5),
+      body: {
+        kind: 'live-work-presence-ended',
+        sessionId: 'presence-1',
+        reason: 'departed',
+      },
+    },
+  ];
+  mount();
+  expect(screen.getByText('Status → In review')).toBeTruthy();
+  expect(screen.queryByText(/shared revision|joined|left/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+  const kept = await screen.findByRole('button', { name: 'Kept' });
+  expect((kept as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(kept);
+  expect(mocks.keep).toHaveBeenCalledTimes(1);
+});
+
+test('an unpublished answer remains visible with full-run access when the live turn ends', () => {
+  mocks.running = true;
+  mocks.failedAnswer = true;
+  mount();
+  expect(screen.getByText("Answer couldn't be posted ·")).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
+  expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+});
+test('long agent answers expand and collapse without opening the full run', () => {
+  const answer: ProjectTaskRoomBrowserRecord = {
+    ...record(1, true),
+    body: { kind: 'human-message', text: 'Detailed answer. '.repeat(80) },
+  };
+  mocks.records = [answer];
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+  expect(screen.getByRole('button', { name: 'Show less' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+  expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+});
+
+test('an accepted turn with an unpublished human reply keeps its visible draft and full-run inspection', async () => {
+  mocks.records = [record(1, true)];
+  mocks.continue.mockResolvedValue({
+    sessionId: 'session-1',
+    taskRoomReplyDelivery: 'unpublished',
+  });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+  const thread = screen.getByRole('region', { name: 'Agent thread' });
+  fireEvent.change(within(thread).getByRole('textbox'), {
+    target: { value: 'Accepted but unposted' },
+  });
+  fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
+  expect(
+    await within(thread).findByText(/Not delivered to room.*agent received/),
+  ).toBeTruthy();
+  expect(
+    (within(thread).getByRole('textbox') as HTMLTextAreaElement).value,
+  ).toBe('Accepted but unposted');
+  expect(
+    (within(thread).getByRole('textbox') as HTMLTextAreaElement).readOnly,
+  ).toBe(true);
 });
