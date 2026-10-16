@@ -8264,9 +8264,12 @@ export function configureDevicePairingPublicRoutes(
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
+    // A fresh launcher can upgrade an ordinary session only on the host.
+    // Off-host redemption cannot add that authority, so preserve its identity.
     if (
       existingDevice &&
       (!matchedPurpose ||
+        !isSameMachineBrowserCaller(c) ||
         pairing.credentialMayManagePairing(existingCredential!) ||
         pairing.isLocalGrantMintedCredential(existingCredential!))
     ) {
