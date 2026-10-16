@@ -113,6 +113,8 @@ clearly mark the stale document.
   metadata-only routing control plane and its current qualification boundary.
 - **[Testing](testing/)** — supplementary testing records; the canonical
   guide is [guides/testing.md](guides/testing.md).
+- **[UI review evidence](reviews/workspace-map-20261015/README.md)** — workspace
+  map screenshots, review results, capture revisions, and verification limits.
 - **[Third-party](third-party/)** — vendored/external integration notes.
 - **[UI](ui/)** — ratchet and exception baselines consumed by `scripts/*-ratchet.mjs`
   (data files, not prose).

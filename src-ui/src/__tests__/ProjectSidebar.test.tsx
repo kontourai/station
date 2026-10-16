@@ -10,7 +10,7 @@
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
@@ -174,9 +174,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
  * `ProjectSidebarBoards` reads since #2158 — the section then threw on mount
  * and this file's lazy-boundary case saw the error alert it exists to refuse.
  */
+const presentation = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
-  useIsMobile: () => false,
+  useIsMobile: () => presentation.isMobile,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
@@ -217,7 +218,6 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { RecentChatList } from '../components/chat-start/RecentChatList';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
-import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
@@ -252,6 +252,7 @@ function renderSidebar(ui: ReactElement) {
 }
 
 function resetState() {
+  presentation.isMobile = false;
   sidebarRegion.mainOccupant = undefined;
   for (const key of Object.keys(chats)) delete chats[key];
   agents.length = 0;
@@ -364,271 +365,29 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     ).toContain('Acme Station');
   });
 
-  test('labels the open-chat rows with an "Open chats" heading', async () => {
+  test('keeps conversations and composer drafts out of the workspace map', () => {
     resetState();
-    chats['session-a'] = { title: 'Fix login bug', agentSlug: 'a' };
-    agents.push({ slug: 'a', name: 'Agent A' });
-
-    renderSidebar(<ProjectSidebar />);
-    expect(screen.getByText('Open chats')).toBeTruthy();
-    // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
-    expect(await screen.findByText('Fix login bug')).toBeTruthy();
-  });
-
-  test('hides the "Open chats" heading when there are none', () => {
-    resetState();
-    renderSidebar(<ProjectSidebar />);
-    expect(screen.queryByText('Open chats')).toBeNull();
-  });
-
-  test('projects real non-empty drafts into the sidebar and focuses their owning chat', () => {
-    resetState();
-    chats['session-draft'] = {
-      title: 'Finish release notes',
-      agentSlug: 'writer',
-    };
-    // The chat is not listed under Open chats here (that section is removed),
-    // so its draft is a Drafts row of its own.
-    deviceSettingsStore.set('sidebarSections', {
-      ...deviceSettingsStore.getSnapshot().sidebarSections,
-      openChatsHidden: true,
-    });
-    renderSidebar(<ProjectSidebar />);
-
-    act(() => chatDraftsStore.set('session-draft', '  Remember migration  '));
-    expect(screen.getByText('Drafts')).toBeTruthy();
-    const draft = screen.getByRole('button', {
-      name: /finish release notes.*remember migration/i,
-    });
-    // The section names what these are; the row does not say "Draft" again.
-    expect(draft.textContent).not.toMatch(/Draft ·/);
-    fireEvent.click(draft);
-    expect(openChatsStore.focus).toHaveBeenCalledWith({
-      sessionId: 'session-draft',
-    });
-
-    act(() => chatDraftsStore.clear('session-draft'));
-    expect(screen.queryByText('Drafts')).toBeNull();
-
-    act(() => chatDraftsStore.set('session-draft', '   '));
-    expect(screen.queryByText('Drafts')).toBeNull();
-  });
-
-  /**
-   * D6: a draft typed in an open chat was listed twice — once as the Open
-   * chats row (with its "Unsent draft" chip) and again under Drafts. One chat,
-   * one row: the Open chats row carries it, and Drafts is not rendered for it.
-   */
-  test('a draft in a chat listed under Open chats is not listed again under Drafts', async () => {
-    resetState();
-    chats['session-draft'] = {
-      title: 'Finish release notes',
-      agentSlug: 'writer',
-    };
-    agents.push({ slug: 'writer', name: 'Writer' });
-    renderSidebar(<ProjectSidebar />);
-
+    chats['session-draft'] = { title: 'Conversation in the dock' };
     act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
-    expect(await screen.findByText('Finish release notes')).toBeTruthy();
-    expect(screen.getByText('Open chats')).toBeTruthy();
-    expect(screen.queryByText('Drafts')).toBeNull();
-    expect(screen.queryByText('Remember migration')).toBeNull();
-    expect(screen.getAllByText('Finish release notes')).toHaveLength(1);
-    // Not listed twice must not mean not listed: the one row carries the
-    // draft, as its "Unsent draft" chip.
-    const openChats = document.getElementById('sidebar-open-chats');
-    if (!openChats) throw new Error('Open chats section did not render');
-    const row = within(openChats)
-      .getByText('Finish release notes')
-      .closest('.chat-dock-inbox__item') as HTMLElement;
-    expect(row).toBeTruthy();
-    const chip = row.querySelector('[data-chip="draft"]');
-    expect(chip?.textContent).toBe('Unsent draft');
-  });
-
-  /**
-   * D6's one-row rule must not hide a draft: a collapsed Open chats shows no
-   * rows, so its chats' drafts are listed under Drafts until it is expanded.
-   */
-  test('a draft in a chat under a collapsed Open chats is listed under Drafts', async () => {
-    resetState();
-    chats['session-draft'] = {
-      title: 'Finish release notes',
-      agentSlug: 'writer',
-    };
-    agents.push({ slug: 'writer', name: 'Writer' });
-    deviceSettingsStore.set('sidebarSections', {
-      ...deviceSettingsStore.getSnapshot().sidebarSections,
-      openChatsCollapsed: true,
-    });
     renderSidebar(<ProjectSidebar />);
-
-    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
-    const toggle = screen.getByRole('button', { name: 'Open chats' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(screen.getByText('Drafts')).toBeTruthy();
-    expect(
-      screen.getByRole('button', {
-        name: /finish release notes.*remember migration/i,
-      }),
-    ).toBeTruthy();
-
-    // Expanded again, the Open chats row carries it and Drafts lets it go.
-    fireEvent.click(toggle);
-    expect(screen.queryByText('Drafts')).toBeNull();
-    expect(screen.queryByText('Remember migration')).toBeNull();
-  });
-});
-
-/**
- * archive#3314: "Open chats" is a mini-inbox — shared inbox rows
- * (compact variant), collapsible with the nav-group disclosure anatomy,
- * removable (device setting; restore lives in Settings → Appearance), with
- * the cap as a named constant and an "N more" affordance into the dock inbox.
- */
-describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
-  function seedChats(count: number) {
-    for (let index = 0; index < count; index += 1) {
-      chats[`session-${index}`] = { title: `Chat ${index}`, agentSlug: 'a' };
-    }
-    agents.push({ slug: 'a', name: 'Agent A' });
-  }
-
-  test('rows render through the shared inbox row anatomy, and clicking focuses the chat', async () => {
-    resetState();
-    seedChats(1);
-    renderSidebar(<ProjectSidebar />);
-
-    const row = await screen.findByRole('button', {
-      name: 'Chat 0, Station',
-    });
-    expect(row.classList).toContain('chat-dock-inbox__item');
-    expect(document.querySelector('.chat-dock-inbox--compact')).not.toBeNull();
-    fireEvent.click(row);
-    expect(openChatsStore.focus).toHaveBeenCalledWith({
-      sessionId: 'session-0',
-    });
-  });
-
-  test('the section collapses through the shared disclosure anatomy and persists', async () => {
-    resetState();
-    seedChats(1);
-    const first = renderSidebar(<ProjectSidebar />);
-
-    const toggle = screen.getByRole('button', { name: 'Open chats' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect(toggle.getAttribute('aria-controls')).toBe('sidebar-open-chats');
-    await screen.findByText('Chat 0');
-
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(
-      document.getElementById('sidebar-open-chats')?.hasAttribute('hidden'),
-    ).toBe(true);
-
-    // Persisted device-side: a fresh mount stays collapsed.
-    first.unmount();
-    renderSidebar(<ProjectSidebar />);
-    expect(
-      screen
-        .getByRole('button', { name: 'Open chats' })
-        .getAttribute('aria-expanded'),
-    ).toBe('false');
-  });
-
-  test('the section can be removed from the sidebar entirely', () => {
-    resetState();
-    seedChats(1);
-    renderSidebar(<ProjectSidebar />);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Remove Open chats from sidebar' }),
-    );
+    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
     expect(screen.queryByText('Open chats')).toBeNull();
-    expect(deviceSettingsStore.get('sidebarSections').openChatsHidden).toBe(
-      true,
-    );
-  });
-
-  test('caps the list and offers "N more" that opens the dock inbox', async () => {
-    resetState();
-    seedChats(5);
-    renderSidebar(<ProjectSidebar />);
-
-    await screen.findByText('Chat 0');
-    expect(screen.getByText('Chat 2')).toBeTruthy();
-    // Capped at OPEN_CHATS_SIDEBAR_CAP (3): the 4th/5th fold behind N more.
-    expect(screen.queryByText('Chat 3')).toBeNull();
-
-    // archive#3314: this used to assert `inboxOpen === true` as proof of
-    // a destination. That setting DEFAULTS to true, so the assertion passed on
-    // a fresh store whether or not anything wrote it — no power at all, for a
-    // button that led nowhere on mobile and in an edge placement.
-    //
-    // The destination guarantee now lives with the dock, which is the only
-    // thing that knows which surface is mounted, and is proven exhaustively in
-    // chat-dock-utils.test.ts ("every chrome reaches a destination that
-    // mounts"). What the SIDEBAR owes is delegation: ask, never guess.
-    deviceSettingsStore.set('inboxOpen', false);
-    fireEvent.click(screen.getByRole('button', { name: '2 more' }));
-    expect(openChatsStore.openCollection).toHaveBeenCalledTimes(1);
-    // The sidebar must NOT decide the destination itself — routing that from
-    // here is what produced a dead end in the chromes it cannot see.
-    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
-  });
-
-  test('Drafts collapses and removes independently', () => {
-    resetState();
-    // A draft whose chat is not open in this tab: Drafts is its only row.
-    renderSidebar(<ProjectSidebar />);
-    act(() => chatDraftsStore.set('session-draft', 'draft text'));
-
-    const toggle = screen.getByRole('button', { name: 'Drafts' });
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Remove Drafts from sidebar' }),
-    );
     expect(screen.queryByText('Drafts')).toBeNull();
-    expect(deviceSettingsStore.get('sidebarSections').draftsHidden).toBe(true);
-
+    expect(screen.queryByText('Conversation in the dock')).toBeNull();
+    expect(chatDraftsStore.getSnapshot()['session-draft']?.text).toBe(
+      'Remember migration',
+    );
     act(() => chatDraftsStore.clear('session-draft'));
   });
 });
 
-/**
- * #2059 (design record D3), the acceptance this slice is measured by: "Panel
- * order: header, Home, Activity, Projects, footer. No other destination rows."
- *
- * Asserted against the real `ProjectSidebar` composition in DOM order, not
- * against `ProjectSidebarNav` alone: Home is the sidebar's own row and
- * Activity is the nav's, so only the composition can say that the one follows
- * the other — and only an ORDERED inventory notices a row nobody meant to add.
- * The footer is lazy, so it is not in this synchronous tree; its own suite
- * (ProjectSidebarFooter.test.tsx) covers it.
- */
-/**
- * #2062. The Boards section is mounted here through a `LazyBoundary`, which
- * catches whatever the chunk throws and renders an alert IN PLACE of the
- * section. That is why this file's other assertions could not see a missing
- * `@kontourai/station-sdk` export: the panel rendered "Unable to load this
- * part of Station." where Boards belongs and every other row was unaffected,
- * so a broken section read as a passing suite.
- *
- * These two assertions are what make the module mock above load-bearing. The
- * first fails for ANY throw inside the chunk (a hook this file forgot, a
- * context the section reaches, an import that moved); the second proves the
- * section actually rendered rather than merely declining to crash, which a
- * `null`-returning section would also do.
- */
 describe('ProjectSidebar Boards section mounts (#2062)', () => {
   test("renders the section rather than the lazy boundary's error alert", async () => {
     resetState();
     boards.push({ slug: 'daily', name: 'Daily brief' });
     renderSidebar(<ProjectSidebar />);
 
-    expect(await screen.findByText('Boards')).toBeTruthy();
+    expect(await screen.findByText('Personal Boards')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
     // Named separately from the positive assertion: a future change that
     // renders the section AND an alert somewhere else in the panel is still a
@@ -636,38 +395,16 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 
-  test('renders no Boards chrome — and no error alert — for a viewer with none', async () => {
+  test('offers the first Personal Board through the mounted section', async () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
-
-    // The chunk still loads; it is the SECTION that returns null. Proving the
-    // lazy work has SETTLED is the hard part of this case, because a section
-    // rendering nothing offers nothing to wait for — and an earlier revision
-    // awaited `Home`, which `ProjectSidebar` renders itself, so both negative
-    // assertions ran before the chunk had resolved or rejected and this test
-    // passed even with the module mock broken (#2062 review F3).
-    //
-    // The settle-proof is the section DOING something: answering the palette's
-    // create request, which is the affordance that exists for precisely this
-    // viewer. Only a mounted section can, so a chunk that threw cannot satisfy
-    // it.
-    // Let the dynamic import resolve and the section mount. Bounded and
-    // re-dispatching, because the listener only exists once the chunk is in
-    // the tree — and a flush count is a guess, whereas the spy is the fact.
-    // This cannot manufacture a pass: the assertion below still requires the
-    // section to have handled the request.
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await act(async () => {
-        requestNewBoard();
-      });
-      if (boardCreateSpy.mock.calls.length > 0) break;
-    }
+    const create = await screen.findByRole('button', { name: 'New Board' });
+    fireEvent.click(create);
     expect(boardCreateSpy).toHaveBeenCalledWith({
       slug: 'untitled-board',
       name: 'Untitled Board',
     });
-
-    expect(screen.queryByText('Boards')).toBeNull();
+    expect(screen.getByText('Personal Boards')).toBeTruthy();
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 });
@@ -732,22 +469,22 @@ describe('ProjectSidebar panel order (#2059)', () => {
   });
 });
 
-/**
- * #2150: `LayoutIcon` falls back to a two-letter monogram for a project with
- * no icon. At the row's 18px that was a smudge, it landed in the accessible
- * name ("CA Campfit"), and the design record draws the accent bar beside it
- * for identity. An icon-less project now shows the bar alone; a project WITH
- * an icon keeps it, because that is identity the user chose. Both directions
- * are pinned so the gate cannot quietly become "never show an icon".
- */
+/** Project marks stay decorative while every row keeps its canonical name. */
 describe('project row identity (#2150)', () => {
-  test('an icon-less project shows no monogram and is named by its name alone', () => {
+  test('an icon-less project has a decorative identity tile and its canonical accessible name', () => {
     resetState();
     projects.push({ id: 'p1', slug: 'campfit', name: 'Campfit' });
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
-    expect(row.textContent?.trim()).toBe('Campfit');
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    expect(row.querySelector('.sidebar__project-name')?.textContent).toBe(
+      'Campfit',
+    );
+    expect(row.querySelector('.project-icon--initials')).toBeTruthy();
+    expect(
+      row
+        .querySelector('.sidebar__project-icon-slot')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
   });
 
   test('a project with an icon keeps it', () => {
@@ -763,7 +500,7 @@ describe('project row identity (#2150)', () => {
     expect(row.textContent).toContain('🏕️');
   });
 
-  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+  test('a chosen image occupies the identity tile and stays out of the accessible name', () => {
     resetState();
     const image = 'data:image/png;base64,iVBORw0KGgo=';
     projects.push({
@@ -774,7 +511,6 @@ describe('project row identity (#2150)', () => {
     } as (typeof projects)[number]);
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
     const icon = row.querySelector('.sidebar__project-icon');
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
     expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
@@ -791,13 +527,10 @@ describe('project row identity (#2150)', () => {
     renderSidebar(<ProjectSidebar />);
     const row = screen.getByRole('button', { name: 'Campfit' });
     expect(row.querySelector('img')).toBeNull();
-    // Treated as no icon: the slot is reserved and empty; the bar carries
-    // the colour.
-    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(row.querySelector('.project-icon--initials')).toBeTruthy();
     expect(
       row.querySelector('.sidebar__project-icon-slot')?.childElementCount,
-    ).toBe(0);
-    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    ).toBe(1);
   });
 
   test('every expanded row reserves the icon slot, so an icon-less name lines up with an iconed one', () => {
@@ -820,16 +553,14 @@ describe('project row identity (#2150)', () => {
       expect(slot?.nextElementSibling?.className).toBe('sidebar__project-name');
       expect(slot?.getAttribute('aria-hidden')).toBe('true');
     }
-    // An icon-less project leaves the slot empty: no dot that could read as
-    // status or presence. Its colour is the bar's alone.
     const ferry = screen.getByRole('button', { name: 'Ferry' });
     expect(
       ferry.querySelector('.sidebar__project-icon-slot')?.childElementCount,
-    ).toBe(0);
+    ).toBe(1);
     expect(ferry.querySelector('[data-project-icon]')).toBeNull();
     expect(
-      ferry.querySelector<HTMLElement>('.sidebar__project-accent')?.style
-        .backgroundColor,
+      ferry.querySelector<HTMLElement>('.sidebar__project-icon-slot')?.style
+        .color,
     ).toBeTruthy();
   });
 });
@@ -1039,34 +770,6 @@ describe('ProjectSidebar New Project affordance (station#1300)', () => {
   });
 });
 
-describe('ProjectSidebar compact rail chat entry (#1348)', () => {
-  test('keeps a named Open chats control inside the collapsed rail', () => {
-    resetState();
-    // archive#1348 was written against the raw pre-unification key; sidebar
-    // collapse now lives in the device-settings envelope, so
-    // seed through the store rather than the migrated-away legacy key.
-    deviceSettingsStore.set('projectSidebarCollapsed', true);
-    const listener = vi.fn();
-    const unregister = openChatsStore.registerNavigation({
-      focus: vi.fn(),
-      openCollection: listener,
-    });
-
-    renderSidebar(<ProjectSidebar />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open chats' }));
-
-    expect(listener).toHaveBeenCalledOnce();
-    unregister();
-  });
-});
-
-/**
- * One project, one colour, on every surface that paints it: the sidebar row,
- * the dock's project switcher, the dock's inbox rows and Home's work rows.
- * `projectAccents` is set-aware, so a surface that allocated over its own
- * list would give a project another colour; each surface reads the shared
- * `useProjectAccents` allocation instead.
- */
 describe('a project wears the same colour everywhere', () => {
   function Home({ items }: { items: HomeWorkItem[] }) {
     const lanes = useHomeWorkLanes(items);
@@ -1128,8 +831,8 @@ describe('a project wears the same colour everywhere', () => {
 
     const sidebar = renderSidebar(<ProjectSidebar />);
     const sidebarColour = sidebar.container.querySelector<HTMLElement>(
-      '[title="Open Beta workspace"] .sidebar__project-accent',
-    )?.style.backgroundColor;
+      '[title="Open Beta workspace"] .sidebar__project-icon-slot',
+    )?.style.color;
     sidebar.unmount();
     // Sorted alpha, beta, gamma: beta takes the palette's SECOND colour,
     // which no allocation over beta alone would give it.
@@ -1161,17 +864,6 @@ describe('a project wears the same colour everywhere', () => {
     };
     const dockColour = rowColour(<DockInbox items={[betaWork]} />);
     const homeColour = rowColour(<Home items={[betaWork]} />);
-    // The sidebar's own Open chats row, rendered by the real sidebar.
-    chats['beta-work'] = {
-      title: 'Tidy the beta release notes',
-      projectSlug: 'beta',
-    };
-    const openChatsView = renderSidebar(<ProjectSidebar />);
-    await openChatsView.findByText('Tidy the beta release notes');
-    const openChatsColour = openChatsView.container.querySelector<HTMLElement>(
-      '#sidebar-open-chats .inbox-row__project-accent',
-    )?.style.backgroundColor;
-    openChatsView.unmount();
     const recentColour = rowColour(
       <RecentChatList
         items={[betaWork]}
@@ -1186,18 +878,16 @@ describe('a project wears the same colour everywhere', () => {
       switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
-      openChats: openChatsColour,
       recent: recentColour,
     }).toEqual({
       switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
-      openChats: sidebarColour,
       recent: sidebarColour,
     });
   });
 
-  test("the sidebar's Open chats and New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
+  test("New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
     resetState();
     projects.push({
       id: 'p-beta',
@@ -1238,30 +928,6 @@ describe('a project wears the same colour everywhere', () => {
       view.unmount();
       return rows;
     };
-    // The sidebar's own Open chats rows, rendered by the real sidebar.
-    chats['beta-local'] = { title: 'Local beta work', projectSlug: 'beta' };
-    chats['beta-remote'] = {
-      title: 'Remote beta work',
-      projectSlug: 'beta',
-      environmentId: 'peer-1',
-    };
-    const sidebar = renderSidebar(<ProjectSidebar />);
-    await sidebar.findByText('Remote beta work');
-    const openChatMarks = Object.fromEntries(
-      [
-        ...sidebar.container.querySelectorAll(
-          '#sidebar-open-chats [data-testid="inbox-row"]',
-        ),
-      ].map((row) => [
-        row.querySelector('.inbox-row__title')?.textContent,
-        row.querySelector('.inbox-row__project-accent')?.textContent ?? null,
-      ]),
-    );
-    sidebar.unmount();
-    expect(openChatMarks).toEqual({
-      'Local beta work': '🧭',
-      'Remote beta work': null,
-    });
     expect(
       marks(
         <RecentChatList
@@ -1274,4 +940,59 @@ describe('a project wears the same colour everywhere', () => {
       ),
     ).toEqual(['🧭', null]);
   });
+});
+
+test('the header toggle event switches the desktop map and remembers the rail', () => {
+  resetState();
+  const view = renderSidebar(<ProjectSidebar />);
+  const sidebar = screen.getByRole('navigation', {
+    name: 'Primary navigation',
+  });
+  expect(sidebar.classList.contains('sidebar--collapsed')).toBe(false);
+  act(() => window.dispatchEvent(new CustomEvent('toggle-sidebar')));
+  expect(sidebar.classList.contains('sidebar--collapsed')).toBe(true);
+  expect(deviceSettingsStore.get('projectSidebarCollapsed')).toBe(true);
+  view.unmount();
+  renderSidebar(<ProjectSidebar />);
+  expect(
+    screen
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .classList.contains('sidebar--collapsed'),
+  ).toBe(true);
+});
+
+test('an open project popup is retired when the rail becomes a closed mobile drawer', () => {
+  resetState();
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
+  try {
+    projects.push({ id: 'p1', slug: 'station', name: 'Station' });
+    deviceSettingsStore.set('projectSidebarCollapsed', true);
+    renderSidebar(<ProjectSidebar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Station views' }));
+    expect(screen.getByRole('dialog', { name: 'Station views' })).toBeTruthy();
+    act(() => {
+      presentation.isMobile = true;
+      deviceSettingsStore.set('theme', 'light');
+    });
+    expect(screen.queryByRole('dialog', { name: 'Station views' })).toBeNull();
+    act(() => {
+      presentation.isMobile = false;
+      deviceSettingsStore.set('theme', 'dark');
+    });
+    expect(
+      screen
+        .getByRole('button', { name: 'Station views' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  } finally {
+    presentation.isMobile = false;
+    vi.unstubAllGlobals();
+  }
 });
