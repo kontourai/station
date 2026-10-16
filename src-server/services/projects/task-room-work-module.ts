@@ -277,7 +277,13 @@ export class TaskRoomWorkModule {
   }
 
   async readReplyAdmissions(sessionId: string): Promise<readonly string[]> {
-    const bytes = await readFile(this.file);
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(this.file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
     if (bytes.length > MAX_BYTES)
       throw new TaskRoomWorkUnavailableError(
         'Agent request history exceeds its limit.',

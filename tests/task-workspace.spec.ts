@@ -449,23 +449,34 @@ test.describe
         .getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeVisible({ timeout: 20_000 });
       await newChat.click();
-      // Chromium can paint this lazy route-transition dialog before its role
-      // is reflected in the accessibility snapshot. Keep the semantic DOM
-      // contract exact while avoiding that transient accessibility-tree race.
-      const picker = page.locator(
-        '.new-chat-modal[role="dialog"][aria-label="New Chat"]',
-      );
+      const picker = page.getByRole('dialog', {
+        name: 'New chat',
+        exact: true,
+      });
+      const start = picker.getByRole('form', { name: 'Start work' });
       await expect(picker).toBeVisible();
-      await picker.locator('.new-chat-modal__context-button').click();
-      await picker.locator(`[data-context-value="${projectSlug}"]`).click();
+      await start.getByRole('button', { name: /^Project: / }).click();
+      await page
+        .getByRole('dialog', { name: 'Choose project' })
+        .locator(`[data-context-value="${projectSlug}"]`)
+        .click();
       await expect(
-        picker.locator('.new-chat-modal__context-button'),
+        start.getByRole('button', { name: /^Project: / }),
       ).toContainText(projectSlug);
-      await picker.getByRole('button', { name: new RegExp(agentName) }).click();
-      const composer = page.getByPlaceholder(/^Type a message/);
-      await expect(composer).toBeVisible({ timeout: 20_000 });
-      await composer.fill('Give me the public answer.');
-      await composer.press('Enter');
+      await start.getByRole('button', { name: /^Agent:/ }).click();
+      const agents = page.getByRole('dialog', { name: 'Choose agent' });
+      await agents
+        .locator('.new-chat-modal__agent', { hasText: agentName })
+        .click();
+      await expect(agents).toHaveCount(0);
+      await expect(
+        start.getByRole('button', { name: /^Agent:/ }),
+      ).toContainText(agentName);
+      await start
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('Give me the public answer.');
+      await start.getByRole('button', { name: 'Start', exact: true }).click();
+      await expect(picker).toHaveCount(0);
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
       const moreAnswerActions = page.getByRole('button', {

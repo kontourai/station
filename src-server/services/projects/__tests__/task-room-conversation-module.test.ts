@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
@@ -395,6 +396,7 @@ async function fixture(observe = true) {
     sessions,
     store,
     conversation,
+    workFile: join(directory, 'work.json'),
     historyOpens,
     history,
     failures,
@@ -1091,6 +1093,23 @@ test('publication holds expire and an expired release cannot release a newer hol
     await pending;
     vi.useRealTimers();
     reconcile.mockRestore();
+    await f.close();
+  }
+});
+
+test('canonical initial answers remain readable without a reply journal, while corrupt journals fail closed', async () => {
+  const f = await fixture(false);
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'Initial canonical answer');
+    await rm(f.workFile);
+    const input = { sessionId, ownerOperatorId: f.principal.id };
+    await expect(f.conversation.answers(input)).resolves.toMatchObject([
+      { turnId: 'turn-1', text: 'Initial canonical answer' },
+    ]);
+    await writeFile(f.workFile, '{corrupt');
+    await expect(f.conversation.answers(input)).rejects.toThrow();
+  } finally {
     await f.close();
   }
 });
