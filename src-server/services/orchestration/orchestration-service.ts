@@ -367,6 +367,7 @@ import {
   trackOrchestrationSession,
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
+import { captureTurnIntent } from './prepared-turn-intent.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
@@ -7394,15 +7395,6 @@ export class OrchestrationService {
                       // same key is indeterminate instead of a second send.
                       // A throw here has invoked nothing: the boundary stays
                       // `prepared` and the claim is released.
-                      ownedClientTurnClaim?.beginInvocation();
-                      const begun = boundary.beginInvocation(
-                        new Date().toISOString(),
-                      );
-                      if (begun.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       let providerAccepted = false;
                       let providerInvoked = false;
                       let turnCorrelation:
@@ -7574,6 +7566,32 @@ export class OrchestrationService {
                             }
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            if (boundary.prepareIntent) {
+                              const captured = captureTurnIntent(turnInput);
+                              const prepared = boundary.prepareIntent(
+                                captured,
+                                ownedClientTurnClaim,
+                                new Date().toISOString(),
+                              );
+                              if (prepared.kind !== 'applied') {
+                                if (prepared.kind === 'stale')
+                                  throw new Error(
+                                    'Prepared turn input could not be retained; no provider call was made.',
+                                  );
+                                claimOutcome = 'retain';
+                                throw new SessionTurnStartIndeterminateError();
+                              }
+                              turnInput = captured.adapterInput;
+                            } else {
+                              ownedClientTurnClaim?.beginInvocation();
+                            }
+                            const begun = boundary.beginInvocation(
+                              new Date().toISOString(),
+                            );
+                            if (begun.kind !== 'applied') {
+                              claimOutcome = 'retain';
+                              throw new SessionTurnStartIndeterminateError();
+                            }
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground
@@ -7727,6 +7745,15 @@ export class OrchestrationService {
                           error instanceof SessionTurnStartIndeterminateError
                         ) {
                           throw error;
+                        }
+                        if (!providerInvoked && claimOutcome !== 'retain') {
+                          const retired = boundary.notInvoked();
+                          if (retired.kind === 'applied') {
+                            claimOutcome = 'release';
+                            throw error;
+                          }
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
                         }
                         if (
                           !providerInvoked &&

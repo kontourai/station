@@ -96,7 +96,9 @@ export class SessionExecutionCoordinator {
           'Session lifecycle coordination is temporarily unavailable.',
         );
       }
-      const claimed = this.boundaries.claim(threadId, new Date().toISOString());
+      const claimed = this.boundaries.reserve
+        ? this.boundaries.reserve(threadId, new Date().toISOString())
+        : this.boundaries.claim(threadId, new Date().toISOString());
       if (claimed.kind !== 'owner') {
         throw new Error(
           claimed.kind === 'busy'

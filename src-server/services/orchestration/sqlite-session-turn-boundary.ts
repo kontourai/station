@@ -4,6 +4,8 @@ import type {
   OwnerIdentity,
 } from '@kontourai/monument';
 import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
+import { readPreparedClaimCustody } from '../turn-idempotency.js';
+import type { CapturedTurnIntent } from './prepared-turn-intent.js';
 import { isProjectTaskRoomExecutionSealed } from './project-task-room-source-seal.js';
 import {
   SESSION_TURN_ACCEPTED_CAPACITY,
@@ -11,6 +13,11 @@ import {
   type SessionTurnBoundaryRecord,
 } from './session-turn-boundary.js';
 import type { SqliteDatabase } from './sqlite-database.js';
+import {
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+  turnDedupKey,
+} from './sqlite-turn-dedup-persistence.js';
+import type { TurnClaim } from './turn-deduplicator.js';
 
 /** Station's host tables and admission policy; Monument owns the boundary writes. */
 export function createSqliteSessionTurnBoundaryCoordinator({
@@ -29,7 +36,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
   const kernel = openSqliteKernelStorage({
     database: db,
     tables: {
-      turnDedup: 'unused',
+      turnDedup: STATION_TURN_DEDUP_KERNEL_TABLES.turnDedup,
       requestKeys: 'unused',
       // #3568: the inbox has its own storage on this connection
       // (`createSqliteThreadInboxStore`); this one owns boundaries only.
@@ -59,6 +66,13 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           )?.global_sequence,
         retiredBoundaryIds: (_db, threadId) => retiredBoundaryIds(threadId),
         creationSequence: { column: 'created_sequence', read: head },
+        intentColumns: {
+          invocationId: 'invocation_id',
+          inputDigest: 'input_digest',
+          intentDigest: 'intent_digest',
+          bodyRef: 'body_ref',
+          dedupKey: 'dedup_key',
+        },
       },
     },
     participants: [
@@ -138,7 +152,95 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         .get(boundaryId),
     );
   }
+  function linked(capture: CapturedTurnIntent, claim: TurnClaim | undefined) {
+    if (!capture.clientTurnId) {
+      if (claim) throw new Error('Unexpected prepared turn claim.');
+      return { intent: capture.intent };
+    }
+    const custody = claim && readPreparedClaimCustody(claim);
+    if (
+      !custody ||
+      custody.key !== turnDedupKey(capture.threadId, capture.clientTurnId)
+    )
+      throw new Error('Prepared turn requires its original private claim.');
+    return {
+      intent: { ...capture.intent, dedupKey: custody.key },
+      dedupOwnerId: custody.owner.id,
+    };
+  }
   return {
+    prepareIntent({ boundaryId, ownerId, capture, claim, now }) {
+      let inTransaction = false;
+      try {
+        const binding = linked(capture, claim);
+        db.exec('BEGIN IMMEDIATE');
+        inTransaction = true;
+        // Retention is bounded by refusing new admission, never by evicting
+        // uncertain input. Attachment data URLs remain exact inside the DTO.
+        const used = db
+          .prepare(
+            'SELECT COALESCE(SUM(byte_length),0) AS bytes FROM orchestration_prepared_turns',
+          )
+          .get() as { bytes: number };
+        if (used.bytes + capture.byteLength > 256 * 1024 * 1024)
+          throw new Error('Prepared turn retention capacity is full.');
+        const result = execute(
+          {
+            type: 'turnBoundary.prepare',
+            boundaryId,
+            ownerId,
+            ...binding,
+            now,
+          },
+          true,
+        );
+        if (result.kind !== 'applied') {
+          db.exec('ROLLBACK');
+          inTransaction = false;
+          return { kind: 'stale' };
+        }
+        db.prepare(`INSERT INTO orchestration_prepared_turns
+          (invocation_id,boundary_id,thread_id,client_turn_id,input_digest,intent_digest,envelope_json,byte_length,prepared_at)
+          VALUES (?,?,?,?,?,?,?,?,?)`).run(
+          capture.intent.invocationId,
+          boundaryId,
+          capture.threadId,
+          capture.clientTurnId ?? null,
+          capture.intent.inputDigest,
+          capture.intent.intentDigest,
+          capture.envelopeJson,
+          capture.byteLength,
+          now,
+        );
+        db.exec('COMMIT');
+        inTransaction = false;
+        return { kind: 'applied' };
+      } catch {
+        if (inTransaction && db.isTransaction !== false) {
+          try {
+            db.exec('ROLLBACK');
+            return { kind: 'stale' };
+          } catch {
+            /* Keep an ambiguous commit fenced. */
+          }
+        }
+        return { kind: 'unavailable' };
+      }
+    },
+    beginPrepared({ boundaryId, ownerId, capture, claim, now }) {
+      try {
+        const result = execute({
+          type: 'turnBoundary.beginInvocation',
+          boundaryId,
+          ownerId,
+          ...linked(capture, claim),
+          now,
+        });
+        return result.kind === 'applied' ? result : { kind: 'stale' };
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
     create(record) {
       try {
         const result = execute({
@@ -276,6 +378,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           : {}),
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
+        ...(record.intent ? { intent: record.intent } : {}),
       }));
     },
   };

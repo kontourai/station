@@ -91,6 +91,16 @@ export type TurnClaimInspection =
   | { state: 'indeterminate'; ageOnly?: true }
   | { state: 'expired' };
 
+const preparedClaimCustody = new WeakMap<
+  object,
+  { key: string; owner: OwnerIdentity }
+>();
+
+/** Internal host composition only; no token is attached to the public claim. */
+export function readPreparedClaimCustody(claim: object) {
+  return preparedClaimCustody.get(claim);
+}
+
 export class TurnIdempotencyStore {
   private readonly owner: OwnerIdentity;
   private readonly liveness: OwnerLiveness;
@@ -101,6 +111,10 @@ export class TurnIdempotencyStore {
    * the owner dying turns the same claim `indeterminate` durably.
    */
   private readonly retained = new Set<string>();
+
+  bindPreparedClaim(key: string, claim: object): void {
+    preparedClaimCustody.set(claim, { key, owner: this.owner });
+  }
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
     processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
@@ -158,6 +172,7 @@ export class TurnIdempotencyStore {
         turnDedupClaims.add(1, { outcome: 'contended' });
         return { claimed: false };
       case 'indeterminate':
+      case 'prepared':
         turnDedupClaims.add(1, { outcome: 'indeterminate' });
         return { claimed: false, indeterminate: true };
       case 'expired':

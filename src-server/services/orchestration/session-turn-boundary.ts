@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import type { PreparedTurnIntent } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
+import type { CapturedTurnIntent } from './prepared-turn-intent.js';
 import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
 } from './recovery-ledger.js';
+import type { TurnClaim } from './turn-deduplicator.js';
 
 type BoundaryState =
   | 'lifecycle'
+  | 'reserved'
   | 'prepared'
   | 'invoking'
   | 'accepted'
@@ -25,6 +29,7 @@ export interface SessionTurnBoundaryRecord {
   ownerIdentityKind: string;
   createdAt: string;
   updatedAt: string;
+  intent?: PreparedTurnIntent;
 }
 
 /** Unresolved provider acceptances are protected facts and are never pruned. */
@@ -56,14 +61,28 @@ export type SessionTurnBoundaryTransition =
 export interface SessionTurnBoundaryCoordinator {
   create(
     record: SessionTurnBoundaryRecord & {
-      state: 'lifecycle' | 'prepared';
+      state: 'lifecycle' | 'reserved' | 'prepared';
     },
   ): SessionTurnBoundaryTransition;
+  prepareIntent?(input: {
+    boundaryId: string;
+    ownerId: string;
+    capture: CapturedTurnIntent;
+    claim?: TurnClaim;
+    now: string;
+  }): SessionTurnBoundaryTransition;
+  beginPrepared?(input: {
+    boundaryId: string;
+    ownerId: string;
+    capture: CapturedTurnIntent;
+    claim?: TurnClaim;
+    now: string;
+  }): SessionTurnBoundaryTransition;
   transition(input: {
     boundaryId: string;
     ownerId: string;
     from: BoundaryState[];
-    to: Exclude<BoundaryState, 'lifecycle' | 'prepared'>;
+    to: Exclude<BoundaryState, 'lifecycle' | 'reserved' | 'prepared'>;
     now: string;
     providerTurnId?: string;
   }): SessionTurnBoundaryTransition;
@@ -122,6 +141,11 @@ function ownerIsLive(
 }
 
 export interface SessionTurnBoundaryClaim {
+  prepareIntent?(
+    capture: CapturedTurnIntent,
+    claim: TurnClaim | undefined,
+    now: string,
+  ): SessionTurnBoundaryTransition;
   beginInvocation(now: string): SessionTurnBoundaryTransition;
   accepted(turnId: string, now: string): SessionTurnBoundaryTransition;
   terminalObserved(turnId: string): SessionTurnBoundaryTransition;
@@ -246,6 +270,11 @@ export interface SessionTurnBoundaryAuthority {
     | { kind: 'owner'; claim: SessionTurnBoundaryClaim }
     | { kind: 'busy' }
     | { kind: 'unavailable' };
+  /** Production sends reserve exclusivity until their final input is captured. */
+  reserve?(
+    threadId: string,
+    now: string,
+  ): ReturnType<SessionTurnBoundaryAuthority['claim']>;
   claimLifecycle(
     threadId: string,
     now: string,
@@ -363,7 +392,12 @@ export function createSessionTurnBoundaryAuthority(options: {
     try {
       for (const record of options.coordinator.active()) {
         if (ownerIsLive(record, options.processIdentity)) continue;
-        if (record.state === 'prepared' || record.state === 'lifecycle') {
+        if (record.state === 'prepared' && record.intent) continue;
+        if (
+          record.state === 'reserved' ||
+          record.state === 'prepared' ||
+          record.state === 'lifecycle'
+        ) {
           const removed = options.coordinator.remove({
             boundaryId: record.boundaryId,
             ownerId: record.ownerId,
@@ -406,7 +440,9 @@ export function createSessionTurnBoundaryAuthority(options: {
   };
 
   const createWithRecovery = (
-    record: SessionTurnBoundaryRecord & { state: 'lifecycle' | 'prepared' },
+    record: SessionTurnBoundaryRecord & {
+      state: 'lifecycle' | 'reserved' | 'prepared';
+    },
   ) => {
     retryPendingTransitions();
     let created = options.coordinator.create(record);
@@ -520,6 +556,188 @@ export function createSessionTurnBoundaryAuthority(options: {
     };
   };
 
+  const claimTurn = (
+    threadId: string,
+    now: string,
+    reserve = false,
+  ): ReturnType<SessionTurnBoundaryAuthority['claim']> => {
+    const record = {
+      ...preparedRecord(threadId, now, 'turn-boundary'),
+      state:
+        reserve && options.coordinator.prepareIntent
+          ? ('reserved' as const)
+          : ('prepared' as const),
+    };
+    const boundaryId = record.boundaryId;
+    const created = createWithRecovery(record);
+    if (created.kind !== 'applied') {
+      return {
+        kind: created.kind === 'busy' ? 'busy' : 'unavailable',
+      };
+    }
+
+    let invocationStarted = false;
+    let invocationAttempted = false;
+    let prepared:
+      | { capture: CapturedTurnIntent; claim?: TurnClaim }
+      | undefined;
+    let terminalIntent:
+      | { kind: 'accepted'; turnId: string; now: string }
+      | { kind: 'terminal-observed'; turnId: string }
+      | { kind: 'not-invoked' }
+      | { kind: 'indeterminate'; now: string }
+      | undefined;
+    let terminalApplied = false;
+    const transition = (
+      from: BoundaryState[],
+      to: Exclude<BoundaryState, 'lifecycle' | 'reserved' | 'prepared'>,
+      transitionNow: string,
+      providerTurnId?: string,
+    ) =>
+      options.coordinator.transition({
+        boundaryId,
+        ownerId: options.owner.id,
+        from,
+        to,
+        now: transitionNow,
+        ...(providerTurnId ? { providerTurnId } : {}),
+      });
+
+    return {
+      kind: 'owner',
+      claim: Object.freeze({
+        ...(reserve && options.coordinator.prepareIntent
+          ? {
+              prepareIntent(
+                capture: CapturedTurnIntent,
+                claim: TurnClaim | undefined,
+                at: string,
+              ) {
+                if (invocationAttempted || prepared)
+                  return { kind: 'stale' } as const;
+                const result = options.coordinator.prepareIntent!({
+                  boundaryId,
+                  ownerId: options.owner.id,
+                  capture,
+                  claim,
+                  now: at,
+                });
+                // Retain even an uncertain preparation. A lost acknowledgement must
+                // never let finally remove the fence or recompose different input.
+                if (result.kind !== 'stale') prepared = { capture, claim };
+                return result;
+              },
+            }
+          : {}),
+        beginInvocation(beginNow: string) {
+          if (invocationStarted) return { kind: 'applied' } as const;
+          invocationAttempted = true;
+          const result = retainUntilApplied(boundaryId, () => {
+            const transitioned =
+              prepared && options.coordinator.beginPrepared
+                ? options.coordinator.beginPrepared({
+                    boundaryId,
+                    ownerId: options.owner.id,
+                    ...prepared,
+                    now: beginNow,
+                  })
+                : transition(['prepared'], 'invoking', beginNow);
+            if (transitioned.kind === 'applied') invocationStarted = true;
+            return transitioned;
+          });
+          if (result.kind === 'applied') invocationStarted = true;
+          return result;
+        },
+        accepted(turnId: string, acceptedNow: string) {
+          if (
+            terminalIntent &&
+            (terminalIntent.kind !== 'accepted' ||
+              terminalIntent.turnId !== turnId)
+          ) {
+            return { kind: 'stale' } as const;
+          }
+          if (terminalApplied) return { kind: 'applied' } as const;
+          terminalIntent ??= {
+            kind: 'accepted',
+            turnId,
+            now: acceptedNow,
+          };
+          const intent = terminalIntent as Extract<
+            NonNullable<typeof terminalIntent>,
+            { kind: 'accepted' }
+          >;
+          const result = retainUntilApplied(boundaryId, () =>
+            transition(['invoking'], 'accepted', intent.now, intent.turnId),
+          );
+          if (result.kind === 'applied') terminalApplied = true;
+          return result;
+        },
+        terminalObserved(turnId: string) {
+          if (
+            terminalIntent &&
+            (terminalIntent.kind !== 'terminal-observed' ||
+              terminalIntent.turnId !== turnId)
+          ) {
+            return { kind: 'stale' } as const;
+          }
+          if (terminalApplied) return { kind: 'applied' } as const;
+          terminalIntent ??= { kind: 'terminal-observed', turnId };
+          const result = retainUntilApplied(boundaryId, () =>
+            options.coordinator.remove({
+              boundaryId,
+              ownerId: options.owner.id,
+              from: ['invoking', 'accepted'],
+            }),
+          );
+          if (result.kind === 'applied') terminalApplied = true;
+          return result;
+        },
+        notInvoked() {
+          if (invocationAttempted || prepared)
+            return { kind: 'stale' } as const;
+          if (terminalIntent && terminalIntent.kind !== 'not-invoked') {
+            return { kind: 'stale' } as const;
+          }
+          if (terminalApplied) return { kind: 'applied' } as const;
+          terminalIntent ??= { kind: 'not-invoked' };
+          const result = retainUntilApplied(boundaryId, () =>
+            options.coordinator.remove({
+              boundaryId,
+              ownerId: options.owner.id,
+              from: [record.state],
+            }),
+          );
+          if (result.kind === 'applied') terminalApplied = true;
+          return result;
+        },
+        indeterminate(indeterminateNow: string) {
+          if (terminalIntent && terminalIntent.kind !== 'indeterminate') {
+            return { kind: 'stale' } as const;
+          }
+          if (terminalApplied) return { kind: 'applied' } as const;
+          terminalIntent ??= {
+            kind: 'indeterminate',
+            now: indeterminateNow,
+          };
+          const intent = terminalIntent as Extract<
+            NonNullable<typeof terminalIntent>,
+            { kind: 'indeterminate' }
+          >;
+          const result = retainUntilApplied(boundaryId, () => {
+            if (!invocationStarted) {
+              const begun = transition(['prepared'], 'invoking', intent.now);
+              if (begun.kind !== 'applied') return begun;
+              invocationStarted = true;
+            }
+            return transition(['invoking'], 'indeterminate', intent.now);
+          });
+          if (result.kind === 'applied') terminalApplied = true;
+          return result;
+        },
+      }),
+    };
+  };
+
   return {
     async recoverCompletedDispatch(threadId, verify) {
       try {
@@ -616,146 +834,8 @@ export function createSessionTurnBoundaryAuthority(options: {
         }),
       };
     },
-    claim(threadId, now) {
-      const record = preparedRecord(threadId, now, 'turn-boundary');
-      const boundaryId = record.boundaryId;
-      const created = createWithRecovery(record);
-      if (created.kind !== 'applied') {
-        return {
-          kind: created.kind === 'busy' ? 'busy' : 'unavailable',
-        };
-      }
-
-      let invocationStarted = false;
-      let invocationAttempted = false;
-      let terminalIntent:
-        | { kind: 'accepted'; turnId: string; now: string }
-        | { kind: 'terminal-observed'; turnId: string }
-        | { kind: 'not-invoked' }
-        | { kind: 'indeterminate'; now: string }
-        | undefined;
-      let terminalApplied = false;
-      const transition = (
-        from: BoundaryState[],
-        to: Exclude<BoundaryState, 'lifecycle' | 'prepared'>,
-        transitionNow: string,
-        providerTurnId?: string,
-      ) =>
-        options.coordinator.transition({
-          boundaryId,
-          ownerId: options.owner.id,
-          from,
-          to,
-          now: transitionNow,
-          ...(providerTurnId ? { providerTurnId } : {}),
-        });
-
-      return {
-        kind: 'owner',
-        claim: Object.freeze({
-          beginInvocation(beginNow: string) {
-            if (invocationStarted) return { kind: 'applied' } as const;
-            invocationAttempted = true;
-            const result = retainUntilApplied(boundaryId, () => {
-              const transitioned = transition(
-                ['prepared'],
-                'invoking',
-                beginNow,
-              );
-              if (transitioned.kind === 'applied') invocationStarted = true;
-              return transitioned;
-            });
-            if (result.kind === 'applied') invocationStarted = true;
-            return result;
-          },
-          accepted(turnId: string, acceptedNow: string) {
-            if (
-              terminalIntent &&
-              (terminalIntent.kind !== 'accepted' ||
-                terminalIntent.turnId !== turnId)
-            ) {
-              return { kind: 'stale' } as const;
-            }
-            if (terminalApplied) return { kind: 'applied' } as const;
-            terminalIntent ??= {
-              kind: 'accepted',
-              turnId,
-              now: acceptedNow,
-            };
-            const intent = terminalIntent as Extract<
-              NonNullable<typeof terminalIntent>,
-              { kind: 'accepted' }
-            >;
-            const result = retainUntilApplied(boundaryId, () =>
-              transition(['invoking'], 'accepted', intent.now, intent.turnId),
-            );
-            if (result.kind === 'applied') terminalApplied = true;
-            return result;
-          },
-          terminalObserved(turnId: string) {
-            if (
-              terminalIntent &&
-              (terminalIntent.kind !== 'terminal-observed' ||
-                terminalIntent.turnId !== turnId)
-            ) {
-              return { kind: 'stale' } as const;
-            }
-            if (terminalApplied) return { kind: 'applied' } as const;
-            terminalIntent ??= { kind: 'terminal-observed', turnId };
-            const result = retainUntilApplied(boundaryId, () =>
-              options.coordinator.remove({
-                boundaryId,
-                ownerId: options.owner.id,
-                from: ['invoking', 'accepted'],
-              }),
-            );
-            if (result.kind === 'applied') terminalApplied = true;
-            return result;
-          },
-          notInvoked() {
-            if (invocationAttempted) return { kind: 'stale' } as const;
-            if (terminalIntent && terminalIntent.kind !== 'not-invoked') {
-              return { kind: 'stale' } as const;
-            }
-            if (terminalApplied) return { kind: 'applied' } as const;
-            terminalIntent ??= { kind: 'not-invoked' };
-            const result = retainUntilApplied(boundaryId, () =>
-              options.coordinator.remove({
-                boundaryId,
-                ownerId: options.owner.id,
-                from: ['prepared'],
-              }),
-            );
-            if (result.kind === 'applied') terminalApplied = true;
-            return result;
-          },
-          indeterminate(indeterminateNow: string) {
-            if (terminalIntent && terminalIntent.kind !== 'indeterminate') {
-              return { kind: 'stale' } as const;
-            }
-            if (terminalApplied) return { kind: 'applied' } as const;
-            terminalIntent ??= {
-              kind: 'indeterminate',
-              now: indeterminateNow,
-            };
-            const intent = terminalIntent as Extract<
-              NonNullable<typeof terminalIntent>,
-              { kind: 'indeterminate' }
-            >;
-            const result = retainUntilApplied(boundaryId, () => {
-              if (!invocationStarted) {
-                const begun = transition(['prepared'], 'invoking', intent.now);
-                if (begun.kind !== 'applied') return begun;
-                invocationStarted = true;
-              }
-              return transition(['invoking'], 'indeterminate', intent.now);
-            });
-            if (result.kind === 'applied') terminalApplied = true;
-            return result;
-          },
-        }),
-      };
-    },
+    claim: (threadId, now) => claimTurn(threadId, now),
+    reserve: (threadId, now) => claimTurn(threadId, now, true),
     claimLifecycle(threadId, now) {
       const boundaryId = `lifecycle-boundary:${randomUUID()}`;
       const record = {

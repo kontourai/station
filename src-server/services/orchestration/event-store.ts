@@ -105,6 +105,7 @@ import {
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
+import { ensurePreparedTurnIntents } from '../../domain/migrations/017-prepared-turn-intents.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2234,6 +2235,7 @@ export class EventStore {
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
       ensureTurnBoundarySequenceFence(this.db);
+      ensurePreparedTurnIntents(this.db);
       this.turnDedupPersistence = createSqliteTurnDedupPersistence({
         db: this.db,
         maxEntries: this.turnDedupMaxEntries,
@@ -12711,6 +12713,9 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.db
+        .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
+        .run(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db

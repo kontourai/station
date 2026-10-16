@@ -27,8 +27,8 @@ class InterruptedAdapter extends GateTestAdapter {
     return super.startSession(value);
   }
 
-  override async hasSession(id: string) {
-    return this.sessions.has(id);
+  override async hasSession(id?: string) {
+    return id !== undefined && this.sessions.has(id);
   }
 
   override sendTurn(
@@ -70,12 +70,10 @@ if (phase === 'prepared') {
 }
 
 void service
-  .dispatch(
-    {
-      type: 'sendTurn',
-      input: { threadId, clientTurnId, input, ambientContext },
-    },
-  )
+  .dispatch({
+    type: 'sendTurn',
+    input: { threadId, clientTurnId, input, ambientContext },
+  })
   .catch((error: unknown) => {
     report('failed', { message: String(error) });
     process.exitCode = 1;

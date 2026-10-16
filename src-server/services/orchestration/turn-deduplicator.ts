@@ -128,26 +128,25 @@ export function createTurnDeduplicator(options: {
         // handle in that case so the caller can safely retry its transition.
         settled = true;
       };
-      return {
-        kind: 'owner',
-        claim: {
-          beginInvocation: () => {
-            if (settled) throw new Error('Turn claim has already settled.');
-            options.store.beginInvocation(key);
-          },
-          resolve: (turnId) =>
-            settle({ kind: 'resolve', turnId }, () =>
-              options.store.resolve(key, turnId),
-            ),
-          release: () =>
-            settle({ kind: 'release' }, () => options.store.release(key)),
-          retain: () => {
-            if (settled) throw new Error('Turn claim has already settled.');
-            settled = true;
-            options.store.retain(key);
-          },
+      const owned: TurnClaim = {
+        beginInvocation: () => {
+          if (settled) throw new Error('Turn claim has already settled.');
+          options.store.beginInvocation(key);
+        },
+        resolve: (turnId) =>
+          settle({ kind: 'resolve', turnId }, () =>
+            options.store.resolve(key, turnId),
+          ),
+        release: () =>
+          settle({ kind: 'release' }, () => options.store.release(key)),
+        retain: () => {
+          if (settled) throw new Error('Turn claim has already settled.');
+          settled = true;
+          options.store.retain(key);
         },
       };
+      options.store.bindPreparedClaim(key, owned);
+      return { kind: 'owner', claim: owned };
     },
     givenUp: ({ threadId, clientTurnId }) =>
       options.store.givenUp(options.keyFor(threadId, clientTurnId)),
