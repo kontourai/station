@@ -110,14 +110,29 @@ test.each([
     updatedAt: '2026-10-15T00:00:00.000Z',
   };
   const startSession = vi.fn(async () => session);
-  const adapter = { provider, startSession } satisfies Pick<
-    ProviderAdapterShape,
-    'provider' | 'startSession'
-  >;
+  const adapter: ProviderAdapterShape = {
+    provider,
+    metadata: {
+      displayName: 'Recovery fixture',
+      description: 'Recovery policy test',
+      capabilities: ['agent-runtime'],
+    },
+    startSession,
+    sendTurn: async () => {
+      throw new Error('Unexpected turn start');
+    },
+    interruptTurn: async () => ({ outcome: 'no-active-turn' }),
+    respondToRequest: async () => {},
+    stopSession: async () => {},
+    listSessions: async () => [],
+    hasSession: async () => false,
+    stopAll: async () => {},
+    streamEvents: async function* () {},
+  };
   await expect(
     startRecovered({
       session,
-      adapter: adapter as ProviderAdapterShape,
+      adapter,
       options: {
         readSessionStartMetadata: () => ({
           agentSlug: 'analyst',

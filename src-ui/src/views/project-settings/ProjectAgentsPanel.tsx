@@ -154,7 +154,9 @@ export function ProjectAgentsPanel({
           </Button>
         </div>
       ))}
-      {agents.data?.length === 0 && <Empty variant="compact" />}
+      {agents.data?.length === 0 && (
+        <Empty variant="compact" label="Nothing here yet." />
+      )}
       <small>
         Running work also requires an available computer contribution.
       </small>

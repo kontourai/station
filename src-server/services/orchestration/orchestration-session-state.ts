@@ -57,7 +57,7 @@ import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
-import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
+import { sessionAgentStartUnavailableReason } from './session-agent-start-policy.js';
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
