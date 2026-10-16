@@ -764,7 +764,12 @@ including bundled examples. This proves directory staging, not Rust compilation
 or bundled file contents. The same focused step runs the
 [Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
 checking real installed npm/local Tauri versions and explicit missing
-prerequisites on Windows. These tooling checks do not establish native app
+prerequisites on Windows. The report caller tests have an 80-second harness
+bound (scaled only for local host liveness), covering the existing 60-second
+report child, Windows fixture compilation and parent overhead. Production
+probe deadlines remain 10/30 seconds. Per-call start/return evidence under
+`.kontourai/verification-output/tauri-context-test-*` retains probe traces
+before assertions, including a missing return when a child is interrupted. These tooling checks do not establish native app
 startup, packaging or device behavior. A repair to this base-controlled workflow must land
 on `main` before a dependent PR's head can use it.
 
