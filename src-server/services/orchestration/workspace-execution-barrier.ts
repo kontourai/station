@@ -28,7 +28,12 @@ export class WorkspaceExecutionBarrier {
       else this.workspaceByThread.delete(threadId);
       return result;
     } catch (error) {
-      this.releaseThread(threadId);
+      state.terminalDuringStart.delete(threadId);
+      if (retain()) state.activeThreads.add(threadId);
+      else {
+        state.activeThreads.delete(threadId);
+        this.workspaceByThread.delete(threadId);
+      }
       throw error;
     } finally {
       state.starting -= 1;
