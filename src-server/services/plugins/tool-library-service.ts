@@ -135,11 +135,6 @@ export class ToolLibraryService {
       }
     );
   }
-  isShared(sourceId: string): boolean {
-    return (
-      sourceId !== 'station-control' && this.read().shared[sourceId] !== false
-    );
-  }
   allows(projectId: string, sourceId: string): boolean {
     const state = this.read();
     const policy = state.policies[projectId];
