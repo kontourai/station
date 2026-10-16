@@ -49,6 +49,17 @@ dedup-prefix deletion can erase dedup retention independently and never grants
 resume permission for a retained settled invocation. The kernel adds no host
 API, automatic retry, dormant Session-start protocol or new deletion authority.
 
+Station's consumer facade maps retained dedup settlement to a typed
+`client_turn_settled` refusal with the actual disposition; the authorized delivery
+GET answers 409 while the successful lookup DTO and unreadable-conversation
+non-disclosure remain unchanged. An ordinary same-key send is refused and a new
+request needs a new key, never a fabricated provider result. This does not add a
+Station prepare/cancel/resume API. Its legacy boundary binding still lacks intent
+and settlement columns and cannot author or decode a settled boundary audit;
+observation fails closed as unavailable, while terminal SQL preserves the raw
+row. Explicit host thread deletion retains its existing authority. Modern host
+bindings and supported-writer fencing remain separate integration work.
+
 ## What it does not own
 
 | Concern | Owner |
