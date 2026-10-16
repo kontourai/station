@@ -490,7 +490,7 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
-Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
+`npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
@@ -502,7 +502,8 @@ The required `fast-checks` result combines job outcomes with exact-plan shard
 receipts. A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Follow the [local feedback rule](testing.md#what-counts-as-tested).
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
