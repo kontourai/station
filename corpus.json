@@ -127,6 +127,10 @@
       "section": "Use Station"
     },
     {
+      "source": "docs/user/personal-boards.md",
+      "section": "Use Station"
+    },
+    {
       "source": "docs/user/contributing.md",
       "section": "Contribute"
     },
@@ -249,6 +253,7 @@
     "docs/pages/**",
     "docs/patterns/**",
     "docs/plans/**",
+    "docs/reviews/personal-boards-20261016/README.md",
     "docs/reviews/workspace-map-20261015/README.md",
     "docs/security/**",
     "docs/strategy/**",
