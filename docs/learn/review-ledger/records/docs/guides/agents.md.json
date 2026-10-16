@@ -240,7 +240,9 @@
 
     "src-ui/src/components/profile/ToolRequestsPanel.css",
 
-    "src-ui/src/components/attention/AttentionCard.css"
+    "src-ui/src/components/attention/AttentionCard.css",
+
+    "src-server/services/orchestration/session-agent-start-policy.ts"
   ],
 
   "checks": [

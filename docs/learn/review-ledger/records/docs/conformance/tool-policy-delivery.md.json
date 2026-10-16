@@ -90,7 +90,9 @@
 
     "src-server/services/projects/project-native-tools.ts",
 
-    "src-server/services/orchestration/session-agent-resolution.ts"
+    "src-server/services/orchestration/session-agent-resolution.ts",
+
+    "src-server/services/orchestration/session-agent-start-policy.ts"
   ],
 
   "checks": [
