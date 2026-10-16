@@ -1528,9 +1528,13 @@ describe('CodexAdapter', () => {
           }
         }
         if (!bindingKey) throw new Error('No observed source binding');
-        await adapter.stopSession('binding-source');
         if (changed === 'home') home = '/profiles/replacement';
         else profileRef = 'replacement';
+        expect(adapter.preparedTurnBinding('binding-source')).toMatchObject({
+          bindingKey,
+          nativeIdentity: { sessionId: 'native-source' },
+        });
+        await adapter.stopSession('binding-source');
         const invocations = processFactory.mock.calls.length;
         await expect(
           adapter.startSession({
