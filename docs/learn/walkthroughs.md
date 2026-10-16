@@ -1,5 +1,10 @@
 # See Station in use
 
+These recordings retain their original capture revisions and predate the current
+dock chrome and onboarding controls. They illustrate the named inspection and
+connection journeys; they were not replayed or recaptured for this change.
+Current onboarding comparisons live in the [October improvement round](../plans/onboarding-improvement-rounds.md).
+
 These captures put the architecture next to the application. They use isolated
 Station instances and sample data. Each caption distinguishes persisted behavior
 from a controlled response or provider fixture. The capture revisions are

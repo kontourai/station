@@ -48,7 +48,7 @@ vi.mock('../lib/serverHealth', () => ({
 }));
 vi.mock('../lib/local-ui-bootstrap', () => ({
   resolveLocalUiSession: async () => ({ kind: 'access-required' }),
-  recheckLocalUiSessionAfterPairing: async () => ({ kind: 'access-required' }),
+  recheckLocalUiSession: async () => ({ kind: 'access-required' }),
   subscribeLocalUiSessionAttempt: () => () => {},
   getLocalUiSessionAttempt: () => 1,
 }));

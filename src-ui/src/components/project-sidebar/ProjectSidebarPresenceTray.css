@@ -194,7 +194,7 @@
   line-height: 1.4;
 }
 
-/* The collapsed rail is 48px of icon column: the count and the stack have
+/* The collapsed rail is 52px of icon column: the count and the stack have
    nowhere to go. The glyph is deliberately absent from this hide list — it is
    the child that keeps the trigger from rendering as an empty box here, and
    the component renders it unconditionally so that is true for every roster,

@@ -24,8 +24,9 @@
 import http from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { build } from 'esbuild';
+import { test } from './helpers/fixture-audit';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -35,11 +36,21 @@ type Scenario =
   | 'follow-up'
   | 'survivor'
   | 'nested'
-  | 'connect-modal';
+  | 'connect-modal'
+  | 'portal-surface'
+  | 'portal-menu'
+  | 'native-tab'
+  | 'approval'
+  | 'add-connection';
 
 const HARNESS_SOURCE = `
 import { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { RequestInspectionDialog } from './src-ui/src/components/attention/RequestInspectionDialog';
+import { ACPAddConnectionModal } from './src-ui/src/components/acp-connections/ACPAddConnectionModal';
 import { ResponsiveDialogSurface } from './src-ui/src/components/ResponsiveDialogSurface';
 import { ConnectionStore } from './packages/connect/src/core/ConnectionStore';
 import { ConnectionsProvider } from './packages/connect/src/react/ConnectionsContext';
@@ -327,7 +338,31 @@ function ConnectModalHost() {
   );
 }
 
+
+function TabScenario() {
+  const [open, setOpen] = useState(false);
+  const scope = {apiBase: location.origin, authorityKey: 'focus-review', isCurrent: () => true};
+  setClientCredentialResolver(() => ({origin: scope.apiBase, requestAuthority: scope}));
+  const inputs = <><input aria-label="Inner first" /><input aria-label="Inner second" /><input aria-label="Inner third" /></>;
+  return <><button id="trigger" onClick={() => setOpen(true)}>Open</button>{open && (
+    window.__scenario === 'approval' ? <QueryClientProvider client={new QueryClient()}><RequestInspectionDialog reference={{threadId:'thread',requestId:'request',requestEventId:'event'}} authority={scope} onClose={() => setOpen(false)} /></QueryClientProvider> :
+    window.__scenario === 'add-connection' ? <ACPAddConnectionModal initialProviderId="custom" onAdd={() => {}} onCancel={() => setOpen(false)} /> :
+    <ResponsiveDialogSurface layer="dialog" ariaLabel="Outer tab dialog" historyMode="none" onClose={() => setOpen(false)}>
+      <button>Outer first</button>
+      {window.__scenario === 'portal-surface' ? <ResponsiveDialogSurface layer="dialog" ariaLabel="Inner tab dialog" historyMode="none" onClose={() => {}}>{inputs}</ResponsiveDialogSurface> :
+       window.__scenario === 'portal-menu' ? createPortal(inputs, document.body) :
+       <><details open><summary>Native summary</summary><input aria-label="After summary" /></details><div contentEditable role="textbox" aria-label="Editable" /><input aria-label="After editable" /><div ref={node => {if(node && !node.shadowRoot) { const shadow = node.attachShadow({mode:'open'}); const input = document.createElement('input');input.setAttribute('aria-label','Shadow input'); shadow.append(input); }}} /><input aria-label="After shadow" /></>}
+      <button>Outer last</button>
+    </ResponsiveDialogSurface>
+  )}</>;
+}
+
 const scenarios = {
+  'portal-surface': TabScenario,
+  'portal-menu': TabScenario,
+  'native-tab': TabScenario,
+  approval: TabScenario,
+  'add-connection': TabScenario,
   collapsing: CollapsingSection,
   inert: InertSurvivor,
   'follow-up': FollowUpDialog,
@@ -393,7 +428,7 @@ test.afterAll(async () => {
 });
 
 async function mount(page: Page, scenario: Scenario) {
-  if (scenario === 'connect-modal') {
+  if (['connect-modal', 'approval', 'add-connection'].includes(scenario)) {
     // The real `ConnectionsProvider` this scenario mounts calls
     // `crypto.randomUUID()` unguarded on its first render. That needs a
     // secure context, and a fresh page's `about:blank` (what every other
@@ -577,3 +612,90 @@ test.describe('dialog return focus', () => {
     expect(state.sectionTabIndex).toBeNull();
   });
 });
+
+for (const width of [390, 1280]) {
+  test.describe(`dialog Tab ownership at ${width}px`, () => {
+    test.use({ viewport: { width, height: 860 } });
+    for (const scenario of ['portal-surface', 'portal-menu'] as const) {
+      test(`${scenario} keeps intermediate Tab inside the portal`, async ({
+        page,
+      }) => {
+        await mount(page, scenario);
+        await page.locator('#trigger').click();
+        await page
+          .getByRole('textbox', { name: 'Inner first', exact: true })
+          .focus();
+        await page.keyboard.press('Tab');
+        await expect(
+          page.getByRole('textbox', { name: 'Inner second', exact: true }),
+        ).toBeFocused();
+      });
+    }
+    test('summary, contenteditable and shadow input keep native tab order', async ({
+      page,
+    }) => {
+      await mount(page, 'native-tab');
+      await page.locator('#trigger').click();
+      for (const [from, to] of [
+        ['Native summary', 'After summary'],
+        ['Editable', 'After editable'],
+        ['Shadow input', 'After shadow'],
+      ]) {
+        const source =
+          from === 'Native summary'
+            ? page.getByText(from)
+            : page.getByLabel(from, { exact: true });
+        await source.focus();
+        await page.keyboard.press('Tab');
+        await expect(
+          page.getByRole('textbox', { name: to, exact: true }),
+        ).toBeFocused();
+      }
+    });
+    test('approval inspector tabs from Request identity to Deny', async ({
+      page,
+    }) => {
+      await page.route(
+        '**/api/orchestration/sessions/thread/requests/request?eventId=event',
+        (route) =>
+          route.fulfill({
+            json: {
+              success: true,
+              data: {
+                state: 'open',
+                reference: {
+                  threadId: 'thread',
+                  requestId: 'request',
+                  requestEventId: 'event',
+                },
+                requestType: 'approval',
+                provider: 'codex',
+                title: 'Approve command',
+                openedAt: '2026-10-14T00:00:00Z',
+                answerability: { answerable: true },
+                canRespond: true,
+              },
+            },
+          }),
+      );
+      await mount(page, 'approval');
+      await page.locator('#trigger').click();
+      await page.getByText('Request identity', { exact: true }).click();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('button', { name: 'Deny', exact: true }),
+      ).toBeFocused();
+    });
+    test('add connection tabs from expanded Advanced to its ID input', async ({
+      page,
+    }) => {
+      await mount(page, 'add-connection');
+      await page.locator('#trigger').click();
+      await page.getByText('Advanced', { exact: true }).click();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('textbox', { name: 'ID', exact: true }),
+      ).toBeFocused();
+    });
+  });
+}

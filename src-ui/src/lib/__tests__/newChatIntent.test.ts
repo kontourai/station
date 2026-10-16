@@ -116,3 +116,27 @@ describe('an unreadable selection is said, never started on defaults', () => {
     expect(onClosed).toHaveBeenLastCalledWith('dismissed', 'Edited');
   });
 });
+
+describe('files sent with a start', () => {
+  test('travel with the intent the dock reads', () => {
+    const file = new File(['notes'], 'notes.txt', { type: 'text/plain' });
+    expect(
+      readNewChatIntent(event({ initialPrompt: 'x', initialFiles: [file] }))
+        .initialFiles,
+    ).toEqual([file]);
+  });
+
+  test('anything that is not a file is dropped, and none means none', () => {
+    const file = new File(['a'], 'a.txt');
+    expect(
+      readNewChatIntent(event({ initialFiles: ['a.txt', { name: 'b' }, file] }))
+        .initialFiles,
+    ).toEqual([file]);
+    expect(readNewChatIntent(event({ initialFiles: [] }))).not.toHaveProperty(
+      'initialFiles',
+    );
+    expect(readNewChatIntent(event({ initialFiles: 'x' }))).not.toHaveProperty(
+      'initialFiles',
+    );
+  });
+});

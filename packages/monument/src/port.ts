@@ -5,6 +5,7 @@ import type {
 } from './commands.js';
 import type { OwnerLiveness } from './owner.js';
 import type {
+  InboxEntryRecord,
   RequestKeyId,
   RequestKeyRecord,
   TurnBoundaryRecord,
@@ -41,6 +42,13 @@ export interface KernelLimits {
   readonly requestKeyTtlMs: number;
   readonly requestKeyMaxRowsPerCaller: number;
   readonly requestKeyMaxRows: number;
+  /**
+   * Most unsettled (`queued`, `placing`, `unconfirmed`) entries one inbox may
+   * hold. A submission past it is refused, never truncated.
+   */
+  readonly inboxMaxUnsettled: number;
+  /** A settled inbox entry older than this is forgotten on the inbox's next submit. */
+  readonly inboxSettledRetentionMs: number;
 }
 
 /** The values Station uses today. */
@@ -51,12 +59,29 @@ export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
   requestKeyTtlMs: 7 * 24 * 60 * 60 * 1000,
   requestKeyMaxRowsPerCaller: 300,
   requestKeyMaxRows: 10_000,
+  inboxMaxUnsettled: 50,
+  inboxSettledRetentionMs: 7 * 24 * 60 * 60 * 1000,
 });
 
 /** What a decision needs besides the stored records. */
 export interface KernelContext {
   readonly liveness: OwnerLiveness;
   readonly limits?: Partial<KernelLimits>;
+}
+
+/** A host terminal authority fixed when its adapter opens storage. */
+export interface KernelTerminalFacts {
+  /** Read-only host facts, called synchronously inside the command transaction.
+   * When supplied, the host replaces the kernel's terminal table entirely. */
+  readonly terminalSeen: (threadId: string, providerTurnId: string) => boolean;
+  /** Event-retired rows excluded only from possible-effect reads. Raw records,
+   * listing and recovery remain unchanged; the host owns physical retirement. */
+  readonly retiredBoundaryIds?: (threadId: string) => readonly string[];
+  /** Persisted ordering for session terminals. Missing facts keep fenced rows. */
+  readonly terminalSequence?: (
+    threadId: string,
+    terminalEventId: string | undefined,
+  ) => number | undefined;
 }
 
 /**
@@ -86,7 +111,8 @@ export interface KernelStorage {
  * - `commit` runs after the decision's writes. Throwing aborts the whole
  *   transaction, kernel writes included, and the command rejects. It is not
  *   called for read-only commands (`turnDedup.read`, `turnBoundary.list`,
- *   `turnBoundary.hasPossibleEffect`) unless the participant sets
+ *   `turnBoundary.hasPossibleEffect`, `inbox.read`, `inbox.list`,
+ *   `inbox.listOpen`) unless the participant sets
  *   `observeReads`, and neither is `admit`; on node:sqlite an observed read
  *   takes the write lock.
  *
@@ -173,6 +199,25 @@ export interface KernelTransaction {
      * first (`createdAt` ascending, then insertion order).
      */
     evictOldestCompleted(callerSessionId: string, count: number): void;
+  };
+  readonly inbox: {
+    get(inboxId: string, key: string): InboxEntryRecord | undefined;
+    /** One inbox's entries, `sequence` ascending. */
+    listInbox(inboxId: string): InboxEntryRecord[];
+    /**
+     * Every `queued`, `placing` or `unconfirmed` entry, `inboxId` in
+     * code-point order, then `sequence` ascending.
+     */
+    listOpen(): InboxEntryRecord[];
+    /** Insert, or replace the entry with the same inbox and key. */
+    put(record: InboxEntryRecord): void;
+    /**
+     * Delete the inbox's `placed`, `refused` and `cancelled` entries last
+     * updated before `cutoff`.
+     */
+    deleteSettledBefore(inboxId: string, cutoff: number): void;
+    /** Delete every entry of the inbox; return how many there were. */
+    deleteInbox(inboxId: string): number;
   };
 }
 

@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { applyAccentColor } from '../../lib/accent-contrast';
+import { SettingsPageRow } from './SettingsPageRow';
 import { settingsRow } from './settings-catalog';
 
 /** Exported so the contrast tests measure the shipped list, not a copy. */
@@ -19,6 +21,7 @@ export const ACCENT_PRESETS = [
 ];
 
 export function AccentColorPicker() {
+  const account = useAccountPreferences();
   const { accentColor } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const color = accentColor ?? '';
@@ -38,45 +41,39 @@ export function AccentColorPicker() {
   };
 
   return (
-    <div
-      className="settings__field"
+    <SettingsPageRow
       {...settingsRow('accent-color')}
-      tabIndex={-1}
-    >
-      <span className="settings__field-label">
-        {settingsRow('accent-color').title}
-      </span>
-      <div className="settings__accent-row">
-        {ACCENT_PRESETS.map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
-            style={{ background: preset }}
-            onClick={() => apply(preset)}
-            aria-label={`Accent color ${preset}`}
+      description="Choose an accent color for your interface."
+      control={
+        <div className="settings__accent-row">
+          {ACCENT_PRESETS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
+              style={{ background: preset }}
+              onClick={() => apply(preset)}
+              aria-label={`Accent color ${preset}`}
+            />
+          ))}
+          <input
+            type="color"
+            className="settings__accent-custom"
+            value={color || '#6366f1'}
+            onChange={(event) => apply(event.target.value)}
+            aria-label="Custom accent color"
           />
-        ))}
-        <input
-          type="color"
-          className="settings__accent-custom"
-          value={color || '#6366f1'}
-          onChange={(event) => apply(event.target.value)}
-          aria-label="Custom accent color"
-        />
-        {color && (
-          <button
-            type="button"
-            className="settings__accent-reset"
-            onClick={() => apply('')}
-          >
-            Reset
-          </button>
-        )}
-      </div>
-      <span className="settings__field-hint">
-        Customize the UI accent color. Resets to default on clear.
-      </span>
-    </div>
+          {color && account.status !== 'account' && (
+            <button
+              type="button"
+              className="settings__accent-reset"
+              onClick={() => apply('')}
+            >
+              Use default
+            </button>
+          )}
+        </div>
+      }
+    />
   );
 }

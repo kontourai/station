@@ -451,7 +451,7 @@ for (const key of ['Enter', 'Space']) {
     await expect(activity).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press(key);
     await expect(activity).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press(key);
+    await page.keyboard.press('Escape');
     await expect(activity).toHaveAttribute('aria-expanded', 'false');
   });
 }
@@ -463,37 +463,28 @@ test('working chat selection keeps composer focus when its turn completes', asyn
   await activity.focus();
   await page.keyboard.press('Enter');
   await expect(activity).toHaveAttribute('aria-expanded', 'true');
-  const chats = page.locator('.chat-dock__activity-dropdown');
+  const chats = page.getByRole('menu', { name: /chats? working/ });
   await expect(chats).toBeVisible();
-  await page.keyboard.press('Tab');
-  await expect(chats.getByRole('button').first()).toBeFocused();
+  await expect(chats.getByRole('menuitem').first()).toBeFocused();
   await evidence(page, 'working-chat-keyboard.png', testInfo);
   await page.keyboard.press('Escape');
   await expect(chats).toBeHidden();
   await expect(activity).toBeFocused();
   await page.keyboard.press('Space');
   await expect(chats).toBeVisible();
-  await page.keyboard.press('Tab');
-  await expect(chats.getByRole('button').first()).toBeFocused();
+  await expect(chats.getByRole('menuitem').first()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(chats).toBeHidden();
   const composer = page.locator('.chat-input textarea');
   await expect(composer).toBeFocused();
 
-  await activity.hover();
-  await expect(chats).toBeVisible();
   await activity.click();
   await expect(chats).toBeVisible();
   await activity.click();
-  await expect(chats).toBeHidden();
-  await page.mouse.move(0, 0);
-  await activity.hover();
-  await expect(chats).toBeVisible();
-  await page.mouse.move(0, 0);
   await expect(chats).toBeHidden();
   await activity.focus();
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Tab');
+  await expect(chats.getByRole('menuitem').first()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(composer).toBeFocused();
   await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -532,8 +523,8 @@ test('working chat selection focuses the selected composer among several chats',
   await activity.focus();
   await page.keyboard.press('Enter');
   const selected = page
-    .locator('.chat-dock__activity-dropdown')
-    .getByRole('button', { name: /Working chat 2/ });
+    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menuitem', { name: /Working chat 2/ });
   await selected.focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/chat=conv-2/);
@@ -607,8 +598,8 @@ async function selectDelayedWorkingChat(page: Page, readOnly = false) {
   await activity.focus();
   await page.keyboard.press('Enter');
   await page
-    .locator('.chat-dock__activity-dropdown')
-    .getByRole('button', { name: /Working chat 2/ })
+    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menuitem', { name: /Working chat 2/ })
     .focus();
   await page.keyboard.press('Enter');
   const composer = page.locator('.chat-input textarea');
@@ -908,12 +899,15 @@ test('replay working chat selection focuses its transcript', async ({
   await step.click();
   await step.click();
   await step.click();
-  const activity = page.locator('.chat-dock__activity-btn');
+  const activity = page.getByRole('button', {
+    name: /chats? working/,
+    exact: true,
+  });
   await activity.focus();
   await page.keyboard.press('Enter');
   const replay = page
-    .locator('.chat-dock__activity-dropdown')
-    .getByRole('button', { name: /Event replay/ });
+    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menuitem', { name: /Event replay/ });
   await expect(replay).toBeVisible();
   await replay.focus();
   await page.keyboard.press('Enter');

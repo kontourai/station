@@ -7,43 +7,27 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { buildInfo } from '../../build-info';
-import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
-import { chatDraftsStore } from '../../contexts/chat-drafts-store';
-import { ArrowDownGlyph } from '../icons/Glyph';
-import '../DisclosureToggle.css';
-import {
-  useDeviceSettings,
-  useDeviceSettingsActions,
-} from '../../contexts/DeviceSettingsContext';
 import {
   useNavigation,
   useNavigationActions,
 } from '../../contexts/NavigationContext';
-import { openChatsStore } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
-import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
-import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
-import { chatTaskSessionId } from '../../views/home/home-view-model';
-import {
-  openChatInboxRows,
-  useInboxWorkItems,
-} from '../../views/home/useInboxWorkItems';
-import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   projectLiveCount,
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
@@ -59,31 +43,10 @@ const loadProjectSidebarFooter = () =>
     default: module.ProjectSidebarFooter,
   }));
 
-/** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
- *  stays out of the entry chunk this sidebar belongs to. */
-/**
- * #2062. Lazy for the reason the entry-bundle ceiling exists: the Boards
- * section costs ~1.2 kB gzip of entry JS, and it renders NOTHING for a viewer
- * with no Boards — which is every viewer until they make one. Behind a
- * boundary it loads with the panel, off the critical path, and the ceiling
- * stays where the last lane left it.
- */
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
     default: module.ProjectSidebarBoards,
   }));
-
-const loadSidebarOpenChats = () =>
-  import('./SidebarOpenChats').then((module) => ({
-    default: module.SidebarOpenChats,
-  }));
-
-/**
- * archive#3314: how many open chats the sidebar section lists
- * before folding the rest behind an "N more" affordance that opens the
- * dock's own inbox (the unbounded surface for this list).
- */
-export const OPEN_CHATS_SIDEBAR_CAP = 3;
 
 function ProjectSidebarImpl() {
   const { projects, isLoading } = useProjects();
@@ -144,71 +107,9 @@ function ProjectSidebarImpl() {
         .join(' ')
     : appName;
   const agents = useAgents();
-  const activeChats = useAllActiveChats();
-  const drafts = useSyncExternalStore(
-    chatDraftsStore.subscribe,
-    chatDraftsStore.getSnapshot,
-    chatDraftsStore.getSnapshot,
-  );
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
-  // The dock inbox's own items, by the one derivation. #765 A1/A2 passed the
-  // sessions so a chat borrows the server's fold; #3077 goes the whole way:
-  // the row here IS the dock's row for that chat, looked up by its chat id,
-  // so the two inboxes cannot disagree about what a chat is waiting on.
-  const inboxItems = useInboxWorkItems(agents, sessions);
-  const openChats = useMemo(() => openChatInboxRows(inboxItems), [inboxItems]);
-  const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
-  const openChatFacts = useWorkFacts(recentTasks, sessions);
-  // One coarse tick for the rows' relative times, not a new clock per render.
-  const openChatsNow = useCoarseNow();
-  const openChatsOverflow = openChats.length - recentTasks.length;
-  // archive#3314: per-section collapse + removal, persisted device-side alongside
-  // `projectSidebarCollapsed` (restore for a removed section lives in
-  // Settings → Appearance).
-  const { sidebarSections } = useDeviceSettings();
-  const { setDeviceSetting } = useDeviceSettingsActions();
-  const setSidebarSection = (patch: Partial<typeof sidebarSections>) =>
-    setDeviceSetting('sidebarSections', { ...sidebarSections, ...patch });
-  // Drafts are composed from the same store the composer writes and the same
-  // active-chat identity that the dock can focus. Do not synthesize a sidebar
-  // copy: opening one must restore the exact persisted composer value.
-  //
-  // D6: one row per chat. A chat already listed under Open chats carries its
-  // draft on that row (the "Unsent draft" chip, or the Draft status of a chat
-  // that never sent), so it is not listed a second time here; Drafts holds
-  // the drafts of chats that section does not show. A collapsed Open chats
-  // shows none of its rows, so while it is collapsed every draft is listed
-  // here: a draft is always visible somewhere.
-  const openChatsShowRows =
-    !sidebarSections.openChatsHidden && !sidebarSections.openChatsCollapsed;
-  const openChatSessionIds = useMemo(
-    () =>
-      new Set(
-        openChatsShowRows
-          ? recentTasks.map((task) => chatTaskSessionId(task))
-          : [],
-      ),
-    [recentTasks, openChatsShowRows],
-  );
-  const unsentDrafts = useMemo(
-    () =>
-      Object.entries(drafts)
-        .filter(([sessionId]) => !openChatSessionIds.has(sessionId))
-        .filter(([, draft]) => draft.text.trim())
-        .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
-        .map(([sessionId, draft]) => {
-          const chat = activeChats[sessionId];
-          return {
-            sessionId,
-            title: chat?.title?.trim() || 'Unsent draft',
-            preview: draft.text.trim(),
-          };
-        }),
-    [activeChats, drafts, openChatSessionIds],
-  );
   // The one project-colour allocation every surface shares.
   const accentBySlug = useProjectAccents();
-  const iconBySlug = useProjectIcons();
   const projectSlugs = useMemo(
     () => projects.map((project) => project.slug),
     [projects],
@@ -262,7 +163,6 @@ function ProjectSidebarImpl() {
     mobileOpen,
     mobileTriggerRef,
     setMobileOpen,
-    toggleCollapse,
   } = useProjectSidebarState();
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
@@ -354,45 +254,16 @@ function ProjectSidebarImpl() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
-          collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}
           onGoHome={goHome}
-          onToggleCollapse={toggleCollapse}
         />
 
         <div className="sidebar__body">
-          {effectiveCollapsed && !isMobile && (
-            <button
-              type="button"
-              className="sidebar__collapsed-chats"
-              aria-label="Open chats"
-              title="Open chats"
-              onClick={() => openChatsStore.openCollection()}
-            >
-              <svg
-                width="19"
-                height="19"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 8.5 8.5 0 1 1 0-17 8.3 8.3 0 0 1 7.3 4.2" />
-                <path d="M8 10h8M8 14h5" />
-              </svg>
-            </button>
-          )}
-          {/* No "Work" header above Home and Activity (#2150). The panel
-              lists places, and a category label over its two unlabelled
-              places reintroduced the taxonomy #2059 removed. It was the one
-              header the design record (D3) does not draw. */}
           <button
             type="button"
             className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
+            aria-label="Home"
             // #1582 D4: exactly one sidebar row may claim to be the current
             // location. `isHomeActive` already derives that from `main`'s
             // occupant rather than the route alone, so it is the honest place
@@ -402,7 +273,9 @@ function ProjectSidebarImpl() {
             aria-current={isHomeActive ? 'page' : undefined}
             onClick={goHome}
           >
-            <span aria-hidden="true">⌂</span>
+            <span className="sidebar__nav-icon" aria-hidden="true">
+              <HomeGlyph />
+            </span>
             <span className="sidebar__project-name">Home</span>
           </button>
           {/* #2059 (D3): Activity sits directly under Home as the panel's
@@ -417,145 +290,6 @@ function ProjectSidebarImpl() {
             activePath={pathname}
             onAfterNavigate={() => setMobileOpen(false)}
           />
-          {/* #2062 (D3): Boards sit between Activity and Projects — the
-              project-less places, above the projects they are a peer scope
-              of. The section renders itself away when the viewer has none,
-              so a Station where nobody has made a Board looks exactly as it
-              did before this shipped. */}
-          <LazyBoundary
-            load={loadProjectSidebarBoards}
-            pending={null}
-            componentProps={{
-              collapsed: effectiveCollapsed,
-              isMobile,
-              navigate,
-              activePath: pathname,
-              onAfterNavigate: () => setMobileOpen(false),
-            }}
-          />
-          {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
-              variant), collapsible with the nav groups' disclosure anatomy
-              (aria-expanded + aria-controls + hidden), and removable
-              (restore in Settings → Appearance). */}
-          {!sidebarSections.openChatsHidden && recentTasks.length > 0 && (
-            <>
-              <div className="sidebar__section-label sidebar__section-label--disclosure">
-                <button
-                  type="button"
-                  className="sidebar__section-toggle"
-                  aria-expanded={!sidebarSections.openChatsCollapsed}
-                  aria-controls="sidebar-open-chats"
-                  onClick={() =>
-                    setSidebarSection({
-                      openChatsCollapsed: !sidebarSections.openChatsCollapsed,
-                    })
-                  }
-                >
-                  <span className="sidebar__section-label-text">
-                    Open chats
-                  </span>
-                  <ArrowDownGlyph
-                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.openChatsCollapsed ? '' : ' is-open'}`}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="sidebar__section-remove"
-                  aria-label="Remove Open chats from sidebar"
-                  title="Remove from sidebar — restore in Settings → Appearance"
-                  onClick={() => setSidebarSection({ openChatsHidden: true })}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-              <div
-                id="sidebar-open-chats"
-                className="sidebar__open-chats chat-dock-inbox--compact"
-                hidden={sidebarSections.openChatsCollapsed}
-              >
-                <LazyBoundary
-                  load={loadSidebarOpenChats}
-                  pending={null}
-                  componentProps={{
-                    items: recentTasks,
-                    workFacts: openChatFacts,
-                    now: openChatsNow,
-                    projectAccentBySlug: accentBySlug,
-                    projectIconBySlug: iconBySlug,
-                    onActivate: (task) => {
-                      openChatsStore.focus({
-                        sessionId: chatTaskSessionId(task),
-                      });
-                      if (isMobile) setMobileOpen(false);
-                    },
-                  }}
-                />
-                {openChatsOverflow > 0 && (
-                  <button
-                    type="button"
-                    className="sidebar__recent-task sidebar__recent-more"
-                    onClick={() => {
-                      // Which surface holds the unbounded list depends on the
-                      // dock's chrome, so `openCollection` owns that routing —
-                      // the sidebar must not decide it from here (archive#3314
-                      //).
-                      openChatsStore.openCollection();
-                      if (isMobile) setMobileOpen(false);
-                    }}
-                  >
-                    <span>{`${openChatsOverflow} more`}</span>
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-          {!sidebarSections.draftsHidden && unsentDrafts.length > 0 && (
-            <>
-              <div className="sidebar__section-label sidebar__section-label--disclosure">
-                <button
-                  type="button"
-                  className="sidebar__section-toggle"
-                  aria-expanded={!sidebarSections.draftsCollapsed}
-                  aria-controls="sidebar-drafts"
-                  onClick={() =>
-                    setSidebarSection({
-                      draftsCollapsed: !sidebarSections.draftsCollapsed,
-                    })
-                  }
-                >
-                  <span className="sidebar__section-label-text">Drafts</span>
-                  <ArrowDownGlyph
-                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.draftsCollapsed ? '' : ' is-open'}`}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="sidebar__section-remove"
-                  aria-label="Remove Drafts from sidebar"
-                  title="Remove from sidebar — restore in Settings → Appearance"
-                  onClick={() => setSidebarSection({ draftsHidden: true })}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-              <div id="sidebar-drafts" hidden={sidebarSections.draftsCollapsed}>
-                {unsentDrafts.map((draft) => (
-                  <button
-                    key={draft.sessionId}
-                    type="button"
-                    className="sidebar__recent-task"
-                    onClick={() => {
-                      openChatsStore.focus({ sessionId: draft.sessionId });
-                      if (isMobile) setMobileOpen(false);
-                    }}
-                  >
-                    <span>{draft.title}</span>
-                    <small>{draft.preview}</small>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
           <div className="sidebar__section-label sidebar__section-label--projects">
             <span className="sidebar__section-label-text">Projects</span>
             <button
@@ -608,7 +342,7 @@ function ProjectSidebarImpl() {
             const liveLanes = liveLanesByProject.get(project.slug) ?? [];
             return (
               <ProjectSidebarRow
-                key={project.slug}
+                key={`${durableAuthorityNamespace ?? ''}:${isMobile}:${project.slug}`}
                 reorder={rowReorderProps(index)}
                 project={project}
                 isActive={isActive}
@@ -628,6 +362,18 @@ function ProjectSidebarImpl() {
           {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
+          <LazyBoundary
+            key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
+            load={loadProjectSidebarBoards}
+            pending={null}
+            componentProps={{
+              collapsed: effectiveCollapsed,
+              isMobile,
+              navigate,
+              activePath: pathname,
+              onAfterNavigate: () => setMobileOpen(false),
+            }}
+          />
           <span
             role="status"
             aria-live="polite"
@@ -638,11 +384,13 @@ function ProjectSidebarImpl() {
         </div>
 
         <LazyBoundary
+          key={`${durableAuthorityNamespace ?? ''}:${isMobile}`}
           load={loadProjectSidebarFooter}
           componentProps={{
             activePath: pathname,
             navigate,
             isMobile,
+            collapsed: effectiveCollapsed,
             onAfterNavigate: () => setMobileOpen(false),
           }}
           pending={null}
@@ -654,7 +402,7 @@ function ProjectSidebarImpl() {
 
 /**
  * The sidebar takes no props, so this boundary is total: it re-renders for
- * its own subscriptions (navigation selector, projects, chats, device
+ * its own subscriptions (navigation selector, projects, device
  * settings — context and store reads reach a memoized component unchanged)
  * and for nothing its parent does. `App` reads the whole navigation snapshot,
  * including the `lastProject` memory a selector cannot see, so without this

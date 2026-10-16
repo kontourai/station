@@ -82,7 +82,13 @@
 
     "src-server/services/agents/agent-definition-fingerprint.ts",
 
-    "src-server/services/agents/agent-profile-capabilities.ts"
+    "src-server/services/agents/agent-profile-capabilities.ts",
+
+    "src-server/providers/sessions/attached-session-source.ts",
+
+    "src-server/providers/sessions/opencode-session-source.ts",
+
+    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts"
   ],
 
   "checks": [

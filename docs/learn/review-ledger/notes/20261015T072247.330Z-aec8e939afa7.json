@@ -1,0 +1,7 @@
+{
+  "revision": "c0e446d2d73177fd47a8a2d0e67f8611a510e0ab",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"After merging origin/main (no conflict in this document): outboundQueue.ts now also strips an untyped intent's deferredAt in enqueue and beginLive, as it strips providerTurnId; only a deferred release records a deferral. Re-read the outbound dispatch claims (intents cannot place a provider turn id; the deferredAt backstop and its retry); they still hold. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

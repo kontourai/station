@@ -14,6 +14,7 @@ import {
   migratePreIndexKnowledge,
   rebuildKnowledgeIndex,
   searchKnowledgeIndex,
+  searchKnowledgeIndexWithReport,
   syncKnowledgeGraphNeo4j,
   validateKnowledgeRoot,
 } from '../client/knowledge';
@@ -388,6 +389,29 @@ describe('client/knowledge', () => {
       'http://example.test/api/knowledge/roots/root%3Apersonal/graph',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  it('searchKnowledgeIndexWithReport returns the server stale-index report, and null from an older server', async () => {
+    const index = {
+      staleRoots: [{ rootId: 'root:personal', reason: 'embedding-changed' }],
+      staleRecords: 1,
+      scanLimitReached: false,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: [], index }),
+    } as Response);
+    await expect(
+      searchKnowledgeIndexWithReport('http://example.test', { query: 'q' }),
+    ).resolves.toEqual({ results: [], index });
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: [] }),
+    } as Response);
+    await expect(
+      searchKnowledgeIndexWithReport('http://example.test', { query: 'q' }),
+    ).resolves.toEqual({ results: [], index: null });
   });
 
   it('searchKnowledgeIndex posts to /api/knowledge/index/search and returns resolved excerpt hits', async () => {

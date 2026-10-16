@@ -84,10 +84,11 @@ transient run status in GitHub rather than embedding it here.
 | Stable | The reviewed Preview source, qualified evidence and channel-specific packaging/provider checks | Blocks publication |
 
 The authorities are [CI](../../.github/workflows/ci.yml),
-[merge integration](../../.github/workflows/merge-queue-regression.yml), and
+[manual integration diagnosis](../../.github/workflows/merge-queue-regression.yml), and
 [hosted qualification](../../.github/workflows/full-regression.yml).
 `Merge-queue regression` remains the required check's legacy name for ruleset
-compatibility. Its workflow is now `PR: Merge integration`. It checks the
+compatibility. `PR: CI` owns it and shares the affected-test plan rather than
+installing and computing it again in another workflow. It checks the
 candidate diff, and it runs the hosted full regression on a candidate whose
 fast-checks plan defers to the `ci-fast` or `test-full` lane or names a path
 whose consumers only the queue runs. Every other candidate takes the fast path
@@ -99,7 +100,8 @@ The reusable regression performs the same capacity admission as main
 qualification. Insufficient observed capacity holds the resolve job before
 fanout: it re-observes every minute for up to 15 minutes, and the required
 check stays pending meanwhile. The ceiling sits below the merge queue's
-120-minute check timeout with room for the slowest observed qualification. Only
+120-minute check timeout. Historical timing predates the ancillary-job
+sequencing below and does not establish the new worst-case duration. Only
 an elapsed ceiling fails the check, with an explicit timeout naming the last
 observed capacity. A deferral is never regression evidence. Keep the admission
 receipt, one JSON line per observation, when diagnosing a dequeue. A genuine
@@ -107,6 +109,15 @@ capacity change needs a fresh assessment before another attempt, rather than a
 blind rerun.
 
 ## Qualification cadence and evidence reuse
+
+Require the mutable commit-status context `PR title policy` alongside all six
+source requirements. `PR title status publisher` is diagnostic and must not be
+required. Replace the old `PR title` check-run requirement only after deploying
+the publisher and observing its real statuses. Keep integration held during the
+transition and initialize heads through metadata events. Historical failed check
+runs remain visible; they no longer own title admission. Never manufacture
+source success. Queue publication acknowledges title enforcement at admission,
+not revalidation of constituent titles after enqueue.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 after main source changes and at minute 17 of every UTC hour. It tests one exact workflow-event SHA from
@@ -178,12 +189,19 @@ Unknown profiles fail before fanout. Custom requires positive integer
 fit the configured total. All matrix legs still execute. `STATION_HOSTED_TOTAL_SLOTS` defaults to 20
 and `STATION_HOSTED_MACOS_SLOTS` to 5; Expanded requires an explicitly configured
 larger total. Validate these against the organization's actual entitlement.
-The Free background envelope is six runners and the integration planning
-reserve is twelve; Expanded uses nine and twenty. These are planning bounds,
-not a guarantee that another repository will leave capacity unused.
+Static/app builds, exclusive corpora and Android viewport tests run in sequence,
+including after an earlier suite fails; the final receipt still requires every
+job to pass. Together with the corpus matrices, the Free peak is four runners
+and the integration planning reserve is twelve; Expanded uses seven and twenty. These are planning bounds,
+not a cross-workflow reservation or a guarantee that another repository will
+leave capacity unused. The merge queue builds one candidate at a time, with
+up to three entries per merge batch. Per-source qualification groups remain
+independent; the peak is per invocation, not an organization-wide ceiling.
 
 Before fresh corpus execution, the resolver observes all in-progress jobs in
-this repository, excludes its own run, and retains a dated admission receipt.
+the configured repositories, including active jobs in its own workflow run,
+and retains a dated admission receipt. Counting the admission runner itself
+conservatively leaves one extra slot until it exits.
 Insufficient observed headroom waits before fanout, re-observing every minute,
 and fails admission only when the 15-minute ceiling elapses. An observation
 error fails at once and is not retried. Other repositories

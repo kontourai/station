@@ -2,7 +2,11 @@ import type { SettingsSectionId } from './settings-catalog';
 
 /** Topics organize navigation; each row keeps its own persistence authority. */
 export const SETTINGS_PAGES = [
-  { id: 'general', title: 'General', sections: ['permissions', 'agent-runs'] },
+  {
+    id: 'general',
+    title: 'General',
+    sections: ['account-preferences', 'permissions', 'agent-runs'],
+  },
   { id: 'appearance', title: 'Appearance', sections: ['appearance'] },
   { id: 'chat', title: 'Chat', sections: ['chat'] },
   {

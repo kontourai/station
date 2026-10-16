@@ -34,6 +34,79 @@ function response(body: unknown, status = 200) {
   });
 }
 
+test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
+  vi.useFakeTimers();
+  let recovered = false;
+  let unavailable = false;
+  const request = vi.fn(async (input: RequestInfo | URL) =>
+    new URL(String(input)).pathname.endsWith('/offers')
+      ? response({ error: { code: 'insufficient_scope' } }, 403)
+      : unavailable
+        ? response({ error: 'unavailable' }, 503)
+        : recovered
+          ? response(
+              new URL(String(input)).pathname.endsWith('/requests')
+                ? { requests: [] }
+                : { devices: [] },
+            )
+          : response({ error: { code: 'authentication_required' } }, 401),
+  );
+  try {
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(request).toHaveBeenCalledTimes(2);
+    unavailable = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    unavailable = false;
+    recovered = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(request).toHaveBeenCalledTimes(6);
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(request).toHaveBeenCalledTimes(8);
+    recovered = false;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await act(async () => undefined);
+    recovered = true;
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      screen.getByRole('region', {
+        name: 'Create an invitation on your computer',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'This device cannot create pairing codes.',
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => {
@@ -2585,6 +2658,18 @@ describe('device pairing panels', () => {
     ],
     [
       403,
+      { error: { code: 'insufficient_scope' } },
+      {},
+      'This device cannot create pairing codes.',
+    ],
+    [
+      403,
+      { error: { code: 'policy_denied' } },
+      {},
+      'This Station refused to create a pairing code. Ask its operator to review this device’s access.',
+    ],
+    [
+      403,
       { error: { code: 'origin_forbidden' } },
       {},
       'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
@@ -2645,7 +2730,20 @@ describe('device pairing panels', () => {
         screen.getByRole('button', { name: 'Create pairing code' }),
       );
 
-      expect((await screen.findByRole('alert')).textContent).toBe(expected);
+      expect(
+        (await screen.findByRole('alert')).querySelector('p')?.textContent,
+      ).toBe(expected);
+      if (
+        'error' in body &&
+        typeof body.error === 'object' &&
+        body.error.code === 'insufficient_scope'
+      ) {
+        expect(
+          screen.getByRole('region', {
+            name: 'Create an invitation on your computer',
+          }),
+        ).toBeTruthy();
+      }
       expect(screen.getByText(/then approve access here/i)).toBeTruthy();
     },
   );
@@ -2901,7 +2999,7 @@ describe('device pairing panels', () => {
       // QR code: error-styled border and the phone-reach warning, not the
       // neutral hint.
       expect(screen.getByRole('note').textContent).toContain(
-        'A phone cannot reach this address',
+        'Localhost points to the phone.',
       );
       fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
         target: { value: 'https://kontour.python-smelt.ts.net:3773' },

@@ -13,6 +13,7 @@ import {
   finalPublicationDecision,
   main as pipelineMain,
   publicationInterval,
+  qualificationAdmission,
   recoveryDisposition,
   runnerProfile,
 } from '../release-pipeline.mjs';
@@ -42,7 +43,7 @@ describe('release pipeline admission', () => {
       name: 'free',
       ordinary: 2,
       heavy: 1,
-      background: 6,
+      background: 4,
       total: 20,
     });
     expect(
@@ -50,7 +51,7 @@ describe('release pipeline admission', () => {
         STATION_QUALIFICATION_RUNNER_PROFILE: 'expanded',
         STATION_HOSTED_TOTAL_SLOTS: '40',
       }),
-    ).toMatchObject({ ordinary: 4, heavy: 2, background: 9 });
+    ).toMatchObject({ ordinary: 4, heavy: 2, background: 7 });
     expect(
       runnerProfile({
         STATION_QUALIFICATION_RUNNER_PROFILE: 'custom',
@@ -58,7 +59,7 @@ describe('release pipeline admission', () => {
         STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: '1',
         STATION_INTEGRATION_RESERVE: '12',
       }),
-    ).toMatchObject({ ordinary: 1, heavy: 1, background: 5 });
+    ).toMatchObject({ ordinary: 1, heavy: 1, background: 3 });
     expect(() =>
       runnerProfile({ STATION_QUALIFICATION_RUNNER_PROFILE: 'custom' }),
     ).toThrow();
@@ -145,11 +146,12 @@ describe('release pipeline admission', () => {
   });
 });
 
-it('the real CLI observes configured peer jobs before admitting fanout and retains its snapshot', async () => {
+it('admission observes peer and same-run jobs, and the real CLI retains its snapshot', async () => {
   const makeTempDir = trackTempDirs();
   const root = makeTempDir('station-release-admission-');
   const output = join(root, 'output');
   let count = 0;
+  let sameRunCount = 0;
   let failing = false;
   const server = createServer((request, response) => {
     if (failing) {
@@ -162,12 +164,23 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       JSON.stringify(
         request.url?.includes('/jobs')
           ? {
-              jobs: Array.from({ length: count }, () => ({
-                status: 'in_progress',
-                labels: ['ubuntu-22.04'],
-              })),
+              jobs: Array.from(
+                {
+                  length: request.url.includes('/runs/99/')
+                    ? sameRunCount
+                    : count,
+                },
+                () => ({
+                  status: 'in_progress',
+                  labels: ['ubuntu-22.04'],
+                }),
+              ),
             }
-          : { workflow_runs: [{ id: 42 }] },
+          : {
+              workflow_runs: request.url?.includes('/owner/station/')
+                ? [{ id: 42 }, { id: 99 }]
+                : [{ id: 42 }],
+            },
       ),
     );
   });
@@ -197,6 +210,12 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       repositories: ['owner/station', 'owner/peer'],
     });
     expect(readFileSync(output, 'utf8')).toContain('admitted=true');
+    count = 7;
+    sameRunCount = 4;
+    expect(await qualificationAdmission(env)).toMatchObject({
+      occupied: 18,
+      admitted: false,
+    });
     // An unobservable repository fails closed at once; it is never waited on.
     writeFileSync(output, '');
     failing = true;
@@ -336,7 +355,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     repositories: ['owner/station'],
     occupied,
     macosOccupied,
-    admitted: occupied + 6 <= 20 && macosOccupied < 5,
+    admitted: occupied + 4 <= 20 && macosOccupied < 5,
     observedAt: '2026-10-12T09:26:20.800Z',
     scope:
       'configured repository snapshot; omitted organization workloads are not certified',
@@ -397,7 +416,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     // The production clock and sleep run on fake timers: no real waiting.
     vi.useFakeTimers();
     const env = workflowFiles();
-    const observations = [capacity(18, 4), capacity(15, 5), capacity(14, 4)];
+    const observations = [capacity(18, 4), capacity(15, 5), capacity(16, 4)];
     const observe = vi.fn(async () => {
       const next = observations.shift();
       if (!next) throw new Error('observed past admission');
@@ -449,7 +468,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
         },
       }),
     ).rejects.toThrow(
-      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
+      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 4 exceeds total 20, or macOS occupied 5 is not below 5/,
     );
     expect(observe).toHaveBeenCalledTimes(15);
     // The last re-observation starts exactly at the ceiling, never past it.

@@ -1218,7 +1218,32 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
   });
 
-  test('manual history Retry clears a cached handshake failure and loads the transcript', async () => {
+  test('superseded capability reads cannot consume recovery or leave a retry after unmount', async () => {
+    vi.useFakeTimers();
+    let finish!: (value: boolean | undefined) => void;
+    const capability = new Promise<boolean | undefined>((resolve) => {
+      finish = resolve;
+    });
+    fetchCapability.mockReturnValue(capability);
+    const { result, unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    act(() => {
+      void result.current.reload();
+      void result.current.reload();
+    });
+    await act(async () => finish(undefined));
+    expect(claimRecovery).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    const requests = fetchCapability.mock.calls.length;
+    unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(fetchCapability).toHaveBeenCalledTimes(requests);
+  });
+
+  test('manual history Retry keeps failed observation unavailable until the recovered transcript arrives', async () => {
     let cachedFailure = true;
     fetchCapability.mockImplementation(async () =>
       cachedFailure ? undefined : true,
@@ -1226,7 +1251,7 @@ describe('useActiveChatTranscript', () => {
     invalidateCapability.mockImplementation(() => {
       cachedFailure = false;
     });
-    fetchWindow.mockResolvedValue({
+    const recoveredWindow = {
       protocolVersion: 1,
       watermark: 1,
       hasMore: false,
@@ -1236,7 +1261,12 @@ describe('useActiveChatTranscript', () => {
           prompt: 'Recovered chat',
         }),
       ],
+    };
+    let resolveRecovery!: (page: typeof recoveredWindow) => void;
+    const recovery = new Promise<typeof recoveredWindow>((resolve) => {
+      resolveRecovery = resolve;
     });
+    fetchWindow.mockReturnValue(recovery);
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
@@ -1244,6 +1274,15 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
     act(() => {
       result.current.reload();
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    await act(async () => {
+      resolveRecovery(recoveredWindow);
+      await recovery;
     });
     await waitFor(() =>
       expect(

@@ -4,6 +4,122 @@ Station is a local-first workspace for agent work. This guide covers the ways
 to run Station today, a verified macOS/Linux install when its release ring is
 published, first launch, connection setup, and routine lifecycle.
 
+## First chat with Codex
+
+If Codex is installed and signed in on this computer, you can use that account
+without adding a model API key:
+
+1. Start Station using one of the paths below. For a source checkout, follow
+   the [README commands](https://github.com/kontourai/station/blob/main/README.md#run-from-source-macos-linux) and open
+   the single-use sign-in link printed by `./station start`.
+2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
+   **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
+   **Check connection** sends a short message using your model allowance.
+3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+   **Start**. You can start without a Project. The detected Codex Agent is
+   enough; creating a custom Agent is optional.
+4. When you want to work with files, choose **Open local project** on Home and
+   select the folder. Station recommends **Coding** for a Git repository.
+   Choose **Create** to open it directly.
+5. To talk to the built-in **Station** assistant using the same Codex account,
+   open **Settings → General → Built-in agent engine → Change…**, choose
+   **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
+   the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   Station tool as well as chat.
+
+For a customized Codex Agent, open **Customize → Agents → New agent → Use an
+AI app**, enter a name, select **Codex**, and choose its model and Project.
+In **Tools**, choose **Station** to add read-only controls; expand the row to
+inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+Codex receives your instructions with the first message in each new chat, at
+the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
+for tool selection and approval details.
+
+In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
+and **Terminal** for a shell. These controls sit in the right-hand rail. Chat
+and its inbox remain available alongside them. A successful answer to a file
+question and a successful Station tool call establish different capabilities;
+check both before relying on the Agent for work.
+
+If Terminal loses its connection, it keeps its output visible and offers
+**Reconnect terminal**. Commands typed while disconnected are not sent or
+replayed. Reconnecting can reattach a retained shell; restarting Station may
+end that process and open a new shell with the same tab identity. On a phone,
+the terminal also offers **Ctrl+C**, **Tab**, and command-history arrows.
+
+New installations start without importing conversations outside your Projects.
+To include those later, turn on **Conversations outside projects** in Settings.
+Existing installations retain their choice and previously imported history.
+
+## Connect your phone
+
+Your computer runs Station and the agents. Your phone connects to it to read
+replies, continue chats, and review work. Start on your computer:
+
+1. Install and launch Station there using the options below.
+2. Open the Station name at the top of the computer’s window and choose
+   **Pair phone**. Check the address before creating the invitation.
+   **Settings → Pairing → Pair device** opens the same screen.
+3. On your phone, open Station, choose **Pair with a code**, and use the
+   invitation from the computer. Keep the computer running.
+
+Creating an invitation requires an operator session. A browser opened through a
+launcher sign-in link may use Station without being allowed to pair other
+Devices. If it says this device cannot create pairing codes, run
+`station-nightly environment offer` on the computer running your Nightly install
+(or `./station environment offer` from a source checkout). Approve the phone’s
+request there with `station-nightly environment access approve --latest --force`.
+If Station restarts, keep it running and choose **Try again**. The browser
+rechecks access without reloading. Returning to the app or restoring the network
+also retries an unavailable host. If access was refused, **Request access**
+starts a new approval request for the selected Station.
+
+Use the launcher and home for the same Station throughout. The regular browser
+sign-in link does not grant pairing-administration authority.
+
+The address in that invitation must be reachable from your phone. `localhost`
+means the device you are using, so a computer’s localhost address does not reach
+it from a physical phone. Use the reachable address shown in the pairing flow;
+see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+for remote access. A pairing code grants access; it does not create a network route.
+
+If you have no Station yet, choose **I haven’t set up a Station yet** on your
+phone for the computer setup handoff. **Other ways to connect** contains host
+addresses and broker invitations. You can start with an ordinary chat; custom
+Agents, remote tasks, and layouts are optional.
+
+## Preferences across devices
+
+Open **Settings → General → Your account** to set the approval default for your
+new Codex, Claude or Muse chats. You can also use the chat's approval picker and
+choose **Save as my … default**. Full access requires an explicit
+confirmation. An Agent's own default takes precedence over your personal
+preference; an explicit chat choice takes precedence over both. Existing chats
+and unattended jobs keep their settings. Device grants and Station policy still
+control what may execute.
+
+Appearance, chat display, answer delivery, diff preferences and model-picker
+choices follow the same signed-in person across devices connected to this
+Station. They are saved as you change them, and other clients refresh on focus
+or reconnect. **Import previous preferences** brings over this browser's older
+portable choices without replacing settings your account already has. **Use
+default** removes a personal display choice; **Use inherited default** returns
+new-chat approvals to the Agent, Station or engine setting.
+
+While offline, changes wait on this page and are not saved yet. Keep the page
+open until saving finishes. If another device changed a composite preference,
+**Reload saved preferences** shows the current choice before you try again.
+
+Microphone/output providers, push permission, haptics, keyboard behavior and
+shortcuts, screen layout and device access stay on the device. Settings labels
+which scope owns a choice. If your Device is not linked to a person, preferences
+remain local. Different Stations keep separate account preferences.
+
+The approval chip shows the known mode, including **Full access**, **Auto** or
+**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+Open the picker to see the source, the confirmed mode and whether a request takes
+effect next turn or requires restarting the session.
+
 ## Ways To Run Station Today
 
 Station is open source and under active development. Check the
@@ -48,7 +164,16 @@ needed.
 The install lives under `~/.station/installs/nightly`, keeps its data in
 `~/.station/instances/nightly`, and owns the `station-nightly` launcher
 (`~/.local/bin/station-nightly`, or `station-nightly.cmd` on Windows). Open
-`http://localhost:38000` when it finishes. Run the same command again to
+the single-use sign-in link printed when it finishes. For later launches on
+macOS/Linux, use one command:
+
+```bash
+~/.local/bin/station-nightly start
+```
+
+On Windows, use `station-nightly start` in PowerShell. The default browser
+address is `http://localhost:38000`; use the sign-in link when access is requested.
+Run the same install command again to
 upgrade, and `station-nightly --version` to see the installed build. Set
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
 manifest instead. The Station Nightly desktop app uses the same ports and
@@ -143,7 +268,7 @@ or hosted model service that Station's own engine runs inference on. An
 **Engine** is an installed agent CLI, or a custom engine you connected, that
 runs its own agent loop.
 
-1. Open **Connections**.
+1. Open **Customize → Connections**.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
@@ -209,9 +334,9 @@ first; the controls show what **Start** will use:
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
-**on <host>** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept.
-For a saved Project execution environment, the control says **on Project default**.
+**Run a task…** opens **Run on a Station** with your message, Project and any explicit
+Station/engine/model/options choice kept. Its tooltip names the current Station
+or saved Project default; this action starts a task rather than moving your chat.
 Choose a Station, worker and model there, then choose **Run task** to start a
 resumable task. Available workers come from that Station; unavailable
 destinations keep their refusal instead of falling back to this computer.
@@ -325,6 +450,18 @@ in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
+The workspace map lists Projects and their named Layouts, followed by your
+**Personal Boards**. Its **+** creates a Board and lets you name it, even
+when the list is empty. Select a project to see its configured views as child rows.
+Use Up/Down inside the view list, or the header's Layout picker, to change
+views. The header's sidebar button collapses the desktop map to a project
+rail; clicking a project icon opens its views without navigating first.
+The dashboard icon below projects opens your Personal Boards and their add
+button. Escape closes either popup and returns focus to its icon.
+The compact footer keeps live work, Schedule, Customize and Settings in one
+row, or under Sidebar utilities in the collapsed rail. Conversations and
+composer drafts stay in the chat dock and its inbox (⌘D).
+
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.
@@ -433,6 +570,9 @@ native steering. Other engines hold steering until a safe boundary can be proven
 currently they wait until the turn finishes. Each pending row shows its mode.
 **Send now** deliberately stops the active turn immediately and sends the
 selected message after Station confirms the stop. **Stop** remains separate.
+Steer and Queue carry text only. You can still attach files or dictate during a
+turn: files wait in the draft, which says why, until you send it after the turn
+ends.
 
 A text message is saved on this device before it is sent. If the app closes or
 the connection drops before Station answers, the app asks Station what happened
@@ -440,6 +580,38 @@ at its next launch or reconnect: a message Station never received is sent once,
 with the same identity, and one Station may have started is kept and marked,
 never sent twice. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
+
+Once Station confirms a turn started, a late network error does not queue that
+message again.
+
+Until the agent has a message, its bubble is outlined rather than filled, with a
+short label:
+
+- **Sending…**, also while another open window of the app is sending it
+- **Received**, which adds **safe to close** when Station keeps running without
+  the app, or **keep the app open** when the app's own Station stops with it
+- **Saved on this device · sends when connected**
+- **No answer yet · sends once Station confirms it never arrived**, after a send
+  that got no answer: when Station can be reached it is asked about the message,
+  which is sent once only if it never arrived
+- **Waiting behind an unsent message**: messages in a chat go in order, so a
+  message waits until an earlier one that was not sent is retried or discarded
+- **Saved on this device · waits for its Station**, for a message written for
+  another Station
+- **Not sent**, with **Retry** (the same message again, never a second copy) and
+  **Edit** (the text goes back to the composer); **Discard unsent message** is in
+  the message's **⋯** menu (on a phone, listed in its sheet)
+- **May have reached the agent**, with **Check**, which asks Station again and
+  never resends
+- **Not confirmed**, for a message this device sent with no answer from Station
+  (for example a send that was stopped)
+
+A message that may have reached the agent, or got no answer, is never discarded
+automatically:
+**Discard…**, on the message, in the queued-message notice or in the outbox
+list, states the risk and removes it only after **I checked, discard it**, in
+every open window. It does not hold back the messages written after
+it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The Drafts icon saves and restores

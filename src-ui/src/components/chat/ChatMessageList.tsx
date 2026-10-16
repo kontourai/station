@@ -111,6 +111,12 @@ interface ChatMessageListProps {
    */
   onOpenBackgroundTasks?: () => void;
   /**
+   * The host could not read this conversation's status or history, so the
+   * session record's background work is only the last thing Station said.
+   * The banner then says so instead of animating as if it were current.
+   */
+  liveStatusUnavailable?: boolean;
+  /**
    * "via <Station>" row attribution (archive#2585) — threaded from a call
    * site that resolves the active saved Station.
    * Omitted call sites (including existing tests) simply render no owner
@@ -211,6 +217,7 @@ function ChatMessageListComponent({
   progressSilenceShownElsewhere,
   onLoadOlder,
   onOpenBackgroundTasks,
+  liveStatusUnavailable = false,
   owner,
   accountableHuman,
   hasSettingsEntryPoint,
@@ -441,12 +448,18 @@ function ChatMessageListComponent({
   const localBackgroundTasks = activeSession.backgroundTasks ?? [];
   const serverBackgroundCount =
     activeSession.conversationActivity?.runningChildWork?.count ?? 0;
-  const backgroundBannerLabel =
+  const currentBackgroundLabel =
     localBackgroundTasks.length > 0
       ? backgroundTasksLabel(localBackgroundTasks)
       : serverBackgroundCount === 1
         ? 'Background agent working'
         : `${serverBackgroundCount} background agents working`;
+  const backgroundBannerLabel = liveStatusUnavailable
+    ? `Last known: ${currentBackgroundLabel.charAt(0).toLowerCase()}${currentBackgroundLabel.slice(1)} (status unavailable)`
+    : currentBackgroundLabel;
+  // Animated dots claim the work is happening now; omit them for a
+  // last-known label.
+  const backgroundBannerDots = liveStatusUnavailable ? null : <LoadingDots />;
 
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a
@@ -1481,7 +1494,7 @@ function ChatMessageListComponent({
                       onClick={onOpenBackgroundTasks}
                       aria-label={`${backgroundBannerLabel} — open background tasks`}
                     >
-                      <LoadingDots />
+                      {backgroundBannerDots}
                       <span
                         className="background-tasks-banner__label"
                         aria-hidden="true"
@@ -1498,7 +1511,7 @@ function ChatMessageListComponent({
                   </>
                 ) : (
                   <div className="background-tasks-banner" role="status">
-                    <LoadingDots />
+                    {backgroundBannerDots}
                     <span className="background-tasks-banner__label">
                       {backgroundBannerLabel}
                     </span>

@@ -479,7 +479,12 @@ export class ActiveChatsStore {
       role: 'user' | 'assistant' | 'system';
       content: string;
       attachments?: any[];
-      action?: { label: string; handler: () => void };
+      action?: {
+        label: string;
+        handler: () => void;
+        /** Ask first with the shared unconfirmed-message discard. */
+        confirm?: 'unconfirmed-discard';
+      };
       sendFailure?: boolean;
       queuedRetry?: boolean;
       backgroundTaskNotice?: BackgroundTaskNotice;

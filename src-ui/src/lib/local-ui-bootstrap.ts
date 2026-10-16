@@ -6,7 +6,7 @@ import {
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 const FRAGMENT_KEY = 'station-ui-bootstrap';
-let captured = false;
+const capturedTokens = new Set<string>();
 let sessionResolution: Promise<LocalUiSessionResolution> | undefined;
 
 type LocalUiSessionResolution =
@@ -60,17 +60,17 @@ function delay(ms: number): Promise<void> {
 }
 
 export function captureLocalUiBootstrapToken(): string | undefined {
-  if (captured) return undefined;
   const token = new URLSearchParams(window.location.hash.slice(1)).get(
     FRAGMENT_KEY,
   );
   if (!token || !/^[A-Za-z0-9_-]{32,}$/.test(token)) return undefined;
-  captured = true;
   window.history.replaceState(
     null,
     '',
     `${window.location.pathname}${window.location.search}`,
   );
+  if (capturedTokens.has(token)) return undefined;
+  capturedTokens.add(token);
   return token;
 }
 
@@ -243,93 +243,28 @@ async function readLocalUiIdentity(
 }
 
 /**
- * Resolve the local browser's session once per page lifetime. React StrictMode
- * may mount a gate twice during Vite development, but a missing session must
- * not turn that into repeated protected requests or auth-rate-limit traffic.
- *
- * `host-unavailable` is the ONE outcome retried here (#1639), because it is the
- * one that can answer differently with nothing about this browser changed. Three
- * observations now reach it, and #1654 is what added the second and third:
- *
- *  - the UI proxy answered its documented readiness envelope, which says its
- *    sibling host was away or starved — measured live at 503 after a 6.6 s wait
- *    on a loaded host, where the only way forward was a user-initiated reload —
- *    and, since #1654, on the 504 its upstream TIMEOUT answers with, which used
- *    to fall through to the pairing screen;
- *  - the identity read threw: offline, no route, a refused connection. Nothing
- *    answered, so nothing was decided about this browser;
- *  - this attempt's deadline expired (#1661), which is the same statement with a
- *    clock behind it — including a deadline that expired DURING the body, which
- *    the envelope check rethrows rather than reporting as a body that is not the
- *    envelope;
- *  - the launcher-token exchange itself could not reach a responder
- *    (`LocalUiHostUnreachableError`). This is the one route that reaches
- *    `host-unavailable` WITHOUT an identity read, and it is the case the readiness
- *    wait's enumeration has to know about — see below.
- *
- * Every other outcome is a decision ABOUT this browser, and none is retried:
- *
- *  - `access-required` from a non-OK answer is a refusal (401/403). Repeating it
- *    cannot change the answer and spends this browser's auth rate limit, which
- *    is the traffic this function's memoization exists to prevent.
- *  - `access-required` from a REFUSED launcher token, thrown as
- *    `LocalUiBootstrapRefusedError` and carrying its sentence to the pairing
- *    screen. A named class, not a message match: before #1654 this shared one
- *    `Error` — and one outcome — with a host that could not be reached, which is
- *    how being offline came to read as a browser without access.
- *  - `access-required` with the raw message for anything ELSE thrown here. That
- *    is a programming error, and it stays visible on screen rather than being
- *    absorbed into "the host is away", which would make it silent.
- *
- * Only the identity read is inside the ladder. There are TWO separate properties
- * about the launcher-token exchange here, they are held by different mechanisms,
- * and only one of them is observable — an earlier revision of this comment
- * conflated them and named the wrong guard, so both are spelled out:
- *
- * WITHIN one resolution, the exchange cannot run twice, and that holds because
- * `bootstrapLocalUiSession` is TERMINAL whenever a token exists: it returns true
- * or it throws, never false. So the identity read below is reachable only when
- * the capture DECLINED, which it does for exactly two reasons — and they are
- * different mechanisms, so enumerate rather than derive:
- *
- *   a. the page never carried a valid token, so the latch is off and nothing was
- *      stripped; or
- *   b. an earlier resolution already spent one, so the latch is precisely what
- *      declined and the fragment is already gone. This is the live case — it is
- *      what a pairing recheck does, and what the test named below drives.
- *
- *   c. NEW with #1654, and the reason this enumeration moved: the exchange itself
- *      could not reach a responder, so `host-unavailable` is reached with a token
- *      that WAS present and IS now consumed — no identity read involved. The
- *      recovery screen's reload is still safe, and the property that holds it is
- *      not the one (a) and (b) rely on: the fragment is stripped inside
- *      `captureLocalUiBootstrapToken`, BEFORE the exchange is attempted, so a
- *      failed exchange leaves the address bar already clean. The reload carries no
- *      token because capture stripped it, not because the exchange succeeded.
- *
- * Moving the exchange INSIDE the ladder therefore changes nothing in any of the
- * three: there is no token to re-POST, because there never was one (a), because it
- * is already spent (b), or because it was consumed on the attempt that failed (c).
- * This invariant has no observable mutation through the
- * gate — the capture reads only the URL fragment, is called from exactly one
- * production place (the exchange), and nothing writes the `station-ui-bootstrap`
- * key after boot (`src-ui/src/components/chat-dock/ChatDock.tsx` and
- * `src-ui/src/views/share/share-token.ts` do write a fragment, but their own
- * keys, and the capture reads its key by name). The readiness wait
- * (`tests/helpers/local-ui-access-readiness.ts`) reasons from this same terminal
- * property to conclude its reload is unreachable on a token-bearing entry, so it
- * is the second consumer of it; keep the two in step, enumeration included.
- *
- * ACROSS resolutions, a SPENT token must never be re-POSTed — a pairing recheck
- * resolves again on a page whose token is already gone. THAT is what the latch
- * and the fragment strip hold, and it is observable:
- * `LocalUiSessionGate.hostRetry.test.tsx` drives a spent token into an
- * unavailable host and pins one POST against a full ladder of identity reads,
- * red under a repeatable capture.
+ * Share one session decision across boot and StrictMode callers. An explicit
+ * fresh launcher link replaces that decision; each presented capability is
+ * scrubbed before exchange and never replayed by the host-unavailable ladder.
+ * Pairing success also permits a new identity read (#1639, #1654, #1661).
+ * Authentication refusals remain cached instead of spending the auth budget.
  */
 export function resolveLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
+  const incomingToken = new URLSearchParams(window.location.hash.slice(1)).get(
+    FRAGMENT_KEY,
+  );
+  if (
+    incomingToken &&
+    /^[A-Za-z0-9_-]{32,}$/.test(incomingToken) &&
+    !capturedTokens.has(incomingToken)
+  ) {
+    sessionResolution = undefined;
+    resolutionGeneration += 1;
+  } else if (incomingToken && capturedTokens.has(incomingToken)) {
+    captureLocalUiBootstrapToken();
+  }
   sessionResolution ??= (async () => {
     // A pairing recheck or a test reset replaces the memoized promise while this
     // ladder may still be mid-backoff. A superseded resolution DOES still have an
@@ -343,9 +278,7 @@ export function resolveLocalUiSession(
     // `setIdentityAttempt` writes would otherwise clobber the live one the gate
     // is rendering from.
     //
-    // The product cannot reach this today — the gate renders no pairing control
-    // while a resolution is pending, so nothing can supersede one mid-ladder. It
-    // is defence in depth plus test isolation, and that is its present value.
+    // A fresh launcher link can supersede a pending identity ladder.
     const generation = resolutionGeneration;
     setIdentityAttempt(1);
     try {
@@ -399,11 +332,10 @@ export function resolveLocalUiSession(
 }
 
 /**
- * A completed pairing may have set the HttpOnly session cookie after the gate
- * cached an access-required result. Only that explicit success signal may
- * discard the cached result; ordinary failures remain deduplicated.
+ * Re-read access after pairing or an explicit host-recovery action. Consumed
+ * launcher fragments stay consumed; authentication refusals do not auto-retry.
  */
-export function recheckLocalUiSessionAfterPairing(
+export function recheckLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution = undefined;
@@ -412,7 +344,7 @@ export function recheckLocalUiSessionAfterPairing(
 }
 
 export function resetLocalUiBootstrapForTests(): void {
-  captured = false;
+  capturedTokens.clear();
   sessionResolution = undefined;
   resolutionGeneration += 1;
   setIdentityAttempt(1);

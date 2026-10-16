@@ -65,6 +65,14 @@ describe('useStationOutlivesApp', () => {
     expect(renderHook(() => useStationOutlivesApp()).result.current).toBe(true);
   });
 
+  test('a supervised Station with no address (starting, restarting or crashed) is unknown, never safe', () => {
+    platform.supervisesBundledServer = true;
+    platform.bundled = { apiBase: null, canRunInBackground: false };
+    expect(
+      renderHook(() => useStationOutlivesApp()).result.current,
+    ).toBeUndefined();
+  });
+
   test('not yet reported: unknown, never assumed safe', () => {
     platform.supervisesBundledServer = true;
     platform.bundled = null;

@@ -1,0 +1,7 @@
+{
+  "revision": "84746f956321c7e9fcd2ba8df1a446fbf3589a14",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round 8 of the delivery-state change: the flush hook's deferred-row retry timer now re-reads the queue when it fires (arming itself for the next row still waiting) before starting its pass, so a second deferred row is not stranded when the first one's pass claims nothing; 'deferredAt' joins OutboundDispatchIntent's omitted fields. Rewrote the backstop sentence: one timer for the earliest wait that, when it fires, re-reads the queue (arming itself for the next waiting row) and starts a pass, so a skipped row is not stranded even when that pass claims nothing. Checked against the timer callback in useOutboundQueueFlush.ts and its two-row test.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

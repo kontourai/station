@@ -12,7 +12,16 @@ const TABLE: Array<
 > = [
   ['no delivery fact at all', {}, undefined],
   ['request out, no answer', { requestInFlight: true }, 'sending'],
-  ['outbox row claimed for a request', { outbox: 'invoking' }, 'sending'],
+  [
+    'outbox row invoking with no request of this window out: awaits the lookup',
+    { outbox: 'invoking' },
+    'awaiting-confirmation',
+  ],
+  [
+    'outbox row invoking while this window replays it',
+    { outbox: 'invoking', requestInFlight: true },
+    'sending',
+  ],
   [
     'request out, lookup has not found it yet',
     { requestInFlight: true, lookup: 'not-received' },

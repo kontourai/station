@@ -28,6 +28,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -378,7 +379,12 @@ export function latestQueuedRetryNotice<
     content: string;
     ephemeral?: boolean;
     queuedRetry?: boolean;
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
   },
 >(messages: readonly Message[], queued: boolean) {
   if (!queued) return undefined;
@@ -537,6 +543,49 @@ export function ChatDockBody({
       ),
     [transcript.events],
   );
+  // A history or continuation read failed: what the session record last said
+  // (Running, background work) is no longer current proof.
+  const observationUnavailable =
+    unverifiedOpen ||
+    Boolean(
+      transcript.enabled && (transcript.error || transcript.upgradeRequired),
+    );
+  const transcriptReadFailed = Boolean(transcript.enabled && transcript.error);
+  const reloadTranscript = transcript.reload;
+  const pendingResyncs = useRef(new Set<string>());
+  const [resyncs, setResyncs] = useState<ReadonlySet<string>>(new Set());
+  const resyncKey = JSON.stringify([apiBase, activeSession.id]);
+  const resyncPending = resyncs.has(resyncKey);
+  // One replacement per conversation, including same-tick activations and
+  // switching away and back while its reads are still pending.
+  const resyncConversation = useCallback(async () => {
+    if (pendingResyncs.current.has(resyncKey)) return;
+    pendingResyncs.current.add(resyncKey);
+    setResyncs(new Set(pendingResyncs.current));
+    try {
+      resyncOrchestrationEventStream(apiBase);
+      await Promise.allSettled([
+        ...(transcriptReadFailed ? [reloadTranscript()] : []),
+        ...(unverifiedOpen ? [onRetryConversationOpen?.()] : []),
+      ]);
+    } finally {
+      pendingResyncs.current.delete(resyncKey);
+      setResyncs(new Set(pendingResyncs.current));
+    }
+  }, [
+    apiBase,
+    resyncKey,
+    transcriptReadFailed,
+    reloadTranscript,
+    unverifiedOpen,
+    onRetryConversationOpen,
+  ]);
+  const focusRecoveredComposer = useCallback(() => {
+    const textarea = chatInput.textareaRef.current;
+    const target = textarea?.disabled ? textarea.closest('fieldset') : textarea;
+    target?.focus();
+    return Boolean(target && document.activeElement === target);
+  }, [chatInput.textareaRef]);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -544,11 +593,10 @@ export function ChatDockBody({
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
     windowRequests,
-    observationUnavailable:
-      unverifiedOpen ||
-      Boolean(
-        transcript.enabled && (transcript.error || transcript.upgradeRequired),
-      ),
+    observationUnavailable: observationUnavailable || resyncPending,
+    resyncPending,
+    onResync: resyncConversation,
+    onRecoveryFocus: focusRecoveredComposer,
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -946,6 +994,7 @@ export function ChatDockBody({
   const queuedRetryNotice = queuedRetry
     ? {
         text: queuedRetry.line,
+        confirm: queuedRetry.action.confirm === 'unconfirmed-discard',
         // What the transcript's own action does: run it, then drop the notice.
         onDiscard: () => {
           queuedRetry.action.handler();
@@ -1371,6 +1420,7 @@ export function ChatDockBody({
             ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
+            liveStatusUnavailable: observationUnavailable,
             owner,
             accountableHuman,
             onQuote: (quote) =>
@@ -2101,7 +2151,6 @@ export function ChatDockBody({
             onEnabledChange={onComposerEnabledChange}
             disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             allowDraftWhileDisabled={busyOpen && !!agent}
-            isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2146,14 +2195,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={[
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            agentRoute={
               activeOrchestrationSession?.modelRoute
                 ? `via ${activeOrchestrationSession.modelRoute.label}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+                : undefined
+            }
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }
@@ -2161,6 +2210,10 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
+            approvalModeIsNewSession={
+              !activeSession?.orchestrationSessionStarted &&
+              !activeSession?.conversationId
+            }
             approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
