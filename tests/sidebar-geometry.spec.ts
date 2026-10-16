@@ -147,6 +147,11 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
       .getByRole('banner')
       .getByRole('button', { name: 'Collapse workspace map' });
     await expect(toggle).toBeVisible();
+    const glyph = await toggle.locator('svg').boundingBox();
+    if (!glyph) throw new Error('workspace map glyph has no bounds');
+    expect(glyph.width).toBeGreaterThanOrEqual(16);
+    expect(glyph.height).toBeGreaterThanOrEqual(16);
+
     await expect(
       page.getByRole('navigation').getByRole('button', {
         name: /Collapse workspace map|Collapse sidebar/,
