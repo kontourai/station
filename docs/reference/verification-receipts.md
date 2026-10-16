@@ -450,7 +450,8 @@ the artifact-path contract.
 ## Canonical completion lane
 
 The [testing guide](../guides/testing.md#available-escalation-lanes) owns when
-to run each lane. Ordinary pull requests use focused evidence and `ci:fast`,
+to run each lane. Ordinary pull requests use focused local evidence, normal
+push hooks and required hosted checks; local `ci:fast` is an optional diagnostic,
 then the required merge queue checks. Hosted Nightly/tagged promotions own
 canonical full-regression completion. A local `full:regression` run is an
 explicit diagnostic escalation, not a routine response to upstream movement.
