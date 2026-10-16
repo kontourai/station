@@ -142,9 +142,10 @@ Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
 
-The Rust process, deep-link, updater, and haptics plugins use the same minor
-lines as their npm packages. The notification plugin remains Rust `=2.5.1`
-with npm `2.6.0`; this source inventory does not establish native compatibility.
+The Rust process, deep-link, updater, haptics, and notification plugins use
+the same minor lines as their npm packages. The notification plugin is pinned
+to Rust `=2.6.0` with npm `2.6.0`; matching versions satisfy the CLI version
+guard, while native build and runtime evidence remain separate.
 `tauri:context` checks the selected
 toolchain and configuration; those checks alone do not prove a packaged shell
 works.

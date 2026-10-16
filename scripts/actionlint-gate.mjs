@@ -2600,7 +2600,7 @@ function primaryCiRouterFindings(file, document) {
         },
       },
       {
-        uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        uses: SETUP_NODE_ACTION,
         if: `\${{ github.event_name == 'pull_request_target' }}`,
         with: { 'node-version-file': '.nvmrc', 'package-manager-cache': false },
       },

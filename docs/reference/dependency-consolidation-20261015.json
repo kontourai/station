@@ -1261,7 +1261,6 @@
     "exactSubjectAuthority": "NOT_VERIFIED"
   },
   "evidence": {
-    "directory": "/Users/brian/.t3/scratch/dependency-consolidation-5dbb3b7a-20261015",
     "initialManagedBootstrap": {
       "command": "npm run dependencies:ci",
       "exit": 0
