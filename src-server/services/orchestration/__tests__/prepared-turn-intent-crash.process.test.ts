@@ -10,7 +10,10 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type { ProviderSendTurnInput } from '../../../providers/adapter-shape.js';
+import {
+  type ProviderSendTurnInput,
+  SendTurnRefusedError,
+} from '../../../providers/adapter-shape.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -38,6 +41,7 @@ afterEach(async () => {
 });
 
 class LiveResumeAdapter extends GateTestAdapter {
+  result: 'accepted' | 'refused' | 'unknown' = 'accepted';
   bindingKey = 'b'.repeat(64);
   preparedTurnBinding() {
     return {
@@ -63,6 +67,10 @@ class LiveResumeAdapter extends GateTestAdapter {
   }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.sent.push(input);
+    if (this.result === 'refused')
+      throw new SendTurnRefusedError('No provider-visible effect.');
+    if (this.result === 'unknown')
+      throw new Error('Connection dropped after begin.');
     return { threadId: input.threadId, turnId: 'resumed-original' };
   }
 }
@@ -333,89 +341,137 @@ test('a non-persistent send cannot forward a caller-provided invocation identity
   expect(adapter.sent[0]).not.toHaveProperty('invocationId');
 });
 
-test('explicit prepared resume reauthorizes the retained input and sends its original bytes exactly once', async () => {
-  const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
-  await killedOwner(path, 'prepared');
-  const { row, envelope } = storedIntent(path);
-  expect(envelope.resumeGuard).toMatchObject({
-    binding: {
-      nativeBindingKey: 'b'.repeat(64),
-      resumeCursor: { sessionId: 'prepared-native-session' },
-    },
-    requiresFreshCompanions: false,
-  });
-  const predecessor = new DatabaseSync(path);
-  try {
-    predecessor.exec(
-      'ALTER TABLE orchestration_turn_boundaries DROP COLUMN prepared_settlement',
+test.each(['accepted', 'refused', 'unknown'] as const)(
+  'explicit prepared resume retains original bytes for an %s adapter result',
+  async (outcome) => {
+    const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
+    await killedOwner(path, 'prepared');
+    const { row, envelope } = storedIntent(path);
+    expect(envelope.resumeGuard).toMatchObject({
+      binding: {
+        nativeBindingKey: 'b'.repeat(64),
+        resumeCursor: { sessionId: 'prepared-native-session' },
+      },
+      requiresFreshCompanions: false,
+    });
+    const predecessor = new DatabaseSync(path);
+    try {
+      predecessor.exec(
+        'ALTER TABLE orchestration_turn_boundaries DROP COLUMN prepared_settlement',
+      );
+      expect(
+        predecessor
+          .prepare(
+            'SELECT invocation_id FROM orchestration_turn_boundaries WHERE thread_id = ?',
+          )
+          .get(THREAD)?.invocation_id,
+      ).toBe(row.invocation_id);
+    } finally {
+      predecessor.close();
+    }
+    const store = new EventStore(path);
+    expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
+    stores.push(store);
+    const adapter = new LiveResumeAdapter();
+    adapter.result = outcome;
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug() {}, warn() {} },
+    });
+    services.push(service);
+    service.initialize();
+    const owner = sessionReadAuthorityFromRequest(
+      'prepared-owner',
+      undefined,
+      undefined,
     );
+    const stranger = sessionReadAuthorityFromRequest(
+      'prepared-stranger',
+      undefined,
+      undefined,
+    );
+    const invocationId = String(row.invocation_id);
+    expect(invocationId).toMatch(/^[a-f0-9-]{36}$/);
     expect(
-      predecessor
-        .prepare(
-          'SELECT invocation_id FROM orchestration_turn_boundaries WHERE thread_id = ?',
-        )
-        .get(THREAD)?.invocation_id,
-    ).toBe(row.invocation_id);
-  } finally {
-    predecessor.close();
-  }
-  const store = new EventStore(path);
-  expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
-  stores.push(store);
-  const adapter = new LiveResumeAdapter();
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug() {}, warn() {} },
-  });
-  services.push(service);
-  service.initialize();
-  const owner = sessionReadAuthorityFromRequest(
-    'prepared-owner',
-    undefined,
-    undefined,
-  );
-  const stranger = sessionReadAuthorityFromRequest(
-    'prepared-stranger',
-    undefined,
-    undefined,
-  );
-  const invocationId = String(row.invocation_id);
-  expect(invocationId).toMatch(/^[a-f0-9-]{36}$/);
-  expect(
-    await service.readPreparedTurnIntent(THREAD, invocationId, stranger),
-  ).toBeNull();
-  await expect(
-    service.resumePreparedTurnIntent(THREAD, invocationId, stranger),
-  ).rejects.toThrow('unavailable');
-  expect(adapter.sent).toHaveLength(0);
-  expect(
-    await service.readPreparedTurnIntent(THREAD, invocationId, owner),
-  ).toMatchObject({
-    state: 'prepared',
-    inputDigest: row.input_digest,
-    input: { text: 'pinned context\n\n  keep these bytes\n' },
-  });
-  await expect(
-    service.resumePreparedTurnIntent(THREAD, invocationId, owner),
-  ).resolves.toMatchObject({
-    turnId: 'resumed-original',
-  });
-  expect(adapter.sent).toHaveLength(1);
-  expect(adapter.sent[0]).toMatchObject({
-    invocationId,
-    threadId: THREAD,
-    clientTurnId: KEY,
-    input: 'pinned context\n\n  keep these bytes\n',
-    displayInput: INPUT,
-    ambientContext: AMBIENT,
-  });
-  await expect(
-    service.resumePreparedTurnIntent(THREAD, invocationId, owner),
-  ).rejects.toThrow('unavailable');
-  expect(adapter.sent).toHaveLength(1);
-}, 90_000);
+      await service.readPreparedTurnIntent(THREAD, invocationId, stranger),
+    ).toBeNull();
+    await expect(
+      service.resumePreparedTurnIntent(THREAD, invocationId, stranger),
+    ).rejects.toThrow('unavailable');
+    expect(adapter.sent).toHaveLength(0);
+    expect(
+      await service.readPreparedTurnIntent(THREAD, invocationId, owner),
+    ).toMatchObject({
+      state: 'prepared',
+      inputDigest: row.input_digest,
+      input: { text: 'pinned context\n\n  keep these bytes\n' },
+    });
+    const resumed = service.resumePreparedTurnIntent(
+      THREAD,
+      invocationId,
+      owner,
+    );
+    if (outcome === 'accepted')
+      await expect(resumed).resolves.toMatchObject({
+        turnId: 'resumed-original',
+      });
+    else if (outcome === 'refused')
+      await expect(resumed).rejects.toMatchObject({
+        code: 'client_turn_settled',
+        disposition: 'definitively-refused',
+      });
+    else
+      await expect(resumed).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(storedIntent(path).row.envelope_json).toBe(row.envelope_json);
+    expect(
+      await service.readPreparedTurnIntent(THREAD, invocationId, owner),
+    ).toMatchObject({
+      state:
+        outcome === 'accepted'
+          ? 'accepted'
+          : outcome === 'refused'
+            ? 'settled'
+            : 'indeterminate',
+    });
+    if (outcome === 'refused') {
+      const auditDb = new DatabaseSync(path, { readOnly: true });
+      try {
+        const boundary = auditDb
+          .prepare(
+            'SELECT prepared_settlement FROM orchestration_turn_boundaries WHERE invocation_id = ?',
+          )
+          .get(invocationId);
+        const dedup = auditDb
+          .prepare('SELECT owner_json FROM orchestration_turn_dedup')
+          .get();
+        const audit = JSON.parse(String(boundary?.prepared_settlement));
+        expect(audit.disposition).toBe('definitively-refused');
+        expect(JSON.parse(String(dedup?.owner_json)).settlement).toEqual(audit);
+        expect(
+          store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+        ).toEqual({ kind: 'available', active: false });
+      } finally {
+        auditDb.close();
+      }
+    }
+    expect(adapter.sent).toHaveLength(1);
+    expect(adapter.sent[0]).toMatchObject({
+      invocationId,
+      threadId: THREAD,
+      clientTurnId: KEY,
+      input: 'pinned context\n\n  keep these bytes\n',
+      displayInput: INPUT,
+      ambientContext: AMBIENT,
+    });
+    await expect(
+      service.resumePreparedTurnIntent(THREAD, invocationId, owner),
+    ).rejects.toThrow('unavailable');
+    expect(adapter.sent).toHaveLength(1);
+  },
+  90_000,
+);
 
 test('resume refuses posture tightened after validation while its real coordinator is waiting', async () => {
   const path = join(
