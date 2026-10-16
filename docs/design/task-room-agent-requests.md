@@ -75,7 +75,8 @@ private dock follow-ups on a room-bound Session stay private. Their origin survi
 restart through the canonical turn client identity and the private journal's admitted
 reply operation IDs. Each admission stores a server-generated client turn ID scoped
 to the request's Session; a client-supplied `room-reply:` prefix alone grants no
-publication. The bounded admission list is omitted from browser request views.
+publication. The bounded admission list is omitted from browser request views. The list holds at most 256 admissions per Session; once it is full,
+further room replies to that Session are refused.
 Older binaries reject journal rows carrying this additive private field. These completed turns publish
 their answer text through the existing agent-publish append path. The private principal binds the exact Session; the
 envelope retains the turn ID. Browser history exposes that tuple and the

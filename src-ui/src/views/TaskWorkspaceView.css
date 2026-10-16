@@ -9,6 +9,7 @@
 }
 
 .task-workspace__record-details summary {
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
   min-height: calc(var(--k-space-6) + var(--k-space-3));
   align-content: center;
   cursor: pointer;
