@@ -27,6 +27,7 @@ export interface TurnDedupRecord {
   readonly preparedInvocationId?: string;
   /** Revision of the linked pending fence; preserved independently of its creation. */
   readonly preparedUpdatedAt?: string;
+  readonly settlement?: PreparedTurnSettlement;
 }
 
 export type TurnBoundaryState =
@@ -35,7 +36,8 @@ export type TurnBoundaryState =
   | 'prepared'
   | 'invoking'
   | 'accepted'
-  | 'indeterminate';
+  | 'indeterminate'
+  | 'settled';
 
 export type TurnBoundaryPurpose = 'turn' | 'task-dispatch';
 
@@ -46,6 +48,29 @@ export interface PreparedTurnIntent {
   readonly intentDigest: string;
   readonly bodyRef: string;
   readonly dedupKey?: string;
+}
+
+export interface TurnBoundarySnapshot {
+  readonly owner: OwnerIdentity;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface PreparedDedupSnapshot {
+  readonly owner: OwnerIdentity;
+  readonly createdAt: number;
+  /** The linked claim's preparedUpdatedAt. */
+  readonly updatedAt: string;
+}
+
+/** Passive, immutable acknowledgement; it never names a provider turn. */
+export interface PreparedTurnSettlement {
+  readonly id: string;
+  readonly disposition: 'cancelled' | 'definitively-refused';
+  readonly at: string;
+  readonly boundaryId: string;
+  readonly boundary: TurnBoundarySnapshot;
+  readonly dedup?: PreparedDedupSnapshot;
 }
 
 export interface TurnBoundaryRecord {
@@ -61,6 +86,7 @@ export interface TurnBoundaryRecord {
   /** Host event-sequence fence; absent/NULL rows retain timestamp ordering. */
   readonly createdSequence?: number | null;
   readonly intent?: PreparedTurnIntent;
+  readonly settlement?: PreparedTurnSettlement;
 }
 
 export interface RequestKeyId {

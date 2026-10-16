@@ -84,6 +84,32 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
     observed: { owner, createdAt: 'a', updatedAt: 'b', verdict: 'dead' },
     now: 'c',
   },
+  'turnBoundary.cancelPrepared': {
+    type: 'turnBoundary.cancelPrepared',
+    boundaryId: 'b',
+    intent: {
+      invocationId: 'i',
+      inputDigest: 'd',
+      intentDigest: 'e',
+      bodyRef: 'body',
+    },
+    boundary: { owner, createdAt: 'a', updatedAt: 'b' },
+    settlementId: 's',
+    now: 'c',
+  },
+  'turnBoundary.recordDefinitiveRefusal': {
+    type: 'turnBoundary.recordDefinitiveRefusal',
+    boundaryId: 'b',
+    intent: {
+      invocationId: 'i',
+      inputDigest: 'd',
+      intentDigest: 'e',
+      bodyRef: 'body',
+    },
+    boundary: { owner, createdAt: 'a', updatedAt: 'b' },
+    settlementId: 's',
+    now: 'c',
+  },
   'turnBoundary.transition': {
     type: 'turnBoundary.transition',
     boundaryId: 'b',

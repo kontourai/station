@@ -9,6 +9,10 @@ import type {
 } from '../commands.js';
 import { type OwnerLiveness, ownerFields } from '../owner.js';
 import type { TurnDedupRecord } from '../records.js';
+import {
+  isPreparedTurnSettlement,
+  sameSettlementOwner,
+} from './prepared-settlement.js';
 
 /**
  * A decision names the one write it wants (`put`, `delete`, or none) and the
@@ -51,6 +55,7 @@ export function preparedDedupLinkState(
  */
 export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
   return (
+    record.settlement === undefined &&
     preparedDedupLinkState(record) === 'unlinked' &&
     (record.invocation === 'pending' || record.invocation === 'untracked')
   );
@@ -79,6 +84,32 @@ export function decideTurnDedupClaim(
     return {
       write: { kind: 'put', record: owned },
       result: { kind: 'claimed', reclaimed: false },
+    };
+  }
+  if (current.settlement !== undefined) {
+    const audit = current.settlement;
+    if (
+      !isPreparedTurnSettlement(audit) ||
+      !audit.dedup ||
+      !current.owner ||
+      current.value !== null ||
+      !sameSettlementOwner(current.owner, audit.dedup.owner) ||
+      current.createdAt !== audit.dedup.createdAt ||
+      current.preparedUpdatedAt !== audit.dedup.updatedAt ||
+      current.invocation !==
+        (audit.disposition === 'cancelled' ? 'pending' : 'begun') ||
+      preparedDedupLinkState(current) !== 'linked' ||
+      current.preparedInvocationId === undefined
+    )
+      return { write: NO_WRITE, result: { kind: 'indeterminate' } };
+    return {
+      write: NO_WRITE,
+      result: {
+        kind: 'settled',
+        disposition: audit.disposition,
+        invocationId: current.preparedInvocationId,
+        settlementId: audit.id,
+      },
     };
   }
   if (current.value !== null)
@@ -117,6 +148,7 @@ function ownsUnresolved(
 ): current is TurnDedupRecord {
   return (
     current !== undefined &&
+    current.settlement === undefined &&
     current.value === null &&
     current.owner?.id === ownerId
   );
@@ -146,6 +178,8 @@ export function decideTurnDedupResolve(
   current: TurnDedupRecord | undefined,
   command: TurnDedupResolveCommand,
 ): TurnDedupDecision<TurnDedupSettleResult> {
+  if (current?.settlement !== undefined)
+    return { write: NO_WRITE, result: { kind: 'stale' } };
   // A retry after a lost acknowledgement finds its own value already there.
   if (current?.owner?.id === command.ownerId && current.value === command.value)
     return { write: NO_WRITE, result: { kind: 'applied' } };

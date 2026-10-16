@@ -1,6 +1,8 @@
 import type {
+  PreparedSettlementResult,
   TurnBoundaryBeginInvocationCommand,
   TurnBoundaryBeginInvocationResult,
+  TurnBoundaryCancelPreparedCommand,
   TurnBoundaryCreateCommand,
   TurnBoundaryCreateResult,
   TurnBoundaryObserveTerminalCommand,
@@ -9,6 +11,7 @@ import type {
   TurnBoundaryReconcileCommand,
   TurnBoundaryReconcileObservation,
   TurnBoundaryRecordAcceptedCommand,
+  TurnBoundaryRecordDefinitiveRefusalCommand,
   TurnBoundaryRemoveCommand,
   TurnBoundaryRemoveResult,
   TurnBoundaryResumePreparedCommand,
@@ -27,10 +30,16 @@ import {
 } from '../owner.js';
 import type {
   PreparedTurnIntent,
+  PreparedTurnSettlement,
   TurnBoundaryRecord,
   TurnDedupRecord,
 } from '../records.js';
 import { compareCodePoints } from './order.js';
+import {
+  isPreparedTurnSettlement,
+  samePreparedSettlement,
+  sameSettlementOwner,
+} from './prepared-settlement.js';
 import { preparedDedupLinkState } from './turn-dedup.js';
 
 /**
@@ -89,6 +98,7 @@ export function decideTurnBoundaryCreate(
           ? { kind: 'applied' }
           : { kind: 'busy' },
     };
+  threadRows = threadRows.filter((row) => row.state !== 'settled');
   const busy =
     command.state === 'lifecycle'
       ? threadRows.length > 0
@@ -114,6 +124,7 @@ export function decideTurnBoundaryRecordAccepted(
           ? { kind: 'applied' }
           : { kind: 'busy' },
     };
+  threadRows = threadRows.filter((row) => row.state !== 'settled');
   if (threadRows.length >= acceptedCapacity)
     return { result: { kind: 'busy' } };
   return {
@@ -144,6 +155,8 @@ export function decideTurnBoundaryTransition(
   command: TurnBoundaryTransitionCommand,
   collision: boolean,
 ): TurnBoundaryDecision<TurnBoundaryTransitionResult> {
+  if (current?.state === 'settled' || current?.settlement !== undefined)
+    return { result: { kind: 'stale' } };
   if (!['invoking', 'accepted', 'indeterminate'].includes(command.to))
     return { result: { kind: 'stale' } };
   // Prepared intent must cross the dual fence, never the legacy transition.
@@ -218,6 +231,8 @@ export function decideTurnBoundaryRemove(
   liveness: OwnerLiveness,
 ): { readonly remove: boolean; readonly result: TurnBoundaryRemoveResult } {
   if (!current) return { remove: false, result: { kind: 'applied' } };
+  if (current.state === 'settled' || current.settlement !== undefined)
+    return { remove: false, result: { kind: 'stale' } };
   if (current.state === 'prepared' && current.intent)
     return { remove: false, result: { kind: 'stale' } };
   if (
@@ -248,6 +263,8 @@ export function decideTurnBoundaryObserveTerminal(
       .filter(
         (row) =>
           row.state !== 'lifecycle' &&
+          row.state !== 'settled' &&
+          row.settlement === undefined &&
           row.purpose !== 'task-dispatch' &&
           (command.sessionTerminal && row.createdSequence != null
             ? terminalSequence !== undefined &&
@@ -328,6 +345,8 @@ export function decideTurnBoundaryPrepare(
 ): TurnBoundaryDecision<TurnBoundaryPrepareResult> {
   if (
     !current ||
+    current.settlement !== undefined ||
+    dedup?.settlement !== undefined ||
     current.owner.id !== command.ownerId ||
     current.purpose !== 'turn' ||
     (current.state !== 'reserved' && current.state !== 'prepared') ||
@@ -385,6 +404,8 @@ export function decideTurnBoundaryBeginInvocation(
 ): TurnBoundaryDecision<TurnBoundaryBeginInvocationResult> {
   if (
     current?.purpose !== 'turn' ||
+    current.settlement !== undefined ||
+    dedup?.settlement !== undefined ||
     current.owner.id !== command.ownerId ||
     !sameIntent(current.intent, command.intent) ||
     (current.state !== 'prepared' && current.state !== 'invoking')
@@ -423,6 +444,8 @@ export function decideTurnBoundaryResumePrepared(
   const observed = command.observed;
   if (
     current?.purpose !== 'turn' ||
+    current.settlement !== undefined ||
+    dedup?.settlement !== undefined ||
     current.state !== 'prepared' ||
     !sameIntent(current.intent, command.intent) ||
     observed.verdict !== 'dead' ||
@@ -466,6 +489,79 @@ export function decideTurnBoundaryResumePrepared(
   };
 }
 
+/** Cancel/refuse through this compound protocol only; ordinary release stays fenced. */
+export function decidePreparedTurnSettlement(
+  current: TurnBoundaryRecord | undefined,
+  dedup: TurnDedupRecord | undefined,
+  tombstoned: boolean,
+  command:
+    | TurnBoundaryCancelPreparedCommand
+    | TurnBoundaryRecordDefinitiveRefusalCommand,
+): TurnBoundaryDecision<PreparedSettlementResult> {
+  const refusal = command.type === 'turnBoundary.recordDefinitiveRefusal';
+  const expected: PreparedTurnSettlement = {
+    id: command.settlementId,
+    disposition: refusal ? 'definitively-refused' : 'cancelled',
+    at: command.now,
+    boundaryId: command.boundaryId,
+    boundary: command.boundary,
+    ...(command.dedup ? { dedup: command.dedup } : {}),
+  };
+  if (
+    !isPreparedTurnSettlement(expected) ||
+    current?.purpose !== 'turn' ||
+    current.boundaryId !== command.boundaryId ||
+    !sameIntent(current.intent, command.intent) ||
+    !sameSettlementOwner(current.owner, command.boundary.owner) ||
+    current.createdAt !== command.boundary.createdAt ||
+    current.providerTurnId !== undefined ||
+    (command.intent.dedupKey === undefined) !== (command.dedup === undefined)
+  )
+    return { result: { kind: 'refused' } };
+  const already = current.state === 'settled';
+  if (
+    already
+      ? current.updatedAt !== command.now ||
+        !samePreparedSettlement(current.settlement, expected)
+      : current.state !== (refusal ? 'invoking' : 'prepared') ||
+        current.updatedAt !== command.boundary.updatedAt ||
+        current.settlement !== undefined
+  )
+    return { result: { kind: 'refused' } };
+  if (command.intent.dedupKey !== undefined) {
+    const observed = command.dedup;
+    if (
+      tombstoned ||
+      !observed ||
+      !dedup ||
+      !dedup.owner ||
+      !sameSettlementOwner(dedup.owner, observed.owner) ||
+      dedup.createdAt !== observed.createdAt ||
+      dedup.value !== null ||
+      dedup.invocation !== (refusal ? 'begun' : 'pending') ||
+      dedup.key !== command.intent.dedupKey ||
+      preparedDedupLinkState(dedup) !== 'linked' ||
+      dedup.preparedInvocationId !== command.intent.invocationId ||
+      dedup.preparedUpdatedAt !== observed.updatedAt ||
+      (already
+        ? !samePreparedSettlement(dedup.settlement, expected)
+        : dedup.settlement !== undefined)
+    )
+      return { result: { kind: 'refused' } };
+  }
+  if (already) return { result: { kind: 'applied' } };
+  return {
+    ...(dedup ? { dedupPut: { ...dedup, settlement: expected } } : {}),
+    put: {
+      ...current,
+      state: 'settled',
+      updatedAt: command.now,
+      settlement: expected,
+    },
+    result: { kind: 'applied' },
+  };
+}
+
 /**
  * Dead owners' rows after a crash:
  *
@@ -501,6 +597,7 @@ export function decideTurnBoundaryReconcile(
   const interrupted: TurnBoundaryRecord[] = [];
   const resumable: TurnBoundaryRecord[] = [];
   for (const row of rows) {
+    if (row.state === 'settled' || row.settlement !== undefined) continue;
     const observation = verdicts.get(row.boundaryId);
     if (
       observation?.verdict !== 'dead' ||

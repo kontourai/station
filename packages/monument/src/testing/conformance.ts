@@ -1926,6 +1926,37 @@ for (const type of [
             (await boundary(session, 'intent'))?.settlement,
             expected,
           );
+          if (!refused) {
+            assert.deepEqual(
+              await session.run({
+                type: 'turnDedup.forgetPrefix',
+                prefix: 'prepared-key',
+              }),
+              { kind: 'applied', removed: 1 },
+            );
+            assert.deepEqual(
+              (await boundary(session, 'intent'))?.settlement,
+              expected,
+            );
+            assert.deepEqual(await session.run(command), { kind: 'refused' });
+            assert.deepEqual(
+              await session.run(
+                claim('prepared-key', session.processes.spawn(), 8),
+              ),
+              { kind: 'claimed', reclaimed: false },
+            );
+            assert.deepEqual(
+              await session.run({
+                type: 'turnBoundary.beginInvocation',
+                boundaryId: 'intent',
+                ownerId: owner.id,
+                dedupOwnerId: dedupOwner.id,
+                intent: preparedIntent,
+                now: at(8),
+              }),
+              { kind: 'refused' },
+            );
+          }
           const next = session.processes.spawn();
           assert.deepEqual(
             await session.run(

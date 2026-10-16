@@ -1,5 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
+import {
+  isPreparedTurnSettlement,
+  sameSettlementOwner,
+} from './decisions/prepared-settlement.js';
 import { isPreparedTurnIntent } from './decisions/turn-boundary.js';
 import {
   type OwnerIdentity,
@@ -17,6 +21,7 @@ import type {
   InboxEntryRecord,
   InboxEntryState,
   PreparedTurnIntent,
+  PreparedTurnSettlement,
   RequestKeyRecord,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -89,6 +94,8 @@ export interface SqliteTurnBoundaryTable {
   readonly intentColumns?: {
     readonly [K in keyof Required<PreparedTurnIntent>]: string;
   };
+  /** Optional passive settlement audit. Bound hosts create this nullable TEXT column. */
+  readonly settlementColumn?: string;
   /** Host event log replaces the kernel's terminal table. Requires terminalSeen. */
   readonly terminalFacts: 'kernel' | 'host';
   /** Fixed at open; invoked synchronously inside the command transaction. */
@@ -193,7 +200,7 @@ export interface SqliteExecuteOptions {
   readonly withinHostTransaction?: boolean;
 }
 
-export const SQLITE_KERNEL_SCHEMA_VERSION = 2;
+export const SQLITE_KERNEL_SCHEMA_VERSION = 3;
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 const WAL_ATTEMPTS = 5;
 
@@ -316,6 +323,7 @@ const RESERVED_OWNER_FIELDS = new Set([
   'invocation',
   'preparedInvocationId',
   'preparedUpdatedAt',
+  'settlement',
 ]);
 
 const OWNED_INTENT_COLUMNS = Object.freeze({
@@ -367,6 +375,23 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
   const boundary = tables.turnBoundary;
+  if (
+    boundary &&
+    boundary !== 'unused' &&
+    boundary.settlementColumn !== undefined
+  ) {
+    const column = identifier(boundary.settlementColumn).toLowerCase();
+    const used = boundaryColumns({ ...boundary, settlementColumn: undefined })
+      .split(', ')
+      .map((field) => field.toLowerCase());
+    if (
+      used.includes(column) ||
+      boundary.creationSequence?.column.toLowerCase() === column
+    )
+      throw new TypeError(
+        'The settlement audit must have its own boundary column.',
+      );
+  }
   if (boundary && boundary !== 'unused') {
     if (
       boundary.terminalFacts === 'host' &&
@@ -452,6 +477,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               ownerEncoding: 'json',
               terminalFacts: 'kernel',
               intentColumns: OWNED_INTENT_COLUMNS,
+              settlementColumn: 'settlement_json',
               owned: true,
             },
     inbox: tables.inbox ?? 'owned',
@@ -632,6 +658,9 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           ? [tables.turnBoundary.creationSequence.column]
           : []),
         ...Object.values(tables.turnBoundary.intentColumns ?? {}),
+        ...(tables.turnBoundary.settlementColumn
+          ? [tables.turnBoundary.settlementColumn]
+          : []),
       ]);
       const indexes = db
         .prepare(`PRAGMA index_list(${tables.turnBoundary.table})`)
@@ -689,6 +718,10 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           db.exec(
             `ALTER TABLE monument_turn_boundaries ADD COLUMN ${column} TEXT`,
           );
+      if (!present.has('settlement_json'))
+        db.exec(
+          'ALTER TABLE monument_turn_boundaries ADD COLUMN settlement_json TEXT',
+        );
       db.exec(`DROP INDEX IF EXISTS monument_turn_boundaries_one_invocation;
         CREATE UNIQUE INDEX monument_turn_boundaries_one_invocation ON monument_turn_boundaries(thread_id)
           WHERE state IN ('lifecycle', 'reserved', 'prepared', 'invoking', 'indeterminate');`);
@@ -702,7 +735,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
       return;
     }
-    if (row.value === '1') {
+    if (row.value === '1' || row.value === '2') {
       db.prepare(
         "UPDATE monument_meta SET value = ? WHERE key = 'schema_version'",
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
@@ -722,6 +755,7 @@ const BOUNDARY_STATES: ReadonlySet<string> = new Set<TurnBoundaryState>([
   'invoking',
   'accepted',
   'indeterminate',
+  'settled',
 ]);
 
 function parseInvocation(raw: unknown): TurnClaimInvocation | undefined {
@@ -740,6 +774,7 @@ function decodeDedupOwner(
   readonly recorded: unknown;
   readonly preparedInvocationId?: string;
   readonly preparedUpdatedAt?: string;
+  readonly settlement?: PreparedTurnSettlement;
 } {
   let parsed: unknown;
   try {
@@ -753,6 +788,15 @@ function decodeDedupOwner(
     const fields = (parsed ?? {}) as Record<string, unknown>;
     const link = fields.preparedInvocationId;
     const revision = fields.preparedUpdatedAt;
+    const audit = fields.settlement;
+    if (
+      audit !== undefined &&
+      (!isPreparedTurnSettlement(audit) ||
+        audit.dedup === undefined ||
+        link === undefined ||
+        revision === undefined)
+    )
+      throw new Error('Invalid prepared settlement metadata.');
     if ((link === undefined) !== (revision === undefined))
       throw new Error('Incomplete prepared invocation metadata.');
     if (link !== undefined && (typeof link !== 'string' || link === ''))
@@ -770,6 +814,7 @@ function decodeDedupOwner(
       recorded: fields.invocation,
       ...(link !== undefined ? { preparedInvocationId: link } : {}),
       ...(revision !== undefined ? { preparedUpdatedAt: revision } : {}),
+      ...(audit !== undefined ? { settlement: audit } : {}),
     };
   } catch (error) {
     if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
@@ -792,19 +837,38 @@ function decodeDedup(
   );
   if (typeof row.owner_json !== 'string')
     return { ...base, ...(legacyUntracked ? { invocation: 'untracked' } : {}) };
-  const { owner, recorded, preparedInvocationId, preparedUpdatedAt } =
-    decodeDedupOwner(row.owner_json, binding);
+  const {
+    owner,
+    recorded,
+    preparedInvocationId,
+    preparedUpdatedAt,
+    settlement,
+  } = decodeDedupOwner(row.owner_json, binding);
   // An unrecognised value reads as absent, which a dead owner never reclaims;
   // only a row with no record at all can fall back to `untracked`.
   const invocation =
     parseInvocation(recorded) ??
     (legacyUntracked && recorded === undefined ? 'untracked' : undefined);
+  if (
+    settlement &&
+    (!settlement.dedup ||
+      base.value !== null ||
+      !sameSettlementOwner(owner, settlement.dedup.owner) ||
+      base.createdAt !== settlement.dedup.createdAt ||
+      preparedUpdatedAt !== settlement.dedup.updatedAt ||
+      invocation !==
+        (settlement.disposition === 'cancelled' ? 'pending' : 'begun'))
+  )
+    throw new Error(
+      binding.ownerErrorMessage ?? 'Invalid prepared settlement record.',
+    );
   return {
     ...base,
     owner,
     ...(invocation ? { invocation } : {}),
     ...(preparedInvocationId !== undefined ? { preparedInvocationId } : {}),
     ...(preparedUpdatedAt !== undefined ? { preparedUpdatedAt } : {}),
+    ...(settlement !== undefined ? { settlement } : {}),
   };
 }
 
@@ -829,6 +893,9 @@ function encodeDedupOwner(
     ...(record.preparedUpdatedAt !== undefined
       ? { preparedUpdatedAt: record.preparedUpdatedAt }
       : {}),
+    ...(record.settlement !== undefined
+      ? { settlement: record.settlement }
+      : {}),
   });
 }
 
@@ -842,6 +909,17 @@ function decodeBoundary(
   const purpose = String(row.purpose);
   if (purpose !== 'turn' && purpose !== 'task-dispatch')
     throw new Error(`Invalid monument boundary purpose: ${purpose}`);
+  const owner = parseOwnerIdentity(
+    binding.ownerEncoding === 'json'
+      ? JSON.parse(String(row.owner_json))
+      : {
+          id: row.owner_id,
+          pid: row.owner_pid,
+          identityKind: row.owner_identity_kind,
+          birth: row.owner_birth,
+        },
+    { birthlessExact: 'unverified' },
+  );
   let intent: PreparedTurnIntent | undefined;
   if (binding.intentColumns) {
     const raw = Object.fromEntries(
@@ -857,6 +935,26 @@ function decodeBoundary(
       intent = raw;
     }
   }
+  let settlement: PreparedTurnSettlement | undefined;
+  if (binding.settlementColumn && row[binding.settlementColumn] != null) {
+    const raw: unknown = JSON.parse(String(row[binding.settlementColumn]));
+    if (!isPreparedTurnSettlement(raw))
+      throw new Error('Invalid monument settlement audit.');
+    settlement = raw;
+  }
+  if (
+    (state === 'settled') !== (settlement !== undefined) ||
+    (settlement !== undefined &&
+      (!intent ||
+        purpose !== 'turn' ||
+        row.provider_turn_id != null ||
+        settlement.boundaryId !== String(row.boundary_id) ||
+        !sameSettlementOwner(owner, settlement.boundary.owner) ||
+        settlement.boundary.createdAt !== String(row.created_at) ||
+        settlement.at !== String(row.updated_at) ||
+        (intent.dedupKey === undefined) !== (settlement.dedup === undefined)))
+  )
+    throw new Error('Invalid monument settled boundary.');
   return {
     boundaryId: String(row.boundary_id),
     threadId: String(row.thread_id),
@@ -865,17 +963,7 @@ function decodeBoundary(
     ...(typeof row.provider_turn_id === 'string'
       ? { providerTurnId: row.provider_turn_id }
       : {}),
-    owner: parseOwnerIdentity(
-      binding.ownerEncoding === 'json'
-        ? JSON.parse(String(row.owner_json))
-        : {
-            id: row.owner_id,
-            pid: row.owner_pid,
-            identityKind: row.owner_identity_kind,
-            birth: row.owner_birth,
-          },
-      { birthlessExact: 'unverified' },
-    ),
+    owner,
     ...(binding.creationSequence
       ? {
           createdSequence:
@@ -887,6 +975,7 @@ function decodeBoundary(
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     ...(intent ? { intent } : {}),
+    ...(settlement ? { settlement } : {}),
   };
 }
 
@@ -957,6 +1046,7 @@ function boundaryColumns(binding: SqliteTurnBoundaryTable): string {
     'created_at',
     'updated_at',
     ...Object.values(binding.intentColumns ?? {}),
+    ...(binding.settlementColumn ? [binding.settlementColumn] : []),
   ].join(', ');
 }
 
@@ -1098,6 +1188,10 @@ function sqliteTransaction(
           throw new SqliteKernelConfigurationError(
             'Prepared intent requires configured intentColumns.',
           );
+        if (record.settlement && !boundary.settlementColumn)
+          throw new SqliteKernelConfigurationError(
+            'Prepared settlement requires configured settlementColumn.',
+          );
         // An update retains even a NULL legacy fence. Only a new row reads the head.
         const prior = fence
           ? one(
@@ -1137,6 +1231,9 @@ function sqliteTransaction(
             (field) =>
               record.intent?.[field as keyof PreparedTurnIntent] ?? null,
           ),
+          ...(boundary.settlementColumn
+            ? [record.settlement ? JSON.stringify(record.settlement) : null]
+            : []),
           ...(fence
             ? [
                 prior
@@ -1158,6 +1255,9 @@ function sqliteTransaction(
                 'provider_turn_id',
                 'updated_at',
                 ...Object.values(boundary.intentColumns ?? {}),
+                ...(boundary.settlementColumn
+                  ? [boundary.settlementColumn]
+                  : []),
                 ...(changeOwner
                   ? boundary.ownerEncoding === 'json'
                     ? ['owner_json']
@@ -1405,9 +1505,20 @@ export function openSqliteKernelStorage(
         `${command.type}: this storage keeps no ${area} tables.`,
       );
     if (
+      (command.type === 'turnBoundary.cancelPrepared' ||
+        command.type === 'turnBoundary.recordDefinitiveRefusal') &&
+      tables.turnBoundary !== 'unused' &&
+      !tables.turnBoundary.settlementColumn
+    )
+      throw new SqliteKernelConfigurationError(
+        'Prepared settlement commands require settlementColumn.',
+      );
+    if (
       (command.type === 'turnBoundary.prepare' ||
         command.type === 'turnBoundary.beginInvocation' ||
-        command.type === 'turnBoundary.resumePrepared') &&
+        command.type === 'turnBoundary.resumePrepared' ||
+        command.type === 'turnBoundary.cancelPrepared' ||
+        command.type === 'turnBoundary.recordDefinitiveRefusal') &&
       command.intent.dedupKey !== undefined &&
       tables.turnDedup === 'unused'
     )

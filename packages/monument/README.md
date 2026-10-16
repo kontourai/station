@@ -225,8 +225,8 @@ decisions retain either surviving marker as non-replayable evidence. Only
 absence of both markers permits legacy pending behavior.
 Ordinary dedup claim, release and begin cannot bypass
 a linked intent, even with begun, unknown or untracked invocation evidence.
-Explicit prepared cancellation or definitive-refusal settlement requires its
-own guarded operation, outside this cut. Legacy boundary transition/remove cannot begin or
+Prepared cancellation and definitive-refusal settlement use the distinct guarded
+commands below. Legacy boundary transition/remove cannot begin or
 erase a captured prepared intent. A dead linked pending key answers `prepared`.
 
 `turnBoundary.beginInvocation` compares the boundary owner and complete intent,
@@ -249,9 +249,10 @@ Bound SQLite tables opt in with `intentColumns`, an object mapping each intent
 field (including optional-value `dedupKey`) to its own nullable TEXT column. All
 five column names are validated and copied at open. Old hosts need no new
 columns; intent-bearing writes require the explicit binding. JSON and column
-owner layouts use the same protocol. Default owned tables migrate schema version
-one additively to version two, preserving legacy rows and adding reserved to the
-unique active-thread index. Prepared dedup links remain in `owner_json`, with no
+owner layouts use the same protocol. Owned tables migrate older versions additively
+to the current schema. Version two added intent columns and reserved to the
+unique active-thread index; version three adds passive settlement audit.
+Prepared dedup links remain in `owner_json`, with no
 new host dedup columns.
 
 Reconciliation removes dead reservations and inputless legacy preparation. It
@@ -260,6 +261,55 @@ invoking becomes indeterminate as before. A candidate is not replay permission:
 explicit resume must still validate both fences and the host must verify the
 body and fresh authority. There is no automatic resume, host resume API, generated
 key, input blob store or invocation terminal attribution in this package change.
+
+### Explicit prepared settlement
+
+`turnBoundary.cancelPrepared` settles only ordinary prepared/pending intent that
+never began. `turnBoundary.recordDefinitiveRefusal` settles only invoking/begun
+intent: issuing that distinct command is the host's explicit assertion that the
+adapter definitively refused the effect. An error, timeout or dead process does
+not establish that fact. The kernel trusts the authorized host's assertion and
+does not infer it from provider output or liveness.
+
+Both commands take `boundaryId`, complete `intent`, `settlementId`, `now`, a
+`boundary: { owner, createdAt, updatedAt }` snapshot and, for a linked key,
+`dedup: { owner, createdAt, updatedAt }`. The dedup update revision is its stored
+`preparedUpdatedAt`. Each independently private full owner and revision must
+still match; resolved, tombstoned, unknown/untracked, wrong-stage or inconsistent
+backlink evidence refuses. No key is invented for keyless intent.
+
+One transaction records a `PreparedTurnSettlement` on both existing rows, dedup
+first and boundary second. The boundary becomes passive `settled` with its
+opaque intent/bodyRef retained. The audit records the id, disposition
+(`cancelled` or `definitively-refused`), settlement time, boundary identity and
+both original snapshots. Dedup stays unresolved without a fabricated provider
+turn value; a later claim returns a distinct `settled` outcome. Ordinary release,
+begin and resolve cannot reinterpret this as a fresh invocation. The host must
+surface the disposition and require a deliberate new request with a new key.
+
+An exact retry acknowledges `applied` only while both retained settlement audits,
+the command id/time/disposition, original snapshots, current intent and linked
+record facts still match. A different id/time/fact, a missing record or a partial
+settlement refuses. An acknowledgement never invokes an adapter or reopens the
+settled turn.
+
+Raw boundary listing retains settlement audit. Settled rows hold no active
+occupancy or accepted-capacity slot, have no possible effect, and are excluded
+from dead-owner recovery and terminal retirement. Generic transition/remove
+cannot erase the boundary audit; existing explicit `forgetThread` can remove it.
+The host's retained body is untouched. Existing explicit `turnDedup.forgetPrefix`
+still has its deliberate deletion authority: it can erase key/tombstone and
+dedup settlement retention while the boundary audit/body remain. Key absence
+never permits resuming that retained settled invocation. Restrict these broad
+host deletion authorities separately from ordinary delivery commands.
+
+Owned SQLite schema version three adds nullable `settlement_json` without
+rewriting legacy records. Bound hosts opt in with `settlementColumn`, a copied,
+fixed-at-open unique nullable TEXT column. New settlement commands fail before
+writes without that binding; old hosts and their legacy commands need no column.
+Both owner layouts and execute interfaces use the same audit/transaction path.
+No host cancellation API, retry policy, invocation-aware terminal rule or dormant
+Session-start child protocol is implemented by these portable commands.
 
 Probing whether a process is alive can take seconds, so it never happens under
 the write lock during reconciliation. A host lists the rows, plans the command, and commits it:

@@ -14,6 +14,7 @@ import {
 } from './decisions/inbox.js';
 import { decideRequestKeyClaim } from './decisions/request-keys.js';
 import {
+  decidePreparedTurnSettlement,
   decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
@@ -242,6 +243,19 @@ function dispatch(
       if (decision.put) tx.turnBoundary.put(decision.put);
       return decision.result;
     }
+    case 'turnBoundary.cancelPrepared':
+    case 'turnBoundary.recordDefinitiveRefusal': {
+      const key = command.intent.dedupKey;
+      const decision = decidePreparedTurnSettlement(
+        tx.turnBoundary.get(command.boundaryId),
+        key === undefined ? undefined : tx.turnDedup.get(key),
+        key !== undefined && tx.turnDedup.expiredAt(key) !== undefined,
+        command,
+      );
+      if (decision.dedupPut) tx.turnDedup.put(decision.dedupPut);
+      if (decision.put) tx.turnBoundary.put(decision.put);
+      return decision.result;
+    }
     case 'turnBoundary.recordAccepted': {
       const decision = decideTurnBoundaryRecordAccepted(
         tx.turnBoundary.listThread(command.threadId),
@@ -302,7 +316,10 @@ function dispatch(
         active: tx.turnBoundary
           .listThread(command.threadId)
           .some(
-            (row) => row.state !== 'lifecycle' && !retired.has(row.boundaryId),
+            (row) =>
+              row.state !== 'lifecycle' &&
+              row.state !== 'settled' &&
+              !retired.has(row.boundaryId),
           ),
       };
     }
@@ -475,6 +492,8 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'turnBoundary.prepare': false,
   'turnBoundary.beginInvocation': false,
   'turnBoundary.resumePrepared': false,
+  'turnBoundary.cancelPrepared': false,
+  'turnBoundary.recordDefinitiveRefusal': false,
   'turnBoundary.transition': false,
   'turnBoundary.remove': false,
   'turnBoundary.recordAccepted': false,
