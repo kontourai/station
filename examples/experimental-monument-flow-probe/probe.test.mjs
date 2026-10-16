@@ -79,6 +79,7 @@ describe('bounded continuation consumer', () => {
       expect(await probe().recover(at(3))).toEqual({
         kind: 'reconciled',
         interrupted: [],
+        resumable: [],
       });
       const next = new ContinuationProbe(
         store.storage,
