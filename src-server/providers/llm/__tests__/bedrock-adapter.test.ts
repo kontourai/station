@@ -1,3 +1,4 @@
+import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import { describe, expect, test, vi } from 'vitest';
 import { expectCanonicalSessionLifecycle } from '../../__tests__/adapter-contract-test-utils.js';
 import { BedrockAdapter } from '../../adapters/bedrock-adapter.js';
@@ -38,55 +39,68 @@ async function drainEvents(
 }
 
 describe('BedrockAdapter', () => {
-  test('starts sessions, sends turns, and emits canonical runtime events', async () => {
-    const resolveModelId = vi.fn(
-      async (modelId: string) => `resolved:${modelId}`,
-    );
-    const adapter = new BedrockAdapter(
-      {
-        sendTurn: async () => ({
-          outputText: 'Completed output',
-        }),
-      },
-      { modelCatalog: { resolveModelId } },
-    );
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([undefined, 'bedrock-origin'])(
+    'starts sessions, sends turns, and emits canonical runtime events (origin %s)',
+    async (invocationId) => {
+      const resolveModelId = vi.fn(
+        async (modelId: string) => `resolved:${modelId}`,
+      );
+      const adapter = new BedrockAdapter(
+        {
+          sendTurn: async () => ({
+            outputText: 'Completed output',
+          }),
+        },
+        { modelCatalog: { resolveModelId } },
+      );
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-    const session = await adapter.startSession({
-      provider: 'bedrock',
-      threadId: 'thread-1',
-      cwd: '/tmp/project',
-      modelId: 'anthropic.claude',
-    });
-    const turn = await adapter.sendTurn({
-      threadId: session.threadId,
-      input: 'Inspect the repo',
-    });
+      const session = await adapter.startSession({
+        provider: 'bedrock',
+        threadId: 'thread-1',
+        cwd: '/tmp/project',
+        modelId: 'anthropic.claude',
+      });
+      const input: ProviderSendTurnInput = {
+        threadId: session.threadId,
+        input: 'Inspect the repo',
+        ...(invocationId ? { invocationId } : {}),
+        metadata: { invocationId: 'untrusted-metadata-origin' },
+      };
+      const pending = adapter.sendTurn(input);
+      input.invocationId = 'mutated-before-model-resolution';
+      const turn = await pending;
 
-    expect(turn.threadId).toBe('thread-1');
-    expect(resolveModelId).toHaveBeenCalledWith('anthropic.claude');
-    expect(await adapter.hasSession('thread-1')).toBe(true);
+      expect(turn.threadId).toBe('thread-1');
+      expect(resolveModelId).toHaveBeenCalledWith('anthropic.claude');
+      expect(await adapter.hasSession('thread-1')).toBe(true);
 
-    const events = [];
-    for (let index = 0; index < 6; index += 1) {
-      events.push((await iterator.next()).value);
-    }
-    const methods = events.map((event) => event.method);
+      const events = [];
+      for (let index = 0; index < 6; index += 1) {
+        events.push((await iterator.next()).value);
+      }
+      for (const event of events) {
+        if (event.turnId && invocationId)
+          expect(event).toMatchObject({ invocationId });
+        else expect(event).not.toHaveProperty('invocationId');
+      }
+      const methods = events.map((event) => event.method);
 
-    expectCanonicalSessionLifecycle(methods);
-    expect(methods).toEqual([
-      'session.started',
-      'session.configured',
-      'session.state-changed',
-      'turn.started',
-      'content.text-delta',
-      'turn.completed',
-    ]);
-    expect(events[1]).toMatchObject({
-      method: 'session.configured',
-      model: 'resolved:anthropic.claude',
-    });
-  });
+      expectCanonicalSessionLifecycle(methods);
+      expect(methods).toEqual([
+        'session.started',
+        'session.configured',
+        'session.state-changed',
+        'turn.started',
+        'content.text-delta',
+        'turn.completed',
+      ]);
+      expect(events[1]).toMatchObject({
+        method: 'session.configured',
+        model: 'resolved:anthropic.claude',
+      });
+    },
+  );
 
   test('resolves approval requests and tears down sessions', async () => {
     const adapter = new BedrockAdapter(
@@ -554,6 +568,7 @@ describe('BedrockAdapter', () => {
     const pending = adapter.sendTurn({
       threadId: 'cancel-turn',
       input: 'Run',
+      invocationId: 'interrupt-origin',
     });
     await vi.waitFor(() => expect(streamSignal).toBeDefined());
     await adapter.interruptTurn('cancel-turn');
@@ -569,7 +584,10 @@ describe('BedrockAdapter', () => {
       ),
     ).toEqual([]);
     expect(events.filter((event) => event?.method === 'turn.aborted')).toEqual([
-      expect.objectContaining({ method: 'turn.aborted' }),
+      expect.objectContaining({
+        method: 'turn.aborted',
+        invocationId: 'interrupt-origin',
+      }),
     ]);
   });
 
@@ -672,10 +690,18 @@ describe('BedrockAdapter', () => {
       modelId: 'model-a',
     });
 
-    const first = adapter.sendTurn({ threadId: 'overlap', input: 'first' });
+    const first = adapter.sendTurn({
+      threadId: 'overlap',
+      input: 'first',
+      invocationId: 'origin-A',
+    });
     const firstFailure = expect(first).rejects.toThrow('Superseded');
     await vi.waitFor(() => expect(resolvers).toHaveLength(1));
-    const second = adapter.sendTurn({ threadId: 'overlap', input: 'second' });
+    const second = adapter.sendTurn({
+      threadId: 'overlap',
+      input: 'second',
+      invocationId: 'origin-B',
+    });
     await vi.waitFor(() => expect(resolvers).toHaveLength(2));
     const events = [];
     for (let index = 0; index < 7; index += 1) {
@@ -692,7 +718,12 @@ describe('BedrockAdapter', () => {
           (event) =>
             event.method === 'turn.aborted' && event.turnId === turnIds[0],
         ),
-    ).toEqual([expect.objectContaining({ reason: 'superseded' })]);
+    ).toEqual([
+      expect.objectContaining({
+        reason: 'superseded',
+        invocationId: 'origin-A',
+      }),
+    ]);
 
     resolvers[0]!({ outputText: 'stale' });
     await firstFailure;
@@ -707,5 +738,18 @@ describe('BedrockAdapter', () => {
     resolvers[1]!({ outputText: 'current' });
     await expect(second).resolves.toMatchObject({ threadId: 'overlap' });
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
+    const remaining = [];
+    for (let index = 0; index < 3; index++)
+      remaining.push((await iterator.next()).value);
+    expect(remaining).toMatchObject([
+      {
+        method: 'content.text-delta',
+        delta: 'current',
+        invocationId: 'origin-B',
+      },
+      { method: 'turn.completed', invocationId: 'origin-B' },
+      { method: 'session.state-changed' },
+    ]);
+    expect(remaining[2]).not.toHaveProperty('invocationId');
   });
 });

@@ -39,6 +39,7 @@ async function runTurn(finishChunk: Record<string, unknown>): Promise<{
   const turn = await adapter.sendTurn({
     threadId: 'usage-thread',
     input: 'measure me',
+    invocationId: 'usage-origin',
   });
 
   const events: Array<Record<string, unknown>> = [];
@@ -89,7 +90,7 @@ describe('BedrockAdapter token-usage.updated emission (station#4197)', () => {
       provider: 'bedrock',
       threadId: 'usage-thread',
       turnId,
-      // The engine's own cache-EXCLUSIVE prompt figure (wire `inputTokens`),
+      invocationId: 'usage-origin', // The engine's own cache-EXCLUSIVE prompt figure (wire `inputTokens`),
       // backing the `'disjoint'` declaration in
       // `PROVIDER_PROMPT_CACHE_INCLUSIVITY` — NOT the SDK's inclusive 9130.
       promptTokens: 30,
