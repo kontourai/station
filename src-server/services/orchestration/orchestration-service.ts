@@ -12488,7 +12488,19 @@ export class OrchestrationService {
             result.turnId,
           );
           return result;
-        } catch {
+        } catch (error) {
+          if (
+            error instanceof SendTurnRefusedError &&
+            owned.claim.recordDefinitiveRefusal
+          ) {
+            owned.turnClaim?.retain();
+            const settled = owned.claim.recordDefinitiveRefusal(
+              new Date().toISOString(),
+            );
+            if (settled.kind === 'applied')
+              throw new TurnIdempotencySettledError('definitively-refused');
+            throw new SessionTurnStartIndeterminateError();
+          }
           owned.claim.indeterminate(new Date().toISOString());
           owned.turnClaim?.retain();
           throw new SessionTurnStartIndeterminateError();
