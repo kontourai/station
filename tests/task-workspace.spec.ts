@@ -200,7 +200,9 @@ test.describe
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
       await expect(
-        page.getByText('task-primary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-primary', { exact: true }),
       ).toBeVisible();
       await page.getByRole('button', { name: /artifact.md/ }).click();
       await expect(page.getByText('artifact evidence')).toBeVisible();
@@ -292,7 +294,9 @@ test.describe
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
       await expect(
-        page.getByText('task-secondary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-secondary', { exact: true }),
       ).toBeVisible();
       await expect(page.getByText('Unavailable', { exact: true })).toHaveCount(
         2,

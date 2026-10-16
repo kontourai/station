@@ -276,11 +276,17 @@ async function fixture() {
         : undefined;
     },
   });
+  const completions = new Map<string, () => void>();
   const failures: unknown[] = [];
   const publications = new Set<Promise<void>>();
   const unsubscribe = bus.subscribe((frame) => {
     if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
     const event = frame.data?.event as CanonicalRuntimeEvent;
+    if (event.method === 'turn.completed' && event.turnId) {
+      const key = `${event.threadId}:${event.turnId}`;
+      completions.get(key)?.();
+      completions.delete(key);
+    }
     const pending = conversation.observe(event).catch((error) => {
       failures.push(error);
     });
@@ -330,6 +336,11 @@ async function fixture() {
     graph,
     room,
     adapter,
+    complete: (sessionId: string, turnId: string, text: string) =>
+      new Promise<void>((resolve) => {
+        completions.set(`${sessionId}:${turnId}`, resolve);
+        adapter.answer(sessionId, turnId, text);
+      }),
     post,
     principal,
     warnings,
@@ -638,24 +649,7 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
   const f = await fixture();
   try {
     const sessionId = await requestAgent(f);
-    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
-    await vi.waitFor(async () =>
-      expect(
-        (
-          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
-        )?.events.some(
-          (event) =>
-            event.method === 'turn.completed' && event.turnId === 'turn-1',
-        ),
-        JSON.stringify({
-          events: f.store.listEvents(sessionId).map((event) => ({
-            method: event.payload.method,
-            turnId: event.payload.turnId,
-          })),
-          warnings: f.warnings.mock.calls,
-        }),
-      ).toBe(true),
-    );
+    await f.complete(sessionId, 'turn-1', 'Initial answer');
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
@@ -732,24 +726,7 @@ test('a continuation failure after admission posts no human reply', async () => 
   const f = await fixture();
   try {
     const sessionId = await requestAgent(f);
-    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
-    await vi.waitFor(async () =>
-      expect(
-        (
-          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
-        )?.events.some(
-          (event) =>
-            event.method === 'turn.completed' && event.turnId === 'turn-1',
-        ),
-        JSON.stringify({
-          events: f.store.listEvents(sessionId).map((event) => ({
-            method: event.payload.method,
-            turnId: event.payload.turnId,
-          })),
-          warnings: f.warnings.mock.calls,
-        }),
-      ).toBe(true),
-    );
+    await f.complete(sessionId, 'turn-1', 'Initial answer');
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
@@ -779,21 +756,7 @@ test('a continued provider turn remains acknowledged when posting its human repl
   const f = await fixture();
   try {
     const sessionId = await requestAgent(f);
-    f.adapter.answer(sessionId, 'turn-1', 'Initial answer');
-    await vi.waitFor(async () =>
-      expect(
-        (
-          await f.sessions.readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
-        )?.events.some((event) => event.method === 'turn.completed'),
-        JSON.stringify({
-          events: f.store.listEvents(sessionId).map((event) => ({
-            method: event.payload.method,
-            turnId: event.payload.turnId,
-          })),
-          warnings: f.warnings.mock.calls,
-        }),
-      ).toBe(true),
-    );
+    await f.complete(sessionId, 'turn-1', 'Initial answer');
     await f.conversation.reconcile(f.task.id);
     vi.spyOn(f.conversation, 'reply').mockRejectedValueOnce(
       new Error('Controlled history failure'),
