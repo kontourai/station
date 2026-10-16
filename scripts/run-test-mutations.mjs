@@ -57,9 +57,9 @@ export function removeEmptyRender(source) {
 export const MUTATIONS = [
   {
     id: 'worktree-diff-untracked-inclusion',
-    test: 'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
     failure:
-      'public diff includes three untracked additions without changing index or status',
+      'literal quoted, newline, Unicode and shell-looking names parse as distinct additions, including no final newline',
     files: [
       {
         path: 'src-server/services/projects/workspace-diff-service.ts',

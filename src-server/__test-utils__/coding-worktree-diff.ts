@@ -19,6 +19,7 @@ export function codingDiffFixture(directory: string) {
         ...process.env,
         GIT_CONFIG_GLOBAL: join(root, 'absent-global-config'),
         GIT_CONFIG_NOSYSTEM: '1',
+        GIT_OPTIONAL_LOCKS: '0',
       },
     });
   const put = (name: string, content: string | Buffer) => {
