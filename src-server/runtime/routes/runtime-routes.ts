@@ -9410,12 +9410,11 @@ export function configureDevicePairingHostRoutes(
           const operatorCredential =
             actor?.authority === 'operator-credential' &&
             options.verifyOperatorCredential?.(actor.credential) === true;
-          // The same operator test person binding uses: the operator
-          // credential, or the desktop's own home-possession local grant.
+          // Device-use grants may also be approved by the host-issued
+          // browser session; verified-person binding remains separate.
           const localGrant =
             actor?.authority === 'device-credential' &&
             actor.locality === 'home-possession' &&
-            actor.mintKind === 'local-grant' &&
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
             (pairing.credentialMintKind(actor.credential) === 'local-grant' ||

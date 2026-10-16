@@ -810,6 +810,18 @@ test('the desktop home-proven local grant can invite and approve a phone without
     (await h.request('/api/pairing/people', { headers: browserHeaders }))
       .status,
   ).toBe(403);
+  const requestedFullAccess = await h.deviceAccessRequest(
+    'Another browser',
+    'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access',
+  );
+  const approvedFullAccess = await h.request(
+    `/api/pairing/requests/${requestedFullAccess.requestId}/confirm`,
+    {
+      ...h.json({}),
+      headers: { ...browserHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+  expect(approvedFullAccess.status).toBe(200);
   const changed = await h.request(
     `/api/pairing/devices/${phone.device.id}/scope`,
     {
