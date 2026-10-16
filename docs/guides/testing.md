@@ -2091,11 +2091,10 @@ writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
 UI bundle budget, enforced by the fresh browser startup build rather than a
-second standalone UI build. `fast-checks` requires successful plan/statics jobs
-and successful shard receipts, or independently validated empty-plan omission, and
-the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
-slice of that plan; a skipped or cancelled part, a missing receipt, or a
-receipt for another plan or head fails it. A deferred selection (the
+second standalone UI build. `fast-checks` requires successful plan/statics jobs.
+The `aggregate` command independently validates empty-plan omission or proves
+that each allocated shard ran its exact slice. An unexpected skip, cancellation,
+missing receipt, or receipt for another plan or head fails the check. A deferred selection (the
 selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no
