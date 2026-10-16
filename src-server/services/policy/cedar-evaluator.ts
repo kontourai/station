@@ -15,14 +15,14 @@ export interface PolicyRequest {
   context: Context;
   entities: Entities;
 }
-export interface PolicyDecision {
+interface PolicyDecision {
   decision: 'allow' | 'deny';
   policyRevision: string;
   schemaRevision: string;
   determiningPolicyIds: string[];
   errors: { category: Category; policyId?: string }[];
 }
-export interface ValidatedPolicySet {
+interface ValidatedPolicySet {
   readonly policyRevision: string;
   readonly schemaRevision: string;
   evaluate(request: PolicyRequest): PolicyDecision;
@@ -216,12 +216,16 @@ export async function createPolicySet(input: {
             if (answer.type !== 'success') return deny('evaluation');
             const diagnostics = answer.response.diagnostics;
             const safeId = (id: string) => ids.includes(id);
-            const errors: PolicyDecision['errors'] = diagnostics.errors.map(
-              (error) => ({
+            const errors: PolicyDecision['errors'] = diagnostics.errors
+              .map((error) => ({
                 category: 'evaluation',
                 ...(safeId(error.policyId) ? { policyId: error.policyId } : {}),
-              }),
-            );
+              }))
+              .sort((a, b) => {
+                const left = a.policyId ?? '';
+                const right = b.policyId ?? '';
+                return left < right ? -1 : left > right ? 1 : 0;
+              });
             return {
               decision: errors.length ? 'deny' : answer.response.decision,
               policyRevision,

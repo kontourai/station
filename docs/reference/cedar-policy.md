@@ -28,7 +28,7 @@ error forces deny**, even alongside a matching permit. A forbid overrides a
 permit. An initialization failure remains refused for the process lifetime.
 
 The adapter limits each policy-set input and each evaluation input to 256 KiB
-of JSON, 16,384 visited values and depth 32, with at most 128 policies and 1,024
+of JSON, 16,384 visited values and depth 32, with 1–128 policies and 1,024
 entities. Strings are counted in UTF-8. Only plain JSON objects, dense arrays,
 booleans, null, strings and safe integer numbers are accepted; accessors,
 cycles and lossy number representations are refused. These are admission
@@ -58,7 +58,7 @@ npm run test:focused -- src-server/services/policy/__tests__/cedar-evaluator.tes
 
 The [packaged probe](../../scripts/probe-packaged-cedar.mjs) stages only Cedar's
 runtime closure and the real esbuild probe into a temporary install outside the
-checkout, disables network connections, evaluates 200 requests, removes WASM
+checkout, disables network connections, evaluates 200 requests with 16 policies and 128 entities, removes WASM
 as a failure control, then restores and reevaluates. It reports initialization,
 warm median/p95, process memory and artifact bytes. These bounded diagnostic
 measurements have no performance SLA and do not measure a live request route.

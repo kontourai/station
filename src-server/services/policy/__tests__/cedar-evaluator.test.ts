@@ -82,6 +82,8 @@ describe('Cedar policy foundation (real WASM)', () => {
     const set = await prepare({ permit });
     const missing = request();
     missing.entities = [];
+    const absentAttribute = request();
+    absentAttribute.entities[1].attrs = {};
     const malformed = request();
     malformed.entities[1].attrs.level = 'one';
     const context = request();
@@ -97,7 +99,14 @@ describe('Cedar policy foundation (real WASM)', () => {
     });
     const cyclic = request();
     cyclic.context.self = cyclic.context;
-    for (const facts of [missing, malformed, context, getter, cyclic]) {
+    for (const facts of [
+      missing,
+      absentAttribute,
+      malformed,
+      context,
+      getter,
+      cyclic,
+    ]) {
       expect(set.evaluate(facts)).toMatchObject({
         decision: 'deny',
         errors: [{ category: 'input' }],
@@ -131,5 +140,35 @@ describe('Cedar policy foundation (real WASM)', () => {
     expect((await prepare({ permit })).policyRevision).toBe(
       first.policySet.policyRevision,
     );
+  });
+});
+
+it('bounds policy input, entity count and nesting before evaluation', async () => {
+  const set = await prepare({ permit });
+  const many = request();
+  many.entities = Array.from({ length: 1025 }, () => many.entities[0]);
+  expect(set.evaluate(many)).toMatchObject({
+    decision: 'deny',
+    errors: [{ category: 'limit' }],
+  });
+  const deep = request();
+  let nested: Record<string, unknown> = {};
+  for (let i = 0; i < 34; i++) nested = { nested };
+  Object.assign(deep.context, nested);
+  expect(set.evaluate(deep)).toMatchObject({
+    decision: 'deny',
+    errors: [{ category: 'limit' }],
+  });
+  expect(
+    await createPolicySet({
+      schema,
+      policies: Object.fromEntries(
+        Array.from({ length: 129 }, (_, i) => [`p${i}`, permit]),
+      ),
+    }),
+  ).toMatchObject({
+    ok: false,
+    decision: 'deny',
+    errors: [{ category: 'limit' }],
   });
 });

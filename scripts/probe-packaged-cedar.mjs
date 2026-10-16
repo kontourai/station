@@ -9,7 +9,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { stageDesktopServerRuntime } from './lib/desktop-server-runtime.mjs';
+import {
+  inspectDesktopServerRuntime,
+  stageDesktopServerRuntime,
+} from './lib/desktop-server-runtime.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -20,6 +23,7 @@ import {
 const root = process.cwd();
 const scratch = mkdtempSync(join(tmpdir(), 'station-cedar-package-'));
 const staged = join(scratch, 'installed');
+let retainScratch = false;
 try {
   // Exercise the production desktop/portable stager and its pruning rules.
   stageDesktopServerRuntime({
@@ -64,21 +68,11 @@ try {
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('Cedar probe timeout')), 30000);
     });
+    let result;
     try {
-      const result = await Promise.race([execution.completion, timeout]);
-      const captured = output.finish();
-      if (
-        captured.truncated ||
-        captured.invalidUtf8 ||
-        result.error ||
-        result.signal
-      )
-        throw new Error('Packaged probe did not complete cleanly');
-      return {
-        status: result.status,
-        stdout: captured.stdout.text,
-        stderr: captured.stderr.text,
-      };
+      result = await Promise.race([execution.completion, timeout]);
+    } catch (error) {
+      result = { error };
     } finally {
       clearTimeout(timer);
       const settlement = await terminateSuiteExecution(execution, {
@@ -87,12 +81,25 @@ try {
         terminationForceMs: 5000,
         waitForSuiteSettlement,
       });
-      if (!settlement.settled) {
-        process.stderr.write(`Unsettled Cedar probe; retaining ${scratch}\n`);
-        process.exit(1);
-      }
+      retainScratch = !settlement.settled;
     }
+    if (retainScratch)
+      throw new Error(`Unsettled Cedar probe; retaining ${scratch}`);
+    const captured = output.finish();
+    if (
+      captured.truncated ||
+      captured.invalidUtf8 ||
+      result.error ||
+      result.signal
+    )
+      throw new Error('Packaged probe did not complete cleanly');
+    return {
+      status: result.status,
+      stdout: captured.stdout.text,
+      stderr: captured.stderr.text,
+    };
   }
+
   const positive = await run();
   if (positive.status !== 0)
     throw new Error(`Packaged probe failed: ${positive.stderr}`);
@@ -112,8 +119,8 @@ try {
   if (restored.status !== 0)
     throw new Error(`Restored package failed: ${restored.stderr}`);
   process.stdout.write(
-    `${JSON.stringify({ sourceRevision: process.env.STATION_PROBE_REVISION ?? 'NOT_RECORDED', receipt: JSON.parse(positive.stdout), restored: JSON.parse(restored.stdout), missingAsset: 'deny:initialization', wasmBytes: statSync(wasm).size, probeBytes: statSync(join(staged, 'probe.mjs')).size, licenseBytes: readFileSync(join(staged, 'third-party/cedar/LICENSE')).length })}\n`,
+    `${JSON.stringify({ sourceRevision: process.env.STATION_PROBE_REVISION ?? 'NOT_RECORDED', receipt: JSON.parse(positive.stdout), restored: JSON.parse(restored.stdout), missingAsset: 'deny:initialization', runtimeClosure: inspectDesktopServerRuntime(staged), wasmBytes: statSync(wasm).size, probeBytes: statSync(join(staged, 'probe.mjs')).size, licenseBytes: readFileSync(join(staged, 'third-party/cedar/LICENSE')).length })}\n`,
   );
 } finally {
-  rmSync(scratch, { recursive: true, force: true });
+  if (!retainScratch) rmSync(scratch, { recursive: true, force: true });
 }
