@@ -216,6 +216,11 @@ with no recoverable failure evidence. Counts remain the canonical failure
 tally — `recoveredFailures` is corroborating identity, never an independent
 count source.
 
+Changed-test diagnostic reconciliation counts an execution error as either an
+infrastructure error or a parser error, never both. Retaining a consistent
+partial diagnostic preserves its `complete: false` and the owner's non-pass
+status/counts; it does not qualify the interrupted execution.
+
 An exhausted related-discovery budget stops the changed-test selector during
 preparation and produces infrastructure-error evidence, not failed test
 counts or a passing empty selection. A malformed deadline environment value
