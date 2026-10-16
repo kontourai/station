@@ -1505,7 +1505,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           }
           // station#1569 (item 4): what the session-end settle reads. Kept
           // here rather than inside the relay so that function stays pure.
-          if (mapped.toolOpened) {
+          if (
+            mapped.toolOpened &&
+            !controller.signal.aborted &&
+            this.sessions.get(record.session.threadId) === record &&
+            record.activeController === controller
+          ) {
             record.openToolCalls.set(mapped.toolOpened.toolCallId, {
               toolName: mapped.toolOpened.toolName,
               turnId,
