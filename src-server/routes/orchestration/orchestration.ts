@@ -1054,6 +1054,8 @@ const sessionEventWindowQuerySchema = z.object({
 
 interface DelegateTaskRequest {
   prompt: string;
+  /** Human-authored room title, before the provider brief is appended. */
+  title?: string;
   target: ExecutionTarget;
   parentTaskId?: string;
   sessionId?: string;
