@@ -3,7 +3,8 @@
 On phones, the **Settings section** picker lists topics; computers show the
 same topics in a navigation rail. Both stay within Settings. General is the
 default. Customize opens management destinations from a separate sidebar-footer
-button beside Schedule and Settings. Route changes still use the
+button beside Schedule and Settings, or from Sidebar utilities when the
+workspace map is collapsed. Route changes still use the
 unsaved-changes guard.
 
 The Settings catalog assigns stable ids and deep links to its controls. A
@@ -59,6 +60,10 @@ is the reason to take both parameters from `GET /api/settings/registry` rather
 than assemble them.
 
 Moves so far:
+
+- The Quiet tree workspace map retires `sidebar-sections`: chats and composer
+  drafts remain in the chat dock. Old links take the missing-highlight path
+  described above; stored device values and preference backups still round-trip.
 
 - #2144: a `chat` section now holds the chat controls that used to sit under
   `appearance` (`chat-font-size` and `smooth-answer-reveal`), alongside five

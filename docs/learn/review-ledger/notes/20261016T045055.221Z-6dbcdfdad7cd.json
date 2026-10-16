@@ -1,0 +1,7 @@
+{
+  "revision": "d170fe2421eb20834d359cc3bb4cdc46a2caeb0a",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Added executed clean-commit Board popup and authority-key fault checks: 3 intended failures and 1 intended failure, each restored byte-for-byte to 42 passes; retained screenshot and hosted/native evidence limits.","inputs":["docs/reviews/workspace-map-20261015/README.md"]}
+  ]
+}
