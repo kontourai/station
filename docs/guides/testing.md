@@ -493,10 +493,14 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
-evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
-invariants, not the global static/build chain or full corpus.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Required hosted PR checks own broad integration feedback. Local
+`npm run ci:fast` is optional for reproducing a hosted failure or checking a
+broad change before submission; do not run it routinely in addition to the
+hooks. It remains a bounded (fifteen-minute) diagnostic: base-pinned affected
+Vitest tests followed by fixed bounded invariants, not the global static/build
+chain or full corpus. Report local and hosted results separately; an omitted
+local diagnostic is not a local pass, and required hosted checks must succeed.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
 The iOS relevance check compares pull-request and merge-queue candidates from
 their merge base to the candidate head, so changes added only to a newer base
@@ -1405,7 +1409,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | Lane | Command | Trigger | Expected scope | Resource class | Evidence | Invalidated by |
 | --- | --- | --- | --- | --- | --- | --- |
 | `full-regression` | `npm run full:regression` | promotion / explicit diagnosis | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
-| `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
+| `ci-fast` | `npm run ci:fast` | optional local / hosted feedback | base-pinned affected Vitest tests + fixed static invariants (configured timeout: 15m) | static / integration | diagnostic | test-impact manifest |
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |

@@ -74,14 +74,16 @@ export const LANE_LADDER = Object.freeze([
     detail: null,
   }),
   Object.freeze({
-    stage: 'Bounded feedback before push',
+    stage:
+      'Optional local broad diagnostic (not a routine pre-push requirement)',
     command: 'npm run ci:fast',
     detail: null,
   }),
   Object.freeze({
     stage: 'Ordinary PR integration',
     command: null,
-    detail: 'required checks on the GitHub merge queue candidate',
+    detail:
+      'required hosted PR checks, then required checks on the GitHub merge queue candidate',
   }),
   Object.freeze({
     stage: 'Promotion completion',
