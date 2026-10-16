@@ -99,7 +99,7 @@
 - d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
 - 3accc1b: Support explicit receiver-owned engine overrides while preserving the authored Agent profile. Retain execution binding and definition expectations in handoff and reopen projections, expose bounded capability compatibility, and include engine/model/options intent in durable task-room request identity.
 - 301fc96: Add explicitly granted remote-access management, typed relay invitation controls, and bounded native account proof support for IAM-authorized access changes.
-  
+
   Publish the native relay link codec through Shared, preserving the Connect compatibility export.
 - 4bbc4ce: The remaining `@kontourai/station-sdk/client` fetchers throw typed refusals
   (#2708). The account, application-session, authority-observation,
@@ -155,7 +155,7 @@
   unchanged.
 - ebf24b4: Depends on `@kontourai/ui` `^1.18.0` (was `^1.16.0`), so the workspace resolves
   one version of the design kit. The SDK's own use of it (`Empty`) is unchanged.
-  
+
   Behaviour change for white-label branding providers, in the Station app that
   ships with this release: `@kontourai/ui` 1.18 rates `--k-brand` as text at
   4.5:1 on the raised panel as well as on the page and the panel. A dark-mode
@@ -169,7 +169,7 @@
 - 1aecbf3: Refresh invalidated Trust readers on remount and cancel retired reads before
   they can reach another Station.
 - 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
-  
+
   Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
 - Updated dependencies [59ff630]
 - Updated dependencies [31cac46]

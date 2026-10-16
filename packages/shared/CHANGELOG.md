@@ -13,28 +13,28 @@
   reported no tool name: what such a grant covers is decided per adapter or
   engine, so the label claims only the session scope.
 - c2c67c2: Add optional Agent MCP composition and loading preferences, with exact per-server tool selections for external-engine delivery. Existing declarations retain their prior defaults.
-  
+
   Expose the existing connection-quota contract through its public package subpath for CLI and shared consumer resolution.
 - 2451a89: New `./display-text` subpath: the display form approval surfaces show
   untrusted text in. It provides:
-  
+
   - `displayText` (invisible format characters removed, controls turned into
     spaces, one line), `displayLines`, `displayJoinedLines` and
     `displayMultilineText`;
   - `boundedJoinedLines` and `boundedDisplayText` (lines kept apart with " ⏎ ",
     "…" on a cut, and "(+N lines)" for lines a cut hides);
   - `compactDisplaySource`, `truncateDisplay` and `displayLength` (code points).
-  
+
   Also a new `./display-reveal` subpath, kept apart so an entry bundle that
   only needs the display form does not carry it:
-  
+
   - `revealHiddenCharacters`, `revealHiddenCharactersText`,
     `hasHiddenCharacters` and `hiddenCharacterToken`, for raw views that show a
     hidden character as a «U+XXXX» token instead of applying it.
-  
+
   `toolRequestPreview` and `toolRequestDisplayName` now return that display
   form:
-  
+
   - Bidi controls, zero-width and other invisible characters are removed, and
     C1 controls become spaces.
   - A multi-line value keeps its lines apart with " ⏎ " instead of a space.
@@ -117,7 +117,7 @@
   `removeOwnedInstance` gains `removeWhenOwnerGone`.
 - 24205de: Export `validateWorkspacePackagePaths` from `@kontourai/station-shared/workspace-package` so registry acquisition can reuse the workspace codec's portable filename and path collision validation.
 - 301fc96: Add explicitly granted remote-access management, typed relay invitation controls, and bounded native account proof support for IAM-authorized access changes.
-  
+
   Publish the native relay link codec through Shared, preserving the Connect compatibility export.
 - c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
   `@kontourai/station-shared/request-settlement` exports
@@ -155,7 +155,7 @@
   per-device Return preference. Preserve nonterminal retry errors in the runtime
   transcript projection instead of treating them as failed turns.
 - 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
-  
+
   Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
 - 884f77c: `station start --temp-home` and `station fresh --temp-home` no longer fail
   when run by an agent Station spawned. That agent's `TMPDIR` is

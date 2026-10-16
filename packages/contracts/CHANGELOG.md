@@ -23,7 +23,7 @@
   reported no tool name: what such a grant covers is decided per adapter or
   engine, so the label claims only the session scope.
 - c2c67c2: Add optional Agent MCP composition and loading preferences, with exact per-server tool selections for external-engine delivery. Existing declarations retain their prior defaults.
-  
+
   Expose the existing connection-quota contract through its public package subpath for CLI and shared consumer resolution.
 - 7899c97: Add the `@kontourai/station-contracts/automation` subpath for Station
   Automations: GitHub poll and webhook sources with an API-safe projection that
@@ -73,7 +73,7 @@
 - b586e3c: Add exact native resume and same-binding return capabilities, conversation history
   attribution and continuity provenance, and the SDK readConversation client.
 - fa8ac09: `TaskRecord` gains an optional `closeOnMerge` flag: a person's opt-in to move the Task to `done` once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task. The flag is set with `PUT /api/tasks/:taskId/close-on-merge` by a person, never by an agent tool. A Task closes only from a status that may reach `done` (never from todo, ready, triage or blocked), the check runs when an operate-tier viewer refreshes the Conversation's pull request links (nothing polls), and un-keeping an unmerged pull request lets the merged rest close it. Older Station builds refuse a Task store that carries the flag, so clear it before a rollback.
-  
+
   The Station Control `declare_pull_request` tool lets an agent on any engine (Claude Code, Codex, ACP) declare a pull request it opened, in the exact identity shape the conversation link routes accept. It writes the same declared-output record Station's own engine writes with `declare_output`, in the caller's own session and running turn: it is held for as long as the turn runs and lands when the turn completes. It is dropped if the turn aborts, is interrupted or ends in an error, or if Station restarts before the turn completes. A person still keeps a declared pull request onto a Task.
 - ee12b92: Add the `delegatedInputAnswers` Station capability flag. A Station that
   advertises it accepts an optional `expectedInputRequest` on
@@ -164,7 +164,7 @@
   `sessionAttentionKind` and `SessionStateLabel` moved here from the UI (which
   re-exports them), plus `SESSION_STATUS_WORDS`, the status ladder's words, and
   `sessionLadderWord(session)`, the ladder's word for a session summary alone.
-  
+
   Station Control gains two read-only tools for an agent working in a Project
   (station#3413). `list_project_activity` lists the Sessions in the caller's own
   Project (or the global space), newest activity first, with each Session's
@@ -183,7 +183,7 @@
   Project for every caller. Only a digest does, for a bound operator, as
   `read_conversation` does. The list narrows to the caller's Project before it
   folds, so its cost follows that Project and not the Station.
-  
+
   `read_conversation` gains `aroundMessageId`: pass a `search_sessions` hit's
   `messageId` to read the page that contains that message, with `prevCursor` and
   `nextCursor` to walk either way, under the same 50-message, 64 KB and 16 KB
@@ -192,14 +192,14 @@
   search hit names (`<turn start event>:user`) instead of a positional `proj-<n>`.
 - 35e8916: Add Project MCP tool defaults and an opt-out for automatic Knowledge tools when a registered Project store exists. Agent tool restrictions and approval policies remain authoritative.
 - 301fc96: Add explicitly granted remote-access management, typed relay invitation controls, and bounded native account proof support for IAM-authorized access changes.
-  
+
   Publish the native relay link codec through Shared, preserving the Connect compatibility export.
 - 8e17752: `ConversationListItem.titleSource` gains `'agent'`: the provenance of a title a
   station-control agent set with the new `rename_session` tool (#176). An agent
   title is not a person's, so a UI replaces it without asking, as it does a
   `generated` one; a title with `titleSource: 'user'` is still never replaced by
   an agent.
-  
+
   Station Control gains two tools. `search_sessions` searches the calling
   session owner's own transcripts through the unified search behind
   `POST /api/search` (session and message hits only, query of 2 to 256
@@ -293,7 +293,7 @@
   change is documentation of `request.opened.turnId` and of what a
   `request.resolved` with status `cancelled` or `expired` means.
 - 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
-  
+
   Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
 - f75829f: A conversation that stopped on a provider usage limit now shows a banner above
   the composer: "Usage limit reached · Resets <local time>", or plain manual
