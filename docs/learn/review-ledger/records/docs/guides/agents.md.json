@@ -194,7 +194,9 @@
 
     "src-ui/src/components/chat/InputRequestRequest.tsx",
 
-    "src-ui/src/components/chat/inputRequestDrafts.ts"
+    "src-ui/src/components/chat/inputRequestDrafts.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts"
   ],
 
   "checks": [

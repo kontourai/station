@@ -626,7 +626,15 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "packages/sdk/src/client/http.ts"
+    "packages/sdk/src/client/http.ts",
+
+    "packages/contracts/src/personal-board.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "packages/sdk/src/client/personal-boards.ts",
+
+    "packages/sdk/src/query-domains/personalBoards.ts"
   ],
 
   "checks": [

@@ -1004,7 +1004,19 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
 
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx"
   ],
 
   "checks": [
