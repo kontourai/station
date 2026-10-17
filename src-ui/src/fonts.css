@@ -26,6 +26,33 @@
  * JetBrains Mono © JetBrains).
  */
 
+/* FontTools metrics from the vendored DM Sans latin file and Arial regular /
+ * bold: unitsPerEm 1000 / 2048, sxHeight 504 / 1062. Match x-height with
+ * size-adjust = (504/1000)/(1062/2048). DM Sans hhea ascent/descent/gap are
+ * 992/310/0; divide each em ratio by size-adjust for the CSS overrides.
+ * Arial is optional; systems without it continue to system-ui. */
+@font-face {
+  font-family: "DM Sans Fallback";
+  src: local("Arial");
+  font-style: normal;
+  font-weight: 400 500;
+  size-adjust: 97.19322%;
+  ascent-override: 102.06473%;
+  descent-override: 31.89523%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "DM Sans Fallback";
+  src: local("Arial Bold");
+  font-style: normal;
+  font-weight: 600 700;
+  size-adjust: 97.19322%;
+  ascent-override: 102.06473%;
+  descent-override: 31.89523%;
+  line-gap-override: 0%;
+}
+
 /* DM Sans · latin */
 @font-face {
   font-family: "DM Sans";
