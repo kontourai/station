@@ -1,0 +1,23 @@
+{
+  "revision": "f56421f57d0be3e8828732fa79471b7cfde5b160",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/guides/agents.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Softened the init claim: the verification runs at each init the engine sends, and how often that is is stated as unconfirmed; no other claim in the paragraph changed.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-read the grant paragraph: it states the init requirement without a per-turn frequency; the added mint-time re-check of record.stationBrowserVerified in respondToRequest matches 'authentic ... verified' wording. No claim changes.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-read against the follow-up (mint-time re-check of the init verification in the Claude adapter). No claim in this document concerns MCP init reports or the station-browser grant; unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

@@ -106,6 +106,36 @@ to one Session, so those engines are not offered the tools and a browser call
 from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
 MCP support. Offering them would need a new bound channel, not a wiring change.
 
+**Approval posture.** Only `browser_status`, which reads Station's own records,
+may run without a prompt. Every other station-browser tool reads or drives a
+logged-in page: `browser_snapshot` and `browser_wait_for` return the page's
+content as much as `browser_click` and `browser_type` act on it. They are all
+treated as sensitive (#90 N2), so they prompt in every approval mode. Auto mode
+and an agent's `tools.autoApprove` pattern of `*` or `station-*` never cover
+them. Only a pattern that names `station-browser` itself, such as
+`station-browser_*`, does. Answering the first prompt of a Claude Session with
+**Allow the Station browser for this session** covers every later
+station-browser tool call in that one Session, so a browser check is one
+approval instead of one per tool. It does not carry to another Session, does
+not cover any other tool or MCP server, and ends with the Session. The
+per-tool **Allow … for this session** choice remains, and covers only that
+tool. It covers subagents inside the same Session, as the per-tool choice does.
+The server-wide choice creates neither an independent per-tool grant nor an
+SDK permission rule. If a later engine `init` report revokes the server's
+authenticity, even the same browser tool prompts again.
+The choice appears only for a call Station can show is the built-in
+server's own; a look-alike server never gets it. Besides the name checks, the
+engine's own `init` report must list exactly one server called
+`station-browser`, with source `sdk` (an in-process server only Station can
+register). Agents that author no tool servers keep Claude's MCP discovery
+(`.mcp.json`, user config), and which server wins a shared name is decided in
+the compiled Claude CLI, which could not be read here, so a missing source, a
+second server of that name or a non-`sdk` source means no choice is offered
+or honoured. The check is repeated at each `init` the engine sends (how often that is has not been confirmed), and Station does not
+turn on strict MCP config to get it. It is offered on the approval
+toast, the inline card and the inbox card, not in the CLI, which has no
+interactive approval prompt.
+
 `browser_status` lists the caller's sessions newest-created first, at most 20
 per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
 is refused `invalid-request`). Each page's `nextCursor` resumes after the last

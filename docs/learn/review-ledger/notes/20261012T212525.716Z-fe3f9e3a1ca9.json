@@ -1,0 +1,7 @@
+{
+  "revision": "d0ea33cc1b8b828bbbea64619d426cbdc4d65129",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Read the motion grammar and inspected the screenshot delta from its recorded main revision through d0ea33cc1b. The blocked-status journey now retains the main subtree finite-running-animation poll, then awaits finite status-body completion and asserts computed transform none and opacity 1. Both checks observe natural completion; no cancellation, duration override, capture, comparison, baseline or reduced-motion policy changes. Existing screenshot coverage statements remain historical; this review does not establish current browser execution, filled-effect absence or raster determinism.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

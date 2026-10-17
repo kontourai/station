@@ -92,7 +92,11 @@
 
     "src-server/services/orchestration/session-agent-resolution.ts",
 
-    "src-server/services/orchestration/session-agent-start-policy.ts"
+    "src-server/services/orchestration/session-agent-start-policy.ts",
+
+    "src-ui/src/components/chat/InputRequestDecision.tsx",
+
+    "src-ui/src/components/chat/InputRequestDecision.css"
   ],
 
   "checks": [

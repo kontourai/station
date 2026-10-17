@@ -1,0 +1,7 @@
+{
+  "revision": "c7e8df2ccf029ea2c84a00234a941076f50da0c1",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"UI delta after merging main: the desktop approval row keeps Deny and Allow Once with the session and Station-browser server grants in the same overflow menu, and the mobile sheet gained the same server grant choice. Checked this document's delivery claims: every decision still routes the same tool policy path; the server grant only widens what one approval covers.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

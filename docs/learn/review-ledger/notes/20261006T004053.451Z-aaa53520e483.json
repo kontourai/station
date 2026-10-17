@@ -1,0 +1,7 @@
+{
+  "revision": "45e6712f4248e886b2e32810013c27f5551eca96",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-checked after making stationBrowserVerifiedByInit module-private in claude-adapter-events.ts: visibility-only change; the doc's claims about the Station browser grant (init must list exactly one station-browser with source sdk; fail closed otherwise) are unchanged and still match the code.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter-events.ts"]}
+  ]
+}

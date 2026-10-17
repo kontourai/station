@@ -54,7 +54,7 @@ interface MessageContentProps {
   foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
-    action: 'once' | 'trust' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }
 
