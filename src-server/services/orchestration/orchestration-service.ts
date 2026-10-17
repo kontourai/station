@@ -3698,6 +3698,22 @@ export class OrchestrationService {
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
+    // An idle room thread must keep its raw Session across a server restart.
+    // Park only resumable, at-rest bindings; active work and explicit endings
+    // still use normal shutdown. Parking absorbs the engine's physical exit.
+    const roomParkingResults = await Promise.allSettled(
+      [...this.sessionAdapters].flatMap(([threadId, adapter]) =>
+        this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+          threadId,
+        ) && this.isParkableIdleSession(threadId, Date.now(), 0)
+          ? [
+              this.adapterRetirement.runCleanupWithinDeadline(async () => {
+                await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+              }, `${adapter.provider} room session parking`),
+            ]
+          : [],
+      ),
+    );
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
@@ -3762,8 +3778,8 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    const failures = cleanupResults.flatMap((result) =>
-      result.status === 'rejected' ? [result.reason] : [],
+    const failures = [...roomParkingResults, ...cleanupResults].flatMap(
+      (result) => (result.status === 'rejected' ? [result.reason] : []),
     );
     if (failures.length > 0) {
       throw new AggregateError(failures, 'Provider adapter shutdown failed.');
