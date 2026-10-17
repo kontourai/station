@@ -323,6 +323,7 @@
     "@aws-sdk/client-pricing": "^3.1146.0",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/credential-providers": "^3.1146.0",
+    "@cedar-policy/cedar-wasm": "4.13.0",
     "@hono/node-server": "^2.1.3",
     "@kontourai/conduit": "0.7.1",
     "@kontourai/console-core": "^0.3.0",
