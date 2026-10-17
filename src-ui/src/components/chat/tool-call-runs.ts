@@ -1,3 +1,5 @@
+import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import { htmlReplyReference } from './html-reply-reference';
 /**
  * The STRUCTURAL half of tool-call batching: splitting a message's content
  * parts into runs of consecutive tool-call parts vs. everything else.
@@ -59,7 +61,8 @@ export interface ToolCallRun<P extends ToolCallLike = ToolCallLike> {
 
 export type RunBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
-  | ToolCallRun<P>;
+  | ToolCallRun<P>
+  | { type: 'html-reply'; key: string; reference: HtmlReplyReference };
 
 /** True for any part the transcript renders via `ToolCallDisplay` — the
  * exact predicate `MessageContent.tsx`/`StreamingMessage.tsx` already use. */
@@ -106,6 +109,20 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   parts.forEach((part, index) => {
     if (isToolCallPart(part)) {
       pending.push({ part, index });
+      const name = part.toolName ?? part.name ?? part.type;
+      if (/(?:^|[_/-])html_render$/.test(name)) {
+        const reference =
+          htmlReplyReference(part) ??
+          htmlReplyReference(part.output ?? part.result);
+        if (reference) {
+          flushRun();
+          blocks.push({
+            type: 'html-reply',
+            key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
+            reference,
+          });
+        }
+      }
       return;
     }
     flushRun();
@@ -145,6 +162,7 @@ export function foldTurnWork<P extends ToolCallLike>(
 ): RunBlock<P>[] {
   const blocks = splitToolCallRuns(parts);
   if (!parts) return blocks;
+  if (blocks.some((block) => block.type === 'html-reply')) return blocks;
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
   if (runCount < 2) return blocks;
 
@@ -158,7 +176,7 @@ export function foldTurnWork<P extends ToolCallLike>(
   for (const block of blocks.slice(firstRun, lastRun + 1)) {
     if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
-    } else if (isFoldableProse(block.part)) {
+    } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
       interludes.push({ part: block.part, index: block.index });
     } else {
       kept.push(block);

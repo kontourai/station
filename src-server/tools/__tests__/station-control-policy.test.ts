@@ -805,7 +805,7 @@ describe('station-control authority table: declare_pull_request and Task close-o
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
-    ).toEqual(['notify_user']);
+    ).toEqual(['html_render', 'notify_user']);
   });
 
   test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {

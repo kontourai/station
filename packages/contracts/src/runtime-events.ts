@@ -1,6 +1,7 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
@@ -614,6 +615,8 @@ export interface ToolOutputReceipt {
 }
 
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
+  /** Bounded page display reference retained independently of output excerpts. */
+  htmlReply?: HtmlReplyReference;
   method: 'tool.completed';
   itemId: string;
   toolCallId: string;

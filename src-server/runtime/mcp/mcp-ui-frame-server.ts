@@ -9,6 +9,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { serve } from '@hono/node-server';
+import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-reply-document';
 import { Hono } from 'hono';
 import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
@@ -107,6 +108,16 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
       },
     );
   });
+
+  app.get('/html-reply/frame', (c) =>
+    c.html(buildHtmlReplyProxyDocument(options.frameAncestors ?? []), 200, {
+      ...SECURITY_HEADERS,
+      ...frameHeaders,
+      // Restrict child navigations as well as its initial srcdoc. This policy
+      // is inherited by the opaque child; its own policy denies nested frames.
+      'Content-Security-Policy': `frame-ancestors ${frameAncestors}; frame-src 'self'`,
+    }),
+  );
 
   // Plugins use the same dedicated, asset-free origin as MCP Apps.  In
   // particular, do not add a static-file fallback here: extension bytes cross

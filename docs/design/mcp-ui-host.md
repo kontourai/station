@@ -293,8 +293,11 @@ The web host follows the Apps sandbox-proxy lifecycle:
    inner View.
 
 The MCP proxy endpoint serves `GET /mcp-ui/proxy`; the same dedicated listener
-also serves the fixed `/plugin-host/frame` bootstrap. Neither is a general
-asset server. The MCP proxy does not receive the resource URI, read resources,
+also serves the fixed `/plugin-host/frame` bootstrap and the separate
+[`/html-reply/frame` page-only bridge](../decisions/html-replies.md). None is a
+general asset server. HTML replies publish through station-control into their own transcript viewer;
+they do not use the MCP Apps tool bridge. The MCP proxy does not
+receive the resource URI, read resources,
 proxy arbitrary URLs, store credentials, or execute tools.
 The outer proxy response applies only a `frame-ancestors` CSP, bound to the
 configured Station UI origins. It deliberately applies no resource directives

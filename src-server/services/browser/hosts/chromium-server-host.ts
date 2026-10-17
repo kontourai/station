@@ -265,6 +265,8 @@ export type ChromiumLauncher = (request: {
 }) => ChromiumLaunch;
 
 export interface ChromiumServerHostOptions {
+  /** Trusted disposable renderers only; bounds V8 heap, not total process RSS. */
+  jsHeapLimitMb?: 128;
   executablePath: string;
   /**
    * The profile's egress policy (Station listeners plus the actor's reach,
@@ -669,10 +671,15 @@ export class ChromiumServerHost implements BrowserHost {
     try {
       launch = this.launcher({
         executablePath: this.options.executablePath,
-        args: buildChromiumArgs({
-          profileDir,
-          proxyServer: proxy.proxyServerArg,
-        }),
+        args: [
+          ...buildChromiumArgs({
+            profileDir,
+            proxyServer: proxy.proxyServerArg,
+          }),
+          ...(this.options.jsHeapLimitMb
+            ? ['--js-flags=--max-old-space-size=128']
+            : []),
+        ],
       });
     } catch (error) {
       await proxy.close();

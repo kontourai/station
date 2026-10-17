@@ -53,6 +53,7 @@ export interface MessagePart {
   result?: string;
   /** Provider output retained in its original JSON-compatible shape. */
   output?: unknown;
+  htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
   error?: string;
   cancelled?: boolean;
   isError?: boolean;
