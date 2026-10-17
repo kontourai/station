@@ -22,6 +22,7 @@ import {
 } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
+import { createLogger } from '../../utils/logger.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
 const build = vi.hoisted(() => ({
@@ -57,6 +58,8 @@ afterEach(async () => {
     ),
   );
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   await Promise.all(
     homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
   );
@@ -113,11 +116,14 @@ async function service(
   config: Partial<AppConfig> = {},
   env: NodeJS.ProcessEnv = {},
   existingHome?: string,
+  loggerOverride?: ConstructorParameters<
+    typeof UsageTelemetryService
+  >[0]['logger'],
 ) {
   const home =
     existingHome ?? (await mkdtemp(join(tmpdir(), 'station-publishers-')));
   if (!existingHome) homes.push(home);
-  const logger = { warn: vi.fn() };
+  const logger = loggerOverride ?? { warn: vi.fn() };
   const configValue: AppConfig = {
     defaultModel: 'fixture',
     invokeModel: 'fixture',
@@ -136,7 +142,7 @@ async function service(
     headless: env.STATION_STDOUT_HANDSHAKE !== '1' && !env.STATION_UI_PORT,
   });
   services.push(live);
-  return { live, home, logger, config: configValue };
+  return { live, home, config: configValue };
 }
 async function flush(live: UsageTelemetryService) {
   await live.flushDaily();
@@ -521,22 +527,32 @@ test('DNT suppresses every publisher, including explicit feedback', async () => 
 });
 
 test('notice is recorded once per inventory and desktop/web must record the shown revision before Lite', async () => {
+  vi.stubEnv('STATION_LOG_LEVEL', 'error');
+  vi.stubEnv('STATION_STDOUT_LOGS', '0');
+  const diagnostics = createLogger({
+    name: 'telemetry-notice-test',
+    level: 'error',
+  });
+  const stderr = vi.spyOn(process.stderr, 'write');
+  expect(diagnostics.getLevel()).toBe('error');
+  const noticeCalls = () =>
+    stderr.mock.calls.filter(([message]) =>
+      String(message).includes('Lite sends'),
+    );
   const sink = await receiver();
-  const { live, home, logger } = await service(sink.endpoint);
+  const { live, home } = await service(
+    sink.endpoint,
+    {},
+    {},
+    undefined,
+    diagnostics,
+  );
   await live.stationStarted();
   await live.stationStarted();
-  expect(
-    logger.warn.mock.calls.filter(([message]) =>
-      String(message).includes('Lite sends'),
-    ),
-  ).toHaveLength(2);
-  const next = await service(sink.endpoint, {}, {}, home);
+  expect(noticeCalls()).toHaveLength(2);
+  const next = await service(sink.endpoint, {}, {}, home, diagnostics);
   await next.live.stationStarted();
-  expect(
-    next.logger.warn.mock.calls.filter(([message]) =>
-      String(message).includes('Lite sends'),
-    ),
-  ).toHaveLength(0);
+  expect(noticeCalls()).toHaveLength(2);
   const ui = await service(
     sink.endpoint,
     {},

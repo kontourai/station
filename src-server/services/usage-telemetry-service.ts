@@ -207,7 +207,6 @@ export class UsageTelemetryService {
         configuration: () => this.resolvedConfiguration(),
         operatorEndpoint: () => this.endpoint,
         facts: options.dailyFacts,
-        logger: options.logger,
         fetch: this.fetchImpl,
       });
     if (

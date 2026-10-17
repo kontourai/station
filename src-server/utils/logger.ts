@@ -141,6 +141,11 @@ export interface Logger {
   getLevel(): LogLevel;
 }
 
+/** Consent notices remain visible when diagnostic levels or stdout logs are disabled. */
+export function writeUserNotice(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
+
 export interface CreateLoggerOptions {
   name: string;
   level?: ConfigurableLogLevel;

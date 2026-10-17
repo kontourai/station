@@ -14,7 +14,7 @@ import {
 } from '@kontourai/station-shared/product-telemetry';
 import * as telemetryBuildConstants from '../domain/telemetry-build-constants.js';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
-import type { Logger } from '../utils/logger.js';
+import { writeUserNotice } from '../utils/logger.js';
 import {
   type TelemetryDailyState,
   TelemetryLocalState,
@@ -37,7 +37,6 @@ interface PublisherOptions {
       | 'branding_overridden'
     >
   >;
-  logger: Pick<Logger, 'warn'>;
   fetch: typeof globalThis.fetch;
 }
 const PUBLISHERS = ['kontour', 'operator'] as const;
@@ -169,7 +168,7 @@ export class TelemetryPublisherService {
           LITE_TELEMETRY_INVENTORY_REVISION
         )
           continue;
-        this.options.logger.warn(
+        writeUserNotice(
           `Station telemetry (${publisher}): Lite sends one identifier-free daily aggregate when a destination is configured. Turn off with station telemetry set ${publisher} off; DO_NOT_TRACK also forces Off. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.`,
         );
         state.notices[publisher] = {

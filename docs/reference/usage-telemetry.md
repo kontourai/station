@@ -22,7 +22,9 @@ separate receipt bound to Kontour, the current inventory and the displayed
 build destination; the UI lane presents that disclosure.
 
 A headless server prints a one-time Lite notice per publisher and inventory
-revision through the Station logger and records it before sending. Desktop
+revision through the [logger module's unfiltered stderr notice path](../../src-server/utils/logger.ts) and
+records it before sending. Diagnostic log levels and `STATION_STDOUT_LOGS=0`
+cannot suppress that notice. Desktop
 sidecars (`STATION_STDOUT_HANDSHAKE=1`) and managed web starts (`STATION_UI_PORT`)
 defer to the UI. Until that UI records the shown notice revision with
 `POST /api/usage-telemetry/lite-notices`, daily payloads are suppressed with reason

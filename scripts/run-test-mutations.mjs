@@ -128,6 +128,23 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'telemetry-muted-headless-notice',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'notice is recorded once per inventory and desktop/web must record the shown revision before Lite',
+    files: [
+      {
+        path: 'src-server/utils/logger.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  process.stderr.write(',
+            "  if (process.env.STATION_STDOUT_LOGS !== '0') process.stderr.write(",
+          ),
+      },
+    ],
+  },
+  {
     id: 'telemetry-hosted-first-write',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:
