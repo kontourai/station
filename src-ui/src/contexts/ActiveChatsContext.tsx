@@ -338,6 +338,19 @@ export function useActiveChatActions() {
   return context;
 }
 
+function readActiveChatOrder(): string {
+  return JSON.stringify(Object.keys(activeChatsStore.getSnapshot()));
+}
+
+export function useActiveChatIds(): readonly string[] {
+  const signature = useSyncExternalStore(
+    activeChatsStore.subscribe,
+    readActiveChatOrder,
+    readActiveChatOrder,
+  );
+  return useMemo<string[]>(() => JSON.parse(signature), [signature]);
+}
+
 export function useAllActiveChats(): ActiveChatsMap {
   return useSyncExternalStore(
     activeChatsStore.subscribe,
