@@ -610,6 +610,46 @@ GET /agents/:slug/health
 
 ---
 
+## Project tool library
+
+All routes below use `/api/tool-library`, return `Cache-Control: no-store`, and
+revalidate current person, Device scope and Project authority. Project mutations
+pin `projectId` and `expectedActor`. Global Agent mutation APIs remain
+operator-only; these scoped routes do not enable member execution.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /access` | Current Station role and effective roles across Projects |
+| `GET /catalog?project=<slug>` | Safe source metadata, descriptions, provenance, recorded actions, Project permission and request state |
+| `POST /sources/:id/discover` | Refresh safe action metadata using the caller’s own account; does not attach tools |
+| `POST /add` | Operator installs/connects an integration (`id`, `kind: "integration"`, `expectedActor`); plugins use existing package preview/consent |
+| `GET /requests?project=<slug>` | Project requests; operator may list all |
+| `POST /requests` | Admin/Owner requests a permitted catalog source |
+| `POST /requests/:id/approve` | Operator begins installation/setup |
+| `POST /requests/:id/complete` | Operator resumes setup and admits a ready, exact-source request |
+| `POST /requests/:id/decline` | Operator resolves a request, including an obsolete Project request |
+| `PUT /projects/:slug/policy` | Owner changes `mode`, `sources` with expected `revision` |
+| `PUT /sources/:id/sharing` | Operator changes source availability to Projects |
+| `GET /projects/:slug/agents` | Admin/Owner reads agents authored through this Project surface |
+| `POST /projects/:slug/agents` | Admin/Owner creates a constrained Project agent |
+| `PUT /projects/:slug/agents/:agent` | Admin/Owner edits a bound agent in the same Project incarnation |
+| `GET /accounts/:id?project=<slug>` | Own personal account status for a permitted source |
+| `POST /accounts/:id/authorize` | Start own personal account sign-in |
+| `POST /accounts/:id/callback` | Finish own personal account sign-in |
+
+Agent drafts accept `name`, optional `description`, `prompt`, `engineId`, and
+`tools` (`mcpServers`, `available`, `autoApprove`, `askBeforeUse`). Unknown fields
+are refused. `engineId: "station"` selects managed Station and is persisted
+without `execution.agentConnectionId`; other choices name an available engine
+connection. The catalog includes Station separately from connection inventory.
+The server generates identity, binds the exact Project, selects Ask
+posture and replaces harness MCP configuration. Request states are `pending`,
+`setting-up`, `available`, `declined`, and `failed`; installed alone is not
+available. Approving installation cannot widen the Owner's policy or sign in to
+a personal account. Personal tool accounts require the managed Station engine;
+external delivery reports those sources as unsupported. The owning implementation is
+[tool-library routes](../../src-server/routes/tool-library.ts).
+
 ## Integration Management
 
 These routes manage MCP integration definitions through the
@@ -623,6 +663,14 @@ a successful probe, and tool availability on an Agent are separate states.
 augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
 names/descriptions, and `renderAllowed`. This is not a complete raw definition
 or proof that every listed tool can currently execute.
+
+`POST /integrations/:id/reconnect` returns a redacted definition with the latest
+`probe`. Check `probe.ok` independently of HTTP success. Successful discovery
+includes up to 200 `probe.tools` entries with raw `name`, optional `description`
+(up to 2,000 characters), and optional `group` (up to 100 characters). Legacy
+`probe.toolNames` remains available. Package-owned and personal-account probes
+can return this metadata without persisting it to a local integration definition.
+Discovery metadata is a browsing snapshot, not execution authority.
 
 ### Create Integration
 

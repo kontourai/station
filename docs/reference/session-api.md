@@ -607,7 +607,8 @@ from the engine's own request. `request.opened` carries the sanitised
 `decisionReason` and any of the flags that are set.
 
 An approval-guardian allow is held to the same rule (#2947). In a Claude
-Session it answers a plain call with no `request.opened`; an escalation, a
+Session it answers a plain call with no `request.opened`, unless an effective
+authored `askBeforeUse` rule requires approval; an escalation, a
 plan exit or a question opens a request even when the guardian allowed the
 call. In an ACP Session it answers no plan exit, question or sandbox
 network-host ask.

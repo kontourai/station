@@ -1,0 +1,7 @@
+{
+  "revision": "236da2b7338eb40434c59612ae9e410aaea5066a",
+
+  "notes": [
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the tool picker delta against demo setup instructions. Operator connections still start disabled; enable, About this source and Refresh actions remain reachable. Selecting status_panel still attaches the action; description disclosures and inline approval layout do not alter the example protocol.","inputs":["examples/mcp-ui-demo/README.md","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]}
+  ]
+}

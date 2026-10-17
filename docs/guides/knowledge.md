@@ -379,6 +379,9 @@ Project Settings → Tools adds configured MCP servers to Agents working in that
 Project. The default **Use Knowledge** setting adds `station-knowledge` when a
 registered Project store exists; disabling it removes the Project's addition.
 An Agent can still carry Knowledge independently in its own configuration.
+All delivery, including automatic Knowledge additions, is subject to the
+Project's [Tool permissions](agents.md#shared-projects) and operator sharing.
+Defaults cannot broaden the Owner's selected source ceiling.
 
 The [Project Knowledge panel](../../src-ui/src/views/project-page/ProjectKnowledgeStores.tsx)
 detects registered stores and offers **Create store** when none exists. Expand a
