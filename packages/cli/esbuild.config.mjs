@@ -51,7 +51,6 @@ import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
-import { authorTelemetryEndpoint } from '../../scripts/lib/author-telemetry-build.mjs';
 import { STATION_SERVER_EXTERNALS } from '../../scripts/lib/server-build-config.mjs';
 import { deriveCliBundleMetadata } from './build-metadata.mjs';
 import { CLI_EXTERNALS } from './bundle-externals.mjs';
@@ -128,7 +127,6 @@ await esbuild.build({
       // the contributor-tier verbs. The version travels with it so
       // `station --version` never has to guess at a package.json path.
       `globalThis.__STATION_CLI_BUNDLE__ = ${JSON.stringify(bundleMetadata)};`,
-      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(authorTelemetryEndpoint(bundleMetadata.channel))};`,
     ].join('\n'),
   },
 });

@@ -387,7 +387,6 @@ jobs:
       - name: Build CLI
         env:
           STATION_CLI_BUILD_CHANNEL: stable
-          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
         run: cd packages/cli && npm run build --if-present
 
       # Publishing requires an explicit manual dispatch. On push to main this

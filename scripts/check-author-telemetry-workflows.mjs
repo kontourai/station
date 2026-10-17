@@ -8,8 +8,6 @@ const RELEASE =
   "github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')";
 const NIGHTLY =
   "github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main'";
-const NPM =
-  "github.repository == 'kontourai/station' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'";
 const PORTABLE = `((${RELEASE}) || (${NIGHTLY} && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != ''`;
 const expression = (condition) => `\${{ ${condition} && vars.${KEY} || '' }}`;
 
@@ -19,31 +17,39 @@ const SCOPES = [
   [
     'release.yml',
     'desktop-macos',
-    null,
+    'Build an unsigned macOS staging candidate',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
   ],
   [
     'release.yml',
     'desktop-windows',
-    null,
+    'Build signed Windows staging candidate',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
   ],
   [
     'release.yml',
     'desktop-linux',
-    null,
+    'Build Linux deb and rpm packages',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
+  ],
+  [
+    'release.yml',
+    'desktop-linux',
+    'Build signed AppImage with the contained runtime overlay',
+    RELEASE,
+    'STATION_CHANNEL',
+    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
   ],
   [
     'nightly-native-stage.yml',
     'stage-macos',
-    null,
+    'Fail closed and build/sign/notarize macOS staging artifacts',
     NIGHTLY,
     'STATION_CHANNEL',
     'nightly',
@@ -51,7 +57,7 @@ const SCOPES = [
   [
     'nightly-native-stage.yml',
     'stage-windows',
-    null,
+    'Build the exact reserved Windows version',
     NIGHTLY,
     'STATION_CHANNEL',
     'nightly',
@@ -62,7 +68,7 @@ const SCOPES = [
     'Build server and UI',
     PORTABLE,
     'STATION_CHANNEL',
-    `\${{ inputs.ring }}`,
+    `\${{ inputs.ring == 'preview' && 'beta' || inputs.ring }}`,
   ],
   [
     'portable-server-archives.yml',
@@ -71,22 +77,6 @@ const SCOPES = [
     PORTABLE,
     'RELEASE_RING',
     `\${{ inputs.ring }}`,
-  ],
-  [
-    'publish-packages.yml',
-    'publish',
-    'Build CLI',
-    NPM,
-    'STATION_CLI_BUILD_CHANNEL',
-    'stable',
-  ],
-  [
-    'nightly.yml',
-    'nightly-cli',
-    'Build exact-SHA CLI nightly identity',
-    NIGHTLY,
-    'STATION_CLI_BUILD_CHANNEL',
-    'nightly',
   ],
 ];
 

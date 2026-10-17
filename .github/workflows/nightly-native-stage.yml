@@ -363,9 +363,6 @@ jobs:
     environment: native-release
     timeout-minutes: 120
     permissions: { contents: read, id-token: write, attestations: write }
-    env:
-      STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-      STATION_CHANNEL: nightly
     steps:
       - id: macos_cohort_deadline
         name: Reserve one fixed macOS cleanup deadline
@@ -396,6 +393,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Fail closed and build/sign/notarize macOS staging artifacts
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: nightly
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
@@ -502,9 +501,6 @@ jobs:
     environment: native-release
     timeout-minutes: 120
     permissions: { contents: read, id-token: write, attestations: write }
-    env:
-      STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
-      STATION_CHANNEL: nightly
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.source_sha }}', fetch-depth: 0, persist-credentials: false }
@@ -520,6 +516,8 @@ jobs:
       - name: Build the exact reserved Windows version
         shell: pwsh
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: nightly
           SOURCE_SHA: ${{ inputs.source_sha }}
           BUNDLE_VERSION: ${{ needs.plan-cohort.outputs.bundle_version }}
           WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}

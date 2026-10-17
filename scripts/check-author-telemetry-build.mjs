@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
+import { load } from 'js-yaml';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { createPackagedReleaseManifest } from './lib/container-release-metadata.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const directory = mkdtempSync(join(tmpdir(), 'station-author-build-'));
@@ -36,7 +38,7 @@ function child(args, env) {
   return result;
 }
 
-function build(env, expected, channel, telemetryChannel = channel) {
+function build(env, expected, channel) {
   const result = child(['esbuild.config.mjs'], {
     ...env,
     STATION_BUILD_SERVER_DIR: directory,
@@ -59,9 +61,8 @@ function build(env, expected, channel, telemetryChannel = channel) {
       `
     import assert from 'node:assert/strict';
     ${banner}
-    const { STATION_AUTHOR_TELEMETRY_ENDPOINT, STATION_TELEMETRY_BUILD_CHANNEL } = await import('./src-server/domain/telemetry-build-constants.ts');
+    const { STATION_AUTHOR_TELEMETRY_ENDPOINT } = await import('./src-server/domain/telemetry-build-constants.ts');
     assert.equal(STATION_AUTHOR_TELEMETRY_ENDPOINT, ${JSON.stringify(expected)});
-    assert.equal(STATION_TELEMETRY_BUILD_CHANNEL, ${JSON.stringify(telemetryChannel)});
   `,
     ],
     {
@@ -72,21 +73,64 @@ function build(env, expected, channel, telemetryChannel = channel) {
   assert.equal(constant.status, 0, constant.stderr);
 }
 
+function workflowChannels(name, jobPrefix, context) {
+  const workflow = load(
+    readFileSync(join(root, '.github/workflows', name), 'utf8'),
+  );
+  const channels = [];
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    if (!id.startsWith(jobPrefix)) continue;
+    assert.equal(
+      job.env?.STATION_CHANNEL,
+      undefined,
+      'Channel must be scoped to a build step',
+    );
+    for (const step of job.steps) {
+      const channel = step.env?.STATION_CHANNEL;
+      if (channel === undefined) continue;
+      const expression = /^\$\{\{(.*)\}\}$/.exec(channel);
+      channels.push(
+        expression ? runInNewContext(expression[1], context) : channel,
+      );
+    }
+  }
+  return channels;
+}
+
 try {
   build({}, '', 'source-checkout');
   build({ ...official, STATION_AUTHOR_TELEMETRY_ENDPOINT: '' }, '', 'stable');
   build(official, endpoint, 'stable');
-  build(
-    {
-      ...official,
-      STATION_CHANNEL: 'preview',
-      GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
-      GITHUB_WORKFLOW_REF:
-        'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
-    },
-    endpoint,
-    'preview',
+  // Resolve the real workflow channel expressions, then inspect actual bundles.
+  const preview = {
+    ...official,
+    GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
+    GITHUB_WORKFLOW_REF:
+      'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
+  };
+  const desktop = workflowChannels('release.yml', 'desktop-', {
+    needs: { preflight: { outputs: { channel: 'preview' } } },
+  });
+  const portable = workflowChannels('portable-server-archives.yml', 'archive', {
+    inputs: { ring: 'preview' },
+  });
+  const packaged = createPackagedReleaseManifest({
+    tag: 'v1.2.3-preview.1',
+    sha: 'a'.repeat(40),
+    createdAt: '2026-10-17T00:00:00.000Z',
+  });
+  assert.equal(
+    desktop.length,
+    4,
+    'Every desktop producer needs a build-scoped channel',
   );
+  assert.deepEqual(
+    [...desktop, ...portable, packaged.channel],
+    Array(6).fill('beta'),
+    'Desktop preview and portable preview must stamp the same runtime channel (beta)',
+  );
+  build({ ...preview, STATION_CHANNEL: desktop[0] }, endpoint, 'beta');
+  build({ ...preview, STATION_CHANNEL: packaged.channel }, endpoint, 'beta');
   build(
     {
       ...official,
@@ -100,22 +144,11 @@ try {
     'nightly',
   );
 
-  // Portable staging retains its existing runtime channel in server provenance.
-  build(
-    {
-      ...official,
-      STATION_CHANNEL: 'beta',
-      GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
-      GITHUB_WORKFLOW_REF:
-        'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
-    },
-    endpoint,
-    'beta',
-    'preview',
-  );
-
   for (const invalid of [
     'not a URL',
+    'https:telemetry.example.invalid',
+    'https://telemetry.example.invalid',
+    'https://TELEMETRY.example.invalid/station',
     'http://telemetry.example.invalid',
     'https://user:password@telemetry.example.invalid',
     'https://@telemetry.example.invalid',
@@ -131,7 +164,7 @@ try {
     assert.equal(result.status, 1, result.stderr);
     assert.match(
       result.stderr,
-      /must be an HTTPS URL without credentials, query or fragment/,
+      /must be a canonical HTTPS URL without credentials, query or fragment/,
     );
   }
   for (const env of [
@@ -149,46 +182,19 @@ try {
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stderr, /forbidden outside official release builds/);
   }
+  const ringChannel = child(['esbuild.config.mjs'], {
+    ...preview,
+    STATION_CHANNEL: 'preview',
+  });
+  assert.equal(ringChannel.status, 1, ringChannel.stderr);
+  assert.match(ringChannel.stderr, /existing build channel to match/);
+
   const mismatch = child(['esbuild.config.mjs'], {
     ...official,
     STATION_CHANNEL: 'nightly',
   });
   assert.equal(mismatch.status, 1, mismatch.stderr);
   assert.match(mismatch.stderr, /existing build channel to match/);
-
-  for (const [enabled, channel] of [
-    [false, 'stable'],
-    [true, 'stable'],
-    [true, 'nightly'],
-  ]) {
-    const cli = child(['packages/cli/esbuild.config.mjs'], {
-      ...official,
-      GITHUB_EVENT_NAME:
-        channel === 'nightly' ? 'schedule' : 'workflow_dispatch',
-      GITHUB_REF: 'refs/heads/main',
-      GITHUB_WORKFLOW_REF: `kontourai/station/.github/workflows/${channel === 'nightly' ? 'nightly' : 'publish-packages'}.yml@refs/heads/main`,
-      STATION_CLI_BUILD_CHANNEL: channel,
-      STATION_AUTHOR_TELEMETRY_ENDPOINT: enabled ? endpoint : '',
-    });
-    assert.equal(cli.status, 0, cli.stderr);
-    const bundle = readFileSync(
-      join(root, 'packages/cli/dist/station.mjs'),
-      'utf8',
-    );
-    const context = {};
-    runInNewContext(
-      bundle
-        .split('\n')
-        .filter((line) => line.startsWith('globalThis.__STATION_'))
-        .join('\n'),
-      context,
-    );
-    assert.equal(
-      context.__STATION_AUTHOR_TELEMETRY_ENDPOINT__,
-      enabled ? endpoint : '',
-    );
-    assert.equal(context.__STATION_CLI_BUNDLE__.channel, channel);
-  }
 
   // Source execution never reads the endpoint from the runtime environment.
   const source = child(

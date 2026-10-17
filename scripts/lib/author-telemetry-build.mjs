@@ -16,31 +16,21 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
     ref === 'refs/heads/main' &&
     workflow ===
       'kontourai/station/.github/workflows/nightly.yml@refs/heads/main';
-  const npm =
-    env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
-    ref === 'refs/heads/main' &&
-    workflow ===
-      'kontourai/station/.github/workflows/publish-packages.yml@refs/heads/main';
   if (
     env.GITHUB_ACTIONS !== 'true' ||
     env.GITHUB_REPOSITORY !== 'kontourai/station' ||
-    !(release || nightly || npm)
+    !(release || nightly)
   ) {
     throw new Error(
       'Author telemetry endpoint is forbidden outside official release builds',
     );
   }
-  const expectedChannel = release
+  const ring = release
     ? ref.includes('-preview.')
       ? 'preview'
       : 'stable'
-    : nightly
-      ? 'nightly'
-      : 'stable';
-  if (
-    channel !== expectedChannel &&
-    channel !== STATION_RELEASE_RINGS[expectedChannel].runtimeChannel
-  ) {
+    : 'nightly';
+  if (channel !== STATION_RELEASE_RINGS[ring].runtimeChannel) {
     throw new Error(
       'Author telemetry endpoint requires the existing build channel to match the release',
     );
@@ -51,10 +41,11 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
     url = new URL(endpoint);
   } catch {
     throw new Error(
-      'Author telemetry endpoint must be an HTTPS URL without credentials, query or fragment',
+      'Author telemetry endpoint must be a canonical HTTPS URL without credentials, query or fragment',
     );
   }
   if (
+    endpoint !== url.href ||
     url.protocol !== 'https:' ||
     !url.hostname ||
     url.username ||
@@ -65,7 +56,7 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
     /\s/.test(endpoint)
   ) {
     throw new Error(
-      'Author telemetry endpoint must be an HTTPS URL without credentials, query or fragment',
+      'Author telemetry endpoint must be a canonical HTTPS URL without credentials, query or fragment',
     );
   }
   return url.href;

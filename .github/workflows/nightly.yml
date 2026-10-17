@@ -233,7 +233,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STATION_CLI_BUILD_CHANNEL: nightly
-          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           STATION_CLI_SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
           npm run dependencies:ci

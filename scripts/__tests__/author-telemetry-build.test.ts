@@ -33,7 +33,7 @@ function guard(script: string, args: string[] = []) {
 }
 
 describe('official author telemetry build boundary', () => {
-  it('builds the actual server and refuses invalid endpoints and non-official builds', () => {
+  it('stamps the same beta runtime channel in desktop and portable preview bundles and refuses invalid endpoints and non-official builds', () => {
     const result = guard('check-author-telemetry-build.mjs');
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Author telemetry build guard: PASS');
@@ -62,8 +62,17 @@ describe('official author telemetry build boundary', () => {
           `\${{ vars.STATION_AUTHOR_TELEMETRY_ENDPOINT }}`;
       },
       (workflow: Workflow) => {
-        delete workflow.jobs['desktop-macos'].env
-          .STATION_AUTHOR_TELEMETRY_ENDPOINT;
+        const build = workflow.jobs['desktop-macos'].steps?.find(
+          (step) => step.name === 'Build an unsigned macOS staging candidate',
+        );
+        delete build?.env?.STATION_AUTHOR_TELEMETRY_ENDPOINT;
+      },
+      (workflow: Workflow) => {
+        const build = workflow.jobs['desktop-macos'].steps?.find(
+          (step) => step.name === 'Build an unsigned macOS staging candidate',
+        );
+        if (!build?.env) throw new Error('Missing macOS producer');
+        build.env.STATION_CHANNEL = 'preview';
       },
     ]) {
       const workflow = load(original) as Workflow;
