@@ -388,7 +388,7 @@ function ToolCallDisplayComponent({
             toolRef={appToolRef}
             toolCallId={id}
             args={args}
-            result={result}
+            result={toolCall.output ?? toolCall.result}
           />
         </Suspense>
       )}

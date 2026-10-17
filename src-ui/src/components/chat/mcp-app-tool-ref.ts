@@ -14,7 +14,7 @@ export function transcriptMcpToolRef(call: {
   cancelled?: boolean;
   outputTruncated?: boolean;
 }): string | undefined {
-  const result = call.result ?? call.output;
+  const result = call.output ?? call.result;
   if (
     !call.toolCallId ||
     call.error ||

@@ -1,3 +1,5 @@
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 /**
  * @vitest-environment jsdom
  */
@@ -94,14 +96,37 @@ describe('MCPToolUIFrame', () => {
       structuredContent: { count: 7 },
       _meta: { ui: { resourceUri: 'ui://demo/chart' } },
     };
-    const call = {
-      type: 'tool-invocation',
-      toolCallId: 'chart-call',
-      toolName: 'demo/chart',
-      args: { range: 'week' },
-      result: recorded,
-      state: 'result' as const,
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'apps',
+      turnId: 'turn',
+      createdAt: '2026-10-17T12:00:00.000Z',
     };
+    const messages = projectRuntimeEventsToMessages([
+      { ...base, eventId: 'start', method: 'turn.started', prompt: 'Chart' },
+      {
+        ...base,
+        eventId: 'call',
+        method: 'tool.started',
+        toolCallId: 'chart-call',
+        toolName: 'demo/chart',
+        arguments: { range: 'week' },
+      },
+      {
+        ...base,
+        eventId: 'result',
+        method: 'tool.completed',
+        toolCallId: 'chart-call',
+        toolName: 'demo/chart',
+        status: 'success',
+        output: recorded,
+      },
+    ]);
+    const contentParts = messages
+      .filter((message) => message.role === 'assistant')
+      .flatMap((message) =>
+        message.parts.flatMap(conversationPartToContentParts),
+      );
     const requests: string[] = [];
     fetchMock.mockImplementation((url: string) => {
       requests.push(url);
@@ -131,7 +156,7 @@ describe('MCPToolUIFrame', () => {
           }
         >
           <MessageContent
-            contentParts={[JSON.parse(JSON.stringify(call))]}
+            contentParts={JSON.parse(JSON.stringify(contentParts))}
             textContent=""
             chatFontSize={14}
             showReasoning={false}
