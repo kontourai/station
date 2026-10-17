@@ -95,7 +95,8 @@ its selected execution engine determines the available delivery mechanisms.
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
 delivery channel is reported as undelivered on the ordinary saved-binding path;
-an absent request is not a failed delivery. An explicit conversation engine
+an absent request is not a failed delivery. Explicit `askBeforeUse` tool rules
+are an exception: unsupported engines refuse the saved Agent as well. An explicit conversation engine
 override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
@@ -249,13 +250,16 @@ has its own delivery and authorization boundary.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
-Open an Agent's Tools section and choose **Station** or **Add**.
-Expand an integration to search and choose Read only, All, None, or individual
-tools. Choose a tool group to narrow the checklist; Read only, All, and None
-apply to that group and preserve choices elsewhere. Station additions start
-read-only where individual selection is supported.
-The shield opens approvals; the gear opens harness settings. Browser and workflow
-options are under Advanced. Changes apply to new chats.
+Open an Agent's **Tools → Add tools** list. Each source shows where it came
+from. Choose **Add**, or open a source to select individual actions. Click an
+action name for its description; approvals sit beside selected actions.
+**About this source** holds provenance and **Share with Projects**, which
+controls source availability across all Projects on this Station. External sources
+also offer **Check for new tools** and **Edit connection**; built-in sources do not. Station-classified reads
+default to Always allow; changes and unknown actions default to Ask me on
+Station and Claude. **Tool settings** holds harness options. **Browser access** is separate;
+**Workflow files** holds workflow editing. Browser delivery currently connects
+Claude Code to Station's Project browser; other engines show its unavailability. Changes apply to new chats.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.

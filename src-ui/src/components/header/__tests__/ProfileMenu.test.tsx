@@ -14,6 +14,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -25,6 +26,17 @@ const harness = vi.hoisted(() => ({ isMobile: false }));
 
 vi.mock('../../../hooks/useIsMobile', () => ({
   useIsMobile: () => harness.isMobile,
+}));
+
+vi.mock('../../../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({ children }: { children: ReactNode }) =>
+    children,
+  useToolLibraryClient: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@kontourai/station-sdk/tool-library', () => ({
+  useOwnToolAccess: () => ({
+    data: { station: { operator: true, name: 'My Mac' } },
+  }),
 }));
 
 import { ProfileMenu } from '../ProfileMenu';
@@ -72,15 +84,18 @@ describe('ProfileMenu', () => {
     // distinction is load-bearing for the first row: its glyph slot holds the
     // initials chip, whose "ST" is in the DOM and deliberately not in the name.
     const rows = screen.getAllByRole('menuitem');
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(rows).toEqual([
+      screen.getByRole('menuitem', { name: 'My access' }),
       screen.getByRole('menuitem', { name: 'Profile' }),
       screen.getByRole('menuitem', { name: 'Ask Station for help' }),
       screen.getByRole('menuitem', { name: 'Open settings' }),
     ]);
     // The chip really is present and really is excluded — otherwise the line
     // above would pass for a row that simply never rendered it.
-    expect(rows[0]?.textContent).toBe('STProfile');
+    expect(screen.getByRole('menuitem', { name: 'Profile' }).textContent).toBe(
+      'STProfile',
+    );
     expect(menu.parentElement).toBe(document.body);
 
     for (const [name, spy] of [

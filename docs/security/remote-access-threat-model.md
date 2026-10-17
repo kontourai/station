@@ -309,8 +309,11 @@ provenance, without a browser cookie or Origin. The fixed native logout retires
 its account continuation and actual provider session; it leaves Device custody
 independent. The closed native relay-management and Project access
 administration leaves use a dedicated account host operation. Project IAM
-remains independent; terminal, Agent and Task share/unshare authority are
-excluded. Account-bound relay management now admits only exact native-proof
+remains independent; terminal, Agent execution, legacy Agent mutation APIs and
+Task share/unshare authority are excluded. Separately admitted
+[tool-library leaves](../reference/api.md#project-tool-library) permit current
+Project Admin/Owner authoring and source requests, and Owner tool policy. They
+do not grant execution or share personal OAuth credentials. Account-bound relay management now admits only exact native-proof
 leaves with current Device/account binding and separate `relay:manage`. Ordinary
 credential-only account-bound Devices remain refused; capabilities are a neutral
 read with `canManage: false` without management authority.

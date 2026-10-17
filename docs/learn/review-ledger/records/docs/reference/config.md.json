@@ -148,7 +148,21 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/shared/src/mcp-tool-selection.ts",
+
+    "src-server/runtime/tools/tool-approval.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/projects/project-native-tools.ts"
   ],
 
   "checks": [

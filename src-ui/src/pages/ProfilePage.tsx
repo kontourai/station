@@ -7,6 +7,7 @@ import { AchievementsBadge } from '../components/badges/AchievementsBadge';
 import { UserIcon } from '../components/icons/UserIcon';
 import { UserDetailModal } from '../components/modals/UserDetailModal';
 import { InsightsDashboard } from '../components/monitoring/InsightsDashboard';
+import { MyAccessPanel } from '../components/profile/MyAccessPanel';
 import { StationPeoplePanel } from '../components/profile/StationPeoplePanel';
 import {
   describeReadFailure,
@@ -25,6 +26,7 @@ import { describeCostCoverage } from '../components/usage-stats/UsageSummaryCard
 import { useAnalytics } from '../contexts/AnalyticsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { pluginRegistry } from '../core/PluginRegistry';
+import { StationToolLibraryProvider } from '../views/agent-editor/ToolLibraryContext';
 import './ProfilePage.css';
 import '../views/page-layout.css';
 
@@ -208,6 +210,9 @@ export function ProfilePage() {
   return (
     <div className="profile-page">
       <div className="profile-container">
+        <StationToolLibraryProvider>
+          <MyAccessPanel />
+        </StationToolLibraryProvider>
         <div className="profile-usage-status">
           <div>
             <span>Station usage</span>

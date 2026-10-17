@@ -47,6 +47,10 @@ import type {
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import {
+  externalMcpToolApprovalIdentity,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
+import {
   type ClaudeAskReason,
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
@@ -60,7 +64,10 @@ import {
   type PreToolPolicyDecision,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
-import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import {
+  canonicalizeExternalToolName,
+  isAutoApprovedExternalTool,
+} from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
@@ -1060,6 +1067,16 @@ function toolInputDigest(toolInput: unknown): string | undefined {
 }
 
 function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+  if (decision.behavior === 'ask' && decision.required) {
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        permissionDecision: 'ask' as const,
+        permissionDecisionReason: 'This Agent requires approval for this tool.',
+      },
+    };
+  }
   // #2933, #2947: Station's allow is never a hook `allow`. After one, Claude
   // Code 2.1.278 (as 2.1.261 before it) re-checks only deny rules, ask
   // rules, safety checks, user-interaction tools, the MCP ceiling and a
@@ -3193,6 +3210,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ...askFlags,
           claudeAsk,
         };
+        const sourceApproval = externalMcpToolApprovalIdentity(toolName);
+        const authoredApproval = resolveAuthoredToolApproval(
+          [toolName, canonicalizeExternalToolName(toolName)],
+          input.agent?.autoApprove,
+          input.agent?.askBeforeUse,
+          sourceApproval.key,
+        );
+        const explicitAsk =
+          authoredApproval === 'ask' ||
+          (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
         // `tools.autoApprove` via `isAutoApproved` (agent-hooks.ts,
@@ -3215,6 +3242,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // `claudeAskEscalates`).
         if (
           !inputRequest &&
+          !explicitAsk &&
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
@@ -3250,7 +3278,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 : toolRequestIsPlainCall(request)
                   ? undefined
                   : 'the request is an escalation or a plan exit';
-          if (notApplied === undefined) {
+          if (notApplied === undefined && !explicitAsk) {
             return { behavior: 'allow', updatedInput: toolInput };
           }
           // The evaluator has already logged the guardian's allow; say here
@@ -3273,6 +3301,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         if (
           !inputRequest &&
+          !explicitAsk &&
           record.approvedTools.has(toolName) &&
           sessionGrant === 'tool'
         ) {

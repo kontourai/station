@@ -36,6 +36,7 @@ import {
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
@@ -703,6 +704,7 @@ export function configureRuntimeSupportServices(
     new PluginLifecycleProposalService(
       context.configLoader.getProjectHomeDir(),
     ),
+    new ToolLibraryService(context.configLoader.getProjectHomeDir()),
   );
   return {
     schedulerService,

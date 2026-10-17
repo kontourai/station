@@ -10,6 +10,12 @@ import { projectMcpServers } from './project-tools.js';
 
 export function createProjectNativeToolLoader(deps: {
   agentSpecs: Map<string, AgentSpec>;
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    project: ProjectConfig,
+    servers: readonly string[],
+  ) => void;
   getProject: (slug: string) => ProjectConfig;
   listRoots: () => Promise<KnowledgeStoreRoot[]>;
   loadTools: (slug: string, spec: AgentSpec) => Promise<ITool[]>;
@@ -40,6 +46,8 @@ export function createProjectNativeToolLoader(deps: {
           root.scope.projectSlug === projectSlug,
       ),
     );
+    if (original)
+      deps.validateProjectTools?.(publicSlug, original, project, servers);
     if (!servers.length) return undefined;
     if (!original) throw new Error('Agent tool configuration is unavailable.');
     const additions = servers.filter(

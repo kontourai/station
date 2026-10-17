@@ -407,6 +407,11 @@ channel — is **invalid-as-authored**, and the system says so where authoring h
 This is the same trust argument as connections-onboarding.md §1 ("never silent") made
 structural: honesty is a property of the contract, not a courtesy of each feature.
 
+Explicit `tools.askBeforeUse` rules are required policy: a saved Agent also
+refuses startup on an engine that cannot enforce them. Station and Claude
+currently deliver these rules; the ordinary deliverable-subset behavior does
+not discard an authored Ask requirement.
+
 ## 6. Per-session capability delivery and the overlay model
 
 ### 6.1 Owner policy: Station never installs into global CLI config
