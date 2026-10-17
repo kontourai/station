@@ -1163,11 +1163,27 @@ write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
 
-Telemetry destination/reference fields have an additional operator or
+Telemetry tier, legacy enabled, destination and reference fields have an additional operator or
 `access:manage` guard; an internal-agent request cannot write them. Invalid
 addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Telemetry tiers
+
+`GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
+scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
+with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
+`default`, `user`, `disclosure`). It also returns Lite/Full inventory revisions, the exact server-side Lite
+field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
+a service not yet constructed returns 503 `telemetry_not_ready`.
+
+Save a choice with `PUT /config/app`, for example
+`{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
+preserved. This mutation requires the operator or `access:manage`; agents are
+refused. Full without a current publisher disclosure remains effectively Lite.
+Only the existing operator Full stream has a sender in this foundation. The
+[usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks
 

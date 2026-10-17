@@ -43,6 +43,7 @@ const shared = {
     js: [
       "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
       `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
+      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(process.env.STATION_AUTHOR_TELEMETRY_ENDPOINT || '')};`,
     ].join('\n'),
   },
 };

@@ -78,6 +78,7 @@ function configuredApp(overrides: Partial<AppConfig> = {}): AppConfig {
     defaultModel: 'configured-model',
     invokeModel: 'configured-model',
     structureModel: 'configured-model',
+    telemetryEnabled: true,
     ...overrides,
   };
 }
@@ -123,6 +124,44 @@ async function service(
 }
 
 describe('UsageTelemetryService', () => {
+  test.each([
+    { tier: undefined, dnt: undefined, sends: false },
+    { tier: 'lite', dnt: undefined, sends: false },
+    { tier: 'off', dnt: undefined, sends: false },
+    { tier: 'full', dnt: '1', sends: false },
+    { tier: 'full', dnt: undefined, sends: true },
+  ] as const)(
+    'operator send gate: $tier, DNT=$dnt, sends=$sends',
+    async ({ tier, dnt, sends }) => {
+      const root = await home();
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const subject = new UsageTelemetryService({
+        homeDir: root,
+        appConfig: configuredApp({
+          telemetryEnabled: undefined,
+          telemetryTier: tier ? { operator: tier } : undefined,
+        }),
+        version: '1.2.3',
+        logger: logger(),
+        fetch,
+        env: {
+          STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+          DO_NOT_TRACK: dnt,
+        },
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      await subject.stationStarted();
+      await subject.flush();
+      expect(fetch).toHaveBeenCalledTimes(sends ? 1 : 0);
+      if (!sends)
+        await expect(
+          access(join(root, 'config', 'usage-telemetry-id')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+      await subject.shutdown();
+    },
+  );
+
   test('saved exact-destination authority supplies the product key and revocation during delivery retains the batch without environment fallback', async () => {
     const root = await home();
     const destination = 'https://saved-receiver.test/v1/product/events';
@@ -248,11 +287,11 @@ describe('UsageTelemetryService', () => {
       'env',
     ],
     [
-      'invalid values use default',
+      'invalid values use Lite default',
       'invalid',
       'invalid',
       undefined,
-      true,
+      false,
       'default',
     ],
     ['saved off wins', 'on', 'on', false, false, 'config'],
@@ -525,7 +564,7 @@ describe('UsageTelemetryService', () => {
         });
       await subject.stationStarted();
       expect(await subject.deliveryStatus()).toMatchObject({
-        phase: 'awaiting-disclosure',
+        phase: 'disabled',
         disclosureAcknowledged: false,
         queued: 0,
         counts: { buffered: 0, acknowledged: 0, attempts: 0 },
@@ -727,7 +766,7 @@ describe('UsageTelemetryService', () => {
       });
       const disclosure = await subject.disclosure();
       expect(disclosure.endpointConfigured).toBe(false);
-      expect(disclosure.telemetryEnabled).toBe(true);
+      expect(disclosure.telemetryEnabled).toBe(false);
     });
 
     test('a configured endpoint is reported, blank and whitespace are not', async () => {
@@ -798,7 +837,7 @@ describe('UsageTelemetryService', () => {
 
       subject.reconfigure({ telemetryEnabled: true } as any);
       const after = await subject.disclosure();
-      expect(after.telemetryEnabled).toBe(true);
+      expect(after.telemetryEnabled).toBe(false);
       expect(
         after.enabledSource,
         'the reload moved the value but left the source at boot',
@@ -811,13 +850,13 @@ describe('UsageTelemetryService', () => {
       // would offer to turn OFF a host the environment had already turned
       // off, and name a state that was not the case.
       const cases = [
-        [{}, {}, true],
+        [{}, {}, false],
         [{}, { STATION_TELEMETRY_ENABLED: 'false' }, false],
         [{ telemetryEnabled: false }, {}, false],
         [
           { telemetryEnabled: true },
           { STATION_TELEMETRY_ENABLED: 'false' },
-          true,
+          false,
         ],
       ] as const;
       for (const [appConfig, env, expected] of cases) {
@@ -841,7 +880,7 @@ describe('UsageTelemetryService', () => {
     const setInterval = vi.fn();
     const subject = new UsageTelemetryService({
       homeDir: await home(),
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -867,7 +906,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: await home(),
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -897,7 +936,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn();
     const subject = new UsageTelemetryService({
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -924,7 +963,7 @@ describe('UsageTelemetryService', () => {
     );
     const subject = new UsageTelemetryService({
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -958,7 +997,7 @@ describe('UsageTelemetryService', () => {
       const log = logger();
       const subject = new UsageTelemetryService({
         homeDir: root,
-        appConfig: {} as any,
+        appConfig: { telemetryTier: { operator: 'full' } } as any,
         version: '1.2.3',
         logger: log,
         env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -994,6 +1033,7 @@ describe('UsageTelemetryService', () => {
   test('ENV OFF SWITCH DEFECT: STATION_TELEMETRY_ENABLED=off attempts no request', async () => {
     const fetch = vi.fn();
     const subject = await service({
+      appConfig: configuredApp({ telemetryEnabled: undefined }),
       env: {
         STATION_TELEMETRY_ENABLED: 'off',
         STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
@@ -1375,7 +1415,7 @@ describe('UsageTelemetryService', () => {
     await writeFile(fileHome, 'x');
     const subject = new UsageTelemetryService({
       homeDir: fileHome,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1441,7 +1481,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const opts = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1603,7 +1643,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1631,7 +1671,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1661,7 +1701,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1727,7 +1767,11 @@ describe('UsageTelemetryService', () => {
     expect(
       sent,
       'telemetry hashed its own candidate instead of the identity that persisted',
-    ).toBe(createHash('sha256').update(winner).digest('hex'));
+    ).toBe(
+      createHash('sha256')
+        .update(winner + new Date().toISOString().slice(0, 7))
+        .digest('hex'),
+    );
   });
   test('DOCUMENT INVENTORY DEFECT: published docs are rendered from the registry', async () => {
     const docs = await readFile(

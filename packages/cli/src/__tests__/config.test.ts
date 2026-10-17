@@ -94,6 +94,73 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe('telemetry commands', () => {
+  test('status prints effective publisher tiers and DNT/disclosure reasons from the server', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'off', reason: 'DNT' },
+            operator: { tier: 'lite', reason: 'disclosure' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://127.0.0.1:43129/api/usage-telemetry/status',
+    );
+    expect(consoleLog).toHaveBeenCalledWith('kontour: off (DNT)');
+    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+  });
+  test('set sends one publisher through the live configuration API then reports effective state', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'full' } },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'off', reason: 'user' },
+            operator: { tier: 'lite', reason: 'disclosure' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand([
+      'set',
+      'operator',
+      'full',
+      '--api-base=http://127.0.0.1:43129',
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://127.0.0.1:43129/config/app',
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      telemetryTier: { operator: 'full' },
+    });
+    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+  });
+  test('invalid publisher/tier is refused before any request', async () => {
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await expect(
+      runTelemetryCommand(['set', 'private-plugin', 'full']),
+    ).rejects.toThrow('Usage:');
+    await expect(
+      runTelemetryCommand(['set', 'operator', 'true']),
+    ).rejects.toThrow('Usage:');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('configSet', () => {
   test('writes through the live route when Station is reachable (#175)', async () => {
     fetchMock.mockResolvedValueOnce(

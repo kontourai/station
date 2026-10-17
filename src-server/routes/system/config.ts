@@ -521,6 +521,8 @@ export function createConfigRoutes(
       );
       if (
         [
+          'telemetryTier',
+          'telemetryEnabled',
           'productTelemetryEndpoint',
           'productTelemetryKeyRef',
           'otelTelemetryEndpoint',
@@ -532,7 +534,7 @@ export function createConfigRoutes(
             {
               success: false,
               error:
-                'An agent cannot change telemetry destinations or key references. The operator can, in Settings.',
+                'An agent cannot change telemetry choices, destinations or key references. The operator can, in Settings.',
             },
             403,
           );
@@ -545,7 +547,7 @@ export function createConfigRoutes(
             {
               success: false,
               error:
-                'An operator must configure telemetry destinations and key references.',
+                'An operator must configure telemetry choices, destinations and key references.',
             },
             403,
           );

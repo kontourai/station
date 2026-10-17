@@ -1064,6 +1064,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          telemetryTier: { operator: 'off' },
           productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
           productTelemetryKeyRef: 'product-source',
           region: 'eu-west-1',

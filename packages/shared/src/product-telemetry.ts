@@ -15,6 +15,10 @@ import {
   type ProductTelemetryProbeReceipt,
   type ProductTelemetryProbeRequest,
   type ProductTelemetryPropertyDefinition as PropertyDefinition,
+  STATION_DAILY_FIELDS,
+  type StationDailyPing,
+  TELEMETRY_COUNT_BUCKETS,
+  TELEMETRY_ENGINES,
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -50,6 +54,8 @@ export const USAGE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
 export function assertUsageTelemetryInventoryContract(
   event: string,
   properties: Record<string, unknown>,
+  publicRegistryIds: readonly string[] = [],
+  publicReleaseVersions: readonly string[] = [],
 ): asserts properties is Record<string, string> {
   const definition = USAGE_TELEMETRY_EVENTS[event as UsageTelemetryEvent];
   if (!Object.hasOwn(USAGE_TELEMETRY_EVENTS, event) || !definition)
@@ -79,9 +85,15 @@ export function assertUsageTelemetryInventoryContract(
     const allowed = propertyDefinition.domain;
     const valid = Array.isArray(allowed)
       ? (allowed as readonly string[]).includes(value)
-      : /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
-          value,
-        );
+      : allowed === 'public-registry-id-or-custom'
+        ? value === 'custom' ||
+          (value.length <= 128 && publicRegistryIds.includes(value))
+        : allowed === 'public-release-version-or-custom'
+          ? value === 'custom' ||
+            (value.length <= 64 && publicReleaseVersions.includes(value))
+          : /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+              value,
+            );
     if (!valid)
       throw new Error(
         `Usage telemetry inventory drift: property "${event}.${property}" has invalid value "${value}"; permitted: ${Array.isArray(allowed) ? allowed.join(', ') : allowed}.`,
@@ -222,6 +234,8 @@ export function parseProductTelemetryProbeReceipt(
 /** Strict v1 receiver boundary. Legacy batches require a separate explicit ingestion profile. */
 export function parseProductTelemetryBatch(
   value: unknown,
+  publicRegistryIds: readonly string[] = [],
+  publicReleaseVersions: readonly string[] = [],
 ): ProductTelemetryBatch {
   if (
     !record(value) ||
@@ -253,7 +267,12 @@ export function parseProductTelemetryBatch(
     ) {
       throw new Error('Invalid product telemetry observation');
     }
-    assertUsageTelemetryInventoryContract(event.event, event.properties);
+    assertUsageTelemetryInventoryContract(
+      event.event,
+      event.properties,
+      publicRegistryIds,
+      publicReleaseVersions,
+    );
     const build = event.build;
     if (!onlyKeys(build, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.build)))
       throw new Error('Undisclosed product telemetry build fields');
@@ -313,4 +332,102 @@ export function parseProductTelemetryBatch(
     distinct_id: value.distinct_id,
     events,
   };
+}
+
+export function renderLiteTelemetryInventory(): string {
+  return (
+    '## `station_daily` Lite inventory\n\n' +
+    Object.entries(STATION_DAILY_FIELDS)
+      .map(
+        ([field, definition]) =>
+          `- \`${field}\`: ${JSON.stringify(definition)}`,
+      )
+      .join('\n')
+  );
+}
+export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
+  .update(renderLiteTelemetryInventory())
+  .digest('hex');
+
+/** A sender must show the new notice whenever this revision changes. */
+export function hasCurrentLiteTelemetryNotice(
+  receipt: { inventoryRevision: string } | undefined,
+): boolean {
+  return receipt?.inventoryRevision === LITE_TELEMETRY_INVENTORY_REVISION;
+}
+
+export function monthlyTelemetryId(installSecret: string, date: Date): string {
+  return createHash('sha256')
+    .update(installSecret + date.toISOString().slice(0, 7))
+    .digest('hex');
+}
+
+/** Registry membership comes from the public catalog, never from a syntactic ID match. */
+export function parseStationDailyPing(
+  value: unknown,
+  publicRegistryIds: readonly string[] = [],
+  publicReleaseVersions: readonly string[] = [],
+): StationDailyPing {
+  if (
+    !record(value) ||
+    Object.keys(value).length !== Object.keys(STATION_DAILY_FIELDS).length ||
+    !onlyKeys(value, Object.keys(STATION_DAILY_FIELDS))
+  )
+    throw new Error('Invalid station_daily fields');
+  const scalar = (
+    item: unknown,
+    domain: readonly string[] | string,
+    max?: number,
+  ): boolean => {
+    if (Array.isArray(domain))
+      return typeof item === 'string' && domain.includes(item);
+    if (domain === 'boolean') return typeof item === 'boolean';
+    if (domain === 'count')
+      return (
+        typeof item === 'number' &&
+        Number.isInteger(item) &&
+        item >= 0 &&
+        item <= (max ?? 65535)
+      );
+    if (domain === 'uuid-v4') return productUuid(item);
+    if (domain === 'engine-count-buckets')
+      return (
+        record(item) &&
+        Object.keys(item).length === 2 &&
+        onlyKeys(item, ['engine', 'bucket']) &&
+        typeof item.engine === 'string' &&
+        TELEMETRY_ENGINES.some((engine) => engine === item.engine) &&
+        typeof item.bucket === 'string' &&
+        TELEMETRY_COUNT_BUCKETS.some((bucket) => bucket === item.bucket)
+      );
+    if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
+    if (domain === 'public-release-version-or-custom')
+      return item === 'custom' || publicReleaseVersions.includes(item);
+    return (
+      (domain === 'public-registry-id-or-none-or-custom' &&
+        ['none', 'custom'].includes(item)) ||
+      publicRegistryIds.includes(item)
+    );
+  };
+  for (const [field, definition] of Object.entries(STATION_DAILY_FIELDS)) {
+    const item = value[field];
+    const limit =
+      'maxLength' in definition
+        ? definition.maxLength
+        : 'max' in definition
+          ? definition.max
+          : undefined;
+    if ('arrayMax' in definition) {
+      if (
+        !Array.isArray(item) ||
+        item.length > definition.arrayMax ||
+        item.some((entry) => !scalar(entry, definition.domain, limit)) ||
+        new Set(item.map((entry) => (record(entry) ? entry.engine : entry)))
+          .size !== item.length
+      )
+        throw new Error(`Invalid station_daily field: ${field}`);
+    } else if (!scalar(item, definition.domain, limit))
+      throw new Error(`Invalid station_daily field: ${field}`);
+  }
+  return structuredClone(value) as StationDailyPing;
 }

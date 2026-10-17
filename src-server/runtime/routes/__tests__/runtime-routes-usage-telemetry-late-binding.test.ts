@@ -310,6 +310,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
         defaultModel: 'configured-model',
         invokeModel: 'configured-model',
         structureModel: 'configured-model',
+        telemetryTier: { operator: 'full' },
       },
       version: '1.2.3',
       logger: { warn: vi.fn() },
