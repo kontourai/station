@@ -58,7 +58,13 @@
 
     "src-ui/src/views/personal-board/BoardSetup.tsx",
 
-    "src-server/security/coding-authority.ts"
+    "src-server/security/coding-authority.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts"
   ],
 
   "checks": [
