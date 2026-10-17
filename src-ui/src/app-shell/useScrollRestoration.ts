@@ -160,6 +160,7 @@ export function useScrollRestoration(
     const attempt = () => {
       if (settled) return;
       if (performance.now() >= deadline) {
+        pendingKeyRef.current = null;
         stop();
         return;
       }
