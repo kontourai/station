@@ -262,10 +262,15 @@ versions, stale inventories and legacy batches are rejected. An older payload
 has no deduplication/time/build guarantees and must not be assigned current
 metadata or included in precise release comparisons. Legacy storage/queries,
 if later supported, need their own explicit ingestion profile. No onboarding
-funnel is inferred from startup; only the three existing classified event producers are wired; additional event definitions below are contracts for later lanes.
+funnel is inferred from startup. Startup, recovery and engine turns retain their
+existing producers; plugin install/remove, persisted settings changes and
+authenticated client connections add the server-owned observations described
+above. Pane-open and currently unavailable classified friction producers remain
+for their owning lanes.
 
 The producers are
-[runtime startup](../../src-server/runtime/bootstrap/station-runtime.ts) and
+[runtime startup and plugin/config lifecycle](../../src-server/runtime/bootstrap/station-runtime.ts),
+[authenticated connection/config routes](../../src-server/runtime/routes/runtime-routes.ts), and
 [orchestration](../../src-server/services/orchestration/orchestration-service.ts).
 The `station_started` call follows successful final registry-policy publication,
 virtual application publication when configured, cancellation checks, and the
