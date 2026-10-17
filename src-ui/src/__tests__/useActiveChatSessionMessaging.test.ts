@@ -267,6 +267,53 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
+  it('keeps shaping instructions across a clarification and reload, then stops when mode is removed', async () => {
+    activeChatsStore.updateChat(sessionId, { taskShaping: true });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Help shape installer progress',
+      );
+    });
+    const saved = hydrateActiveChats(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    );
+    expect(saved[sessionId].taskShaping).toBe(true);
+    activeChatsStore.updateChat(sessionId, {
+      ...saved[sessionId],
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Show counts for each step',
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    for (const [, request] of sendExecutionMessageMock.mock.calls)
+      expect(request.ambientContext).toContain('station-task-proposal');
+    expect(sendExecutionMessageMock.mock.calls[1][1].message).toBe(
+      'Show counts for each step',
+    );
+    activeChatsStore.updateChat(sessionId, {
+      taskShaping: false,
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Continue chatting');
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(3);
+    expect(
+      sendExecutionMessageMock.mock.calls[2][1].ambientContext,
+    ).toBeUndefined();
+  });
   it.each(['replaced', 'removed', 'roles'] as const)(
     'refuses a captured start after a %s change to the complete draft before dispatch',
     async (change) => {

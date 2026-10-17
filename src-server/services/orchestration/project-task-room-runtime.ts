@@ -1331,11 +1331,43 @@ export class ProjectTaskRoomRuntime {
     }
   }
 
+  /** Acceptance reuses human editing authority and never replaces later edits. */
+  async seedProposalBrief(input: {
+    taskId: string;
+    request: Request;
+    text: string;
+  }): Promise<boolean> {
+    const plan = await this.editPlan({
+      ...input,
+      intentId: randomUUID(),
+      desiredText: input.text,
+      selection: { anchor: 0, focus: 0 },
+      onlyIfEmpty: true,
+    });
+    if (plan.kind === 'unchanged') return true;
+    if (plan.kind !== 'planned') return false;
+    const result = await this.submitBatch({
+      taskId: input.taskId,
+      request: input.request,
+      intentId: plan.intentId,
+      intentDigest: plan.digest,
+    });
+    if (result.kind === 'committed' || result.kind === 'duplicate') return true;
+    // A concurrent accept may have committed the same brief after our plan.
+    const document = await this.document({
+      taskId: input.taskId,
+      request: input.request,
+    });
+    return document.kind === 'snapshot' && document.text === input.text;
+  }
+
   async editPlan(input: {
     taskId: string;
     request: Request;
     intentId: string;
     desiredText: string;
+    /** Proposal acceptance must never overwrite an existing document. */
+    onlyIfEmpty?: boolean;
     selection: { anchor: number; focus: number };
   }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
@@ -1344,6 +1376,8 @@ export class ProjectTaskRoomRuntime {
     const snapshot = await this.#deps.working.privateSnapshot({ scope });
     if (!snapshot) return { kind: 'unavailable' } as const;
     const state = new SharedWorkingState({ scope, snapshot });
+    if (input.onlyIfEmpty && state.text())
+      return { kind: 'unchanged' } as const;
     const issuedIntentId = randomUUID();
     // Document operations participate in the room policy, not the credential
     // version of the browser that happened to plan them. Exact device
