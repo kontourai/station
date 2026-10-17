@@ -506,22 +506,41 @@
 
 /* Liveness: pulse the dot while the runtime is actively working. */
 .workflow-plan-panel__runtime-dot--live {
+  position: relative;
+  animation: workflow-runtime-dot-breathe var(--motion-status-pulse)
+    var(--ease-out) infinite;
+}
+
+.workflow-plan-panel__runtime-dot--live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  border-radius: inherit;
+  pointer-events: none;
   animation: workflow-runtime-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
 
-@keyframes workflow-runtime-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentcolor 60%, transparent);
+@keyframes workflow-runtime-dot-breathe {
+  0%,
+  100% {
     opacity: 1;
   }
   70% {
-    box-shadow: 0 0 0 7px transparent;
     opacity: 0.75;
   }
+}
+
+@keyframes workflow-runtime-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  70%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
-    opacity: 1;
+    transform: scale(2.75);
+    opacity: 0;
   }
 }
 

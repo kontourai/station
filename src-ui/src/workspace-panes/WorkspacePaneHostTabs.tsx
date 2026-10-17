@@ -6,7 +6,7 @@ import type {
   WorkspacePaneHostSplit,
   WorkspacePaneHostTabGroup,
 } from '@kontourai/station-contracts/workspace-pane-host';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { nextTabIndex } from '../utils/tab-navigation';
 import { WorkspacePaneFailure } from './WorkspacePaneFailure';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
@@ -71,13 +71,18 @@ export function WorkspacePaneHostTabs({
   const selected = group.selectedInstanceId ?? group.instanceIds[0];
   const selectedPane = paneById.get(selected);
   const retryPane = controller.retry;
-  // Keep hydration's first paint strictly active-only. After it is stable,
-  // desktop keeps sibling frames mounted so their real lifecycle callbacks can
-  // suspend/resume rather than treating a tab switch as a fresh renderer.
-  const [retainDesktopFrames, setRetainDesktopFrames] = useState(false);
-  useEffect(() => {
-    if (!compact) setRetainDesktopFrames(true);
-  }, [compact]);
+  // Visit lazily, then retain desktop renderers so their state and lifecycle
+  // callbacks survive tab switches without loading untouched siblings.
+  const [visited, setVisited] = useState([selected]);
+  if (
+    !visited.includes(selected) ||
+    visited.some((instanceId) => !group.instanceIds.includes(instanceId))
+  ) {
+    setVisited([
+      ...visited.filter((instanceId) => group.instanceIds.includes(instanceId)),
+      ...(visited.includes(selected) ? [] : [selected]),
+    ]);
+  }
   return (
     <section
       className="workspace-pane-host__group"
@@ -175,60 +180,57 @@ export function WorkspacePaneHostTabs({
           onRetry={() => void retryPane(selected)}
         />
       )}
-      {(compact || !retainDesktopFrames ? [selected] : group.instanceIds).map(
-        (instanceId) => {
-          const pane = paneById.get(instanceId);
-          if (!pane || controller.state.rendererFailures[instanceId])
-            return null;
-          const isSelected = instanceId === selected;
-          return (
-            <div
-              id={workspacePaneHostPanelIdentity(group.id, instanceId)}
-              className="workspace-pane-host__panel"
-              key={instanceId}
-              role="tabpanel"
-              aria-labelledby={workspacePaneHostTabIdentity(
-                group.id,
-                instanceId,
-              )}
-              hidden={!isSelected}
+      {(compact
+        ? [selected]
+        : group.instanceIds.filter((instanceId) => visited.includes(instanceId))
+      ).map((instanceId) => {
+        const pane = paneById.get(instanceId);
+        if (!pane || controller.state.rendererFailures[instanceId]) return null;
+        const isSelected = instanceId === selected;
+        return (
+          <div
+            id={workspacePaneHostPanelIdentity(group.id, instanceId)}
+            className="workspace-pane-host__panel"
+            key={instanceId}
+            role="tabpanel"
+            aria-labelledby={workspacePaneHostTabIdentity(group.id, instanceId)}
+            hidden={!isSelected}
+          >
+            <WorkspacePaneFrame
+              instanceId={instanceId}
+              paneName={paneLabel(pane)}
+              runtime={runtime}
+              onFailure={controller.fail}
+              onRetry={retryPane}
             >
-              <WorkspacePaneFrame
-                instanceId={instanceId}
-                paneName={paneLabel(pane)}
-                runtime={runtime}
-                onFailure={controller.fail}
-                onRetry={retryPane}
-              >
-                {/* Compact retains only the lightweight callback frame. The
+              {/* Compact retains only the lightweight callback frame. The
                     renderer child itself remains active-only. */}
-                {compact && !isSelected
-                  ? null
-                  : (() => {
-                      const displayMode =
-                        controller.state.document.maximizedInstanceId ===
-                        pane.instanceId
-                          ? 'fullscreen'
-                          : 'inline';
-                      return renderPane(pane, {
-                        displayMode,
-                        availableDisplayModes: controller.canPersist
-                          ? ['inline', 'fullscreen']
-                          : [displayMode],
-                        requestDisplayMode: (mode) => {
-                          if (!controller.canPersist) return false;
-                          controller.maximize(
-                            mode === 'fullscreen' ? pane.instanceId : undefined,
-                          );
-                          return true;
-                        },
-                      });
-                    })()}
-              </WorkspacePaneFrame>
-            </div>
-          );
-        },
-      )}
+              {compact && !isSelected
+                ? null
+                : (() => {
+                    const displayMode =
+                      controller.state.document.maximizedInstanceId ===
+                      pane.instanceId
+                        ? 'fullscreen'
+                        : 'inline';
+                    return renderPane(pane, {
+                      displayMode,
+                      availableDisplayModes: controller.canPersist
+                        ? ['inline', 'fullscreen']
+                        : [displayMode],
+                      requestDisplayMode: (mode) => {
+                        if (!controller.canPersist) return false;
+                        controller.maximize(
+                          mode === 'fullscreen' ? pane.instanceId : undefined,
+                        );
+                        return true;
+                      },
+                    });
+                  })()}
+            </WorkspacePaneFrame>
+          </div>
+        );
+      })}
     </section>
   );
 }
