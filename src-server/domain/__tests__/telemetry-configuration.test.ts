@@ -169,5 +169,11 @@ describe('persisted telemetry migration', () => {
         kontour: 'off',
         operator: 'off',
       });
+    expect(
+      mergeAppConfigUpdate(
+        { ...base, telemetryTier: { kontour: 'lite', operator: 'full' } },
+        { telemetryEnabled: false },
+      ).telemetryTier,
+    ).toEqual({ kontour: 'off', operator: 'off' });
   });
 });

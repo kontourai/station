@@ -36,16 +36,16 @@ test('status uses the live service configuration, respects DNT and never sends',
   expect(body).toMatchObject({
     success: true,
     data: {
+      liteInventory: {
+        event: { domain: ['station_daily'] },
+        public_plugins_enabled: { arrayMax: 20 },
+      },
+      liteInventoryRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
       publishers: {
         kontour: { tier: 'off', reason: 'DNT' },
         operator: { tier: 'off', reason: 'DNT' },
       },
     },
   });
-  expect(body.data.liteInventory).toMatchObject({
-    event: { domain: ['station_daily'] },
-    public_plugins_enabled: { arrayMax: 20 },
-  });
-  expect(body.data.liteInventoryRevision).toMatch(/^[a-f0-9]{64}$/);
   expect(fetch).not.toHaveBeenCalled();
 });
