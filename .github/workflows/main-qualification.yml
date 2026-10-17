@@ -17,11 +17,9 @@ permissions:
 jobs:
   qualification:
     if: github.ref == 'refs/heads/main'
-    concurrency:
-      group: main-qualification-source
-      cancel-in-progress: false
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: background
       source_sha: ${{ github.sha }}
       allow_reuse: ${{ !inputs.force }}
 

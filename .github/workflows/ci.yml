@@ -858,6 +858,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: background
       source_sha: ${{ github.sha }}
 
   # No separate browser-smoke job. It needed full-regression without
@@ -1016,6 +1017,7 @@ jobs:
       actions: read
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: integration
       source_sha: ${{ github.sha }}
       allow_reuse: true
 

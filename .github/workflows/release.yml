@@ -109,6 +109,7 @@ jobs:
     needs: [preflight]
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: release
       source_sha: ${{ needs.preflight.outputs.sha }}
 
   # Every desktop job below (macOS/Windows/Linux) receives the endpoint
