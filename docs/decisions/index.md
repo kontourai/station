@@ -10,4 +10,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
-| [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Pull request guide generation |
+| [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
