@@ -12,6 +12,8 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Telemetry delivery
+
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
 `useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
 These read current-process product and OTel delivery status and request explicit
@@ -32,6 +34,48 @@ The latter accepts `bind` or `unbind`, the exact destination grant and an
 hooks. Pass the render-captured request scope: caches partition by API base and
 authority key, and old responses cannot update a replacement authority. Existing
 MCP consumer inputs and results retain their own separate client functions.
+
+## Integration discovery
+
+`useReconnectIntegrationMutation` returns the redacted `IntegrationViewModel`
+from the connection check and invalidates the integrations query. Inspect
+`result.probe.ok`: a completed HTTP request can still report a failed discovery.
+Successful `probe.tools` entries contain bounded raw action names, descriptions,
+and category labels. The returned discovery is useful even when plugin-owned or
+personal-account state is not persisted in the ordinary integration listing.
+Metadata is for browsing; it grants no execution or credential authority.
+
+Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
+`manual`, or `unavailable`), with source/version/location where recorded. This
+identifies installation provenance, not a trust or approval verdict. Local
+registry origin is bound to the saved execution definition; changed definitions
+withhold stale provenance.
+
+`useIntegrationAccountQuery(id, projectSlug?)` reads the account summary.
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
+`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
+mutation variables and refreshes account/integration queries. Existing endpoint
+ownership checks still apply; a successful catalog install does not sign in.
+
+## Project tool library
+
+`@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
+`apiBase`, optional principal pin, and request authority options. It provides
+`useOwnToolAccess`, `useToolLibrary`, `useToolRequests`,
+`useProjectAuthoredAgents`, and `useToolLibraryChange`. Hosts supply a React Query
+client; account-bound hosts pin the current principal. Queries are authority
+scoped and refetched while mounted. Callers must include `expectedActor` and, for
+Project changes, the exact `projectId`; server authority remains decisive.
+
+The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
+responses contain descriptions, recorded provenance and recorded action metadata, never
+commands, environment variables or credential material. Personal tool accounts
+require the managed Station engine; external engines report these sources as
+unsupported. Installation, Project
+policy and personal account connection remain distinct operations. See the
+[Agent guide](../guides/agents.md#shared-projects) and
+[API reference](api.md#project-tool-library).
 
 ## Agent development entry
 
@@ -395,7 +439,8 @@ const sessionId = createSession('my-agent', 'My Agent');
 
 The default callback requires `conversationId`, `agentSlug` and `agentName`;
 it also accepts optional Project/execution/hydration context and returns
-`Promise<string | null>`. A null result means message hydration failed. Opening
+`Promise<string | null>`. A null result means message hydration failed or its
+command was superseded. Opening
 a Dock entry is not proof that continuation is authorized; use canonical
 conversation resolution and current server execution evidence, not mutable
 Agent defaults, when a host supplies that context.
@@ -1322,7 +1367,7 @@ automatically use the host's native or encrypted broker transport. For those
 hosts, choose client/Session operations that cover the required workflow and
 accept an explicit API base and current request options.
 
-### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
+### `resolveConversationOpen(conversationId, apiBase?, options?): Promise<ConversationOpenResolution>`
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
@@ -1330,7 +1375,9 @@ a caller treats it as a writable Session. The discriminated result is
 carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
-chat.
+chat. Optional `options.signal` cancels the request and `options.timeoutMs`
+sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
+per-call options; they add no command deadline.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
@@ -3324,6 +3371,10 @@ This factory is independent of the SDK's `LayoutProvider`. See the
 ---
 
 ## Refused requests
+
+Task graph requests preserve a refused HTTP status in `StationHttpError.status`.
+For example, proposal acceptance returning 409 requires a fresh matching
+proposal; retrying the same mismatched brief cannot accept it.
 
 `StationHttpError` (exported from `@kontourai/station-sdk` and
 `@kontourai/station-sdk/client`) carries HTTP/envelope refusal details for the

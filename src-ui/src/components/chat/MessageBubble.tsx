@@ -1,3 +1,4 @@
+import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
@@ -33,6 +34,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
@@ -329,6 +331,13 @@ function MessageBubbleComponent({
       (activeSession.conversationId === undefined
         ? activeSession.id
         : undefined));
+  const taskProposal =
+    msg.role === 'assistant' &&
+    msg.answerEligible === true &&
+    msg.turnId &&
+    answerSessionId
+      ? readTaskProposal(textContent)
+      : null;
   // An execution Session is immutable history once it has produced a turn.
   // A conversation can point at another current Session after a handoff, so
   // resolving this row through `activeSession.agentSlug` would relabel old
@@ -519,6 +528,7 @@ function MessageBubbleComponent({
           componentProps={{
             sessionId: msg.sessionId,
             eventId: msg.sourceEventId,
+            excerpt: textContent,
             projectId: activeSession.projectSlug,
           }}
           pending={
@@ -663,6 +673,7 @@ function MessageBubbleComponent({
                 ? {
                     sessionId: answerSessionId,
                     turnId: msg.turnId,
+                    excerpt: textContent,
                     projectId: activeSession.projectSlug,
                   }
                 : undefined,
@@ -930,9 +941,30 @@ function MessageBubbleComponent({
           }
         >
           <MessageContent
-            contentParts={msg.contentParts}
+            contentParts={
+              taskProposal
+                ? msg.contentParts?.map((part) =>
+                    part.type === 'text'
+                      ? {
+                          ...part,
+                          content: part.content?.replace(
+                            /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                            '',
+                          ),
+                        }
+                      : part,
+                  )
+                : msg.contentParts
+            }
             messageKey={anchorKey}
-            textContent={textContent}
+            textContent={
+              taskProposal
+                ? textContent.replace(
+                    /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                    '',
+                  )
+                : textContent
+            }
             chatFontSize={chatFontSize}
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
@@ -942,6 +974,15 @@ function MessageBubbleComponent({
               onToolApproval ? handleContentToolApproval : undefined
             }
           />
+          {taskProposal && msg.turnId && answerSessionId && (
+            <TaskProposalCard
+              proposal={taskProposal}
+              sessionId={answerSessionId}
+              conversationId={activeSession.conversationId}
+              turnId={msg.turnId}
+              projectId={activeSession.projectSlug}
+            />
+          )}
         </div>
         {msg.role === 'user' && msg.steerInterruptedRun && (
           <div className="message__steer-note">

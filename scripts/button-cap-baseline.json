@@ -19,10 +19,6 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/components/chat/ChatSettingsPanel.tsx :: ChatSettingsPanel :: div.chat-settings-modal__control",
-      "labelledActions": 3
-    },
-    {
       "row": "src-ui/src/components/chat/OutboundQueuedMessages.tsx :: OutboundQueuedMessages :: div.queued-message",
       "labelledActions": 3
     },

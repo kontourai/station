@@ -23,6 +23,7 @@ import {
   resolveViewFromPath,
 } from './app-shell/routing';
 import { useScrollRestoration } from './app-shell/useScrollRestoration';
+import { TaskShapingHost } from './components/chat/TaskShapingComposer';
 import { ChatAuthRecoveryProvider } from './components/chat-dock/ChatAuthRecoveryContext';
 import {
   isDockOwnedViewType,
@@ -632,6 +633,7 @@ function App() {
   return (
     <PushNotificationsProvider value={pushNotifications}>
       <ProjectsProvider>
+        <TaskShapingHost />
         {/* The route's Chat placement, for readers outside the layout: the
           region shells suspend the dock's Chat and the Chat chord goes to the
           Coding centre while it owns Chat (`resolveLayoutChatPlacement`). */}

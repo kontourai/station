@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { IIntegrationRegistryProvider } from '../../provider-interfaces.js';
 import {
   createIntegrationRegistryProvider,
   mergeRegistryItems,
@@ -235,7 +236,58 @@ describe('integration-registry-provider helpers', () => {
         installed: true,
         status: 'missing binary',
       },
-      { id: 'provider-tool', displayName: 'Provider Tool' },
+      {
+        id: 'provider-tool',
+        displayName: 'Provider Tool',
+        toolOrigin: {
+          kind: 'registry',
+          registryName: 'Registry provider',
+          itemId: 'provider-tool',
+        },
+      },
     ]);
+  });
+  test('pinned installation never runs a same-ID source from a different registry', async () => {
+    function provider(registryKey: string): IIntegrationRegistryProvider {
+      return {
+        registryKey,
+        listAvailable: async () => [
+          {
+            id: 'reports',
+            displayName: 'Reports',
+            description: '',
+            installed: false,
+          },
+        ],
+        listInstalled: async () => [],
+        install: vi.fn(async () => ({ success: true, message: 'Installed' })),
+        uninstall: async () => ({ success: true, message: 'Installed' }),
+        getToolDef: async () => ({
+          id: 'reports',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'node',
+        }),
+        sync: async () => {},
+      };
+    }
+    const other = provider('other');
+    const selected = provider('selected');
+    const registry = createIntegrationRegistryProvider(
+      [other, selected],
+      createHomeDir(),
+    );
+    expect(
+      await registry.installWithDefinition!('reports', 'selected'),
+    ).toMatchObject({
+      result: { success: true, message: 'Installed' },
+      origin: { registryId: 'selected' },
+    });
+    expect(other.install).not.toHaveBeenCalled();
+    expect(selected.install).toHaveBeenCalledOnce();
+    expect(
+      await registry.installWithDefinition!('reports', 'removed'),
+    ).toMatchObject({ result: { success: false } });
+    expect(other.install).not.toHaveBeenCalled();
   });
 });

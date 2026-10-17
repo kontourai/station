@@ -3604,13 +3604,19 @@ button:hover {
 }
 
 .chat-settings-modal {
+  --chat-settings-padding: 16px;
   position: relative;
+  box-sizing: border-box;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
-  padding: 16px;
+  padding: var(--chat-settings-padding);
   min-width: 340px;
   max-width: 440px;
+  /* The panel scrolls rather than outgrowing a short window; the phone sheet
+     rule (`.responsive-surface-panel`) sets its own bound and scroll. */
+  max-height: calc(100dvh - 2 * var(--chat-settings-padding));
+  overflow-y: auto;
 }
 
 .chat-settings-modal__title {
@@ -3644,6 +3650,7 @@ button:hover {
 
 .chat-settings-modal__control {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -3656,6 +3663,8 @@ button:hover {
   padding: 4px 10px;
   border-radius: 4px;
   font-size: var(--text-base);
+  /* A row wraps whole buttons; a label never breaks inside its button. */
+  white-space: nowrap;
 }
 
 .chat-settings-modal__btn:disabled {
@@ -3712,11 +3721,25 @@ button:hover {
   cursor: pointer;
 }
 
-.chat-settings-modal__actions {
+/* Done stays on screen however far the panel has scrolled: a sticky footer
+   at the panel's bottom edge, drawn over the content it covers. The negative
+   margins carry its background across the panel's padding so scrolled text
+   never shows beside or below it. Two classes, and `max-width: none`, because
+   the phone rules for `.responsive-surface-actions` cap an action row at
+   100% of its container, which would cancel the right-hand margin. */
+.chat-settings-modal > .chat-settings-modal__actions {
+  max-width: none;
+  position: sticky;
+  bottom: calc(-1 * var(--chat-settings-padding));
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 16px;
+  margin: 16px calc(-1 * var(--chat-settings-padding))
+    calc(-1 * var(--chat-settings-padding));
+  padding: 12px var(--chat-settings-padding) var(--chat-settings-padding);
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .chat-settings-modal__done {
@@ -3728,6 +3751,11 @@ button:hover {
   font-size: var(--text-base);
   cursor: pointer;
   font-weight: 500;
+}
+
+.chat-settings-modal__done:hover {
+  background: var(--accent-hover-fill);
+  color: var(--text-on-accent);
 }
 
 .chat-messages--empty {
@@ -5817,6 +5845,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
 .chat-dock__content-area {
+  min-width: 0;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -6485,7 +6514,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      padding with the safe area, which is 0 on a phone without a home
      indicator, leaving every dialog's buttons on its bottom edge. Keep the
      footer's padding, and the safe area when it is larger. */
-  .station-dialog__footer.responsive-surface-actions {
+  .station-dialog__footer.responsive-surface-actions,
+  .chat-settings-modal__actions.responsive-surface-actions {
     padding-bottom: max(16px, var(--safe-bottom, 0px));
   }
 
@@ -9428,8 +9458,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     border-radius: 0;
   }
 
+  /* The header keeps its content height up to its 62% cap and scrolls only
+     past it. With `flex-shrink: 1` it shared every overflow with the body in
+     proportion to height, so a long recent-chats list squeezed it a few
+     pixels short of its title row and the sheet showed two scrollbars. */
   .new-chat-modal__header {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     max-height: 62%;
     min-height: 0;
     overflow-y: auto;

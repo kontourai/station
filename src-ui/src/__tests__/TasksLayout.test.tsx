@@ -5,11 +5,14 @@ import type { GitStatusResult } from '@kontourai/station-sdk';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
-const { createTask, navigate, gitStatusQuery } = vi.hoisted(() => ({
-  createTask: vi.fn(),
-  navigate: vi.fn(),
-  gitStatusQuery: vi.fn(),
-}));
+const { createTask, launchStarterTask, navigate, gitStatusQuery } = vi.hoisted(
+  () => ({
+    createTask: vi.fn(),
+    launchStarterTask: vi.fn(),
+    navigate: vi.fn(),
+    gitStatusQuery: vi.fn(),
+  }),
+);
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useHostRequestAuthorityScope: () => ({
@@ -41,8 +44,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useWorkItemsQuery: () => ({}),
   useCreateTaskMutation: () => ({ mutateAsync: createTask }),
   useDispatchTaskMutation: () => ({}),
-  useLaunchStartTaskStarterMutation: () => ({}),
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useLaunchStartTaskStarterMutation: () => ({ mutateAsync: launchStarterTask }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+    setQueryData: vi.fn(),
+  }),
   taskQueries: {
     list: (slug: string) => ({ queryKey: ['tasks', slug] }),
     graph: (id: string) => ({ queryKey: ['task-graph', id] }),
@@ -51,7 +57,18 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { TasksLayout } from '../components/TasksLayout';
 
-test('creates a Task from the board with the Project workspace and git binding', async () => {
+test('creates a Starter Task from the board with the Project workspace and git binding', async () => {
+  window.history.replaceState({}, '', '/projects/demo?starter=start-task');
+  Object.defineProperty(window.navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async <T,>(
+        _name: string,
+        _options: { mode: 'exclusive' },
+        callback: () => Promise<T>,
+      ): Promise<T> => callback(),
+    },
+  });
   const gitStatus: GitStatusResult = {
     isRepo: true,
     repoRoot: '/workspace/demo',
@@ -65,7 +82,12 @@ test('creates a Task from the board with the Project workspace and git binding',
     lastCommit: null,
   };
   gitStatusQuery.mockReturnValue({ data: gitStatus });
-  createTask.mockResolvedValue({ id: 'task-new' });
+  launchStarterTask.mockResolvedValue({
+    state: 'started',
+    task: { id: 'task-new' },
+    correlation: { state: 'bound', binding: {} },
+    dispatch: { state: 'dispatched' },
+  });
   render(<TasksLayout projectSlug="demo" layoutSlug="tasks" config={{}} />);
   expect(
     screen.getByText(/Follow the work by its recorded status/),
@@ -75,17 +97,25 @@ test('creates a Task from the board with the Project workspace and git binding',
   });
   fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
   await waitFor(() =>
-    expect(createTask).toHaveBeenCalledExactlyOnceWith({
-      projectId: 'demo',
-      title: 'Board Task',
-      agentId: 'planner',
-      createdBy: 'user',
-      workspaceBinding: {
-        workingDirectory: '/workspace/demo',
-        repoRoot: '/workspace/demo',
-        worktreePath: '/workspace/demo',
-        branch: 'feature/task',
-        sourceSurface: 'ui',
+    expect(launchStarterTask).toHaveBeenCalledExactlyOnceWith({
+      starterId: 'start-task',
+      operationId: expect.any(String),
+      task: {
+        projectId: 'demo',
+        title: 'Board Task',
+        agentId: 'planner',
+        createdBy: 'user',
+        workspaceBinding: {
+          workingDirectory: '/workspace/demo',
+          repoRoot: '/workspace/demo',
+          worktreePath: '/workspace/demo',
+          branch: 'feature/task',
+          sourceSurface: 'ui',
+        },
+      },
+      dispatch: {
+        agentId: 'planner',
+        runtimeConfig: { cwd: '/workspace/demo' },
       },
     }),
   );
@@ -94,4 +124,6 @@ test('creates a Task from the board with the Project workspace and git binding',
     workingDir: '/workspace/demo',
   });
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/tasks/task-new'));
+  expect(createTask).not.toHaveBeenCalled();
+  window.history.replaceState({}, '', '/');
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "983bfafc134c781fc517729130765d9a4e6ebfd0",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Fix round 7: re-read resolveConversationOpen and restored execution claims against SDK transport/parser and the three production authoritative-resolution callers. Picker/retry now retain observation records through publication; revalidator already subscribes. No public SDK shape, authority, continuation or model-binding contract changes; reference prose remains accurate. 263 focused tests, pin fault controls and browser journey pass; no hosted/native qualification claimed.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

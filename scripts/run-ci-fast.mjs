@@ -2,6 +2,10 @@
 
 import { spawnSync } from 'node:child_process';
 import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
+import {
+  assertVerificationHost,
+  LiveServiceVerificationError,
+} from './lib/live-service-verification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
@@ -466,7 +470,10 @@ export function runCiFastCli({
     return status;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    if (caught instanceof CiFastInfrastructureError) {
+    if (
+      caught instanceof CiFastInfrastructureError ||
+      caught instanceof LiveServiceVerificationError
+    ) {
       error(`\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
       return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     }
@@ -475,4 +482,10 @@ export function runCiFastCli({
   }
 }
 
-if (invokedDirectly(import.meta.url)) process.exitCode = runCiFastCli();
+if (invokedDirectly(import.meta.url))
+  process.exitCode = runCiFastCli({
+    run: () => {
+      assertVerificationHost('ci:fast');
+      return runCiFast();
+    },
+  });

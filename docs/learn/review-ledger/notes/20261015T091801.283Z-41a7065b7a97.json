@@ -1,0 +1,7 @@
+{
+  "revision": "a75e1374339db7750b57e19b13ff0fa4031dddb2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"PR #3676 Fix round 8: Re-read the recovery and imperative-open lifetime contract against the controller, real SDK transport, and seven new owner tests. The SDK open read and complete imperative command use a 30-second bound; epoch/cache invalidation releases and aborts synchronously; timeout retains the existing error/recovery path and late hydration cannot focus or publish. 270 focused tests and the desktop/mobile fixture journey passed. Native/provider and hosted qualification remain unverified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

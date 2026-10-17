@@ -1,0 +1,7 @@
+{
+  "revision": "2c19922953a8def9cb30e24f565c8d47dfabf89b",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the reconnect hook delta: it returns the redacted IntegrationViewModel while retaining integrations invalidation; callers inspect probe.ok and may consume bounded raw-name discovery metadata. SDK type and mounted picker tests exercise the returned projection. Other SDK sections are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

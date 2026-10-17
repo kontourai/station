@@ -1,0 +1,11 @@
+{
+  "revision": "1f116cb73eef4e1b954ada2c68028d57c5f8b430",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the merge of main aade593c8c1 with the tool-library lane. The record preserves both source sets; all other human fields match. Task proposal acceptance retains its request-principal priming and document authority; tool-library routes retain separate principal resolution and Project policy. Runtime authority, proposal, library and chat suites passed 107 tests; the focused Profile/dock recovery browser spec passed. This is integration evidence, not universal provider or release qualification.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the combined API reference and runtime mounts. POST /api/tasks proposal acceptance and /api/tool-library policy endpoints retain their separate authorization and refusal contracts. Both source sets are retained with otherwise identical record metadata. Exact-authority runtime and route suites passed; no API wording, request schema or policy ceiling was dropped during conflict resolution.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the merged Task-shaping explanation alongside tool-source, approval and Project-policy topics. Regenerated the MCP payload from canonical inputs: 114 topics, digest c7a498166102efada7d895b9e0f8fd9f606da1a426ed03db7252ffac5ccc373f; generator check passed. Source records preserve both citation sets and unchanged human metadata. Focused tests passed 107, UI/E2E types and fixture policy passed, and the real four-scene Profile/dock recovery spec passed. Hosted successor qualification is still required.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

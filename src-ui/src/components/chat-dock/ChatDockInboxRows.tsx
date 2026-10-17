@@ -19,8 +19,9 @@ import {
   splitDraftsByAge,
 } from '../../views/home/draft-lane';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
-import { workStatus, workStatusText } from '../../views/home/work-status';
+import { workStatusText } from '../../views/home/work-status';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -524,7 +525,7 @@ export function InboxRow({
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
-  const status = workStatus(item, now, facts);
+  const status = useObservedWorkStatus(item, now, facts);
   const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
   // An attached transcript's meta line names the app it lives in; the
   // status word ("Elsewhere") says this Station cannot answer there.

@@ -42,6 +42,15 @@ list does not take focus) and reopens when focus returns with the caret in an
 `@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
+requests composer focus once after selection, when the conversation
+and its textarea become writable. The request expires 60 seconds after selection,
+allowing a slow remote open without retaining focus intent indefinitely. Moving
+focus elsewhere, opening a dialog, or selecting another chat cancels it. A
+read-only, missing-session, failed-open, or replay selection cancels it and moves
+focus to the selected transcript when focus is still in the working-chat control
+or on the page body.
+
 ## Starting and resuming work
 
 The phone-width captures compare the baseline and redesigned controls in the
@@ -194,7 +203,9 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. Its Resync action
+working clock; the remote turn may still be running. Already loaded transcript
+content stays visible through a failed refresh. A successful empty history read
+replaces that retained content, and switching conversations clears it. Its Resync action
 reconnects the Station's orchestration stream and re-runs the failed history or
 conversation-open read. Resync is disabled and announces “Resyncing conversation”
 until those reads settle. History reads abort after 120 seconds and show a
@@ -208,7 +219,42 @@ Connection recovery and failed-read recovery outrank retained approvals, whose
 current state has not been verified. Check connection, Reconnecting, and Catching up take
 priority while the transport needs recovery; explicit stream resync respects
 the 30-second auth-refusal retry floor. Background work the session record last reported
-reads as "Last known: …" without animated dots until a read succeeds. History
+reads as "Last known: …" without animated dots while its observation is
+unverified. The inbox, Home, and mobile picker share this freshness:
+a failed conversation read marks only that conversation; a failed inbox read
+marks the retained list. Rows prefix the computed status with "Last known:"
+and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
+activity within the same stream epoch supersedes each failed source whose watermark it exceeds, even when
+another source has a higher watermark. Each read captures its watermark when it
+starts. The highest stream sequence also supersedes older pending failures that
+settle later, so completion order cannot change current status. Reader generation
+tokens stop released or replaced readers from publishing. A stream epoch change
+resets the authority client’s sequence fences and invalidates old-epoch read
+tokens while retaining unresolved failures until a new-epoch observation.
+History and binding-revalidation response publishers use the read token's
+`current()` check before applying activity or chat patches (option B).
+Picker opens and active retries capture the stream epoch generation separately:
+an epoch change before resolution settles discards the result, without opening,
+patching the chat, or publishing activity. Within the same epoch, inventory
+pruning may retire the observation token but cannot discard an imperative open
+or its chat update. Only a current observation token publishes read success or
+failure; mounting the opened chat re-establishes observation. Picker validity
+also gates focus and the final patch after awaited hydration. Hydration checks
+command currency before publishing to the message cache or tab. Focusing or
+reopening a hydrating tab adopts its cleanup ownership without cancelling a
+healthy same-epoch response; a superseded command cannot remove that adopted
+tab. These commands add no deadline or abort signal to resolution or transcript
+hydration.
+Mounted revalidators and history readers retain it through their subscription. The same
+boundary resets and cancels cached inventory and sessions queries; their
+activity feed accepts only rows still held by the current query cache. Stream
+and snapshot activity remain synchronous publishers in the current epoch.
+Cache clear invalidates
+outstanding publishers too. This proves current status, not history
+reader recovery; the history pane retains its own error UI. Unmounting a row
+preserves failures and sequence fences. Pruning requires absence from the loaded
+inventory and no subscribed rows or mounted readers; authority cache clear also
+releases them. Other conversations and Station authorities remain independent. History
 Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
@@ -582,7 +628,8 @@ It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
-approval`, …, the same words the dock row prints). Running time uses the
+approval`, …, the same words the dock row prints), prefixed with "Last known:"
+when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
@@ -605,6 +652,15 @@ caption this value **New chats**; desktop also names the current chat's project
 when it differs. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
+
+**New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
+
+Chat actions offers **Turn into Task** for a writable Station conversation,
+sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
+agent shapes a proposal; only **Create Task** on its card accepts the brief
+and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one. A seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
+the person's idea as the visible message. The answer/input **Add to Task**
+picker offers **New Task from this…** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

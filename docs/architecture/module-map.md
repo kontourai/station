@@ -28,7 +28,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
-| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `packages/monument/src/session-message-delivery.ts` |
 | [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
@@ -140,6 +140,14 @@ admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The
 application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
+
+Host-issued `ui-bootstrap` browser sessions can create and cancel Device
+invitations, decide pending requests and manage paired Devices while their
+current grant retains `access:manage`. Admission uses the private mint record
+and exact route leaves; ordinary paired Devices do not inherit it. A preapproved
+invitation records its access decision privately at creation and permits one
+redemption before expiry or cancellation. The native consent broker still
+requires its distinct `local-grant` mint proof.
 
 Explicit device administration is independent of operator identity.
 `EnvironmentSecurityService.authorizeCredential` admits `access:devices` only
@@ -1312,17 +1320,28 @@ restrictions and caller binding.
 
 An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
-[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
-is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and for delegated task result delivery.
+[SessionMessageDelivery](../../packages/monument/src/session-message-delivery.ts)
+in `@kontourai/monument` owns the decision and record-before-effect sequence.
+Station Control's `send_to_session` and delegated task result delivery import
+it through the package's public root entry point; no server copy remains.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
 decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
 refuses a running one, and `steer` refuses an idle one. The module performs
-nothing itself: the caller supplies the ports for the busy check, a turn start,
-and a receipted steer, each already authorized.
+no engine invocation itself: the caller supplies the ports for the busy check,
+a turn start, and a receipted steer, each already authorized. Monument calls
+those ports only after recording a new branch and maps their outcomes without
+retrying another branch. Station retains the lifecycle fold, invocation,
+authorization, key storage, steer receipts and result consumption.
+The same public module supplies `conversationKeyDecision` and
+`startUnlessDelivered` for inbox, foreground and delegated-result starts: the
+host inspects the whole conversation before a successor Session can take the
+key. A prior started turn replays, a live claim stays in flight, and an
+expired or indeterminate effect is never started again. This
+primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
+extraction remain open under #3565.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt
@@ -1341,7 +1360,7 @@ before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
 which never acts on the Session. Source tests are the
-[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+[delivery decision table](../../packages/monument/src/__tests__/session-message-delivery.test.ts),
 the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
 and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
 Their presence is not an executed receipt against a real engine. See
@@ -3539,6 +3558,21 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
+
+**Chat proposal acceptance.** The [shaping prompt](../../src-ui/src/lib/task-shaping.ts),
+[shared proposal contract](../../packages/contracts/src/task-graph.ts),
+[entry host](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
+and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
+Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
+authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
+The source link also deduplicates repeated acceptance. Tests in
+`task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
+`TaskShapingComposer.test.tsx` cover those separate boundaries. This Station
+prompt seam makes no Builder Kit invocation or breakdown-gate claim; a
+published shaping-result contract and selected-Agent delivery proof are still
+needed for that adapter.
 
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 

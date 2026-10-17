@@ -52,9 +52,19 @@
 
     "packages/contracts/src/starter-work.ts",
 
+    "packages/contracts/src/system-status.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
     "packages/contracts/src/tool.ts",
 
+    "packages/contracts/src/usage-export.ts",
+
     "packages/contracts/src/usage-rollup.ts",
+
+    "packages/contracts/src/usage-stats.ts",
 
     "packages/sdk/src/api-core.ts",
 
@@ -74,6 +84,8 @@
 
     "packages/sdk/src/query-domains/scheduler.ts",
 
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
     "packages/sdk/src/query-domains/workspaceConnections.ts",
 
     "packages/shared/src/client-protocol.ts",
@@ -92,9 +104,15 @@
 
     "src-desktop/src/native_relay_redemption.rs",
 
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+
     "src-server/analytics/usage-aggregator-state.ts",
 
     "src-server/analytics/usage-aggregator.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
 
     "src-server/analytics/usage-rollup-service.ts",
 
@@ -180,6 +198,8 @@
 
     "src-server/routes/operations/scheduler.ts",
 
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
     "src-server/routes/orchestration/attachments.ts",
 
     "src-server/routes/orchestration/events.ts",
@@ -254,6 +274,8 @@
 
     "src-server/routes/system/native-device-proof-self-receipt-routes.ts",
 
+    "src-server/routes/system/resource-posture-routes.ts",
+
     "src-server/routes/system/self-update-restart-state.ts",
 
     "src-server/routes/system/self-update-watchdog.ts",
@@ -263,6 +285,8 @@
     "src-server/routes/system/system-update-routes.ts",
 
     "src-server/routes/system/system.ts",
+
+    "src-server/routes/tool-library.ts",
 
     "src-server/runtime/__tests__/client-protocol-admission.test.ts",
 
@@ -283,6 +307,8 @@
     "src-server/runtime/conversation/runtime-event-log.ts",
 
     "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
 
     "src-server/security/client-protocol-admission.ts",
 
@@ -332,6 +358,8 @@
 
     "src-server/services/orchestration/session-transcript-reads.ts",
 
+    "src-server/services/plugins/install-registry-integration.ts",
+
     "src-server/services/plugins/mcp-service.ts",
 
     "src-server/services/plugins/plugin-grant-reconciliation.ts",
@@ -345,6 +373,10 @@
     "src-server/services/plugins/plugin-update-check.ts",
 
     "src-server/services/plugins/plugin-visibility-service.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
 
     "src-server/services/projects/layout-service.ts",
 
@@ -371,6 +403,10 @@
     "src-server/services/starter-work/starter-session-owner.ts",
 
     "src-server/services/starter-work/starter-work-module.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
 
     "src-server/tools/station-control-delegation.ts",
 
@@ -406,29 +442,19 @@
 
     "src-ui/src/views/layout-workspace-shape.ts",
 
-    "packages/contracts/src/usage-stats.ts",
+    "src-ui/src/lib/task-shaping.ts",
 
-    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
 
-    "src-server/adapters/file/memory-adapter-messages.ts",
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
 
-    "src-server/routes/system/resource-posture-routes.ts",
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
 
-    "packages/contracts/src/system-status.ts",
+    "packages/contracts/src/task-graph.ts",
 
-    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+    "src-server/routes/orchestration/tasks.ts",
 
-    "src-server/services/usage-telemetry-service.ts",
-
-    "src-server/telemetry-delivery-state.ts",
-
-    "packages/contracts/src/telemetry-delivery.ts",
-
-    "packages/sdk/src/query-domains/telemetryDelivery.ts",
-
-    "packages/contracts/src/usage-export.ts",
-
-    "src-server/analytics/usage-export-reader.ts"
+    "src-ui/src/contexts/active-chats-state.ts"
   ],
 
   "checks": [

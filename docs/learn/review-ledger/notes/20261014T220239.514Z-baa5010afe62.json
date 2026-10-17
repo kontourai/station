@@ -1,0 +1,7 @@
+{
+  "revision": "068b50b08ba0f501eb3514e12af3fc7d06fd8662",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the inventory rule: the responsive action inventory gains one covered row for the subagent transcript card, with browser evidence at 390px (44px action, on screen); the guide's requirement that new action surfaces are recorded with evidence still holds. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

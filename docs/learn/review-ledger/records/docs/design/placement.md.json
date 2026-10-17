@@ -146,7 +146,15 @@
 
     "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
 
-    "tests/helpers/css-cascade-fixture.ts"
+    "tests/helpers/css-cascade-fixture.ts",
+
+    "src-ui/src/components/chat/transcript-child-work.ts",
+
+    "src-ui/src/components/chat/ChatMessageList.tsx",
+
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
+
+    "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"
   ],
 
   "checks": [

@@ -58,6 +58,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
@@ -84,6 +85,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 

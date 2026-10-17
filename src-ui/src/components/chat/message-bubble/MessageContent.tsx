@@ -9,6 +9,10 @@ import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
+import {
+  SubagentCardsForCalls,
+  SubagentTranscriptCard,
+} from '../SubagentTranscriptCard';
 import { ChatErrorDetails } from '../SystemEventMessage';
 import {
   ToolCallBatchBoundary,
@@ -16,6 +20,7 @@ import {
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { foldTurnWork, splitToolCallRuns } from '../tool-call-runs';
+import { useTranscriptChildBlocks } from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 import { uiBlockIdentity } from '../ui-block-identity';
 
@@ -69,11 +74,15 @@ function MessageContentComponent({
   // breaks the run, so the agent's words between tool calls are never
   // buried inside a collapsed summary. Only the structural split runs
   // eagerly here; classification/summary happens inside the lazy chunk.
-  const blocks = useMemo(
-    () =>
-      foldWork ? foldTurnWork(contentParts) : splitToolCallRuns(contentParts),
-    [contentParts, foldWork],
-  );
+  const baseBlocks = useMemo(() => {
+    const parts: MessageContentPart[] = contentParts?.length
+      ? contentParts
+      : textContent
+        ? [{ type: 'text', content: textContent }]
+        : [];
+    return foldWork ? foldTurnWork(parts) : splitToolCallRuns(parts);
+  }, [contentParts, textContent, foldWork]);
+  const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -112,19 +121,37 @@ function MessageContentComponent({
     <LazyMarkdown key={`interlude:${index}`}>{part.content ?? ''}</LazyMarkdown>
   );
 
-  if (contentParts && contentParts.length > 0) {
+  if (
+    contentParts?.length ||
+    blocks.some((block) => block.type === 'subagent')
+  ) {
     return (
       <>
         {blocks.map((block) => {
+          if (block.type === 'subagent')
+            return (
+              <SubagentTranscriptCard key={block.key} child={block.child} />
+            );
           if (block.type === 'tool-call-run') {
             // A solo call stays an inline row. Two or more consecutive
             // calls collapse to one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
             // change shape when the turn completes.
+            // A subagent a call spawned is drawn after the run, outside any
+            // collapsed summary, so a folded turn never hides it.
+            const subagents = (
+              <SubagentCardsForCalls
+                key={`subagents:${block.key}`}
+                calls={block.calls}
+              />
+            );
             if (block.calls.length <= INLINE_RUN_LIMIT) {
-              return block.calls.map(({ part, index }) =>
-                renderToolCall(part, index),
-              );
+              return [
+                ...block.calls.map(({ part, index }) =>
+                  renderToolCall(part, index),
+                ),
+                subagents,
+              ];
             }
             // Until (or unless) the batch chunk loads, a folded run falls
             // back to its parts in original order — narration included — so
@@ -141,15 +168,16 @@ function MessageContentComponent({
             ]
               .sort((a, b) => a.index - b.index)
               .map((row) => row.node);
-            return (
+            return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}
-              />
-            );
+              />,
+              subagents,
+            ];
           }
 
           const { index, part } = block;
@@ -199,7 +227,11 @@ function MessageContentComponent({
             }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
-            return <LazyMarkdown key={index}>{part.content}</LazyMarkdown>;
+            return (
+              <LazyMarkdown key={block.key ?? index}>
+                {part.content}
+              </LazyMarkdown>
+            );
           }
           if (part.type === 'file') {
             return (
@@ -211,7 +243,11 @@ function MessageContentComponent({
             );
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            const identity = uiBlockIdentity(contentParts, index, messageKey);
+            const identity = uiBlockIdentity(
+              contentParts ?? [],
+              index,
+              messageKey,
+            );
             return (
               <UIBlockRenderer
                 key={identity}
