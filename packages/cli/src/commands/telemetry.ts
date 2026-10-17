@@ -21,6 +21,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       throw new Error(
         'Usage: station telemetry set <kontour|operator> <off|lite|full>',
       );
+    if (publisher === 'kontour' && tier === 'full')
+      throw new Error(
+        'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+      );
     if (parsed.flags.offline)
       throw new Error(
         'Telemetry choices require a running Station; use its authenticated configuration API.',

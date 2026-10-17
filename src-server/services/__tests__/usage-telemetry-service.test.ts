@@ -275,7 +275,14 @@ describe('UsageTelemetryService', () => {
     }
   });
   test.each([
-    ['canonical on wins', 'on', 'off', undefined, true, 'env'],
+    [
+      'canonical on supplies Lite, never Full',
+      'on',
+      'off',
+      undefined,
+      false,
+      'env',
+    ],
     ['canonical off wins', 'off', 'on', undefined, false, 'env'],
     ['empty canonical uses alias', ' ', 'off', undefined, false, 'env'],
     [
