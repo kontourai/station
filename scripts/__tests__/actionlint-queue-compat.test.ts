@@ -166,4 +166,29 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
       legacyActionlintSources([{ file: probe.file, document: original }]),
     ).toThrow(/Unreviewed FIFO/);
   });
+  test.each([
+    'per-PR escape',
+    'active cancellation',
+    'pending replacement',
+    'unreviewed job queue',
+  ])('refuses a PR source budget mutation: %s', (change) => {
+    const ci = readWorkflowDocuments().find(
+      (workflow) => workflow.file === '.github/workflows/ci.yml',
+    );
+    if (!ci) throw new Error('Missing CI');
+    const document = structuredClone(ci.document) as {
+      jobs: Record<string, { concurrency?: Record<string, unknown> }>;
+    };
+    const queue = document.jobs['fast-checks-statics'].concurrency;
+    if (!queue) throw new Error('Missing statics FIFO');
+    if (change === 'per-PR escape')
+      queue.group = `ci-pr-statics-\${{ github.event.pull_request.number }}`;
+    if (change === 'active cancellation') queue['cancel-in-progress'] = true;
+    if (change === 'pending replacement') queue.queue = 'single';
+    if (change === 'unreviewed job queue')
+      document.jobs['fast-checks-plan'].concurrency = { ...queue };
+    expect(() =>
+      legacyActionlintSources([{ file: ci.file, document }]),
+    ).toThrow(/Unreviewed/);
+  });
 });

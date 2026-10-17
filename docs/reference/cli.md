@@ -1077,7 +1077,8 @@ resolved current Session/task and their output identifies both the durable
 `conversationId` and `currentSessionId`. A Conversation selector does not create
 a Task or grant task-supervision authority.
 
-Creation accepts only the authored prompt, target, and optional parent Task.
+Creation accepts the authored prompt, target, optional parent Task, and an
+optional caller-owned attempt id for prepared portable execution.
 The serving Station produces the resulting Conversation and Session identities;
 they are response handles, never caller-selected create fields.
 
@@ -1103,6 +1104,64 @@ Delegating to an External agent by its Agent ID on a saved Environment:
 station delegate --agent=codex --on=env-media-host --model=gpt-5.6-sol "Review the diff" --json
 station delegate respond task:0f3c... req-1 accept --json
 ```
+
+#### Require a source version before execution
+
+Prepared delegation checks the receiving Station's existing, operator-offered
+Git checkout before starting work. Supply all four flags together:
+
+```bash
+station delegate --agent=codex --on=env-worker \
+  --portable-project=<portable-project-id> --resource=<resource-id> \
+  --source-commit=<full-git-object-id> --attempt-id=review-1 \
+  --json "Review this revision"
+```
+
+Use the portable Project and resource identities admitted by the receiver;
+matching a Project slug or choosing a path does not authorize the resource.
+The receiver needs the `executionPreparation` and `delegationAttemptClaims`
+capabilities. The new workspace variant fails closed on older receivers.
+For a direct receiver request, the caller needs a current delegation-peer
+grant; an ordinary operator or Device credential cannot own an attempt claim.
+With `--on`, the serving Station forwards through its configured peer grant;
+SSH portable dispatch remains unsupported.
+
+`--source-commit` accepts a full lowercase 40- or 64-character hexadecimal
+Git object id. The CLI sends it explicitly; it reads no local repository.
+`--attempt-id` is a caller-owned token of 1–128 characters: a letter or digit,
+then letters, digits, dots, underscores, colons or hyphens. Keep the id with
+the original intent for reconciliation. These four flags are create-only and
+cannot be combined with `--project`, `--project-path` or `--cwd`.
+
+The receiver refuses a different commit, changed tracked files or submodule
+commits, and unverifiable tracked state. Untracked files are allowed and counted.
+Nothing is transferred or installed. The receipt at
+`data.resolution.preparation` in JSON records **version matched when checked**;
+it does not protect the checkout from writers during execution or certify the
+Agent's eventual result. See [remote execution preparation](../design/remote-execution-preparation.md).
+
+#### Inspect a delegation attempt
+
+```bash
+station delegate attempt review-1 --station=<executing-receiver> --json
+```
+
+This reads the actual receiver's
+`GET /api/orchestration/delegations/attempts/:attemptId` endpoint once. `--on`
+is refused because lookup is receiver-local, not forwarded. Authenticate with
+the **same current delegation-peer grant** that owns the claim. An ordinary
+operator/Device credential or a different peer grant is refused. A CLI talking
+to a forwarding controller cannot use that controller's server-held peer
+credential automatically; this command does not export it or broaden access.
+
+JSON returns `{ok:true,kind:"delegate.attempt",data:{attemptId,state,...}}`.
+Exit 0 means the lookup succeeded, not that work completed. The receiver may
+report `none`, `preparing`, `accepted`, `unresolved` or `refused`, with its
+recorded Task, accepted initial turn, or refusal code when available. Human
+output includes those facts and a reminder that observation does not authorize
+resending. There is no create, continuation, cancellation, polling or retry in
+this command. A lost reply, `none`, `preparing` or `unresolved` never authorizes
+another dispatch. See [attempt claims](../guides/delegation-attempt-claims.md).
 
 #### Recorded versus acknowledged decisions
 
