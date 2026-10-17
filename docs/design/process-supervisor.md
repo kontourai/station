@@ -238,8 +238,7 @@ verification, and fault injection.
   clients see no error.
 - **Compatibility:** old and new supervisors and core servers in every
   pairing, run as child processes.
-- **Per OS:** journeys run on macOS, Windows (desktop-win), and Linux
-  (brian-media).
+- **Per OS:** journeys run on real macOS, Windows, and Linux hosts.
 - **Latency:** the hop budget measured against its own baseline.
 - **Fault injection:** removing reattach makes the handoff journey fail with
   an interrupted turn; removing handle passing makes a client see a refused
