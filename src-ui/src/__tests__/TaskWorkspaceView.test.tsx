@@ -18,9 +18,9 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import {
-  codingDiffFixture,
+  codingDiffProcessFixture as codingDiffFixture,
   THREE_NEW_FILES,
-} from '../../../src-server/routes/projects/__tests__/fixtures/coding-worktree-diff';
+} from './fixtures/coding-diff-process';
 
 const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
