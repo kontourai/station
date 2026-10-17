@@ -150,6 +150,11 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
+  const reviewerDisclosure =
+    engineConnectionId === 'codex' &&
+    (displayedMode === 'ask' || displayedMode === 'auto')
+      ? ' Codex reviewer not reported here; sandbox escalations may be approved automatically.'
+      : '';
   // #2436: the server applies the recorded posture at every turn start, on
   // every send path, so "takes effect next turn" is true of any requested
   // pick. The exception is a full access Claude refused because the session
@@ -241,12 +246,12 @@ export function ApprovalModeChip({
            by what they see. The pending state's short form ("Full access ·
            pending") is not a substring of the long form, so it is composed in
            explicitly rather than replaced. */
-        aria-label={
+        aria-label={`${
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
+        }${reviewerDisclosure}`}
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
         <span className="chat-input__chip-stack">
