@@ -45,6 +45,7 @@ async function observe({
   issues = [issue],
   manualRuns = [] as ReturnType<typeof run>[],
   liveRuns = [] as ReturnType<typeof run>[],
+  retainedRuns = [] as ReturnType<typeof run>[],
   scheduledRuns = [run(900, 1, { path: '.github/workflows/nightly.yml' })],
   failJobs = false,
   failLiveInventory = false,
@@ -54,7 +55,7 @@ async function observe({
   jobs?: Record<
     number,
     (ReturnType<typeof gate> & {
-      steps?: { name: string; conclusion: string }[];
+      steps?: { name: string; conclusion: string; status?: string }[];
       run_id?: number;
       run_attempt?: number;
       head_sha?: string;
@@ -64,6 +65,7 @@ async function observe({
   manualRuns?: ReturnType<typeof run>[];
   scheduledRuns?: ReturnType<typeof run>[];
   liveRuns?: ReturnType<typeof run>[];
+  retainedRuns?: ReturnType<typeof run>[];
   failJobs?: boolean;
   failLiveInventory?: boolean;
   enabled?: boolean;
@@ -115,9 +117,12 @@ async function observe({
         return;
       }
       const id = Number(/\/runs\/(\d+)\//.exec(path)?.[1]);
-      const nightly = [...scheduledRuns, ...manualRuns, ...liveRuns].find(
-        (item) => item.id === id,
-      );
+      const nightly = [
+        ...scheduledRuns,
+        ...manualRuns,
+        ...liveRuns,
+        ...retainedRuns,
+      ].find((item) => item.id === id);
       response.end(
         JSON.stringify({
           jobs: (jobs[id] ?? []).map((job) =>
@@ -132,6 +137,14 @@ async function observe({
           ),
         }),
       );
+    } else if (/\/runs\/\d+$/.test(path)) {
+      const current = retainedRuns.find((item) =>
+        path.endsWith(`/runs/${item.id}`),
+      );
+      if (!current) {
+        response.writeHead(404);
+        response.end('{}');
+      } else response.end(JSON.stringify(current));
     } else if (path.endsWith('/issues')) response.end(JSON.stringify(issues));
     else {
       response.writeHead(404);
@@ -384,6 +397,156 @@ describe('qualification health through the GitHub API', () => {
     );
   });
 
+  it.each([true, false])(
+    'retains a fifty-hour run through terminal failure after source passed=%s',
+    async (passed) => {
+      const old = run(2, 50, {
+        path: '.github/workflows/nightly.yml',
+        status: 'in_progress',
+        conclusion: null,
+      });
+      const sourceJobs = passed
+        ? [
+            gate({
+              name: '1 · Source gate (lint, typecheck, browser smoke)',
+              started_at: ago(49),
+              completed_at: ago(48),
+            }),
+          ]
+        : [];
+      const first = await observe({
+        liveRuns: [old],
+        jobs: { 1: [gate()], 2: sourceJobs },
+      });
+      expect(first.result.healthy).toBe(false);
+      const completed = {
+        ...old,
+        status: 'completed',
+        conclusion: 'failure',
+        updated_at: ago(0.1),
+      };
+      const second = await observe({
+        issues: [{ ...issue, body: String(first.writes[0].body.body) }],
+        retainedRuns: [completed],
+        jobs: { 1: [gate()], 2: sourceJobs },
+      });
+      expect(second.result.healthy).toBe(false);
+      expect(second.writes[0].body.state).toBe('open');
+      expect(second.result.summary).toContain('/actions/runs/2');
+      const after = String(second.writes[0].body.body);
+      const third = await observe({
+        issues: [{ ...issue, body: after }],
+        retainedRuns: passed ? [] : [completed],
+        jobs: { 1: [gate()], 2: sourceJobs },
+      });
+      expect(third.result.healthy).toBe(false);
+      expect(third.result.summary).toContain('/actions/runs/2');
+      if (!passed) {
+        for (const scenario of [
+          'published-native',
+          'published-cli',
+          'skip',
+          'source-only',
+          'running',
+          'older',
+          'failed-publication',
+        ]) {
+          const repaired = run(3, scenario === 'older' ? 0.2 : 0.05, {
+            path: '.github/workflows/nightly.yml',
+            event: 'workflow_dispatch',
+            head_sha: 'b'.repeat(40),
+            status: scenario === 'running' ? 'in_progress' : 'completed',
+            conclusion:
+              scenario === 'running'
+                ? null
+                : scenario === 'failed-publication'
+                  ? 'failure'
+                  : 'success',
+            updated_at: ago(0.01),
+          });
+          const proof =
+            scenario === 'skip'
+              ? []
+              : [
+                  gate({
+                    name: '1 · Source gate (lint, typecheck, browser smoke)',
+                    started_at: ago(0.04),
+                    completed_at: ago(0.02),
+                  }),
+                ];
+          if (
+            scenario === 'published-native' ||
+            scenario === 'older' ||
+            scenario === 'failed-publication'
+          )
+            proof.push(
+              gate({
+                name: '3 · Publish native cohort / Record ledger and markers',
+                completed_at: ago(0.01),
+              }),
+            );
+          const repairJobs =
+            scenario === 'published-cli'
+              ? [
+                  ...proof,
+                  {
+                    ...gate({ name: '3 · Publish CLI to npm nightly' }),
+                    steps: [
+                      {
+                        name: 'Bind the published CLI receipt to npm registry provenance',
+                        conclusion: 'success',
+                        status: 'completed',
+                      },
+                    ],
+                  },
+                ]
+              : proof;
+          const recovered = await observe({
+            issues: [{ ...issue, body: after }],
+            retainedRuns: [completed],
+            manualRuns: [repaired],
+            jobs: { 1: [gate()], 2: sourceJobs, 3: repairJobs },
+          });
+          const success = ['published-native', 'published-cli'].includes(
+            scenario,
+          );
+          expect(recovered.result.healthy, scenario).toBe(success);
+          if (success) {
+            expect(recovered.result.summary).toContain('/actions/runs/2');
+            expect(recovered.result.summary).toContain('/actions/runs/3');
+            expect(recovered.writes[0].body.state).toBe('closed');
+          }
+        }
+      }
+    },
+  );
+
+  it('resolves a retained overdue run only after observing its terminal success', async () => {
+    const completed = run(2, 50, {
+      path: '.github/workflows/nightly.yml',
+      updated_at: ago(0.1),
+    });
+    const body = `<!-- station-qualification-health:${JSON.stringify({ failures: [], stalled: [{ id: 2, sourceSha: completed.head_sha, attempt: 1 }] })} -->`;
+    const { result, writes } = await observe({
+      issues: [{ ...issue, body }],
+      retainedRuns: [completed],
+    });
+    expect(result.healthy).toBe(true);
+    expect(writes[0].body).toEqual({
+      state: 'closed',
+      state_reason: 'completed',
+    });
+    await expect(
+      observe({
+        issues: [{ ...issue, body }],
+        retainedRuns: [{ ...completed, run_attempt: 2 }],
+      }),
+    ).rejects.toThrow('Retained Nightly identity changed');
+    await expect(
+      observe({ issues: [{ ...issue, body }], retainedRuns: [] }),
+    ).rejects.toThrow('HTTP 404');
+  });
+
   it('closes the incident only after a fresh gate and recent actual job start', async () => {
     const { result, writes } = await observe();
     expect(result.healthy).toBe(true);
@@ -591,6 +754,7 @@ describe('qualification health through the GitHub API', () => {
               {
                 name: 'Bind the published CLI receipt to npm registry provenance',
                 conclusion: 'success',
+                status: 'completed',
               },
             ],
           },
@@ -688,6 +852,7 @@ describe('qualification health through the GitHub API', () => {
               {
                 name: 'Bind the published CLI receipt to npm registry provenance',
                 conclusion: 'success',
+                status: 'completed',
               },
             ],
           },

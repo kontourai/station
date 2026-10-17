@@ -209,8 +209,13 @@ a long native build does not make qualification stale by itself.
 The same observer reports a missing scheduled Nightly request after four hours
 or a queued/running Nightly older than six hours, including a run whose source
 gate already passed. Active runs are checked beyond the completed-history
-lookback. A newer request does not hide an older stalled run; manual
-recovery does not prove the hourly schedule is functioning. Recent cadence or
+lookback, and their identities remain in the issue until a later observation
+reconciles the terminal outcome. Missing runs or changed attempts fail the
+observation without clearing the incident. A newer request does not hide an
+older stalled run. A retained source failure resolves only after a later
+successful Nightly verifies source and records actual native or registry-bound
+CLI publication; its recovery summary links both runs. Manual recovery does not
+prove the hourly schedule is functioning. Recent cadence or
 unchanged-source skips are healthy schedule activity, not publication proof.
 These are conservative escalation bounds, not promised runner admission or
 publication deadlines. The issue identifies the run and exact source for its

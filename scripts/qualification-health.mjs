@@ -25,6 +25,26 @@ const NIGHTLY_TERMINAL_RESULTS = new Set([
   'stale',
 ]);
 
+function publishedLeg(jobs, leg) {
+  return jobs.some(
+    (job) =>
+      job.status === 'completed' &&
+      job.conclusion === 'success' &&
+      (leg === 'native'
+        ? job.name.endsWith(
+            '3 · Publish native cohort / Record ledger and markers',
+          )
+        : job.name.endsWith('3 · Publish CLI to npm nightly') &&
+          job.steps?.some(
+            (step) =>
+              step.name ===
+                'Bind the published CLI receipt to npm registry provenance' &&
+              step.status === 'completed' &&
+              step.conclusion === 'success',
+          )),
+  );
+}
+
 /** Observe qualification without starting a run or retrying a repair. */
 export async function checkQualificationHealth(
   env = process.env,
@@ -60,6 +80,22 @@ export async function checkQualificationHealth(
       ))
   )
     throw new Error('Invalid retained delivery incident');
+  if (
+    retained?.stalled !== undefined &&
+    (!Array.isArray(retained.stalled) ||
+      retained.stalled.some(
+        (item) =>
+          !Number.isSafeInteger(item.id) ||
+          item.id <= 0 ||
+          !Number.isSafeInteger(item.attempt) ||
+          item.attempt <= 0 ||
+          !/^[0-9a-f]{40}$/.test(item.sourceSha ?? ''),
+      ) ||
+      new Set(retained.stalled.map((item) => item.id)).size !==
+        retained.stalled.length)
+  )
+    throw new Error('Invalid retained Nightly identity');
+
   const since = new Date(now - 48 * HOUR).toISOString();
   const runs = (
     await listGithub(
@@ -128,7 +164,27 @@ export async function checkQualificationHealth(
       ),
     ),
   );
-  const nightlyRuns = [...recentNightly, ...liveNightly.flat()].filter(
+  const retainedNightly = await Promise.all(
+    (retained?.stalled ?? []).map(async (item) => {
+      const current = await github(`actions/runs/${item.id}`, options);
+      if (
+        current.id !== item.id ||
+        current.head_sha !== item.sourceSha ||
+        current.run_attempt !== item.attempt ||
+        current.path !== '.github/workflows/nightly.yml' ||
+        current.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
+        current.head_branch !== 'main' ||
+        !['schedule', 'workflow_dispatch'].includes(current.event)
+      )
+        throw new Error('Retained Nightly identity changed');
+      return current;
+    }),
+  );
+  const nightlyRuns = [
+    ...recentNightly,
+    ...liveNightly.flat(),
+    ...retainedNightly,
+  ].filter(
     (run) =>
       run.path === '.github/workflows/nightly.yml' &&
       run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
@@ -222,6 +278,43 @@ export async function checkQualificationHealth(
     (item) =>
       NIGHTLY_LIVE_STATES.has(item.run.status) && now - item.created > 6 * HOUR,
   );
+  const retainedIds = new Set((retained?.stalled ?? []).map((item) => item.id));
+  const terminalSourceCandidates = recoveries.filter(
+    (item) =>
+      retainedIds.has(item.run.id) &&
+      item.run.conclusion !== 'success' &&
+      !item.passed,
+  );
+  const sourceRecoveries = new Map();
+  for (const item of terminalSourceCandidates) {
+    const recovery = recoveries.find(
+      (later) =>
+        later.run.conclusion === 'success' &&
+        later.passed &&
+        later.created > Date.parse(item.run.updated_at) &&
+        later.jobs.some(
+          (job) =>
+            job.name === '1 · Source gate (lint, typecheck, browser smoke)' &&
+            Date.parse(job.completed_at) > Date.parse(item.run.updated_at),
+        ) &&
+        (publishedLeg(later.jobs, 'native') || publishedLeg(later.jobs, 'cli')),
+    );
+    if (recovery) sourceRecoveries.set(item.run.id, recovery);
+  }
+  const terminalSourceFailures = terminalSourceCandidates.filter(
+    (item) => !sourceRecoveries.has(item.run.id),
+  );
+  const sourceRecoveryNotes = [...sourceRecoveries].map(
+    ([id, recovery]) =>
+      `Retained Nightly source failure https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${id} recovered by successful source verification and publication in https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${recovery.run.id}, source \`${recovery.run.head_sha}\`.`,
+  );
+  const stalled = [...overdueNightly, ...terminalSourceFailures].map(
+    (item) => ({
+      id: item.run.id,
+      sourceSha: item.run.head_sha,
+      attempt: item.run.run_attempt,
+    }),
+  );
   const failures = [...observed, ...recoveries]
     .filter(
       (item) =>
@@ -262,20 +355,7 @@ export async function checkQualificationHealth(
         Number.isFinite(Date.parse(item.run.updated_at)) &&
         Date.parse(item.run.updated_at) <= now &&
         Date.parse(item.run.updated_at) > Date.parse(failed.at) &&
-        item.jobs.some((job) =>
-          leg === 'native'
-            ? job.name.endsWith(
-                '3 · Publish native cohort / Record ledger and markers',
-              ) && job.conclusion === 'success'
-            : job.name.endsWith('3 · Publish CLI to npm nightly') &&
-              job.conclusion === 'success' &&
-              job.steps?.some(
-                (step) =>
-                  step.name ===
-                    'Bind the published CLI receipt to npm registry provenance' &&
-                  step.conclusion === 'success',
-              ),
-        ),
+        publishedLeg(item.jobs, leg),
     );
     if (!recovered) pending.push({ ...failed, legs: [leg] });
   }
@@ -314,6 +394,10 @@ export async function checkQualificationHealth(
     reasons.push(
       `Nightly ${item.passed ? 'delivery wait' : 'source admission/execution wait'} exceeds 6 hours: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${item.run.id}, source \`${item.run.head_sha}\`, attempt ${item.run.run_attempt}, status ${item.run.status}, requested ${item.run.created_at}, elapsed ${Math.floor((now - item.created) / 60_000)} minutes. This is an escalation bound, not a delivery guarantee.`,
     );
+  for (const item of terminalSourceFailures)
+    reasons.push(
+      `Retained Nightly source attempt ended ${item.run.conclusion} without successful source verification: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${item.run.id}, source \`${item.run.head_sha}\`, attempt ${item.run.run_attempt}. A later cadence skip does not resolve this failure.`,
+    );
   if (pendingDelivery)
     reasons.push(
       'A source gate passed, but its Nightly decision or publication did not complete successfully.',
@@ -323,11 +407,12 @@ export async function checkQualificationHealth(
     pendingDelivery ||
     !latestScheduled ||
     now - latestScheduled.created > 4 * HOUR ||
-    overdueNightly.length > 0;
+    stalled.length > 0;
   const lines = [
     'Owner: repository release maintainers; failed-source repair remains in the **Main qualification repair** episode.',
     '',
     ...reasons.map((reason) => `- ${reason}`),
+    ...sourceRecoveryNotes,
     '',
     latest
       ? `Latest run: ${latest.run.html_url} (${latest.run.status}; ${latest.run.conclusion || 'pending'}), source \`${latest.run.head_sha}\`.`
@@ -356,8 +441,8 @@ export async function checkQualificationHealth(
   if (reasons.length) {
     const body =
       lines.join('\n') +
-      (pendingDelivery
-        ? `\n\n<!-- station-qualification-health:${JSON.stringify(pendingDelivery)} -->`
+      (pendingDelivery || stalled.length
+        ? `\n\n<!-- station-qualification-health:${JSON.stringify({ failures: pendingDelivery?.failures ?? [], ...(stalled.length ? { stalled } : {}) })} -->`
         : '');
     if (issue?.state !== 'open' || issue.body !== body)
       await github(issue ? `issues/${issue.number}` : 'issues', {
@@ -374,7 +459,10 @@ export async function checkQualificationHealth(
   }
   const summary = reasons.length
     ? lines.join('\n')
-    : `Main qualification is fresh: ${green.run.html_url}, source \`${green.run.head_sha}\`.`;
+    : [
+        `Main qualification is fresh: ${green.run.html_url}, source \`${green.run.head_sha}\`.`,
+        ...sourceRecoveryNotes,
+      ].join('\n');
   if (env.GITHUB_STEP_SUMMARY)
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   return { healthy: reasons.length === 0, reasons, summary };
