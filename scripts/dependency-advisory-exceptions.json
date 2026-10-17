@@ -3,16 +3,6 @@
   "exceptions": [
     {
       "scope": "root",
-      "package": "node-forge",
-      "advisory": "GHSA-86w9-cpqp-85rv",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3122#issuecomment-6228008931: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z. Registry/advisory review on 2026-10-17 still identifies node-forge 1.4.0 as affected, with no first patched release. Threat: forged RSA PKCS#1 v1.5 signatures when the vulnerable low-exponent verifier is reached. The 14 installed files match the prior assessed VoltAgent/SAP/jks graph; inspected conversion calls parse destination-supplied JKS/PKCS12 and serialize PEM rather than invoking that verifier. Dynamic/plugin/temporary-model and endpoint exposure remain NOT_VERIFIED. This is acceptance, not remediation or non-reachability. Reassess any upstream release or graph/provider/config boundary change; keep #3122 open.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
-      "expires": "2026-10-18"
-    },
-    {
-      "scope": "root",
       "package": "http-cache-semantics",
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
@@ -94,6 +84,44 @@
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
       "expires": "2026-11-07",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
+    }
+  ],
+  "remediations": [
+    {
+      "scope": "root",
+      "package": "node-forge",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
+      "version": "1.4.0",
+      "reason": "Station-managed backport of digitalbazaar/forge#1152 at ceba34402e329f0365134f23fe19898756527d65 rejects extra nested DigestAlgorithm children. Covers lib/rsa.js and both shipped browser bundles. Public-key-only forgery and valid-signature controls exercise each installed public API. This record remediates only GHSA-86w9-cpqp-85rv at the exact installed version and hashes; registry severity remains high. It is not a claim about Station endpoint reachability or an official upstream release. Replace with an independently verified upstream release and remove this binding when available; recheck on any patch, dependency, provider or entrypoint change.",
+      "patchBinding": {
+        "schemaVersion": 1,
+        "package": "node-forge",
+        "version": "1.4.0",
+        "patchPath": "patches/node-forge-1.4.0.patch",
+        "patchSha256": "c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e",
+        "nodeMajor": 24,
+        "installedEntrypoints": [
+          {
+            "path": "node_modules/node-forge/lib/index.js",
+            "sha256": "c231851a9d065df1fae045d6e6fb17cf5688b260f9ee0db4965fe1ef3c0607ab"
+          },
+          {
+            "path": "node_modules/node-forge/lib/rsa.js",
+            "sha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.min.js",
+            "sha256": "ef3be90b3604ef95427040949136ebfd440fccef9c0f23db0356988c9ffc6ff6"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.all.min.js",
+            "sha256": "c6f575cd72b56bf78b5a0e4acb274ce8f41e804228c0b508bfe0e3856e704882"
+          }
+        ]
+      }
     }
   ]
 }
