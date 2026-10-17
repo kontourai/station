@@ -80,6 +80,7 @@ export function PullRequestGuide({
         !running && (
           <Empty
             variant="compact"
+            label="Nothing here yet"
             description="Write a tour of the changed files to start reading."
           />
         )
