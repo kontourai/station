@@ -9,7 +9,7 @@ import {
 } from '@kontourai/station-contracts/product-telemetry';
 import { parseStationDailyPing } from '@kontourai/station-shared/product-telemetry';
 import type { PoolClient } from 'pg';
-import { BrokerError } from './store.js';
+import { BrokerError } from './broker-error.js';
 
 const SCHEMA = `
 CREATE TABLE station_telemetry.lite_sources (
@@ -132,9 +132,10 @@ export async function assertLiteSchema(client: PoolClient): Promise<void> {
 function publisherId(value: unknown): value is TelemetryPublisherId {
   return (
     typeof value === 'string' &&
+    value.length <= 128 &&
     (value === 'kontour' ||
       value === 'operator' ||
-      /^publisher:[a-z0-9][a-z0-9._-]{0,79}$/.test(value))
+      /^publisher:\S{1,118}$/u.test(value))
   );
 }
 const hash = (value: string) => createHash('sha256').update(value).digest();

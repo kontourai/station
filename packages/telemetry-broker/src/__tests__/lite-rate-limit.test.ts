@@ -3,9 +3,9 @@ import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
+import { BrokerError } from '../broker-error.js';
 import { registerLiteRoutes } from '../lite-routes.js';
 import { LiteRepository } from '../lite-store.js';
-import { BrokerError } from '../store.js';
 
 test('socket-IP admission ignores forwarded addresses and resets on the next UTC day', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });

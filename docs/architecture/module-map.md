@@ -4289,6 +4289,17 @@ revocation against ingestion, deduplicates retained source/event UUIDs, and
 returns acceptance only after acknowledged durable commit. Database waits and
 request concurrency are bounded; uncertainty returns a failure.
 
+The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
+accepts the foundation's strict `station_daily` contract through public source
+IDs mapped to publisher/channel pairs, without installation credentials.
+[Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
+deduplicates raw pings and retains daily rollups without event IDs. Publisher
+read keys see only their own rollups. Public Kontour totals and distributions
+all derive from the same disjoint daily cells with at least ten pings, preventing
+complementary subtraction of omitted cells. Closed UTC receipt days, untrusted
+counts, sparse-data suppression and retention limits are explained in the
+[receiver guide](../../packages/telemetry-broker/README.md#lite-observations).
+
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
 operator credentials and composes the database pool separately from Station's
@@ -4301,5 +4312,7 @@ rows do not guarantee physical database-file shrinkage.
 **Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
 [live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
 database to exercise commit/replay, revocation, capacity, corrupt live schemas
-and stalled transport recovery. Neither establishes persistent deployment,
+and stalled transport recovery. Its [Lite checks](../../packages/telemetry-broker/qualify-lite.mjs)
+also exercise strict rejection, privacy, suppression and publisher isolation.
+Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.

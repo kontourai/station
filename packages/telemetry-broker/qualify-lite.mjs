@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const digest = (key) => createHash('sha256').update(key).digest('hex');
+/** @returns {import('@kontourai/station-contracts/product-telemetry').StationDailyPing} */
 const dailyPing = () => ({
   event: 'station_daily',
   event_id: randomUUID(),
@@ -34,7 +35,7 @@ const dailyPing = () => ({
 async function checkLiteReceiver(store, pool, base, operatorKey) {
   const source = `qa-${randomUUID()}`;
   const other = `qa-${randomUUID()}`;
-  const publisher = `publisher:qa-${randomUUID()}`;
+  const publisher = `publisher:@qa/plugin-${randomUUID()}`;
   const key = `stq_${randomBytes(32).toString('base64url')}`;
   const agent = 'private-user-agent-must-never-persist';
   const forwarded = '198.51.100.73';
@@ -299,7 +300,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       400,
     );
     const own = await request(
-      `/v1/publishers/${publisher}/aggregates`,
+      `/v1/publishers/${encodeURIComponent(publisher)}/aggregates`,
       undefined,
       key,
     );
@@ -317,7 +318,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     assert.equal(
       (
         await request(
-          `/v1/publishers/${publisher}/aggregates`,
+          `/v1/publishers/${encodeURIComponent(publisher)}/aggregates`,
           undefined,
           operatorKey,
         )
@@ -325,13 +326,22 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       401,
     );
     assert.equal(
-      (await request(`/v1/publishers/${publisher}/aggregates`)).status,
+      (
+        await request(
+          `/v1/publishers/${encodeURIComponent(publisher)}/aggregates`,
+        )
+      ).status,
       401,
     );
     await store.lite.revokePublisherKey(publisher);
     assert.equal(
-      (await request(`/v1/publishers/${publisher}/aggregates`, undefined, key))
-        .status,
+      (
+        await request(
+          `/v1/publishers/${encodeURIComponent(publisher)}/aggregates`,
+          undefined,
+          key,
+        )
+      ).status,
       401,
     );
     assert.equal((await request('/v1/public/aggregates')).status, 200);

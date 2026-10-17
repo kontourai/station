@@ -201,7 +201,8 @@ a secret embedded in a binary. Example operator-authenticated request body for
 
 The five fields are required. `publisher` uses the foundation's
 `TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
-Publisher suffixes and source IDs are bounded public slugs. The catalogs each
+Publisher IDs are bounded to 128 characters and retain scoped IDs such as
+`publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Empty catalogs admit only contract sentinels (`custom` version,

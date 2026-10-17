@@ -7,26 +7,9 @@ import type {
 } from '@kontourai/station-contracts/product-telemetry';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import { BrokerError } from './broker-error.js';
 import { assertLiteSchema, LiteRepository, migrateLite } from './lite-store.js';
 
-export class BrokerError extends Error {
-  constructor(
-    readonly code:
-      | 'source_unauthorized'
-      | 'event_conflict'
-      | 'storage_limit'
-      | 'invalid_source'
-      | 'storage_not_durable'
-      | 'query_limit'
-      | 'source_conflict'
-      | 'storage_busy'
-      | 'storage_timeout'
-      | 'schema_incompatible'
-      | 'invalid_daily_ping',
-  ) {
-    super(code);
-  }
-}
 export interface ProductSource {
   id: string;
   label: string;

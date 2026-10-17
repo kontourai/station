@@ -2,7 +2,8 @@ import type { ProductTelemetryCommitReceipt as ProductCommit } from '@kontourai/
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
-import { BrokerError, type ProductRepository } from '../store.js';
+import { BrokerError } from '../broker-error.js';
+import type { ProductRepository } from '../store.js';
 
 const operatorKey = `sto_${'a'.repeat(43)}`;
 const sourceKey = `stp_${'b'.repeat(43)}`;

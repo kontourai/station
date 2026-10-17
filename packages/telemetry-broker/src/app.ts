@@ -8,8 +8,9 @@ import {
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { BrokerError } from './broker-error.js';
 import { registerLiteRoutes } from './lite-routes.js';
-import { BrokerError, type ProductRepository } from './store.js';
+import type { ProductRepository } from './store.js';
 
 export function createProductBroker(
   store: ProductRepository,
