@@ -1,0 +1,9 @@
+{
+  "revision": "9dcb9daae46391ff682d061cd488964d58076d52",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed MemberProjectPage after the tool-library merge. The draft delta only renders shared Task status through taskStatusLabel and StatusBadge; member Project identity, scoped shared-work queries, selection and the incoming Agents and tools controls retain the captured requestScope. ProjectAgentsPanel remains behind manage-members and receives the same Station API base and request authority through ToolLibraryClientContext. The Agent/SDK scope guidance remains accurate; this bounded source review makes no new provider or browser acceptance claim.","inputs":["docs/guides/agents.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed MemberProjectPage after the tool-library merge. The draft delta only renders shared Task status through taskStatusLabel and StatusBadge; member Project identity, scoped shared-work queries, selection and the incoming Agents and tools controls retain the captured requestScope. ProjectAgentsPanel remains behind manage-members and receives the same Station API base and request authority through ToolLibraryClientContext. The Agent/SDK scope guidance remains accurate; this bounded source review makes no new provider or browser acceptance claim.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]}
+  ]
+}
