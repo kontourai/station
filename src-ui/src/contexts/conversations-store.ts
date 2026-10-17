@@ -18,7 +18,11 @@ class ConversationsStore {
   private messages: MessagesMap = {};
   private statuses: StatusMap = {};
   private listeners = new Set<() => void>();
-  private fetching = new Map<string, Promise<boolean>>();
+  private fetching = new Map<
+    string,
+    { promise: Promise<boolean>; version: object }
+  >();
+  private fetchVersions = new Map<string, object>();
   private snapshot = {
     conversations: this.conversations,
     messages: this.messages,
@@ -74,9 +78,11 @@ class ConversationsStore {
     const key = `messages:${agentSlug}:${conversationId}`;
     const inFlight = this.fetching.get(key);
     if (inFlight && !isCurrent) {
-      return inFlight;
+      return inFlight.promise;
     }
 
+    const version = {};
+    this.fetchVersions.set(key, version);
     const promise = (async (): Promise<boolean> => {
       try {
         let toolMappings: Record<
@@ -105,7 +111,8 @@ class ConversationsStore {
           conversationId,
           toolMappings,
         );
-        if (isCurrent?.() === false) return false;
+        if (this.fetchVersions.get(key) !== version || isCurrent?.() === false)
+          return false;
         this.messages[key] = messages;
         this.notify();
         return true;
@@ -113,12 +120,25 @@ class ConversationsStore {
         log.api(`Failed to fetch messages for ${conversationId}:`, error);
         return false;
       } finally {
-        if (!isCurrent) this.fetching.delete(key);
+        if (this.fetchVersions.get(key) === version) {
+          this.fetchVersions.delete(key);
+        }
+        if (this.fetching.get(key)?.version === version)
+          this.fetching.delete(key);
       }
     })();
 
-    if (!isCurrent) this.fetching.set(key, promise);
+    if (!isCurrent) this.fetching.set(key, { promise, version });
     return promise;
+  }
+
+  forgetConversation(agentSlug: string, conversationId: string) {
+    const key = `messages:${agentSlug}:${conversationId}`;
+    this.fetchVersions.delete(key);
+    this.fetching.delete(key);
+    delete this.messages[key];
+    delete this.statuses[`${agentSlug}:${conversationId}`];
+    this.notify();
   }
 
   async refreshMessages(

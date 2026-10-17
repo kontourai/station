@@ -450,6 +450,44 @@ describe('bounded Finished list (drop-oldest per chat)', () => {
   });
 });
 
+test('retiring finished delegate cards also bounds parent bindings', () => {
+  const store = new BackgroundTasksStore();
+  for (let i = 0; i < 51; i += 1) {
+    const threadId = `delegate-${i}`;
+    store.ingest(
+      event('session.started', {
+        threadId,
+        metadata: { taskId: threadId, parentTaskId: 'chat-1' },
+      }),
+    );
+    store.ingest(event('turn.completed', { threadId }));
+  }
+  expect(Object.keys(store.getSnapshot().entries)).toHaveLength(50);
+  expect(Object.keys(store.getSnapshot().delegateParents)).toHaveLength(50);
+  expect(store.getSnapshot().delegateParents['delegate-0']).toBeUndefined();
+  store.ingest(
+    event('turn.started', { threadId: 'delegate-50', prompt: 'Another turn' }),
+  );
+  expect(store.getSnapshot().entries['delegate-50'].state).toBe('running');
+});
+
+test('inactive legacy snapshot delegates do not leave unreachable parent bindings', () => {
+  const store = new BackgroundTasksStore();
+  store.reconcileSnapshot({
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: 'old-delegate',
+        status: 'idle',
+        hasActiveTurn: false,
+        createdAt: '2026-07-29T00:00:00.000Z',
+        delegation: { taskId: 'old-delegate', parentTaskId: 'chat-1' },
+      },
+    ],
+  });
+  expect(store.getSnapshot()).toEqual({ entries: {}, delegateParents: {} });
+});
+
 describe('reconcileBackgroundTasksSnapshot', () => {
   function payload(
     sessions: OrchestrationSnapshotPayload['sessions'],
