@@ -1384,6 +1384,36 @@ test.each([
   },
 );
 
+test('desktop panes mount on first selection and retain edited state after visiting', async () => {
+  const renders = vi.fn();
+  render(
+    <WorkspacePaneHost
+      document={flatHostDocument(one.instanceId)}
+      renderPane={(pane) => {
+        renders(pane.instanceId);
+        return (
+          <input aria-label={`${pane.descriptorId} draft`} defaultValue="" />
+        );
+      }}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(renders.mock.calls.map(([id]) => id)).not.toContain(two.instanceId);
+  expect(screen.queryByLabelText('Two draft')).toBeNull();
+  fireEvent.change(screen.getByLabelText('One draft'), {
+    target: { value: 'keep this' },
+  });
+  fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+  expect(screen.getByLabelText('Two draft')).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'One' }));
+  expect((screen.getByLabelText('One draft') as HTMLInputElement).value).toBe(
+    'keep this',
+  );
+  expect(screen.getByLabelText('Two draft').isConnected).toBe(true);
+});
+
 test('hydrates the exact persisted scope before its first pane render', () => {
   const persisted = flatHostDocument(two.instanceId);
   persistWorkspacePaneHost(window.localStorage, persisted);
