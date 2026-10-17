@@ -32,13 +32,15 @@ review and approve requests there. A Board never approves work on your behalf.
 ## Build through chat
 
 Choose **Build with chat**. Station opens its new-chat picker without a Project
-and offers the Board context as a removable draft. Choose an Agent with the
-Personal Board read and proposal actions enabled in its **Station** source,
+and offers the Board context as a removable draft. Choose an Agent allowed to
+use Station Control, with the Personal Board read and proposal actions enabled
+in its **Station** source,
 including `list_personal_boards`, `get_personal_board` and the mutating
 `propose_personal_board` action. In the Agent's **Tools** section, choose
 **Add tools**, add **Station**, then open that source to select its actions and
 review their approval choices. Send your request after choosing the Agent.
-The built-in Station assistant exposes these tools when its engine is ready.
+If Station Control is unavailable to your Agent, use the visual editor.
+The built-in Station assistant exposes these tools when ready and authorized.
 For example:
 
 > Make this my morning dashboard: pending decisions, active Tasks across my
