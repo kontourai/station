@@ -60,6 +60,7 @@ import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
+import { SkeletonBlock } from '../state';
 import './MCPToolUIFrame.css';
 import { isDistinctFrameOrigin } from './frameOrigin';
 
@@ -1266,7 +1267,7 @@ function MCPToolUISandbox({
         <section className="mcp-tool-ui-frame mcp-tool-ui-frame--transcript">
           {availability}
           <div className="mcp-tool-ui-frame__pending" style={{ height }}>
-            Loading MCP UI…
+            <SkeletonBlock label="Loading MCP UI" />
           </div>
         </section>
       );
