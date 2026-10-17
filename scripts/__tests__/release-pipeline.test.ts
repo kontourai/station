@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -253,6 +253,10 @@ it('recovers the reserved producer after a partial ship adds a ledger-only event
                   name: 'qualification / Full source qualification',
                   conclusion: 'success',
                 },
+                {
+                  name: 'nightly / 2 · Stage native builds / Plan cohort (reserve version code)',
+                  conclusion: 'success',
+                },
               ],
             }
           : {
@@ -463,6 +467,9 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
     path: '.github/workflows/nightly.yml',
     event: 'schedule',
   };
+  let runs: Array<
+    Omit<typeof run, 'conclusion'> & { conclusion: string | null }
+  > = [run];
   let jobs = [
     {
       name: '1 · Source gate (lint, typecheck, browser smoke)',
@@ -474,7 +481,7 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
     response.setHeader('content-type', 'application/json');
     response.end(
       JSON.stringify(
-        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: [run] },
+        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: runs },
       ),
     );
   });
@@ -499,7 +506,272 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
       jobs = rejected;
       expect((await reservationRecovery(source, env)).recover).toBe(false);
     }
+    jobs = [good];
+    for (const held of [
+      [{ ...run, status: 'in_progress', conclusion: null }],
+      [run, { ...run, id: 2 }, { ...run, id: 3 }],
+      [{ ...run, conclusion: 'cancelled' }],
+    ]) {
+      runs = held;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+const qualificationReferences = (sha = source) =>
+  [
+    'full-regression.yml',
+    'delivery-validation.yml',
+    'install-smoke.yml',
+    'portable-server-archives.yml',
+    'desktop-rust.yml',
+    'desktop-clean-checkout.yml',
+    'ecosystem-packaging.yml',
+  ].map((name) => ({
+    path: `owner/repo/.github/workflows/${name}@${sha}`,
+    ref: 'refs/heads/main',
+    sha,
+  }));
+
+it.each(['live', 'queued-empty', 'failed', 'three-failures'])(
+  'ignores positively independent %s full qualification during Nightly recovery',
+  async (scenario) => {
+    const nightly = {
+      ...producer,
+      path: '.github/workflows/nightly.yml',
+      event: 'schedule',
+    };
+    const qualifications = Array.from(
+      { length: scenario === 'three-failures' ? 3 : 1 },
+      (_, index) => ({
+        ...producer,
+        id: index + 10,
+        status:
+          scenario === 'queued-empty'
+            ? 'queued'
+            : scenario === 'live'
+              ? 'in_progress'
+              : 'completed',
+        conclusion: ['live', 'queued-empty'].includes(scenario)
+          ? null
+          : 'failure',
+      }),
+    );
+    const reads: string[] = [];
+    const server = createServer((request, response) => {
+      reads.push(request.url ?? '');
+      response.setHeader('content-type', 'application/json');
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const detail = qualifications.find((run) =>
+        path.endsWith(`/runs/${run.id}`),
+      );
+      const body = detail
+        ? { ...detail, referenced_workflows: qualificationReferences() }
+        : path.endsWith('/jobs')
+          ? {
+              jobs: path.includes('/runs/1/')
+                ? [
+                    {
+                      name: '1 · Source gate (lint, typecheck, browser smoke)',
+                      status: 'completed',
+                      conclusion: 'success',
+                    },
+                  ]
+                : scenario === 'queued-empty'
+                  ? []
+                  : [
+                      {
+                        name: 'qualification / Full source qualification',
+                        status: 'completed',
+                        conclusion: 'failure',
+                      },
+                    ],
+            }
+          : { workflow_runs: [nightly, ...qualifications] };
+      response.end(JSON.stringify(body));
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('HTTP fixture unavailable');
+    try {
+      expect(
+        (
+          await reservationRecovery(source, {
+            GITHUB_REPOSITORY: 'owner/repo',
+            GITHUB_RUN_ID: '42',
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          })
+        ).recover,
+      ).toBe(true);
+      expect(reads.filter((path) => /\/runs\/\d+$/.test(path))).toEqual([
+        '/repos/owner/repo/actions/runs/10',
+      ]);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  },
+);
+
+it('holds live legacy producers and unknown provider graph or job inventories', async () => {
+  const nightly = {
+    ...producer,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+  };
+  const qualification = {
+    ...producer,
+    id: 10,
+    status: 'queued',
+    conclusion: null,
+  };
+  const independent = qualificationReferences();
+  let references: unknown = independent;
+  let detailFailure = false;
+  let jobFailure = false;
+  let missingJobs = false;
+  let wrongIdentity = false;
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.endsWith('/runs/10')) {
+      if (detailFailure) {
+        response.writeHead(503);
+        response.end('{}');
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          ...qualification,
+          head_sha: wrongIdentity ? prior : source,
+          referenced_workflows: references,
+        }),
+      );
+    } else if (path.includes('/runs/10/jobs')) {
+      if (jobFailure) {
+        response.writeHead(503);
+        response.end('{}');
+        return;
+      }
+      response.end(JSON.stringify(missingJobs ? {} : { jobs: [] }));
+    } else if (path.endsWith('/jobs'))
+      response.end(
+        JSON.stringify({
+          jobs: [
+            {
+              name: '1 · Source gate (lint, typecheck, browser smoke)',
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        }),
+      );
+    else
+      response.end(JSON.stringify({ workflow_runs: [nightly, qualification] }));
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect((await reservationRecovery(source, env)).recover).toBe(true);
+    for (const held of [
+      undefined,
+      null,
+      {},
+      [],
+      [independent[0]],
+      [...independent, independent[0]],
+      qualificationReferences(prior),
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `foreign/repo/.github/workflows/full-regression.yml@${source}`,
+        },
+      ],
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `owner/repo/.github/workflows/unknown.yml@${source}`,
+        },
+      ],
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `owner/repo/.github/workflows/nightly.yml@${source}`,
+        },
+      ],
+    ]) {
+      references = held;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
+    references = independent;
+    wrongIdentity = true;
+    expect((await reservationRecovery(source, env)).recover).toBe(false);
+    wrongIdentity = false;
+    detailFailure = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow('HTTP 503');
+    detailFailure = false;
+    jobFailure = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow('HTTP 503');
+    jobFailure = false;
+    missingJobs = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow(
+      'Incomplete GitHub listing',
+    );
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it('loads the actual Nightly decision before dependencies are installed', async () => {
+  const exec = promisify(execFile);
+  const makeTempDir = trackTempDirs();
+  const root = makeTempDir('station-nightly-no-dependencies-');
+  const repo = resolve(import.meta.dirname, '../..');
+  const copied = new Set<string>();
+  const copyModule = (path: string) => {
+    if (copied.has(path)) return;
+    copied.add(path);
+    const contents = readFileSync(join(repo, path), 'utf8');
+    const destination = join(root, path);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, contents);
+    for (const match of contents.matchAll(
+      /(?:from\s*|import\s*)['"]([^'"]+)['"]/g,
+    )) {
+      if (match[1].startsWith('.')) copyModule(join(dirname(path), match[1]));
+    }
+  };
+  copyModule('scripts/nightly-qualification-decide.mjs');
+  try {
+    await exec(
+      process.execPath,
+      [join(root, 'scripts/nightly-qualification-decide.mjs')],
+      { cwd: root, windowsHide: true, timeout: 15_000 },
+    );
+    throw new Error(
+      'Decision without required arguments unexpectedly succeeded',
+    );
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining(
+        'usage: node scripts/nightly-qualification-decide.mjs',
+      ),
+    });
+    expect(error).not.toMatchObject({
+      stderr: expect.stringContaining('ERR_MODULE_NOT_FOUND'),
+    });
   }
 });

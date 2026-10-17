@@ -4,7 +4,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchCapability = vi.hoisted(() => vi.fn());
 const fetchWindow = vi.hoisted(() => vi.fn());
@@ -187,13 +187,17 @@ function session(revision: number): ChatSession {
   } as ChatSession;
 }
 
+let queryClient: QueryClient;
+beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+});
+afterEach(() => queryClient.clear());
+
 function dock(current: ChatSession) {
   return (
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <ChatDockBody
         activeSession={current}
         chatFontSize={14}

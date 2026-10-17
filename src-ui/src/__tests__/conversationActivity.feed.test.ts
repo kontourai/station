@@ -83,6 +83,7 @@ function renderFeed(input: Parameters<typeof useConversationActivityFeed>[0]) {
   client.setQueryData(['orchestration-sessions'], input.sessions);
   client.setQueryData(['conversation-inventory'], {
     pages: [{ items: input.conversations ?? [] }],
+    pageParams: [undefined],
   });
   return renderHook(() => useConversationActivityFeed(input), {
     wrapper: ({ children }: { children: ReactNode }) =>

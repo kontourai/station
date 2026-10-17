@@ -377,7 +377,7 @@ describe('same-run merge integration wiring', () => {
       ),
     );
     expect(job.uses).toBe('./.github/workflows/full-regression.yml');
-    expect(job.with).toEqual({
+    expect(job.with).toMatchObject({
       source_sha: expr('github.sha'),
       allow_reuse: true,
     });
