@@ -344,8 +344,11 @@ containment while traversing asynchronously.
 `GET /api/coding/files/content`. Text previews are limited to 2 MiB; larger
 files receive 413 with code `file-too-large` and an instruction to open the file
 in an editor. Binary detection samples the first 8 KiB before reading the rest.
-The SDK throws the server's error message for a refused preview. These legacy
-coding endpoints are separate from the built-in Workspace File Preview API.
+The SDK throws the server's error message for a refused preview. Missing files
+retain status 500 with code `not-found` and a workspace-relative message.
+Non-regular files are refused before opening. Buffers grow with observed file
+contents; a file that grows beyond the limit is rejected rather than truncated.
+These legacy coding endpoints are separate from the built-in Workspace File Preview API.
 See the [reader](../../src-server/services/projects/file-tree-service.ts) and
 [route](../../src-server/routes/projects/coding.ts).
 
