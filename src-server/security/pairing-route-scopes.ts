@@ -297,6 +297,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // updates and removes nothing: the change is taken later on the
   // `/api/plugins` routes, which refuse Station's internal agent caller.
   '/api/plugin-proposals',
+  '/api/tool-library',
   // #2323 S4: local plugin source status. A read the handler answers only
   // for the operator; it installs nothing.
   '/api/plugin-sources',
@@ -2605,6 +2606,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/boards/:layoutSlug' },
+    { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
+    { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
@@ -2742,6 +2747,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/acp/registry' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
+    { method: 'GET', path: '/api/tool-library/accounts/:id' },
+    { method: 'POST', path: '/api/tool-library/accounts/:id/:action' },
+    { method: 'GET', path: '/api/tool-library/access' },
+    { method: 'GET', path: '/api/tool-library/catalog' },
+    { method: 'GET', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/add' },
+    { method: 'POST', path: '/api/tool-library/sources/:id/discover' },
+    { method: 'POST', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/requests/:id/:action' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/policy' },
+    { method: 'PUT', path: '/api/tool-library/sources/:id/sharing' },
+    { method: 'GET', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'POST', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/agents/:agent' },
     { method: 'GET', path: '/agents' },
     { method: 'POST', path: '/agents' },
     // Find-or-create the ONE Agent definition bound to a locally-detected
@@ -3631,6 +3650,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sends session titles and project names off the machine to this phone.
     { method: 'POST', path: '/api/system/native-push/register' },
     { method: 'DELETE', path: '/api/system/native-push' },
+    // Whether the caller's own device is still registered (its registration
+    // id, never a token or key): the family read tier, like the reads below.
+    { method: 'GET', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`

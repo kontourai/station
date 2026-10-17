@@ -818,6 +818,27 @@ current cell is wired to `provider-task-stop`, so
 its running child work now uses that control. The legacy `TaskRow` bridge
 remains for an engine whose control cell is not wired.
 
+**Amended 2026-10-14.** Subagents also appear as inline chat transcript
+cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
+sit after their spawning tool-call run, including every child of a workflow.
+When an engine such as Codex reports a child without a tool-call row, the
+card uses the child's parent turn and the spawn event's text position.
+A steer binds the card to the assistant row containing its spawn, with text
+offsets local to that row; the live whole-turn shell retains its turn-wide
+offset. If the spawn segment has no content row at the spawn event, the projection
+emits a standalone card block inside that turn, after its preceding rows and
+before any later segment or turn. It stays standalone when later same-turn
+prose arrives: placement is determined from the event prefix at spawn, so live
+completion and cold replay preserve the same key and position without a jump
+or duplicate. Each child appears once, including
+after a queued follow-up. The transcript's loaded `child-work.updated`
+events retain every child whose spawn is loaded, independently of the live
+registry's settled-item retention limit. Completion notices carry child
+identity and remain visible only when no inline card represents that child.
+The Agents pane remains the complete list and stop surface, including
+children with no loaded spawn anchor. The card and pane share status words
+and time formatting (`utils/child-work-display.ts`).
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is
@@ -899,6 +920,13 @@ in (`App.tsx`). `tasks`, `session-board` and `review` are route-shaped pages
 does not make. An id the list no longer carries — a Board promoted, a Layout
 deleted — renders "not found" in the tab; the tab stays, because closing a
 tab is the user's act.
+
+**Personal dashboard content.** The same `LayoutRenderer` also renders a
+Board's saved dashboard definition through `PersonalBoardDashboard`, including
+when it is docked or promoted into a Project Layout. Existing Layout tabs remain
+alongside it. Authoring lives in the Main Board host; a docked copy remains a
+reading surface. Live sections use authorized owner projections and do not
+persist copies of Tasks or approvals. See [Personal Boards](../user/personal-boards.md).
 
 **A built-in tab that reads the route.** `SDKAdapter`'s `boundProjectSlug`
 rewrites the SDK's navigation, which every plugin tab reads; the built-in

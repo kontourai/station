@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./tool-library": "./src/tool-library.ts",
     "./relay-management": "./src/relay-management.ts",
     "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
@@ -40,6 +41,7 @@
     "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
     "./client/plugin-command-effects": "./src/client/plugin-command-effects.ts",
     "./client": "./src/client/index.ts",
+    "./personal-board": "./src/personal-board.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
     "./plugin-local-sources-query": "./src/query-domains/pluginLocalSources.ts",

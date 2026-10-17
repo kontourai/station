@@ -392,6 +392,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/board/move')],
   },
+  list_personal_boards: { ...SELF_READ, routes: [get('/api/me/layouts')] },
+  get_personal_board: {
+    ...SELF_READ,
+    routes: [get('/api/me/boards/:layoutSlug')],
+  },
+  propose_personal_board: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/me/boards/:layoutSlug/proposal')],
+  },
   board_read: {
     ...SELF_READ,
     routes: [get('/api/board')],

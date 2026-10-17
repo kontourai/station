@@ -80,15 +80,19 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/providers/adapters/codex-approval-mode.ts",
+    "packages/shared/src/mcp-tool-selection.ts",
 
-    "src-server/providers/adapters/codex-adapter-notifications.ts",
+    "src-server/runtime/tools/tool-approval.ts",
 
-    "src-ui/src/utils/approvalMode.ts",
+    "src-server/services/plugins/tool-library-service.ts",
 
-    "src-ui/src/components/badges/ComposerModeSheet.tsx",
+    "src-server/runtime/agents/runtime-agent-builder.ts",
 
-    "src-server/providers/adapters/codex-adapter.ts"
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/services/orchestration/session-agent-resolution.ts",
+
+    "src-server/services/orchestration/session-agent-start-policy.ts"
   ],
 
   "checks": [

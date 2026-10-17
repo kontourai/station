@@ -65,6 +65,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
@@ -127,14 +128,16 @@ export function AttentionCard({
           {formatNotificationTime(item.updatedAt)}
         </time>
       </header>
-      <AttentionAction item={item} />
-      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+      <div className="attention-item__footer">
+        <AttentionAction item={item} />
+        {/* #1536 D8: a standing notice is not dismissible — acknowledging the
           only row that says why chat cannot start would leave the inbox
           claiming nothing needs you while it still does. One predicate, shared
           with "Dismiss all" and with the server's own refusal. */}
-      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
-        <DismissAttentionItem item={item} />
-      )}
+        {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+          <DismissAttentionItem item={item} />
+        )}
+      </div>
     </article>
   );
 }
@@ -168,12 +171,27 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
   );
 }
 
+const loadToolRequestPanel = () =>
+  import('../profile/ToolRequestsPanel').then((module) => ({
+    default: module.ToolRequestsPanel,
+  }));
+
 function AttentionAction({ item }: { item: AttentionItem }) {
   // A task running on a paired Station: its thread id here names only the
   // local lifecycle record, so a reply or request inspection would address
   // nothing. Same rule, and same note, as the Activity detail's peer branch.
   if (isPeerHostedAttentionItem(item)) return <PeerHostedAction item={item} />;
   switch (item.kind) {
+    case 'tool-request':
+      return (
+        <StationToolLibraryProvider>
+          <LazyBoundary
+            load={loadToolRequestPanel}
+            componentProps={{ requestId: item.source.requestId }}
+            pending={<SkeletonList count={1} />}
+          />
+        </StationToolLibraryProvider>
+      );
     case 'approval':
       return item.requestReference ? (
         <ExactRequestAction

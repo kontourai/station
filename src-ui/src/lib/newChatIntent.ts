@@ -38,6 +38,7 @@ export type NewChatHandoff =
 export type NewChatClosedOutcome = 'started' | 'dismissed';
 
 export interface NewChatIntent {
+  taskShaping?: boolean;
   /** Start at once with `selection` (or the defaults), sending the prompt. */
   startWithDefault?: boolean;
   initialPrompt?: string;
@@ -88,6 +89,7 @@ export function dockAcceptsNewChatIntent(
 ): boolean {
   if (!hasImmutableProjectScope) return true;
   return !(
+    intent.taskShaping ||
     intent.startWithDefault ||
     intent.handoff ||
     intent.selection ||
@@ -187,6 +189,9 @@ export function readNewChatIntent(event: Event): NewChatIntent {
       !selectionInvalid &&
       'startWithDefault' in detail &&
       detail.startWithDefault === true,
+    ...('taskShaping' in detail && detail.taskShaping === true
+      ? { taskShaping: true }
+      : {}),
     initialPrompt: typeof prompt === 'string' ? prompt : undefined,
     ...(files.length ? { initialFiles: files } : {}),
     ...(selection ? { selection } : {}),

@@ -112,6 +112,7 @@ export interface GuidanceAsset {
 }
 
 export interface RegistryItem {
+  providesTools?: boolean;
   id: string;
   catalog?: RegistryCatalogSelection;
   catalogSourceName?: string;
@@ -121,6 +122,7 @@ export interface RegistryItem {
   description?: string;
   version?: string;
   source?: string;
+  toolOrigin?: import('./tool.js').ToolOrigin;
   status?: string;
   tags?: string[];
   installed: boolean;

@@ -1,0 +1,7 @@
+{
+  "revision": "a741f2303f1cd39bc3cf4a2d3add477fb2f2aec3",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Applied the exact reviewed four-line consolidation handoff: removed only the obsolete hosted-full-regression source-group literal; full phase and head-bound CI assertions remain, with class-based FIFO and integration/release separation owned by promotion-full-regression-workflow and actionlint-queue-compat tests. Two focused suites pass100; no scheduler, permission, runtime or receipt change.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

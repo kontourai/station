@@ -132,6 +132,21 @@ function fixtureCli(...args: string[]) {
   );
 }
 
+test('fixture CLI reports assertion codes without exposing private-path failures', () => {
+  const usage = fixtureCli();
+  expect(usage.status).toBe(1);
+  expect(usage.stderr).toBe('native_fresh_fixture_refused: fixture_usage\n');
+
+  const privatePath = join(
+    makeTempDir('native-private-diagnostic-'),
+    'private-marker.json',
+  );
+  const missing = fixtureCli('inspect', privatePath);
+  expect(missing.status).toBe(1);
+  expect(missing.stderr).toBe('native_fresh_fixture_refused\n');
+  expect(missing.stdout).toBe('');
+});
+
 test('explicit cleanup recovery observes expired owner withdrawal and permits only a freshly checked successor without rewriting failure evidence', async () => {
   const f = await completedBrokerFixture(false, true);
   try {
@@ -167,9 +182,15 @@ test('explicit cleanup recovery observes expired owner withdrawal and permits on
       1,
     );
     const successorDirectory = join(f.root, 'second');
+    const prepared = fixtureCli(
+      'prepare-successor',
+      priorPath,
+      successorDirectory,
+      '1',
+    );
     expect(
-      fixtureCli('prepare-successor', priorPath, successorDirectory, '1')
-        .status,
+      prepared.status,
+      prepared.stderr || prepared.error?.message || prepared.stdout,
     ).toBe(0);
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),
@@ -247,29 +268,16 @@ test('operator successor retains the genuine Station home and trust, provisions 
     const unrelatedBundle = createBrokerCredentialBundle();
     f.broker.provision(unrelated, 60_000, unrelatedBundle);
     const successorDirectory = join(f.root, 'second');
-    const prepared = spawnSync(
-      process.execPath,
-      [
-        '--import',
-        'tsx',
-        'scripts/native-fresh-relay-fixture.ts',
-        'prepare-successor',
-        join(f.directory, 'plan.json'),
-        successorDirectory,
-        '1',
-      ],
-      {
-        cwd: resolve(import.meta.dirname, '../..'),
-        windowsHide: true,
-        timeout: 30_000,
-        encoding: 'utf8',
-        maxBuffer: 65536,
-      },
+    const prepared = fixtureCli(
+      'prepare-successor',
+      join(f.directory, 'plan.json'),
+      successorDirectory,
+      '1',
     );
-    expect({
-      status: prepared.status,
-      errorType: prepared.error?.name,
-    }).toEqual({ status: 0, errorType: undefined });
+    expect(
+      { status: prepared.status, errorType: prepared.error?.name },
+      prepared.stderr || prepared.error?.message || prepared.stdout,
+    ).toEqual({ status: 0, errorType: undefined });
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),
     );
@@ -306,10 +314,10 @@ test('operator successor retains the genuine Station home and trust, provisions 
         maxBuffer: 65536,
       },
     );
-    expect({
-      status: initialized.status,
-      errorType: initialized.error?.name,
-    }).toEqual({ status: 0, errorType: undefined });
+    expect(
+      { status: initialized.status, errorType: initialized.error?.name },
+      initialized.stderr || initialized.error?.message,
+    ).toEqual({ status: 0, errorType: undefined });
     expect(() =>
       assertNativeFreshBrokerLeaseCommitted(successor),
     ).not.toThrow();

@@ -2463,13 +2463,12 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
   });
 });
 
-describe('#3568: a same-key retry that lands in another Session', () => {
-  test('through the production composition, a retry changing to a model the engine cannot switch per turn answers the first turn, and the engine gets it once', async () => {
+describe('#3567: keyed input and model changes', () => {
+  test('refuses a changed-model retry without another Session or turn, while original input replays', async () => {
     const f = await fixture();
     f.claude.completeTurns = true;
-    // An engine that cannot change model per turn: a send naming another
-    // model continues in a new Session. It reports the model it started
-    // with, as such an engine does.
+    // The engine cannot change model per turn. A changed-model retry must
+    // still compare submitted input before replay or Session selection.
     (f.claude as { metadata: ProviderAdapterMetadata }).metadata = {
       ...f.claude.metadata,
       modelLaunch: {
@@ -2494,8 +2493,9 @@ describe('#3568: a same-key retry that lands in another Session', () => {
       target,
     });
     expect(first.status, first.text).toBe(200);
-    const { conversationId, providerTurnId } = first.body.data as {
+    const { conversationId, sessionId, providerTurnId } = first.body.data as {
       conversationId: string;
+      sessionId: string;
       providerTurnId: string;
     };
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -2505,11 +2505,27 @@ describe('#3568: a same-key retry that lands in another Session', () => {
       clientTurnId: 'retry-key',
       target: { ...target, model: { override: 'claude-other-model' } },
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(
-      f.claude.turns.filter((turn) => turn.input.endsWith('send this once')),
-    ).toHaveLength(1);
-    expect(retry.status, retry.text).toBe(200);
-    expect(retry.body.data.providerTurnId).toBe(providerTurnId);
+    expect(retry.status, retry.text).toBe(409);
+    expect(retry.body).toMatchObject({
+      success: false,
+      code: 'client_turn_input_conflict',
+    });
+    expect(f.claude.starts).toHaveLength(1);
+    expect(f.claude.turns).toHaveLength(1);
+
+    const replay = await f.request(headers, '/api/orchestration/chat', {
+      message: 'send this once',
+      conversationId,
+      clientTurnId: 'retry-key',
+      target,
+    });
+    expect(replay.status, replay.text).toBe(200);
+    expect(replay.body.data).toMatchObject({
+      conversationId,
+      sessionId,
+      providerTurnId,
+    });
+    expect(f.claude.starts).toHaveLength(1);
+    expect(f.claude.turns).toHaveLength(1);
   });
 });

@@ -235,8 +235,29 @@
   min-height: 44px;
 }
 
+.attention-item__footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+.attention-item__footer .attention-open-link,
+.attention-item__footer .attention-dismiss-link {
+  margin: 0;
+}
+.attention-item__footer > .tool-requests-panel,
+.attention-item__footer > .attention-answer,
+.attention-item__footer > .attention-error,
+.attention-item__footer > .attention-item__detail {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .attention-item__actions {
+  .attention-item__actions,
+  .attention-item__footer {
     justify-content: flex-start;
   }
 }
