@@ -16,8 +16,10 @@ Status: design note
 [Worktree provisioning](../../src-server/services/projects/worktree-provisioning-service.ts)
 resolves the configured `baseRef` (default `HEAD`) to a full Git commit before
 creating an owned Project worktree. Checkout uses that exact commit even if the
-ref moves afterwards. Missing refs and non-commit objects refuse before the
-worktree directory or branch is created. Existing dirty-repository, configuration,
+ref moves afterwards. Resolution and checkout disable Git replacement objects,
+so a replace ref cannot silently substitute another commit's contents.
+Missing refs and non-commit objects refuse before the worktree directory or
+branch is created. Existing dirty-repository, configuration,
 path and ownership checks still apply.
 
 [Session metadata](../../packages/contracts/src/workspace-isolation.ts) retains

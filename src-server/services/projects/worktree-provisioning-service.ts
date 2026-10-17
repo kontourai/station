@@ -573,7 +573,8 @@ export class WorktreeProvisioningService {
     try {
       const repoRoot = repository.top;
       const repo = ['-C', repoRoot, ...repository.repoArgs];
-      const env = repository.env;
+      // A recorded commit must select its own tree, even if replace refs change.
+      const env = { ...repository.env, GIT_NO_REPLACE_OBJECTS: '1' };
 
       const status = await this.git.run([...repo, 'status', '--porcelain'], {
         env,

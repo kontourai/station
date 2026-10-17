@@ -397,40 +397,63 @@ describe('WorktreeProvisioningService', () => {
     expect(calls[1]?.allowCodes).toEqual([0, 1]);
   });
 
-  test('pins a mutable base ref before checkout and retains its resolved commit', async () => {
-    const repoPath = createRepo();
-    const first = git(repoPath, ['rev-parse', 'HEAD']).trim();
-    writeFileSync(join(repoPath, 'README.md'), '# later revision\n');
-    git(repoPath, ['commit', '-am', 'later revision']);
-    const later = git(repoPath, ['rev-parse', 'HEAD']).trim();
-    const baseRef = 'refs/heads/preparation-base';
-    git(repoPath, ['update-ref', baseRef, first]);
-    const worktreeBaseDir = `${repoPath}-pinned`;
-    tmpRoots.push(worktreeBaseDir);
-    const runner: GitCommandRunner = {
-      run: (args, options) => {
-        if (args.includes('worktree') && args.includes('add')) {
-          git(repoPath, ['update-ref', baseRef, later]);
-        }
-        return runRealGit(args, options);
-      },
-    };
-    const service = new WorktreeProvisioningService(runner);
-    const metadata = await service.provision({
-      repoPath,
-      threadId: 'pinned-source',
-      providerKind: 'codex',
-      isolation: { mode: 'worktree', policy: { baseRef, worktreeBaseDir } },
-    });
-    expect(git(repoPath, ['rev-parse', baseRef]).trim()).toBe(later);
-    expect(metadata?.baseRef).toBe(baseRef);
-    expect(metadata?.baseCommit).toBe(first);
-    expect(git(metadata!.path, ['rev-parse', 'HEAD']).trim()).toBe(first);
-    expect(readFileSync(join(metadata!.path, 'README.md'), 'utf8')).toBe(
-      '# test\n',
-    );
-    await service.cleanup({ metadata: metadata!, terminalState: 'completed' });
-  });
+  test.each([
+    'moving-ref',
+    'replacement-before-resolution',
+    'replacement-before-checkout',
+  ] as const)(
+    'pins the base commit and its file contents despite %s',
+    async (change) => {
+      const repoPath = createRepo();
+      const first = git(repoPath, ['rev-parse', 'HEAD']).trim();
+      writeFileSync(join(repoPath, 'README.md'), '# later revision\n');
+      git(repoPath, ['commit', '-am', 'later revision']);
+      const later = git(repoPath, ['rev-parse', 'HEAD']).trim();
+      const baseRef = 'refs/heads/preparation-base';
+      git(repoPath, ['update-ref', baseRef, first]);
+      if (change === 'replacement-before-resolution')
+        git(repoPath, ['replace', first, later]);
+      const worktreeBaseDir = `${repoPath}-pinned`;
+      tmpRoots.push(worktreeBaseDir);
+      const runner: GitCommandRunner = {
+        run: (args, options) => {
+          if (args.includes('worktree') && args.includes('add')) {
+            if (change === 'moving-ref')
+              git(repoPath, ['update-ref', baseRef, later]);
+            if (change === 'replacement-before-checkout')
+              git(repoPath, ['replace', first, later]);
+          }
+          return runRealGit(args, options);
+        },
+      };
+      const service = new WorktreeProvisioningService(runner);
+      const metadata = await service.provision({
+        repoPath,
+        threadId: 'pinned-source',
+        providerKind: 'codex',
+        isolation: { mode: 'worktree', policy: { baseRef, worktreeBaseDir } },
+      });
+      expect(git(repoPath, ['rev-parse', baseRef]).trim()).toBe(
+        change === 'moving-ref' ? later : first,
+      );
+      if (change !== 'moving-ref') {
+        expect(git(repoPath, ['replace', '-l']).trim()).toBe(first);
+        expect(git(repoPath, ['show', `${first}:README.md`])).toBe(
+          '# later revision\n',
+        );
+      }
+      expect(metadata?.baseRef).toBe(baseRef);
+      expect(metadata?.baseCommit).toBe(first);
+      expect(git(metadata!.path, ['rev-parse', 'HEAD']).trim()).toBe(first);
+      expect(readFileSync(join(metadata!.path, 'README.md'), 'utf8')).toBe(
+        '# test\n',
+      );
+      await service.cleanup({
+        metadata: metadata!,
+        terminalState: 'completed',
+      });
+    },
+  );
 
   test.each(['refs/heads/missing', 'refs/tags/blob'])(
     'refuses a base that is not a commit before creating workspace files: %s',
