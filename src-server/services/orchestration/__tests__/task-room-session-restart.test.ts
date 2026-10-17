@@ -217,6 +217,7 @@ test.each(['binding', 'recovery'] as const)(
         },
       },
       { userId: 'owner-user' },
+      {},
     );
     const recovery: SessionRecoveryCoordinator = Reflect.get(
       service,
@@ -229,13 +230,11 @@ test.each(['binding', 'recovery'] as const)(
             .mockImplementation(() => {
               throw new Error('Room binding unavailable');
             })
-        : vi
-            .spyOn(recovery, 'dispose')
-            .mockRejectedValueOnce(
-              Object.assign(new Error('Recovery shutdown unsettled'), {
-                code: 'RECOVERY_SHUTDOWN_UNSETTLED',
-              }),
-            );
+        : vi.spyOn(recovery, 'dispose').mockRejectedValueOnce(
+            Object.assign(new Error('Recovery shutdown unsettled'), {
+              code: 'RECOVERY_SHUTDOWN_UNSETTLED',
+            }),
+          );
     try {
       await expect(service.shutdown()).rejects.toThrow(
         'Provider adapter shutdown failed',
