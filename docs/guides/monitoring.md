@@ -283,8 +283,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
