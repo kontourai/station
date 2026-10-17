@@ -373,6 +373,9 @@ test('queues a contended reader, restores before its takeover, and keeps readers
       requestAnimationFrame(() => resolve()),
     );
   });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
   const ownerDocument = JSON.parse(
     localStorage.getItem(
       workspacePaneHostStorageKey(supplied.scope, supplied.id),
@@ -534,6 +537,9 @@ test('renders accessible recursive tabs, roves with keys, returns focus on close
       requestAnimationFrame(() => resolve()),
     );
   });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({ root: expect.objectContaining({ ratio: 0.55 }) }),
   );
@@ -634,6 +640,10 @@ test('coalesces a resize burst into one animation frame and one host publication
       frames[0]?.(0);
       await Promise.resolve();
     });
+    expect(separator.getAttribute('aria-valuenow')).toBe('55');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -643,6 +653,69 @@ test('coalesces a resize burst into one animation frame and one host publication
   } finally {
     globalThis.requestAnimationFrame = requestFrame;
     globalThis.cancelAnimationFrame = cancelFrame;
+  }
+});
+
+test('resizing keeps ratios live but defers storage and parent publication until settling', async () => {
+  const onChange = vi.fn();
+  const mounted = render(
+    <WorkspacePaneHost
+      document={hostDocument()}
+      onDocumentChange={onChange}
+      renderPane={(pane) => <div>{pane.descriptorId}</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  onChange.mockClear();
+  const writes = vi.spyOn(Storage.prototype, 'setItem');
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi
+    .spyOn(globalThis, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+  vi.useFakeTimers();
+  try {
+    const separator = screen.getByRole('separator', {
+      name: 'Resize workspace pane groups',
+    });
+    for (const expected of ['55', '60', '65']) {
+      fireEvent.keyDown(separator, { key: 'ArrowRight' });
+      await act(async () => {
+        frames.shift()?.(0);
+      });
+      expect(separator.getAttribute('aria-valuenow')).toBe(expected);
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+    }
+    const hostWrites = () =>
+      writes.mock.calls.filter(
+        ([key]) =>
+          key ===
+          workspacePaneHostStorageKey(hostDocument().scope, hostDocument().id),
+      );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(hostWrites()).toHaveLength(0);
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(hostWrites()).toHaveLength(1);
+    expect(JSON.parse(hostWrites()[0]![1]).root.ratio).toBeCloseTo(0.65);
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+    await act(async () => {
+      frames.shift()?.(0);
+    });
+    mounted.unmount();
+    expect(JSON.parse(hostWrites().at(-1)![1]).root.ratio).toBeCloseTo(0.6);
+  } finally {
+    vi.useRealTimers();
+    raf.mockRestore();
+    writes.mockRestore();
   }
 });
 
