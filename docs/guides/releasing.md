@@ -227,6 +227,15 @@ group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
 
+The current operating choice is the existing Free shared pool. Coordinate
+repository budgets before increasing concurrency: Station, Flow Agents and
+other organization workflows compete for the same total and macOS limits.
+Count all overlapping job families, including required PR feedback, merge
+groups, publishers, cache warmers and release staging. A per-invocation cap
+does not bound a family across many open PRs. Repository concurrency groups
+can enforce participating families' ceilings, but cannot reserve a slot from
+another repository or establish a hard organization-wide ceiling.
+
 The resolver validates its profile and exact-source reuse without waiting on
 an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
 single diagnostic inventory of configured repositories; its output explicitly
@@ -253,6 +262,15 @@ reported as not attempted in the new cohort, rather than lending their older
 receipt to new staged bytes. Finality and provider observations remain independent
 per platform. An explicit manual rebuild can request new native versions, while
 source usability, ancestry, recovery-lock and fence checks remain mandatory.
+
+Independent main qualification does not consume Nightly recovery attempts or
+hold recovery merely because it is still running. The recovery reader requires
+GitHub's exact-source reusable-workflow inventory to identify the known
+qualification/delivery graph before excluding that run. Missing, foreign or
+unrecognized references keep recovery held. Historical qualification runs that
+call Nightly remain producers, including live runs whose nested jobs have not
+started. Direct Nightly failures still count toward the attempt limit even
+when they failed before creating a reservation.
 
 ## One repair sweep per failure episode
 
