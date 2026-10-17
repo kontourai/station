@@ -8,6 +8,7 @@ import {
   requestCurrentStationAccess,
 } from '@kontourai/station-connect/device-pairing';
 import {
+  encodeBrowserPairingLink,
   encodePairingDeepLink,
   PAIRING_LINK_REMEDY,
   type PairingDeepLinkChannel,
@@ -41,6 +42,7 @@ import {
   parseCoreArgs,
   printJson,
   type ResolvedApiBase,
+  rememberResolvedApiBase,
   requestJson,
   requirePositional,
   resolveApiBase,
@@ -254,7 +256,7 @@ const USAGE = `Usage:
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
-  station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
+  station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
   station environment list [--api-base=<url>]
   station environment show <id> [--api-base=<url>]
@@ -416,6 +418,9 @@ interface EnvironmentOfferInvocation {
   payloadOnly: boolean;
   advertiseUrl?: string;
   clientChannel: Exclude<PairingDeepLinkChannel, 'dev'>;
+  scope?: string;
+  requireApproval: boolean;
+  browserUrl?: string;
 }
 
 interface VerifiedLocalOfferHost {
@@ -449,14 +454,24 @@ function parseEnvironmentOfferInvocation(
       'payload-only',
       'advertise-url',
       'client-channel',
+      'scope',
+      'require-approval',
+      'browser-url',
     ]) ||
     (parsed.flags.tailscale !== undefined && parsed.flags.tailscale !== true) ||
+    (parsed.flags['require-approval'] !== undefined &&
+      parsed.flags['require-approval'] !== true) ||
     (parsed.flags['payload-only'] !== undefined &&
       parsed.flags['payload-only'] !== true)
   ) {
     throw usageError();
   }
   const advertiseUrl = parsed.flags['advertise-url'];
+  const browserUrl = parsed.flags['browser-url'];
+  if (browserUrl !== undefined) {
+    if (typeof browserUrl !== 'string') throw usageError();
+    encodeBrowserPairingLink({ payload: '', browserUrl });
+  }
   const clientChannel = parsed.flags['client-channel'];
   if (
     clientChannel !== undefined &&
@@ -485,7 +500,26 @@ function parseEnvironmentOfferInvocation(
       throw usageError();
     }
   }
+  const scope =
+    typeof parsed.flags.scope === 'string'
+      ? parsed.flags.scope.split(',').join(' ')
+      : undefined;
+  if (
+    parsed.flags.scope !== undefined &&
+    (!scope || !parsePairingScope(scope)?.length)
+  ) {
+    throw usageError();
+  }
+  if (
+    parsed.flags['payload-only'] === true &&
+    (scope || parsed.flags['require-approval'])
+  ) {
+    throw usageError();
+  }
   return {
+    requireApproval: parsed.flags['require-approval'] === true,
+    ...(typeof browserUrl === 'string' ? { browserUrl } : {}),
+    ...(scope ? { scope } : {}),
     tailscale: parsed.flags.tailscale === true,
     ...(tailscaleServePort !== undefined
       ? { tailscaleServePort: Number(tailscaleServePort) }
@@ -569,6 +603,7 @@ async function mintEnvironmentPairingOffer(
   publication: TailscaleOfferEndpoint | undefined,
   advertiseUrl: string | undefined,
   scope: string | undefined,
+  preapproved: boolean,
 ): Promise<DevicePairingOffer> {
   try {
     return parseDevicePairingOffer(
@@ -581,6 +616,7 @@ async function mintEnvironmentPairingOffer(
         body: JSON.stringify({
           endpoint: advertiseUrl ?? publication?.endpoint ?? host.apiBase,
           ...(scope ? { scope } : {}),
+          ...(preapproved ? { approval: 'on-create' } : {}),
         }),
       }),
     );
@@ -600,6 +636,7 @@ function formatEnvironmentOfferOutput(input: {
   qr: string;
   publication?: TailscaleOfferEndpoint;
   pairingLink: string;
+  browserLink?: string;
 }): string {
   const endpoint = new URL(input.offer.endpoint).origin;
   const expires = new Date(input.offer.expiresAt).toISOString();
@@ -608,11 +645,13 @@ function formatEnvironmentOfferOutput(input: {
     `Endpoint: ${endpoint}`,
     `Pairing code: ${input.offer.manualCode}`,
     `Expires: ${expires}`,
+    `Access: ${input.offer.scope}`,
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`
       : 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.',
     'Payload (one-time pairing offer; scan or paste into Join):',
     input.payload,
+    ...(input.browserLink ? ['Open in a browser:', input.browserLink] : []),
     'Open in selected Station client:',
     input.pairingLink,
     'If the operating system has no app for that custom scheme:',
@@ -654,7 +693,9 @@ async function runEnvironmentOfferCommand(
     // machine flow, which keeps the Station's default grant.
     invocation.payloadOnly
       ? undefined
-      : pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET),
+      : (invocation.scope ??
+          pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)),
+    !invocation.payloadOnly && !invocation.requireApproval,
   );
   const payload = encodeDevicePairingPayload(offer);
   if (invocation.payloadOnly) {
@@ -674,6 +715,14 @@ async function runEnvironmentOfferCommand(
       qr,
       publication,
       pairingLink,
+      ...(invocation.browserUrl
+        ? {
+            browserLink: encodeBrowserPairingLink({
+              payload,
+              browserUrl: invocation.browserUrl,
+            }),
+          }
+        : {}),
     }),
   );
   return true;
@@ -1538,6 +1587,32 @@ async function runAccessRequestCommand(
   return true;
 }
 
+/** A bare host command prefers the live listener in its own runtime home. */
+function resolveLocalOperatorTarget(
+  parsed: ReturnType<typeof parseCoreArgs>,
+  projectHome: string,
+): ResolvedApiBase {
+  if (
+    parsed.flags['api-base'] !== undefined ||
+    parsed.flags.station !== undefined ||
+    process.env.STATION_TARGET
+  ) {
+    return resolveApiBaseDetailed(parsed);
+  }
+  const activeLocal = readActiveLocalStation({
+    path: activeLocalStationPath(projectHome),
+  });
+  if (activeLocal) {
+    const resolved: ResolvedApiBase = {
+      apiBase: activeLocal,
+      source: 'active-local',
+    };
+    rememberResolvedApiBase(resolved);
+    return resolved;
+  }
+  return resolveApiBaseDetailed(parsed);
+}
+
 /**
  * The operator channel on this Station's own host (#1796: shared by the
  * pairing-request verbs and the device-scope verbs). A loopback listener
@@ -1554,13 +1629,7 @@ async function openLocalOperatorChannel(
   resolved: ReturnType<typeof resolveApiBaseDetailed>;
   apiBase: string;
 }> {
-  // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
-  // these verbs used to call) also names the saved Station a target resolved
-  // through — from an explicit `--station=<name>`, but equally from
-  // STATION_TARGET, a project selection, or the default Station. All of
-  // those already routed through a named profile before this fix; everything
-  // below applies uniformly to every one of them, not only the flag.
-  const resolved = resolveApiBaseDetailed(parsed);
+  const resolved = resolveLocalOperatorTarget(parsed, dependencies.projectHome);
   const apiBase = resolved.apiBase;
   const targetProfile = resolved.station
     ? findProfile(resolved.station)

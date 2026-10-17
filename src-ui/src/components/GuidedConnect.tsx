@@ -10,9 +10,10 @@
 import { ConnectionManagerModal } from '@kontourai/station-connect';
 import { pairingDeepLinkScheme } from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
@@ -60,6 +61,18 @@ export function GuidedConnect({
 }: GuidedConnectProps) {
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
   const [brokerOpen, setBrokerOpen] = useState(false);
+  const [pairingPayload, setPairingPayload] = useState<string>();
+  const [pairingError, setPairingError] = useState<string>();
+  const openBrowserInvitation = useCallback((payload: string) => {
+    setPairingPayload(payload);
+    setPairingError(undefined);
+    setOpenPanel('pair-device');
+  }, []);
+  usePairingDeepLink({
+    enabled: false,
+    onPairingPayload: openBrowserInvitation,
+    onError: setPairingError,
+  });
   const profile = usePlatformProfile();
   const compact = useIsMobile();
   const coarse = useCoarsePointer();
@@ -85,9 +98,9 @@ export function GuidedConnect({
             ? 'Use the AI and files on your computer.'
             : 'Choose the computer where you want to work.'}
         </p>
-        {notice && (
+        {(notice || pairingError) && (
           <p role="alert" className="guided-connect__notice">
-            {notice}
+            {pairingError ?? notice}
           </p>
         )}
         {!profile.isTauri && !phone && (
@@ -255,6 +268,9 @@ export function GuidedConnect({
         checkHealth={checkServerHealthDetailed}
         checkCompatibility={checkHostCompatibility}
         initialPanel={openPanel ?? undefined}
+        initialPairingPayload={pairingPayload}
+        pairingLinkError={pairingError}
+        onPairingReviewDismissed={() => setPairingPayload(undefined)}
         originIsStation={!profile.isTauri}
         hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={
