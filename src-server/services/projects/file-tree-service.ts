@@ -1,4 +1,5 @@
 import {
+  constants,
   type Dirent,
   existsSync,
   lstatSync,
@@ -268,7 +269,12 @@ export class FileTreeService {
           'not-a-file',
           'Only regular files can be previewed.',
         );
-      const handle = await open(resolved, 'r');
+      const handle = await open(
+        resolved,
+        constants.O_RDONLY |
+          (constants.O_NONBLOCK ?? 0) |
+          (constants.O_NOFOLLOW ?? 0),
+      );
       try {
         const stat = await handle.stat();
         if (!stat.isFile())

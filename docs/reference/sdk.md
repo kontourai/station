@@ -346,7 +346,9 @@ files receive 413 with code `file-too-large` and an instruction to open the file
 in an editor. Binary detection samples the first 8 KiB before reading the rest.
 The SDK throws the server's error message for a refused preview. Missing files
 retain status 500 with code `not-found` and a workspace-relative message.
-Non-regular files are refused before opening. Buffers grow with observed file
+Non-regular files are refused before opening and checked again on the opened
+handle. Platforms that provide nonblocking and no-follow open flags also refuse
+FIFO or symlink replacements at that boundary. Buffers grow with observed file
 contents; a file that grows beyond the limit is rejected rather than truncated.
 These legacy coding endpoints are separate from the built-in Workspace File Preview API.
 See the [reader](../../src-server/services/projects/file-tree-service.ts) and

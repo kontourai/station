@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   appendFileSync,
+  constants,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -16,14 +17,35 @@ import { FileTreeService } from '../../../services/projects/file-tree-service.js
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
 
+const previewPlatform = vi.hoisted(() => ({ optionalOpenFlags: true }));
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return {
+    ...actual,
+    constants: {
+      ...actual.constants,
+      get O_NONBLOCK() {
+        return previewPlatform.optionalOpenFlags
+          ? actual.constants.O_NONBLOCK
+          : undefined;
+      },
+      get O_NOFOLLOW() {
+        return previewPlatform.optionalOpenFlags
+          ? actual.constants.O_NOFOLLOW
+          : undefined;
+      },
+    },
+  };
+});
+
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>();
   return { ...actual, open: vi.fn(actual.open) };
 });
 
 /**
- * Integration test for the coding layout's content endpoints. Nothing is
- * mocked: it drives the real Hono routes + a real FileTreeService against a real
+ * Integration test for the coding layout's content endpoints. It drives
+ * real Hono routes + a real FileTreeService against a real
  * on-disk git project, and includes the `~`-path regression that was producing
  * corrupt paths like `<cwd>/~/dev/...`.
  */
@@ -45,7 +67,7 @@ async function get(path: string) {
   return { status: res.status, json: (await res.json()) as any };
 }
 
-describe('coding content routes — real git project (no mocks)', () => {
+describe('coding content routes — real git project', () => {
   beforeAll(() => {
     repo = mkdtempSync(join(tmpdir(), 'station-coding-repo-'));
     const g = (...args: string[]) => execGitSync(args, { cwd: repo });
@@ -277,6 +299,92 @@ describe('coding content routes — real git project (no mocks)', () => {
       try {
         await expectNonRegularRefusal('preview.fifo');
       } finally {
+        rmSync(path, { force: true });
+      }
+    },
+  );
+
+  test('previews regular files when optional platform open flags are unavailable', async () => {
+    previewPlatform.optionalOpenFlags = false;
+    try {
+      const result = await get('/files/content?projectSlug=r&file=README.md');
+      expect(result.status).toBe(200);
+      expect(result.json.data.content).toBe('# Hello Station\n\nedited\n');
+    } finally {
+      previewPlatform.optionalOpenFlags = true;
+    }
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a FIFO swapped in after path checks without blocking open',
+    async () => {
+      const path = join(repo, 'swapped-preview.txt');
+      writeFileSync(path, 'regular before open');
+      const target = realpathSync(path);
+      const actual =
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        );
+      let swapped = false;
+      vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
+        if (args[0] === target) {
+          rmSync(path);
+          execFileSync('mkfifo', [path], { windowsHide: true });
+          swapped = true;
+          // Keep the negative control from leaving a blocking open in the worker.
+          if (
+            typeof args[1] !== 'number' ||
+            !(args[1] & constants.O_NONBLOCK)
+          ) {
+            throw new Error('FIFO preview attempted a blocking open');
+          }
+        }
+        return actual.open(...args);
+      });
+      try {
+        const result = await get(
+          '/files/content?projectSlug=r&file=swapped-preview.txt',
+        );
+        expect(swapped).toBe(true);
+        expect(result.status).toBe(400);
+        expect(result.json.code).toBe('not-a-file');
+        expect(result.json.data).toBeUndefined();
+      } finally {
+        vi.mocked(asyncFs.open).mockImplementation(actual.open);
+        rmSync(path, { force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a symlink swapped in after path checks',
+    async () => {
+      const path = join(repo, 'swapped-link.txt');
+      writeFileSync(path, 'regular before open');
+      const target = realpathSync(path);
+      const actual =
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        );
+      let swapped = false;
+      vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
+        if (args[0] === target) {
+          rmSync(path);
+          symlinkSync(join(repo, 'README.md'), path);
+          swapped = true;
+        }
+        return actual.open(...args);
+      });
+      try {
+        const result = await get(
+          '/files/content?projectSlug=r&file=swapped-link.txt',
+        );
+        expect(swapped).toBe(true);
+        expect(result.status).toBe(500);
+        expect(result.json.success).toBe(false);
+        expect(result.json.data).toBeUndefined();
+      } finally {
+        vi.mocked(asyncFs.open).mockImplementation(actual.open);
         rmSync(path, { force: true });
       }
     },
