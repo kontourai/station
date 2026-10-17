@@ -4887,8 +4887,7 @@ button.tool-call__line:hover {
   height: 7px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: var(--k-brand);
-  color: var(--k-brand);
+  background: var(--accent-primary);
 }
 
 .tool-call__pulse::after,
@@ -4896,7 +4895,7 @@ button.tool-call__line:hover {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid currentColor;
+  border: 1px solid var(--k-brand);
   border-radius: inherit;
   pointer-events: none;
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
