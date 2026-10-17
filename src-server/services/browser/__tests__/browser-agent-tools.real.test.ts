@@ -17,9 +17,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { stationControlCallerPrincipal } from '../../../tools/station-control-shared.js';
 import {
+  claimHumanControl,
   dispatchHumanInput,
   type LiveSurfaceEntry,
   LiveSurfaceRegistry,
+  releaseHumanControl,
 } from '../../live-surface/registry.js';
 import {
   authorizeBrowserAgentCaller,
@@ -64,6 +66,8 @@ const FIXTURE = `<!doctype html><html><head><title>agent fixture</title>
 <p id="dragOut" style="position:absolute;top:360px"></p>
 <label style="position:absolute;top:420px">Color <select id="color"><option value="r">Red</option><option value="b">Blue</option><optgroup label="Unavailable" disabled><option value="x">Blocked</option></optgroup></select></label>
 <p id="selection" style="position:absolute;top:460px"></p>
+<fieldset disabled style="position:absolute;top:520px"><select id="disabled-color"><option value="r">Red</option><option value="b">Blue</option></select></fieldset>
+<div style="position:absolute;top:580px"><select id="covered-color"><option value="r">Red</option><option value="b">Blue</option></select><div style="position:absolute;inset:0;background:white">Cover</div></div>
 <label for="name" style="position:absolute;left:40px;top:190px">Your name</label>
 <input id="name" aria-label="Your name">
 <p id="greet" style="position:absolute;top:300px"></p>
@@ -305,6 +309,23 @@ describe('browser tools against a real installed Chromium', () => {
       }),
     ).toMatchObject({ ok: true });
 
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#disabled-color' },
+        { value: 'b' },
+      ),
+    ).toMatchObject({ ok: false, code: 'not-selectable' });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#covered-color' },
+        { value: 'b' },
+      ),
+    ).toMatchObject({ ok: false, code: 'obscured' });
+
     // Independent browser observation: the emulation changes matchMedia itself.
     const live = sessions.liveTarget(browserSessionId)!;
     const dark = async () => {
@@ -349,6 +370,40 @@ describe('browser tools against a real installed Chromium', () => {
       );
     }
 
+    // A navigation retains the target override until human takeover restores system.
+    const forced = systemDark ? 'light' : 'dark';
+    expect(
+      await automation.colorScheme(authority, browserSessionId, forced),
+    ).toMatchObject({ ok: true });
+    expect(await dark()).toBe(!systemDark);
+    expect(
+      await automation.navigate(authority, browserSessionId, {
+        action: 'reload',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, { text: 'idle' }),
+    ).toMatchObject({ ok: true });
+    expect(await dark()).toBe(!systemDark);
+    expect(claimHumanControl(entry(), HUMAN).ok).toBe(true);
+    // CDP round-trip follows the binder's reset on the same page session.
+    expect(await dark()).toBe(systemDark);
+    expect(
+      releaseHumanControl(entry(), HUMAN, entry().lease.snapshot().epoch).ok,
+    ).toBe(true);
+    expect(
+      await automation.type(authority, browserSessionId, {
+        text: 'Ada',
+        target: { locator: 'css=#name' },
+        clear: true,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'Hello Ada',
+      }),
+    ).toMatchObject({ ok: true });
+
     // A person moves the mouse over the page while the agent is mid-action.
     const long = automation.type(authority, browserSessionId, {
       text: 'x'.repeat(8_000),
@@ -390,6 +445,6 @@ describe('browser tools against a real installed Chromium', () => {
     expect(agentKinds).toEqual(
       expect.arrayContaining(['created', 'inspected', 'clicked', 'typed']),
     );
-    expect(history.filter((e) => e.kind === 'typed')).toHaveLength(1);
+    expect(history.filter((e) => e.kind === 'typed')).toHaveLength(2);
   }, 120_000);
 });

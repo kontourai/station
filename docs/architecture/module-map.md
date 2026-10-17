@@ -3924,8 +3924,11 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 `BrowserAutomation`. Hover, pointer drag, native select and color-scheme
 emulation use that same authority path and record attributable actions. Select
 runs prototype-based DOM access in an isolated world; it does not grant general
-page evaluation. Human takeover clears existing snapshot refs, including after
-hand-back. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+page evaluation. Select is hit-tested and respects inherited fieldset disability.
+Human claims clear existing snapshot refs, including after hand-back; snapshots
+overlapping any human hold or lacking a bound lease produce no usable refs.
+Media requests are audited when sent, including interrupted requests. The
+live-surface binder resets target-local color emulation on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
 records the authority constraints and proposed cross-engine binding. Control
 operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect

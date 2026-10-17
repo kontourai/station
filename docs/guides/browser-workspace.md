@@ -137,23 +137,31 @@ visible together; it does not synthesize HTML drag data or transfer files.
 `browser_select` takes a ref or locator for a native `<select>` and exactly one
 `value` or `label`. It selects one enabled, exact matching option, clears the
 other selections and emits `input` and `change`; duplicate matches, disabled
-options/optgroups, disabled selects and non-select targets are refused
-`not-selectable`. This Station-owned isolated-world operation does not require
+options/optgroups, selects disabled directly or by an ancestor fieldset, and
+non-select targets are refused `not-selectable`. The select is hit-tested; a
+covering element is refused `obscured` before selection. This Station-owned isolated-world operation does not require
 page evaluation permission. Its history records the selection method and text
 length, not the chosen value or label.
 
 `browser_color_scheme` accepts `scheme: "light"`, `"dark"` or `"system"`.
 It emulates the page's `prefers-color-scheme` media feature; system clears that
 override and follows the server browser's preference, not the viewer's Device.
-The override lasts until changed or the browser session is reopened; it is not
-a saved profile preference. These four actions are sensitive tools and claim
-the same control lease as click. Success records the Agent action in history;
-a human holder refuses the operation before page-changing steps.
+The override survives navigation on that target until changed or the browser
+session is reopened. Each human control claim sends a target-local reset to
+system through the live-surface binder; reset failures are logged. It is not a
+saved profile preference. These four actions are sensitive tools and claim the
+same control lease as click. Media history records each request once sent to
+CDP, including interrupted or failed requests; the entry does not prove the
+requested theme took effect. Other successful actions record their outcome. A
+human holder refuses the operation before page-changing steps.
 
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
 a live human holder. A human takeover invalidates existing snapshot refs,
-including after hand-back; take a fresh snapshot to act by ref again. Watching
-needs no control lease. The pane's control line
+including after hand-back. A snapshot taken while a human holds control, or
+whose read overlaps any human hold, returns no usable refs, even when the same
+human reclaims control without advancing the epoch. A read without a bound
+lease also returns no usable refs. Take a fresh snapshot after hand-back to act
+by ref again. Watching needs no control lease. The pane's control line
 says who is driving in one word (**Agent** or **You**) with the float-over-chat's
 rule (the lease holder, or an Agent whose last input is under ten seconds old).
 There is no Take control button: a click or key on the page takes control, and

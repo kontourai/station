@@ -1944,6 +1944,16 @@ describe('additional browser actions preserve control authority', () => {
       ),
     ).toMatchObject({ ok: false, code: 'interrupted' });
     expect(h.fake.mouse().some((m) => m.x === 200 && m.y === 100)).toBe(false);
+    // Flush the real registry's queued held-input cancellation behind takeover.
+    expect(
+      await dispatchHumanInput(entry, HUMAN, entry.lease.snapshot().epoch, [
+        { kind: 'pointer', type: 'move', x: 5, y: 5 },
+      ]),
+    ).toMatchObject({ ok: true });
+    const release = h.fake.mouse().find((m) => m.type === 'mouseReleased');
+    expect(release).toMatchObject({ button: 'left', buttons: 0 });
+    expect(Number(release?.x)).toBeLessThan(0);
+    expect(Number(release?.y)).toBeLessThan(0);
     expect(kindsOf(h, session.browserSessionId)).not.toContain('dragged');
   });
 
@@ -1983,9 +1993,26 @@ describe('additional browser actions preserve control authority', () => {
     expect(
       await h.automation.colorScheme(auth, session.browserSessionId, 'dark'),
     ).toMatchObject({ ok: false, code: 'interrupted' });
-    expect(kindsOf(h, session.browserSessionId)).not.toContain(
-      'color-scheme-changed',
+    expect(
+      h.sessions.getSession(session.browserSessionId)!.history.entries,
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: 'color-scheme-changed',
+        detail: 'requested dark',
+        actor: expect.objectContaining({
+          kind: 'agent',
+          sessionId: auth.sessionId,
+        }),
+      }),
     );
+    expect(
+      h.fake.sent
+        .filter((s) => s.method === 'Emulation.setEmulatedMedia')
+        .map((s) => s.params),
+    ).toEqual([
+      { features: [{ name: 'prefers-color-scheme', value: 'dark' }] },
+      { features: [{ name: 'prefers-color-scheme', value: '' }] },
+    ]);
   });
 });
 
@@ -2013,4 +2040,91 @@ test('invalid additional actions are refused before browser work', async () => {
     await h.automation.drag(auth, id, { x: Number.NaN, y: 1 }, { x: 5, y: 5 }),
   ).toMatchObject({ ok: false, code: 'invalid-request' });
   expect(h.fake.sent.length).toBe(before);
+});
+
+test.each(['at-start', 'same-human-reclaim'] as const)(
+  'snapshot drops refs when a human holds control %s during its read',
+  async (mode) => {
+    const h = await harness();
+    scriptButton(h.fake);
+    const id = (await h.open()).browserSessionId;
+    const auth = await authorityFor();
+    const entry = h.entryOf(id);
+    expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+    const epoch = entry.lease.snapshot().epoch;
+    if (mode === 'same-human-reclaim') {
+      expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
+      h.fake.onSend((method) => {
+        if (method === 'Accessibility.getRootAXNode') {
+          expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+          expect(entry.lease.snapshot().epoch).toBe(epoch);
+          expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
+        }
+        return undefined;
+      });
+    }
+    expect(await h.automation.snapshot(auth, id)).toMatchObject({
+      ok: true,
+      refCount: 0,
+    });
+    if (mode === 'at-start')
+      expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
+    expect(await h.automation.hover(auth, id, { ref: 'e1' })).toMatchObject({
+      ok: false,
+      code: 'stale-ref',
+    });
+    expect(h.fake.mouse()).toEqual([]);
+    h.fake.onSend(undefined);
+    expect(await h.automation.snapshot(auth, id)).toMatchObject({
+      ok: true,
+      refCount: 1,
+    });
+    expect(await h.automation.hover(auth, id, { ref: 'e1' })).toMatchObject({
+      ok: true,
+    });
+  },
+);
+
+test('snapshot without a bound lease cannot create refs usable after binding', async () => {
+  const h = await harness();
+  scriptButton(h.fake);
+  const id = (await h.open()).browserSessionId;
+  const auth = await authorityFor();
+  let bound = false;
+  const automation = new BrowserAutomation({
+    sessions: h.sessions,
+    surfaces: h.surfaces,
+    settings: h.settings,
+    locatorEngine: async () => undefined,
+    surfaceIdFor: (id) => (bound ? h.binder.surfaceIdFor(id) : undefined),
+  });
+  expect(await automation.snapshot(auth, id)).toMatchObject({
+    ok: true,
+    refCount: 0,
+  });
+  bound = true;
+  expect(await automation.hover(auth, id, { ref: 'e1' })).toMatchObject({
+    ok: false,
+    code: 'stale-ref',
+  });
+  expect(h.fake.mouse()).toEqual([]);
+});
+
+test('system media request clears the override rather than forcing a host-specific theme', async () => {
+  const h = await harness();
+  pageBasics(h.fake);
+  const id = (await h.open()).browserSessionId;
+  const auth = await authorityFor();
+  for (const scheme of ['dark', 'system'] as const)
+    expect(await h.automation.colorScheme(auth, id, scheme)).toMatchObject({
+      ok: true,
+    });
+  expect(
+    h.fake.sent
+      .filter((s) => s.method === 'Emulation.setEmulatedMedia')
+      .map((s) => s.params),
+  ).toEqual([
+    { features: [{ name: 'prefers-color-scheme', value: 'dark' }] },
+    { features: [{ name: 'prefers-color-scheme', value: '' }] },
+  ]);
 });

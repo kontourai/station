@@ -44,7 +44,17 @@ captured fence; pointer steps use the registry's fenced input chain, including
 held-button cancellation. No public CDP port or widened method allowlist is
 needed. Select uses Station-owned code in an isolated world, with native
 prototype getters/setters; it does not enable arbitrary evaluation. Values are
-not included in action history. Human takeover expires existing snapshot refs.
+not included in action history. Select is hit-tested and uses `:disabled` to
+include inherited fieldset disability. Human claims expire existing snapshot
+refs. The listener is attached before reading; a human hold at any time during
+the snapshot, including at its start, makes the result's refs unusable. Reads
+without a bound lease also produce no usable refs.
+
+Color-scheme requests are recorded when sent, even if the call is interrupted
+or fails; this is an audit of the request, not proof of its outcome. Emulation
+is target-local and survives navigation. The live-surface binder sends a reset
+to system on every human control claim and logs reset failures. A human does
+not intentionally inherit an Agent's override.
 
 ## Why passthrough tokens cannot simply become bound
 

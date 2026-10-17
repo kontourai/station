@@ -383,7 +383,7 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
 
   registry.tool(
     'browser_color_scheme',
-    'Emulate prefers-color-scheme for this page: light, dark, or system (clear the override). Lasts until changed or the browser session is reopened.',
+    'Emulate prefers-color-scheme for this page: light, dark, or system (clear the override). Cleared on human takeover or when the browser session is reopened.',
     {
       browserSessionId: sessionId,
       scheme: z.enum(['light', 'dark', 'system']),

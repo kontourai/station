@@ -693,7 +693,7 @@ const FOCUS_FN = `function (clear) {
 
 // Native prototype access in the isolated world avoids page-clobbered properties.
 const SELECT_OPTION_FN = `function (by, match) {
-  if (!(this instanceof HTMLSelectElement) || ${PROTO_GET('HTMLSelectElement', 'disabled')}.call(this)) return 'invalid';
+  if (!(this instanceof HTMLSelectElement) || Element.prototype.matches.call(this, ':disabled')) return 'invalid';
   const options = ${PROTO_GET('HTMLSelectElement', 'options')}.call(this);
   const count = ${PROTO_GET('HTMLOptionsCollection', 'length')}.call(options);
   const matches = [];
@@ -1714,118 +1714,132 @@ export class BrowserAutomation {
       };
     }>(authority, browserSessionId, async (selected) => {
       const lease = this.entryFor(selected.record)?.lease;
-      const epoch = lease?.snapshot().epoch;
-      const send = this.reader(selected);
-      const page = await this.isolatedEval<{ url?: string; title?: string }>(
-        selected,
-        send,
-        `({ url: location.href, title: ${PROTO_GET('Document', 'title')}.call(document) })`,
-      );
-      const view = await this.viewport(send);
-      // The incremental reads require the domain enabled; it is disabled
-      // again below so the page does not keep paying for it.
-      await send('Accessibility.enable', {});
-      let fetchedNodes = 0;
-      let fetchCalls = 0;
-      let rendered: Awaited<ReturnType<typeof renderAccessibilitySnapshot>>;
-      try {
-        const rootAnswer = await send<{ node?: AXNode }>(
-          'Accessibility.getRootAXNode',
-          {},
-        );
-        rendered = await renderAccessibilitySnapshot(
-          rootAnswer?.node,
-          async (node) => {
-            const expected = node.childIds?.length ?? 0;
-            if (
-              expected > SNAPSHOT_CHILDREN_MAX ||
-              fetchedNodes + expected > SNAPSHOT_FETCH_NODE_BUDGET ||
-              fetchCalls >= SNAPSHOT_FETCH_CALL_BUDGET
-            )
-              return undefined;
-            fetchCalls += 1;
-            const answer = await send<{ nodes?: AXNode[] }>(
-              'Accessibility.getChildAXNodes',
-              { id: node.nodeId },
-            );
-            const nodes = Array.isArray(answer?.nodes) ? answer.nodes : [];
-            fetchedNodes += nodes.length;
-            // Only the node's own direct children, in its own order.
-            const byId = new Map(nodes.map((child) => [child.nodeId, child]));
-            return (node.childIds ?? [])
-              .map((id) => byId.get(id))
-              .filter((child): child is AXNode => child !== undefined);
-          },
-        );
-      } finally {
-        void this.rawSend(selected.live, 'Accessibility.disable', {}).catch(
-          () => {},
-        );
-      }
-      this.pruneSnapshots();
-      const key = this.snapshotKey(authority, selected.record.browserSessionId);
-      this.snapshots.get(key)?.offControl();
-      this.snapshots.delete(key);
-      // Reads do not claim control, but a takeover during or after the read
-      // must not leave actionable refs from the previous controller's page.
-      if (lease?.snapshot().epoch !== epoch) rendered.refs.clear();
-      const offControl =
-        lease?.onChange((next) => {
-          if (next.holder?.kind === 'human') rendered.refs.clear();
-        }) ?? (() => {});
-      this.snapshots.set(key, {
-        offControl,
+      let humanObserved = !lease || lease.snapshot().holder?.kind === 'human';
+      const table: SnapshotTable = {
         generation: selected.live.generation,
-        refs: rendered.refs,
-      });
-      let screenshot:
-        | {
-            mimeType: 'image/jpeg';
-            data: string;
-            width?: number;
-            height?: number;
-          }
-        | undefined;
-      if (options.screenshot) {
-        let shot: { data?: string } | undefined;
-        for (const quality of [60, 30]) {
-          shot = await send<{ data?: string }>(
-            'Page.captureScreenshot',
-            { format: 'jpeg', quality },
-            this.stepMs * 2,
-          );
-          if ((shot?.data?.length ?? 0) <= SCREENSHOT_MAX_BASE64) break;
-        }
-        const data = shot?.data ?? '';
-        if (data.length > SCREENSHOT_MAX_BASE64)
-          return refuse(
-            'screenshot-too-large',
-            'The screenshot is too large to return. Resize the viewport smaller (browser_resize) and try again.',
-          );
-        const size = jpegSize(new Uint8Array(Buffer.from(data, 'base64')));
-        screenshot = { mimeType: 'image/jpeg', data, ...(size ?? {}) };
-      }
-      const value = page?.result?.value ?? {};
-      this.record(
-        authority,
-        selected,
-        'inspected',
-        options.screenshot ? 'snapshot with screenshot' : 'snapshot',
-      );
-      return {
-        ok: true,
-        ...PAGE,
-        url: capUrl(
-          typeof value.url === 'string' ? value.url : selected.record.url,
-        ),
-        title: capTitle(text(value.title, TITLE_MAX)),
-        viewport: { width: view.width, height: view.height },
-        snapshot: rendered.text,
-        refCount: rendered.refs.size,
-        truncated: rendered.truncated,
-        omittedNodes: rendered.omittedNodes,
-        ...(screenshot ? { screenshot } : {}),
+        refs: new Map(),
+        offControl: () => {},
       };
+      table.offControl =
+        lease?.onChange((next) => {
+          if (next.holder?.kind === 'human') {
+            humanObserved = true;
+            table.refs.clear();
+          }
+        }) ?? (() => {});
+      let retained = false;
+      try {
+        const send = this.reader(selected);
+        const page = await this.isolatedEval<{ url?: string; title?: string }>(
+          selected,
+          send,
+          `({ url: location.href, title: ${PROTO_GET('Document', 'title')}.call(document) })`,
+        );
+        const view = await this.viewport(send);
+        // The incremental reads require the domain enabled; it is disabled
+        // again below so the page does not keep paying for it.
+        await send('Accessibility.enable', {});
+        let fetchedNodes = 0;
+        let fetchCalls = 0;
+        let rendered: Awaited<ReturnType<typeof renderAccessibilitySnapshot>>;
+        try {
+          const rootAnswer = await send<{ node?: AXNode }>(
+            'Accessibility.getRootAXNode',
+            {},
+          );
+          rendered = await renderAccessibilitySnapshot(
+            rootAnswer?.node,
+            async (node) => {
+              const expected = node.childIds?.length ?? 0;
+              if (
+                expected > SNAPSHOT_CHILDREN_MAX ||
+                fetchedNodes + expected > SNAPSHOT_FETCH_NODE_BUDGET ||
+                fetchCalls >= SNAPSHOT_FETCH_CALL_BUDGET
+              )
+                return undefined;
+              fetchCalls += 1;
+              const answer = await send<{ nodes?: AXNode[] }>(
+                'Accessibility.getChildAXNodes',
+                { id: node.nodeId },
+              );
+              const nodes = Array.isArray(answer?.nodes) ? answer.nodes : [];
+              fetchedNodes += nodes.length;
+              // Only the node's own direct children, in its own order.
+              const byId = new Map(nodes.map((child) => [child.nodeId, child]));
+              return (node.childIds ?? [])
+                .map((id) => byId.get(id))
+                .filter((child): child is AXNode => child !== undefined);
+            },
+          );
+        } finally {
+          void this.rawSend(selected.live, 'Accessibility.disable', {}).catch(
+            () => {},
+          );
+        }
+        this.pruneSnapshots();
+        const key = this.snapshotKey(
+          authority,
+          selected.record.browserSessionId,
+        );
+        this.snapshots.get(key)?.offControl();
+        this.snapshots.delete(key);
+        table.refs = rendered.refs;
+        // A human at the start or at any point in the read makes these refs
+        // unusable, even if the same controller reclaims without advancing epoch.
+        if (humanObserved) table.refs.clear();
+        this.snapshots.set(key, table);
+        retained = true;
+        let screenshot:
+          | {
+              mimeType: 'image/jpeg';
+              data: string;
+              width?: number;
+              height?: number;
+            }
+          | undefined;
+        if (options.screenshot) {
+          let shot: { data?: string } | undefined;
+          for (const quality of [60, 30]) {
+            shot = await send<{ data?: string }>(
+              'Page.captureScreenshot',
+              { format: 'jpeg', quality },
+              this.stepMs * 2,
+            );
+            if ((shot?.data?.length ?? 0) <= SCREENSHOT_MAX_BASE64) break;
+          }
+          const data = shot?.data ?? '';
+          if (data.length > SCREENSHOT_MAX_BASE64)
+            return refuse(
+              'screenshot-too-large',
+              'The screenshot is too large to return. Resize the viewport smaller (browser_resize) and try again.',
+            );
+          const size = jpegSize(new Uint8Array(Buffer.from(data, 'base64')));
+          screenshot = { mimeType: 'image/jpeg', data, ...(size ?? {}) };
+        }
+        const value = page?.result?.value ?? {};
+        this.record(
+          authority,
+          selected,
+          'inspected',
+          options.screenshot ? 'snapshot with screenshot' : 'snapshot',
+        );
+        return {
+          ok: true,
+          ...PAGE,
+          url: capUrl(
+            typeof value.url === 'string' ? value.url : selected.record.url,
+          ),
+          title: capTitle(text(value.title, TITLE_MAX)),
+          viewport: { width: view.width, height: view.height },
+          snapshot: rendered.text,
+          refCount: rendered.refs.size,
+          truncated: rendered.truncated,
+          omittedNodes: rendered.omittedNodes,
+          ...(screenshot ? { screenshot } : {}),
+        };
+      } finally {
+        if (!retained) table.offControl();
+      }
     });
   }
 
@@ -2047,7 +2061,16 @@ export class BrowserAutomation {
             target,
             control.send,
           );
-          await this.elementPoint(element.backendNodeId, control.send);
+          const point = await this.elementPoint(
+            element.backendNodeId,
+            control.send,
+          );
+          await this.assertHits(
+            selected,
+            control.send,
+            element.backendNodeId,
+            point,
+          );
           const objectId = await this.isolatedNode(
             selected,
             control.send,
@@ -2096,15 +2119,28 @@ export class BrowserAutomation {
         authority,
         selected,
         async (control) => {
-          await control.send('Emulation.setEmulatedMedia', {
-            features: [
+          await control.guard(() => {
+            const pending = this.rawSend(
+              selected.live,
+              'Emulation.setEmulatedMedia',
               {
-                name: 'prefers-color-scheme',
-                value: scheme === 'system' ? '' : scheme,
+                features: [
+                  {
+                    name: 'prefers-color-scheme',
+                    value: scheme === 'system' ? '' : scheme,
+                  },
+                ],
               },
-            ],
+            );
+            // A timeout or takeover cannot undo a request already sent to CDP.
+            this.record(
+              authority,
+              selected,
+              'color-scheme-changed',
+              `requested ${scheme}`,
+            );
+            return pending;
           });
-          this.record(authority, selected, 'color-scheme-changed', scheme);
           return { ok: true, colorScheme: scheme };
         },
       ),
