@@ -38,12 +38,15 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
+import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
+import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
@@ -74,6 +77,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
   };
   readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly starts: ProviderSessionStartInput[] = [];
   /** Leave each turn running until `complete` ends it. */
   holdTurns = false;
   /** Refuse the next send as a turn the engine opened itself. */
@@ -87,6 +91,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
   private open: { threadId: string; turnId: string } | undefined;
 
   async startSession(input: ProviderSessionStartInput) {
+    this.starts.push(input);
     const now = new Date().toISOString();
     for (const method of ['session.started', 'session.configured'] as const)
       this.events.push({
@@ -228,6 +233,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
   function station(
     options: {
       inbox?: boolean;
+      continueThroughExecutor?: true;
+      stagedAttachments?: true;
       /** Reopen another process's home (a restart). */
       root?: string;
       /** This process's birth: an earlier birth's claims read as dead. */
@@ -259,6 +266,13 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         : []),
     );
     const adapter = new ScriptedAdapter();
+    if (options.stagedAttachments)
+      adapter.metadata.capabilities = [
+        ...adapter.metadata.capabilities,
+        'file-input',
+      ];
+    const staging = new AttachmentStagingService();
+    cleanup.push(() => staging.dispose());
     if (options.modelPerTurn === false && adapter.metadata.modelLaunch)
       (
         adapter.metadata.modelLaunch as { overridePerTurn: boolean }
@@ -315,16 +329,40 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     /** Set to answer the conversation-wide ledger read with this instead. */
     const ledger: { answer?: ConversationKeyInspection } = {};
     const deps: ExecutionTargetExecutionDependencies = {
-      inspectConversationTurnKey: (_access, conversationId, clientTurnId) =>
+      readPendingConversationSubmission: (
+        _access,
+        conversationId,
+        clientTurnId,
+        userId,
+      ) =>
+        service.readPendingConversationSubmission(
+          conversationId,
+          clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+          userId,
+        ),
+      inspectConversationTurnKey: (
+        _access,
+        conversationId,
+        clientTurnId,
+        inputDigest,
+      ) =>
         ledger.answer ??
         service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
           INTERNAL_SESSION_READ_SCOPE,
+          inputDigest,
         ),
       // As production composes it (station-control-delegation.ts).
-      joinConversationTurnKey: (_access, sessionId, clientTurnId, signal) =>
-        service.joinHeldTurnKey(sessionId, clientTurnId, signal),
+      joinConversationTurnKey: (
+        _access,
+        sessionId,
+        clientTurnId,
+        signal,
+        inputDigest,
+      ) =>
+        service.joinHeldTurnKey(sessionId, clientTurnId, signal, inputDigest),
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
         environmentId: ENVIRONMENT,
@@ -385,7 +423,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         });
         return undefined;
       },
-      sendTurn: async (_access, input) => {
+      sendTurn: async (_access, input, context) => {
         const gate = sendTurnGate.wait;
         sendTurnGate.wait = undefined;
         if (gate) {
@@ -395,6 +433,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         const dispatched = await service.dispatchWithReceipt(
           { type: 'sendTurn', input },
           { userId: OWNER },
+          { submissionDigest: context?.submissionDigest },
         );
         if (!dispatched.result || !('turnId' in dispatched.result))
           throw new Error('dispatch returned no turn id');
@@ -432,12 +471,21 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           ) === userId ||
           service.canUserReadSession(conversationId, authority(userId)),
         deviceMaySend: () => true,
-        inspectDelivery: (conversationId, clientTurnId) =>
-          service.inspectTurnDelivery(
+        inspectDelivery: (
+          conversationId,
+          clientTurnId,
+          inputDigest,
+          userId,
+        ) => {
+          if (!userId)
+            throw new Error('The requested conversation is unavailable.');
+          return service.inspectTurnDelivery(
             conversationId,
             clientTurnId,
-            INTERNAL_SESSION_READ_SCOPE,
-          ),
+            authority(userId),
+            inputDigest,
+          );
+        },
         // The continuation a placement makes, through the same foreground
         // execution the route uses, as the recorded sender.
         start: async ({ conversationId, payload, clientTurnId }) => {
@@ -456,6 +504,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
                 fullAccessGrant: null,
               } as never,
               deps,
+              { submissionDigest: payload.inputDigest, inboxPlacement: true },
             );
             if (!isForegroundDispatchHandle(handle))
               return { outcome: 'indeterminate' };
@@ -514,6 +563,39 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         eventBus: bus,
         logger: { debug: vi.fn() },
         getUserId: () => caller,
+        ...(options.stagedAttachments
+          ? {
+              resolvePrincipal: () => ({
+                id: caller,
+                kind: 'human' as const,
+                display: caller,
+              }),
+              hydrateStagedAttachments: (
+                principal,
+                references,
+                binding,
+                options,
+              ) =>
+                staging.bindAndHydrate(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                  options,
+                ),
+              releaseStagedAttachments: (principal, references, binding) =>
+                staging.releaseBinding(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                ),
+              acceptStagedAttachments: (principal, references, binding) =>
+                staging.acceptBinding(
+                  { principalId: principal.id },
+                  references,
+                  binding,
+                ),
+            }
+          : {}),
         executeForegroundMessage: (input) =>
           executeForegroundMessage(input, deps),
         continueForegroundMessage: async (input) => {
@@ -525,6 +607,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             throw Object.assign(new Error('refused'), {
               code: continueRefusal.code,
             });
+          if (options.continueThroughExecutor)
+            return executeForegroundMessage(
+              {
+                ...input,
+                target: {
+                  environment: { kind: 'current' },
+                  agent: AGENT,
+                  ...(input.model ? { model: input.model } : {}),
+                },
+              },
+              deps,
+            );
           return {} as never;
         },
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
@@ -620,6 +714,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         }),
       });
     return {
+      staging,
       sendAbortable,
       continueRefusal,
       lookupData,
@@ -645,6 +740,432 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       prompts,
     };
   }
+
+  test.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    '#3567: queue admission authorizes every materialized Session before mutation (readable=%s, known=%s)',
+    async (readable, known) => {
+      const world = station();
+      expect((await world.send('queue-setup', 'setup')).status).toBe(200);
+      const metadata = world.service.firstStartedMetadataOfThread(CONVERSATION);
+      if (!metadata) throw new Error('Expected root execution binding');
+      let predecessor = CONVERSATION;
+      const middle = `${CONVERSATION}:queue-middle`;
+      const current = `${CONVERSATION}:queue-current`;
+      for (const id of [middle, current]) {
+        const now = new Date().toISOString();
+        world.store.reserveNextConversationSession({
+          conversationId: CONVERSATION,
+          predecessorSessionId: predecessor,
+          proposedSessionId: id,
+          createdAt: now,
+        });
+        world.store.upsertSession({
+          provider: 'claude',
+          threadId: id,
+          status: 'ready',
+          createdAt: now,
+          updatedAt: now,
+        });
+        world.store.appendEvent({
+          eventId: `${id}:started`,
+          provider: 'claude',
+          threadId: id,
+          sessionId: id,
+          createdAt: now,
+          method: 'session.started',
+          metadata: {
+            ...metadata,
+            conversationId: CONVERSATION,
+            userId: id === middle && !readable ? STRANGER : OWNER,
+          },
+        });
+        predecessor = id;
+      }
+      const authority = sessionReadAuthorityFromRequest(
+        OWNER,
+        undefined,
+        undefined,
+      );
+      expect(world.service.canUserReadSession(CONVERSATION, authority)).toBe(
+        true,
+      );
+      expect(world.service.canUserReadSession(current, authority)).toBe(true);
+      expect(world.service.canUserReadSession(middle, authority)).toBe(
+        readable,
+      );
+      if (known) {
+        const claim = world.store.createTurnDeduplicator().claim({
+          threadId: middle,
+          clientTurnId: 'queue-key',
+          inputDigest: foregroundTurnSubmissionDigest({
+            message: 'original',
+            target: { environment: { kind: 'current' }, agent: AGENT },
+          }),
+        });
+        if (claim.kind !== 'owner') throw new Error('Expected original claim');
+      }
+      world.store.appendEvent({
+        eventId: `${current}:busy`,
+        provider: 'claude',
+        threadId: current,
+        turnId: 'engine-busy-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'An engine turn already runs.',
+      });
+      expect(world.inbox.mustQueue(CONVERSATION)).toBe(true);
+      const starts = world.adapter.starts.length;
+      const answer = await world.send(
+        'queue-key',
+        readable ? 'original' : 'changed',
+        { whenBusy: 'queue' },
+      );
+      const body = await answer.json();
+      if (readable) {
+        expect({ status: answer.status, body }).toMatchObject({
+          status: 202,
+          body: { data: { outcome: 'queued' } },
+        });
+        expect(world.inbox.list(CONVERSATION)).toMatchObject([
+          { state: 'queued', message: 'original' },
+        ]);
+      } else {
+        expect({ status: answer.status, body }).toMatchObject({
+          status: 400,
+          body: { error: 'The requested conversation is unavailable.' },
+        });
+        expect(world.inbox.list(CONVERSATION)).toEqual([]);
+        expect(() =>
+          world.inbox.submit({
+            conversationId: CONVERSATION,
+            clientTurnId: 'queue-key',
+            payload: {
+              message: 'changed',
+              inputDigest: foregroundTurnSubmissionDigest({
+                message: 'changed',
+                target: { environment: { kind: 'current' }, agent: AGENT },
+              }),
+              actor: { userId: OWNER },
+            },
+          }),
+        ).toThrow('The requested conversation is unavailable.');
+        expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      }
+      expect(world.adapter.starts).toHaveLength(starts);
+      expect(world.adapter.turns).toHaveLength(1);
+    },
+  );
+
+  test.each([
+    'retained',
+    'dead-invoked',
+    'reclaimable',
+    'legacy',
+    'tombstone',
+  ] as const)(
+    '#3567: staged input checks authorized original proof before %s disposition or successor reservation',
+    async (state) => {
+      const first = station({
+        birth: 'original-owner',
+        stagedAttachments: true,
+        modelPerTurn: false,
+      });
+      expect((await first.send('setup', 'setup')).status).toBe(200);
+      const sessionId =
+        first.service.currentConversationSessionId(CONVERSATION);
+      const attachment = {
+        kind: 'file' as const,
+        name: 'note.txt',
+        mimeType: 'text/plain' as const,
+        size: 2,
+        dataUrl: 'data:text/plain;base64,aGk=',
+      };
+      const original = {
+        target: { environment: { kind: 'current' as const }, agent: AGENT },
+        message: ' original ',
+        attachments: [attachment],
+      };
+      if (state === 'tombstone') {
+        first.store['db']
+          .prepare(
+            'INSERT INTO orchestration_turn_dedup_expired (dedup_key, expired_at) VALUES (?, ?)',
+          )
+          .run(turnDedupKey(sessionId, 'staged-key'), Date.now());
+      } else {
+        const claim = first.store.createTurnDeduplicator().claim({
+          threadId: sessionId,
+          clientTurnId: 'staged-key',
+          ...(state === 'legacy'
+            ? {}
+            : { inputDigest: foregroundTurnSubmissionDigest(original) }),
+        });
+        if (claim.kind !== 'owner')
+          throw new Error('Expected original pending owner');
+        if (state === 'retained' || state === 'dead-invoked')
+          claim.claim.beginInvocation();
+        if (state === 'retained') claim.claim.retain();
+      }
+      if (state !== 'retained' && state !== 'tombstone') {
+        first.adapter.events.push({
+          eventId: `${sessionId}:staged-owner-exited`,
+          provider: 'claude',
+          threadId: sessionId,
+          sessionId,
+          createdAt: new Date().toISOString(),
+          method: 'session.exited',
+          exitKind: 'error',
+        } as CanonicalRuntimeEvent);
+        await eventually(() =>
+          expect(
+            first.store
+              .listEvents(sessionId)
+              .some((entry) => entry.payload.method === 'session.exited'),
+          ).toBe(true),
+        );
+      }
+      const world =
+        state === 'retained' || state === 'tombstone'
+          ? first
+          : station({
+              root: first.root,
+              birth: 'replacement-owner',
+              stagedAttachments: true,
+              modelPerTurn: false,
+            });
+      const prepared = world.staging.prepare(
+        { principalId: OWNER },
+        {
+          clientAttachmentId: 'staged-proof',
+          kind: attachment.kind,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+        },
+      );
+      const reference = world.staging.upload(
+        prepared.stageId,
+        prepared.uploadGrant,
+        attachment.dataUrl,
+      );
+      const target = {
+        ...original.target,
+        model: { override: 'claude-other-model' },
+      };
+      const startsBefore = world.adapter.starts.length;
+      if (state === 'retained') {
+        const wrongOwner = await world.as(READER, () =>
+          world.send('staged-key', 'original', {
+            attachmentRefs: [reference],
+            target,
+          }),
+        );
+        expect(wrongOwner.status).toBe(400);
+        expect(await wrongOwner.json()).toMatchObject({
+          code: 'stage_forbidden',
+        });
+        expect(world.adapter.starts).toHaveLength(startsBefore);
+      }
+      const changed = await world.send('staged-key', 'original', {
+        attachmentRefs: [reference],
+        target,
+      });
+      const changedAnswer = {
+        status: changed.status,
+        body: await changed.json(),
+      };
+      if (state === 'legacy') {
+        expect(changedAnswer.status).toBe(200);
+        expect(world.adapter.turns).toHaveLength(1);
+        expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+          2,
+        );
+        return;
+      }
+      expect(changedAnswer).toMatchObject({
+        status: 409,
+        body: {
+          code:
+            state === 'tombstone'
+              ? 'foreground_message_indeterminate'
+              : 'client_turn_input_conflict',
+        },
+      });
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+      expect(world.adapter.starts).toHaveLength(startsBefore);
+      expect(world.adapter.turns).toHaveLength(world === first ? 1 : 0);
+      const matching = await world.send('staged-key', original.message, {
+        attachmentRefs: [reference],
+      });
+      expect(matching.status, await matching.clone().text()).toBe(
+        state === 'reclaimable' ? 200 : 409,
+      );
+      if (state !== 'reclaimable')
+        expect(await matching.json()).toMatchObject({
+          code: 'foreground_message_indeterminate',
+        });
+      expect([
+        ...first.adapter.turns,
+        ...(world === first ? [] : world.adapter.turns),
+      ]).toHaveLength(state === 'reclaimable' ? 2 : 1);
+    },
+  );
+
+  test.each([false, true])(
+    '#3567: known input conflicts before conversation replay or busy queue acceptance (queue=%s)',
+    async (queue) => {
+      const world = station();
+      if (queue) world.adapter.holdTurns = true;
+      const first = await world.send('digest-key', ' original ');
+      expect(first.status, await first.clone().text()).toBe(200);
+      const firstTurn = (
+        (await first.json()) as { data: { providerTurnId: string } }
+      ).data.providerTurnId;
+      const changed = await world.send(
+        'digest-key',
+        'original',
+        queue ? { whenBusy: 'queue' } : {},
+      );
+      expect({
+        status: changed.status,
+        body: await changed.json(),
+      }).toMatchObject({
+        status: 409,
+        body: { code: 'client_turn_input_conflict' },
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      const replay = await world.send('digest-key', ' original ');
+      expect({
+        status: replay.status,
+        body: await replay.json(),
+      }).toMatchObject({
+        status: 200,
+        body: { data: { providerTurnId: firstTurn } },
+      });
+      expect(world.adapter.turns).toHaveLength(1);
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  test.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    '#3567: a live retry of an owned queued intent conflicts or returns its existing FIFO entry (same=%s, continue=%s)',
+    async (same, continuation) => {
+      const world = station({ continueThroughExecutor: true });
+      await world.busy();
+      expect(
+        (await world.send('follow', 'queued original', { whenBusy: 'queue' }))
+          .status,
+      ).toBe(202);
+      world.inbox.stop();
+      world.adapter.holdTurns = false;
+      world.adapter.complete();
+      await eventually(() =>
+        expect(
+          world.service.hasActiveTurn(
+            world.service.currentConversationSessionId(CONVERSATION),
+          ),
+        ).toBe(false),
+      );
+      const retry = await (continuation ? world.continueSend : world.send)(
+        'follow',
+        same ? 'queued original' : 'different live input',
+      );
+      expect({ status: retry.status, body: await retry.json() }).toMatchObject(
+        same
+          ? {
+              status: 202,
+              body: {
+                data: {
+                  outcome: 'queued',
+                  entry: {
+                    clientTurnId: 'follow',
+                    state: 'queued',
+                    message: 'queued original',
+                  },
+                },
+              },
+            }
+          : {
+              status: 409,
+              body: { code: 'client_turn_input_conflict' },
+            },
+      );
+      expect(world.adapter.turns).toHaveLength(1);
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { state: 'queued', message: 'queued original' },
+      ]);
+    },
+  );
+
+  test('#3567: legacy queued input remains unknown when first placed instead of receiving reconstructed proof', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (
+        await world.send('legacy-follow', 'legacy queued input', {
+          whenBusy: 'queue',
+        })
+      ).status,
+    ).toBe(202);
+    const db = world.store['db'];
+    const before = db
+      .prepare('SELECT payload FROM monument_inbox_entries WHERE entry_key = ?')
+      .get('legacy-follow') as { payload: string };
+    const payload = JSON.parse(before.payload);
+    delete payload.inputDigest;
+    db.prepare(
+      'UPDATE monument_inbox_entries SET payload = ? WHERE entry_key = ?',
+    ).run(JSON.stringify(payload), 'legacy-follow');
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([{ state: 'sent' }]),
+    );
+    const row = db
+      .prepare(
+        'SELECT input_digest FROM orchestration_turn_dedup WHERE dedup_key LIKE ?',
+      )
+      .get('%legacy-follow') as { input_digest: string | null };
+    expect(row.input_digest).toBeNull();
+    expect(world.prompts()).toEqual(['read the file', 'legacy queued input']);
+  });
+
+  test('#3567: a queued retry compares its original submitted identity before payload defaults discard empty context', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (await world.send('follow', 'same message', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    const changed = await world.send('follow', 'same message', {
+      whenBusy: 'queue',
+      ambientContext: '',
+    });
+    expect({
+      status: changed.status,
+      body: await changed.json(),
+    }).toMatchObject({
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
+    });
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([
+      { message: 'same message', state: 'queued' },
+    ]);
+    expect(world.adapter.turns).toHaveLength(1);
+  });
 
   test('a follow-up to a busy conversation is held, answered 202, and sent once when the turn ends', async () => {
     const world = station();
@@ -767,7 +1288,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       whenBusy: 'queue',
     });
     expect(conflict.status).toBe(409);
-    expect(await conflict.json()).toMatchObject({ code: 'inbox_key_conflict' });
+    expect(await conflict.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
     expect(world.inbox.list(CONVERSATION)).toMatchObject([
       { message: 'then summarize' },
     ]);
@@ -951,6 +1474,15 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(second.inbox.list(CONVERSATION)).toMatchObject([
       { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
     ]);
+    const changed = await second.send('follow', 'different original input');
+    expect({
+      status: changed.status,
+      body: await changed.json(),
+    }).toMatchObject({
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
+    });
+    expect(second.prompts()).toEqual([]);
   });
 
   test('R2-2: a live claim on the ended Session holds the entry back from a successor', async () => {
@@ -1236,7 +1768,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     model: { override: 'claude-other-model' },
   };
 
-  test('R6-1: a live send that changes the model while the inbox starts the key is refused, and a retry after it lands answers its turn; one engine send', async () => {
+  test('R6-1: a changed model is in flight while the inbox starts the key, then conflicts with its known original input', async () => {
     const world = station({ modelPerTurn: false });
     await world.busy();
     expect(
@@ -1270,9 +1802,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       status: 409,
       body: { code: 'client_turn_in_flight' },
     });
-    // The client retries as told, same key and the changed model: the
-    // ledger already holds its turn on S1, so nothing is sent again.
-    const sentTurn = world.inbox.list(CONVERSATION)[0]?.turnId;
+    // Once original input is known, changing the model is a nonretryable conflict.
     const retry = await world.send('owner-key', 'then summarize', {
       target: otherModel,
     });
@@ -1280,31 +1810,47 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(sendsOf(world, 'then summarize')).toHaveLength(1);
     expect(retryAnswer).toMatchObject({
-      status: 200,
-      body: { data: { providerTurnId: sentTurn } },
+      status: 409,
+      body: { code: 'client_turn_input_conflict' },
     });
   });
 
-  test('R6-2: with no inbox involved, a same-key retry that changes the model answers the first turn; one engine send', async () => {
-    const world = station({ modelPerTurn: false });
-    const first = await world.send('k1', 'read the file');
-    expect(first.status, await first.clone().text()).toBe(200);
-    const firstTurn = (
-      (await first.json()) as { data: { providerTurnId: string } }
-    ).data.providerTurnId;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const retry = await world.send('k1', 'read the file', {
-      target: otherModel,
-    });
-    const retryAnswer = { status: retry.status, body: await retry.json() };
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(sendsOf(world, 'read the file')).toHaveLength(1);
-    expect(retryAnswer).toMatchObject({
-      status: 200,
-      body: { data: { providerTurnId: firstTurn } },
-    });
-    expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(1);
-  });
+  test.each([false, true])(
+    'R6-2: changed model conflicts with known proof and preserves unknown legacy replay (legacy=%s)',
+    async (legacy) => {
+      const world = station({ modelPerTurn: false });
+      const first = await world.send('k1', 'read the file');
+      expect(first.status, await first.clone().text()).toBe(200);
+      const firstTurn = (
+        (await first.json()) as { data: { providerTurnId: string } }
+      ).data.providerTurnId;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (legacy)
+        world.store['db'].exec(
+          'UPDATE orchestration_turn_dedup SET input_digest = NULL',
+        );
+      const retry = await world.send('k1', 'read the file', {
+        target: otherModel,
+      });
+      const retryAnswer = { status: retry.status, body: await retry.json() };
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(sendsOf(world, 'read the file')).toHaveLength(1);
+      expect(retryAnswer).toMatchObject(
+        legacy
+          ? {
+              status: 200,
+              body: { data: { providerTurnId: firstTurn } },
+            }
+          : {
+              status: 409,
+              body: { code: 'client_turn_input_conflict' },
+            },
+      );
+      expect(world.service.conversationSessionIds(CONVERSATION)).toHaveLength(
+        1,
+      );
+    },
+  );
 
   test('R6-2: a key the ledger reads as possibly sent or in flight elsewhere is refused before any Session is reserved', async () => {
     const world = station({ modelPerTurn: false });
@@ -1362,9 +1908,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           conversationId: CONVERSATION,
           clientTurnId: 'k1',
         });
-        // The client retries with the same key (and a model change, so a
-        // continuation would otherwise move to a new Session).
-        const retry = world.send('k1', 'and then this', { target: otherModel });
+        const changed = await world.send('k1', 'and then this', {
+          target: otherModel,
+        });
+        expect({
+          status: changed.status,
+          body: await changed.json(),
+        }).toMatchObject({
+          status: 409,
+          body: { code: 'client_turn_input_conflict' },
+        });
+        // Identical input still joins the live holder, even when that claim is old.
+        const retry = world.send('k1', 'and then this');
         await new Promise((resolve) => setTimeout(resolve, 200));
         world.adapter.releaseHeldSend?.();
         const [first, again] = await Promise.all([firstAttempt, retry]);

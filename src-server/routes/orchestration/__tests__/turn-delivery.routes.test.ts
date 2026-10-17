@@ -93,6 +93,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
    * `fail`: the call fails after the engine may have taken the turn.
    */
   nextTurn: 'refuse' | 'fail' | undefined;
+  turnGate: Promise<void> | undefined;
 
   async sendTurn(input: ProviderSendTurnInput) {
     const next = this.nextTurn;
@@ -101,6 +102,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
       throw new SendTurnRefusedError('The engine refused this turn.');
     if (next === 'fail') throw new Error('The engine connection dropped.');
     this.turns.push(input);
+    if (this.turnGate) await this.turnGate;
     const turnId = `delivery-turn-${this.turns.length}`;
     const base = {
       provider: this.provider,
@@ -279,10 +281,11 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         });
         return undefined;
       },
-      sendTurn: async (_access, input) => {
+      sendTurn: async (_access, input, context) => {
         const dispatched = await service.dispatchWithReceipt(
           { type: 'sendTurn', input },
           { userId: OWNER },
+          { submissionDigest: context?.submissionDigest },
         );
         if (!dispatched.result || !('turnId' in dispatched.result))
           throw new Error('dispatch returned no turn id');
@@ -301,12 +304,16 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
           executeForegroundMessage({ ...input, userId: OWNER }, deps),
       }),
     );
-    const send = (conversationId: string, clientTurnId: string) =>
+    const send = (
+      conversationId: string,
+      clientTurnId: string,
+      message = 'Hello delivery',
+    ) =>
       app.request('/api/orchestration/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          message: 'Hello delivery',
+          message,
           conversationId,
           clientTurnId,
           target: { environment: { kind: 'current' }, agent: AGENT },
@@ -332,6 +339,40 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     };
     return { root, store, adapter, service, send, lookup };
   }
+
+  test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {
+    const { adapter, send } = station();
+    let release!: () => void;
+    adapter.turnGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const first = send('conversation:concurrent-digest', 'K', 'A');
+    let identical: Response | Promise<Response> | undefined;
+    try {
+      await eventually(() => expect(adapter.turns).toHaveLength(1));
+      const changed = await send('conversation:concurrent-digest', 'K', 'B');
+      expect(changed.status, await changed.clone().text()).toBe(409);
+      expect(await changed.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_input_conflict',
+      });
+      identical = send('conversation:concurrent-digest', 'K', 'A');
+      expect(adapter.turns).toHaveLength(1);
+    } finally {
+      release();
+    }
+    const accepted = (await (await first).json()) as {
+      data: { providerTurnId: string };
+    };
+    if (!identical) throw new Error('identical request was not submitted');
+    const replay = await identical;
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      success: true,
+      data: { providerTurnId: accepted.data.providerTurnId },
+    });
+    expect(adapter.turns).toHaveLength(1);
+  });
 
   test('answers received while the session start is held open, then started once the engine has the turn; a same-key resend sends nothing', async () => {
     const { adapter, send, lookup } = station();
