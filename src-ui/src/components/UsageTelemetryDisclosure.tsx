@@ -931,8 +931,8 @@ export function UsageTelemetryDisclosureStep({
           discovers action surfaces by scanning source for exactly this
           attribute, and an indirection it cannot read drops this file out of
           the inventory it is listed in. */}
+      {decision.notice}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
-        {decision.notice}
         <DisclosureDecisionActions decision={decision} />
       </ResponsiveSurfaceActions>
     </div>
@@ -1001,7 +1001,6 @@ export function UsageTelemetryDisclosure({
         historyMode="none"
         footer={
           <>
-            {decision.notice}
             <Button variant="secondary" onClick={dismiss}>
               Not now
             </Button>
@@ -1011,6 +1010,7 @@ export function UsageTelemetryDisclosure({
       >
         <div data-testid="usage-telemetry-disclosure-modal">
           <DisclosureSummary data={data} chrome={STANDALONE_CHROME} />
+          {decision.notice}
         </div>
       </Dialog>
     );
@@ -1027,10 +1027,12 @@ export function UsageTelemetryDisclosure({
       {data.acknowledged ? (
         <p>You acknowledged this inventory.</p>
       ) : (
-        <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
+        <>
           {decision.notice}
-          <DisclosureDecisionActions decision={decision} />
-        </ResponsiveSurfaceActions>
+          <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
+            <DisclosureDecisionActions decision={decision} />
+          </ResponsiveSurfaceActions>
+        </>
       )}
     </section>
   );

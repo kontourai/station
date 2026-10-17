@@ -6,7 +6,7 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
 
 Product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every

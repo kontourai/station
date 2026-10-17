@@ -1163,8 +1163,9 @@ write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
 
-Telemetry tier, legacy enabled, destination and reference fields have an additional operator or
-`access:manage` guard; an internal-agent request cannot write them. Invalid
+Raising telemetry tiers (including legacy enabled writes), or changing destinations
+and references, requires the operator or `access:manage`. Standard paired devices
+may lower tiers, including to Off. An internal-agent request cannot write these fields. Invalid
 addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
@@ -1180,8 +1181,8 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
-preserved. This mutation requires the operator or `access:manage`; agents are
-refused. Full without a current publisher disclosure remains effectively Lite.
+preserved. Raising a tier requires the operator or `access:manage`; a standard
+paired device may lower it. Agents are refused. Full without a current publisher disclosure remains effectively Lite.
 Only the existing operator Full stream has a sender in this foundation. The
 [usage reference](usage-telemetry.md) owns the program and deployment limits.
 

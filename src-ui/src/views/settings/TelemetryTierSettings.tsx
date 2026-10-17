@@ -38,17 +38,6 @@ export function TelemetryTierSettings({
                 ? 'Off sends nothing. Lite allows identifier-free aggregates when an author destination is built in. Kontour Full is unavailable.'
                 : 'Off sends nothing. Lite allows identifier-free aggregates. Full requires acknowledgement of the current event inventory.'
             }
-            status={
-              <span className="settings__field-hint">
-                {status?.reason === 'DNT'
-                  ? 'Effective: Off — DO_NOT_TRACK is active. Your saved choice is retained.'
-                  : status?.reason === 'disclosure'
-                    ? 'Effective: Lite — Full is awaiting disclosure acknowledgement.'
-                    : status
-                      ? `Effective: ${status.tier} (${status.reason})`
-                      : 'Effective state loads from this Station.'}
-              </span>
-            }
             control={
               <select
                 className="editor-input"
@@ -71,7 +60,17 @@ export function TelemetryTierSettings({
                 </option>
               </select>
             }
-          />
+          >
+            <span className="settings__field-hint">
+              {status?.reason === 'DNT'
+                ? 'Effective: Off — DO_NOT_TRACK is active. Your saved choice is retained.'
+                : status?.reason === 'disclosure'
+                  ? 'Effective: Lite — Full is awaiting disclosure acknowledgement.'
+                  : status
+                    ? `Effective: ${status.tier} (${status.reason})`
+                    : 'Effective state loads from this Station.'}
+            </span>
+          </SettingsPageRow>
         );
       })}
     </div>
