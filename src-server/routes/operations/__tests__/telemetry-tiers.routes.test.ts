@@ -1,19 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import { createUsageTelemetryDisclosureRoutes } from '../usage-telemetry-disclosure.js';
 
-const homes: string[] = [];
-afterEach(async () => {
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
 test('status uses the live service configuration, respects DNT and never sends', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'station-tiers-route-'));
-  homes.push(home);
+  const home = makeTempDir('station-tiers-route-');
   const fetch = vi.fn();
   const subject = new UsageTelemetryService({
     homeDir: home,

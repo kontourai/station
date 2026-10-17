@@ -1,22 +1,17 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveTelemetryTier } from '@kontourai/station-contracts/product-telemetry';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   loadAppConfigFile,
   mergeAppConfigUpdate,
 } from '../config-loader-app.js';
 import { resolveTelemetryConfiguration } from '../telemetry-configuration.js';
 
-const homes: string[] = [];
-afterEach(async () => {
-  vi.unstubAllEnvs();
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
+afterEach(() => vi.unstubAllEnvs());
 const base = { defaultModel: 'test', invokeModel: '', structureModel: '' };
 describe('telemetry policy', () => {
   it.each(['1', 'false', 'yes', ' '])(
@@ -116,8 +111,7 @@ describe('persisted telemetry migration', () => {
   ])(
     'migrates $enabled with $receipt receipt through the real app.json loader',
     async ({ enabled, receipt, operator, kontour }) => {
-      const home = await mkdtemp(join(tmpdir(), 'station-tiers-'));
-      homes.push(home);
+      const home = makeTempDir('station-tiers-');
       await mkdir(join(home, 'config'));
       await writeFile(
         join(home, 'config', 'app.json'),
