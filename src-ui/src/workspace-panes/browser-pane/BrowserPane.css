@@ -428,7 +428,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid currentColor;
+  background: currentColor;
   border-radius: inherit;
   pointer-events: none;
   animation: browser-pane-breathe var(--motion-status-breathe)
@@ -439,7 +439,7 @@
   0%,
   100% {
     transform: scale(1);
-    opacity: 0.45;
+    opacity: 0.3;
   }
   50% {
     transform: scale(2.4);

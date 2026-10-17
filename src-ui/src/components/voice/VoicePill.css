@@ -10,13 +10,13 @@
 
 @keyframes voice-ring-pulse {
   0%,
+  50%,
   100% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  50% {
-    transform: scale(1.25);
     opacity: 0;
+  }
+  25%,
+  75% {
+    opacity: 0.5;
   }
 }
 
@@ -105,9 +105,7 @@
 
 .voice-pill--speaking {
   border-color: #2196f3;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 0 12px rgba(33, 150, 243, 0.4);
+  box-shadow: none;
   animation: voice-pulse var(--motion-status-pulse) var(--ease-standard)
     infinite;
 }
@@ -116,7 +114,9 @@
   content: "";
   position: absolute;
   inset: 0;
-  border: 2px solid var(--k-active);
+  /* Retain the original speaking halo color; only its opacity is animated. */
+  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.4);
+  opacity: 0;
   border-radius: inherit;
   pointer-events: none;
   animation: voice-ring-pulse var(--motion-status-pulse) var(--ease-standard)

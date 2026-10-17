@@ -4317,13 +4317,16 @@ button.background-tasks-banner:focus-visible {
 
 @keyframes streaming-progress-pulse {
   0% {
-    transform: scale(1);
-    opacity: 0.45;
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
   }
-  70%,
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
+  }
   100% {
-    transform: scale(3);
-    opacity: 0;
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
   }
 }
 
@@ -4886,22 +4889,12 @@ button.tool-call__line:hover {
    desktop density is untouched. */
 .tool-call__pulse,
 .tool-call-batch__pulse {
-  position: relative;
   width: 7px;
   height: 7px;
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-primary);
-}
-
-.tool-call__pulse::after,
-.tool-call-batch__pulse::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--k-brand);
-  border-radius: inherit;
-  pointer-events: none;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
   animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
     infinite;
 }
