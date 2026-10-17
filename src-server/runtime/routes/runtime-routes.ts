@@ -6811,6 +6811,7 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
+      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(

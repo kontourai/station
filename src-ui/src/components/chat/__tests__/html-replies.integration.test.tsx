@@ -16,9 +16,6 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://html-reply.test' }),
   useHostRequestAuthorityScope: () => undefined,
 }));
-vi.mock('../../../contexts/ConfigContext', () => ({
-  useConfig: () => ({ mcpUiFrameOrigin: 'http://sandbox.test' }),
-}));
 vi.mock('../../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({ theme: 'dark' }),
 }));
@@ -51,6 +48,7 @@ test('render route stores immutable bytes and the transcript mounts its replayed
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: pages,
+      frameOrigin: () => 'http://sandbox.test',
       isInternalRequest: () => true,
       resolveCaller: () => caller,
       sessionContext: () => ({ cwd: root, conversationId: 'conversation-a' }),
@@ -93,6 +91,7 @@ test('render route stores immutable bytes and the transcript mounts its replayed
       '/api/html-replies',
       createHtmlReplyRoutes({
         pages: pages,
+        frameOrigin: () => 'http://sandbox.test',
         isInternalRequest: () => false,
         resolveCaller: () => null,
         sessionContext: () => undefined,

@@ -46,13 +46,11 @@ test('runtime composition binds page reads to current session authority before r
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-  const reference = store
-    .htmlReplyPages()
-    .publish('publisher', 'publisher', {
-      version: 1,
-      html: '<h1>Authorized page</h1>',
-      height: 400,
-    });
+  const reference = store.htmlReplyPages().publish('publisher', 'publisher', {
+    version: 1,
+    html: '<h1>Authorized page</h1>',
+    height: 400,
+  });
   const app = new Hono();
   let allow = true;
   const canRead = vi.fn(
@@ -63,7 +61,9 @@ test('runtime composition binds page reads to current session authority before r
   );
   const operator = 'html-reply-test-operator';
   const isOperator = (credential: string) => credential === operator;
+  let frameOrigin = 'http://sandbox-one.test';
   const context = deepStub({
+    getMcpUiFrameOrigin: () => frameOrigin,
     projectMembership: undefined,
     projectSharedTasks: undefined,
     deploymentAuthentication: undefined,
@@ -119,7 +119,14 @@ test('runtime composition binds page reads to current session authority before r
       headers: { Authorization: `Bearer ${operator}` },
     });
     expect(response.status).toBe(200);
-    expect((await response.json()).data.html).toBe('<h1>Authorized page</h1>');
+    const body = await response.json();
+    expect(body.data.html).toBe('<h1>Authorized page</h1>');
+    expect(body.frameOrigin).toBe(frameOrigin);
+    frameOrigin = 'http://sandbox-two.test';
+    const afterRestart = await app.request(path, {
+      headers: { Authorization: `Bearer ${operator}` },
+    });
+    expect((await afterRestart.json()).frameOrigin).toBe(frameOrigin);
     expect(canRead).toHaveBeenCalledWith(
       'publisher',
       expect.objectContaining({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),

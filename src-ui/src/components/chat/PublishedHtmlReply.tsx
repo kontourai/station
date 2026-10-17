@@ -8,7 +8,6 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
-import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { HtmlReply } from './HtmlReply';
 
@@ -19,7 +18,6 @@ export function PublishedHtmlReply({
 }) {
   const { apiBase } = useApiBase();
   const authority = useHostRequestAuthorityScope();
-  const config = useConfig();
   const { theme } = useDeviceSettings();
   const query = useQuery({
     queryKey: [
@@ -38,11 +36,14 @@ export function PublishedHtmlReply({
         throw new Error(
           'This page is unavailable or you no longer have access.',
         );
-      const body: { success: boolean; data?: StoredPage } =
-        await response.json();
+      const body: {
+        success: boolean;
+        data?: StoredPage;
+        frameOrigin?: string;
+      } = await response.json();
       if (!body.success || !body.data)
         throw new Error('This page is unavailable.');
-      return body.data;
+      return { page: body.data, frameOrigin: body.frameOrigin ?? '' };
     },
     retry: false,
     staleTime: 0,
@@ -53,8 +54,8 @@ export function PublishedHtmlReply({
   if (!query.data) return <p role="status">Loading visual reply…</p>;
   return (
     <HtmlReply
-      page={query.data}
-      frameOrigin={config?.mcpUiFrameOrigin ?? ''}
+      page={query.data.page}
+      frameOrigin={query.data.frameOrigin}
       theme={theme}
     />
   );

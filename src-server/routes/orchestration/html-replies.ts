@@ -27,6 +27,7 @@ export function createHtmlReplyRoutes(deps: {
   sessionContext(
     sessionId: string,
   ): { conversationId: string; cwd: string } | undefined;
+  frameOrigin?(): string | undefined;
   canReadSession(sessionId: string, request: Request): boolean;
   preview(
     page: { html: string; height: number },
@@ -116,7 +117,7 @@ export function createHtmlReplyRoutes(deps: {
     const reference: HtmlReplyReference = { version: 1, sessionId, pageId };
     const page = deps.pages.read(reference);
     return page
-      ? c.json({ success: true, data: page })
+      ? c.json({ success: true, data: page, frameOrigin: deps.frameOrigin?.() })
       : c.json({ success: false, error: 'Page not found' }, 404);
   });
   return app;

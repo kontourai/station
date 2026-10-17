@@ -78,6 +78,8 @@ Bounded history windows retain the validated reference as `htmlReply` event
 metadata before shortening ordinary tool output to 84 characters. The existing
 per-event and per-window byte ceilings still apply; page HTML never enters
 that metadata. The shared projector carries it to the tool part.
+The authorized read also supplies the current ephemeral sandbox origin; it is
+never persisted with the page or borrowed from cached app config.
 JSON responses use no-store and nosniff; HTML executes only in the dedicated
 sandbox. Page bytes are not copied into transcript tool-output budgets.
 
