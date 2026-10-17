@@ -272,13 +272,16 @@ retired names.
   [design/placement.md](design/placement.md)) — Coding and Chat kinds render
   in the main region only.
 - **Board** — a Layout owned by a principal: the viewer's own, project-less
-  page, listed in the left panel's `Boards` section after Projects and rendered by the same layout renderer a project Layout is
+  page, listed in the left panel's **Personal Boards** section after Projects
+  and rendered by the same layout renderer a project Layout is
   (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
   decision D1). A Board can be **promoted** — MOVED into a project, where it
   becomes that project's Layout under the same id; the personal record is gone
   afterwards, so promote is never a copy. A Board may also be held by a dock
   region as a pane beside Chat (`board:<layoutId>`, #2157;
-  [design/placement.md](design/placement.md)).
+  [design/placement.md](design/placement.md)). Its dashboard editor supports
+  live sections, notes and links. Chat proposals require explicit preview and
+  Apply; see [Personal Boards](user/personal-boards.md).
 
   Board has other qualified meanings in this codebase: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
   a layout `type`) and the **board face** (`NavigationView`'s `board` member at

@@ -397,6 +397,12 @@ export {
   usePeerCredentialsQuery,
 } from './query-domains/peerCredentials';
 export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
+export {
   type AgentHealthStatus,
   createWorkspaceHomeRoleRequest,
   fetchPluginLifecycleProposal,

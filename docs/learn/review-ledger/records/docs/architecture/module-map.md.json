@@ -1070,7 +1070,21 @@
 
     "src-server/services/orchestration/attachment-staging-service.ts",
 
-    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
+
+    "src-server/security/coding-authority.ts"
   ],
 
   "checks": [

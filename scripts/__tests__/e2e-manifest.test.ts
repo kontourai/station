@@ -258,6 +258,7 @@ describe('e2e manifest', () => {
       // UX audit D9/D8: both reset instance-wide state (the notification
       // store and attention acknowledgements; two fixed project slugs).
       'tests/notifications-attention.spec.ts',
+      'tests/personal-board-authoring.spec.ts',
       'tests/board-visibility.spec.ts',
       // Creates and revision-checks a real personal Board through the shared
       // instance API, so it cannot run beside another stateful product spec.
