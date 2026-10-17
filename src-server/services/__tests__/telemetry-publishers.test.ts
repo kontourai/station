@@ -16,6 +16,7 @@ import {
   TELEMETRY_OUTBOX_LIMITS,
   type TelemetryOutboxEntry,
 } from '@kontourai/station-contracts/product-telemetry';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   parseStationDailyPing,
@@ -119,6 +120,7 @@ async function service(
   loggerOverride?: ConstructorParameters<
     typeof UsageTelemetryService
   >[0]['logger'],
+  fetchOverride?: typeof globalThis.fetch,
 ) {
   const home =
     existingHome ?? (await mkdtemp(join(tmpdir(), 'station-publishers-')));
@@ -139,6 +141,7 @@ async function service(
     buildProvenance: null,
     env,
     logger,
+    fetch: fetchOverride,
     headless: env.STATION_STDOUT_HANDSHAKE !== '1' && !env.STATION_UI_PORT,
   });
   services.push(live);
@@ -509,6 +512,56 @@ test('shutdown aborts a pending daily request and records its dropped outcome be
         row.outcome === 'dropped',
     ),
   ).toBe(true);
+});
+
+test('shared shutdown abort reaches Full while the daily ledger publication is contended', async () => {
+  let releaseReceiver!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    releaseReceiver = resolve;
+  });
+  const sink = await receiver(hold);
+  let fullSignal: AbortSignal | undefined;
+  const observeFetch: typeof globalThis.fetch = (input, init) => {
+    if (typeof init?.body === 'string' && 'events' in JSON.parse(init.body))
+      fullSignal = init.signal ?? undefined;
+    return globalThis.fetch(input, init);
+  };
+  const { live, home } = await service(
+    sink.endpoint,
+    { telemetryTier: { operator: 'full', kontour: 'lite' } },
+    {},
+    undefined,
+    undefined,
+    observeFetch,
+  );
+  await live.acknowledgeDisclosure((await live.disclosure()).inventoryRevision);
+  await live.stationStarted();
+  const releaseLedger = await acquireFileMutationLockAsync(
+    join(home, 'config', 'telemetry-outbox.json.mutation'),
+  );
+  const fullFlush = live.flush();
+  let dailyFlush: Promise<void> | undefined;
+  let stopping: Promise<void> | undefined;
+  try {
+    await sink.entered;
+    dailyFlush = live.flushDaily();
+    await vi.waitFor(() => expect(daily(sink.payloads)).toHaveLength(1));
+    const budget = new AbortController();
+    stopping = live.shutdown(budget.signal);
+    expect(
+      fullSignal?.aborted,
+      'the Full request must still be pending before budget expiry',
+    ).toBe(false);
+    budget.abort();
+    expect(
+      fullSignal?.aborted,
+      'local ledger contention cannot delay the shared network abort',
+    ).toBe(true);
+  } finally {
+    await releaseLedger();
+    releaseReceiver();
+    await Promise.all([fullFlush, dailyFlush, stopping]);
+  }
 });
 
 test('DNT suppresses every publisher, including explicit feedback', async () => {

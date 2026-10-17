@@ -1019,39 +1019,39 @@ export class UsageTelemetryService {
     return this.dailyFlushing;
   }
   async flush(): Promise<void> {
+    if (!this.acceptingTracks) return this.flushing;
     await Promise.all([
       this.flushWithDeadline(),
       this.author?.flushWithDeadline(),
     ]);
   }
   async shutdown(signal?: AbortSignal): Promise<void> {
+    const abortRequest = () => this.requestAbort?.abort();
     try {
       // Close admission before observing background work. Every accepted
       // track is registered synchronously, so this drain includes fire-and-
       // forget startup and orchestration telemetry that may still be reading
       // disclosure state or starting persistence beneath the Station home.
       this.acceptingTracks = false;
+      this.probeAbort?.abort();
+      if (this.timer) this.clearIntervalImpl(this.timer);
+      this.timer = undefined;
+      // Network cancellation is installed before waiting on local daily publication.
+      if (signal?.aborted) abortRequest();
+      else signal?.addEventListener('abort', abortRequest, { once: true });
+      const aborted = new Promise<void>((resolve) => {
+        if (signal?.aborted) resolve();
+        else signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      // Reserve the rest of the 1.5s optional budget for local ledger settlement.
+      const deadline = Date.now() + 1_000;
+      const authorShutdown = this.author?.shutdown(signal);
       if (this.publisher === 'operator') {
         this.publishers.stop();
         await this.dailyFlushing?.catch((error) =>
           this.warn('Usage telemetry daily shutdown failed.', error),
         );
       }
-      const authorShutdown = this.author?.shutdown(signal);
-      this.probeAbort?.abort();
-      if (this.timer) this.clearIntervalImpl(this.timer);
-      this.timer = undefined;
-      const aborted = new Promise<void>((resolve) => {
-        if (signal?.aborted) resolve();
-        else signal?.addEventListener('abort', () => resolve(), { once: true });
-      });
-      const abortRequest = () => this.requestAbort?.abort();
-      signal?.addEventListener('abort', abortRequest, { once: true });
-      // The runtime owns the aggregate optional-network budget. This local
-      // bound remains for direct/legacy callers and is never allowed to extend
-      // the runtime's earlier AbortSignal.
-      // Reserve the remainder of the 1.5s optional budget for local ledger settlement.
-      const deadline = Date.now() + 1_000;
       await Promise.race([Promise.allSettled([...this.tracking]), aborted]);
       if (signal?.aborted) {
         this.recordDropped(this.buffer, 'transport');
@@ -1082,9 +1082,10 @@ export class UsageTelemetryService {
       await this.recordFull(this.buffer, 'dropped', 'transport');
       this.buffer.length = 0;
       await authorShutdown;
-      signal?.removeEventListener('abort', abortRequest);
     } catch (error) {
       this.warn('Usage telemetry shutdown failed.', error);
+    } finally {
+      signal?.removeEventListener('abort', abortRequest);
     }
   }
 }
