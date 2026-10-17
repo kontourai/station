@@ -46,6 +46,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
+  type ConversationKeyInspection,
   type InboxCancelResult,
   type InboxEntryRecord,
   type InboxSubmitResult,
@@ -53,6 +54,8 @@ import {
   type KernelCommand,
   type KernelResults,
   type OwnerLiveness,
+  type SessionStartResult,
+  startUnlessDelivered,
 } from '@kontourai/monument';
 import {
   openSqliteKernelStorage,
@@ -86,11 +89,6 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
-import {
-  type ConversationKeyInspection,
-  type SessionStartResult,
-  startUnlessDelivered,
-} from './session-message-delivery.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,

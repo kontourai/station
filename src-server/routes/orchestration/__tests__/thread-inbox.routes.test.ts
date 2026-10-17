@@ -6,6 +6,7 @@
  * ledger and the inbox on the same EventStore. Only the engine is scripted.
  */
 import { join } from 'node:path';
+import type { ConversationKeyInspection } from '@kontourai/monument';
 import {
   agentId,
   engineConnectionId,
@@ -43,7 +44,6 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
-import type { ConversationKeyInspection } from '../../../services/orchestration/session-message-delivery.js';
 import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { ThreadInboxDelivery } from '../../../services/orchestration/thread-inbox.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';

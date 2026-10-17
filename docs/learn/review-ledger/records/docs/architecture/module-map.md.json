@@ -1054,7 +1054,11 @@
 
     "src-server/services/orchestration/attachment-staging-service.ts",
 
-    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts"
   ],
 
   "checks": [

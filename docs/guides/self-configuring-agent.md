@@ -372,8 +372,10 @@ and carry no approval mode, model, or Environment: the receiving Session runs
 under its own Agent's saved settings, so a call cannot widen what the Session may
 do. A request without a verified station-control caller is refused. The
 [route](../../src-server/routes/orchestration/session-agent-control.ts) and the
-[delivery seam](../../src-server/services/orchestration/session-message-delivery.ts)
-own these rules.
+[delivery sequence in Monument](../../packages/monument/src/session-message-delivery.ts)
+share the send path: the route owns scope and authorization, while Monument
+selects and records a branch before calling the host's start or steer port.
+Station retains the durable keys, receipts and engine invocation.
 
 ### Project activity
 
