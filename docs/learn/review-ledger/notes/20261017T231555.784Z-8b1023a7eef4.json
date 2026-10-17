@@ -1,0 +1,7 @@
+{
+  "revision": "04396cf9a6f48e7f80ad24f46f4626c0c1bae95c",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated MobileDeviceHost topic and digest changes for per-agent overlapping operations, complete single-batch gestures, preflight supported kinds and post-completion lease reporting. Tool delivery and the 115-topic catalog remain unchanged. Focused service tests and seven caught/restored faults establish the bounded delta; no live-device/provider qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
