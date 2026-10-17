@@ -25,10 +25,7 @@ export function TelemetryTierSettings({
           publisher === 'kontour' ? 'Kontour telemetry' : 'Operator telemetry';
         const status = publishers?.[publisher];
         const choice =
-          config.telemetryTier?.[publisher] ??
-          status?.userChoice ??
-          status?.tier ??
-          'lite';
+          config.telemetryTier?.[publisher] ?? status?.userChoice ?? '';
         return (
           <SettingsPageRow
             key={publisher}
@@ -53,6 +50,9 @@ export function TelemetryTierSettings({
                   })
                 }
               >
+                <option value="" disabled>
+                  No saved choice
+                </option>
                 <option value="off">Off</option>
                 <option value="lite">Lite</option>
                 <option value="full" disabled={publisher === 'kontour'}>
@@ -63,7 +63,7 @@ export function TelemetryTierSettings({
           >
             <span className="settings__field-hint">
               {status?.reason === 'DNT'
-                ? 'Effective: Off — DO_NOT_TRACK is active. Your saved choice is retained.'
+                ? 'Effective: Off — DO_NOT_TRACK is active. Saved choices are not changed.'
                 : status?.reason === 'disclosure'
                   ? 'Effective: Lite — Full is awaiting disclosure acknowledgement.'
                   : status

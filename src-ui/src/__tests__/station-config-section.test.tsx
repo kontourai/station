@@ -135,6 +135,28 @@ test('per-publisher telemetry controls round-trip the saved choice and retain Of
   });
 });
 
+test('DNT does not masquerade as a saved Off choice and selecting Off records a durable withdrawal', () => {
+  const onChange = vi.fn();
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+      telemetryPublishers={{
+        kontour: { tier: 'off', reason: 'DNT' },
+        operator: { tier: 'off', reason: 'DNT' },
+      }}
+    />,
+  );
+  const operator = screen.getByRole('combobox', {
+    name: 'Operator telemetry',
+  }) as HTMLSelectElement;
+  expect(operator.value).toBe('');
+  fireEvent.change(operator, { target: { value: 'off' } });
+  expect(onChange).toHaveBeenCalledWith({ telemetryTier: { operator: 'off' } });
+});
+
 test('telemetry destination controls edit separate addresses and references without turning keys into settings values', () => {
   const onChange = vi.fn();
   render(
