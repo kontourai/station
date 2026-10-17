@@ -2,7 +2,7 @@ const HISTORY_LINE_LIMIT = 5000;
 const HISTORY_BYTE_LIMIT = 2 * 1024 * 1024;
 const CHUNK_LENGTH = 4096;
 const LINE_BOUNDARY_WINDOW_BYTES = 64 * 1024;
-const ESCAPE_SKIP_LIMIT_BYTES = 4096;
+const ESCAPE_SKIP_LIMIT_BYTES = 64 * 1024;
 
 type EscapeState = 'text' | 'escape' | 'csi' | 'string';
 

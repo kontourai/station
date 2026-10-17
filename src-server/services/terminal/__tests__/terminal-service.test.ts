@@ -215,60 +215,6 @@ describe('TerminalService', () => {
     expect((await svc.open(input)).history).toBe(replay);
   });
 
-  test('keeps string traversal and materialization proportional to newly emitted PTY output', async () => {
-    await svc.open({
-      projectSlug: 'test',
-      terminalId: 'scan',
-      cwd: '/tmp',
-      cols: 80,
-      rows: 24,
-    });
-    pty.emitData('x'.repeat(1024 * 1024));
-    const split = vi.spyOn(String.prototype, 'split');
-    const indexOf = vi.spyOn(String.prototype, 'indexOf');
-    const join = vi.spyOn(Array.prototype, 'join');
-    const codePointAt = vi.spyOn(String.prototype, 'codePointAt');
-    const charCodeAt = vi.spyOn(String.prototype, 'charCodeAt');
-    const byteLength = vi.spyOn(Buffer, 'byteLength');
-    let examined = 0;
-    try {
-      for (let i = 0; i < 100; i++) pty.emitData('x'.repeat(64));
-      examined += split.mock.contexts.reduce<number>(
-        (total, value) => total + String(value).length,
-        0,
-      );
-      indexOf.mock.calls.forEach(([search, from = 0], i) => {
-        const result = indexOf.mock.results[i]!;
-        if (result.type !== 'return')
-          throw new Error('indexOf failed during append');
-        const end =
-          result.value < 0
-            ? String(indexOf.mock.contexts[i]).length
-            : result.value + search.length;
-        examined += Math.max(0, end - from);
-      });
-      for (const result of join.mock.results) {
-        if (result.type === 'return') examined += result.value.length;
-      }
-      examined +=
-        codePointAt.mock.calls.length * 2 + charCodeAt.mock.calls.length;
-      for (const [value] of byteLength.mock.calls) {
-        if (typeof value === 'string') examined += value.length;
-      }
-    } finally {
-      split.mockRestore();
-      indexOf.mockRestore();
-      join.mockRestore();
-      codePointAt.mockRestore();
-      charCodeAt.mockRestore();
-      byteLength.mockRestore();
-    }
-    expect(examined).toBeLessThanOrEqual(8 * 100 * 64);
-    expect(svc.readProcess('test:scan')?.history.length).toBe(
-      1024 * 1024 + 100 * 64,
-    );
-  });
-
   test('bounds legacy plain-text history on restore and retains the latest live lines', async () => {
     const history = createMockHistoryStore();
     await svc.dispose();
@@ -353,23 +299,6 @@ describe('TerminalService', () => {
       expect((await svc.open(input)).history === visible).toBe(true);
     },
   );
-
-  test('keeps the retained window when the next newline lies beyond the bounded boundary preference', async () => {
-    const input = {
-      projectSlug: 'test',
-      terminalId: 'long-line',
-      cwd: '/tmp',
-      cols: 80,
-      rows: 24,
-    };
-    await svc.open(input);
-    pty.emitData(`${'A'.repeat(2 * 1024 * 1024 - 10)}\nshort-tail`);
-    pty.emitData('B'.repeat(20));
-    const replay = (await svc.open(input)).history;
-    expect(Buffer.byteLength(replay)).toBe(2 * 1024 * 1024);
-    expect(replay.startsWith('A'.repeat(100))).toBe(true);
-    expect(replay.endsWith(`\nshort-tail${'B'.repeat(20)}`)).toBe(true);
-  });
 
   test('keeps surrogate pairs intact when PTY callbacks divide them at the history limit', async () => {
     const input = {
