@@ -48,7 +48,7 @@ const SKIP_DIRS = new Set([
   '__pycache__',
 ]);
 const MAX_ENTRIES = 500;
-export const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 
 export class FilePreviewError extends Error {
   constructor(
