@@ -57,13 +57,23 @@ export function useSessionTranscriptScroll({
     const scroll = scrollRef.current;
     const content = contentRef.current;
     if (!scroll || !content) return;
+    let readerUntil = 0;
+    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
     const onScroll = () => {
       const latest =
         scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 64;
-      follow.current = latest;
+      const atBottom =
+        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2;
+      follow.current = atBottom && performance.now() >= readerUntil;
+      clearTimeout(resumeTimer);
+      if (atBottom && !follow.current) {
+        resumeTimer = setTimeout(onScroll, readerUntil - performance.now());
+      }
       setAtLatest(latest);
     };
     const stopFollowing = () => {
+      readerUntil = performance.now() + 200;
+      clearTimeout(resumeTimer);
       follow.current = false;
     };
     const resize = () => {
@@ -83,6 +93,7 @@ export function useSessionTranscriptScroll({
     observer?.observe(content);
     observer?.observe(scroll);
     return () => {
+      clearTimeout(resumeTimer);
       scroll.removeEventListener('scroll', onScroll);
       scroll.removeEventListener('wheel', stopFollowing);
       scroll.removeEventListener('touchstart', stopFollowing);
