@@ -22,6 +22,16 @@ export function createUsageTelemetryDisclosureRoutes(
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
+  app.get('/status', async (c) => {
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data: await service.telemetryStatus() });
+  });
   app.get('/delivery-status', async (c) => {
     const service = resolve();
     if (!service)

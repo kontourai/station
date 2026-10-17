@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
+  hasCurrentLiteTelemetryNotice,
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  monthlyTelemetryId,
   parseProductTelemetryBatch,
+  parseStationDailyPing,
   USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '../product-telemetry.js';
 
@@ -200,5 +204,93 @@ describe('versioned content-free product ingestion contract', () => {
     ],
   ])('refuses %s at the receiver boundary', (_name, invalid) => {
     expect(() => parseProductTelemetryBatch(invalid())).toThrow();
+  });
+});
+
+describe('Lite ping privacy boundary', () => {
+  const ping = {
+    event: 'station_daily',
+    event_id: '11111111-2222-4333-8444-555555555555',
+    version: '0.7.0',
+    channel: 'stable',
+    platform: 'linux',
+    arch: 'x64',
+    surfaces_today: ['web'],
+    first_active_this_week: true,
+    first_active_this_month: false,
+    install_age_bucket: '8-30d',
+    paired_devices_bucket: '2-3',
+    engines_used_today: ['codex'],
+    distribution: 'none',
+    public_plugins_enabled: ['public-plugin'],
+    private_plugins_bucket: '1',
+    branding_overridden: false,
+    home_replaced: true,
+    layouts_customized: false,
+    setup_abandoned_step: 'none',
+    engine_connect_failures: [{ engine: 'codex', bucket: '1' }],
+    safe_mode_entered: 0,
+    plugin_disabled_after_crash: 1,
+  };
+  test('accepts a complete identifier-free ping and rejects private ids, extra fields and unbounded arrays/counts', () => {
+    expect(parseStationDailyPing(ping, ['public-plugin'], ['0.7.0'])).toEqual(
+      ping,
+    );
+    for (const change of [
+      { distinct_id: 'private' },
+      { version: '0.7.0-my-private-build' },
+      { public_plugins_enabled: ['private-plugin'] },
+      { distribution: 'my-company' },
+      { public_plugins_enabled: Array(21).fill('public-plugin') },
+      { surfaces_today: ['web', 'web'] },
+      { safe_mode_entered: 65536 },
+      { safe_mode_entered: -1 },
+      { engine_connect_failures: [{ engine: 'secret-engine', bucket: '1' }] },
+    ])
+      expect(() =>
+        parseStationDailyPing(
+          { ...ping, ...change },
+          ['public-plugin'],
+          ['0.7.0'],
+        ),
+      ).toThrow();
+    const { event_id: _omitted, ...missing } = ping;
+    expect(() => parseStationDailyPing(missing, ['public-plugin'])).toThrow();
+  });
+  test('binds the shown notice to the Lite inventory independently of Full acknowledgement', () => {
+    expect(
+      hasCurrentLiteTelemetryNotice({
+        inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      }),
+    ).toBe(true);
+    expect(
+      hasCurrentLiteTelemetryNotice({
+        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      }),
+    ).toBe(false);
+    expect(hasCurrentLiteTelemetryNotice(undefined)).toBe(false);
+  });
+  test('rotates the Full id on UTC month boundaries, with no account input', () => {
+    expect(
+      monthlyTelemetryId('install-secret', new Date('2026-10-01T00:00:00Z')),
+    ).toBe('fb5b90f9ab599f47181c003f4fa2801263b4ed1820fa7011f32daf5f59d7431f');
+    expect(
+      monthlyTelemetryId('install-secret', new Date('2026-10-31T23:59:59Z')),
+    ).toBe(
+      monthlyTelemetryId(
+        'install-secret',
+        new Date('2026-11-01T01:00:00+02:00'),
+      ),
+    );
+    expect(
+      monthlyTelemetryId('install-secret', new Date('2026-11-01T00:00:00Z')),
+    ).not.toBe(
+      monthlyTelemetryId('install-secret', new Date('2026-10-31T23:59:59Z')),
+    );
+    expect(
+      monthlyTelemetryId('another-secret', new Date('2026-10-01T00:00:00Z')),
+    ).not.toBe(
+      monthlyTelemetryId('install-secret', new Date('2026-10-01T00:00:00Z')),
+    );
   });
 });
