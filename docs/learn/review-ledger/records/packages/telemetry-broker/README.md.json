@@ -52,7 +52,9 @@
 
     "packages/telemetry-broker/src/__tests__/lite-rate-limit.test.ts",
 
-    "packages/telemetry-broker/src/__tests__/passive-signals.test.ts"
+    "packages/telemetry-broker/src/__tests__/passive-signals.test.ts",
+
+    "packages/telemetry-broker/src/broker-error.ts"
   ],
 
   "checks": [

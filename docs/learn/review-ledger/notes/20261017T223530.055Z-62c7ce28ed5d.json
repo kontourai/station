@@ -1,0 +1,15 @@
+{
+  "revision": "9aad75c7d2b5ffd0ae0e63e1d7a37ac68b4c330a",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed final Lite source mapping and scoped publisher IDs, strict shared-contract parser, IP-free rows/logs, canonical joint-cell rollups, complementary suppression, credential isolation, static dashboard and report-only passive API tool. BrokerError now has an independent owner to remove the store import cycle. Source/HTTP diagnostics do not establish deployment, external logging, power-loss durability or real producer delivery.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/src/__tests__/broker.test.ts","packages/telemetry-broker/src/__tests__/lite-rate-limit.test.ts","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts","packages/telemetry-broker/src/broker-error.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the ProductTelemetryReceiver section and its actual Full and Lite compositions. New paragraph traces public source admission, atomic raw/daily storage, publisher authority and the same safe-cell population for every public projection. Existing Full receipt, durability, bounded transaction and qualification limitations remain accurate.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/store.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/lite-routes.ts","packages/telemetry-broker/qualify-lite.mjs"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the Full receiver paragraph and added the independent identifier-free Lite receiver journey. Preserved the separation from local monitoring and OTel, and explicitly avoided asserting an installed sender or qualified deployment. The broker guide owns suppression, source identifiers and activity-estimate limitations.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Rechecked the final receiver guide and schema defaults, retained rollups and public/publisher boundaries after the scoped publisher-ID correction and error-owner split. Deployment remains unqualified. The documented ledger SQL still cannot attribute starts by bundle and no production service was queried.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated ProductTelemetryReceiver topic and digest delta after docs:mcp:generate. The added Lite paragraph and qualifier route match the module map and receiver implementation; the other topic bodies and documentation delivery contracts remain unchanged. Generated text is not deployment evidence.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

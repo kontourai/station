@@ -106,7 +106,10 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
               id,
               publisher: pub,
               channel: 'stable',
-              registryIds: ['public.plugin'],
+              registryIds: [
+                'public.plugin',
+                ...Array.from({ length: 21 }, (_, i) => `public.${i}`),
+              ],
               releaseVersions: ['1.2.3'],
             },
             operatorKey,
@@ -208,6 +211,19 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       ),
       1,
       'rejections have no rows',
+    );
+    assert.equal(
+      (
+        await send({
+          ...dailyPing(),
+          public_plugins_enabled: Array.from(
+            { length: 20 },
+            (_, i) => `public.${i}`,
+          ),
+        })
+      ).status,
+      202,
+      'twenty catalog-valid plugins accepted; twenty-one above refused only for the bound',
     );
     for (let i = 1; i < 10; i++) {
       const fresh = dailyPing();
