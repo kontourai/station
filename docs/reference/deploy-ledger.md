@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-17T20:59:11Z | nightly-desktop | 0.1.11-nightly.2481.2 | `597e0e6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
 | 2026-10-17T20:59:08Z | nightly-android | 0.1.11-nightly.2481.2 | `597e0e6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
 | 2026-10-17T19:52:05Z | nightly-npm | 0.7.0-nightly.2481.39063645742 | `597e0e6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
 | 2026-10-17T12:03:43Z | nightly-desktop | 0.1.11-nightly.2481.1 | `8e2eff7` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39027702530) |
@@ -294,6 +295,36 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-17T20:59:11Z · nightly-desktop · 0.1.11-nightly.2481.2
+
+- Ship SHA: `597e0e68889b2249d8bad509d6afaea54025391b`
+- Artifact built at: `2026-10-17T19:51:32.065Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 39063645742)
+
+### Changelog
+
+Commits since `8e2eff7` ([full sha](https://github.com/kontourai/station/commit/8e2eff7302d3ecf2fb74af1be2f94ca6111104fd)):
+
+**Features**
+
+- [#3742](https://github.com/kontourai/station/pull/3742) feat(boards): add dashboard authoring and chat proposals
+- [#3699](https://github.com/kontourai/station/pull/3699) feat(orchestration): reject conflicting keyed send inputs
+- [#3723](https://github.com/kontourai/station/pull/3723) feat(tools): add a shared source library and Project tool policy
+
+**Fixes**
+
+- [#3769](https://github.com/kontourai/station/pull/3769) fix(push): re-register a phone whose Station dropped its push registration
+- [#3768](https://github.com/kontourai/station/pull/3768) fix(codex): exclude session activity from background child work
+- [#3767](https://github.com/kontourai/station/pull/3767) fix(ci): detect and reconcile stalled Nightly delivery
+- [#3747](https://github.com/kontourai/station/pull/3747) fix(security): reject forged RSA signatures in managed node-forge
+- [#3746](https://github.com/kontourai/station/pull/3746) fix(access): add scoped invitations and prefer local approval
+- [#3671](https://github.com/kontourai/station/pull/3671) fix(chat): show spawned sub-agents in the transcript
+
+**Other**
+
+- [#3740](https://github.com/kontourai/station/pull/3740) test(tauri): give bounded report callers a complete harness envelope
 
 ## 2026-10-17T20:59:08Z · nightly-android · 0.1.11-nightly.2481.2
 
