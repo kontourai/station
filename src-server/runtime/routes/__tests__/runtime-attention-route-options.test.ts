@@ -78,9 +78,9 @@ function principalFor(
 // Created before the cleanup hook below, so it removes the directories
 // after the stores in them have closed (after-hooks run in reverse order).
 const makeTempDir = trackTempDirs();
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function projectionWithPeerApproval(
@@ -103,9 +103,7 @@ function projectionWithPeerApproval(
     } as never,
     logger: { debug() {}, warn() {} },
   });
-  cleanups.push(() => {
-    service.shutdown();
-  });
+  cleanups.push(() => service.shutdown());
   service.recordPeerDelegationActivityDispatch({
     taskId: 'task-peer',
     conversationId: 'task-peer',

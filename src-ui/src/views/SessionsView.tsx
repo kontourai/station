@@ -169,15 +169,7 @@ function ActivityRowMeta({
   now: number;
   foldedTurnCount?: number;
 }) {
-  const observedStatus = sessionWorkStatus(session, agents, now);
-  const status =
-    observedStatus.rung === 'quiet'
-      ? {
-          ...observedStatus,
-          word: 'Waiting for activity',
-          tone: 'neutral' as const,
-        }
-      : observedStatus;
+  const status = sessionWorkStatus(session, agents, now);
   // The server attaches `terminalAttribution` only once a failed session has
   // closed; while it is still loaded the reason lives in the same two fields
   // the detail's failure text folds (`sessionFailureText`), so a fresh

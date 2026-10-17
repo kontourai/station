@@ -292,7 +292,7 @@ test('renders the member-safe Project view and shared summaries without raw icon
   ).toBeTruthy();
   expect(document.querySelector('img')).toBeNull();
   expect(await screen.findByText('Review the shared design')).toBeTruthy();
-  expect(screen.getByText('in progress')).toBeTruthy();
+  expect(screen.getByText('In progress')).toBeTruthy();
   expect(sdk.operatorHook).not.toHaveBeenCalled();
   expect(sdk.projectOptions).toHaveLength(1);
   expect(sdk.projectOptions[0]).toMatchObject({

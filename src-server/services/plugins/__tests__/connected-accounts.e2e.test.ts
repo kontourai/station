@@ -1,3 +1,4 @@
+import { EventBus } from '../../orchestration/event-bus.js';
 /**
  * #3279: two people connect the same OAuth MCP server with their own
  * accounts. Each one's turn reaches the server with their own token, and
@@ -188,7 +189,7 @@ function runtimeContext(
         ),
       logger,
       deploymentAuthentication: undefined,
-      eventBus: { emit: vi.fn() },
+      eventBus: new EventBus(),
       environmentSecurityService,
       activeAgents: new Map(),
       agentMetadataMap: new Map(),

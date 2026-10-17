@@ -171,9 +171,7 @@ test('saves after an existing-cache SSE and again after a structurally shared se
     text: 'first save',
   });
   save('first save');
-  await waitFor(() =>
-    expect(screen.getByText('Shared document saved.')).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(editor().value).toBe('first save');
   expect(client.getQueryData(key)).toMatchObject({
     revision: 'r3',

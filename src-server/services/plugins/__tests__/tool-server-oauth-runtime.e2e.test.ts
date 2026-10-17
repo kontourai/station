@@ -7,6 +7,7 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
+import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 
@@ -103,7 +104,7 @@ function runtimeContext(
       deploymentAuthentication: undefined,
       orchestrationEventStore: store,
       taskGraphService: new TaskGraphService(loader.getProjectHomeDir()),
-      eventBus: { emit: vi.fn() },
+      eventBus: new EventBus(),
       environmentSecurityService,
       activeAgents: new Map(),
       agentMetadataMap: new Map(),

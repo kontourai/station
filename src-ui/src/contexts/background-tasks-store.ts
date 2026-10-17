@@ -60,6 +60,7 @@ export interface BackgroundTaskEntry {
   source: BackgroundTaskSource;
   chatThreadId: string;
   title: string;
+  delegationTitle?: string;
   detail?: string;
   /**
    * When the card's work started, on this client's clock basis. #2459:
@@ -382,7 +383,15 @@ function foldSessionLifecycle(
   return {
     ...state,
     delegateParents,
-    entries: { ...state.entries, [taskId]: entry },
+    entries: {
+      ...state.entries,
+      [taskId]: {
+        ...entry,
+        ...(metaString(metadata, 'delegationTitle')
+          ? { delegationTitle: metaString(metadata, 'delegationTitle') }
+          : {}),
+      },
+    },
   };
 }
 
@@ -397,8 +406,9 @@ function foldDelegateTurnStarted(
   if (!isKnownDelegate) return state;
 
   const title =
-    (existing?.title !== 'Delegated task' ? existing?.title : undefined) ??
+    existing?.delegationTitle ??
     firstLine(event.prompt) ??
+    existing?.title ??
     'Delegated task';
   if (existing) {
     if (existing.state === 'running' && existing.title === title) return state;
@@ -590,11 +600,14 @@ export function reconcileBackgroundTasksSnapshot(
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
         title:
+          session.delegation?.title ??
           session.displayTitle ??
           (child.kindLabel
             ? `Delegated task — ${child.kindLabel}`
             : 'Delegated task'),
       });
+      if (session.delegation?.title)
+        entry.delegationTitle = session.delegation.title;
       const settled =
         !isActive && child.endedAt
           ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }

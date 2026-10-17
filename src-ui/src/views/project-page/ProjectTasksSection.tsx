@@ -497,7 +497,7 @@ export function ProjectTasksSection({
             <Empty
               variant="compact"
               label="Start a Task"
-              description="Create a Task to start a conversation."
+              description="Describe a goal and work through it here."
             />
           ) : (
             <>

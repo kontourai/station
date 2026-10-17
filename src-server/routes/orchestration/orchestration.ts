@@ -1058,7 +1058,7 @@ export const continueDelegatedTaskBodySchema = z.object({
   taskRoomReply: z
     .object({
       taskId: z.string().min(1).max(256),
-      taskCreatedAt: z.string().datetime(),
+      taskCreatedAt: z.string().max(40).datetime(),
       operationId: z.string().min(1).max(128),
       attachBrief: z.boolean().optional(),
     })
