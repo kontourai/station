@@ -89,6 +89,7 @@ import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
+import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -681,7 +682,9 @@ export function ChatDockBody({
   // the renderer arrived.
   const hasConversation = Boolean(activeSession.conversationId);
   useEffect(() => {
-    if (hasConversation) preloadMarkdownRenderer();
+    if (!hasConversation) return;
+    preloadMarkdownRenderer();
+    void preloadToolCallBatch().catch(() => undefined);
   }, [hasConversation]);
   // Loading-phase boundaries for the opt-in transcript layout tracer.
   useEffect(() => {
