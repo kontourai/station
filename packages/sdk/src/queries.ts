@@ -131,7 +131,9 @@ export {
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
+  useIntegrationAccountQuery,
   useIntegrationQuery,
   useIntegrationsQuery,
   useKitLayoutQuery,
@@ -149,6 +151,7 @@ export {
   useSaveIntegrationMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
+  useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
   type AdoptOrchestrationSessionIntent,

@@ -58,6 +58,8 @@
 
     "packages/contracts/src/task-basis-mcp.ts",
 
+    "packages/contracts/src/usage-export.ts",
+
     "packages/contracts/src/workspace-browser-pane.ts",
 
     "packages/contracts/src/workspace-browser-preview.ts",
@@ -121,6 +123,14 @@
     "packages/shared/src/station-home-recovery-preflight.ts",
 
     "packages/shared/src/workspace-package.ts",
+
+    "packages/telemetry-broker/src/app.ts",
+
+    "packages/telemetry-broker/src/store.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
 
     "scripts/__tests__/startup-readiness-static.test.ts",
 
@@ -196,6 +206,8 @@
 
     "src-server/adapters/file/memory-adapter-conversations.ts",
 
+    "src-server/analytics/usage-export-reader.ts",
+
     "src-server/capabilities/station-intent-bindings.ts",
 
     "src-server/domain/__tests__/config-loader-storage.process.test.ts",
@@ -219,6 +231,12 @@
     "src-server/domain/shared-working-state-editing.ts",
 
     "src-server/domain/shared-working-state.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/domain/telemetry-credential-materialization.ts",
+
+    "src-server/knowledge-index/embedding-identity.ts",
 
     "src-server/knowledge-index/index-adapter-registry.ts",
 
@@ -393,6 +411,8 @@
     "src-server/runtime/routes/runtime-route-support.ts",
 
     "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
 
     "src-server/runtime/routes/workspace-pane-host-actions.ts",
 
@@ -584,6 +604,12 @@
 
     "src-server/services/operations/fleet-dispatch-action-operation-observer.ts",
 
+    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
     "src-server/services/orchestration/__tests__/native-invocation-runs.test.ts",
 
     "src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts",
@@ -662,6 +688,8 @@
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
 
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
     "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
 
     "src-server/services/orchestration/transcript-search-queries.ts",
@@ -712,6 +740,8 @@
 
     "src-server/services/plugins/registry-trust-policy.ts",
 
+    "src-server/services/plugins/tool-library-service.ts",
+
     "src-server/services/plugins/workspace-pane-host-actions.ts",
 
     "src-server/services/plugins/workspace-pane-host-admission.ts",
@@ -723,6 +753,8 @@
     "src-server/services/projects/project-membership-service.ts",
 
     "src-server/services/projects/project-membership-store.ts",
+
+    "src-server/services/projects/project-native-tools.ts",
 
     "src-server/services/projects/project-resource-resolver.ts",
 
@@ -776,6 +808,8 @@
 
     "src-server/services/secrets/secret-binding-administration.ts",
 
+    "src-server/services/secrets/telemetry-key-materialization-child.ts",
+
     "src-server/services/setup/existing-agent-setup-import.ts",
 
     "src-server/services/setup/guarded-setup-import-filesystem.ts",
@@ -795,6 +829,10 @@
     "src-server/services/turn-idempotency.ts",
 
     "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-server/telemetry.ts",
 
     "src-server/tools/station-browser-mcp-server.ts",
 
@@ -886,6 +924,8 @@
 
     "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts",
 
+    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
+
     "src-ui/src/platform/native/deliveryFeed.ts",
 
     "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
@@ -921,6 +961,8 @@
     "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx",
 
     "src-ui/src/views/developer/MemoryTab.tsx",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
 
     "src-ui/src/views/learning-review/LearningSourceAction.tsx",
 
@@ -966,35 +1008,9 @@
 
     "tests/helpers/journey-profile.ts",
 
-    "src-server/domain/telemetry-bootstrap-config.ts",
-
-    "src-server/domain/telemetry-credential-materialization.ts",
-
-    "src-server/services/secrets/telemetry-key-materialization-child.ts",
-
-    "src-server/telemetry.ts",
-
-    "src-server/telemetry-delivery-state.ts",
-
-    "packages/telemetry-broker/src/app.ts",
-
-    "packages/telemetry-broker/src/store.ts",
-
-    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
-
-    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
-
-    "packages/contracts/src/usage-export.ts",
-
-    "src-server/analytics/usage-export-reader.ts",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "src-server/services/orchestration/thread-inbox.ts",
 
-    "src-server/knowledge-index/embedding-identity.ts",
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
 
     "src-ui/src/lib/task-shaping.ts",
 
@@ -1026,15 +1042,9 @@
 
     "src-ui/src/contexts/active-chats-state.ts",
 
-    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+    "packages/monument/src/session-message-delivery.ts",
 
-    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
-
-    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
-
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
-
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "packages/monument/src/__tests__/session-message-delivery.test.ts"
   ],
 
   "checks": [

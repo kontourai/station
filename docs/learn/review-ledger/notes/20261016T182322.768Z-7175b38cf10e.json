@@ -1,0 +1,7 @@
+{
+  "revision": "35f8b5355dde195fe9cdd76112eb62e2a66b5fe6",
+
+  "notes": [
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the fixture-diagnosis link and historical public registration/renewal claims against the delivery diagnostic delta. Only the fixture CLI failure formatter, assertion context and canonical diagnostic explanation changed; broker provisioning, scope, cleanup and historical device/provider limitations are unchanged. Six fixture tests pass; old formatter fails the new CLI assertion and exact restoration returns six passes. No new relay runtime or physical-device claim.","inputs":["docs/design/connection-broker.md","tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

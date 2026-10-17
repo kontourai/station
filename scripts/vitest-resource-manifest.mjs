@@ -436,6 +436,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Drives verification CLI admission without launching compilers.
+  'scripts/__tests__/live-service-verification.process.test.ts',
   // Real loopback file-server CLI with owned child cleanup and artifact replacement.
   'scripts/__tests__/install-smoke-file-server.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app

@@ -1,21 +1,14 @@
 /**
- * #3160: the one seam that puts a message into another Session.
+ * Engine-neutral message delivery decisions and record-before-effect ordering.
  *
- * Station Control's `send_to_session` uses it, and the delegation result
- * delivery (#3158) will reuse it, so the rule for "idle: start a turn; busy:
- * steer it once or say busy" lives in one place.
+ * The host supplies already-authorized busy/start/steer ports. Invocation,
+ * authentication, message schema and durable storage remain the host's job.
+ * This sequence only pins a branch before calling an effect port and maps its
+ * outcome; it does not run an engine or provide a durable inbox.
  *
- * The seam decides and sequences; it performs nothing itself. The caller
- * supplies the ports (the live turn fold, a turn start, a receipted steer),
- * each already authorized for the acting principal. It never reads who may
- * send: the route that calls it has done that.
- *
- * Idempotence is the caller's job and is built into the inputs: `deliveryId`
- * is the `clientTurnId` of a start and the `clientInputId` of a steer, so the
- * layers below (the durable chat-turn claim, the steer receipt) deduplicate a
- * re-driven delivery. `decided` pins the branch a first attempt took, so a
- * re-drive never switches from a steer to a start because the turn ended in
- * between: that would deliver the same text twice.
+ * The host deduplicates `deliveryId` as the `clientTurnId` of a start and the
+ * `clientInputId` of a steer. `decided` pins a prior attempt, so a re-drive
+ * never switches from steer to start because the turn ended in between.
  */
 
 export type SessionSendMode = 'auto' | 'start' | 'steer';
@@ -65,7 +58,7 @@ export function decideSessionDelivery(
   return { kind: 'deliver', branch: busy ? 'steer' : 'start' };
 }
 
-/** A receipted steer's outcomes (`SteerTurnResult`), as the seam consumes them. */
+/** Outcomes the host's receipted steer port supplies. */
 export type SessionSteerResult =
   | { readonly outcome: 'steered'; readonly turnId: string }
   | { readonly outcome: 'indeterminate' }

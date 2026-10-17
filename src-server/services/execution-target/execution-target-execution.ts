@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
+  keyInFlightError,
+} from '@kontourai/monument';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
@@ -41,11 +46,6 @@ import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
-import {
-  type ConversationKeyInspection,
-  conversationKeyDecision,
-  keyInFlightError,
-} from '../orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {

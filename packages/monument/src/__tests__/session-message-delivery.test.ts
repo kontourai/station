@@ -2,9 +2,10 @@ import { describe, expect, test } from 'vitest';
 import {
   decideSessionDelivery,
   deliverSessionMessage,
+  parseSessionDeliveryDecision,
   type SessionMessageDeliveryPorts,
   type SessionSteerResult,
-} from '../session-message-delivery.js';
+} from '../index.js';
 
 /** Ports that record every effect the seam asks for. */
 function harness(options: {
@@ -47,6 +48,63 @@ const send = (
   });
 
 describe('session message delivery: which branch a send takes', () => {
+  test.each([
+    [undefined, undefined],
+    ['', undefined],
+    ['start', undefined],
+    [':session', undefined],
+    ['other:session', undefined],
+    ['start:session', { branch: 'start', threadId: 'session' }],
+    ['steer:task:child', { branch: 'steer', threadId: 'task:child' }],
+    ['start:', { branch: 'start', threadId: '' }],
+  ])(
+    'parses the persisted decision %j without changing its thread id',
+    (stored, expected) => {
+      expect(parseSessionDeliveryDecision(stored)).toEqual(expected);
+    },
+  );
+
+  test.each(['start', 'steer'] as const)(
+    'records %s before invoking its effect port',
+    async (branch) => {
+      const { calls, ports } = harness({ busy: branch === 'steer' });
+      await send(ports, 'auto', {
+        recordDecision: (decided) => calls.push(`record ${decided}`),
+      });
+      expect(calls).toEqual([`record ${branch}`, `${branch} sc-id`]);
+    },
+  );
+
+  test.each(['start', 'steer'] as const)(
+    'a failed decision write prevents the %s effect',
+    async (branch) => {
+      const { calls, ports } = harness({ busy: branch === 'steer' });
+      const failure = new Error('decision write refused');
+      await expect(
+        send(ports, 'auto', {
+          recordDecision: () => {
+            throw failure;
+          },
+        }),
+      ).rejects.toBe(failure);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  test.each(['start', 'steer'] as const)(
+    'propagates a rejected %s port without trying the other branch',
+    async (branch) => {
+      const { calls, ports } = harness({ busy: branch === 'steer' });
+      const failure = new Error('host port refused');
+      ports[branch] = async () => {
+        calls.push(branch);
+        throw failure;
+      };
+      await expect(send(ports, 'auto')).rejects.toBe(failure);
+      expect(calls).toEqual([branch]);
+    },
+  );
+
   test('the decision table, written out independently of the code', () => {
     expect([
       decideSessionDelivery('auto', false),

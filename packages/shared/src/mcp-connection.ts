@@ -34,6 +34,7 @@ export interface MCPToolInfo {
   originalName: string; // raw name from MCP server
   serverId: string;
   description?: string;
+  readOnly?: boolean;
   inputSchema?: any;
   _meta?: Record<string, unknown>;
   ui?: MCPToolUIMetadata;
@@ -499,6 +500,7 @@ export function prepareMCPConnection(
               originalName: t.name,
               serverId: def.id,
               description: t.description,
+              readOnly: t.annotations?.readOnlyHint,
               inputSchema: t.inputSchema,
               _meta: isRecord((t as { _meta?: unknown })._meta)
                 ? (t as { _meta: Record<string, unknown> })._meta

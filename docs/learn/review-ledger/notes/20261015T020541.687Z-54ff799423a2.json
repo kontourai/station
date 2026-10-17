@@ -1,0 +1,7 @@
+{
+  "revision": "da594305fdc738ffe666301495fbc1feae75d888",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round 1 for #3671: traced child spawn events through the UI history fold, turn/text and tool-call placement, child identity notice deduplication, and all children of a Muse workflow. Updated the inline-card amendment. Mounted tests cover both captured Codex formats, Claude, 65 settled children and multi-child Muse. This is fixture/source evidence, not live-provider or native qualification.","inputs":["docs/design/placement.md","src-ui/src/components/chat/transcript-child-work.ts","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/hooks/orchestration/childWorkHandlers.ts","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"]}
+  ]
+}
