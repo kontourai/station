@@ -291,8 +291,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     setStreamConnectionState('http://localhost:3242', 'caught-up');
   });
 
-  test('warms the collapsed tool renderer while conversation history is still loading', async () => {
-    transcriptStateMock.current.loading = true;
+  test('warms the collapsed tool renderer for a known conversation before any tool row mounts', async () => {
     renderDock(buildSession({ conversationId: 'conversation-alpha' }));
     // Wait on the dock's import, never by rendering a lazy boundary: a
     // render of the cold boundary would itself warm the chunk under test.
