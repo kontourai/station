@@ -56,7 +56,15 @@
 
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.css",
 
-    "examples/mcp-ui-demo/server.mjs"
+    "examples/mcp-ui-demo/server.mjs",
+
+    "src-ui/src/components/chat/TranscriptAppTools.tsx",
+
+    "packages/contracts/src/runtime-events.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/plugins/__tests__/mcp-service.test.ts"
   ],
 
   "checks": [
