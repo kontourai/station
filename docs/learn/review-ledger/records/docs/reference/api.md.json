@@ -440,7 +440,21 @@
 
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
-    "src-ui/src/views/layout-workspace-shape.ts"
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts"
   ],
 
   "checks": [

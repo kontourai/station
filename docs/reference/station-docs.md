@@ -174,6 +174,24 @@ be inferred from ordinary execution completion.
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
 
+**New Task** on a Project, its Tasks layout, or Activity starts a shaping
+chat in the normal composer, with a compact, removable **Shaping a Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
+Agent can ask questions or return a proposal with a title, goal, **Done when**
+checklist and suggested first step. Only **Create Task** on that card accepts
+it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session without assigning an Agent or execution Session. Shaping mode persists through clarifying questions until acceptance or mode removal. A reloaded accepted card offers **Open Task**. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
+
+Choose **Turn into Task** in a chat's More menu to shape that conversation immediately. Add any focus as your next chat message.
+**Add to Task** offers **New Task from this…** even when no Tasks exist;
+it shapes the selected answer or input in the same conversation. The chat and
+its existing answers remain available. An unavailable engine or malformed
+proposal remains a chat, without an accepted Task.
+
+This path currently uses Station's prompt/proposal format. It does not claim
+to invoke Builder Kit, pass its breakdown gate, or file a provider work item.
+Builder skills are discoverable from the installed Flow Agents package;
+selected-agent delivery and a published structured shaping-result contract
+are separate integration requirements.
+
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
 The task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.
