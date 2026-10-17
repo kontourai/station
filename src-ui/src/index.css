@@ -1303,6 +1303,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overflow-x: hidden;
   /* The transcript owns prepend and height anchoring; native anchoring would
      otherwise compete with that deterministic position restoration. */
