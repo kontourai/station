@@ -1040,7 +1040,11 @@
 
     "src-server/routes/orchestration/tasks.ts",
 
-    "src-ui/src/contexts/active-chats-state.ts"
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts"
   ],
 
   "checks": [

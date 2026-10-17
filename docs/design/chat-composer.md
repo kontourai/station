@@ -42,6 +42,15 @@ list does not take focus) and reopens when focus returns with the caret in an
 `@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
+requests composer focus once after selection, when the conversation
+and its textarea become writable. The request expires 60 seconds after selection,
+allowing a slow remote open without retaining focus intent indefinitely. Moving
+focus elsewhere, opening a dialog, or selecting another chat cancels it. A
+read-only, missing-session, failed-open, or replay selection cancels it and moves
+focus to the selected transcript when focus is still in the working-chat control
+or on the page body.
+
 ## Starting and resuming work
 
 The phone-width captures compare the baseline and redesigned controls in the

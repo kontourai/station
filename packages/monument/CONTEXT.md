@@ -26,7 +26,18 @@ takes no model dependency.
 | Inbox | one entry per inbox and key: its digest, opaque payload, FIFO sequence, state and recorded placement | A reused key with a different digest is a conflict; with the same digest it answers the stored entry, and a refused or cancelled one is queued again. The head (oldest unsettled entry) is claimed with its placement in the same transaction, before the host's effect, and only one entry per inbox is `placing`. A `placing` entry is never claimed afresh: after a crash the host re-drives it under the same key. An `unconfirmed` head blocks the inbox until it is cancelled, or until the host proves its effect and resolves it to `placed` or back to `queued`; a `refused` one does not. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
-Each operation is one command, executed as one atomic transaction by an
+The package also owns the message-delivery decision table, persisted decision
+parser and record-before-effect sequence (`deliverSessionMessage`), exported
+from its public root entry point. It records a new branch before invoking a
+host-supplied start or steer port, preserves a pinned branch on re-drive and
+maps the result without switching branches. It owns no engine invocation,
+message schema, authorization, key store or receipt store. Station's Session
+Control route and delegated-result service supply those ports and retain their
+existing durable request-key and consumption rows. This sequence is not a
+storage command and creates no new state or inbox. Recovery-ledger core and
+steer receipts remain open extraction work in #3565.
+
+Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
 reads. Host projections join that transaction as synchronous participants: a
 participant can refuse a command before it writes, or abort it after.
