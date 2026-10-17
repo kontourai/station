@@ -103,7 +103,6 @@ export class UsageTelemetryService {
       this.resolvedConfiguration().publishers[this.publisher].tier === 'full'
     );
   }
-  private enabledSource: UsageTelemetryEnabledSource;
   private readonly fetchImpl: typeof fetch;
   private readonly setIntervalImpl: typeof setInterval;
   private readonly clearIntervalImpl: typeof clearInterval;
@@ -172,7 +171,6 @@ export class UsageTelemetryService {
     const resolved = resolveProductTelemetryEnabled(options.appConfig, env);
     const destinations = resolveProductTelemetryEnvironment(env);
     this.appConfig = options.appConfig;
-    this.enabledSource = resolved.source;
     this.endpoint =
       options.appConfig.productTelemetryEndpoint?.trim() ||
       destinations.endpoint.value;
@@ -377,17 +375,23 @@ export class UsageTelemetryService {
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
+    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
+    await this.loadDisclosureReceipt();
+    const resolved = this.resolvedConfiguration();
     if (publisher === 'kontour' && this.publisher === 'operator') {
       if (!this.author)
         throw new Error('Author telemetry destination is unconfigured.');
-      return this.author.disclosure();
+      return {
+        ...(await this.author.disclosure()),
+        publishers: resolved.publishers,
+      };
     }
     return {
       ...(this.publisher === 'kontour'
         ? { publisher: 'kontour' as const, destination: this.endpoint }
         : {}),
-      acknowledged: await this.loadDisclosureReceipt(),
+      acknowledged: this.hasCurrentDisclosureReceipt,
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
       acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
@@ -401,13 +405,9 @@ export class UsageTelemetryService {
         )
         .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
-      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
-      // canonical/legacy product environment fallbacks and the default. A client that
-      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
-      // the environment has switched off, and offer to turn off something
-      // that is already off.
-      telemetryEnabled: this.enabled,
-      enabledSource: this.enabledSource,
+      telemetryEnabled: resolved.publishers[this.publisher].tier === 'full',
+      publishers: resolved.publishers,
+      enabledSource: resolved.publishers[this.publisher].source,
     };
   }
   get bufferedCount(): number {
@@ -567,14 +567,6 @@ export class UsageTelemetryService {
   }
   reconfigure(appConfig: AppConfig, recordSettingChange = false): void {
     const env = this.options.env ?? process.env;
-    // Both halves, together: `options.appConfig` is the snapshot this service
-    // was CONSTRUCTED with and is never updated, so a source derived from it
-    // later would report where the value came from at boot rather than now.
-    const resolved = resolveProductTelemetryEnabled(
-      appConfig,
-      env,
-      this.hasCurrentDisclosureReceipt,
-    );
     const destinations = resolveProductTelemetryEnvironment(env);
     const endpoint =
       this.publisher === 'kontour'
@@ -656,7 +648,6 @@ export class UsageTelemetryService {
       }).catch((error) =>
         this.warn('Settings telemetry observation failed.', error),
       );
-    this.enabledSource = resolved.source;
     if (!this.active) {
       // Disabling withdraws consent for data still in memory, so discard it rather than flushing it.
       if (this.timer) this.clearIntervalImpl(this.timer);

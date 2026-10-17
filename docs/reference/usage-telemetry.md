@@ -2,6 +2,23 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
+Settings → Telemetry offers separate Kontour and Operator Off/Lite/Full
+choices. Off is always available. Effective state and its reason are shown
+separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
+choice waits at Lite until the current disclosure is acknowledged. **Keep
+usage telemetry off** saves operator Off before acknowledging. Resetting
+Station settings preserves these choices. The current Settings control keeps
+Kontour Full unavailable until the UI lane connects its separate author disclosure;
+the server exposes that destination-bound disclosure API.
+
+A standard paired device may lower tiers; only the operator or a device with
+`access:manage` may raise them. Agents cannot change telemetry choices.
+`STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
+defaults, reported as `environment`, and cannot grant Full. Explicit stored
+choices take precedence over environment defaults; DO_NOT_TRACK always wins.
+After migration only `telemetryTier` is persisted. Legacy boolean writes are
+translated into tier changes under the same authorization rules.
+
 ## Disclosure and activation
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Lite is the default;

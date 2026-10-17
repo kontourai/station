@@ -88,9 +88,9 @@ accounting. No destination is configured by default.
 
 | field | type | default | description |
 |---|---|---|---|
-| `telemetryTier` | map of `kontour`/`operator` to `off`/`lite`/`full` | Lite per absent publisher | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; Lite sends independently per publisher after notice; Full requires a separate current receipt for each publisher. Updating one publisher preserves the other. |
-| `telemetryEnabled` | boolean | deprecated | Compatibility input: false migrates to both Off; true migrates to operator Full with a current receipt, otherwise Lite. Kontour stays Lite for legacy true. |
-| `productTelemetryEndpoint` | HTTP(S) URL | unset | Full product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
+| `telemetryTier` | map of `kontour`/`operator` to `off`/`lite`/`full` | Lite per absent publisher | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; Lite sends after notice; Full requires a separate current receipt for each publisher. Updating one publisher preserves the other. Standard paired devices may lower tiers; raises require the operator or `access:manage`. Reset preserves choices. |
+| `telemetryEnabled` | boolean | deprecated | A stored legacy false migrates to both Off; stored true migrates to operator Full with a current receipt, otherwise Lite, and Kontour Lite. A legacy write of false withdraws both publishers; true requests operator Full, still gated by disclosure. Writes follow the same authorization rules, and the legacy key is never persisted beside `telemetryTier`. |
+| `productTelemetryEndpoint` | HTTP(S) URL | unset | Operator product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
 | `productTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact product grant for the selected destination. Missing, revoked or ungranted references fail without environment fallback. |
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |

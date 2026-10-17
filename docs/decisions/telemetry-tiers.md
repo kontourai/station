@@ -11,7 +11,7 @@ evidence:
 
 This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
-disclosure inventories. Daily sending, a transparency ledger, consent UI,
+disclosure inventories and per-publisher Settings controls. Daily sending, a transparency ledger, publisher-specific consent UI,
 plugin publishers, receiver changes, dashboards, release injection and deployment
 remain separate lanes. This decision does not assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
@@ -147,3 +147,25 @@ enable real traffic as part of this program's implementation lanes. Each is an
 owner-gated action. Receiver/proxy retention review, public disclosure and store
 classification approval, endpoint enablement, and end-to-end release qualification
 remain separate from local source/tests and from this decision's acceptance.
+
+## Consent repair after foundation review
+
+Settings exposes each built-in publisher's saved choice, with Off always
+available. Effective resolution is shown separately, including DO_NOT_TRACK
+and Full awaiting acknowledgement. Declining Full writes operator Off before
+acknowledging the inventory; acknowledging alone must not turn a pending saved
+Full choice into consent after an Off decision.
+
+Environment and baked defaults are policy, never explicit consent. Even
+`STATION_TELEMETRY_TIER=full` and legacy environment `true` resolve to at most
+Lite, with reason `environment`. A saved choice wins over defaults; DNT still
+forces Off. Status includes each publisher's source and saved `userChoice`.
+The top-level source remains the operator compatibility projection.
+
+After migration `telemetryTier` is the sole persisted authority. Legacy boolean
+writes translate into tier changes and are not retained beside the map. An
+agent cannot change a choice. A standard paired device may lower a tier,
+including to Off; raising requires the operator or `access:manage`. The route
+compares with the state it replaces inside the serialized mutation. Reset
+preserves tier choices. Kontour Full is refused until a Kontour disclosure
+exists; operator acknowledgement cannot authorize another publisher.

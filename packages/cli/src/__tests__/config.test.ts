@@ -185,6 +185,9 @@ describe('telemetry commands', () => {
     await expect(
       runTelemetryCommand(['set', 'operator', 'true']),
     ).rejects.toThrow('Usage:');
+    await expect(
+      runTelemetryCommand(['set', 'kontour', 'full']),
+    ).rejects.toThrow('Kontour Full is unavailable');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -602,9 +602,16 @@ describe('persisted telemetry configuration during Agent activation', () => {
         );
         const persisted = await loader.loadAppConfig();
         for (const [key, value] of Object.entries(update)) {
-          expect(persisted[key as keyof AppConfig]).toBe(
-            value === null ? undefined : value,
-          );
+          if (key === 'telemetryEnabled') {
+            expect(persisted).not.toHaveProperty('telemetryEnabled');
+            expect(persisted.telemetryTier).toEqual({
+              kontour: 'off',
+              operator: 'off',
+            });
+          } else
+            expect(persisted[key as keyof AppConfig]).toBe(
+              value === null ? undefined : value,
+            );
         }
         expect(saveSettled).toBe(false);
         expect(runtime.appConfig).toBe(initial);
@@ -977,9 +984,16 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       expect(runtime.appConfig).toBe(initial);
       const persisted = await loader.loadAppConfig();
       for (const [key, value] of Object.entries(scenario.update)) {
-        expect(persisted[key as keyof AppConfig]).toBe(
-          value === null ? undefined : value,
-        );
+        if (key === 'telemetryEnabled') {
+          expect(persisted).not.toHaveProperty('telemetryEnabled');
+          expect(persisted.telemetryTier).toEqual({
+            kontour: 'off',
+            operator: 'off',
+          });
+        } else
+          expect(persisted[key as keyof AppConfig]).toBe(
+            value === null ? undefined : value,
+          );
       }
       releaseSnapshot?.();
       releaseDisclosure?.();

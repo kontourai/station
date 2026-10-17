@@ -403,6 +403,9 @@ async function loadAppConfigFileInternal(
             : 'lite'
           : 'off',
       };
+      shouldPersist = true;
+    }
+    if (data.telemetryEnabled !== undefined) {
       delete data.telemetryEnabled;
       shouldPersist = true;
     }
@@ -501,7 +504,6 @@ export function mergeAppConfigUpdate(
       merged[key] = { ...existing.telemetryTier, ...updates.telemetryTier };
     } else if (key === 'telemetryEnabled' && typeof value === 'boolean') {
       // Older consent clients remain able to withdraw. Enabling never manufactures a receipt.
-      merged[key] = value;
       merged.telemetryTier = {
         kontour: existing.telemetryTier?.kontour ?? (value ? 'lite' : 'off'),
         operator: value ? 'full' : 'off',
@@ -517,5 +519,6 @@ export function mergeAppConfigUpdate(
     merged.telemetryTier = { kontour: 'off', operator: 'off' };
   }
 
+  delete merged.telemetryEnabled;
   return merged as unknown as AppConfig;
 }

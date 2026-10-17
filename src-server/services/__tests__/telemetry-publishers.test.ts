@@ -1,13 +1,5 @@
-import {
-  access,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { access, readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -22,6 +14,7 @@ import {
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createLogger } from '../../utils/logger.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
@@ -34,7 +27,7 @@ vi.mock('../../domain/telemetry-build-constants.js', () => ({
     return build.endpoint;
   },
 }));
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 const services: UsageTelemetryService[] = [];
 const servers: Server[] = [];
 beforeEach(() => {
@@ -57,9 +50,6 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  await Promise.all(
-    homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
-  );
 });
 async function receiver(hold?: Promise<void>) {
   let received!: () => void;
@@ -118,9 +108,7 @@ async function service(
   >[0]['logger'],
   fetchOverride?: typeof globalThis.fetch,
 ) {
-  const home =
-    existingHome ?? (await mkdtemp(join(tmpdir(), 'station-publishers-')));
-  if (!existingHome) homes.push(home);
+  const home = existingHome ?? makeTempDir('station-publishers-');
   const logger = loggerOverride ?? { warn: vi.fn() };
   const configValue: AppConfig = {
     defaultModel: 'fixture',
@@ -415,6 +403,13 @@ test('author Full consent is separate, destination-bound, and does not inherit o
   expect((await acknowledge(operator.endpoint)).status).toBe(409);
   expect((await acknowledge(author.endpoint)).status).toBe(200);
   expect((await live.telemetryStatus()).publishers.kontour.tier).toBe('full');
+  const disclosed = await live.disclosure('kontour');
+  expect(disclosed.telemetryEnabled).toBe(true);
+  expect(disclosed.enabledSource).toBe('config');
+  expect(disclosed.publishers).toMatchObject({
+    kontour: { tier: 'full', source: 'config', userChoice: 'full' },
+    operator: { tier: 'full', source: 'config', userChoice: 'full' },
+  });
   await live.track('plugin_installed', { plugin: 'custom' });
   await live.flush();
   expect(author.headers).toEqual([undefined]);

@@ -76,7 +76,17 @@
 
     "src-server/utils/logger.ts",
 
-    "src-server/routes/system/build-provenance.ts"
+    "src-server/routes/system/build-provenance.ts",
+
+    "src-ui/src/views/settings/TelemetryTierSettings.tsx",
+
+    "src-ui/src/views/settings/StationConfigSection.tsx",
+
+    "src-ui/src/views/settings/station-reset.ts",
+
+    "src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
+
+    "src-server/routes/system/__tests__/config.routes.test.ts"
   ],
 
   "checks": [

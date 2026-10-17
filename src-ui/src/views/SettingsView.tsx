@@ -1103,6 +1103,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   <Section icon="◉" title="Telemetry" id="section-telemetry">
                     <StationConfigSection
                       section="telemetry"
+                      telemetryPublishers={telemetryDisclosure.data?.publishers}
                       embedded
                       config={config}
                       provenance={provenance}
