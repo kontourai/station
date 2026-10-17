@@ -1,0 +1,7 @@
+{
+  "revision": "439cd2b81407016820ed62a3c5fc38dcec1a7b75",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed product entrypoint and CLI/integration links against new exact-version delegation and receiver-only attempt lookup. Existing product, execution-evidence, SSH and installation statements are unchanged; detailed opt-in semantics belong in the linked CLI reference. No cloud backend, release or new authority is claimed.","inputs":["README.md","docs/reference/cli.md"]}
+  ]
+}

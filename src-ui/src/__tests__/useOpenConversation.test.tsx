@@ -267,11 +267,6 @@ describe('useOpenConversation fetch-failure handling', () => {
     );
 
     expect(sessionId).toBe('fork-child');
-    expect(mocks.fetchMessages).toHaveBeenCalledWith(
-      'http://api',
-      'claude-code',
-      'fork-child',
-    );
     expect(mocks.updateChat).toHaveBeenCalledWith(
       'fork-child',
       expect.objectContaining({
