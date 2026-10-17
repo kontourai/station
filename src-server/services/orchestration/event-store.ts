@@ -57,6 +57,7 @@ import {
 } from '@kontourai/station-contracts/session-work-item';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { mcpAppResultResourceUri } from '@kontourai/station-shared/mcp-app-result';
 import {
   exactProcessIdentity,
   probeExactProcessIdentity,
@@ -1608,7 +1609,7 @@ function snapshotEvent(
   let outputCut = false;
   let snapshotPayload = payload;
   // Chat Apps need the complete saved envelope, not an 84-character string.
-  // Keep only bounded successful MCP results; the existing window-wide budget
+  // Keep only bounded successful MCP App results; the existing window-wide budget
   // still paginates these events. Other results retain their diagnostic preview.
   const result = payload.output;
   if (
@@ -1616,11 +1617,8 @@ function snapshotEvent(
     payload.status === 'success' &&
     !payload.error &&
     typeof payload.toolName === 'string' &&
-    (parseMcpToolRef(payload.toolName) ||
-      /^mcp__.+?__.+$/.test(payload.toolName)) &&
-    result &&
-    typeof result === 'object' &&
-    Array.isArray((result as { content?: unknown }).content) &&
+    parseMcpToolRef(payload.toolName) &&
+    mcpAppResultResourceUri(result) &&
     Buffer.byteLength(JSON.stringify(payload)) <= maxBytes
   )
     return event;

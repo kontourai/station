@@ -328,9 +328,15 @@ credentials or direct MCP transport to the App.
 [TranscriptMCPApp](../../src-ui/src/components/chat/TranscriptMCPApp.tsx) beside a
 completed, non-error MCP result with a stable tool-call ID. The
 [reference reader](../../src-ui/src/components/chat/mcp-app-tool-ref.ts) accepts
-canonical `server/tool`, provider `mcp__server__tool`, or explicit
-`server`/`originalName` identity, without guessing from flattened underscores.
-It requires an untruncated result envelope with a `content` array. The renderer
+canonical `server/tool` or explicit `server`/`originalName` identity, without
+guessing from flattened underscores.
+It requires an untruncated, successful result envelope with a `content` array
+and an explicit `_meta.ui.resourceUri` using the `ui://` scheme. The shared
+[result metadata reader](../../packages/shared/src/mcp-app-result.ts) gates both
+UI candidacy and history-window retention. A content array alone is an ordinary
+tool result. Provider names of the form `mcp__server__tool` are accepted only
+with an explicit provider-reported `server` and `originalName`; Station never
+splits ambiguous underscores to infer another integration. The renderer
 validates that envelope against the MCP result schema before mounting.
 
 The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
@@ -338,18 +344,25 @@ This establishes a source path for complete results, not a real-provider runtime
 qualification. Claude currently summarizes tool-result content to text in
 `claude-adapter-events.ts`; that path does not qualify. ACP and managed-engine
 result preservation have not been qualified for this slice. A supported engine
-must preserve both the MCP identity and complete result envelope.
+must preserve the MCP identity, complete result envelope and recorded UI
+pointer. Definition-only metadata is not captured in this slice and remains an
+ordinary tool result; a later authenticated definition-capture path can add
+that support without catalog lookups or routing guesses for ordinary calls.
 
 Candidates remain outside collapsed desktop tool batches and mobile folded work.
 The existing persisted result is the mount input, so remounting requires no new
-persistence schema. The EventStore window retains complete successful MCP
-result envelopes when the whole event fits its existing 24 KiB ceiling;
+persistence schema. The EventStore window retains complete successful MCP App
+result envelopes with the explicit recorded UI pointer when the whole event
+fits its existing 24 KiB ceiling;
 other tool results retain the 84-character diagnostic preview. The window-wide
 byte budget still paginates normally. Larger or provider-truncated results
 remain ordinary tool rows. The frame sends recorded tool input/result notifications;
 it never invokes `/initial-result` or the embedded-result fallback. Missing UI
-metadata leaves the ordinary row. Missing integrations and revoked rendering
-remain visible degraded states. Fetches use the existing resolver/resource
+metadata leaves the ordinary row, including on native shells. Missing,
+disconnected or unknown integrations, missing tools/resources and resolver errors
+add no transcript card. A known recorded App can report rendering revocation;
+native shells report their scripted-frame restriction only for known Apps.
+Fetches use the existing resolver/resource
 routes, which re-resolve today's catalog declaration and enforce render grants.
 A result pointer differing from that declaration is refused. A pointer appearing
 only in the result does not create resource-read authority.

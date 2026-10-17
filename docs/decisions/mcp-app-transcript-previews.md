@@ -10,7 +10,10 @@ evidence:
 # MCP app transcript previews
 
 Completed MCP calls may mount the existing hardened web host alongside their
-transcript row. Rendering uses the current catalog-declared resource through
+transcript row when the recorded result explicitly carries `_meta.ui.resourceUri`.
+Ordinary MCP results keep their diagnostic preview and batch behavior. A
+server/tool-shaped name and content array alone are insufficient. Definition-only
+metadata awaits an authenticated capture path. Rendering uses the current catalog-declared resource through
 the existing authorized resolver and resource route. A recorded result is
 presentation data, never authority to execute the tool again or read a new URI.
 

@@ -6,7 +6,7 @@ import { EventStore } from '../event-store.js';
 
 const makeTempDir = trackTempDirs();
 
-test.each(['demo/chart', 'mcp__demo__chart'])(
+test.each(['demo/chart', 'my__srv/chart'])(
   'retains %s result metadata and structured output through store reopen and transcript projection',
   (toolName) => {
     const path = join(makeTempDir('mcp-app-window-'), 'events.sqlite');
@@ -122,3 +122,66 @@ test('keeps the existing output limit for oversized MCP results and ordinary str
     store.close();
   }
 });
+
+test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous'] as const)(
+  'keeps %s MCP results as previews instead of expanding the history window',
+  (kind) => {
+    const store = new EventStore(
+      join(makeTempDir('mcp-app-ordinary-window-'), 'events.sqlite'),
+    );
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'ordinary',
+      turnId: 'turn',
+      createdAt: '2026-10-17T12:00:00.000Z',
+    };
+    try {
+      store.appendEvent({
+        ...base,
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'Read data',
+      });
+      for (let index = 0; index < 20; index++) {
+        const output = {
+          content: [{ type: 'text', text: 'x'.repeat(15_000) }],
+          ...(kind === 'ordinary'
+            ? {}
+            : {
+                _meta: {
+                  ui: {
+                    resourceUri:
+                      kind !== 'invalid-uri'
+                        ? 'ui://demo/chart'
+                        : 'https://example.com/chart',
+                  },
+                },
+              }),
+          ...(kind === 'error' ? { isError: true } : {}),
+        };
+        store.appendEvent({
+          ...base,
+          eventId: `call-${index}`,
+          method: 'tool.completed',
+          itemId: `call-${index}`,
+          toolCallId: `call-${index}`,
+          toolName: kind === 'ambiguous' ? 'mcp__my__srv__chart' : 'demo/read',
+          status: 'success',
+          output,
+        });
+      }
+      const window = store.listEventWindowByTurn('ordinary', { turnLimit: 1 });
+      expect(window.events).toHaveLength(21);
+      expect(window.hasMore).toBe(false);
+      for (const event of window.events.filter(
+        (event) => event.id !== 'start',
+      )) {
+        expect(event.elided).toBe('output_limit');
+        expect(event.payload).toMatchObject({ output: expect.any(String) });
+      }
+      expect(Buffer.byteLength(JSON.stringify(window))).toBeLessThan(16_000);
+    } finally {
+      store.close();
+    }
+  },
+);

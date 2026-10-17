@@ -26,6 +26,7 @@ import type {
   MCPToolUIPermissions,
   MCPToolUIResolutionStatus,
 } from '@kontourai/station-shared/mcp';
+import { mcpAppResultResourceUri } from '@kontourai/station-shared/mcp-app-result';
 import type { MCPToolUICsp } from '@kontourai/station-shared/mcp-ui-csp';
 import { buildMcpUiCsp } from '@kontourai/station-shared/mcp-ui-csp';
 import type {
@@ -304,12 +305,16 @@ export function MCPToolUIFrame({
   const hostEnabled = config?.mcpUiHost !== false;
   const baseUrl = apiBase ?? apiContext.apiBase;
   const refParts = parseMcpToolRef(component.ref);
+  const recordedAppUri = mcpAppResultResourceUri(transcriptResult?.result);
 
   const resolution = useQuery<MCPToolUIResolution>({
     queryKey: ['mcp-tool-ui', component.ref, resolutionIdentity, baseUrl],
     queryFn: () =>
       fetchMCPToolUIResolution(baseUrl, refParts as MCPToolRefParts),
-    enabled: !!refParts && !nativeIframeBlocked,
+    enabled:
+      !!refParts &&
+      !nativeIframeBlocked &&
+      (!transcriptResult || !!recordedAppUri),
     retry: false,
   });
 
@@ -338,6 +343,16 @@ export function MCPToolUIFrame({
     resolution.data?.status,
     shouldTryEmbeddedPresentation,
   ]);
+
+  if (transcriptResult && !recordedAppUri) return null;
+  if (
+    transcriptResult &&
+    !nativeIframeBlocked &&
+    (resolution.isError ||
+      (resolution.data?.status !== 'success' &&
+        resolution.data?.status !== 'render_revoked'))
+  )
+    return null;
 
   if (nativeIframeBlocked) {
     return (
@@ -384,9 +399,6 @@ export function MCPToolUIFrame({
   }
 
   const data = resolution.data;
-  // Ordinary MCP calls stay ordinary rows. A result cannot grant a new URI;
-  // resource loading remains pinned to the live server catalog on the server.
-  if (transcriptResult && data?.status === 'missing_resource') return null;
 
   // mcp-ui.dev embedded-dialect fallback. A SEP-1865 resolve needs a declared
   // `_meta.ui.resourceUri`; servers shipping the older mcp-ui.dev convention
@@ -432,16 +444,7 @@ export function MCPToolUIFrame({
     );
   }
 
-  const recordedUi = transcriptResult?.result._meta?.ui;
-  const recordedUri =
-    recordedUi && typeof recordedUi === 'object' && 'resourceUri' in recordedUi
-      ? recordedUi.resourceUri
-      : undefined;
-  if (
-    transcriptResult &&
-    typeof recordedUri === 'string' &&
-    recordedUri !== data.resourceUri
-  ) {
+  if (transcriptResult && recordedAppUri !== data.resourceUri) {
     return (
       <MCPToolUIStatus
         status="unsupported"

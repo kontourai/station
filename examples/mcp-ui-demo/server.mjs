@@ -76,6 +76,7 @@ registerAppTool(
       { type: 'text', text: `status_panel rendered (${label ?? 'ok'})` },
     ],
     structuredContent: { label: label ?? 'ok' },
+    _meta: { ui: { resourceUri: RESOURCE_URI } },
   }),
 );
 
