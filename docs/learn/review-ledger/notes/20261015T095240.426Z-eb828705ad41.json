@@ -1,0 +1,7 @@
+{
+  "revision": "2ba9dfffd31731fc8f6ed80c8b0eddbbace22bf4",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Round 9: re-read guide public API/SDK routing and evidence limits. SDK reference now accurately distinguishes optional request options from default UI opens; public integration routes and prospective hosted requirements remain accurate. This controller simplification makes no deployment or provider claim; no guide prose change required.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}
