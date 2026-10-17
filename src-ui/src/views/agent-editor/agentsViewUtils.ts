@@ -160,6 +160,7 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       mcpLoading: agent.toolsConfig?.mcpLoading,
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
+      askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
       // #2613: carried through, not yet editable here (#2658). Modelled so a
       // save writes back exactly what was loaded; absent stays absent.
       unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
@@ -216,6 +217,7 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       mcpLoading: agent.toolsConfig?.mcpLoading,
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
+      askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
       // #2613: a copy starts without the source's unattended opt-in. It is a
       // standing grant to run with nobody present, and the editor cannot
       // show it yet (#2658), so a copy must not inherit it unseen.
@@ -333,6 +335,7 @@ function buildToolsPayload(
   if (form.toolsAvailableEdited) next.available = [...form.tools.available];
   else put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
+  put('askBeforeUse', form.tools.askBeforeUse ?? []);
   put('unattendedAutoApprove', form.tools.unattendedAutoApprove);
   // #90 D14: the browser tools are on unless switched off, so only an
   // explicit `false` (or a value the agent already had) is written.

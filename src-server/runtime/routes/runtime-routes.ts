@@ -23,6 +23,7 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   classifyOperatorCredentialPosition,
@@ -125,6 +126,7 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
   type BoundedBodyResult,
@@ -3039,6 +3041,19 @@ export function configureRuntimeRoutes(
       {
         // #2067: the registry's plugin catalog faces are operator-only; this
         // is the resolution they refuse with.
+        authorizeOperator: async (c) => {
+          roomRequestPrincipals.set(
+            c.req.raw,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = projectMembershipAuthority(c.req.raw);
+          await authority.operator();
+          if (
+            (await authority.current()).principal.id !==
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          )
+            throw new ProjectMembershipRefusal('forbidden');
+        },
         visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
         // #2067: the layout catalog faces are PROJECTED rather than refused.
         canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
@@ -3777,6 +3792,19 @@ export function configureRuntimeRoutes(
     // full `initialize()` — re-running init re-binds the HTTP + voice-WS ports
     // (EADDRINUSE → uncaughtException → the server shuts itself down).
     createToolRoutes(context.mcpService, context.reloadAgents, {
+      authorizeOperator: async (c) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        const authority = projectMembershipAuthority(c.req.raw);
+        await authority.operator();
+        if (
+          (await authority.current()).principal.id !==
+          LOCAL_OPERATOR_PRINCIPAL_ID
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
@@ -5126,6 +5154,19 @@ export function configureRuntimeRoutes(
         throw new ProjectMembershipRefusal('forbidden');
     },
   });
+  context.app.use('/api/tool-library/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/tool-library',
+    createToolLibraryRoutes(
+      runtimeToolLibraryDependencies(context, projectMembershipAuthority),
+    ),
+  );
   context.app.use('/api/projects/:slug/access', async (c, next) => {
     roomRequestPrincipals.set(
       c.req.raw,

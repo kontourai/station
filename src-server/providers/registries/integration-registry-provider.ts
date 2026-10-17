@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
+import type { ToolOrigin } from '@kontourai/station-contracts/tool';
 import { builtinIntegrationRuntimeSpawnCommand } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
+import { toolOriginLocation } from '../../services/plugins/integration-origin.js';
 import { createLogger } from '../../utils/logger.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
@@ -105,11 +107,38 @@ export function mergeRegistryItems(
 export function createIntegrationRegistryProvider(
   providers: IIntegrationRegistryProvider[],
   homeDir = resolveHomeDir(),
+  providerSources: ReadonlyMap<
+    IIntegrationRegistryProvider,
+    string
+  > = new Map(),
 ): IIntegrationRegistryProvider {
+  const originFor = (
+    provider: IIntegrationRegistryProvider,
+    item: RegistryItem,
+  ): ToolOrigin => ({
+    kind: 'registry',
+    registryId: toolOriginLocation(
+      provider.registryKey || providerSources.get(provider),
+    ),
+    registryName:
+      toolOriginLocation(
+        provider.displayName ||
+          provider.registryKey ||
+          providerSources.get(provider),
+      ) || 'Registry provider',
+    itemId: item.id,
+    version: item.version,
+    location: toolOriginLocation(item.source),
+  });
   return {
     async listAvailable() {
       const results = await Promise.all(
-        providers.map((provider) => provider.listAvailable()),
+        providers.map(async (provider) =>
+          (await provider.listAvailable()).map((item) => ({
+            ...item,
+            toolOrigin: originFor(provider, item),
+          })),
+        ),
       );
       return mergeRegistryItems(
         await readDiskIntegrations(homeDir),
@@ -131,6 +160,33 @@ export function createIntegrationRegistryProvider(
         if (result.success) return result;
       }
       return { success: false, message: `No provider could install ${id}` };
+    },
+    async installWithDefinition(id, expectedRegistryId) {
+      for (const provider of providers) {
+        const item = (await provider.listAvailable()).find(
+          (entry) => entry.id === id,
+        );
+        if (
+          !item ||
+          (expectedRegistryId !== undefined &&
+            originFor(provider, item).registryId !== expectedRegistryId)
+        )
+          continue;
+        const result = await provider.install(id);
+        if (!result.success) return { result };
+        const definition = await provider.getToolDef(id);
+        if (!definition)
+          return {
+            result: {
+              success: false,
+              message: 'The registry did not return an integration definition.',
+            },
+          };
+        return { result, definition, origin: originFor(provider, item) };
+      }
+      return {
+        result: { success: false, message: `No provider could install ${id}` },
+      };
     },
     async uninstall(id) {
       for (const provider of providers) {

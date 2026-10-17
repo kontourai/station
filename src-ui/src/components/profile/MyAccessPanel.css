@@ -1,0 +1,49 @@
+.tool-access-panel {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.tool-access-panel h2,
+.tool-access-panel p {
+  margin: 0;
+}
+.tool-access-panel h2 {
+  font-size: var(--k-text-lg);
+}
+.tool-access-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.tool-access-panel li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2) var(--k-space-4);
+  padding-block: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+}
+.tool-access-panel__project {
+  flex: 1 1 14rem;
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tool-access-panel__identity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+.tool-access-panel small,
+.tool-access-panel__role {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-access-panel .button {
+  min-height: 44px;
+}

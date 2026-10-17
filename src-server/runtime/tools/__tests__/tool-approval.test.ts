@@ -407,7 +407,13 @@ describe('station-browser approval (#90 N2)', () => {
   const status = 'mcp__station-browser__browser_status';
 
   test('a wildcard or station-* pattern never covers a tool that reads or drives a page', () => {
-    for (const pattern of ['*', 'station-*', 'mcp__*', 'station-browser*']) {
+    for (const pattern of [
+      '*',
+      'station-*',
+      'mcp__*',
+      'station-browser*',
+      'mcp/*',
+    ]) {
       for (const tool of [click, snapshot])
         expect(
           isAutoApprovedExternalTool(tool, [pattern], [], 'authentic'),

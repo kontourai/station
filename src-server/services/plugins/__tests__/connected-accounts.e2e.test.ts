@@ -101,6 +101,7 @@ const DEVICES = {
       approvedBy: 'operator',
     },
   },
+  'operator-credential': { id: 'device-operator', name: 'Operator' },
   'kiosk-credential': { id: 'device-kiosk', name: 'Kiosk' },
   // A device the operator allowed to run commands (coding:exec).
   'exec-credential': { id: 'device-exec', name: 'Exec' },
@@ -141,7 +142,8 @@ function runtimeContext(
     {
       authorizeCredential: (credential: string) => credential in DEVICES,
       verifyCredential: (credential: string) => credential in DEVICES,
-      verifyOperatorCredential: () => false,
+      verifyOperatorCredential: (credential: string) =>
+        credential === 'operator-credential',
       resolveGrantedScope: (credential: string) =>
         credential === 'exec-credential'
           ? `${GRANTED_SCOPE} coding:exec`
@@ -427,7 +429,13 @@ test('two principals each reach the MCP server with their own token and cannot u
     const app = new Hono();
     configureRuntimeRoutes(runtimeContext(app, loader, service, home));
 
-    const created = await post(app, '/integrations', 'alice-credential', {
+    const denied = await post(app, '/integrations', 'alice-credential', {
+      id: SERVER,
+      kind: 'mcp',
+    });
+    expect(denied.status).toBe(403);
+
+    const created = await post(app, '/integrations', 'operator-credential', {
       id: SERVER,
       kind: 'mcp',
       transport: 'streamable-http',

@@ -54,6 +54,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
@@ -185,6 +186,7 @@ export function createRuntimeInitializationDeps(
     timers: context.timers,
     configLoader: context.configLoader,
     storageAdapter: context.storageAdapter,
+    validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
