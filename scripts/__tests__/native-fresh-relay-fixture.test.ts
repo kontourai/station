@@ -167,10 +167,13 @@ test('explicit cleanup recovery observes expired owner withdrawal and permits on
       1,
     );
     const successorDirectory = join(f.root, 'second');
-    expect(
-      fixtureCli('prepare-successor', priorPath, successorDirectory, '1')
-        .status,
-    ).toBe(0);
+    const prepared = fixtureCli(
+      'prepare-successor',
+      priorPath,
+      successorDirectory,
+      '1',
+    );
+    expect(prepared.status, prepared.stderr || prepared.stdout).toBe(0);
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),
     );
@@ -266,10 +269,13 @@ test('operator successor retains the genuine Station home and trust, provisions 
         maxBuffer: 65536,
       },
     );
-    expect({
-      status: prepared.status,
-      errorType: prepared.error?.name,
-    }).toEqual({ status: 0, errorType: undefined });
+    expect(
+      {
+        status: prepared.status,
+        errorType: prepared.error?.name,
+      },
+      prepared.stderr || prepared.stdout,
+    ).toEqual({ status: 0, errorType: undefined });
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),
     );

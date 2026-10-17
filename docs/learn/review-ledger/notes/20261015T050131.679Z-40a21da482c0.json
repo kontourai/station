@@ -1,0 +1,7 @@
+{
+  "revision": "23b8d757bc5a25c6b14e12d35dad1d091ba19240",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"PR #3676 fix round 1: re-read the conversation freshness paragraph against real history reader, open revalidator, shared row renderer and authority-scoped observation owner. Successful older-history retries now publish success and clear error, matching the successful-read claim. Per-conversation subscriptions and batched list publishing keep other conversations scoped; final-unsubscribe eviction leaves still-mounted row failures intact. Work/session and evidence definitions remain unchanged. Merged-base focused 241/241 and browser journey at 1440px/390px passed. Three committed-tree fault injections each failed the intended new regression; source restored. Native and hosted qualification not claimed.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","src-ui/src/contexts/work-observation.ts","src-ui/src/hooks/orchestration/useSessionEventWindow.ts","src-ui/src/views/home/useObservedWorkStatus.ts"]}
+  ]
+}
