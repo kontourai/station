@@ -1,0 +1,7 @@
+{
+  "revision": "0f34fc04e434cfb1757ebad4b889f05d726a8c0d",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-reviewed terminal claims against the session-scoping fix in terminal-ws-server.ts and TerminalPanel.tsx: the dedicated terminal WebSocket listener boundary is unchanged. The fix only scopes event delivery and data/resize/cwd/close to sessions the socket opened; no prose claims cross-session delivery, so no correction needed.","inputs":["docs/architecture.md","src-ui/src/components/coding-layout/TerminalPanel.tsx"]}
+  ]
+}
