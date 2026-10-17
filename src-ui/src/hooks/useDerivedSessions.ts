@@ -250,6 +250,7 @@ function deriveSession(
     skillExperienceDraftInvalid: chatState.skillExperienceDraftInvalid,
     skillExperienceActive: chatState.skillExperienceActive,
     skillExperienceMode: chatState.skillExperienceMode,
+    taskShaping: chatState.taskShaping,
     conversationOpenState: chatState.conversationOpenState,
     conversationOpenPending: chatState.conversationOpenPending,
     conversationOpenFailed: chatState.conversationOpenFailed,

@@ -21,6 +21,7 @@ import {
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
+import { requestTaskShaping } from '../../lib/task-shaping';
 import {
   clientOriginDetail,
   clientOriginSummary,
@@ -336,6 +337,24 @@ export function MutableSessionDetail({
   const delegationProjectSlug =
     session.delegation?.projectSlug ?? session.projectSlug;
   const menuActions = [
+    ...(chatOpenTarget
+      ? [
+          {
+            key: 'turn-into-task',
+            label: 'Turn into Task',
+            onSelect: () =>
+              requestTaskShaping({
+                projectSlug: session.projectSlug,
+                source: {
+                  sessionId: session.threadId,
+                  conversationId: session.conversationId,
+                  agentSlug: session.assignedAgentSlug,
+                  agentName: agentLabel,
+                },
+              }),
+          },
+        ]
+      : []),
     { key: 'copy-id', label: 'Copy session ID', onSelect: copySessionId },
     ...(isDelegated && !isPeerRecord
       ? [

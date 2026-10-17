@@ -317,6 +317,7 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -757,6 +758,7 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -1116,6 +1118,7 @@ export function hydrateActiveChats(
       defaultModelSource: text(
         session.defaultModelSource,
       ) as EffectiveModelSource,
+      taskShaping: session.taskShaping === true || undefined,
       projectSlug: text(session.projectSlug),
       projectName: text(session.projectName),
       executionMode: text(session.executionMode) as ExecutionMode,
@@ -1312,6 +1315,7 @@ export function serializeActiveChats(
         : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
+      taskShaping: chat.taskShaping,
       projectSlug: chat.projectSlug,
       projectName: chat.projectName,
       executionMode: chat.executionMode,
@@ -1511,6 +1515,7 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
+    'taskShaping' in nextUpdates ||
     'queuedApprovalMode' in nextUpdates ||
     'approvalPosture' in nextUpdates ||
     'defaultModel' in nextUpdates ||

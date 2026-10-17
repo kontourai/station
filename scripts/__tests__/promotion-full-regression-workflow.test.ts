@@ -105,6 +105,15 @@ describe('promotion full-regression workflow', () => {
         continue;
       }
       const run = namedStep(job, 'Run full-regression phases');
+      if (id === 'static' || id === 'process-heavy') {
+        const install = namedStep(job, 'Install pinned actionlint');
+        expect(install.env?.ACTIONLINT_SHA256).toMatch(/^[0-9a-f]{64}$/u);
+        expect(install.run).toContain('sha256sum --check --status');
+        expect(install.run).toContain('>> "$GITHUB_PATH"');
+        expect(job.steps?.indexOf(install)).toBeLessThan(
+          job.steps?.indexOf(run) ?? -1,
+        );
+      }
       expect(run.run?.trim()).toBe(
         'set -o pipefail\nread -r -a phases <<< "$PHASES"\nnode scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \\\n  | tee "$RUNNER_TEMP/full-regression.log"',
       );
