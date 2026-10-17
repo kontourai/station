@@ -454,87 +454,106 @@ describe('MCPToolUIFrame', () => {
     ).toBe(true);
   });
 
-  test('transcript initialization grants no forwarding capabilities and refuses tools under a non-read-only pane policy', async () => {
-    fetchMock.mockImplementation((url: string) =>
-      Promise.resolve(
-        response(
-          url.endsWith('/resource')
-            ? { uri: 'ui://demo/chart', text: '<main>Chart</main>' }
-            : {
-                status: 'success',
-                ref: 'demo/chart',
-                resourceUri: 'ui://demo/chart',
-              },
+  test.each([
+    { ref: 'demo/chart', resourceUri: 'ui://demo/chart', initialArguments: {} },
+    {
+      ref: 'station-control/get_session_inventory',
+      resourceUri: 'ui://station/basis/session-inventory/v2',
+      initialArguments: {
+        version: 'station.session-inventory-mcp/v2',
+        operation: 'open',
+        scope: { kind: 'whole-session', sessionId: 'session' },
+      },
+    },
+  ])(
+    'transcript $ref grants no forwarding capabilities and refuses tools under a non-read-only pane policy',
+    async ({ ref, resourceUri, initialArguments }) => {
+      mockRequestAuthority = { isCurrent: () => true };
+      fetchMock.mockImplementation((url: string) =>
+        Promise.resolve(
+          response(
+            url.endsWith('/resource')
+              ? { uri: resourceUri, text: '<main>Chart</main>' }
+              : {
+                  status: 'success',
+                  ref,
+                  resourceUri,
+                },
+          ),
         ),
-      ),
-    );
-    renderFrame({
-      ref: 'demo/chart',
-      approvalPolicy: 'require',
-      transcriptResult: {
-        result: {
-          content: [],
-          _meta: { ui: { resourceUri: 'ui://demo/chart' } },
-        },
-      },
-    });
-    const iframe = await screen.findByTitle<HTMLIFrameElement>(
-      'MCP tool UI: demo/chart',
-    );
-    const target = iframe.contentWindow!;
-    const sent = vi.spyOn(target, 'postMessage');
-    const send = (data: unknown) =>
-      window.dispatchEvent(
-        new MessageEvent('message', { data, source: target }),
       );
-    send({
-      jsonrpc: '2.0',
-      id: 101,
-      method: 'ui/initialize',
-      params: {
-        appInfo: { name: 'Chart', version: '1' },
-        appCapabilities: {},
-        protocolVersion: '2026-01-26',
-      },
-    });
-    await waitFor(() =>
-      expect(sent).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 101, result: expect.any(Object) }),
-        '*',
-      ),
-    );
-    const initialized = sent.mock.calls.find(
-      ([value]) => value.id === 101,
-    )?.[0];
-    expect(initialized.result.hostCapabilities).not.toHaveProperty(
-      'serverTools',
-    );
-    expect(initialized.result.hostCapabilities).not.toHaveProperty(
-      'serverResources',
-    );
-    expect(initialized.result.hostCapabilities).not.toHaveProperty('openLinks');
-    send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
-    send({
-      jsonrpc: '2.0',
-      id: 102,
-      method: 'tools/call',
-      params: { name: 'mutate', arguments: {} },
-    });
-    await waitFor(() =>
-      expect(sent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 102,
-          error: expect.objectContaining({
-            message: 'App interactions are unavailable in transcript previews.',
+      renderFrame({
+        ref,
+        approvalPolicy: 'require',
+        initialArguments,
+        transcriptResult: {
+          result: {
+            content: [],
+            _meta: { ui: { resourceUri } },
+          },
+        },
+      });
+      const iframe = await screen.findByTitle<HTMLIFrameElement>(
+        `MCP tool UI: ${ref}`,
+      );
+      const target = iframe.contentWindow!;
+      const sent = vi.spyOn(target, 'postMessage');
+      const send = (data: unknown) =>
+        window.dispatchEvent(
+          new MessageEvent('message', { data, source: target }),
+        );
+      send({
+        jsonrpc: '2.0',
+        id: 101,
+        method: 'ui/initialize',
+        params: {
+          appInfo: { name: 'Chart', version: '1' },
+          appCapabilities: {},
+          protocolVersion: '2026-01-26',
+        },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 101, result: expect.any(Object) }),
+          '*',
+        ),
+      );
+      const initialized = sent.mock.calls.find(
+        ([value]) => value.id === 101,
+      )?.[0];
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'serverTools',
+      );
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'serverResources',
+      );
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'openLinks',
+      );
+      send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+      send({
+        jsonrpc: '2.0',
+        id: 102,
+        method: 'tools/call',
+        params: { name: 'mutate', arguments: {} },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 102,
+            error: expect.objectContaining({
+              message:
+                'App interactions are unavailable in transcript previews.',
+            }),
           }),
-        }),
-        '*',
-      ),
-    );
-    expect(
-      fetchMock.mock.calls.some(([url]) => String(url).endsWith('/ui/call')),
-    ).toBe(false);
-  });
+          '*',
+        ),
+      );
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).endsWith('/ui/call')),
+      ).toBe(false);
+    },
+  );
 
   test('reports fixed host dimensions and safe-area boundaries without granting layout authority', () => {
     document.documentElement.style.setProperty('--safe-top', '12px');
