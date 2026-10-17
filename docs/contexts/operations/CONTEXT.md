@@ -52,8 +52,10 @@ _Avoid_: shell if Station tracks lifecycle
 OpenTelemetry counters, histograms, traces and attributes describing observed operations. Defining an instrument does not prove a caller records it or an exporter delivered it.
 _Avoid_: logging when the signal is intended for metrics
 
-Disclosed product observations are a separate optional path with their own
-inventory, destination, source credential and commit receipt. They do not
+Disclosed Full product observations are a separate optional path with their own
+inventory, destination, source credential and commit receipt. Identifier-free
+Lite daily aggregates use independent per-publisher sinks and a shown notice;
+the bounded local ledger is diagnostic accounting, not a receiver commit receipt. They do not
 become a person's usage accounting; that uses canonical usage receipts.
 Current-process delivery health and content-free connection checks describe
 their declared boundary, not complete downstream collection. See

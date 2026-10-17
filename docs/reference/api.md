@@ -1182,7 +1182,13 @@ Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
 preserved. This mutation requires the operator or `access:manage`; agents are
 refused. Full without a current publisher disclosure remains effectively Lite.
-Only the existing operator Full stream has a sender in this foundation. The
+The two Lite sinks send independently after notice; the default Full receipt
+covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
+returns the bounded local payload ledger with `orchestration:read` authority.
+`POST /api/usage-telemetry/feedback` accepts exactly publisher, action and a fixed
+enum reason, and `POST /api/usage-telemetry/lite-notices` records publisher and the
+shown inventoryRevision. Both writes require `access:manage`. See the exact
+feedback enum and notice behavior in the usage reference. The
 [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks

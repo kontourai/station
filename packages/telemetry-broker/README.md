@@ -87,8 +87,9 @@ Set Station's `STATION_PRODUCT_TELEMETRY_ENDPOINT` to the full
 The legacy aliases `STATION_TELEMETRY_ENDPOINT` and
 `STATION_USAGE_TELEMETRY_KEY` remain supported until a separate release decision;
 valid nonempty canonical values win. Neither resolves an OTLP key.
-Station still requires telemetry enablement and acknowledgement of the current
-inventory. These settings do not configure OTel or authorize personal receipt
+The Full stream requires the publisher Full choice and acknowledgement of the current
+inventory. This receiver profile accepts the Full envelope; the Lite/feedback
+receiver lane must be integrated before using it for those new payloads. These settings do not configure OTel or authorize personal receipt
 sync.
 
 An explicit Settings connection check sends

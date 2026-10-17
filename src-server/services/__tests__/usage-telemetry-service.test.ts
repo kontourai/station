@@ -47,7 +47,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     default: actual,
     rename: async (...args: Parameters<typeof actual.rename>) => {
       await actual.rename(...args);
-      await renameHook.afterRename?.();
+      if (String(args[1]).endsWith('/usage-telemetry-id'))
+        await renameHook.afterRename?.();
     },
     readFile: (async (...args: Parameters<typeof actual.readFile>) => {
       await readHook.beforeRead?.(String(args[0]));
@@ -1594,7 +1595,7 @@ describe('UsageTelemetryService', () => {
       outcome: 'armed',
     });
     subject.trackEngineTurn({ engine: 'codex', outcome: 'completed' });
-    await Promise.resolve();
+    await subject.shutdown();
     expect(
       fetch,
       'new telemetry call site sent without an endpoint',

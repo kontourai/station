@@ -20,6 +20,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
@@ -617,13 +618,13 @@ describe('persisted telemetry configuration during Agent activation', () => {
         const during = await live.deliveryStatus();
         if (productChanged) {
           expect(pendingSignal?.aborted).toBe(true);
-          expect(during.queued).toBe(0);
+          expect(during.queued).toBe('telemetryEnabled' in update ? 0 : 1);
           expect(during.counts.withdrawn).toBe(1);
           if ('telemetryEnabled' in update)
             expect(during.phase).toBe('disabled');
         } else {
           expect(pendingSignal?.aborted).toBe(false);
-          expect(during.queued).toBe(1);
+          expect(during.queued).toBe(collectorChanged ? 2 : 1);
           expect(during.lastAcknowledged).toEqual(before.lastAcknowledged);
         }
         expect(getOtelTelemetryDeliveryStatus().phase).toBe(
@@ -876,6 +877,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     runtime.secretBindingAdministration = bindings;
     runtime.buildProvenanceSnapshot = null;
     runtime.orchestrationService = { setUsageTelemetry: vi.fn() };
+    runtime.eventBus = new EventBus();
     let releaseActivation!: () => void;
     const activation = new Promise<void>((resolve) => {
       releaseActivation = resolve;

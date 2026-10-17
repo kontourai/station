@@ -12,21 +12,30 @@ and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty o
 Distribution/operator policies can lower the default, never raise it to Full;
 explicit user choice wins except for DNT and the Full disclosure requirement.
 
-**Foundation status:** there is no Lite sender, author sender, outbox ledger,
-plugin publisher registration, or new feature-event producer in this change.
-The existing service sends only the acknowledged operator Full stream. It starts
-no timer, buffers no observations and sends no ingestion request without that
-admission and an endpoint. Source builds have an empty author endpoint. The
-[program decision](../decisions/telemetry-tiers.md) separates these contracts
-from later sending, UI, receiver, release and owner-gated deployment work.
+The server sends independently to the `kontour` build-time author address and
+`operator` configured address, each under its own resolved tier. Neither address
+replaces the other. An empty author build constant is inert, including when a
+runtime environment variable of the same name is supplied. Source builds have
+no author address. No real receiver or release endpoint is enabled by this change.
+The existing Full acknowledgement covers operator only. Author Full requires a
+separate receipt bound to Kontour, the current inventory and the displayed
+build destination; the UI lane presents that disclosure.
+
+A headless server prints a one-time Lite notice per publisher and inventory
+revision through the Station logger and records it before sending. Desktop
+sidecars (`STATION_STDOUT_HANDSHAKE=1`) and managed web starts (`STATION_UI_PORT`)
+defer to the UI. Until that UI records the shown notice revision with
+`POST /api/usage-telemetry/lite-notices`, daily payloads are suppressed with reason
+`notice`. A changed inventory requires showing the notice again. The body is
+`{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
 with a current receipt migrates to operator Full; without it, operator Lite.
 Kontour remains Lite when migrating true because an operator disclosure cannot
 authorize a different publisher. New inventory fields invalidate old receipts.
 The legacy boolean remains an input for older clients, including withdrawal;
-`telemetryTier` is the canonical setting. Lite will require clear notice and an
-always-visible Off switch; headless builds must record a shown notice revision
+`telemetryTier` is the canonical setting. Lite requires clear notice and an
+always-visible Off switch; headless builds record a shown notice revision
 before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
@@ -36,14 +45,20 @@ Use `station telemetry status` to read effective tiers and reasons (`DNT`,
 to save a single publisher choice. Requesting Full without its receipt remains
 Lite. These commands support the normal target/credential flags. The status API also
 returns the exact Lite field catalog alongside its revision so a notice consumer
-can display the server inventory rather than an older bundled copy. The outbox
-command is reserved for the later transparency lane.
+can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
+`station telemetry outbox --publisher operator` to inspect the bounded ledger.
 
-The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
+The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. For author Full, read `GET /api/usage-telemetry/disclosure?publisher=kontour` and
+include `publisher:kontour` and its exact `destination` in the acknowledgement POST.
+An absent author build address or changed displayed destination returns 409.
+The author receipt is `STATION_HOME/config/usage-telemetry-disclosure-kontour.json`;
+an operator receipt cannot authorize it. The default selector remains operator.
+
+A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
 When an operator configures `STATION_PRODUCT_TELEMETRY_ENDPOINT`, Station POSTs
 batches directly to that full address. It does not append an ingestion path.
-`STATION_PRODUCT_TELEMETRY_KEY`, when set, is sent only as that endpoint's
+`STATION_PRODUCT_TELEMETRY_KEY`, when set, is sent only on Full requests as that endpoint's
 `x-api-key` header. `STATION_OTEL_API_KEY` remains exclusive to OTLP exports.
 The legacy product aliases are `STATION_TELEMETRY_ENDPOINT` and
 `STATION_USAGE_TELEMETRY_KEY`; the legacy OTLP key is
@@ -56,6 +71,73 @@ ever falls back to the other destination's key.
 
 The Full payload carries SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
+
+## Daily aggregates and observation limits
+
+The daily sender reserves at most one attempt per UTC calendar day per publisher
+in `STATION_HOME/config/telemetry-daily.json`, before network I/O. It checks on
+the service flush interval. Reopening the service or concurrent flushes reuse
+that reservation. A failed or suppressed attempt is recorded and is not retried
+that day. This deliberately favors avoiding duplicate counts over delivery.
+After a missed flush, the next start retains only the latest observed unsent
+day; it never sends a backlog. A ping is a snapshot at flush time, so observations
+later that day cannot revise a ping already sent. Weekly and monthly flags use
+UTC Monday weeks and calendar months, with first-run and last-active dates kept
+only locally. Those flags are estimates under delivery loss and state resets.
+The atomic local state is capped at 16 KiB and stores bounded daily sets, counters,
+notice receipts, and one previous-day snapshot. Raw dates never enter a Lite body.
+
+The contract validator checks every outgoing daily field. Current sources are:
+
+| Field | Server observation or conservative value |
+| --- | --- |
+| version | `custom`: no authoritative public-release version catalog is wired to this sender. |
+| channel/platform/arch | Lane 4's build-time `STATION_TELEMETRY_BUILD_CHANNEL` when available, then captured build channel (or `source-checkout`), server OS and CPU. |
+| surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
+| engines_used_today | Existing engine-turn terminal observations. |
+| paired_devices_bucket | The pairing service's current device store. |
+| distribution/public_plugins_enabled | `none` / empty set: no authoritative public telemetry catalog or distribution manifest consumer exists. Layout-source profiles are not distribution identities. |
+| private_plugins_bucket | Valid installed plugin manifests; unverified-public packages are counted conservatively as private. No names leave the machine. |
+| branding_overridden | Resolved branding name/logo/theme/welcome differs from built-in empty/default branding. |
+| home_replaced | A currently valid granted workspace Home role. |
+| layouts_customized | `false`: no reliable persisted customization marker; saved default layout copies are not evidence of customization. |
+| setup_abandoned_step | `none`: no server-owned setup-abandonment producer. |
+| engine_connect_failures | Empty until a classified engine-connect-failure observation is available; a failed turn is not invented as a connection failure. |
+| safe_mode_entered/plugin_disabled_after_crash | Zero: no safe-mode or crash-disable lifecycle producer exists today. |
+
+Lite and feedback requests send no Full API key or secret-binding credential:
+a per-install authentication key could otherwise join anonymous days. Receivers
+for these bodies need the separate anonymous admission path.
+
+Full adds server-observed plugin install/remove, settings-category changes
+(`privacy` for product tier/destination settings and `other` for remaining app configuration), and the authenticated
+connection observations above to the existing startup/recovery/turn stream.
+Unverified-public plugin IDs become `custom`. Pane-open events belong to the UI;
+setup abandonment, safe mode, crash disables and engine connection-failure
+producers remain unwired rather than guessed from unrelated events.
+
+## Local ledger and feedback
+
+`GET /api/usage-telemetry/outbox?publisher=operator` and the CLI show the payload,
+publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
+is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
+5 MiB of actual serialized bytes, oldest first. Reads also enforce retention.
+It is an audit log, not a retry spool. Suppressed Full records have an empty
+`distinct_id` so inspecting suppressed traffic never creates an installation
+secret. Full retry failures can appear as dropped attempts followed by a sent
+record with the same event IDs. A Lite/feedback `sent` record means HTTP 2xx;
+only Full's commit receipt proves the receiver acknowledged event storage.
+
+`POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
+`operator`), action (`tier-lowered` or `plugin-uninstalled`) and reason (`privacy`,
+`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`, `skip`). It
+rejects extra fields, IDs and free text. The explicit action targets only that
+publisher. Skip creates no signal. Off and DNT still suppress feedback; lowering
+to Off does not silently bypass the publisher's Off choice. Feedback is recorded
+in the same ledger, without an installation ID. This endpoint records a submitted
+reason; it does not prove the preceding UI action happened. Feedback and shown
+notice writes require the existing `access:manage` authority; ledger reads use
+`orchestration:read`, under the normal authenticated usage-telemetry route family.
 
 ## Delivery status and connection checks
 
@@ -180,6 +262,11 @@ success/failure controls at final policy publication, shutdown during that step
 in local and virtual modes, and a failed virtual readiness callback. It observes producer order
 and durable readiness; it does not establish live ingestion delivery.
 
+[Publisher service](../../src-server/services/telemetry-publisher-service.ts) owns the
+Lite/feedback senders; [local state](../../src-server/services/telemetry-local-state.ts)
+owns their atomic persistence and the ledger.
+[Publisher tests](../../src-server/services/__tests__/telemetry-publishers.test.ts) use
+real HTTP receivers and writer-shaped files, including restart and eviction.
 [Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
 and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)
 cover activation, inventory rejection, buffering and disclosure. They use

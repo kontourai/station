@@ -119,6 +119,7 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import {
   currentRequestReadAuthority,
@@ -6615,7 +6616,7 @@ export function configureRuntimeRoutes(
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
       (config) => {
-        context.getUsageTelemetry?.()?.reconfigure(config);
+        context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
       },
     ),
@@ -7131,7 +7132,33 @@ export function configureRuntimeRoutes(
           context.orchestrationService.canUserReadSession(sessionId, authority)
         );
       },
-      connectClientSession: (request) => clientStreamPresence.connect(request),
+      connectClientSession: (request) => {
+        const lease = clientStreamPresence.connect(request);
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const native = getRuntimeNativeDeviceProofPrincipal(request);
+        // The header is reported metadata, accepted only on an authenticated connection.
+        // The existing mobile origin does not distinguish iOS from Android.
+        const reported =
+          resolveClientOriginForRequest(request).reported.surface;
+        if (
+          (principal || native) &&
+          (reported === 'desktop' || reported === 'web' || reported === 'cli')
+        ) {
+          void context
+            .getUsageTelemetry?.()
+            ?.track('client_connected', {
+              surface: reported,
+              device_class: reported === 'desktop' ? 'desktop' : 'other',
+              version: 'custom',
+            })
+            .catch((error) =>
+              context.logger.warn('Connection telemetry observation failed', {
+                error: errorMessage(error),
+              }),
+            );
+        }
+        return lease;
+      },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         return (

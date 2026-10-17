@@ -708,14 +708,15 @@ publisher's choice through its authenticated configuration API:
 station telemetry status
 station telemetry set kontour off
 station telemetry set operator full
+station telemetry outbox --publisher operator
 ```
 
 Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
 `user`, or `disclosure`. The normal target and credential flags apply; `--json`
 prints the status object. Full remains Lite until the current disclosure has
 been acknowledged. DNT forces Off. Changing one publisher preserves the other.
-Lite sending and `station telemetry outbox` belong to later implementation lanes;
-these commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
+The outbox command prints the local 30-day/5-MiB payload ledger, optionally
+filtered by publisher. These commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 
 ### `config`
 
