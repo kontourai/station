@@ -330,18 +330,20 @@ export async function renderAccessibilitySnapshot(
   },
 ): Promise<{
   text: string;
+  textWithoutRefs: string;
   refs: Map<string, RefEntry>;
   truncated: boolean;
   omittedNodes: number;
 }> {
   const lines: string[] = [];
+  const linesWithoutRefs: string[] = [];
   const refs = new Map<string, RefEntry>();
   let chars = 0;
   let omitted = 0;
   let truncated = false;
   const visited = new Set<string>();
 
-  const emit = (line: string): boolean => {
+  const emit = (line: string, withoutRefs = line): boolean => {
     if (
       lines.length >= limits.maxLines ||
       chars + line.length + 1 > limits.maxChars
@@ -350,6 +352,7 @@ export async function renderAccessibilitySnapshot(
       return false;
     }
     lines.push(line);
+    linesWithoutRefs.push(withoutRefs);
     chars += line.length + 1;
     return true;
   };
@@ -407,8 +410,14 @@ export async function renderAccessibilitySnapshot(
         typeof node.backendDOMNodeId === 'number'
           ? `e${refs.size + 1}`
           : undefined;
-      const line = `${indent}- ${role}${name ? ` ${JSON.stringify(name)}` : ''}${ref ? ` [ref=${ref}]` : ''}${props.length ? ` ${props.join(' ')}` : ''}`;
-      if (!emit(line)) {
+      const label = `${indent}- ${role}${name ? ` ${JSON.stringify(name)}` : ''}`;
+      const properties = props.length ? ` ${props.join(' ')}` : '';
+      if (
+        !emit(
+          `${label}${ref ? ` [ref=${ref}]` : ''}${properties}`,
+          `${label}${properties}`,
+        )
+      ) {
         omitted += 1;
         break;
       }
@@ -443,7 +452,13 @@ export async function renderAccessibilitySnapshot(
   }
   // Everything still waiting was never rendered.
   omitted += stack.length;
-  return { text: lines.join('\n'), refs, truncated, omittedNodes: omitted };
+  return {
+    text: lines.join('\n'),
+    textWithoutRefs: linesWithoutRefs.join('\n'),
+    refs,
+    truncated,
+    omittedNodes: omitted,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1831,7 +1846,8 @@ export class BrowserAutomation {
           ),
           title: capTitle(text(value.title, TITLE_MAX)),
           viewport: { width: view.width, height: view.height },
-          snapshot: rendered.text,
+          snapshot:
+            table.refs.size === 0 ? rendered.textWithoutRefs : rendered.text,
           refCount: rendered.refs.size,
           truncated: rendered.truncated,
           omittedNodes: rendered.omittedNodes,

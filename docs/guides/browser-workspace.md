@@ -160,7 +160,8 @@ a live human holder. A human takeover invalidates existing snapshot refs,
 including after hand-back. A snapshot taken while a human holds control, or
 whose read overlaps any human hold, returns no usable refs, even when the same
 human reclaims control without advancing the epoch. A read without a bound
-lease also returns no usable refs. Take a fresh snapshot after hand-back to act
+lease also returns no usable refs. These snapshots omit actionable ref labels
+from their text. Take a fresh snapshot after hand-back to act
 by ref again. Watching needs no control lease. The pane's control line
 says who is driving in one word (**Agent** or **You**) with the float-over-chat's
 rule (the lease holder, or an Agent whose last input is under ten seconds old).

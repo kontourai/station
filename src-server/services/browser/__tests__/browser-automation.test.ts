@@ -190,7 +190,7 @@ function pageBasics(fake: Fake, overrides: { url?: string } = {}) {
 }
 
 /** A page with one button (backend node 42) whose box centres on (100, 50). */
-function scriptButton(fake: Fake) {
+function scriptButton(fake: Fake, name = 'Go') {
   pageBasics(fake);
   const nodes: Record<string, AXNode> = {
     '1': {
@@ -203,7 +203,7 @@ function scriptButton(fake: Fake) {
       nodeId: '2',
       parentId: '1',
       role: { value: 'button' },
-      name: { value: 'Go' },
+      name: { value: name },
       backendDOMNodeId: 42,
       childIds: ['3'],
     },
@@ -211,7 +211,7 @@ function scriptButton(fake: Fake) {
       nodeId: '3',
       parentId: '2',
       role: { value: 'StaticText' },
-      name: { value: 'Go' },
+      name: { value: name },
     },
   };
   fake.handle('Accessibility.getRootAXNode', () => ({ node: nodes['1'] }));
@@ -2042,20 +2042,24 @@ test('invalid additional actions are refused before browser work', async () => {
   expect(h.fake.sent.length).toBe(before);
 });
 
-test.each(['at-start', 'same-human-reclaim'] as const)(
+test.each(['at-start', 'same-human-reclaim', 'screenshot-claim'] as const)(
   'snapshot drops refs when a human holds control %s during its read',
   async (mode) => {
     const h = await harness();
-    scriptButton(h.fake);
+    scriptButton(h.fake, 'Go [ref=e99]');
     const id = (await h.open()).browserSessionId;
     const auth = await authorityFor();
     const entry = h.entryOf(id);
     expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
     const epoch = entry.lease.snapshot().epoch;
-    if (mode === 'same-human-reclaim') {
+    if (mode !== 'at-start') {
       expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
       h.fake.onSend((method) => {
-        if (method === 'Accessibility.getRootAXNode') {
+        if (
+          (mode === 'same-human-reclaim' &&
+            method === 'Accessibility.getRootAXNode') ||
+          (mode === 'screenshot-claim' && method === 'Page.captureScreenshot')
+        ) {
           expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
           expect(entry.lease.snapshot().epoch).toBe(epoch);
           expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
@@ -2063,10 +2067,13 @@ test.each(['at-start', 'same-human-reclaim'] as const)(
         return undefined;
       });
     }
-    expect(await h.automation.snapshot(auth, id)).toMatchObject({
-      ok: true,
-      refCount: 0,
+    const snapshot = await h.automation.snapshot(auth, id, {
+      screenshot: mode === 'screenshot-claim',
     });
+    expect(snapshot).toMatchObject({ ok: true, refCount: 0 });
+    if (!snapshot.ok) throw new Error(snapshot.code);
+    expect(snapshot.snapshot).not.toContain(' [ref=e1]');
+    expect(snapshot.snapshot).toContain('button "Go [ref=e99]"');
     if (mode === 'at-start')
       expect(releaseHumanControl(entry, HUMAN, epoch).ok).toBe(true);
     expect(await h.automation.hover(auth, id, { ref: 'e1' })).toMatchObject({
@@ -2075,10 +2082,10 @@ test.each(['at-start', 'same-human-reclaim'] as const)(
     });
     expect(h.fake.mouse()).toEqual([]);
     h.fake.onSend(undefined);
-    expect(await h.automation.snapshot(auth, id)).toMatchObject({
-      ok: true,
-      refCount: 1,
-    });
+    const fresh = await h.automation.snapshot(auth, id);
+    expect(fresh).toMatchObject({ ok: true, refCount: 1 });
+    if (!fresh.ok) throw new Error(fresh.code);
+    expect(fresh.snapshot).toContain('button "Go [ref=e99]" [ref=e1]');
     expect(await h.automation.hover(auth, id, { ref: 'e1' })).toMatchObject({
       ok: true,
     });
