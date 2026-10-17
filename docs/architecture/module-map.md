@@ -4293,11 +4293,14 @@ The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
 IDs mapped to publisher/channel pairs, without installation credentials.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
-deduplicates raw pings and retains daily rollups without event IDs. Publisher
-read keys see only their own rollups. Public Kontour totals and distributions
-all derive from the same disjoint daily cells with at least ten pings, preventing
-complementary subtraction of omitted cells. Closed UTC receipt days, untrusted
-counts, sparse-data suppression and retention limits are explained in the
+deduplicates raw pings and accumulates separate daily marginals per dimension.
+Both public Kontour reads and publisher-scoped reads suppress a value unless
+ten distinct daily network hashes contributed. IPv4 uses an address; IPv6 uses
+a /64. Numeric counters are bucketed before rollup. Periodic finalization drops
+closed-day contributor hashes and retains marginals; raw pings expire after
+90 days. Public reads use a UTC-day cache without the ingest lock, and anonymous
+traffic has separate admission budgets from authenticated ingest. Botnet padding,
+proxy/NAT sharing, restart effects and publication timing are explained in the
 [receiver guide](../../packages/telemetry-broker/README.md#lite-observations).
 
 **Composition and limits.** The
