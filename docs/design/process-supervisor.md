@@ -50,11 +50,13 @@ restore), and upgrading the supervisor itself without disruption.
 ## Process model
 
 ```text
-launcher: Desktop app | launchd | systemd | Task Scheduler | station start | tini
+launcher: launchd | systemd | Task Scheduler | station start | tini
   └─ station supervisor        stable, small; owns listeners, workloads, journals
        ├─ core server  gen N    replaceable; all product logic
        ├─ core server  gen N+1  only during a handoff
-       └─ workloads             agent engines, terminals
+       └─ workloads             engines, terminals, browser host, device hub
+
+clients: Desktop window and tray, CLI, browsers, paired devices
 ```
 
 A Station instance becomes the supervisor and its core server generations.
@@ -76,12 +78,24 @@ product decisions.
   This absorbs the archive launcher's pending, trial, commit, rollback
   transaction. It also restarts a crashed core server with backoff, absorbing
   the Desktop and `service run` restart loops.
-- **Workloads.** It spawns agent engines and terminals and owns their stdio
-  and PTYs. Output is journaled with sequence numbers into a bounded memory
-  tail and append-only disk segments. A core server attaches to a workload
-  from a sequence number, writes to it, signals it, and lists workloads.
+- **Workloads.** A workload is a process whose lifetime the supervisor owns,
+  so it outlives core server generations. The rule for what becomes one:
+  anything that holds live external state across a turn. Request-scoped work
+  (indexing, search workers) stays in the core server. A workload has one of
+  two attachment styles:
+  - **Stream:** agent engines and terminals. The supervisor owns their stdio
+    or PTY and journals output with sequence numbers into a bounded memory
+    tail and append-only disk segments. A core server attaches from a
+    sequence number, writes, signals, and lists.
+  - **Endpoint:** the browser-pane host and the device hub. The workload
+    serves its own local socket (the Chrome DevTools Protocol for the
+    browser host), and the supervisor reports the endpoint to the core
+    server, which connects to it directly with no extra hop. A new core
+    generation reconnects to the same endpoint, so live pages and device
+    streams survive. The device hub's own restart loop is removed.
+
   Resource limits use systemd scopes on Linux, job objects on Windows, and
-  process groups everywhere.
+  process groups everywhere. The browser host gets a memory limit of its own.
 - **Registry.** It holds the home's single-owner claim and the
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
@@ -152,21 +166,32 @@ live in the core server.
 
 | Mode | Launcher | Change |
 | --- | --- | --- |
-| Desktop | Tauri app | Starts or attaches to the supervisor instead of owning the server. The Rust restart loop is removed. |
-| Installed service | launchd `KeepAlive`, systemd `Restart=always`, Windows Task Scheduler | Runs the supervisor instead of `service run`. |
+| Desktop | Per-user login service | Desktop no longer owns a server. On first launch it asks to install the per-user service, then is a client of it. The Rust sidecar supervisor and restart loop are removed. |
+| Installed service | launchd `KeepAlive`, systemd `Restart=always`, Windows Task Scheduler | Runs the supervisor instead of `service run`. The same service Desktop uses. |
 | Archive install | Fixed launcher | Starts the supervisor, which owns the update transaction. |
 | `station start` | CLI, detached | Starts the supervisor. The separate UI server becomes a core server route. |
 | Container | `tini` | Runs the supervisor. |
 | Mobile | None | No change; mobile never runs a server. |
 
-The tray becomes a control-channel client in every mode. Today it owns the
-sidecar but only observes an installed service. With the change it shows the
-same status and controls whoever launched the supervisor, including running
-turns, terminals, and pending updates.
+Station runs in the background by default, through the service, and the tray
+controls it. This removes the split between a Desktop-owned sidecar and an
+installed service, and supersedes the sidecar ownership decided in
+[ADR 0015](../adr/0015-restore-desktop-owned-command-station-sidecar.md).
 
-Quitting Desktop no longer has to stop work. If turns or terminals are
-running, Desktop offers to keep Station running in the background and
-remembers the answer.
+- The service starts the tray at login in tray-only mode, so the tray is
+  present without the window.
+- The tray is a control-channel client. It shows instance status, running
+  turns, terminals, and pending updates, and offers start, stop, restart,
+  and update.
+- Closing or quitting the Desktop window never stops work. Stopping Station
+  is an explicit tray or CLI action, and asks for confirmation if turns or
+  terminals are running.
+- First launch explains the background service before installing it. If the
+  user declines, Desktop runs the supervisor as its own child for that
+  session only, and quitting Desktop stops it.
+- macOS shows its standard notice when the login item is added. On Linux,
+  tray indicators cannot open their menu programmatically, so the window
+  also exposes the same controls.
 
 ### Upgrade paths
 
@@ -180,7 +205,7 @@ Every path becomes a generation handoff:
 ### Per operating system
 
 - **macOS:**
-  - The supervisor runs under launchd or as a detached child of Desktop.
+  - The supervisor runs under a per-user launchd agent.
   - Node is an external binary, so hardened-runtime entitlements are
     unaffected.
 - **Linux:**
@@ -224,16 +249,19 @@ verification, and fault injection.
    redesign on top of it (see [terminal.md](terminal.md)).
 3. **Engines:** workload-stream transport per adapter, reattach before
    interrupted-turn consumption, bounded auto-resume.
-4. **Launch modes and upgrades:** Desktop, archive launcher, tray as control
-   client, keep-running on quit, every upgrade path as a handoff.
-5. **Consolidation:** voice and consent onto the main origin; old supervisors,
+4. **Launch modes and upgrades:** Desktop as a service client with first-run
+   service setup, tray as control client, archive launcher, every upgrade
+   path as a handoff.
+5. **Endpoint workloads:** browser-pane host and device hub move to the
+   supervisor; the device hub restart loop is removed.
+6. **Consolidation:** voice and consent onto the main origin; old supervisors,
    restart loops, and the UI server process removed.
 
 ## Verification
 
-- **Handoff journey:** a real live terminal and a scripted engine turn, handed
-  from generation N to N+1. Same PIDs, no sequence gap, and the turn recorded
-  exactly once.
+- **Handoff journey:** a real live terminal, a scripted engine turn, and an
+  open browser-pane page, handed from generation N to N+1. Same PIDs, no
+  sequence gap, the turn recorded exactly once, and the page still loaded.
 - **Rollback journey:** generation N+1 fails readiness; N keeps serving and
   clients see no error.
 - **Compatibility:** old and new supervisors and core servers in every
@@ -246,5 +274,6 @@ verification, and fault injection.
 
 ## Open questions
 
-1. Whether the browser-pane host and device hub become workloads.
-2. The default answer when Desktop quits with work running.
+1. Whether voice becomes a workload so live calls survive upgrades.
+2. Desktop behavior on platforms where a per-user service cannot be
+   installed (for example, some locked-down Windows machines).
