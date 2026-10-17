@@ -3443,6 +3443,10 @@ export function readWorkflowDocuments() {
 // Validate the complete reviewed concurrency shapes before removing ONLY the
 // new schema field from a temporary lint copy. Security policy uses originals.
 const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
+const PR_SOURCE_FIFO_GROUPS = {
+  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+};
 export function legacyActionlintSources(workflows) {
   const expected = {
     '.github/workflows/delivery-validation.yml': 'station-background-compute',
@@ -3470,13 +3474,33 @@ export function legacyActionlintSources(workflows) {
       Object.hasOwn(concurrency, 'queue')
     )
       throw new Error(`Unreviewed FIFO workflow ${file}`);
-    for (const job of Object.values(document?.jobs ?? {}))
-      if (
+    for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
+      const queued =
         job?.concurrency &&
         typeof job.concurrency === 'object' &&
-        Object.hasOwn(job.concurrency, 'queue')
-      )
-        throw new Error(`Unreviewed FIFO job in ${file}`);
+        Object.hasOwn(job.concurrency, 'queue');
+      if (
+        file === '.github/workflows/ci.yml' &&
+        Object.hasOwn(PR_SOURCE_FIFO_GROUPS, jobId)
+      ) {
+        const concurrency = job?.concurrency;
+        if (
+          !concurrency ||
+          !hasExactKeys(concurrency, [
+            'group',
+            'queue',
+            'cancel-in-progress',
+          ]) ||
+          concurrency.group !== PR_SOURCE_FIFO_GROUPS[jobId] ||
+          concurrency.queue !== 'max' ||
+          concurrency['cancel-in-progress'] !== false
+        )
+          throw new Error(`Unreviewed PR source FIFO job ${jobId}`);
+      } else if (queued) throw new Error(`Unreviewed FIFO job in ${file}`);
+    }
+    for (const job of Object.values(copy?.jobs ?? {}))
+      if (job?.concurrency && Object.hasOwn(job.concurrency, 'queue'))
+        delete job.concurrency.queue;
     return { file, source: dump(copy, { lineWidth: -1, noRefs: true }) };
   });
 }

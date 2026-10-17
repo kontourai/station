@@ -369,9 +369,109 @@ export async function reservationRecovery(source, env = process.env) {
     'workflow_runs',
     { env },
   );
-  const previous = runs.filter(
-    (run) => String(run.id) !== String(env.GITHUB_RUN_ID),
-  );
+  const previous = [];
+  let qualificationKind;
+  for (const run of runs) {
+    if (
+      String(run.id) === String(env.GITHUB_RUN_ID) ||
+      run.head_sha !== source ||
+      run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
+      run.head_branch !== 'main' ||
+      !['push', 'schedule', 'workflow_dispatch'].includes(run.event) ||
+      ![
+        '.github/workflows/nightly.yml',
+        '.github/workflows/main-qualification.yml',
+      ].includes(run.path)
+    )
+      continue;
+    const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
+      env,
+    });
+    if (run.path === '.github/workflows/main-qualification.yml') {
+      const nestedNightly = jobs.some(
+        (job) =>
+          typeof job.name === 'string' && job.name.startsWith('nightly / '),
+      );
+      if (!nestedNightly) {
+        // GitHub resolves reusable-workflow references before runner admission.
+        // Recognize only the positively identified independent delivery graph;
+        // absent, foreign or future graph shapes keep recovery held.
+        if (qualificationKind === undefined) {
+          const details = await github(`actions/runs/${run.id}`, { env });
+          const references = details.referenced_workflows;
+          const identityMatches =
+            details.id === run.id &&
+            details.head_sha === source &&
+            details.path === run.path &&
+            details.head_branch === 'main' &&
+            details.head_repository?.full_name === env.GITHUB_REPOSITORY;
+          const known = new Set(
+            [
+              'full-regression.yml',
+              'delivery-validation.yml',
+              'install-smoke.yml',
+              'portable-server-archives.yml',
+              'desktop-rust.yml',
+              'desktop-clean-checkout.yml',
+              'ecosystem-packaging.yml',
+            ].map(
+              (name) =>
+                `${env.GITHUB_REPOSITORY}/.github/workflows/${name}@${source}`,
+            ),
+          );
+          const validReferences =
+            identityMatches &&
+            Array.isArray(references) &&
+            references.length > 0 &&
+            references.every(
+              (reference) =>
+                reference.sha === source &&
+                reference.ref === 'refs/heads/main' &&
+                typeof reference.path === 'string' &&
+                reference.path.startsWith(
+                  `${env.GITHUB_REPOSITORY}/.github/workflows/`,
+                ) &&
+                reference.path.endsWith(`@${source}`),
+            );
+          if (!validReferences) qualificationKind = 'unknown';
+          else if (
+            references.some(
+              (reference) =>
+                reference.path ===
+                `${env.GITHUB_REPOSITORY}/.github/workflows/nightly.yml@${source}`,
+            )
+          )
+            qualificationKind = 'producer';
+          else if (
+            references.every((reference) => known.has(reference.path)) &&
+            references.some(
+              (reference) =>
+                reference.path ===
+                `${env.GITHUB_REPOSITORY}/.github/workflows/full-regression.yml@${source}`,
+            ) &&
+            references.some(
+              (reference) =>
+                reference.path ===
+                `${env.GITHUB_REPOSITORY}/.github/workflows/delivery-validation.yml@${source}`,
+            ) &&
+            new Set(references.map((reference) => reference.path)).size ===
+              references.length
+          )
+            qualificationKind = 'independent';
+          else qualificationKind = 'unknown';
+        }
+        if (qualificationKind === 'unknown')
+          return {
+            recover: false,
+            reason:
+              'reservation producer workflow inventory unavailable or unrecognized',
+          };
+        if (qualificationKind === 'independent') continue;
+      }
+    }
+
+    previous.push({ ...run, jobs });
+  }
   const disposition = recoveryDisposition(
     previous,
     source,
@@ -381,21 +481,8 @@ export async function reservationRecovery(source, env = process.env) {
   // A completed source gate separates delivery failure from source failure.
   // Historical qualification-driven runs retain their full-gate requirement.
   for (const run of previous) {
-    if (
-      run.head_sha !== source ||
-      run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
-      run.head_branch !== 'main' ||
-      ![
-        '.github/workflows/main-qualification.yml',
-        '.github/workflows/nightly.yml',
-      ].includes(run.path) ||
-      !['push', 'schedule', 'workflow_dispatch'].includes(run.event) ||
-      !['failure', 'timed_out'].includes(run.conclusion)
-    )
-      continue;
-    const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
-      env,
-    });
+    if (!['failure', 'timed_out'].includes(run.conclusion)) continue;
+    const jobs = run.jobs;
     const qualified = jobs.some(
       (job) =>
         (job.name.endsWith('Full source qualification') ||

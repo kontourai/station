@@ -1,0 +1,7 @@
+{
+  "revision": "983bfafc134c781fc517729130765d9a4e6ebfd0",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 7: re-read Last known and observation lifetime claims against work-observation pruning, command finally release, mounted history/revalidator subscriptions and unchanged epoch/record gates. A pending imperative picker/retry is now a retained reader; absent unreferenced records still prune after settlement. Existing concepts prose remains accurate. Both new regressions catch removed pins; old-epoch cases and 263 focused tests pass, as does desktop/mobile recovery journey.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}
