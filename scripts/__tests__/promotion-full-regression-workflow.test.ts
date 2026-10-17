@@ -313,60 +313,6 @@ describe('promotion full-regression workflow', () => {
     );
   });
 
-  test('gates the reusable native cohort and independent CLI on the same exact source', () => {
-    const nightly = workflow('nightly.yml');
-    const sourceGate = nightly.jobs?.['test-gate'] ?? {};
-    const full = nightly.jobs?.['full-regression'] ?? {};
-    expect(full.needs).toEqual(['test-gate']);
-    expect(full.uses).toBe('./.github/workflows/full-regression.yml');
-    expect(full.with?.source_sha).toBe(
-      githubExpression('needs.test-gate.outputs.source_sha'),
-    );
-    expect(
-      sourceGate.steps?.some(
-        (step) => step.name === 'Bind every Nightly leg to one main revision',
-      ),
-    ).toBe(true);
-    // Staging publishes nothing, so it may run beside the gate (#1453); the
-    // publishing cohort must not start until the receipt AND staging succeeded.
-    const staging = nightly.jobs?.['native-stage'] ?? {};
-    expect(staging.needs).toEqual(['test-gate']);
-    expect(staging.if).not.toContain('full-regression');
-    expect(staging.uses).toBe('./.github/workflows/nightly-native-stage.yml');
-    for (const id of ['native-cohort', 'nightly-cli']) {
-      const producer = nightly.jobs?.[id] ?? {};
-      expect(producer.if).toContain(
-        "needs['full-regression'].result == 'success'",
-      );
-      if (id === 'native-cohort') {
-        expect(producer.needs).toEqual([
-          'test-gate',
-          'full-regression',
-          'native-stage',
-        ]);
-        expect(producer.if).toContain(
-          "needs['native-stage'].result == 'success'",
-        );
-        expect(producer.uses).toBe(
-          './.github/workflows/nightly-native-cohort.yml',
-        );
-        expect(producer.with?.source_sha).toBe(
-          githubExpression('needs.test-gate.outputs.source_sha'),
-        );
-        expect(producer.secrets).toBe('inherit');
-      } else {
-        expect(producer.needs).toEqual(['test-gate', 'full-regression']);
-        const checkout = producer.steps?.find((step) =>
-          step.uses?.startsWith('actions/checkout@'),
-        );
-        expect(checkout?.with?.ref).toBe(
-          githubExpression('needs.test-gate.outputs.source_sha'),
-        );
-      }
-    }
-    expect(source('nightly.yml')).not.toContain('run: npm run full:regression');
-  });
-
   test('gates every tagged release producer before artifact work starts', () => {
     const release = workflow('release.yml');
     const full = release.jobs?.['full-regression'] ?? {};

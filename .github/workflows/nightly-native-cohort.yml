@@ -1,7 +1,7 @@
 name: "Nightly: Native cohort"
 
 # Phase two of the native cohort. The caller supplies the already source-gated
-# revision, the exact-SHA full-regression result, and the identity that
+# revision, the exact-SHA source-gate result, and the identity that
 # `nightly-native-stage.yml` reserved while it built the staged artifacts in
 # the same run. This workflow is the only native publisher: it admits the
 # staged bytes, creates the promotion fence, publishes each provider
@@ -37,7 +37,7 @@ jobs:
   admit-cohort:
     name: Admit staged bytes
     # The caller admits this workflow only after `nightly-native-stage.yml`
-    # and the exact-SHA full-regression receipt both succeeded; the staged
+    # and the exact-SHA source gate both succeeded; the staged
     # artifacts are read back from this run by name below.
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' }}
     runs-on: ubuntu-22.04
@@ -189,7 +189,7 @@ jobs:
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
 
 
-      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+      - name: Recheck source gate, cadence and published ancestry under the delivery lock
         id: publisher
         env:
           GH_TOKEN: ${{ github.token }}
@@ -267,7 +267,7 @@ jobs:
           status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
           test "$status" = 200
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
-      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+      - name: Recheck source gate, cadence and published ancestry under the delivery lock
         id: publisher
         env:
           GH_TOKEN: ${{ github.token }}
