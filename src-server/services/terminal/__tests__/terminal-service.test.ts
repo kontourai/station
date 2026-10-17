@@ -215,7 +215,7 @@ describe('TerminalService', () => {
     expect((await svc.open(input)).history).toBe(replay);
   });
 
-  test('keeps newline-splitting work proportional to new PTY output rather than retained history', async () => {
+  test('keeps string traversal and materialization proportional to newly emitted PTY output', async () => {
     await svc.open({
       projectSlug: 'test',
       terminalId: 'scan',
@@ -225,23 +225,51 @@ describe('TerminalService', () => {
     });
     pty.emitData('x'.repeat(1024 * 1024));
     const split = vi.spyOn(String.prototype, 'split');
-    let scanned: number;
+    const indexOf = vi.spyOn(String.prototype, 'indexOf');
+    const join = vi.spyOn(Array.prototype, 'join');
+    const codePointAt = vi.spyOn(String.prototype, 'codePointAt');
+    const charCodeAt = vi.spyOn(String.prototype, 'charCodeAt');
+    const byteLength = vi.spyOn(Buffer, 'byteLength');
+    let examined = 0;
     try {
       for (let i = 0; i < 100; i++) pty.emitData('x'.repeat(64));
-      scanned = split.mock.contexts.reduce<number>(
+      examined += split.mock.contexts.reduce<number>(
         (total, value) => total + String(value).length,
         0,
       );
+      indexOf.mock.calls.forEach(([search, from = 0], i) => {
+        const result = indexOf.mock.results[i]!;
+        if (result.type !== 'return')
+          throw new Error('indexOf failed during append');
+        const end =
+          result.value < 0
+            ? String(indexOf.mock.contexts[i]).length
+            : result.value + search.length;
+        examined += Math.max(0, end - from);
+      });
+      for (const result of join.mock.results) {
+        if (result.type === 'return') examined += result.value.length;
+      }
+      examined +=
+        codePointAt.mock.calls.length * 2 + charCodeAt.mock.calls.length;
+      for (const [value] of byteLength.mock.calls) {
+        if (typeof value === 'string') examined += value.length;
+      }
     } finally {
       split.mockRestore();
+      indexOf.mockRestore();
+      join.mockRestore();
+      codePointAt.mockRestore();
+      charCodeAt.mockRestore();
+      byteLength.mockRestore();
     }
-    expect(scanned).toBeLessThanOrEqual(100 * 64);
+    expect(examined).toBeLessThanOrEqual(8 * 100 * 64);
     expect(svc.readProcess('test:scan')?.history.length).toBe(
       1024 * 1024 + 100 * 64,
     );
   });
 
-  test('restores legacy plain-text history within both caps and cuts oversized lines at the next line boundary', async () => {
+  test('bounds legacy plain-text history on restore and retains the latest live lines', async () => {
     const history = createMockHistoryStore();
     await svc.dispose();
     svc = new TerminalService(pty, history);
@@ -255,9 +283,9 @@ describe('TerminalService', () => {
     history.load.mockResolvedValueOnce(
       `${'old'.repeat(800_000)}\n\x1b[32mlatest🙂\x1b[0m`,
     );
-    expect((await svc.open(input)).history === '\x1b[32mlatest🙂\x1b[0m').toBe(
-      true,
-    );
+    const restored = (await svc.open(input)).history;
+    expect(Buffer.byteLength(restored)).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(restored.endsWith('\x1b[32mlatest🙂\x1b[0m')).toBe(true);
     for (let i = 0; i < 6000; i++) pty.emitData(`\nline-${i}`);
     const replay = (await svc.open(input)).history;
     expect(replay.split('\n')).toHaveLength(5000);
@@ -282,12 +310,66 @@ describe('TerminalService', () => {
       };
       await svc.open(input);
       pty.emitData(prefix);
-      pty.emitData('1'.repeat(2 * 1024 * 1024));
-      expect((await svc.open(input)).history).toBe('');
-      pty.emitData(`${suffix}visible🙂`);
-      expect((await svc.open(input)).history).toBe('visible🙂');
+      pty.emitData('1'.repeat(32));
+      pty.emitData(suffix);
+      const visible = 'v'.repeat(2 * 1024 * 1024 - 16);
+      pty.emitData(visible);
+      expect((await svc.open(input)).history === visible).toBe(true);
     },
   );
+
+  test('retains normal output after an unterminated OSC followed by 30,000 lines', async () => {
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'binary',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    await svc.open(input);
+    pty.emitData('\x1b]garbage');
+    const line = `${'normal output '.padEnd(86, 'x')}\n`;
+    for (let i = 0; i < 30_000; i++) pty.emitData(line);
+    const replay = (await svc.open(input)).history;
+    expect(replay.length).toBeGreaterThan(400_000);
+    expect(replay.endsWith(line.repeat(100))).toBe(true);
+    expect(replay.split('\n').length).toBeLessThanOrEqual(5000);
+  });
+
+  test.each(['\x18', '\x1a', '\x1b[32m'])(
+    'recovers a truncated OSC after cancellation or a new escape (%j)',
+    async (abort) => {
+      const input = {
+        projectSlug: 'test',
+        terminalId: 'abort',
+        cwd: '/tmp',
+        cols: 80,
+        rows: 24,
+      };
+      await svc.open(input);
+      pty.emitData(`\x1b]${'g'.repeat(100)}${abort}`);
+      const visible = 'v'.repeat(2 * 1024 * 1024 - 64);
+      pty.emitData(visible);
+      expect((await svc.open(input)).history === visible).toBe(true);
+    },
+  );
+
+  test('keeps the retained window when the next newline lies beyond the bounded boundary preference', async () => {
+    const input = {
+      projectSlug: 'test',
+      terminalId: 'long-line',
+      cwd: '/tmp',
+      cols: 80,
+      rows: 24,
+    };
+    await svc.open(input);
+    pty.emitData(`${'A'.repeat(2 * 1024 * 1024 - 10)}\nshort-tail`);
+    pty.emitData('B'.repeat(20));
+    const replay = (await svc.open(input)).history;
+    expect(Buffer.byteLength(replay)).toBe(2 * 1024 * 1024);
+    expect(replay.startsWith('A'.repeat(100))).toBe(true);
+    expect(replay.endsWith(`\nshort-tail${'B'.repeat(20)}`)).toBe(true);
+  });
 
   test('keeps surrogate pairs intact when PTY callbacks divide them at the history limit', async () => {
     const input = {
@@ -347,10 +429,19 @@ describe('TerminalService', () => {
       ]);
       await vi.advanceTimersByTimeAsync(60_000);
       expect(callbacks).toHaveLength(3);
-      callbacks[2]!(new Error('pgrep timed out'));
+      callbacks[2]!(
+        Object.assign(new Error('pgrep timed out'), { killed: true }),
+      );
       await vi.advanceTimersByTimeAsync(0);
       expect(svc.readProcess('test:two')?.process.hasRunningSubprocess).toBe(
-        false,
+        true,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      await svc.dispose();
+      callbacks[3]!(null);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(events.filter((event) => event.type === 'activity')).toHaveLength(
+        1,
       );
     },
   );

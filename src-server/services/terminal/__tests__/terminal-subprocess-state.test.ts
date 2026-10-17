@@ -16,6 +16,36 @@ afterEach(() => {
 });
 
 describe('pollTerminalSubprocessActivity', () => {
+  test.skipIf(process.platform === 'win32')(
+    'clears activity without a failure log when pgrep reports no children',
+    async () => {
+      const entry = { pid: 123, hasRunningSubprocess: true, status: 'running' };
+      const emit = vi.fn();
+      const debug = vi.fn();
+      probes.execFile.mockImplementation((_file, _args, _options, callback) =>
+        callback(
+          Object.assign(new Error('Command failed: pgrep -P 123'), {
+            code: 1,
+            killed: false,
+          }),
+        ),
+      );
+      await pollTerminalSubprocessActivity({
+        sessionId: 'project:term',
+        entry,
+        emit,
+        debug,
+      });
+      expect(entry.hasRunningSubprocess).toBe(false);
+      expect(emit).toHaveBeenCalledWith({
+        type: 'activity',
+        sessionId: 'project:term',
+        hasRunningSubprocess: false,
+      });
+      expect(debug).not.toHaveBeenCalled();
+    },
+  );
+
   test('emits active state when a running child process is detected', async () => {
     const emit = vi.fn();
     const entry = {

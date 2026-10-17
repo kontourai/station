@@ -411,7 +411,7 @@ export class TerminalService {
             entry,
             emit: (event) => this.emit(event),
             debug: (...args) =>
-              logger.debug('Terminal subprocess probe failed', { args }),
+              logger.debug('Terminal subprocess probe', { args }),
           }),
         ),
       );

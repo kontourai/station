@@ -32,7 +32,8 @@ function detectUnixSubprocesses(pid: number): Promise<boolean> {
       ['-P', String(pid)],
       { timeout: 2000, windowsHide: true },
       (error) => {
-        if (error) reject(error);
+        if (error?.code === 1 && !error.killed) resolve(false);
+        else if (error) reject(error);
         else resolve(true);
       },
     );
@@ -56,16 +57,25 @@ export async function pollTerminalSubprocessActivity({
 
     if (entry.status !== 'running' || entry.pid !== pid) return;
 
-    if (!entry.hasRunningSubprocess && hasChildProcess) {
-      entry.hasRunningSubprocess = true;
+    if (entry.hasRunningSubprocess !== hasChildProcess) {
+      entry.hasRunningSubprocess = hasChildProcess;
       emit({
         type: 'activity',
         sessionId,
-        hasRunningSubprocess: true,
+        hasRunningSubprocess: hasChildProcess,
       });
     }
   } catch (error) {
     if (entry.status !== 'running' || entry.pid !== pid) return;
+    if (
+      error &&
+      typeof error === 'object' &&
+      'killed' in error &&
+      error.killed
+    ) {
+      debug('Terminal subprocess probe timed out:', sessionId, error);
+      return;
+    }
     debug(
       'Failed to poll subprocesses for terminal session:',
       sessionId,
