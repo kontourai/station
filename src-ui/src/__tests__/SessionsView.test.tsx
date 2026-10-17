@@ -60,6 +60,8 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+const agentCatalog: never[] = [];
+vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
 // refresh cadence can be read from the query rather than inferred.
 const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
@@ -189,7 +191,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       refetch: vi.fn(),
     }),
     // The open-chats refactor (archive#2683) renders shared membership metadata.
-    useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useAgentsQuery: () => ({ data: agentCatalog, isLoading: false }),
     useOrchestrationSessionsQuery: (config?: unknown) => {
       orchestrationSessionsQueryConfig.push(config);
       return {
@@ -339,6 +341,7 @@ import {
   publishReferenceableConversations,
 } from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
+import { foldConversationTurns } from '../views/sessions/conversation-groups';
 
 /**
  * #3552: an external conversation continues from its composer — type, send,
@@ -581,6 +584,60 @@ describe('SessionsView', () => {
   // `loading` prop but the sessions query's `error` was never passed
   // through, so a settled read failure rendered the same "Nothing has run
   // yet" empty state as a host with no sessions — no error, no retry.
+  test('bounds Earlier activity, pages history and searches beyond the mounted page', async () => {
+    const template = sessions[0];
+    sessions = Array.from({ length: 45 }, (_, index) => ({
+      ...template,
+      threadId: `history-${index}`,
+      conversationId: `history-${index}`,
+      displayTitle: `Historical work ${index}`,
+      lifecycleState: 'completed',
+      status: 'closed',
+      delegation: undefined,
+      isLoaded: false,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: new Date(
+        Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+      ).toISOString(),
+    }));
+    const view = renderView();
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      20,
+    );
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    more.focus();
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      40,
+    );
+    expect(document.activeElement).toBe(more);
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      45,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Show more earlier activity' }),
+    ).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: 'Historical work 44' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        1,
+      ),
+    );
+    expect(rowButton('Historical work 44')).toBeTruthy();
+  });
+
+  test('reuses the mounted conversation fold when an unrelated render leaves list inputs unchanged', () => {
+    const view = renderView();
+    const before = vi.mocked(foldConversationTurns).mock.calls.length;
+    view.rerenderSession();
+    expect(vi.mocked(foldConversationTurns).mock.calls.length - before).toBe(0);
+  });
+
   test('renders the sessions list error state with retry when the sessions query fails', () => {
     sessions = [];
     sessionsQueryError = new Error('sessions unavailable');

@@ -205,3 +205,9 @@
 .chat-dock-inbox--compact .chat-dock-inbox__item {
   min-height: 44px;
 }
+
+.chat-dock-inbox__show-more {
+  min-height: 44px;
+  width: 100%;
+  margin-top: var(--space-2);
+}

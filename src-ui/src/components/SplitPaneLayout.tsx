@@ -216,6 +216,8 @@ interface SplitPaneLayoutProps {
   listIntro?:
     | React.ReactNode
     | ((selectItem: (id: string) => void) => React.ReactNode);
+  /** Pagination controls after the list, inside its scroll region. */
+  listOutro?: React.ReactNode;
   /**
    * Extra class on the list container (`.split-pane__list`) — for the
    * caller's own presentational opt-ins (e.g. `entrance-stagger`,
@@ -427,6 +429,7 @@ export function SplitPaneLayout({
   listFilteredEmptyNoun = 'items',
   collectionEmpty = false,
   listIntro,
+  listOutro,
   listClassName,
   heightResponsive = false,
   compact = false,
@@ -1547,6 +1550,7 @@ export function SplitPaneLayout({
                 ))}
             </>
           )}
+          {listOutro}
         </div>
 
         {(headerActionBlock && !framedActions) || sidebarActions ? (
