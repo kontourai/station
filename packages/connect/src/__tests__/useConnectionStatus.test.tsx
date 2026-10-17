@@ -287,6 +287,39 @@ describe('useConnectionStatus', () => {
     },
   );
 
+  it.each(['focus', 'pageshow'])(
+    'a hidden %s does not suppress the immediately following visibility resume',
+    async (signal) => {
+      vi.useFakeTimers();
+      const visibility = vi
+        .spyOn(document, 'visibilityState', 'get')
+        .mockReturnValue('hidden');
+      const checkHealth = vi.fn().mockResolvedValue(true);
+      const store = storeWithUrl('https://hidden-resume.example.test');
+      const { unmount } = renderHook(
+        () => useConnectionStatus({ checkHealth, pollInterval: 10_000 }),
+        { wrapper: wrapper(store) },
+      );
+      try {
+        await act(async () => Promise.resolve());
+        expect(checkHealth).not.toHaveBeenCalled();
+        act(() => window.dispatchEvent(new Event(signal)));
+        await act(async () => vi.advanceTimersByTimeAsync(50));
+        expect(checkHealth).not.toHaveBeenCalled();
+        visibility.mockReturnValue('visible');
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        await act(async () => Promise.resolve());
+        expect(checkHealth).toHaveBeenCalledTimes(1);
+        await act(async () => vi.advanceTimersByTimeAsync(120_000));
+        expect(checkHealth).toHaveBeenCalledTimes(13);
+      } finally {
+        unmount();
+        visibility.mockRestore();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('coalesces the focus, pageshow, and visibility events from one resume', async () => {
     const checkHealth = vi.fn().mockResolvedValue(true);
     const store = storeWithUrl('https://tailnet-station.example.test');

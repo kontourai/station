@@ -102,18 +102,21 @@ export class ConnectionHealthCoordinator {
     };
   };
 
-  trigger = (): void => {
+  /** Whether this call started a run, rather than skipping or queuing it. */
+  trigger = (): boolean => {
     this.clearTimer();
     if (
       typeof document !== 'undefined' &&
       document.visibilityState === 'hidden'
     )
-      return;
+      return false;
+    if (this.listeners.size === 0) return false;
     if (this.inFlight) {
       this.rerunRequested = true;
-      return;
+      return false;
     }
     void this.run();
+    return true;
   };
 
   stop(): void {
