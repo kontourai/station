@@ -714,6 +714,9 @@ Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
 `user`, `disclosure`, or `environment`. Kontour Full is refused until a Kontour disclosure exists. The normal target and credential flags apply; `--json`
 prints the status object. Full remains Lite until the current disclosure has
 been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+Environment-limited status also explains that restoring Full delivery requires an
+explicit config choice (`station telemetry set operator full`) and acknowledgement
+in Settings; a legacy environment true plus a receipt no longer enables Full.
 Lite sending and `station telemetry outbox` belong to later implementation lanes;
 these commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 

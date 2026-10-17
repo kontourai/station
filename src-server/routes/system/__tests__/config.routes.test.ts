@@ -946,6 +946,46 @@ describe('Config Routes', () => {
 // (the on-load purge in `loadAppConfigFile`, the null-clearing merge in
 // `mergeAppConfigUpdate`) — a mock loader can't exercise either.
 describe('Config Routes (real ConfigLoader + filesystem)', () => {
+  test.each([
+    { foo: 'full' },
+    'full',
+    null,
+    ['full'],
+    { operator: 'invalid' },
+    { kontour: 'lite', foo: 'full' },
+  ])(
+    'malformed telemetryTier %j is rejected without persisting or exposing internals',
+    async (telemetryTier) => {
+      const home = makeTempDir('station-tier-validation-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      const app = new Hono();
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      try {
+        await loader.loadAppConfig();
+        const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        const response = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier }),
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          success: false,
+          error:
+            'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+        });
+        expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+          before,
+        );
+      } finally {
+        loader.dispose();
+      }
+    },
+  );
+
   test.each(['agent', 'standard', 'manager'] as const)(
     'tier-only raises require consent authority (%s)',
     async (principal) => {

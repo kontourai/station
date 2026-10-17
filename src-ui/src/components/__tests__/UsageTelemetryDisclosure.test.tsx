@@ -394,7 +394,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -417,13 +417,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; one is configured on this Station.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured.',
   );
 });
 
@@ -635,7 +635,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();
