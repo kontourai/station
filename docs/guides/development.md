@@ -344,6 +344,11 @@ Station's pinned workspace dependencies.
 
 ## Commit Messages
 
+The required `PR title policy` commit status applies the same grammar to live
+squash titles using trusted workflow code. It validates all open main-target
+PRs sharing a head, so correcting one cannot hide another invalid title. Title/body edits rerun that small check,
+not source CI. A title correction cannot clear an actual source-check failure.
+
 Commit subjects follow the Conventional Commits grammar enforced by the
 repository hooks:
 
@@ -508,19 +513,21 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-Nightly and tagged preview and stable promotions pass one exact source SHA
-to the hosted qualification authority.
-
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
-one exact source through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs after main source changes with an hourly fallback.
-It finishes the active source and coalesces pending candidates. Eligible Nightly
-delivery uses a separate lease and a configurable interval (six hours by default). Nightly has no independent schedule; its
-manual dispatch remains available for recovery. The hourly qualification-health
-watchdog reports missed starts, stale success and failed delivery. Nightly
-and tagged Preview/Stable require that qualification, with bounded reuse of
-exact-source evidence. See [the release process](releasing.md) for receipt
-admission, failure repair and promotion.
+one exact source SHA through every canonical phase and the Android viewport suite.
+`Main: Qualification` runs every six hours or manually, then runs all five
+packaging/platform validation families after successful qualification. Optional
+PR delivery families run in sequence after core fast checks, selected by a
+trusted base-owned diff planner; required integration contexts stay unchanged.
+Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
+
+Nightly runs independently: an hourly eligibility decision enforces a six-hour
+default publication minimum before source tests or builds. Eligible sources
+must pass exact-SHA lint, all typecheck lanes, native boundary checks and real
+browser smoke, followed by signed artifact and provider gates. That usability
+gate does not emit a full qualification receipt. Manual Nightly recovery retains
+the same gates. The hourly health watchdog reports stale qualification and
+failed publication separately. See [the release process](releasing.md).
 A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.

@@ -1,0 +1,7 @@
+{
+  "revision": "18f68d7832f895fcac0abf8887671ef6836eff6d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"PR #3676 fix round 1 type correction: re-read the shared freshness/recovery paragraph against useWorkObservation. Its conversationId parameter now explicitly accepts null, matching useSessionEventWindow disabled readers. The existing falsy-ID check still avoids subscription without a conversation; emitted runtime behavior, freshness scoping, batching, eviction and composer policy are unchanged. The previous 241 focused tests and desktop/mobile journey remain runtime evidence; corrected UI typecheck is recorded separately.","inputs":["docs/design/chat-composer.md","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

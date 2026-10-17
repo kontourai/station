@@ -1,0 +1,39 @@
+{
+  "revision": "56ec86e51cf9fc1b810c95c1066cd1e0bd9193d8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":[".veritas/README.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/guides/code-quality.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/guides/development.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Extended CI Full Playwright Coverage and seven-bucket manifest claims. The added tool step is conditional to the process-heavy unit-coverage shard; Playwright coverage, manifest and execution-class requirements are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md",".github/workflows/ci-extended.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Paired instruction import unchanged by hosted process-heavy parser provisioning.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Paired instruction import unchanged by hosted process-heavy parser provisioning.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Paired instruction import unchanged by hosted process-heavy parser provisioning.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the affected CI prerequisite claims: process-heavy full qualification and diagnostic coverage now provision the same pinned, checksum-verified actionlint as statics. All corpus, browser, authority and failure requirements are retained; no parser skip, mock, timeout or permissions change. Focused379 tests, workflow gate and scripts types passed; hosted repaired-source qualification remains unverified.","inputs":["tests/AGENTS.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Paired instruction import unchanged by hosted process-heavy parser provisioning.","inputs":["tests/CLAUDE.md"]}
+  ]
+}

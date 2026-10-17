@@ -171,7 +171,7 @@ describe('qualification health through the GitHub API', () => {
       runs: [run(1, 1, { conclusion: 'failure' })],
     });
     expect(result.reasons).toEqual([
-      'Source qualification passed, but its Nightly decision or publication did not complete successfully.',
+      'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     ]);
     expect(result.summary).toContain('Latest passing gate:');
   });
@@ -204,15 +204,39 @@ describe('qualification health through the GitHub API', () => {
       ],
     });
     expect(result.reasons).toEqual([
-      'Source qualification passed, but its Nightly decision or publication did not complete successfully.',
+      'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     ]);
   });
 
-  it('reports disabled delivery even when source qualification is healthy', async () => {
+  it('keeps a scheduled Nightly delivery failure separate from healthy full qualification', async () => {
+    const { result } = await observe({
+      manualRuns: [
+        run(2, 1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'schedule',
+          conclusion: 'failure',
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [
+          gate({ name: '1 · Source gate (lint, typecheck, browser smoke)' }),
+          gate({
+            name: '3 · Publish CLI to npm nightly',
+            conclusion: 'failure',
+          }),
+        ],
+      },
+    });
+    expect(result.healthy).toBe(false);
+    expect(result.summary).toContain(
+      'cli https://github.com/owner/repo/actions/runs/2',
+    );
+  });
+
+  it('does not require the retired qualification-driven delivery setting', async () => {
     const { result } = await observe({ enabled: false });
-    expect(result.reasons).toEqual([
-      'Qualification-driven Nightly delivery is disabled (STATION_QUALIFIED_NIGHTLY must be enabled).',
-    ]);
+    expect(result.reasons).toEqual([]);
   });
 
   it('does not clear a failed reservation when newer green qualification skips delivery', async () => {
@@ -221,7 +245,7 @@ describe('qualification health through the GitHub API', () => {
       jobs: { 1: [gate()], 2: [gate()] },
     });
     expect(result.reasons).toEqual([
-      'Source qualification passed, but its Nightly decision or publication did not complete successfully.',
+      'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     ]);
   });
 

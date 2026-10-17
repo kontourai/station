@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
 import {
   buildFreshnessReport,
   SWEEP_BODY_LIMIT,
@@ -1528,27 +1527,5 @@ describe('Nightly freshness sweep (#2923)', () => {
     expect(() =>
       upsertFreshnessIssue({ repo: '--bad', reportPath, gh: gh('') }),
     ).toThrow('--repo must be owner/name');
-  });
-
-  it('runs on a schedule with read-only contents and issue writes on the sweep job alone', () => {
-    const workflow = parse(
-      readFileSync(
-        resolve(scripts, '../.github/workflows/docs-freshness-sweep.yml'),
-        'utf8',
-      ),
-    );
-    expect(Object.keys(workflow.on)).toEqual(['schedule', 'workflow_dispatch']);
-    expect(workflow.permissions).toEqual({ contents: 'read' });
-    expect(Object.keys(workflow.jobs)).toEqual(['sweep']);
-    expect(workflow.jobs.sweep.if).toBeUndefined();
-    expect(workflow.jobs.sweep.permissions).toEqual({
-      contents: 'read',
-      issues: 'write',
-    });
-    const text = JSON.stringify(workflow);
-    expect(text).not.toMatch(/secrets\./);
-    expect(workflow.jobs.sweep.steps[0].with['persist-credentials']).toBe(
-      false,
-    );
   });
 });

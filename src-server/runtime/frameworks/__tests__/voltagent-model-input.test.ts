@@ -3,6 +3,7 @@
  * authored turn plus a model-input composer. The store keeps the authored
  * turn; only the model reads the composed one.
  */
+import { Agent } from '@voltagent/core';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, test } from 'vitest';
@@ -60,6 +61,7 @@ async function run(
   conversationId: string,
   options: {
     hooks?: Record<string, unknown>;
+    registered?: boolean;
     agentPrepareMessages?: (args: { messages: unknown[] }) => unknown;
   } = {},
 ) {
@@ -82,7 +84,13 @@ async function run(
   }
   let error: unknown;
   try {
-    const result = await agent.streamText(input as string, {
+    if (options.registered && !('raw' in agent && agent.raw instanceof Agent))
+      throw new Error('Expected the real registered VoltAgent');
+    const invocation =
+      options.registered && 'raw' in agent && agent.raw instanceof Agent
+        ? agent.raw
+        : agent;
+    const result = await invocation.streamText(input as string, {
       userId: 'owner',
       conversationId,
       composeModelInput,
@@ -105,22 +113,26 @@ async function run(
   return { model, stored, error };
 }
 
-test('a text turn is stored as typed while the model reads the composed text', async () => {
-  const { model, stored } = await run(
-    'What changed?',
-    (input) => `${CONTEXT}\n${input as string}`,
-    'text-turn',
-  );
-  expect(stored[0]).toMatchObject({
-    role: 'user',
-    parts: [{ type: 'text', text: 'What changed?' }],
-  });
-  const prompt = model.doStreamCalls[0]!.prompt;
-  expect(prompt.at(-1)).toMatchObject({
-    role: 'user',
-    content: [{ type: 'text', text: `${CONTEXT}\nWhat changed?` }],
-  });
-});
+test.each([false, true])(
+  'a text turn is stored as typed while the model reads the composed text (registered=%s)',
+  async (registered) => {
+    const { model, stored } = await run(
+      'What changed?',
+      (input) => `${CONTEXT}\n${input as string}`,
+      'text-turn',
+      { registered },
+    );
+    expect(stored[0]).toMatchObject({
+      role: 'user',
+      parts: [{ type: 'text', text: 'What changed?' }],
+    });
+    const prompt = model.doStreamCalls[0]!.prompt;
+    expect(prompt.at(-1)).toMatchObject({
+      role: 'user',
+      content: [{ type: 'text', text: `${CONTEXT}\nWhat changed?` }],
+    });
+  },
+);
 
 test('a multipart turn is stored as authored while a composed context message reaches the model', async () => {
   const authored: ModelInputMessage[] = [
