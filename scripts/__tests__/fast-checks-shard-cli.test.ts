@@ -949,7 +949,8 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
           join(root, 'node_modules', entry),
           join(worktree, 'node_modules', entry),
         );
-      const orphan = 'scripts/lib/fast-checks-orphan-fixture.mjs';
+      // Tooling changes intentionally select supplemental documentation suites.
+      const orphan = 'src-server/fast-checks-orphan-fixture.mjs';
       writeFileSync(join(worktree, orphan), 'export const orphan = 1;\n');
       git(worktree, 'add', orphan);
       git(

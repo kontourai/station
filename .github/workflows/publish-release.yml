@@ -140,6 +140,7 @@ jobs:
     if: needs.resolve.outputs.pointer_repair_only != 'true'
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: release
       source_sha: ${{ needs.resolve.outputs.sha }}
 
   publish:

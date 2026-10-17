@@ -26,12 +26,9 @@ name: "PR: Portable archives"
 # explicit head-repository/head-SHA checkout that persists no credentials,
 # on ephemeral GitHub-hosted runners, under a read-only token.
 
-# Every input that changes an archive's bytes or its proof triggers a run.
-# scripts/__tests__/portable-server-archive.test.ts derives the builder's and
-# the smoke's local imports and fails if one is missing here, and holds push
-# and pull_request_target to the same list. Server, UI and shared package
-# sources are deliberately not listed: they change on most pull requests,
-# and ordinary CI owns them.
+# The trusted delivery planner owns affected PR routing in
+# scripts/pr-delivery-paths.json. Scheduled qualification and publication
+# callers retain the complete native target matrix below.
 on:
   workflow_call:
     inputs:
@@ -53,99 +50,6 @@ on:
         default: false
         type: boolean
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/portable-server-archives.yml'
-      - '.nvmrc'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'esbuild.config.mjs'
-      - 'docs/reference/station-docs.md'
-      - 'docs/learn/mcp-topics.json'
-      - 'docs/architecture/module-map.md'
-      - 'docs/learn/atlas.json'
-      - 'install.sh'
-      - 'install.ps1'
-      - 'schemas/**'
-      - 'examples/**'
-      - 'config/portable-server-node-runtime.json'
-      # The release ring table and grammar that stamp .station-release.json.
-      - 'config/channel-ports.json'
-      - 'packages/shared/src/portable-server-targets.mjs'
-      - 'packages/shared/src/release-manifest.mjs'
-      - 'packages/shared/src/release-rings.generated.mjs'
-      - 'packaging/portable-server/**'
-      - 'packages/cli/**'
-      - 'scripts/build-portable-server-archive.mjs'
-      - 'scripts/generate-station-docs.mjs'
-      - 'scripts/smoke-portable-server-archive.mjs'
-      - 'scripts/station-cli.ts'
-      - 'scripts/station-cli-implementation.ts'
-      - 'scripts/source-bootstrap.ts'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/container-release-metadata.mjs'
-      - 'scripts/lib/desktop-build-manifest.mjs'
-      - 'scripts/lib/bundled-registry.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/documentation-model.mjs'
-      - 'scripts/lib/elf-symbol-floor.mjs'
-      - 'scripts/lib/free-ports.mjs'
-      - 'scripts/lib/git-environment.mjs'
-      - 'scripts/lib/module-entry.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
-      - 'scripts/lib/portable-smoke-diagnostics.mjs'
-      - 'scripts/lib/server-build-config.mjs'
-      - 'scripts/lib/station-stop-hint.mjs'
-  pull_request_target:
-    paths:
-      - '.github/workflows/portable-server-archives.yml'
-      - '.nvmrc'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'esbuild.config.mjs'
-      - 'docs/reference/station-docs.md'
-      - 'docs/learn/mcp-topics.json'
-      - 'docs/architecture/module-map.md'
-      - 'docs/learn/atlas.json'
-      - 'install.sh'
-      - 'install.ps1'
-      - 'schemas/**'
-      - 'examples/**'
-      - 'config/portable-server-node-runtime.json'
-      # The release ring table and grammar that stamp .station-release.json.
-      - 'config/channel-ports.json'
-      - 'packages/shared/src/portable-server-targets.mjs'
-      - 'packages/shared/src/release-manifest.mjs'
-      - 'packages/shared/src/release-rings.generated.mjs'
-      - 'packaging/portable-server/**'
-      - 'packages/cli/**'
-      - 'scripts/build-portable-server-archive.mjs'
-      - 'scripts/generate-station-docs.mjs'
-      - 'scripts/smoke-portable-server-archive.mjs'
-      - 'scripts/station-cli.ts'
-      - 'scripts/station-cli-implementation.ts'
-      - 'scripts/source-bootstrap.ts'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/container-release-metadata.mjs'
-      - 'scripts/lib/desktop-build-manifest.mjs'
-      - 'scripts/lib/bundled-registry.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/documentation-model.mjs'
-      - 'scripts/lib/elf-symbol-floor.mjs'
-      - 'scripts/lib/free-ports.mjs'
-      - 'scripts/lib/git-environment.mjs'
-      - 'scripts/lib/module-entry.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
-      - 'scripts/lib/portable-smoke-diagnostics.mjs'
-      - 'scripts/lib/server-build-config.mjs'
-      - 'scripts/lib/station-stop-hint.mjs'
-
 permissions:
   contents: read
 
@@ -161,6 +65,7 @@ jobs:
     name: Build and smoke ${{ matrix.target }}
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runner: ubuntu-22.04

@@ -9,6 +9,10 @@ on:
         description: Exact source commit to qualify
         required: true
         type: string
+      capacity_class:
+        description: Scheduler class (background, integration, or release); callers own routing
+        default: background
+        type: string
       allow_reuse:
         description: Reuse successful exact-source qualification from the last 24 hours
         default: true
@@ -19,14 +23,14 @@ permissions:
   actions: read
 
 concurrency:
-  group: hosted-full-regression-${{ inputs.source_sha }}
+  group: ${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
   resolve:
     runs-on: ubuntu-22.04
-    # The admission step may wait up to 15 minutes for capacity (#3612).
-    timeout-minutes: 30
+    timeout-minutes: 10
     outputs:
       reuse_run: ${{ steps.evidence.outputs.reuse_run }}
       ordinary: ${{ steps.capacity.outputs.ordinary }}
@@ -43,11 +47,10 @@ jobs:
       - name: Resolve qualification runner profile
         id: capacity
         env:
-          GH_TOKEN: ${{ github.token }}
+          STATION_QUALIFICATION_CAPACITY_CLASS: ${{ inputs.capacity_class }}
           STATION_QUALIFICATION_RUNNER_PROFILE: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE }}
           STATION_HOSTED_TOTAL_SLOTS: ${{ vars.STATION_HOSTED_TOTAL_SLOTS }}
           STATION_HOSTED_MACOS_SLOTS: ${{ vars.STATION_HOSTED_MACOS_SLOTS }}
-          STATION_CAPACITY_REPOSITORIES: ${{ vars.STATION_CAPACITY_REPOSITORIES }}
           STATION_QUALIFICATION_ORDINARY_SLOTS: ${{ vars.STATION_QUALIFICATION_ORDINARY_SLOTS }}
           STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: ${{ vars.STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS }}
           STATION_INTEGRATION_RESERVE: ${{ vars.STATION_INTEGRATION_RESERVE }}
@@ -60,32 +63,6 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           ALLOW_REUSE: ${{ inputs.allow_reuse }}
         run: node scripts/qualification-evidence.mjs resolve
-      # Waits for capacity, re-observing every minute, instead of failing a
-      # required check; it fails only when its 15-minute ceiling elapses
-      # (scripts/release-pipeline.mjs). The step timeout is a backstop.
-      - name: Admit fresh qualification before expensive fanout
-        if: steps.evidence.outputs.reuse_run == ''
-        timeout-minutes: 18
-        env:
-          GH_TOKEN: ${{ github.token }}
-          STATION_QUALIFICATION_RUNNER_PROFILE: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE }}
-          STATION_HOSTED_TOTAL_SLOTS: ${{ vars.STATION_HOSTED_TOTAL_SLOTS }}
-          STATION_HOSTED_MACOS_SLOTS: ${{ vars.STATION_HOSTED_MACOS_SLOTS }}
-          STATION_CAPACITY_REPOSITORIES: ${{ vars.STATION_CAPACITY_REPOSITORIES }}
-          STATION_QUALIFICATION_ORDINARY_SLOTS: ${{ vars.STATION_QUALIFICATION_ORDINARY_SLOTS }}
-          STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: ${{ vars.STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS }}
-          STATION_INTEGRATION_RESERVE: ${{ vars.STATION_INTEGRATION_RESERVE }}
-        run: |
-          set -euo pipefail
-          node scripts/release-pipeline.mjs admission | tee "$RUNNER_TEMP/qualification-admission.jsonl"
-      - name: Retain capacity admission receipt
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qualification-admission-${{ inputs.source_sha }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/qualification-admission.jsonl
-          if-no-files-found: ignore
-          retention-days: 14
 
   static:
     name: Static and app builds
