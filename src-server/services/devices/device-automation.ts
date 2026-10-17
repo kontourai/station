@@ -260,6 +260,8 @@ export class DeviceAutomation {
         return { ok: true, accepted };
       },
     );
+    // A refusal before device admission must not acquire screen/control metadata.
+    if (!('accepted' in result) && !('lease' in result)) return result;
     const session = this.deps.sessions.get(id);
     const lease = session
       ? this.deps.surfaces.get(session.surfaceId)?.lease.snapshot()
@@ -303,6 +305,10 @@ export class DeviceAutomation {
     if (!standing.ok || standing.actor.kind !== 'operator')
       return refused('operator-required');
     return this.withControl(access, authority, id, async (selected) => {
+      // The early gate prevents claiming; recheck after the asynchronous claim.
+      const current = await authorizeDeviceAgentCaller(access);
+      if (!current.ok || current.actor.kind !== 'operator')
+        return refused('operator-required');
       if (
         !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
       )

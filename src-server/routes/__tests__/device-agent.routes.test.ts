@@ -59,6 +59,7 @@ function harness(
   let shared = true;
   let active = true;
   let enabled = true;
+  let operator = options.operator === true;
   let principalId = 'admin';
   let conversationId = 'conversation';
   let callingSession = sessionId;
@@ -168,7 +169,7 @@ function harness(
         ? caller()
         : resolveStationControlCallerFromToken(callingSession, record),
     authorizePrincipal: createBrowserPrincipalAuthorizer({
-      isOperatorPrincipal: () => options.operator === true,
+      isOperatorPrincipal: () => operator,
       membership: {
         admissionsForResolvedPrincipal: () =>
           active
@@ -293,6 +294,9 @@ function harness(
           body: JSON.stringify({ type: 'set-appearance', appearance: 'dark' }),
         },
       ),
+    setOperator: (value: boolean) => {
+      operator = value;
+    },
     setEnabled: (value: boolean) => {
       enabled = value;
     },
@@ -410,14 +414,17 @@ test.each(['share', 'membership'] as const)(
     const id = await h.open();
     if (kind === 'share') h.revokeShare();
     else h.revokeMember();
+    const result = parsed(
+      await h.run('device_input', {
+        deviceSessionId: id,
+        events: [{ kind: 'text', text: 'blocked' }],
+      }),
+    );
+    expect(result).toMatchObject({ ok: false, code: 'not-authorized' });
     expect(
-      parsed(
-        await h.run('device_input', {
-          deviceSessionId: id,
-          events: [{ kind: 'text', text: 'blocked' }],
-        }),
-      ),
-    ).toMatchObject({ ok: false, code: 'not-authorized' });
+      result,
+      'unadmitted callers must not receive current lease metadata',
+    ).not.toHaveProperty('lease');
     expect(h.packets).toHaveLength(0);
   },
 );
@@ -871,3 +878,19 @@ test.each([false, true])(
     ).toBeUndefined();
   },
 );
+
+test('operator standing revoked during control admission cannot close the shared session', async () => {
+  const h = harness('sdk-in-process', { operator: true });
+  const id = await h.open();
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  const authorize = entry.authorize;
+  vi.spyOn(entry, 'authorize').mockImplementation(async (...args) => {
+    h.setOperator(false);
+    return authorize(...args);
+  });
+  expect(
+    parsed(await h.run('device_close', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'operator-required' });
+  expect(h.sessions.get(id)).toBeDefined();
+  expect(entry.lease.snapshot().holder).toBeNull();
+});
