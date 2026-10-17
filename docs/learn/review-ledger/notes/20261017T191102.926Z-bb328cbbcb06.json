@@ -1,0 +1,7 @@
+{
+  "revision": "60740f749e6ecc0ab057c26433f25b8852c2e734",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed merged SDK manifest delta: Flow 5.2.0, Surface ^6.0.1, UI ^1.19.0, Zod ^4.6.6 and React Query ^5.104.2 align with the composed lock and current exports. Public SDK subpaths, host React Query requirements and server-owned authority remain unchanged by these manifest edits. Server-test and E2E typechecks plus focused dependency/workflow controls passed; no live-provider, release or registry-install claim.","inputs":["docs/reference/sdk.md","packages/sdk/package.json"]}
+  ]
+}
