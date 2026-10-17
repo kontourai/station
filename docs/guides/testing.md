@@ -2209,3 +2209,63 @@ AWS SDK and other provider wrappers use route/service integration tests with an
 injected or mocked provider boundary for deterministic contracts. Keep real
 provider execution in an explicit opt-in live lane; a browser interception is
 not evidence that the server-side SDK integration works.
+
+### Review repeated Gallery evidence once
+
+Gallery's comparator reports exact rendering differences, not product intent.
+Keep capture failures, pixel/dimension changes, demonstrated product defects,
+and screens without baseline coverage separate. Equal pixel counts establish
+no image identity or common cause. Read the live main rules before landing:
+when Gallery is absent from required contexts, its red result alone must not
+hold an otherwise eligible PR. A demonstrated product defect still needs an
+explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
+and exact-SHA promotion receipts establish different things.
+
+Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
+reusing a verdict or skipping capture. Run it in the exact candidate checkout
+against the downloaded artifact and that checkout's baseline:
+
+```sh
+node scripts/gallery-review-evidence.mjs --gallery=/path/to/artifact --context=/path/to/context.json --out=/path/to/review.json
+# For a later run, add --previous=/path/to/previous-reviewed-report.json
+```
+
+The context JSON must supply `sourceSha` (full candidate SHA), `runUrl`,
+`renderer` (verified pinned container/browser/font environment identity), and
+`captureContract` (SHA-256 fingerprint of the executed capture/comparison
+contract). Establish that fingerprint from the exact executed screenshot spec,
+fixture helpers, comparator/report generator, workflow and lockfile bytes. If
+those inputs or renderer provenance cannot be established, do not link reviews.
+Renderer and contract provenance are caller-supplied verified inputs; the tool
+does not establish them from a label. This is a visual-review fingerprint,
+never a complete build-cache key.
+
+After inspecting the actual images, retain the report with a `review` object
+containing `owner`, `disposition`, and `evidenceUrl`. A later report links it only
+when all image bytes, decoded pixels, dimensions, controls/capture diagnostics,
+baseline entries/reference bytes, renderer and contract match. The tool checks
+claimed primary and auxiliary PNG hashes against actual files. It refuses
+outside-gallery paths and never links incomplete or failed captures. Changing
+any signature input requires renewed review. Each report retains its own source
+and run identity and comparator exit status; a linked review does not turn red
+green or establish source correctness, determinism, merge or promotion proof.
+
+Keep retained packets in durable scratch storage with their original negative
+results. Agents should coalesce an identical signature into the original owner
+review instead of downloading or visually inspecting it again. New controls,
+routes, dimensions, missing/new screens or capture failures reopen the review.
+Do not rebaseline, mask, add thresholds, rerun unchanged code, or promote Gallery
+to a required gate as a way to dispose of repeated notifications.
+
+An observed hosted sample, run `38767328336` (2026-10-15), spent 317 seconds in
+its Gallery job: capture 186s, dependency installation 53s, container setup 34s,
+comparison 2s, artifact upload 2s. Classification took another 19s; runner queue
+wait is separate. These are one run's step timings, not averages or a speedup
+claim. Capture dominates that sample. First remove repeated triage; keep PR and
+merge-group captures intact until reuse has complete input fingerprints and
+reliable invalidation. Exact comparison itself was a small part of this cost.
+
+Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
+310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
+Across these three observed jobs, capture remained the largest step. The sample
+does not establish a workload-wide average or authorize capture reuse.
