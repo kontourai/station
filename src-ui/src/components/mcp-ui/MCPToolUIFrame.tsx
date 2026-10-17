@@ -348,7 +348,6 @@ export function MCPToolUIFrame({
   if (transcriptResult && !recordedAppUri) return null;
   if (
     transcriptResult &&
-    !nativeIframeBlocked &&
     (resolution.isError ||
       (resolution.data?.status !== 'success' &&
         resolution.data?.status !== 'render_revoked'))

@@ -361,7 +361,9 @@ it never invokes `/initial-result` or the embedded-result fallback. Missing UI
 metadata leaves the ordinary row, including on native shells. Missing,
 disconnected or unknown integrations, missing tools/resources and resolver errors
 add no transcript card. A known recorded App can report rendering revocation;
-native shells report their scripted-frame restriction only for known Apps.
+The success-or-revocation resolution requirement also applies on native:
+unresolved transcript occurrences remain quiet, without attempting native
+resource reads. Existing native refusal for pinned pane frames is unchanged.
 Fetches use the existing resolver/resource
 routes, which re-resolve today's catalog declaration and enforce render grants.
 A result pointer differing from that declaration is refused. A pointer appearing

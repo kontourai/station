@@ -345,6 +345,21 @@ describe('MCPToolUIFrame', () => {
     },
   );
 
+  test('an unresolved recorded App on native leaves only its tool row', () => {
+    mockNativeShell = true;
+    renderFrame({
+      ref: 'demo/chart',
+      transcriptResult: {
+        result: {
+          content: [],
+          _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+        },
+      },
+    });
+    expect(document.querySelector('.mcp-tool-ui-frame')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test.each([
     'missing_server',
     'missing_tool',
