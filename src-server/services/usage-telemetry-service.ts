@@ -9,6 +9,7 @@ import {
   type ProductTelemetryBuild,
   type ProductTelemetryCommitReceipt,
   type ProductTelemetryObservation,
+  STATION_DAILY_FIELDS,
 } from '@kontourai/station-contracts/product-telemetry';
 import type {
   ProductTelemetryDeliveryStatus,
@@ -253,6 +254,7 @@ export class UsageTelemetryService {
   async telemetryStatus(): Promise<
     ResolvedTelemetryConfiguration & {
       liteInventoryRevision: string;
+      liteInventory: typeof STATION_DAILY_FIELDS;
       fullInventoryRevision: string;
     }
   > {
@@ -264,6 +266,7 @@ export class UsageTelemetryService {
         { operator: this.hasCurrentDisclosureReceipt },
       ),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      liteInventory: STATION_DAILY_FIELDS,
       fullInventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
     };
   }

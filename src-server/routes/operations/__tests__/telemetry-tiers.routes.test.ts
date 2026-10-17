@@ -32,7 +32,8 @@ test('status uses the live service configuration, respects DNT and never sends',
     await createUsageTelemetryDisclosureRoutes(subject).request('/status');
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
-  expect(await response.json()).toMatchObject({
+  const body = await response.json();
+  expect(body).toMatchObject({
     success: true,
     data: {
       publishers: {
@@ -41,5 +42,10 @@ test('status uses the live service configuration, respects DNT and never sends',
       },
     },
   });
+  expect(body.data.liteInventory).toMatchObject({
+    event: { domain: ['station_daily'] },
+    public_plugins_enabled: { arrayMax: 20 },
+  });
+  expect(body.data.liteInventoryRevision).toMatch(/^[a-f0-9]{64}$/);
   expect(fetch).not.toHaveBeenCalled();
 });

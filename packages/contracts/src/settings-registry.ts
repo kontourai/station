@@ -226,7 +226,7 @@ export const APP_SETTINGS_REGISTRY = [
     label: 'Telemetry tiers',
     help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
     description:
-      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite sending is a separate implementation lane.',
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite collection is not available yet.',
     defaultValue: { kontour: 'lite', operator: 'lite' },
   }),
   defineSetting({

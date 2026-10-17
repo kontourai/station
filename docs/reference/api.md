@@ -1174,8 +1174,8 @@ queue and requests; saved collector changes require restart activation. See
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
 scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
 with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
-`default`, `user`, `disclosure`). It also returns Lite/Full inventory revisions
-and the optional build-time author endpoint. Responses are private/no-store;
+`default`, `user`, `disclosure`). It also returns Lite/Full inventory revisions, the exact server-side Lite
+field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
 a service not yet constructed returns 503 `telemetry_not_ready`.
 
 Save a choice with `PUT /config/app`, for example
