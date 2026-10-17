@@ -1,0 +1,7 @@
+{
+  "revision": "16f0eede0ee623c4b74854b7c7ee2d64bd18b704",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed exact five-record renewal at16f0eede0ee against Brian explicit approval through exclusive2026-10-18T00:00UTC, recorded in3122#6228008931 and3150#6228009161. Only reason/expires changed on root node-forge, root braces and root/SDK/Shared http-cache-semantics; every other field and residual is unchanged. Named RSA signature-forgery, shared-cache disclosure and nested-brace process-DoS threats remain accepted, with Station exposure limits retained; registry/advisory recheck found no first patched release. Six current audit views and90 policy tests passed. Physical expired-file and unused-scope controls rejected their intended faults; exact deadline rejects all five; byte-identical restoration passes. Initial control harness field-name error was corrected before control claims. The guide still accurately requires exact identities, fresh approval, exclusive expiry and removal only with verified remediation; dated older tables remain historical. No policy implementation, dependency graph or mitigation changed; hosted successor qualification remains pending.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}

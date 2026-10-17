@@ -45,6 +45,35 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each(['codex', 'acp'])(
+    'refuses %s execution when the saved profile requires unsupported per-tool prompts',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      await expect(resolver(baseInput({ provider }))).rejects.toThrow(
+        'cannot enforce',
+      );
+    },
+  );
+
+  test('delivers explicit Ask me rules to Claude even with no authored automatic grants', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({
+          tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+        }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const input = await resolver(baseInput({ provider: 'claude' }));
+    expect(input.agent?.askBeforeUse).toEqual(['reports_write']);
+  });
   test.each(['claude', 'station-agent'])(
     'verified %s execution rechecks the freshly loaded authored definition before delivering it',
     async (provider) => {
@@ -181,6 +210,38 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
+  test.each(['claude', 'codex', 'acp'])(
+    'does not export a personal-account endpoint to %s without principal credential delivery',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ tools: { mcpServers: ['personal-reports'] } }),
+        resolveToolServer: async () => ({
+          id: 'personal-reports',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://reports.example/mcp',
+          credentialOwnership: { owner: 'principal' },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(baseInput({ provider }));
+      expect(result.agent?.toolServers).toEqual([]);
+      expect(
+        result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+      ).toMatchObject({
+        toolServers: {
+          undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'personal-reports',
+              reason: 'engine-unsupported',
+            },
+          ],
+        },
+      });
+    },
+  );
   test('the session resolver excludes a disabled tool server from external-engine delivery', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>

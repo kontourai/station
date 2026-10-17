@@ -133,6 +133,7 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',
   'src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx',
+  'src-ui/src/views/agent-editor/AgentToolDiscovery.tsx',
   'src-ui/src/views/KnowledgeConnectionView.tsx',
   'src-ui/src/views/AgentConnectionView.tsx',
   'src-ui/src/views/ProviderSettingsView.tsx',

@@ -142,6 +142,8 @@ export class DefaultAgentRegistryProvider implements IAgentRegistryProvider {
 export class BuiltinIntegrationRegistryProvider
   implements IIntegrationRegistryProvider
 {
+  readonly registryKey = 'station-integrations';
+  readonly displayName = 'Station catalog';
   async listAvailable(): Promise<RegistryItem[]> {
     return [
       {

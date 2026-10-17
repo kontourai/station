@@ -167,6 +167,23 @@ async function fulfillGallerySystemStatus(route: Route): Promise<void> {
   });
 }
 
+async function fulfillGalleryToolAccess(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const access = await response.json();
+  if (!response.ok() || !access.success || !access.data?.station?.name)
+    throw new Error('Gallery requires the live tool-access projection.');
+  await route.fulfill({
+    response,
+    json: {
+      ...access,
+      data: {
+        ...access.data,
+        station: { ...access.data.station, name: 'Gallery host' },
+      },
+    },
+  });
+}
+
 function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   if (route.request().method() !== 'GET') return route.fallback();
   return route.fulfill({
@@ -1438,14 +1455,7 @@ function projectDetailFixture(
     });
 }
 
-/**
- * `overlay-dock-project-mismatch`'s hooks, factored out (matching
- * `connectionsHubBadgeSettleHooks()`'s established shape above) because
- * every route registered in `beforeGoto` (needed BEFORE `page.goto` — these
- * queries fire on first render) must be unregistered again in `afterGoto`,
- * and a plain object literal's two callbacks cannot share the `withRoute`
- * cleanup closures any other way.
- */
+/** Keep the selected Project fixture available through both captures. */
 function overlayDockProjectMismatchHooks(
   resyncOnly = false,
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
@@ -1980,7 +1990,17 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
+  {
+    name: 'profile',
+    title: 'Profile',
+    path: '/profile',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('region', { name: 'My access', exact: true }),
+      ).toContainText('Operator on Gallery host');
+    },
+  },
   {
     name: 'settings',
     title: 'Settings',
@@ -3269,6 +3289,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
+  await page.route('**/api/tool-library/access', fulfillGalleryToolAccess);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established

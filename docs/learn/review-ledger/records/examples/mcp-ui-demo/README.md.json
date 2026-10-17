@@ -28,7 +28,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx"
   ],
 
   "checks": [

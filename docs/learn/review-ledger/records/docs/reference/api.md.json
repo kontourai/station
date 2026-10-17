@@ -450,7 +450,19 @@
 
     "packages/sdk/src/personal-board.ts",
 
-    "src-server/security/coding-authority.ts"
+    "src-server/security/coding-authority.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/install-registry-integration.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts"
   ],
 
   "checks": [

@@ -140,7 +140,9 @@
 
     "src-server/security/local-grant-file.ts",
 
-    "src-server/services/notifications/agent-activity-publisher.ts"
+    "src-server/services/notifications/agent-activity-publisher.ts",
+
+    "scripts/__tests__/nightly-build-identity.test.ts"
   ],
 
   "checks": [

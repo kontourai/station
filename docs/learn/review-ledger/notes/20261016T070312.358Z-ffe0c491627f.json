@@ -1,0 +1,7 @@
+{
+  "revision": "adddf4cea38543060697fe00492180e0836ee500",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Profile-only baseline acceptance from exact hosted source4f11b029, run38862309803, artifact12030073287 gallery-pr-38862309803-1. All56 captures and recovery checks succeeded. The Profile diff intentionally adds the feature My access panel and uses the stable host label while preserving live authority. Canonical screenshot:baseline consumed an explicit Profile artifact selection; original hosted capture manifest and PNGs remain unchanged, provenance recorded in the selection. Only Profile PNG/hash changed; all other baseline entries were independently verified unchanged. Strict actual-artifact Profile comparison now1/1 unchanged. Full own capture compared against Gallery owner68802 references is54unchanged/1Profilechanged,0new/failed/missing plus existingvolatile. Shared references stay with PR3726 and are not accepted here. The guide canonical renderer/baseline and partial-update contract remains accurate; no prose edit needed. Hosted successor comparison remains pending.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

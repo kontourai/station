@@ -142,7 +142,10 @@ import {
   OrchestrationCommandDispatchError,
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
-import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
+import {
+  recoverOrchestrationSessions,
+  SESSION_RECOVERY_FAILED_CODE,
+} from '../orchestration-session-state.js';
 import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
@@ -1277,9 +1280,7 @@ describe('OrchestrationService', () => {
           () => undefined,
           (error: unknown) => error,
         );
-      await vi.waitFor(() =>
-        expect(whenSessionReady).toHaveBeenCalledTimes(1),
-      );
+      await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
 
       // The wait runs before the turn-start claim, so an exclusive workspace
       // operation is not refused as busy because of it.
@@ -17023,7 +17024,7 @@ describe('OrchestrationService', () => {
       await waitingService.shutdown();
     });
 
-    test('a resend that outwaits a live owner\'s claim older than 15 minutes stays retryable, never indeterminate', async () => {
+    test("a resend that outwaits a live owner's claim older than 15 minutes stays retryable, never indeterminate", async () => {
       const ledger = eventStore.createTurnDeduplicator();
       const slowService = new OrchestrationService({
         adapterRegistry: createRegistry([claude]),
@@ -25085,6 +25086,14 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock, claude]),
       eventBus,
       eventStore,
+      resolveSessionAgent: createSessionAgentResolver({
+        loadAgentSpec: async (slug) =>
+          ['agent-old', 'agent-new'].includes(slug)
+            ? { name: slug, prompt: `Instructions for ${slug}` }
+            : null,
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      }),
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
 
@@ -25102,11 +25111,15 @@ describe('OrchestrationService', () => {
           agentSlug: 'agent-new',
           cwd: newCwd,
         }),
+        agent: expect.objectContaining({
+          slug: 'agent-new',
+          systemPrompt: 'Instructions for agent-new',
+        }),
       }),
     );
   });
 
-  test('a throwing resolveSessionAgent logs and recovery continues into adapter.startSession (#895 wave B review LOW)', async () => {
+  test('a recovery resolver failure refuses engine start and preserves a retryable session', async () => {
     const recoveryCwd = mkdtempSync(join(tmp, 'recovery-resolver-'));
     eventStore.upsertSession({
       provider: 'claude',
@@ -25114,6 +25127,7 @@ describe('OrchestrationService', () => {
       status: 'running',
       model: 'claude-sonnet',
       cwd: recoveryCwd,
+      resumeCursor: 'retained-provider-cursor',
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
     });
@@ -25132,28 +25146,40 @@ describe('OrchestrationService', () => {
 
     recoveryService.initialize();
     await awaitSessionRecoveryCompleted(recoveryService);
-    await materializeBySendingATurn(
-      recoveryService,
-      'thread-recovery-resolver-throws',
-    );
+    await expect(
+      materializeBySendingATurn(
+        recoveryService,
+        'thread-recovery-resolver-throws',
+      ),
+    ).rejects.toThrow('boom: resolver exploded');
 
     expect(resolveSessionAgent).toHaveBeenCalled();
-    expect(claude.startSession).toHaveBeenCalledWith(
+    expect(claude.startSession).not.toHaveBeenCalled();
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to recover provider session',
       expect.objectContaining({
         threadId: 'thread-recovery-resolver-throws',
+        error: 'boom: resolver exploded',
       }),
     );
-    expect(warn).toHaveBeenCalledWith(
-      'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-      expect.objectContaining({
-        threadId: 'thread-recovery-resolver-throws',
-      }),
+    expect(eventStore.listEvents('thread-recovery-resolver-throws')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'runtime.error',
+          payload: expect.objectContaining({
+            code: SESSION_RECOVERY_FAILED_CODE,
+            retriable: true,
+          }),
+        }),
+      ]),
     );
     expect(eventStore.readSessions()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           threadId: 'thread-recovery-resolver-throws',
-          status: 'ready',
+          status: 'error',
+          resumeCursor: 'retained-provider-cursor',
         }),
       ]),
     );

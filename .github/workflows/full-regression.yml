@@ -283,6 +283,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
+      - name: Preflight pinned actionlint
+        timeout-minutes: 1
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -version'
+
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
