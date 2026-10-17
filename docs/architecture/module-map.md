@@ -142,6 +142,14 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+Host-issued `ui-bootstrap` browser sessions can create and cancel Device
+invitations, decide pending requests and manage paired Devices while their
+current grant retains `access:manage`. Admission uses the private mint record
+and exact route leaves; ordinary paired Devices do not inherit it. A preapproved
+invitation records its access decision privately at creation and permits one
+redemption before expiry or cancellation. The native consent broker still
+requires its distinct `local-grant` mint proof.
+
 Explicit device administration is independent of operator identity.
 `EnvironmentSecurityService.authorizeCredential` admits `access:devices` only
 on existing-device list/scope/revoke/remove leaves. `DevicePairingService` checks

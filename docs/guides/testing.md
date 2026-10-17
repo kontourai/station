@@ -204,7 +204,9 @@ different name, so it cannot replace a failing required `fast-checks` result.
 The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
 
-`Repo: Superseded PR checks` runs when `PR: CI` is requested. It reads the
+`Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
+same-repository main-target PR closes merged. The merged-close path retires
+qualified optional delivery as described below. On a new CI request, it reads the
 current same-repository PR head and cancels queued or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. It never cancels merge-group,
@@ -233,7 +235,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 
 | Workflow file | Previous sidebar name | Sidebar name | When it runs |
 | --- | --- | --- | --- |
-| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested. |
+| [`pr-ci-supersession.yml`](../../.github/workflows/pr-ci-supersession.yml) | — | **Repo: Superseded PR checks** | after `PR: CI` is requested; same-repository main-target PR merged close. |
 | [`add-to-project.yml`](../../.github/workflows/add-to-project.yml) | Add issue to org project | **Repo: Add to project** | issue events: opened, reopened, closed. |
 | [`android-test.yml`](../../.github/workflows/android-test.yml) | Android Tests | **Main: Android tests** | after `Main: Android build`; manual dispatch. |
 | [`backlog-priority-policy.yml`](../../.github/workflows/backlog-priority-policy.yml) | Backlog disposition policy | **Repo: Backlog policy** | UTC schedule: `23 13 * * *`; manual dispatch. |
@@ -557,9 +559,12 @@ boundary checks and deterministic browser smoke against one exact source SHA.
 Signing, staged inventory, provenance, provider admission and readback remain
 mandatory. This usability gate does not claim full qualification.
 
-Optional PR delivery checks start after core fast checks and select affected
-families through the trusted base-owned `scripts/pr-delivery-plan.mjs` and
-`scripts/pr-delivery-paths.json`. `delivery-validation.yml` sequences install,
+Optional PR delivery checks wait for core fast checks, source publication and
+the existing repository-scan, bundle-delta and title jobs to settle. The trusted
+base-owned `scripts/pr-delivery-plan.mjs` checks the live PR is still open at
+the same head and repository before selecting affected families through
+`scripts/pr-delivery-paths.json`. Closed or superseded heads select no delivery
+work. `delivery-validation.yml` sequences install,
 portable, native, desktop and ecosystem families; scheduled main qualification
 runs them all after the corpus succeeds. The families retain every exercise
 while reducing 20 jobs to 15: installer eight to six, native four to one,
@@ -568,8 +573,14 @@ fanout are capped at two, so one invocation uses at most two runners. The shared
 runner starts; required integration and release qualification have separate
 classes. Other workflows and repositories can overlap; this is not an
 organization-wide reservation.
-Required PR checks and merge-queue admission remain unchanged. See
-[the release process](releasing.md).
+A trusted merged-PR close handler can retire remaining optional delivery in
+that PR run after verifying successful source checks and a complete recognized
+current-attempt job inventory. It rechecks the run, PR and shared-head ownership
+before requesting cancellation. Missing evidence, unknown jobs, failed source
+or another open PR sharing the head prevents cancellation. Manual, merge-queue,
+release and qualification runs are excluded. A cancellation request is not
+terminal cancellation proof. Required PR checks and merge-queue admission
+remain unchanged. See [the release process](releasing.md).
 
 Hosted matrix fanout uses the repository's Free runner profile by default;
 `STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile only

@@ -2338,7 +2338,7 @@ station environment show
 station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
-station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>]
 station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -2393,6 +2393,19 @@ station environment peers remove <environment-id>
   never changes Serve and Station never enables Funnel. The printed QR and
   link grant **Standard** (`orchestration:read orchestration:operate
   terminal:operate`), the same grant the **Paired devices** panel offers.
+  Preapproved invitations cannot carry protected management or consent scopes
+  such as `relay:manage`, `access:approve` or `consent:decide`; those permissions
+  need their separate operator promotion. Running commands and full Device
+  access remain supported explicit grants.
+  Creating the invitation approves its selected access: the recipient can
+  redeem it once before expiry without a second approval. `--scope` replaces
+  Standard with the named space- or comma-separated scopes. `--browser-url`
+  adds an HTTP(S) browser invitation pointing at the web UI address you supply,
+  keeping its one-time proof in the fragment. Supply the web address, which can
+  differ from the API listener but must proxy that same Station. Browser
+  invitations pair through the web origin; the command does not guess a port.
+  `--require-approval` retains the request-and-host-confirmation flow. Neither form gives an invited
+  Device the host's private browser-administration authority.
   `--payload-only` is the desktop SSH launcher's machine flow: it names no
   scope, so the Station issues its default grant.
 - `environment access request` is the requester side of device pairing: it asks a
@@ -3509,6 +3522,13 @@ without attempting creation when verification fails.
 ### Open an authorized local browser session
 
 `station open [--home=<directory>] [--instance=<name>]` opens an already-running local instance through its one-time browser authorization. Multiple live instances require an explicit selection. A failed authorization does not silently open an unpaired page. The default form keeps the capability out of stdout; the explicit `--print` form prints the one-time sign-in link. `station doctor` in the packaged client reuses the target diagnostic report; source-checkout doctor retains its development checks.
+
+Bare `environment access list|approve|deny` and `environment operator passkeys`
+prefer the live local listener recorded in the selected Station home over a
+project or saved-default Station. Explicit `--station`, `--api-base` and
+`STATION_TARGET` keep their existing precedence and loopback requirement.
+Use the same `STATION_HOME` and CLI channel as the running host. Discovery does
+not authorize a remote Station or replace the local identity/proof checks.
 
 `station environment access approve <request-id> --api-base=http://127.0.0.1:<port>` requires the selected Station home (`STATION_HOME` or its saved local binding). The packaged client uses the same read-only record validation and listener challenge proof as the host. Non-interactive approval still requires `--force`; ordinary interactive use asks for confirmation.
 

@@ -11,6 +11,7 @@ import {
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { publishActiveLocalStation } from '../commands/active-local-station.js';
 import {
   type EnvironmentSecurityServiceFactory,
   type EnvironmentSecurityServiceLike,
@@ -2196,6 +2197,65 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     ).rejects.toThrow(
       `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
+  });
+
+  test('approves on the running local Station when the default saved Station is remote', async () => {
+    const localHome = join(stationRoot, 'homes', 'local');
+    const localApiBase = 'http://127.0.0.1:43141';
+    upsertProfile({
+      name: 'brian-media',
+      endpoint: 'https://brian-media.example.test',
+      setupSource: 'paired',
+      configurationState: 'configured',
+      makeDefault: true,
+    });
+    publishActiveLocalStation(
+      { apiBase: localApiBase, ownerPid: process.pid },
+      localHome,
+    );
+    const pending = {
+      requestId: 'local-browser-request',
+      deviceName: 'Local browser',
+      source: 'same-origin' as const,
+      createdAt: 10,
+      expiresAt: 20,
+      status: 'pending' as const,
+    };
+    const request = makeServerAccessApi(INITIAL, [pending], {
+      ...pending,
+      status: 'confirmed',
+    });
+
+    await runEnvironmentCommand(
+      ['access', 'approve', pending.requestId, '--force'],
+      {
+        createService: () => makeService(),
+        projectHome: localHome,
+        request,
+        stdout,
+        stderr,
+        isInteractive: false,
+      },
+    );
+
+    expect(request.mock.calls.map(([apiBase]) => apiBase)).toEqual([
+      localApiBase,
+      localApiBase,
+      localApiBase,
+      localApiBase,
+    ]);
+    expect(request).toHaveBeenLastCalledWith(
+      localApiBase,
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      expect.objectContaining({
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INITIAL.credential}` },
+      }),
+    );
+    expect(JSON.parse(stdout.mock.calls[0]![0])).toMatchObject({
+      requestId: pending.requestId,
+      status: 'confirmed',
+    });
   });
 
   test('applies the same trust derivation when a Station is addressed implicitly (default profile), not only via --station', async () => {

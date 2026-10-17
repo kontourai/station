@@ -2556,6 +2556,7 @@ describe('device pairing panels', () => {
       endpoint: 'https://station.public.test',
       // Standard is the default preset (station#1098 R3).
       scope: pairingScopePresetString('standard'),
+      approval: 'on-create',
     });
     expect(
       (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
@@ -2590,6 +2591,15 @@ describe('device pairing panels', () => {
         ),
       ),
     );
+    fireEvent.change(screen.getByLabelText('Browser app address'), {
+      target: { value: 'https://web.station.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy browser link' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        expect.stringMatching(/^https:\/\/web.station.test\/#station-pairing=/),
+      ),
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       new URL('https://station.example.test/api/pairing/offers'),
       expect.objectContaining({
@@ -2600,54 +2610,63 @@ describe('device pairing panels', () => {
     );
   });
 
-  test('selecting the Read-only preset sends exactly the read-only scope (station#1098 AC2)', async () => {
-    const offer = {
-      protocolVersion: 1,
-      environmentId: 'environment-1',
-      offerId: 'offer-1',
-      challenge: 'challenge-1',
-      manualCode: 'PAIRME2345',
-      endpoint: 'https://station.example.test',
-      scope: 'orchestration:read',
-      expiresAt: Date.now() + 60_000,
-    };
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async (input, init) => {
-        const path = new URL(String(input)).pathname;
-        if (path === '/api/pairing/requests') return response({ requests: [] });
-        if (path === '/api/pairing/devices') return response({ devices: [] });
-        if (path === '/api/pairing/offers' && init?.method === 'POST') {
-          return response(offer, 201);
-        }
-        return response({ error: 'unexpected' }, 500);
+  test.each([
+    ['Read-only', 'orchestration:read'],
+    [
+      'Full device access',
+      'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access',
+    ],
+  ])(
+    'selecting %s sends exactly its assigned invitation scope',
+    async (label, scope) => {
+      const offer = {
+        protocolVersion: 1,
+        environmentId: 'environment-1',
+        offerId: 'offer-1',
+        challenge: 'challenge-1',
+        manualCode: 'PAIRME2345',
+        endpoint: 'https://station.example.test',
+        scope,
+        expiresAt: Date.now() + 60_000,
+      };
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const path = new URL(String(input)).pathname;
+          if (path === '/api/pairing/requests')
+            return response({ requests: [] });
+          if (path === '/api/pairing/devices') return response({ devices: [] });
+          if (path === '/api/pairing/offers' && init?.method === 'POST') {
+            return response(offer, 201);
+          }
+          return response({ error: 'unexpected' }, 500);
+        });
+
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="https://station.public.test"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(label) }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Create pairing code' }),
+      );
+
+      expect(await screen.findByText('PAIRME2345')).toBeTruthy();
+      const offerCall = fetchSpy.mock.calls.find(
+        ([input]) => new URL(String(input)).pathname === '/api/pairing/offers',
+      );
+      expect(JSON.parse(String(offerCall?.[1]?.body))).toEqual({
+        endpoint: 'https://station.public.test',
+        scope,
+        approval: 'on-create',
       });
-
-    render(
-      <HostDevicePairingPanel
-        apiBase="https://station.example.test"
-        publicEndpoint="https://station.public.test"
-        getCredential={() => 'operator-credential'}
-        onCancel={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('radio', { name: /Read-only/ }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Create pairing code' }),
-    );
-
-    expect(await screen.findByText('PAIRME2345')).toBeTruthy();
-    const offerCall = fetchSpy.mock.calls.find(
-      ([input]) => new URL(String(input)).pathname === '/api/pairing/offers',
-    );
-    expect(JSON.parse(String(offerCall?.[1]?.body))).toEqual({
-      endpoint: 'https://station.public.test',
-      scope: 'orchestration:read',
-    });
-    // The scope is visible before the operator ever creates the grant.
-    expect(screen.getByText(/Read-only/)).toBeTruthy();
-  });
+    },
+  );
 
   test.each([
     [
@@ -2744,7 +2763,9 @@ describe('device pairing panels', () => {
           }),
         ).toBeTruthy();
       }
-      expect(screen.getByText(/then approve access here/i)).toBeTruthy();
+      expect(
+        screen.getByText(/anyone with it can pair until it expires/i),
+      ).toBeTruthy();
     },
   );
 
