@@ -32,6 +32,7 @@ const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1_024;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 64;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS_PER_PEER = 8;
 const logger = createLogger({ name: 'terminal-websocket' });
+const SESSION_COMMANDS = new Set(['data', 'cwd', 'resize', 'close']);
 
 interface TerminalWebSocketAuthOptions {
   classifyPeer?: (address: string | undefined) => RuntimePeerClass;
@@ -265,6 +266,24 @@ export class TerminalWebSocketServer {
         return;
       }
 
+      // Only `open` may name a session this socket has not opened. Every other
+      // session command is refused with one frame whether or not the session
+      // exists, so a socket cannot drive or probe another client's shell.
+      if (
+        SESSION_COMMANDS.has(msg.type as string) &&
+        !this.clientSessions.get(ws)?.has(msg.sessionId as string)
+      ) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            code: 'session-not-owned',
+            message: 'Terminal session is not open on this connection.',
+            ...(msg.requestId !== undefined && { requestId: msg.requestId }),
+          }),
+        );
+        return;
+      }
+
       try {
         switch (msg.type) {
           case 'open': {
@@ -316,6 +335,7 @@ export class TerminalWebSocketServer {
             );
             break;
           case 'close':
+            this.clientSessions.get(ws)?.delete(msg.sessionId as string);
             await this.terminalService.close(msg.sessionId as string);
             break;
           default:
@@ -390,8 +410,14 @@ export class TerminalWebSocketServer {
     this.unsubscribe = this.terminalService.subscribe(
       (event: TerminalEvent) => {
         const msg = JSON.stringify(event);
+        // Deliver only to sockets that opened this session; terminal output
+        // must never reach another client, project, or paired device.
         for (const client of this.clients) {
-          if (client.readyState === client.OPEN) client.send(msg);
+          if (
+            client.readyState === client.OPEN &&
+            this.clientSessions.get(client)?.has(event.sessionId)
+          )
+            client.send(msg);
         }
       },
     );
