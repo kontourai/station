@@ -46,7 +46,7 @@ const controls: Plugin = {
   },
 };
 
-test('typing and deleting in a multiline draft never clamps the pinned transcript', async () => {
+test('sizes draft content without transiently clamping the pinned transcript', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
     `
     import React, {useRef,useState} from 'react';
@@ -85,12 +85,27 @@ test('typing and deleting in a multiline draft never clamps the pinned transcrip
     expect(await gap()).toBeLessThanOrEqual(1);
     await page.locator('textarea').press('Backspace');
     expect(await gap()).toBeLessThanOrEqual(1);
+    await page
+      .locator('textarea')
+      .fill(Array.from({ length: 30 }, () => 'line').join('\n'));
+    const capped = await page.locator('textarea').evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      overflow: element.style.overflowY,
+      content: element.scrollHeight,
+      viewport: element.clientHeight,
+    }));
+    expect(capped.height).toBeCloseTo(160, 0);
+    expect(capped.overflow).toBe('auto');
+    expect(capped.content).toBeGreaterThan(capped.viewport);
     await page.locator('textarea').fill('short');
-    expect(
-      await page
-        .locator('textarea')
-        .evaluate((element) => element.clientHeight),
-    ).toBeLessThan(80);
+    const short = await page.locator('textarea').evaluate((element) => ({
+      height: element.clientHeight,
+      content: element.scrollHeight,
+      overflow: element.style.overflowY,
+    }));
+    expect(short.height).toBeLessThan(80);
+    expect(short.content).toBeLessThanOrEqual(short.height + 1);
+    expect(short.overflow).toBe('hidden');
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
