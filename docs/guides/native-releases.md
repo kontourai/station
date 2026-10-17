@@ -132,12 +132,11 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` runs daily, keeps the source gate and exact-source qualification receipt, and
+`nightly.yml` checks cadence hourly, requires an exact-source usability gate, and
 runs the native work as two reusable phases, both only on `refs/heads/main`
 when the gated SHA is the workflow event SHA.
 
-Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
-parallel with the full-regression receipt (#1453): it reserves the cohort
+Phase one, `nightly-native-stage.yml`, needs the source usability gate: it reserves the cohort
 identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
 macOS downloads, a Windows NSIS installer with a mandatory Tauri updater signature
 (Authenticode is optional for Nightly), one shared desktop
@@ -150,8 +149,7 @@ is what the protected verifier checks staged bytes against. Rust dependency
 compilation is cached per platform (`Swatinem/rust-cache`, restored on every
 ref, saved only from `main`, #1455).
 
-Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
-full-regression receipt, and phase one, and receives the reserved identity as
+Phase two, `nightly-native-cohort.yml`, needs the exact-SHA source usability gate and phase one, and receives the reserved identity as
 inputs. It admits the staged bytes against their stage receipts, creates the
 promotion fence, and then publishes **per platform** (#1774): Android (Play
 internal), the shared macOS/Windows desktop prerelease, and the already-audited iOS package
@@ -316,11 +314,12 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, under the configured minimum publication interval
-(six hours by default) and its separate serialized delivery lease. Nightly has no independent
-schedule; manual dispatch remains available for recovery and requires
-exact-source qualification. Both entry points use their workflow event SHA,
+Normal operation is an independent scheduled Nightly with an hourly cadence
+decision, a six-hour default minimum publication interval and its serialized
+delivery lease. It checks cadence before expensive source tests or builds.
+Manual dispatch remains available for recovery. Both entry points require the
+same exact-source lint/typecheck/native-boundary/browser-smoke gate and retain
+signing, inventory, attestation and provider admission. They use their workflow event SHA,
 never stage a source their published markers already contain, and skip
 native staging only when the
 cohort decision has the required platform markers and matching ledger rows.

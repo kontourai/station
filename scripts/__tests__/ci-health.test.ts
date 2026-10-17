@@ -40,6 +40,8 @@ const job = (id = 1, overrides = {}) => ({
   started_at: at(6),
   completed_at: at(16),
   labels: ['ubuntu-latest'],
+  runner_id: id + 1,
+  runner_name: `runner-${id}`,
   health_run_key: '1:1',
   steps: [],
   ...overrides,
@@ -128,6 +130,103 @@ describe('CI health metrics', () => {
       macos: { count: 1, median: 21, p90: 21 },
     });
   });
+  it('does not mistake GitHub queued placeholder timestamps for runner execution', () => {
+    // Retained API shapes: 117287700463 was queued with started_at=created_at;
+    // 117276468422 was cancelled before any runner was assigned.
+    const snapshot = buildSnapshot(
+      {
+        ...emptyData(),
+        jobs: [
+          job(1, {
+            status: 'queued',
+            conclusion: null,
+            started_at: at(0),
+            completed_at: null,
+            runner_id: null,
+            runner_name: null,
+          }),
+          job(2, {
+            conclusion: 'cancelled',
+            started_at: at(0),
+            completed_at: at(10),
+            runner_id: 0,
+            runner_name: '',
+          }),
+          job(3, {
+            status: 'in_progress',
+            conclusion: null,
+            started_at: at(10),
+            completed_at: null,
+          }),
+        ],
+      },
+      options,
+    );
+    expect(snapshot.capacity).toMatchObject({
+      executed: 0,
+      runnerHours: 0,
+      waitingHours: 80 / 60,
+      unfinishedWaitMinutes: { count: 2, median: 60, p90: 60 },
+      concurrency: { histogramMinutes: { 0: 10, 1: 50 } },
+    });
+    expect(snapshot.incomplete).toBe(true);
+  });
+  it('clips capacity occupancy to the requested window and separates hosted runners', () => {
+    const snapshot = buildSnapshot(
+      {
+        ...emptyData(),
+        jobs: [
+          job(1, { started_at: at(0), completed_at: at(80) }),
+          job(2, {
+            started_at: at(0),
+            completed_at: at(80),
+            labels: ['self-hosted', 'Linux'],
+          }),
+          job(3, {
+            created_at: at(70),
+            started_at: at(70),
+            completed_at: at(80),
+          }),
+        ],
+      },
+      { ...options, since: at(10), until: at(60) },
+    );
+    expect(snapshot.capacity.runnerHours).toBe(100 / 60);
+    expect(snapshot.capacity.concurrency.histogramMinutes).toEqual({ 2: 50 });
+    expect(snapshot.capacity.hostedConcurrency.histogramMinutes).toEqual({
+      1: 50,
+    });
+    expect(snapshot.capacity.selfHostedConcurrency.histogramMinutes).toEqual({
+      1: 50,
+    });
+  });
+  it.each(['completed', 'in_progress'])(
+    'keeps %s jobs with missing runner attribution unavailable',
+    (status) => {
+      const snapshot = buildSnapshot(
+        {
+          ...emptyData(),
+          jobs: [
+            job(1, {
+              status,
+              conclusion: status === 'completed' ? 'success' : null,
+              completed_at: status === 'completed' ? at(16) : null,
+              runner_id: null,
+              runner_name: null,
+            }),
+          ],
+        },
+        options,
+      );
+      expect(snapshot.capacity.executed).toBe(0);
+      expect(snapshot.capacity.runnerHours).toBe(0);
+      expect(snapshot.capacity.platformWaitMinutes.linux.count).toBe(0);
+      expect(snapshot.incomplete).toBe(true);
+      expect(snapshot.reasons).toContain(
+        'window includes 1 jobs with unavailable runner attribution',
+      );
+    },
+  );
   it('groups PR workflows by baseline PR/ten-minute bucket and merge workflows by queue branch', () => {
     const runs = [
       run(),
@@ -334,6 +433,115 @@ describe('CI health metrics', () => {
       groupsTimedOut: 1,
       regressionMinutes: { count: 3, median: 2, p90: 4 },
     });
+  });
+  it('attributes integration durations to the current owner per exact merge candidate, retaining every owner attempt', () => {
+    const integration = (
+      id: number,
+      name: string,
+      minutes: number,
+      overrides = {},
+    ) =>
+      run(id, {
+        name,
+        event: 'merge_group',
+        head_branch: 'queue',
+        run_started_at: at(0),
+        updated_at: at(minutes),
+        ...overrides,
+      });
+    const historical = [
+      integration(1, 'Merge-queue regression', 2, { head_sha: 'old1' }),
+      integration(2, 'Merge integration', 4, { head_sha: 'old2' }),
+      integration(3, 'PR: Merge integration', 6, { head_sha: 'old3' }),
+      integration(3, 'PR: Merge integration', 8, {
+        head_sha: 'old3',
+        run_attempt: 2,
+      }),
+    ];
+    const current = [
+      integration(4, 'PR: CI', 3, { conclusion: 'failure' }),
+      integration(4, 'PR: CI', 9, { run_attempt: 2 }),
+    ];
+    const ownerJobs = (runs: ReturnType<typeof run>[]) =>
+      runs
+        .filter((r) => r.name === 'PR: CI')
+        .map((r) =>
+          job(r.id, {
+            name: 'Merge-queue regression',
+            health_run_key: `${r.id}:${r.run_attempt}`,
+            conclusion: r.conclusion,
+            status: r.conclusion == null ? 'in_progress' : 'completed',
+            completed_at: r.conclusion == null ? null : at(16),
+          }),
+        );
+    const measure = (runs: ReturnType<typeof run>[]) =>
+      mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).regressionMinutes;
+    expect(measure(historical)).toEqual({ count: 4, median: 6, p90: 8 });
+    expect(measure(current)).toEqual({ count: 2, median: 9, p90: 9 });
+    const renamed = current.map((r) => ({
+      ...r,
+      name: 'Source verification',
+      path: '.github/workflows/ci.yml',
+    }));
+    expect(
+      mergeMetrics(renamed, ownerJobs(current), {}, at(0), at(60))
+        .regressionMinutes,
+    ).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(
+      mergeMetrics(
+        renamed.map((r) => ({ ...r, path: '.github/workflows/unrelated.yml' })),
+        ownerJobs(current),
+        {},
+        at(0),
+        at(60),
+      ).regressionMinutes.count,
+    ).toBe(0);
+    const transitional = [
+      integration(5, 'PR: Merge integration', 40),
+      ...current,
+    ];
+    expect(measure(transitional)).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(measure([...current, ...historical])).toEqual({
+      count: 6,
+      median: 6,
+      p90: 9,
+    });
+    expect(
+      measure([
+        integration(6, 'PR: CI', 50, { event: 'workflow_dispatch' }),
+        integration(7, 'Diagnostic: Merge integration', 55, {
+          event: 'workflow_dispatch',
+        }),
+        ...historical,
+      ]),
+    ).toEqual({ count: 4, median: 6, p90: 8 });
+    // An old PR: CI run without the integration job must not mask legacy timing.
+    expect(
+      mergeMetrics(transitional, [], {}, at(0), at(60)).regressionMinutes,
+    ).toEqual({
+      count: 1,
+      median: 40,
+      p90: 40,
+    });
+    // A job from a different attempt cannot establish this attempt's ownership.
+    expect(
+      mergeMetrics([current[0]], ownerJobs([current[1]]), {}, at(0), at(60))
+        .regressionMinutes.count,
+    ).toBe(0);
+    for (const conclusion of ['cancelled', null]) {
+      const runs = [
+        integration(8, 'PR: Merge integration', 40),
+        integration(9, 'PR: CI', 10, { conclusion }),
+      ];
+      expect(measure(runs)).toEqual({ count: 0, median: null, p90: null });
+      expect(
+        mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).groupsCancelled,
+      ).toBe(conclusion === 'cancelled' ? 1 : 0);
+      expect(
+        buildSnapshot({ ...emptyData(), runs, jobs: ownerJobs(runs) }, options)
+          .incomplete,
+      ).toBe(conclusion == null);
+    }
   });
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
@@ -837,6 +1045,23 @@ describe('CI health collection bounds and command interface', () => {
       '--record and --history require --issue=<n>',
     );
     expect(result.stdout).toBe('');
+  });
+  it('renders hosted occupancy separately and never substitutes legacy total occupancy', () => {
+    const snapshot = buildSnapshot(emptyData(), options);
+    snapshot.capacity.concurrency.shareAtLeast18 = 1;
+    snapshot.capacity.hostedConcurrency.shareAtLeast18 = 0.25;
+    expect(renderSnapshot(snapshot)).toContain(
+      '| Time with >=18 hosted jobs running | 25% |',
+    );
+    expect(renderHistory([snapshot])).toContain('| 25% |');
+    const { hostedConcurrency: _hosted, ...legacyCapacity } = snapshot.capacity;
+    const legacy = { ...snapshot, capacity: legacyCapacity };
+    expect(renderSnapshot(legacy)).toContain(
+      '| Time with >=18 hosted jobs running | unavailable (legacy snapshot) |',
+    );
+    expect(renderHistory([legacy])).toContain(
+      '| unavailable (legacy snapshot) |',
+    );
   });
   it('round-trips snapshot comments and prints key rates in chronological history', () => {
     const snapshot = buildSnapshot(emptyData(), options);

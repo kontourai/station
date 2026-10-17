@@ -60,6 +60,7 @@ export function useChatDockOverlays({
     (threadId: string) => setImportedSessionId(threadId),
     [],
   );
+  const [newChatTaskShaping, setNewChatTaskShaping] = useState(false);
   const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
     string | undefined
   >();
@@ -92,6 +93,7 @@ export function useChatDockOverlays({
       newChatOnClosed.current?.(closedAs, newChatDraftText.current);
       newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
+      setNewChatTaskShaping(open && options?.taskShaping === true);
       setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
       setNewChatInitialFiles(open ? options?.initialFiles : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
@@ -185,6 +187,7 @@ export function useChatDockOverlays({
     onOpenInboxSession,
     newChatRequestEpoch,
     newChatStartWithDefault,
+    newChatTaskShaping,
     newChatInitialPrompt,
     newChatInitialFiles,
     newChatSelection,

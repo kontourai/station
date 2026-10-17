@@ -1,0 +1,7 @@
+{
+  "revision": "a75e1374339db7750b57e19b13ff0fa4031dddb2",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"PR #3676 Fix round 8: Re-read the concepts guide and traced last-known status, record retention, retired readers, and epoch invalidation against the controller and WorkObservation. Bounded commands release on settlement; epoch replacement promptly removes the imperative holder and blocks late publication. Existing concepts remain accurate; seven real-SDK regressions and the desktop/mobile fixture journey passed.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

@@ -1352,6 +1352,14 @@ describe('executeForegroundMessage', () => {
         expect.objectContaining({
           path: startInput?.cwd,
           repoPath: realpathSync(repoPath),
+          baseRef: 'HEAD',
+          baseCommit: execGitSync(['rev-parse', 'HEAD'], {
+            cwd: repoPath,
+            encoding: 'utf8',
+            stdio: 'pipe',
+          })
+            .toString()
+            .trim(),
         }),
       );
       await new WorktreeProvisioningService().cleanup({
