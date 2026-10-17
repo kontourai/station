@@ -452,7 +452,7 @@ export function FileTreePanel({
           tree.length > 0 &&
           visibleTree.length === 0 && (
             <div className="file-tree-panel__hint">
-              No files match “{search}”
+              No files match “{deferredSearch}”
             </div>
           )}
         {visibleTree.map((entry) => (
