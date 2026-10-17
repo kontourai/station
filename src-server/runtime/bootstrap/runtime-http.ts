@@ -424,6 +424,8 @@ export function configureRuntimeHttp({
   app.use('*', async (c, next) => {
     await next();
 
+    if (c.res.status >= 400) return;
+
     const keys = getInvalidationKeysForRequest(c.req.method, c.req.path);
     if (keys.length > 0) {
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
@@ -1555,7 +1557,7 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists)?\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
   // The receiver-side contribution query is a POST-carried read: it changes
@@ -1571,9 +1573,19 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
     READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
   )
     return [];
+  // A draft lease keeps its watcher alive; rebuilds publish their own event.
+  if (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease\/?$/.test(path)
+  )
+    return [];
   const keys: string[] = [];
 
-  if (path.startsWith('/agents')) keys.push('agents');
+  if (
+    path.startsWith('/agents') &&
+    !(method === 'POST' && /^\/agents\/[^/]+\/chat\/?$/.test(path))
+  )
+    keys.push('agents');
   if (path.startsWith('/integrations')) keys.push('integrations');
   if (path.includes('/skills')) keys.push('skills');
   if (path.includes('/providers')) keys.push('providers');
