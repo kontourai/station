@@ -63,6 +63,35 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     return { status: response.status, body: await response.json() };
   };
   const send = (ping, id = source) => request(`/v1/lite/${id}`, ping);
+  const assertPrivateStorage = async () => {
+    const names = (
+      await pool.query(
+        "SELECT tablename FROM pg_tables WHERE schemaname='station_telemetry'",
+      )
+    ).rows;
+    const rows = [];
+    for (const { tablename } of names)
+      rows.push(
+        (
+          await pool.query(
+            `SELECT row_to_json(t) AS row FROM station_telemetry."${tablename.replaceAll('"', '""')}" t`,
+          )
+        ).rows,
+      );
+    const persisted = JSON.stringify(rows);
+    for (const sentinel of [
+      '127.0.0.1',
+      forwarded,
+      agent,
+      'private-rejected-content',
+    ]) {
+      assert.equal(
+        (persisted + logs.join('')).includes(sentinel),
+        false,
+        'IP, user agent and rejected content never persist in rows or logs',
+      );
+    }
+  };
   try {
     for (const [id, pub] of [
       [source, 'kontour'],
@@ -107,6 +136,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       { status: 202, body: { inserted: 1 } },
       'lite ingest without per-install secret',
     );
+    await assertPrivateStorage();
     assert.deepEqual(
       await send({
         ...ping,
@@ -367,43 +397,8 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     );
     await store.lite.revokeSource(source);
     assert.equal((await send(dailyPing())).status, 401);
-    // Inspect every persisted table, including error/rejection and retention paths.
-    const names = (
-      await pool.query(
-        "SELECT tablename FROM pg_tables WHERE schemaname='station_telemetry'",
-      )
-    ).rows;
-    const rows = [];
-    for (const { tablename } of names)
-      rows.push(
-        (
-          await pool.query(
-            `SELECT row_to_json(t) AS row FROM station_telemetry."${tablename.replaceAll('"', '""')}" t`,
-          )
-        ).rows,
-      );
-    const persisted = JSON.stringify(rows);
-    // Raw rows were deleted above; make one surviving accepted row for the privacy assertion.
     assert.equal((await send(dailyPing(), other)).status, 202);
-    const raw = JSON.stringify(
-      (
-        await pool.query(
-          'SELECT row_to_json(t) FROM station_telemetry.lite_pings t',
-        )
-      ).rows,
-    );
-    for (const sentinel of [
-      '127.0.0.1',
-      forwarded,
-      agent,
-      'private-rejected-content',
-    ]) {
-      assert.equal(
-        (persisted + raw + logs.join('')).includes(sentinel),
-        false,
-        'IP, user agent and rejected content never persist in rows or logs',
-      );
-    }
+    await assertPrivateStorage();
     return [
       'lite HTTP/PostgreSQL: public sources, strict unknown/nested/array/catalog rejection, bounded streaming bodies, commit/dedupe/conflict',
       'lite daily rollups: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
