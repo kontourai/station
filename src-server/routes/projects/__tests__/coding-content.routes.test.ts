@@ -1,16 +1,23 @@
 import {
+  appendFileSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import * as asyncFs from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
+
+vi.mock('node:fs/promises', async (original) => {
+  const actual = await original<typeof import('node:fs/promises')>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
 
 /**
  * Integration test for the coding layout's content endpoints. Nothing is
@@ -165,6 +172,67 @@ describe('coding content routes — real git project (no mocks)', () => {
     );
     expect(accepted.json.data.content).toBe('now text');
   });
+
+  test('a small preview does not allocate the full content budget', async () => {
+    writeFileSync(join(repo, 'small-preview.txt'), 'small text');
+    const allocations = vi.spyOn(Buffer, 'alloc');
+    try {
+      const result = await get(
+        '/files/content?projectSlug=r&file=small-preview.txt',
+      );
+      expect(result.status).toBe(200);
+      expect(result.json.data.content).toBe('small text');
+      expect(allocations.mock.calls.length).toBeGreaterThan(0);
+      expect(
+        Math.max(...allocations.mock.calls.map(([size]) => size)),
+      ).toBeLessThanOrEqual(8192);
+    } finally {
+      allocations.mockRestore();
+    }
+  });
+
+  test.each([1024 * 1024, 2 * 1024 * 1024 + 1])(
+    'detects file growth after stat without truncating %i bytes',
+    async (size) => {
+      const path = join(repo, 'growing-preview.txt');
+      writeFileSync(path, 'X');
+      const suffix = 'g'.repeat(size - 1);
+      const actual =
+        await vi.importActual<typeof import('node:fs/promises')>(
+          'node:fs/promises',
+        );
+      let grew = false;
+      vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
+        const handle = await actual.open(...args);
+        const stat = handle.stat.bind(handle);
+        vi.spyOn(handle, 'stat').mockImplementation(async (options) => {
+          const snapshot = await stat(options);
+          if (!grew) {
+            grew = true;
+            appendFileSync(path, suffix);
+          }
+          return snapshot;
+        });
+        return handle;
+      });
+      try {
+        const result = await get(
+          '/files/content?projectSlug=r&file=growing-preview.txt',
+        );
+        expect(grew).toBe(true);
+        if (size > 2 * 1024 * 1024) {
+          expect(result.status).toBe(413);
+          expect(result.json.code).toBe('file-too-large');
+          expect(result.json.data).toBeUndefined();
+        } else {
+          expect(result.status).toBe(200);
+          expect(result.json.data.content).toBe(`X${suffix}`);
+        }
+      } finally {
+        vi.mocked(asyncFs.open).mockImplementation(actual.open);
+      }
+    },
+  );
 
   test('a missing preview keeps the established status and an actionable typed relative-path error', async () => {
     const result = await get('/files/content?projectSlug=r&file=missing.txt');

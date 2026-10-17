@@ -276,25 +276,33 @@ export class FileTreeService {
             'This file is too large to preview. The limit is 2 MiB. Open it in an editor instead.',
           );
         if (stat.size > MAX_PREVIEW_BYTES) throw tooLarge();
-        const sample = Buffer.alloc(8192);
-        const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
-        if (sample.subarray(0, bytesRead).includes(0))
-          throw new FilePreviewError(
-            'binary-file',
-            'This file appears to be binary and cannot be previewed.',
-          );
-        // Read one overflow byte as well: a file may grow after the stat.
-        const buffer = Buffer.alloc(MAX_PREVIEW_BYTES + 1);
-        sample.copy(buffer, 0, 0, bytesRead);
-        let length = bytesRead;
-        while (length < buffer.length) {
-          const next = await handle.read(
-            buffer,
-            length,
-            buffer.length - length,
-            length,
-          );
+        // Small files need only their observed size plus an EOF probe. Grow
+        // on demand, retaining one overflow byte to refuse concurrent growth.
+        let buffer = Buffer.alloc(Math.min(8192, stat.size + 1));
+        let length = 0;
+        while (length <= MAX_PREVIEW_BYTES) {
+          if (length === buffer.length) {
+            const capacity = Math.min(
+              MAX_PREVIEW_BYTES + 1,
+              Math.max(buffer.length * 2, stat.size + 1),
+            );
+            const grown = Buffer.alloc(capacity);
+            buffer.copy(grown, 0, 0, length);
+            buffer = grown;
+          }
+          const remaining = buffer.length - length;
+          const readLength =
+            length < 8192 ? Math.min(8192 - length, remaining) : remaining;
+          const next = await handle.read(buffer, length, readLength, length);
           if (next.bytesRead === 0) break;
+          if (
+            length < 8192 &&
+            buffer.subarray(length, length + next.bytesRead).includes(0)
+          )
+            throw new FilePreviewError(
+              'binary-file',
+              'This file appears to be binary and cannot be previewed.',
+            );
           length += next.bytesRead;
         }
         if (length > MAX_PREVIEW_BYTES) throw tooLarge();
