@@ -22,7 +22,13 @@
 
     "src-server/tools/station-control-review-guide-tools.ts",
 
-    "src-ui/src/components/coding-layout/PullRequestGuide.tsx"
+    "src-ui/src/components/coding-layout/PullRequestGuide.tsx",
+
+    "src-server/services/pull-requests/pull-request-review-guide-errors.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-ui/src/components/coding-layout/PullRequestGuide.css"
   ],
 
   "checks": [
