@@ -1,10 +1,19 @@
 import { describe, expect, test } from 'vitest';
 import { projectTranscriptMessages } from '../components/chat/transcriptProjection';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 
 describe('transcript message projection (station#1238)', () => {
   test('reuses completed row objects and changes only a streaming delta row', () => {
     const initial = [
-      { role: 'user' as const, content: 'question', timestamp: 1 },
+      {
+        role: 'user' as const,
+        content: 'question',
+        timestamp: 1,
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: 'question',
+        }),
+      },
       { role: 'assistant' as const, content: 'draft', timestamp: 2 },
       { role: 'assistant' as const, content: 'complete', timestamp: 3 },
     ];
@@ -26,17 +35,70 @@ describe('transcript message projection (station#1238)', () => {
 
   test('returns the previous array when a replay only rematerializes messages', () => {
     const initial = [
-      { role: 'user' as const, content: 'question', timestamp: 1 },
-      { role: 'assistant' as const, content: 'answer', timestamp: 2 },
+      {
+        role: 'user' as const,
+        content: 'question',
+        timestamp: 1,
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: 'question',
+        }),
+      },
+      {
+        role: 'assistant' as const,
+        content: 'answer',
+        timestamp: 2,
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: 'answer',
+        }),
+      },
     ];
     const first = projectTranscriptMessages('thread-1', initial);
     expect(
       projectTranscriptMessages(
         'thread-1',
-        initial.map((message) => ({ ...message })),
+        initial.map((message) => ({
+          ...message,
+          contentParts: message.contentParts?.map((part) => ({ ...part })),
+        })),
         first,
       ),
     ).toBe(first);
+  });
+
+  test('does not reuse a row when a part field or message metadata changes', () => {
+    const message = {
+      id: 'answer',
+      role: 'assistant' as const,
+      content: 'answer',
+      contentParts: conversationPartToContentParts({
+        type: 'tool-invocation',
+        toolName: 'Search',
+        state: 'running',
+      }),
+    };
+    const rows = projectTranscriptMessages('thread', [message]);
+    const changed = projectTranscriptMessages(
+      'thread',
+      [
+        {
+          ...message,
+          contentParts: message.contentParts.map((part) => ({
+            ...part,
+            state: 'completed',
+          })),
+        },
+      ],
+      rows,
+    );
+    expect(changed[0].message.contentParts?.[0].state).toBe('completed');
+    const renamed = projectTranscriptMessages(
+      'thread',
+      [{ ...message, agentDisplayName: 'New name' }],
+      rows,
+    );
+    expect(renamed[0].message.agentDisplayName).toBe('New name');
   });
 
   test('keeps a settled assistant turn as ONE row with its work parts intact, in reading order', () => {

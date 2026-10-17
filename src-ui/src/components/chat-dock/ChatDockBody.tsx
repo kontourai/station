@@ -48,6 +48,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
@@ -1042,6 +1043,20 @@ export function ChatDockBody({
     [activeSession.id, addEphemeralMessage],
   );
 
+  const quoteMessage = useCallback(
+    (quote: SavedAnswerQuote) => {
+      chatDraftsStore.addQuote(activeSession.id, quote);
+    },
+    [activeSession.id],
+  );
+  const newChatFromMessage = useCallback(
+    (text: string) => {
+      if (onNewChat)
+        void Promise.resolve(onNewChat(text)).catch(surfaceRecoveryFailure);
+    },
+    [onNewChat, surfaceRecoveryFailure],
+  );
+
   /**
    * Resolve a recovered turn's attachments, then run the recovery. A turn
    * whose attachment bytes can no longer be fetched is REFUSED with a visible
@@ -1448,16 +1463,9 @@ export function ChatDockBody({
                 ) ?? observationUnavailable),
             owner,
             accountableHuman,
-            onQuote: (quote) =>
-              chatDraftsStore.addQuote(activeSession.id, quote),
+            onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,
-            onNewChatFromMessage: onNewChat
-              ? (text: string) => {
-                  void Promise.resolve(onNewChat(text)).catch(
-                    surfaceRecoveryFailure,
-                  );
-                }
-              : undefined,
+            onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,
