@@ -312,11 +312,12 @@ export function createPullRequestRoutes(
                 : undefined,
             );
       return c.json({ success: true, data: { enabled: true, ...result } });
-    } catch (error) {
+    } catch {
       return c.json(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Guide unavailable',
+          error:
+            'Guide unavailable. Check guide settings, model access and server capacity, then retry.',
         },
         409,
       );
