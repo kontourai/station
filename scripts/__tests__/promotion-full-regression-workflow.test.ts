@@ -35,7 +35,11 @@ type WorkflowJob = {
 
 type Workflow = {
   on?: Record<string, any>;
-  concurrency?: { group: string; 'cancel-in-progress': boolean };
+  concurrency?: {
+    group: string;
+    queue?: string;
+    'cancel-in-progress': boolean;
+  };
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -180,12 +184,73 @@ describe('promotion full-regression workflow', () => {
 
   test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
     const reusable = workflow('full-regression.yml');
-    // GitHub's default concurrency queue replaces an older pending run.
-    // Distinct required merge candidates must therefore keep distinct groups.
-    expect(reusable.concurrency).toEqual({
-      group: `hosted-full-regression-${githubExpression('inputs.source_sha')}`,
+    const delivery = workflow('delivery-validation.yml');
+    const scheduled = workflow('main-qualification.yml');
+    expect(scheduled).not.toHaveProperty('concurrency');
+    expect(scheduled.jobs?.qualification).not.toHaveProperty('concurrency');
+    expect(delivery.concurrency).toEqual({
+      group: 'station-background-compute',
+      queue: 'max',
       'cancel-in-progress': false,
     });
+    expect(reusable.concurrency).toEqual({
+      group: `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`,
+      queue: 'max',
+      'cancel-in-progress': false,
+    });
+    expect(
+      workflow('ci.yml').jobs?.['merge-integration-full-regression'].with
+        ?.capacity_class,
+    ).toBe('integration');
+    for (const file of [
+      'release.yml',
+      'publish-release.yml',
+      'publish-packages.yml',
+    ]) {
+      const calls = Object.values(workflow(file).jobs ?? {}).filter(
+        (job) => job.uses === './.github/workflows/full-regression.yml',
+      );
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls)
+        expect(call.with?.capacity_class).toBe('release');
+    }
+    expect(
+      workflow('main-qualification.yml').jobs?.qualification.with
+        ?.capacity_class,
+    ).toBe('background');
+    const resolveSteps = reusable.jobs?.resolve.steps ?? [];
+    expect(
+      resolveSteps.some((step) =>
+        step.run?.includes('release-pipeline.mjs admission'),
+      ),
+    ).toBe(false);
+    expect(
+      resolveSteps.some((step) =>
+        step.run?.includes('release-pipeline.mjs profile'),
+      ),
+    ).toBe(true);
+    // Evaluate the real expression's supported string/boolean/format subset.
+    // This checks routing, not GitHub's hosted scheduling implementation.
+    const expression = reusable.concurrency?.group.slice(3, -2);
+    const group = (capacity_class: string, source_sha: string) =>
+      Function(
+        'inputs',
+        'format',
+        `return (${expression});`,
+      )({ capacity_class, source_sha }, (template: string, value: string) =>
+        template.replace('{0}', value),
+      );
+    for (const sha of ['a'.repeat(40), 'b'.repeat(40)]) {
+      expect(group('background', sha)).toBe(delivery.concurrency?.group);
+      expect(group('integration', sha)).not.toBe(delivery.concurrency?.group);
+      expect(group('release', sha)).not.toBe(delivery.concurrency?.group);
+    }
+    expect(group('integration', 'a'.repeat(40))).not.toBe(
+      group('integration', 'b'.repeat(40)),
+    );
+    expect(group('release', 'a'.repeat(40))).toBe(
+      group('release', 'b'.repeat(40)),
+    );
     const jobs = reusable.jobs ?? {};
     const continueSuites =
       "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''";

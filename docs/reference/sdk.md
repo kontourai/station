@@ -439,7 +439,8 @@ const sessionId = createSession('my-agent', 'My Agent');
 
 The default callback requires `conversationId`, `agentSlug` and `agentName`;
 it also accepts optional Project/execution/hydration context and returns
-`Promise<string | null>`. A null result means message hydration failed. Opening
+`Promise<string | null>`. A null result means message hydration failed or its
+command was superseded. Opening
 a Dock entry is not proof that continuation is authorized; use canonical
 conversation resolution and current server execution evidence, not mutable
 Agent defaults, when a host supplies that context.
@@ -1366,7 +1367,7 @@ automatically use the host's native or encrypted broker transport. For those
 hosts, choose client/Session operations that cover the required workflow and
 accept an explicit API base and current request options.
 
-### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
+### `resolveConversationOpen(conversationId, apiBase?, options?): Promise<ConversationOpenResolution>`
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
@@ -1374,7 +1375,9 @@ a caller treats it as a writable Session. The discriminated result is
 carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
-chat.
+chat. Optional `options.signal` cancels the request and `options.timeoutMs`
+sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
+per-call options; they add no command deadline.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath

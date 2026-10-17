@@ -211,8 +211,11 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
     }
   }
   const candidateKey = (run) => `${run.head_branch}:${run.head_sha}`;
+  const isCiWorkflow = (run) =>
+    run.path === '.github/workflows/ci.yml' ||
+    (run.path == null && run.name === 'PR: CI');
   const ownsIntegration = (run) =>
-    run.name === 'PR: CI' &&
+    isCiWorkflow(run) &&
     jobs.some(
       (job) =>
         job.name === 'Merge-queue regression' &&
@@ -228,13 +231,13 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
-      [
-        'Merge-queue regression',
-        'Merge integration',
-        'PR: Merge integration',
-        'PR: CI',
-      ].includes(r.name) &&
-      (r.name === 'PR: CI'
+      (isCiWorkflow(r) ||
+        [
+          'Merge-queue regression',
+          'Merge integration',
+          'PR: Merge integration',
+        ].includes(r.name)) &&
+      (isCiWorkflow(r)
         ? ownsIntegration(r)
         : !currentOwners.has(candidateKey(r))) &&
       r.conclusion != null &&
