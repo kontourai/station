@@ -3733,7 +3733,9 @@ export class OrchestrationService {
     // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
     this.conversationActivity?.dispose();
-    await this.recoveryCoordinator?.dispose();
+    const recoveryResults = await Promise.allSettled(
+      this.recoveryCoordinator ? [this.recoveryCoordinator.dispose()] : [],
+    );
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     const currentAdapters = this.options.adapterRegistry.list();
@@ -3777,8 +3779,12 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    const failures = [...roomParkingResults, ...cleanupResults].flatMap(
-      (result) => (result.status === 'rejected' ? [result.reason] : []),
+    const failures = [
+      ...roomParkingResults,
+      ...recoveryResults,
+      ...cleanupResults,
+    ].flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
     );
     try {
       this.deltaCoalescer.dispose();

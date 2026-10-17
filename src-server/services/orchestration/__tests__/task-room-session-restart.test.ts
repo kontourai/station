@@ -16,6 +16,7 @@ import type { createNativeOutputGrantAuthority } from '../../../runtime/native-o
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import type { SessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
 
 const makeTempDir = trackTempDirs();
 class RoomRestartAdapter extends GateTestAdapter {
@@ -193,40 +194,57 @@ test('shutdown preserves an idle resumable room Session for an authorized reply 
   }
 });
 
-test('a failed room-binding inspection does not abandon provider cleanup', async () => {
-  const store = new EventStore(
-    join(makeTempDir('room-shutdown-failure-'), 'events.sqlite'),
-  );
-  const adapter = new RoomRestartAdapter();
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug: vi.fn(), warn: vi.fn() },
-  });
-  await service.startSessionInternal(
-    {
-      type: 'start-session',
-      input: {
-        threadId: 'shutdown-binding-failure',
-        provider: 'claude',
-        metadata: { userId: 'owner-user' },
-      },
-    },
-    { userId: 'owner-user' },
-  );
-  const lookup = vi
-    .spyOn(store, 'readProjectTaskRoomExecutionBinding')
-    .mockImplementation(() => {
-      throw new Error('Room binding unavailable');
-    });
-  try {
-    await expect(service.shutdown()).rejects.toThrow(
-      'Provider adapter shutdown failed',
+test.each(['binding', 'recovery'] as const)(
+  'a failed %s shutdown step does not abandon provider cleanup',
+  async (failure) => {
+    const store = new EventStore(
+      join(makeTempDir('room-shutdown-failure-'), 'events.sqlite'),
     );
-    expect(adapter.sessions.size).toBe(0);
-  } finally {
-    lookup.mockRestore();
-    store.close();
-  }
-});
+    const adapter = new RoomRestartAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'shutdown-binding-failure',
+          provider: 'claude',
+          metadata: { userId: 'owner-user' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    const recovery: SessionRecoveryCoordinator = Reflect.get(
+      service,
+      'recoveryCoordinator',
+    );
+    const lookup =
+      failure === 'binding'
+        ? vi
+            .spyOn(store, 'readProjectTaskRoomExecutionBinding')
+            .mockImplementation(() => {
+              throw new Error('Room binding unavailable');
+            })
+        : vi
+            .spyOn(recovery, 'dispose')
+            .mockRejectedValueOnce(
+              Object.assign(new Error('Recovery shutdown unsettled'), {
+                code: 'RECOVERY_SHUTDOWN_UNSETTLED',
+              }),
+            );
+    try {
+      await expect(service.shutdown()).rejects.toThrow(
+        'Provider adapter shutdown failed',
+      );
+      expect(adapter.sessions.size).toBe(0);
+    } finally {
+      lookup.mockRestore();
+      await recovery.dispose();
+      store.close();
+    }
+  },
+);
