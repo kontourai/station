@@ -16,6 +16,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -382,7 +383,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     height: number;
   } | null>(null);
   const fitting = props.fit !== undefined;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!fitting || !stage) return;
     const measure = () => {
