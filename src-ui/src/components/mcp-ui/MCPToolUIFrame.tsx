@@ -1252,9 +1252,24 @@ function MCPToolUISandbox({
     hostDisplayModeCapabilityKey,
   ]);
 
+  const availability = isTranscript ? (
+    <p className="mcp-tool-ui-frame__availability" role="status">
+      App preview · Interactions are unavailable in the transcript.
+    </p>
+  ) : null;
+
   // Loading/error states apply only to mode 1, where we fetch and inline the
   // resource HTML. Mode 2's dedicated origin renders (or 404s) on its own.
   if (resource.isLoading) {
+    if (isTranscript)
+      return (
+        <section className="mcp-tool-ui-frame mcp-tool-ui-frame--transcript">
+          {availability}
+          <div className="mcp-tool-ui-frame__pending" style={{ height }}>
+            Loading MCP UI…
+          </div>
+        </section>
+      );
     return <MCPToolUIStatus status="loading" ref={component.ref} />;
   }
   if (resource.isError || typeof resource.data?.text !== 'string') {
@@ -1278,17 +1293,13 @@ function MCPToolUISandbox({
 
   return (
     <section
-      className="mcp-tool-ui-frame mcp-tool-ui-frame--live"
+      className={`mcp-tool-ui-frame mcp-tool-ui-frame--live${isTranscript ? ' mcp-tool-ui-frame--transcript' : ''}`}
       data-pane-descriptor-id={paneIdentity?.descriptorId}
       data-pane-instance-id={paneIdentity?.instanceId}
       data-pane-state-key={paneIdentity?.stateKey}
       data-display-mode={currentDisplayMode}
     >
-      {transcriptResult && (
-        <p className="mcp-tool-ui-frame__description" role="status">
-          App preview · Interactions are unavailable in the transcript.
-        </p>
-      )}
+      {availability}
       <iframe
         ref={iframeRef}
         className="mcp-tool-ui-frame__iframe"

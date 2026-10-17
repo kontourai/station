@@ -211,6 +211,12 @@ describe('MCPToolUIFrame', () => {
           '*',
         ),
       );
+      send({
+        jsonrpc: '2.0',
+        method: 'ui/notifications/size-changed',
+        params: { height: 208 },
+      });
+      await waitFor(() => expect(iframe.style.height).toBe('208px'));
       for (const [index, method, params] of [
         [2, 'tools/call', { name: 'mutate', arguments: {} }],
         [3, 'resources/read', { uri: 'file:///secret' }],

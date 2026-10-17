@@ -371,6 +371,11 @@ Transcript previews advertise no server-tool, server-resource, or open-link
 capabilities and refuse unsolicited requests at the handler boundary. They have
 no message or model-context handler. The visible unavailable label applies even
 while an engine is running: this slice has no owning-session interaction lease.
+Transcript chrome has intrinsic height and a non-shrinking status line above
+the frame. Once resolution succeeds, resource loading reserves the initial frame
+height; Apps size notifications replace it within the existing 160–2,000 pixel
+bounds. A static App that reports no height retains the 360 pixel default. The
+demo uses the official SDK resize observer. This changes no resource-read timing.
 It retains the existing theme and sandbox posture and native-shell refusal.
 See the [decision](../decisions/mcp-app-transcript-previews.md).
 

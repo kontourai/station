@@ -79,13 +79,15 @@ curl -s "$API/integrations/mcp-ui-demo/ui/status_panel/resource" | jq .data.mime
 
 ## Going interactive (tool calls)
 
-This demo ships **static** HTML so it renders under the hardened sandbox with no
-external assets. To exercise the host bridge (tool input + `tools/call` through
-Station's approval flow), make the resource speak the MCP Apps protocol via
-the View SDK (`@modelcontextprotocol/ext-apps`). Inline it for this example's
-default network-blocking policy; this resource declares no external domains.
+This demo bundles the official App SDK into self-contained HTML with no external
+assets. It initializes the bridge and reports its content height automatically,
+so the host can shrink the frame to the card. It makes no tool, message or link
+requests. The result repeats `_meta.ui.resourceUri` so it is also eligible for
+Station's transcript preview; definition-only metadata still works for layout
+pins. Extending the demo with tool actions uses the View SDK under the same
+network-blocking policy; this resource declares no external domains.
 Set `approvalPolicy` to `require` for the host's inbox approval or `inherit`
 for the current client confirmation dialog. `read-only` refuses these calls.
 The dedicated proxy and opaque `srcdoc` fallback have different frame origins;
 the host chooses the proxy only when its configured origin is distinct from
-Station. The static demo itself sends no bridge messages or interactive calls.
+Station. The demo sends only lifecycle and resize messages, with no interactive calls.
