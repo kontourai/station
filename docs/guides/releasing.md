@@ -96,9 +96,11 @@ security checks still run; unknown queue shapes fail rather than being ignored.
 
 ### Delivery validation after core checks
 
-Required PR contexts remain unchanged. After core fast checks succeed, the
-trusted base-owned [delivery planner](../../scripts/pr-delivery-plan.mjs)
-selects optional packaging/platform families from the PR diff. The reusable
+Required PR contexts remain unchanged. After core fast checks succeed and
+source publication, repository scans, bundle-delta and title jobs settle, the
+trusted base-owned [delivery planner](../../scripts/pr-delivery-plan.mjs) checks
+the live PR is open at the same head and repository, then selects optional
+packaging/platform families from the PR diff. The reusable
 [delivery workflow](../../.github/workflows/delivery-validation.yml) sequences
 install → portable archives → native checks → desktop clean checkout → ecosystem
 packaging. A failed family does not cancel later selected families. Scheduled
@@ -111,7 +113,12 @@ concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
 and ecosystem one. Thus one delivery-validation invocation uses at most two
 runners at once. The shared background group serializes these invocations
 with background qualification; unrelated workloads and repositories still
-share hosted capacity.
+share hosted capacity. A trusted merged-close handler retires remaining optional
+PR delivery only after successful source proof, a complete recognized job graph
+and final ownership checks. Unknown or failed source and open shared-head PRs
+prevent cancellation. This releases obsolete background work without claiming
+that unfinished delivery passed; request acceptance alone does not prove the
+run stopped. See [testing](testing.md) for the cancellation boundaries.
 
 ## Qualification cadence and evidence reuse
 
@@ -160,9 +167,14 @@ runner/Node environment, job results and any reused producer.
 The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, release or
 manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
-completed full qualification remain eligible; the new usability gate is not. It requires the successful
-qualification job, all four ordinary corpus jobs and an unexpired receipt
-artifact. A reused run cannot become another reuse source and extend the
+completed full qualification remain eligible; the new usability gate is not.
+It requires all eleven canonical source jobs to have completed successfully in
+the current run attempt, bound to the same source, plus an unexpired receipt
+artifact and a final run/attempt identity check. Trusted main and historical
+Nightly parents may still be queued, pending, waiting or running optional
+delivery: their successful source proof remains reusable without declaring the
+whole workflow successful. Other producers require successful whole-run
+completion. Missing, failed or cancelled source jobs remain ineligible. A reused run cannot become another reuse source and extend the
 original evidence's age. The same source binds the checked-in workflow,
 lockfile, toolchain pins and phase plan. A newer commit or expired/missing
 evidence runs fresh qualification. A newer failed qualification invalidates

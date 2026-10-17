@@ -738,6 +738,20 @@ describe('delivery work waits for required PR feedback', () => {
       );
     },
   );
+  test('the live delivery eligibility read waits until every independent nonoptional CI job settles', () => {
+    for (const id of ['repo-scans', 'ui-bundle-delta', 'pr-title']) {
+      expect(needsOf(jobs['delivery-plan'])).toContain(id);
+      expect(ancestors(jobs, 'delivery-plan').has(id)).toBe(true);
+    }
+    // Scoped skips still reach the eligibility gate; adding dependencies
+    // must not inherit success() over the intentionally skipped classifier.
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('delivery-plan')).toBe('success');
+  });
   test('a successful fork smoke still admits affected delivery proof', () => {
     const state = simulate(
       jobs,

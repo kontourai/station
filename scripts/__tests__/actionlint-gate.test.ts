@@ -1534,6 +1534,48 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps[0].with!.ref =
+        `\${{ github.event.pull_request.head.sha }}`;
+    },
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps.push({
+        run: 'node candidate.mjs',
+      });
+    },
+  ])(
+    'refuses widening the merged-tail controller to candidate execution',
+    (mutate) => {
+      const workflow = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/pr-ci-supersession.yml',
+      );
+      if (!workflow) throw new Error('Missing supersession controller');
+      const document = structuredClone(workflow.document) as Parameters<
+        typeof mutate
+      >[0];
+      mutate(document);
+      expect(
+        persistentRunnerPolicyFindings([{ ...workflow, document }]),
+      ).toContainEqual({
+        file: workflow.file,
+        jobId: 'cancel-obsolete',
+        message:
+          'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+      });
+    },
+  );
+
   test('follows nested local candidate workflows and refuses an unreviewed callee', () => {
     const workflow = {
       on: { pull_request_target: {} },

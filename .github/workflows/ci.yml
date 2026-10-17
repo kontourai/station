@@ -648,11 +648,11 @@ jobs:
 
   delivery-plan:
     name: Plan affected delivery checks
-    needs: [fast-checks, fork-smoke, source-policy]
+    needs: [fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
     if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
-    permissions: { contents: read }
+    permissions: { contents: read, pull-requests: read }
     outputs:
       install: ${{ steps.plan.outputs.install }}
       portable: ${{ steps.plan.outputs.portable }}
@@ -670,6 +670,9 @@ jobs:
       - id: plan
         name: Classify the complete candidate diff using trusted policy
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
