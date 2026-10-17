@@ -123,6 +123,15 @@ cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
 last event they applied for the same server authority.
 
+The session collections observed by `useOrchestrationSessionsQuery` and personal
+boards retain row identity by thread ID when only `answerability.observedAt` and
+`childWork.children.observedAt` change. A reused row keeps an earlier genuine
+observation time for the same verdict and observer. Changes to the verdict,
+observer or any work facts replace the row and expose the new observation.
+This client cache policy leaves server read-time observations unchanged and does
+not replace dispatch authorization. Fetching session summaries directly still
+returns the latest server timestamps.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
