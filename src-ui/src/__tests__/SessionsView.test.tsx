@@ -604,6 +604,23 @@ describe('SessionsView', () => {
     expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
       20,
     );
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: 'Historical work 44' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        1,
+      ),
+    );
+    expect(rowButton('Historical work 44')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        20,
+      ),
+    );
     const more = screen.getByRole('button', {
       name: 'Show more earlier activity',
     });
@@ -620,15 +637,6 @@ describe('SessionsView', () => {
     expect(
       screen.queryByRole('button', { name: 'Show more earlier activity' }),
     ).toBeNull();
-    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
-      target: { value: 'Historical work 44' },
-    });
-    await waitFor(() =>
-      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
-        1,
-      ),
-    );
-    expect(rowButton('Historical work 44')).toBeTruthy();
   });
 
   test('reuses the mounted conversation fold when an unrelated render leaves list inputs unchanged', () => {
