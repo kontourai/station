@@ -30,6 +30,7 @@
  * context's own `regionArrangement` device setting (localStorage).
  */
 
+import { resolve } from 'node:path';
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
   LIVE_ACTIVITY_SCHEMA_VERSION,
@@ -691,10 +692,11 @@ fixtureTest.describe('Earlier history paging', () => {
             : '.split-pane__item',
         );
         await expect(rows.first()).toBeVisible();
+        const captureName = mobile ? 'phone-switcher.png' : 'activity.png';
         await page.screenshot({
-          path: testInfo.outputPath(
-            mobile ? 'phone-switcher.png' : 'activity.png',
-          ),
+          path: process.env.STATION_E2E_GALLERY_DIR
+            ? resolve(process.env.STATION_E2E_GALLERY_DIR, captureName)
+            : testInfo.outputPath(captureName),
         });
         await expect(rows).toHaveCount(20);
         const more = root.getByRole('button', {
