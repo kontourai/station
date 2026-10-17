@@ -68,7 +68,11 @@
 
     ".github/workflows/source-verification-policy.yml",
 
-    "scripts/source-verification-policy.mjs"
+    "scripts/source-verification-policy.mjs",
+
+    "scripts/release-pipeline.mjs",
+
+    ".github/workflows/hosted-capacity-probe.yml"
   ],
 
   "checks": [
