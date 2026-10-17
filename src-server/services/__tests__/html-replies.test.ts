@@ -1,24 +1,18 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { HTML_REPLY_LIMITS } from '@kontourai/station-contracts/html-reply';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { prepareHtmlReply } from '../html-replies.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'html-reply-'));
-  roots.push(root);
+  const root = makeTempDir('html-reply-');
   const image = join(root, 'chart.png');
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   await writeFile(image, bytes);
   return { root, image, bytes };
 }
-afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
-});
 
 describe('HTML reply preparation', () => {
   test('captures image bytes in attributes, CSS and script literals before originals are deleted', async () => {
