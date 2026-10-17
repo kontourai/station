@@ -21,6 +21,15 @@ import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 import './TaskRoomComposer.css';
 
+function startsWithSelectedPerson(value: string, person?: string) {
+  if (person === undefined) return false;
+  const text = value.trimStart();
+  const mention = `@${person}`;
+  return (
+    text.startsWith(mention) && /^(?:\s|$)/.test(text.slice(mention.length))
+  );
+}
+
 export function TaskRoomComposer({
   taskId,
   taskCreatedAt,
@@ -206,7 +215,7 @@ export function TaskRoomComposer({
       if (
         !selectedRecipient &&
         !unconfirmed &&
-        !(leadingPerson && draft.trimStart().startsWith(`@${leadingPerson} `))
+        !startsWithSelectedPerson(draft, leadingPerson)
       ) {
         const typed = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
         if (typed) {
@@ -356,6 +365,10 @@ export function TaskRoomComposer({
           setNotice('');
           setDraftOwner(owner);
           setDraft(event.currentTarget.value);
+          if (
+            !startsWithSelectedPerson(event.currentTarget.value, leadingPerson)
+          )
+            setLeadingPerson(undefined);
           findMention(
             event.currentTarget.value,
             event.currentTarget.selectionStart,

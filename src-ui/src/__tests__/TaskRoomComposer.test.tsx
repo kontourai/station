@@ -392,21 +392,26 @@ test('Enter sends the room message while Shift+Enter and IME retain the draft', 
   );
 });
 
-test.each(['Alice Example', 'Researcher'])(
+test.each([
+  ['Alice Example', '\n'],
+  ['Researcher', ' '],
+])(
   'selecting the person %s sends a room message without invoking an agent',
-  async (name) => {
+  async (name, separator) => {
     mocks.people = [name];
     render(<TaskRoomComposer {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
-    fireEvent.click(screen.getByRole('option', { name, exact: true }));
+    fireEvent.click(screen.getByRole('option', { name }));
     const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
     fireEvent.change(textbox, {
-      target: { value: `@${name} Please review the brief.` },
+      target: { value: `@${name}${separator}Please review the brief.` },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
     await waitFor(() =>
       expect(mocks.message).toHaveBeenCalledWith(
-        expect.objectContaining({ text: `@${name} Please review the brief.` }),
+        expect.objectContaining({
+          text: `@${name}${separator}Please review the brief.`,
+        }),
       ),
     );
     expect(mocks.agent).not.toHaveBeenCalled();

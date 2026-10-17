@@ -282,6 +282,8 @@ export function ProjectTaskRoomConversation({
       );
     },
   });
+  const followupPending = useRef(followup.isPending);
+  followupPending.current = followup.isPending;
   const stop = useMutation({
     mutationFn: async (sessionId: string) => {
       if (!scope?.isCurrent()) throw new Error('Task connection changed.');
@@ -471,6 +473,7 @@ export function ProjectTaskRoomConversation({
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={followup.isPending}
                     onClick={() => changeThread(execution.sessionId)}
                   >
                     {replies
@@ -543,8 +546,9 @@ export function ProjectTaskRoomConversation({
     );
   };
   const changeThread = (next?: string) => {
-    if (next === thread) return;
+    if (next === thread || followupPending.current) return;
     guard(() => {
+      if (followupPending.current) return;
       setThread(next);
       setReply('');
       replyOperation.current = undefined;
@@ -570,6 +574,7 @@ export function ProjectTaskRoomConversation({
                 <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
                 <IconButton
                   aria-label="Close thread"
+                  disabled={followup.isPending}
                   onClick={() => changeThread()}
                 >
                   <CloseGlyph />

@@ -2,6 +2,7 @@
 import type { ProjectTaskRoomBrowserRecord } from '@kontourai/station-contracts/project-task-room-browser';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -575,9 +576,7 @@ test('cancel retains a thread draft, while confirmed discard cannot carry it to 
     { target: { value: 'Draft for Claude only' } },
   );
   fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Cancel', exact: true }),
-  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
   expect(
     (
       screen.getByRole('textbox', {
@@ -586,9 +585,7 @@ test('cancel retains a thread draft, while confirmed discard cannot carry it to 
     ).value,
   ).toBe('Draft for Claude only');
   fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Discard', exact: true }),
-  );
+  fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
   fireEvent.click(
     within(history).getAllByRole('button', { name: 'Reply in thread' })[1],
   );
@@ -615,7 +612,59 @@ test('an open thread offers Keep for every answer without navigation back into i
       name: /^(Reply in thread|\d+ repl(?:y|ies))$/,
     }),
   ).toBeNull();
+  expect(within(thread).getAllByRole('button', { name: 'Keep' })).toHaveLength(
+    2,
+  );
+});
+
+test('a pending reply cannot move or discard its thread before settlement', async () => {
+  mocks.realGuard = true;
+  let complete!: (value: { sessionId: string }) => void;
+  mocks.continue.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const other = record(2, true);
+  mocks.records = [
+    record(1, true),
+    {
+      ...other,
+      actor: { ...other.actor, label: 'Builder' },
+      execution: { sessionId: 'session-2', turnId: 'turn-2' },
+    },
+  ];
+  mount();
+  const history = screen.getByRole('list', { name: 'Task room history' });
+  const choices = within(history).getAllByRole('button', {
+    name: 'Reply in thread',
+  });
+  fireEvent.click(choices[0]);
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Reply to this agent' }),
+    { target: { value: 'Reply to Claude' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Send reply' }));
+  await waitFor(() => expect(mocks.continue).toHaveBeenCalledOnce());
   expect(
-    within(thread).getAllByRole('button', { name: 'Keep', exact: true }),
-  ).toHaveLength(2);
+    (screen.getByRole('button', { name: 'Close thread' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+  fireEvent.click(choices[1]);
+  expect(screen.queryByRole('dialog', { name: 'Unsaved Changes' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Claude · Thread' })).toBeTruthy();
+  await act(async () => complete({ sessionId: 'session-1' }));
+  fireEvent.click(choices[1]);
+  expect(
+    screen.getByRole('heading', { name: 'Builder · Thread' }),
+  ).toBeTruthy();
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'Reply to this agent',
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('');
 });
