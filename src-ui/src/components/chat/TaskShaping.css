@@ -1,0 +1,59 @@
+.task-proposal {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.task-proposal h3,
+.task-proposal h4,
+.task-proposal p,
+.task-proposal ul {
+  margin: 0;
+}
+.task-proposal h3 {
+  font-size: var(--k-text-lg);
+}
+.task-proposal h4 {
+  font-size: var(--k-text-md);
+}
+.task-proposal__eyebrow,
+.task-proposal__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.task-proposal label {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.task-proposal select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+.task-proposal select:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.button.task-chat-start__chip {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  min-height: 44px;
+  min-width: 44px;
+  margin-inline: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+}

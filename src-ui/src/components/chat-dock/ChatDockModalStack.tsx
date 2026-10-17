@@ -70,6 +70,7 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  newChatTaskShaping?: boolean;
   newChatInitialFiles?: File[];
   newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
   newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
@@ -107,6 +108,7 @@ interface ChatDockModalStackProps {
     executionOnCurrentStation?: boolean,
     /** Files for the first message, staged by the chat that opens. */
     initialFiles?: File[],
+    ambientContext?: string,
   ) => void;
   onCloseNewChat: () => void;
   onNewTaskStarted?: () => void;
@@ -143,6 +145,7 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  newChatTaskShaping,
   newChatInitialFiles,
   newChatSelection,
   newChatHandoff,
@@ -199,6 +202,7 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            taskShaping: newChatTaskShaping,
             initialFiles: forkMode ? undefined : newChatInitialFiles,
             startSelection: forkMode ? undefined : newChatSelection,
             handoff: forkMode ? undefined : newChatHandoff,

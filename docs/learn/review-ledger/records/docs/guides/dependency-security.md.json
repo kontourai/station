@@ -110,7 +110,11 @@
 
     "packages/shared/package.json#/exports",
 
-    "packages/shared/package.json#/files"
+    "packages/shared/package.json#/files",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs"
   ],
 
   "checks": [

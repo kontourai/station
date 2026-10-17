@@ -37,6 +37,10 @@ import {
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
 import {
+  readTaskProposal,
+  taskProposalBrief,
+} from '@kontourai/station-contracts/task-graph';
+import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
@@ -86,6 +90,14 @@ import {
 } from './approval-authority.js';
 
 const taskCreateSchema = z.object({
+  proposalBrief: z.string().trim().min(1).max(12000).optional(),
+  shapingSource: z
+    .object({
+      sessionId: z.string().trim().min(1).max(4096),
+      turnId: z.string().trim().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   projectId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
@@ -342,6 +354,12 @@ export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
     taskDispatcher: TaskDispatcher;
+    proposalBriefAvailable?: () => boolean;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean>;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
      * essential: a route singleton must never retain one tenant's authority.
@@ -430,6 +448,12 @@ export function createTaskRoutes(
     answerNarrativeBindingModule?: AnswerNarrativeBindingModule;
   } = {} as {
     taskDispatcher: TaskDispatcher;
+    proposalBriefAvailable?: () => boolean;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean>;
     canReadSession?: (
       sessionId: string,
       authority: SessionReadAuthority,
@@ -630,10 +654,95 @@ export function createTaskRoutes(
     try {
       const service = serviceForRequest(c.req.raw);
       if (!service) return hostedNotFound(c);
+      const input: z.infer<typeof taskCreateSchema> = getBody(c);
+      let authorize: (() => boolean) | undefined;
+      if (input.shapingSource) {
+        if (
+          !input.proposalBrief ||
+          !options.seedProposalBrief ||
+          options.proposalBriefAvailable?.() === false
+        )
+          return c.json(
+            { success: false, error: 'Task brief saving is unavailable' },
+            503,
+          );
+        const authority = options.readAuthorityForRequest?.(c.req.raw);
+        if (!authority || !options.readAssistantTurn) return hostedNotFound(c);
+        const { sessionId, turnId } = input.shapingSource;
+        authorize = () =>
+          options.isRequestPrincipalCurrent?.(c.req.raw) !== false &&
+          (options.canReadSession?.(sessionId, authority) ?? false);
+        if (!authorize()) return hostedNotFound(c);
+        const answer = await options.readAssistantTurn({
+          sessionId,
+          turnId,
+          authority,
+        });
+        if (answer.status === 'unavailable')
+          return c.json(
+            {
+              success: false,
+              error: 'Shaping answer is temporarily unavailable',
+            },
+            503,
+          );
+        if (
+          answer.status !== 'found' ||
+          (answer.projectSlug !== undefined &&
+            answer.projectSlug !== input.projectId) ||
+          !authorize()
+        )
+          return hostedNotFound(c);
+        const proposal = readTaskProposal(
+          answer.message.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n'),
+        );
+        if (
+          !proposal ||
+          input.title !== proposal.title ||
+          input.description !== proposal.goal ||
+          input.proposalBrief !== taskProposalBrief(proposal) ||
+          input.agentId
+        ) {
+          return c.json(
+            {
+              success: false,
+              error: 'Accepted proposal must match the shaping answer',
+            },
+            409,
+          );
+        }
+      }
       const data = await service.createTask(
-        getBody(c),
+        input,
         resolveClientOriginForRequest(c.req.raw),
+        undefined,
+        authorize,
       );
+      if (input.shapingSource) {
+        let seeded = false;
+        try {
+          seeded = await options.seedProposalBrief!({
+            taskId: data.id,
+            request: c.req.raw,
+            text: input.proposalBrief!,
+          });
+        } catch {
+          /* Retry retains the exact source identity. */
+        }
+        if (!seeded)
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task created, but its brief could not be saved. Retry Create Task to finish saving the same Task.',
+            },
+            503,
+          );
+        await service.completeProposalAcceptance(data.id, input.shapingSource);
+      }
       return c.json({ success: true, data }, 201);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

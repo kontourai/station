@@ -1,0 +1,15 @@
+{
+  "revision": "d0cd3f85b8e8a300304f3265ada4af796b24122c",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed changed SDK reference paragraph and this guide first integration table. The guide routes to current SDK contracts and requests exact versions, authentication and refusal evidence; hydration returning null for superseded commands changes no integration/auth/publication promise. No new hosted runtime evidence claimed.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Bounded review of lifecycle delta against manual Sessions/turns/runs and SDK/plugin authority explanations. useCreateChatSession and launch/send behavior remain unchanged; optional open hydration currency and cleanup ownership do not create Tasks or authorize continuation. Real-store controller tests and UI typecheck passed. Existing unrelated manual topic reviews are not renewed.","inputs":["docs/reference/station-docs.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed affected first-chat, Coding inbox and continue-chat instructions against creation, open and send owners. Hydration repair suppresses superseded message publication while preserving adopted tabs and healthy focus hydration; first-run and continuation authorization remain unchanged. Instructions remain accurate. Controlled tests are not new physical-device/provider proof.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Read full scope instructions against changed SDK reference and callback implementation. Public hook facade still delegates to host; source change keeps canonical cache plus waiting caller currency observable, with real-store epoch and healthy-adoption controls. SDK scope and public/private boundary instructions remain accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed Chat Operations example, source distribution/host requirements and SDK reference routing against useCreateChatSession/useSendMessage and useOpenConversation facade. Hydration repair does not alter documented create/send signatures or npm publication claims. The detailed reference now names superseded hydration null results. No README prose change needed; no fresh npm/provider/native qualification claimed.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]}
+  ]
+}

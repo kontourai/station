@@ -1,0 +1,7 @@
+{
+  "revision": "6b0652a07c42a5bdcefceb67c4948c7ab93157eb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the additive Task proposal and phone menu path against the shared prompt/composer, normally completed MessageBubble card, and explicit answer/input picker; existing chat placement, attributed message details, and canonical send owners are preserved. Rendered fixture evidence is separate from Builder Kit invocation.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/lib/task-shaping.ts","src-ui/src/components/chat/TaskShapingComposer.tsx","src-ui/src/components/chat/TaskProposalCard.tsx"]}
+  ]
+}

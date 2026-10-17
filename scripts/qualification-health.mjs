@@ -95,7 +95,38 @@ export async function checkQualificationHealth(
     });
   }
   const latest = observed[0];
-  const failures = observed
+  const manualRuns = await listGithub(
+    `actions/workflows/nightly.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
+    'workflow_runs',
+    options,
+  );
+  const recoveries = [];
+  for (const run of manualRuns.filter(
+    (run) =>
+      run.path === '.github/workflows/nightly.yml' &&
+      run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
+      run.head_branch === 'main' &&
+      ['schedule', 'workflow_dispatch'].includes(run.event) &&
+      run.status === 'completed',
+  )) {
+    const jobs = await listGithub(
+      `actions/runs/${run.id}/jobs`,
+      'jobs',
+      options,
+    );
+    const sourceGate = jobs.filter(
+      (job) => job.name === '1 · Source gate (lint, typecheck, browser smoke)',
+    );
+    recoveries.push({
+      run,
+      jobs,
+      passed:
+        sourceGate.length === 1 &&
+        sourceGate[0].status === 'completed' &&
+        sourceGate[0].conclusion === 'success',
+    });
+  }
+  const failures = [...observed, ...recoveries]
     .filter(
       (item) =>
         item.passed &&
@@ -121,27 +152,6 @@ export async function checkQualificationHealth(
   if (failures.some((item) => !Number.isFinite(Date.parse(item.at))))
     throw new Error('Invalid failed delivery timestamp');
   const incidents = [...failures, ...(retained?.failures ?? [])];
-  const manualRuns = await listGithub(
-    `actions/workflows/nightly.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
-    'workflow_runs',
-    options,
-  );
-  const recoveries = [];
-  for (const run of manualRuns.filter(
-    (run) =>
-      run.path === '.github/workflows/nightly.yml' &&
-      run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
-      run.head_branch === 'main' &&
-      run.event === 'workflow_dispatch' &&
-      run.status === 'completed',
-  )) {
-    const jobs = await listGithub(
-      `actions/runs/${run.id}/jobs`,
-      'jobs',
-      options,
-    );
-    recoveries.push({ run, jobs });
-  }
   const successfulDeliveries = [...observed, ...recoveries].filter(
     (item) => item.run.status === 'completed',
   );
@@ -202,11 +212,7 @@ export async function checkQualificationHealth(
     );
   if (pendingDelivery)
     reasons.push(
-      'Source qualification passed, but its Nightly decision or publication did not complete successfully.',
-    );
-  if (env.STATION_QUALIFIED_NIGHTLY !== 'enabled')
-    reasons.push(
-      'Qualification-driven Nightly delivery is disabled (STATION_QUALIFIED_NIGHTLY must be enabled).',
+      'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     );
 
   const lines = [
@@ -221,15 +227,15 @@ export async function checkQualificationHealth(
       ? `Latest passing gate: ${green.run.html_url}, source \`${green.run.head_sha}\`, completed ${new Date(green.completed).toISOString()}.`
       : 'No passing qualification gate found in the last 48 hours.',
     pendingDelivery
-      ? `Unresolved qualified delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
-      : 'No failed qualified delivery run found in the last 48 hours.',
+      ? `Unresolved Nightly delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
+      : 'No failed Nightly delivery run found in the last 48 hours.',
     '',
     'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run ' +
       (pendingDelivery ? 'nightly.yml' : 'main-qualification.yml') +
       ' --repo ' +
       env.GITHUB_REPOSITORY +
       (pendingDelivery ? ' --ref main`.' : ' --ref main -F force=true`.'),
-    'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly remains bound to an exact qualified source.',
+    'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly requires its exact-source usability gate; Beta and stable require full qualification.',
   ];
   if (reasons.length) {
     const body =

@@ -274,8 +274,17 @@ export function workStatus(
   item: HomeWorkItem,
   now: number,
   facts?: WorkFacts,
+  observationUnavailable = false,
 ): WorkStatus {
-  const rung = rungFor(item, facts);
+  const known = rungFor(item, facts);
+  const rung = observationUnavailable
+    ? {
+        ...known,
+        word: `Last known: ${known.word}`,
+        tone: 'neutral' as const,
+        since: undefined,
+      }
+    : known;
   const line = [
     rung.word,
     rung.detail,

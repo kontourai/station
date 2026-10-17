@@ -22,7 +22,7 @@ import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson } from '../client/http';
+import { getJson, StationHttpError } from '../client/http';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -107,7 +107,10 @@ interface ApiResult<T> {
 async function readApiResult<T>(response: Response): Promise<T> {
   const result = (await response.json()) as ApiResult<T>;
   if (!response.ok || !result.success || result.data === undefined) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(result, `HTTP ${response.status}`),
+    );
   }
   return result.data;
 }
