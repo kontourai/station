@@ -85,6 +85,43 @@ describe('coding content routes — real git project (no mocks)', () => {
     expect(res.json.data.content).toContain('edited');
   });
 
+  test('previews exactly 2 MiB and refuses max+1 with an actionable typed error', async () => {
+    const path = join(repo, 'preview-limit.txt');
+    const content = 'x'.repeat(2 * 1024 * 1024);
+    writeFileSync(path, content);
+    const accepted = await get(
+      '/files/content?projectSlug=r&file=preview-limit.txt',
+    );
+    expect(accepted.status).toBe(200);
+    expect(accepted.json.data.content).toBe(content);
+    writeFileSync(path, `${content}x`);
+    const refused = await get(
+      '/files/content?projectSlug=r&file=preview-limit.txt',
+    );
+    expect(refused.status).toBe(413);
+    expect(refused.json).toEqual({
+      success: false,
+      code: 'file-too-large',
+      error: expect.stringContaining('2 MiB'),
+    });
+    expect(refused.json.error).toContain('Open it in an editor');
+  });
+
+  test('refuses binary previews and reads changed text on the next request', async () => {
+    const path = join(repo, 'preview-binary.txt');
+    writeFileSync(path, Buffer.from([65, 0, 66]));
+    const refused = await get(
+      '/files/content?projectSlug=r&file=preview-binary.txt',
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.json.code).toBe('binary-file');
+    writeFileSync(path, 'now text');
+    const accepted = await get(
+      '/files/content?projectSlug=r&file=preview-binary.txt',
+    );
+    expect(accepted.json.data.content).toBe('now text');
+  });
+
   test('reads a nested workspace-relative path', async () => {
     const res = await get(
       `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=${encodeURIComponent('src/index.ts')}`,

@@ -28,7 +28,10 @@ import {
   commitRepository,
   pushRepository,
 } from '../../services/projects/coding-git-actions.js';
-import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import {
+  FilePreviewError,
+  type FileTreeService,
+} from '../../services/projects/file-tree-service.js';
 import {
   type LiveRepository,
   openLiveRepository,
@@ -667,9 +670,17 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const content = fileTreeService.readFileWithin(location.target, file);
+      const content = await fileTreeService.readFilePreviewWithin(
+        location.target,
+        file,
+      );
       return c.json({ success: true, data: { path: file, content } });
     } catch (e: unknown) {
+      if (e instanceof FilePreviewError)
+        return c.json(
+          { success: false, code: e.code, error: errorMessage(e) },
+          e.code === 'file-too-large' ? 413 : 400,
+        );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
   });
