@@ -19,9 +19,13 @@ must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
 The companion receiver additionally accepts identifier-free `station_daily`
-Lite pings through public publisher/channel source IDs. It keeps daily rollups,
-offers publisher-key-scoped reads, and serves public Kontour aggregates derived
-only from the same cells of at least ten pings across all dimensions. This
+Lite pings through public publisher/channel source IDs. It keeps daily
+per-dimension marginals and applies the same suppression to publisher-scoped
+reads and public Kontour reads: each value needs ten distinct daily network
+keys (IPv4 addresses or IPv6 /64s). Numeric counters are bucketed before rollup.
+Periodic finalization removes contributor hashes; raw pings expire after 90 days.
+Public reads use a UTC-day cache. These are untrusted ping counts, with botnet,
+proxy/NAT and restart limits documented by the receiver. This
 receiver implementation does not establish an installed Station sender or a
 deployment. See the [Lite contract, privacy policy and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
