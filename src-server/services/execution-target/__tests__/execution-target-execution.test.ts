@@ -1260,7 +1260,9 @@ describe('executeForegroundMessage', () => {
             cwd: repoPath,
             encoding: 'utf8',
             stdio: 'pipe',
-          }).trim(),
+          })
+            .toString()
+            .trim(),
         }),
       );
       await new WorktreeProvisioningService().cleanup({
