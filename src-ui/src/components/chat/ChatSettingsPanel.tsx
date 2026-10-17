@@ -15,7 +15,11 @@ import {
   settingsForAnswerDelivery,
 } from '../../utils/answerDelivery';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
-import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
+import { ActionRow } from '../ActionRow';
+import {
+  ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
+} from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
 import {
   ReplayCaptureControls,
@@ -96,11 +100,9 @@ export function ChatSettingsPanel({
       <h3 id="chat-settings-title" className="chat-settings-modal__title">
         Chat Settings
       </h3>
-      {/* archive#settings-revamp: every control below is device-
-            scope (docs/design/settings-architecture.md §3 S4), consistent
-            with the /settings "This device" scope caption. */}
       <p className="chat-settings-modal__caption">
-        Saved to this device only — never sent to the server.
+        Chat display preferences sync with your account when signed in.
+        Device-specific options stay on this device.
       </p>
 
       <div className="chat-settings-modal__section">
@@ -279,10 +281,7 @@ export function ChatSettingsPanel({
           />
           <span>Automatically show agent browser sessions</span>
         </label>
-        <p
-          id="chat-settings-autofloat-hint"
-          className="chat-settings-modal__hint"
-        >
+        <p id={autoFloatHintId} className="chat-settings-modal__hint">
           When an agent drives a browser in this chat's Project and no pane
           shows it, float it over the chat. A session you close stays closed in
           that chat.
@@ -292,47 +291,51 @@ export function ChatSettingsPanel({
       {sessionSummary && (
         <fieldset className="chat-settings-modal__section">
           <legend className="chat-settings-modal__label">This session</legend>
-          <div className="chat-settings-modal__control">
-            <button
-              type="button"
-              className="chat-settings-modal__btn"
-              disabled={sessionSummary.isGenerating}
-              onClick={() => {
-                sessionSummary.onGenerate();
-                onClose();
-              }}
-            >
-              {sessionSummary.isGenerating
-                ? 'Generating summary…'
-                : 'Summarize chat'}
-            </button>
-            <button
-              type="button"
-              className="chat-settings-modal__btn"
-              onClick={() => {
-                dismissSummary.mutate({
-                  agentSlug: sessionSummary.agentSlug,
-                  conversationId: sessionSummary.conversationId,
-                });
-                onClose();
-              }}
-            >
-              Dismiss summary
-            </button>
-            <button
-              type="button"
-              className="chat-settings-modal__btn"
-              onClick={() => {
-                showSummary.mutate({
-                  agentSlug: sessionSummary.agentSlug,
-                  conversationId: sessionSummary.conversationId,
-                });
-                onClose();
-              }}
-            >
-              Show dismissed summary
-            </button>
-          </div>
+          {/* #3045: one labelled action. The two ways of putting a summary
+              away fold into the menu, as on the summary card itself. */}
+          <ActionRow
+            className="chat-settings-modal__control"
+            overflowLabel="More summary actions"
+            primary={
+              <button
+                type="button"
+                className="chat-settings-modal__btn"
+                disabled={sessionSummary.isGenerating}
+                onClick={() => {
+                  sessionSummary.onGenerate();
+                  onClose();
+                }}
+              >
+                {sessionSummary.isGenerating
+                  ? 'Generating summary…'
+                  : 'Summarize chat'}
+              </button>
+            }
+            overflow={[
+              {
+                key: 'dismiss',
+                label: 'Dismiss summary',
+                onSelect: () => {
+                  dismissSummary.mutate({
+                    agentSlug: sessionSummary.agentSlug,
+                    conversationId: sessionSummary.conversationId,
+                  });
+                  onClose();
+                },
+              },
+              {
+                key: 'show',
+                label: 'Show dismissed summary',
+                onSelect: () => {
+                  showSummary.mutate({
+                    agentSlug: sessionSummary.agentSlug,
+                    conversationId: sessionSummary.conversationId,
+                  });
+                  onClose();
+                },
+              },
+            ]}
+          />
           <p className="chat-settings-modal__hint">
             Adds a derived summary card above the transcript. Runs on the server
             for this conversation.
@@ -386,7 +389,7 @@ export function ChatSettingsPanel({
         </button>
       </div>
 
-      <div className="chat-settings-modal__actions">
+      <ResponsiveSurfaceActions className="chat-settings-modal__actions">
         <button
           type="button"
           className="chat-settings-modal__done"
@@ -394,7 +397,7 @@ export function ChatSettingsPanel({
         >
           Done
         </button>
-      </div>
+      </ResponsiveSurfaceActions>
     </ResponsiveDialogSurface>
   );
 }
