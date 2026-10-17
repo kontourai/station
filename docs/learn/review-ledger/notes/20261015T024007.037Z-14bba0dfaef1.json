@@ -1,0 +1,7 @@
+{
+  "revision": "72b45bfdc98216e451d703f80f7d2104274867aa",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Preserved existing Claude tool-call placement for a window retaining only terminal child identity: the per-child contract fold now accepts the settle tombstone, and the loaded call supplies its anchor. A new mounted regression failed with the missing card before the fix; all 38 mounted tests and UI typecheck pass after it. Unanchored terminal children still keep their completion notices; no fallback spawn position is invented.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/transcript-child-work.ts"]}
+  ]
+}

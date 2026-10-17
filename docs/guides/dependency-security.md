@@ -4,6 +4,50 @@ Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
 remain separate advisory views of that graph; they no longer own independent
 npm lockfiles.
 
+## RSA signature verification backport (2026-10)
+
+Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
+for [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
+It backports the nested DigestAlgorithm element-count check from
+[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), commit
+`ceba34402e329f0365134f23fe19898756527d65`, to `lib/rsa.js` and both shipped
+browser bundles. The threat is an attacker without the private key forging an
+RSA PKCS#1 v1.5 signature, particularly with a low public exponent. The parser
+now requires the algorithm OID plus only its optional NULL parameter, retaining
+the existing outer DigestInfo and padding checks.
+The pnpm patch recreates the two bundles with equivalent `\x01` string escapes
+for their published literal control bytes, keeping the patch visible to text
+scanners without changing those string values.
+
+The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
+exercise the package entrypoint and both browser globals. A retained signature
+constructed using only an exponent-3 public key passes pristine 1.4.0 and fails
+the patched verifier; Node crypto independently rejects it. Valid SHA-256
+signatures with exponents 3 and 65537, wrong-message rejection, and the
+supported omitted-NULL form remain covered. These are dependency API checks,
+not a reproduced Station endpoint exploit or full browser/native qualification.
+
+The registry still reports version 1.4.0 as **high**. A separate `remediations`
+record in the [advisory ledger](../../scripts/dependency-advisory-exceptions.json)
+replaces this advisory's temporary risk exception. The policy prints `PATCHED`
+only after checking the exact advisory/version, Node 24, workspace registration,
+patch SHA-256, locked graph edges, and the installed main, RSA implementation,
+and both bundles for every accounted copy. Missing or changed bytes,
+unaccounted copies, and changed entrypoint contracts block the finding. This
+checks the installed tree at decision time; it does not defend against a
+same-user writer changing code afterward. Other advisories retain their own
+dispositions and deadlines.
+
+The remediation has no risk-acceptance expiry: it requires current installed
+proof on every decision. An absent advisory makes its record unused and fails
+the gate, requiring cleanup rather than silently retaining an allowance.
+[Issue #3122](https://github.com/kontourai/station/issues/3122) tracks replacement
+with an independently verified official release. Recheck after every Forge,
+VoltAgent, SAP/JKS, patch, or provider-boundary change. Optional provider
+packaging is tracked by [issue #3745](https://github.com/kontourai/station/issues/3745);
+this patch preserves SAP functionality and makes
+no universal nonreachability claim.
+
 ## Proxy, copy, and numeric formatter advisories (2026-10)
 
 The workspace pins `proxy-addr` 2.0.8 and `fast-copy` 4.1.0. The
@@ -574,7 +618,9 @@ compatible version.
 
 ## Title policy publication
 
-Only the trusted title-status job receives `statuses:write`. It checks out the
+The trusted title-status job receives `statuses:write` solely for title policy.
+The isolated source-policy publisher below is a separate exception; jobs that
+execute candidate code retain read-only tokens. The title job checks out the
 running workflow revision for PR events and the protected base for merge groups;
 candidate code never receives this token. It writes only `PR title policy` on
 the exact event head, leaving source-check contexts untouched.
@@ -585,3 +631,23 @@ pending. If both the initial pending and fallback writes are rejected, the
 client cannot revoke an earlier remote success. The diagnostic job reports the
 error; it does not claim that remote admission failed closed. An operator hold
 is needed during such a complete publication outage.
+
+
+## Source policy publication
+
+The isolated [source-policy workflow](../../.github/workflows/source-verification-policy.yml)
+also receives `statuses:write`. It checks out trusted policy, never candidate
+code, and publishes only `Source verification policy` from existing GitHub run
+and job evidence. `PR: CI` calls it after core source checks and before optional
+delivery work for source-changing PR events. Lifecycle reconciliation handles
+requested, in-progress and completed source runs; metadata start events allocate
+no publisher, while metadata completion can reconcile existing proof.
+
+The policy binds the exact head, repository and every current main-target PR
+sharing that head. It checks recorded base ancestry and the current run attempt;
+new main commits do not by themselves invalidate ancestral source evidence.
+Missing, unfinished, failed, cancelled or divergent proof cannot borrow an older
+success. Reconciliation launches no candidate tests. Keep the legacy required
+`fast-checks` context until real publisher statuses are verified, then follow
+[the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
+This source status is not full release qualification.

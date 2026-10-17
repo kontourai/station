@@ -63,19 +63,26 @@ replies, continue chats, and review work. Start on your computer:
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 
-Creating an invitation requires an operator session. A browser opened through a
-launcher sign-in link may use Station without being allowed to pair other
-Devices. If it says this device cannot create pairing codes, run
-`station-nightly environment offer` on the computer running your Nightly install
-(or `./station environment offer` from a source checkout). Approve the phone’s
-request there with `station-nightly environment access approve --latest --force`.
-If Station restarts, keep it running and choose **Try again**. The browser
-rechecks access without reloading. Returning to the app or restoring the network
-also retries an unavailable host. If access was refused, **Request access**
-starts a new approval request for the selected Station.
+A browser opened with the host's one-time sign-in link can create invitations
+and manage paired devices. Choose Read-only, Standard or Full device access
+before creating the invitation;
+anyone holding it can pair once before it expires, without another approval.
+Cancel an unused invitation to prevent it being redeemed. Revoking a paired
+device removes access it already received.
 
-Use the launcher and home for the same Station throughout. The regular browser
-sign-in link does not grant pairing-administration authority.
+For a terminal-only host, run `station-nightly environment offer` on the
+computer running your Nightly install (or `./station environment offer` from a
+source checkout). This prints a single-use invitation with Standard access.
+Use `--scope=orchestration:read` for read-only access or `--require-approval`
+to review the recipient before granting access.
+
+A browser that arrives without an invitation can choose **Request access**.
+Approve that request in a trusted session or with the displayed command on the
+Station host. Bare host-approval commands discover the running Station in the
+selected local home before consulting saved Station defaults, so a saved remote
+Station does not override that local instance. Use the same home and channel
+that started Station; a remote host requires running the command there, such
+as over SSH.
 
 The address in that invitation must be reachable from your phone. `localhost`
 means the device you are using, so a computer’s localhost address does not reach
@@ -171,10 +178,15 @@ macOS/Linux, use one command:
 ~/.local/bin/station-nightly start
 ```
 
-On Windows, use `station-nightly start` in PowerShell. The default browser
-address is `http://localhost:38000`; use the sign-in link when access is requested.
-Run the same install command again to
-upgrade, and `station-nightly --version` to see the installed build. Set
+On Windows, in PowerShell:
+
+```powershell
+& "$env:USERPROFILE\.local\bin\station-nightly.cmd" start
+```
+
+The default browser address is `http://localhost:38000`; use the sign-in link when access is requested.
+Run the same install command again to upgrade. Replace `start` with
+`--version` in the launch command to see the installed build. Set
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
 manifest instead. The Station Nightly desktop app uses the same ports and
 data directory; the installer refuses to share them silently (see
@@ -676,12 +688,18 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and create a Task for work you want to keep.
-2. Choose an Agent that is ready to run.
-3. Open the Task to follow its Sessions, files, artifacts, and evidence.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
+2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
+3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
+
+An existing chat can become a Task through **Turn into Task** in its More menu.
+The **Add to Task** picker also offers **New Task from this…** for an answer or input.
+**Turn into Task** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or remove the chip. No Task is created until acceptance.
+
+After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
-Project. It uses the ordinary Task form. If the Agent is unavailable, Station
+Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 

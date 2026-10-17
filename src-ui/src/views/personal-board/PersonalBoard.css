@@ -1,0 +1,233 @@
+.personal-board-workspace {
+  container-type: inline-size;
+  min-height: 100%;
+  overflow: auto;
+  background: var(--k-bg);
+}
+.personal-board {
+  width: 100%;
+  container-type: inline-size;
+  padding: clamp(var(--k-space-4), 3cqi, var(--k-space-6));
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.personal-board__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  max-width: 100%;
+}
+.personal-board__toolbar button,
+.personal-board__section-actions button {
+  min-height: 44px;
+}
+.personal-board__toolbar span {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.personal-board__toolbar > div,
+.personal-board__section-actions > div,
+.personal-board__add > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.personal-board__eyebrow {
+  font-size: var(--k-text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--k-text-muted);
+}
+.personal-board__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-4);
+}
+.personal-board__card {
+  flex: 1 1 calc(50% - var(--k-space-4));
+  min-width: min(100%, 320px);
+  padding: var(--k-space-5);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.personal-board__card--full {
+  flex-basis: 100%;
+}
+.personal-board__card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-4);
+}
+.personal-board h2,
+.personal-board__editor h2,
+.personal-board__proposal h2 {
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  margin: 0;
+}
+.personal-board__source {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.personal-board__rows {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.personal-board__rows li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3) 0;
+  border-bottom: 1px solid var(--k-line);
+}
+.personal-board__rows li:last-child {
+  border: 0;
+}
+.personal-board__rows a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--k-text);
+  text-decoration: none;
+}
+.personal-board__rows a:hover {
+  text-decoration: underline;
+}
+.personal-board__rows li > span,
+.personal-board__rows time {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+  flex-shrink: 0;
+}
+.personal-board__note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.personal-board__setup,
+.personal-board__editor {
+  width: 100%;
+  max-width: 960px;
+  padding: clamp(var(--k-space-4), 3cqi, var(--k-space-6));
+  margin: 0 auto;
+}
+.personal-board__templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-6);
+}
+.personal-board__templates > button {
+  flex: 1 1 calc(50% - var(--k-space-3));
+  min-width: min(100%, 280px);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding: var(--k-space-5);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  cursor: pointer;
+}
+.personal-board__templates > button:hover {
+  border-color: var(--k-focus);
+}
+.personal-board__templates > button > span {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.personal-board__editor > fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.personal-board__identity-fields,
+.personal-board__section-editor,
+.personal-board__link-editor > div {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.personal-board__section-editor {
+  margin: var(--k-space-4) 0;
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.personal-board__section-editor legend {
+  font-weight: 600;
+  padding: 0 var(--k-space-2);
+}
+.personal-board-workspace label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+.personal-board-workspace input,
+.personal-board-workspace textarea,
+.personal-board-workspace select {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+.personal-board-workspace .personal-board__check {
+  flex-direction: row;
+  align-items: center;
+}
+.personal-board__check input {
+  width: auto;
+}
+.personal-board__section-actions,
+.personal-board__proposal,
+.personal-board__notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+.personal-board__proposal,
+.personal-board__notice {
+  margin: var(--k-space-4) var(--k-space-6);
+  padding: var(--k-space-5);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.personal-board__proposal > div:last-child {
+  display: flex;
+  gap: var(--k-space-2);
+}
+.personal-board__proposal p {
+  color: var(--k-text-muted);
+  max-width: 65ch;
+}
+.personal-board-workspace > [role="alert"] {
+  margin: var(--k-space-4) var(--k-space-6);
+  color: var(--k-text);
+}
+.personal-board__add {
+  margin: var(--k-space-5) 0;
+}
+.personal-board__add h2 {
+  margin-bottom: var(--k-space-3);
+}
+
+.personal-board-workspace
+  :is(input, textarea, select, button, a):focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

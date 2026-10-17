@@ -110,7 +110,11 @@
 
     "src-ui/src/components/chat/transcriptLayoutTracer.ts",
 
-    "tests/transcript-load-stability.spec.ts"
+    "tests/transcript-load-stability.spec.ts",
+
+    "packages/monument/src/index.ts",
+
+    "packages/monument/src/session-message-delivery.ts"
   ],
 
   "checks": [

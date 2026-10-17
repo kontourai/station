@@ -23,6 +23,7 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   classifyOperatorCredentialPosition,
@@ -125,6 +126,7 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
   type BoundedBodyResult,
@@ -139,6 +141,10 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { join, resolve } from 'node:path';
+import {
+  type SessionStartResult,
+  startUnlessDelivered,
+} from '@kontourai/monument';
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
@@ -175,6 +181,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopeIncludes,
+  parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import type {
@@ -551,10 +558,6 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import {
-  type SessionStartResult,
-  startUnlessDelivered,
-} from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -624,6 +627,7 @@ import {
   type DeviceAccessApproval,
   DevicePairingError,
   type DevicePairingService,
+  isProtectedPairingPromotionScope,
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
@@ -1846,6 +1850,22 @@ export function configureRuntimeRoutes(
   // indistinguishable to the reader below, and both fail closed to
   // `{ kind: 'revoked' }`, never a default identity.
   const roomRequestPrincipals = new WeakMap<Request, PrincipalRef>();
+  const primeRoomRequestPrincipal = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    try {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+    } catch {
+      // Unresolved: no cache entry, so `requestAuthority.resolve` above
+      // revokes rather than reading a stale or default principal.
+    }
+    await next();
+  };
+
   // The registry is process-wide, but each decision remains bound to either a
   // tenant-validated session or the authority minted in its current ingress
   // context. Install this before any route or agent registration can create a
@@ -3021,6 +3041,19 @@ export function configureRuntimeRoutes(
       {
         // #2067: the registry's plugin catalog faces are operator-only; this
         // is the resolution they refuse with.
+        authorizeOperator: async (c) => {
+          roomRequestPrincipals.set(
+            c.req.raw,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = projectMembershipAuthority(c.req.raw);
+          await authority.operator();
+          if (
+            (await authority.current()).principal.id !==
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          )
+            throw new ProjectMembershipRefusal('forbidden');
+        },
         visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
         // #2067: the layout catalog faces are PROJECTED rather than refused.
         canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
@@ -3759,6 +3792,19 @@ export function configureRuntimeRoutes(
     // full `initialize()` — re-running init re-binds the HTTP + voice-WS ports
     // (EADDRINUSE → uncaughtException → the server shuts itself down).
     createToolRoutes(context.mcpService, context.reloadAgents, {
+      authorizeOperator: async (c) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        const authority = projectMembershipAuthority(c.req.raw);
+        await authority.operator();
+        if (
+          (await authority.current()).principal.id !==
+          LOCAL_OPERATOR_PRINCIPAL_ID
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
@@ -3835,6 +3881,10 @@ export function configureRuntimeRoutes(
       navigationAudience: agentOwnerIdForRequest,
     }),
   );
+  // Proposal acceptance writes the Task document before returning from POST /api/tasks.
+  // Prime the same room principal before that route can consume the request.
+  if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
+    context.app.use('/api/tasks', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskOutputRoutes(taskOutputs, {
@@ -3851,6 +3901,10 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
+      seedProposalBrief: (input) =>
+        projectTaskRoomRuntime?.seedProposalBrief(input) ??
+        Promise.resolve(false),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
@@ -4149,49 +4203,9 @@ export function configureRuntimeRoutes(
         ]),
       )
       .then(() => undefined);
-    // station#4075 stage 3 slice 1: resolve the calling principal once, here,
-    // where the real Hono `c` (env + headers) is available, and cache it on
-    // `c.req.raw` for `requestAuthority.resolve` above — see the
-    // `roomRequestPrincipals` docs above `resolveOrchestrationRequestPrincipal`
-    // for why the room runtime cannot do this resolution itself. A resolution
-    // failure is deliberately left uncached (fail closed), matching
-    // `resolveActorPrincipal`'s documented contract in
-    // `routes/orchestration/orchestration.ts` that an unresolvable caller
-    // throws rather than falling back to a default identity.
-    //
-    // Fix round (station#4075 stage 3 slice 1 review): every public
-    // `ProjectTaskRoomRuntime` method that reaches `requestAuthority.resolve`
-    // (via the private `#principal`) is invoked from exactly one of two
-    // mounts — `discover`/`document`/`subscribe`/`subscriptionAlive`/
-    // `subscriptionCadence`/`message`/`live`/`editPlan`/`submitBatch`/
-    // `history` all come from `createProjectTaskRoomRoutes` under
-    // `/api/tasks/*` (`routes/orchestration/project-task-rooms.ts`), and
-    // `liveActivity` comes from `createLiveActivityRoutes` under
-    // `/api/live-activity` (`routes/orchestration/live-activity.ts:23-25`,
-    // mounted below at the unconditional `context.app.route('/api/live-
-    // activity', ...)` call). `recovery` is never called from a live HTTP
-    // route (system-only). The prime-principal middleware below MUST cover
-    // both mounts — priming `/api/tasks/*` alone left every
-    // `/api/live-activity` request with no cached principal, so `#principal`
-    // always resolved `undefined`, `#authorizedDocument` always returned
-    // undefined, and `liveActivity()` silently returned an empty
-    // participants projection for every caller instead of revoking or
-    // granting honestly.
-    const primeRoomRequestPrincipal = async (
-      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-      next: () => Promise<void>,
-    ) => {
-      try {
-        roomRequestPrincipals.set(
-          c.req.raw,
-          resolveOrchestrationRequestPrincipal(c),
-        );
-      } catch {
-        // Unresolved: no cache entry, so `requestAuthority.resolve` above
-        // revokes rather than reading a stale or default principal.
-      }
-      await next();
-    };
+    // Room and live-activity reads/writes share the principal owner used by
+    // proposal acceptance at the earlier POST /api/tasks mount. Keep every
+    // Request-only consumer behind this Hono-context resolution boundary.
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
@@ -4407,6 +4421,8 @@ export function configureRuntimeRoutes(
       clientOrigin: ClientOrigin;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      inputDigest?: string;
+      inboxPlacement?: true;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -4419,6 +4435,10 @@ export function configureRuntimeRoutes(
         },
         context.orchestrationService,
         remoteStations,
+        {
+          submissionDigest: input.inputDigest,
+          ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+        },
       );
       if (!isForegroundDispatchHandle(handle))
         return { outcome: 'indeterminate' };
@@ -4505,18 +4525,24 @@ export function configureRuntimeRoutes(
       },
       deviceMaySend: (deviceId, since) =>
         context.environmentSecurityService.deviceMaySendChat(deviceId, since),
-      inspectDelivery: (conversationId, clientTurnId) =>
-        service.inspectTurnDelivery(
+      inspectDelivery: (conversationId, clientTurnId, inputDigest, userId) => {
+        if (!userId)
+          throw new Error('The requested conversation is unavailable.');
+        return service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
-          INTERNAL_SESSION_READ_SCOPE,
-        ),
+          readAuthorityForExecution(userId),
+          inputDigest,
+        );
+      },
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(
             {
               conversationId,
               message: payload.message,
+              inputDigest: payload.inputDigest,
+              inboxPlacement: true,
               clientTurnId,
               userId: payload.actor.userId,
               principal: payload.actor.principal,
@@ -4754,7 +4780,7 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
-      hydrateStagedAttachments: (principal, references, binding) =>
+      hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {
             principalId: principal.id,
@@ -4764,6 +4790,7 @@ export function configureRuntimeRoutes(
           },
           references,
           binding,
+          options,
         ),
       releaseStagedAttachments: (principal, references, binding) =>
         attachmentStaging.releaseBinding(
@@ -5140,6 +5167,19 @@ export function configureRuntimeRoutes(
         throw new ProjectMembershipRefusal('forbidden');
     },
   });
+  context.app.use('/api/tool-library/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/tool-library',
+    createToolLibraryRoutes(
+      runtimeToolLibraryDependencies(context, projectMembershipAuthority),
+    ),
+  );
   context.app.use('/api/projects/:slug/access', async (c, next) => {
     roomRequestPrincipals.set(
       c.req.raw,
@@ -7153,6 +7193,10 @@ export function configureRuntimeRoutes(
           deviceId,
         );
       },
+      nativePushRegistrationId: (deviceId) =>
+        context.environmentSecurityService.devicePairing.nativePushRegistrationId(
+          deviceId,
+        ),
       onRegistered: () => agentActivityPublisher.requestFlush(),
     }),
   );
@@ -7590,6 +7634,8 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
   'endpoint,kind',
   'endpoint,kind,scope',
   'endpoint,scope',
+  'approval,endpoint',
+  'approval,endpoint,scope',
 ]);
 
 async function readPairingOfferJson(
@@ -7750,7 +7796,7 @@ function isDirectLoopbackCaller(c: {
  * as this user, satisfies all three. That is unchanged from the direct-socket
  * path this widens and is why the credential it mints keeps mint kind
  * `ui-bootstrap`, which the native consent broker refuses (station#3677 PR 3)
- * — this buys presentation and log-read locality, never approval authority.
+ * — browser Device administration never becomes native consent authority.
  */
 function isSameMachineBrowserCaller(c: {
   env: unknown;
@@ -8260,7 +8306,15 @@ export function configureDevicePairingPublicRoutes(
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
-    if (existingDevice) {
+    // A fresh launcher can upgrade an ordinary session only on the host.
+    // Off-host redemption cannot add that authority, so preserve its identity.
+    if (
+      existingDevice &&
+      (!matchedPurpose ||
+        !isSameMachineBrowserCaller(c) ||
+        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isLocalGrantMintedCredential(existingCredential!))
+    ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
@@ -9067,6 +9121,13 @@ export function configureDevicePairingHostRoutes(
     }
   };
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const isHostBrowser = (request: Request): boolean => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return (
+      principal?.authority === 'device-credential' &&
+      pairing.credentialMayManagePairing(principal.credential)
+    );
+  };
   const currentOperator = (context: unknown, request: Request): boolean => {
     const authority = (context as { get: (key: string) => unknown }).get(
       RUNTIME_CREDENTIAL_AUTHORITY_VAR,
@@ -9170,10 +9231,30 @@ export function configureDevicePairingHostRoutes(
     ) {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    if (
+      body.approval !== undefined &&
+      body.approval !== 'on-create' &&
+      body.approval !== 'on-request'
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+      return approvalRequiresOperator(c);
+    }
+    if (
+      isHostBrowser(c.req.raw) &&
+      (body.kind === 'delegation' ||
+        (
+          parsePairingScope((body.scope as string | undefined) ?? '') ?? []
+        ).some(isProtectedPairingPromotionScope))
+    ) {
+      return approvalRequiresOperator(c);
+    }
     try {
       return c.json(
         pairing.createOffer({
           endpoint: body.endpoint,
+          approval: body.approval as 'on-create' | 'on-request' | undefined,
           scope: body.scope as string | undefined,
           kind: body.kind as 'device' | 'delegation' | undefined,
         }),
@@ -9188,7 +9269,10 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/offers/:offerId', (c) => {
     try {
-      pairing.cancelOffer(c.req.param('offerId'));
+      pairing.cancelOffer(
+        c.req.param('offerId'),
+        isHostBrowser(c.req.raw) ? 'device' : undefined,
+      );
       return c.body(null, 204);
     } catch (error) {
       return c.json(
@@ -9386,21 +9470,30 @@ export function configureDevicePairingHostRoutes(
         const requested = pairing
           .listRequests()
           .find((candidate) => candidate.requestId === requestId);
+        if (requested?.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         const kept = grantedScope ?? requested?.scope ?? '';
+        if (
+          isHostBrowser(c.req.raw) &&
+          (parsePairingScope(kept) ?? []).some(isProtectedPairingPromotionScope)
+        ) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         if (deviceRequestedExtraScopes(kept).length > 0) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =
             actor?.authority === 'operator-credential' &&
             options.verifyOperatorCredential?.(actor.credential) === true;
-          // The same operator test person binding uses: the operator
-          // credential, or the desktop's own home-possession local grant.
+          // Device-use grants may also be approved by the host-issued
+          // browser session; verified-person binding remains separate.
           const localGrant =
             actor?.authority === 'device-credential' &&
             actor.locality === 'home-possession' &&
-            actor.mintKind === 'local-grant' &&
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
-            pairing.credentialMintKind(actor.credential) === 'local-grant';
+            (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
+              pairing.credentialMayManagePairing(actor.credential));
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
           if (!operatorCredential && !localGrant)
@@ -9492,7 +9585,10 @@ export function configureDevicePairingHostRoutes(
           throw new DevicePairingError('request_not_found');
         request = { ...pending, status: 'denied' };
       } else {
-        request = pairing.denyRequest(requestId);
+        request = pairing.denyRequest(
+          requestId,
+          isHostBrowser(c.req.raw) ? 'device' : undefined,
+        );
       }
       devicePairingRequests.add(1, {
         source: request.source,

@@ -6,7 +6,8 @@ import {
 
 /**
  * Owns exactly one client turn per (threadId, clientTurnId). Claims are
- * idempotent per pair: an unresolved claim is contended, a resolved claim is
+ * idempotent per pair: known input digest mismatches conflict before any
+ * replay or reclaim. Legacy input stays unknown. An unresolved claim is contended, a resolved claim is
  * replayable, and only the winning claim's opaque handle may resolve or
  * release it. SQLite updates are
  * atomic and persist across process restart; release returns the pair to the
@@ -46,7 +47,12 @@ export interface TurnClaim {
 }
 
 export interface TurnDeduplicator {
-  claim(input: { threadId: string; clientTurnId: string }):
+  claim(input: {
+    threadId: string;
+    clientTurnId: string;
+    inputDigest?: string;
+  }):
+    | { kind: 'conflict' }
     | { kind: 'owner'; claim: TurnClaim }
     | { kind: 'contended'; turnId?: string }
     /**
@@ -67,6 +73,7 @@ export interface TurnDeduplicator {
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;
+    inputDigest?: string;
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
@@ -78,12 +85,14 @@ export interface TurnDeduplicator {
   givenUp(input: { threadId: string; clientTurnId: string }): boolean;
   /**
    * Read-only: what {@link claim} would meet for this pair, without claiming,
-   * reclaiming or touching retention. For the delivery lookup a client uses
+   * reclaiming or touching retention. A supplied digest throws the typed input
+   * conflict only when the row retains different original proof. For the delivery lookup a client uses
    * to decide whether resending the same key is safe.
    */
   inspect(input: {
     threadId: string;
     clientTurnId: string;
+    inputDigest?: string;
   }): TurnClaimInspection;
 }
 
@@ -92,13 +101,15 @@ export function createTurnDeduplicator(options: {
   keyFor: (threadId: string, clientTurnId: string) => string;
 }): TurnDeduplicator {
   return {
-    claim: ({ threadId, clientTurnId }) => {
+    claim: ({ threadId, clientTurnId, inputDigest }) => {
       const claim = options.store.claim(
         options.keyFor(threadId, clientTurnId),
         Date.now(),
         'tracked',
+        inputDigest,
       );
       if (!claim.claimed) {
+        if (claim.conflict) return { kind: 'conflict' };
         if (claim.indeterminate) return { kind: 'indeterminate' };
         if (claim.expired) return { kind: 'expired' };
         return { kind: 'contended', turnId: claim.value };
@@ -151,14 +162,25 @@ export function createTurnDeduplicator(options: {
     },
     givenUp: ({ threadId, clientTurnId }) =>
       options.store.givenUp(options.keyFor(threadId, clientTurnId)),
-    inspect: ({ threadId, clientTurnId }) =>
-      options.store.inspect(options.keyFor(threadId, clientTurnId)),
-    awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>
+    inspect: ({ threadId, clientTurnId, inputDigest }) =>
+      options.store.inspect(
+        options.keyFor(threadId, clientTurnId),
+        Date.now(),
+        inputDigest,
+      ),
+    awaitResolution: ({
+      threadId,
+      clientTurnId,
+      timeoutMs,
+      intervalMs,
+      inputDigest,
+    }) =>
       awaitTurnResolution(
         options.store,
         options.keyFor(threadId, clientTurnId),
         timeoutMs,
         intervalMs,
+        inputDigest,
       ),
   };
 }

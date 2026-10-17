@@ -1,0 +1,7 @@
+{
+  "revision": "327c5e720a2422c1c374b3d0c1bc65702527fe58",
+
+  "notes": [
+    {"path":"docs/design/isolated-agent-runs.md","note":"Re-read the full proposal and its current source-pinning section after merging main aade593c. Traced WorktreeProvisioningService resolving a full commit with GIT_NO_REPLACE_OBJECTS before worktree add, optional baseCommit metadata, and foreground start forwarding that metadata. The actual caller fixture creates a temporary Git repository, asserts start metadata.baseCommit against rev-parse HEAD, and cleans its worktree. Compared this branch's test delta with main: the additional keyed-intent snapshot case and internal-context matchers preserve that source-pinning case. All 741 focused cases across four files passed on source head 327c5e720a2, including the foreground caller. No isolated-run CLI availability, live engine, cleanup lifecycle, or packaged-release qualification is inferred; the broader run record remains a proposal. No prose change or coverage-baseline advance is warranted.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

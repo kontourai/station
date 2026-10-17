@@ -28,6 +28,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useWorkObservation } from '../../contexts/work-observation';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
@@ -288,6 +289,7 @@ interface ChatDockBodyProps {
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
@@ -450,6 +452,7 @@ export function ChatDockBody({
   onExecutionModelSelect,
   modelsLoading = false,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -543,6 +546,26 @@ export function ChatDockBody({
   );
   // A history or continuation read failed: what the session record last said
   // (Running, background work) is no longer current proof.
+  const workObservation = useWorkObservation(
+    activeSession.conversationId ?? activeSession.id,
+  );
+  useEffect(() => {
+    if (
+      unverifiedOpen &&
+      !activeSession.replay &&
+      workObservation?.unavailable(
+        activeSession.conversationId ?? activeSession.id,
+      ) === undefined
+    ) {
+      workObservation?.failed(activeSession.conversationId ?? activeSession.id);
+    }
+  }, [
+    workObservation,
+    unverifiedOpen,
+    activeSession.conversationId,
+    activeSession.id,
+    activeSession.replay,
+  ]);
   const observationUnavailable =
     unverifiedOpen ||
     Boolean(
@@ -1418,7 +1441,11 @@ export function ChatDockBody({
             ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
-            liveStatusUnavailable: observationUnavailable,
+            liveStatusUnavailable: activeSession.replay
+              ? observationUnavailable
+              : (workObservation?.unavailable(
+                  activeSession.conversationId ?? activeSession.id,
+                ) ?? observationUnavailable),
             owner,
             accountableHuman,
             onQuote: (quote) =>
@@ -2146,6 +2173,7 @@ export function ChatDockBody({
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
+            onEnabledChange={onComposerEnabledChange}
             disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             allowDraftWhileDisabled={busyOpen && !!agent}
             turnInFlight={isTurnInFlight(activeSession)}

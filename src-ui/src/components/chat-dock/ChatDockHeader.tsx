@@ -357,24 +357,29 @@ export function ChatDockHeader({
         />
       ) : null}
       {activeSessions.length > 0 && (
-        <ActionOverflowMenu
-          label={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
-          triggerText={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
-          actions={activeSessions.map((session) => {
-            const index = (chatControls?.sessions ?? []).findIndex(
-              (item) => item.id === session.id,
-            );
-            return {
-              key: session.id,
-              label: session.title,
-              shortcut:
-                index < 9
-                  ? shortcutDisplay(`dock.session${index + 1}`)
-                  : undefined,
-              onSelect: () => chatControls?.focusSession(session.id),
-            };
-          })}
-        />
+        <div className="chat-dock__activity">
+          <ActionOverflowMenu
+            label={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
+            triggerText={`${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`}
+            actions={activeSessions.map((session) => {
+              const index = (chatControls?.sessions ?? []).findIndex(
+                (item) => item.id === session.id,
+              );
+              return {
+                key: session.id,
+                label: session.title,
+                shortcut:
+                  index < 9
+                    ? shortcutDisplay(`dock.session${index + 1}`)
+                    : undefined,
+                onSelect: (trigger) => {
+                  trigger.focus();
+                  chatControls?.focusSession(session.id);
+                },
+              };
+            })}
+          />
+        </div>
       )}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
           New chat action every other chrome uses, icon-only and named, so

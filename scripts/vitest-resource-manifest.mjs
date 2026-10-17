@@ -127,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Invokes the real pinned actionlint parser against isolated stdin fixtures.
+  'scripts/__tests__/actionlint-queue-compat.test.ts',
   // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
   'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
@@ -412,6 +414,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
+  'scripts/__tests__/pr-delivery-plan.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
@@ -433,6 +436,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Drives verification CLI admission without launching compilers.
+  'scripts/__tests__/live-service-verification.process.test.ts',
   // Real loopback file-server CLI with owned child cleanup and artifact replacement.
   'scripts/__tests__/install-smoke-file-server.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app

@@ -1,0 +1,61 @@
+{
+  "revision": "c1ef0a3b99d6d5763790da60c8266fd6be79669a",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed unchanged plan/zero-shard/statics proof requirements; FIFO admission removes no evidence families.","inputs":[".veritas/README.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed dated and prospective CI claims; this change does not alter plugin distribution.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed statics, bundle-budget, exact-plan receipt and merge-group owners; admission changes preserve failure semantics.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml","docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed candidate read-only execution and publisher isolation; original YAML still receives security checks before actionlint queue adaptation.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed source/metadata separation and scheduled qualification; source job admission changes no required coverage.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed hosted/fleet labels and private-host boundaries; repository FIFO groups do not change physical leases.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed Free shared-pool choice, PR-family limits, exact queue compatibility shapes and producer-bound recovery. Focused capacity420/recovery44 tests pass; unknown graph evidence stays held. No org reservation, full-source qualification or runtime recovery claim.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs","scripts/release-pipeline.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed statics2/shards2 FIFO coverage and exclusions, current supersession, runner attribution and clipped occupancy measurements. Capacity420/metrics38 tests pass; hosted job-level admission remains unverified.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/ci-health.test.ts","scripts/actionlint-gate.mjs","scripts/ci-health.mjs"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed distinction between PR synthetic smoke and reference-hardware proof; no performance threshold change.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed the documented owner/authority and verification claims against the CI queue and measurement delta; production contracts and proof requirements are unchanged. Review is limited to affected claims, not unrelated product behavior.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed same journeys, fresh build, worker/retry/deadline and failure requirements; queue waiting precedes execution.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed owner-specific focused validation, fixture fidelity and execution-proof requirements against this CI admission/measurement delta; requirements unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Reviewed paired instruction import; no instruction or verification obligation changed.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed owner-specific focused validation, fixture fidelity and execution-proof requirements against this CI admission/measurement delta; requirements unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Reviewed paired instruction import; no instruction or verification obligation changed.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed owner-specific focused validation, fixture fidelity and execution-proof requirements against this CI admission/measurement delta; requirements unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Reviewed paired instruction import; no instruction or verification obligation changed.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed owner-specific focused validation, fixture fidelity and execution-proof requirements against this CI admission/measurement delta; requirements unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Reviewed paired instruction import; no instruction or verification obligation changed.","inputs":["tests/CLAUDE.md"]}
+  ]
+}

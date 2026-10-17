@@ -873,8 +873,6 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
-      '.github/workflows/main-qualification.yml':
-        'qualifies combined main source after integration; PR: CI and the merge queue own pre-merge feedback',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -938,10 +936,6 @@ describe('CI verification workflow contracts', () => {
     // `cancel-in-progress` picks a winner by arrival order (#1445).
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
-    );
-    expect(workflow('full-regression.yml')).toContain(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
@@ -1777,9 +1771,7 @@ describe('CI verification workflow contracts', () => {
     };
     const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
       .jobs;
-    // Metadata-only skipped aggregates have a distinct context. Title checks
-    // independently gate PR admission; source and merge-group receipts stay
-    // under the existing required fast-checks context.
+    // Source execution is diagnostic; its trusted status reconciler owns admission.
     expect(jobs['pr-title'].name).toBe('PR title status publisher');
     expect(jobs['fast-checks'].name).toBe(
       `\${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}`,
@@ -3977,12 +3969,8 @@ describe('hosted qualification workflow covers the full regression', () => {
       expect(text).not.toContain('--exclude-quarantined');
   });
 
-  it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
-    // Nightly calls the hosted full-regression workflow, which runs the
-    // canonical `npm run full:regression`; that resolves to the package
-    // scripts behind FULL_REGRESSION_PHASES. None of them may carry the
-    // queue-only flag, so a quarantined file still runs every night.
-    expect(workflow('nightly.yml')).toContain(
+  it('keeps scheduled full qualification canonical, including quarantined files', () => {
+    expect(workflow('main-qualification.yml')).toContain(
       'uses: ./.github/workflows/full-regression.yml',
     );
     const hosted = workflow('full-regression.yml');

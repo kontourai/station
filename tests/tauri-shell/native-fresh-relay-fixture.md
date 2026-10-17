@@ -35,6 +35,12 @@ non-default listener block, source revision, and public signing descriptor.
 The actual operator credential stays in private `operator.json`. Do not copy
 that file or broker connector/routing credentials into a WebView or invitation.
 
+A refusal exits nonzero and prints `native_fresh_fixture_refused`. Simple
+fixture assertion codes follow that prefix, such as
+`fixture_committed_source_required` for a dirty checkout. Other errors retain
+the generic refusal; private paths, response bodies and credentials are not
+printed. Keep the failed command's stderr when investigating a refusal.
+
 Stage the artifacts and launch prerequisites below **before** the broker owner
 provisions this exact scope. The initial lease is only 60 seconds; do not start
 that clock before a Go build, certificate preparation, or dependency install.

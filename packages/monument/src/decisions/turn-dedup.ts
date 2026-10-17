@@ -52,6 +52,9 @@ export function decideTurnDedupClaim(
     createdAt: command.now,
     owner: ownerFields(command.owner),
     invocation: command.tracking === 'tracked' ? 'pending' : 'untracked',
+    ...(command.inputDigest !== undefined
+      ? { inputDigest: command.inputDigest }
+      : {}),
   };
   if (!current) {
     // The effect ran and its result is gone: never claim the key afresh.
@@ -61,6 +64,12 @@ export function decideTurnDedupClaim(
       result: { kind: 'claimed', reclaimed: false },
     };
   }
+  if (
+    current.inputDigest !== undefined &&
+    command.inputDigest !== undefined &&
+    current.inputDigest !== command.inputDigest
+  )
+    return { write: NO_WRITE, result: { kind: 'conflict' } };
   if (current.value !== null)
     return {
       write: NO_WRITE,
@@ -72,7 +81,19 @@ export function decideTurnDedupClaim(
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
     return {
-      write: { kind: 'put', record: owned },
+      write: {
+        kind: 'put',
+        record: {
+          key: owned.key,
+          value: owned.value,
+          createdAt: owned.createdAt,
+          owner: owned.owner,
+          invocation: owned.invocation,
+          ...(current.inputDigest !== undefined
+            ? { inputDigest: current.inputDigest }
+            : {}),
+        },
+      },
       result: { kind: 'claimed', reclaimed: true },
     };
   }

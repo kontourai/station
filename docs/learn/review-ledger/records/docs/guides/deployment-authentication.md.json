@@ -88,7 +88,11 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts"
   ],
 
   "checks": [

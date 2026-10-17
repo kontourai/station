@@ -1667,6 +1667,7 @@ export class TaskGraphService {
     input: TaskCreateInput,
     clientOrigin?: ClientOrigin,
     taskId: string = crypto.randomUUID(),
+    authorize?: () => boolean,
   ): Promise<TaskRecord> {
     const sourceSurface = metricSourceSurface(
       input.workspaceBinding?.sourceSurface,
@@ -1694,7 +1695,9 @@ export class TaskGraphService {
       priority: input.priority ?? 'normal',
       status: 'todo',
       skillName: normalizeText(input.skillName) || undefined,
-      agentId: normalizeText(input.agentId) || undefined,
+      agentId: input.shapingSource
+        ? undefined
+        : normalizeText(input.agentId) || undefined,
       createdBy: normalizeText(input.createdBy) || 'user',
       createdAt: now,
       updatedAt: now,
@@ -1709,20 +1712,64 @@ export class TaskGraphService {
       workItemRef: normalizeText(input.workItemRef) || undefined,
     };
 
-    await this.mutateStore((data) => {
-      if (data.tasks.some((existing) => existing.id === task.id)) {
+    const persisted = await this.mutateStore((data) => {
+      const source = input.shapingSource;
+      const acceptedTaskId = source
+        ? data.links.find(
+            (link) =>
+              link.sourceType === 'task' &&
+              link.targetType === 'session' &&
+              link.targetId === source.sessionId &&
+              link.relationType === 'spawned_session' &&
+              link.metadata?.shapingTurnId === source.turnId,
+          )?.sourceId
+        : undefined;
+      const prior = data.tasks.find(
+        (existing) => existing.id === (acceptedTaskId ?? task.id),
+      );
+      if (authorize && !authorize())
+        throw new Error('Shaping source is no longer available');
+      if (prior && input.shapingSource) {
+        if (prior.projectId !== task.projectId)
+          throw new Error(
+            'This proposal was already accepted in another Project',
+          );
+        return { data, result: prior };
+      }
+      if (prior) {
         throw new Error(`Task '${task.id}' already exists`);
       }
       return {
-        data: { ...data, tasks: [...data.tasks, task] },
-        result: undefined,
+        data: {
+          ...data,
+          tasks: [...data.tasks, task],
+          links: input.shapingSource
+            ? [
+                ...data.links,
+                {
+                  id: crypto.randomUUID(),
+                  sourceType: 'task' as const,
+                  sourceId: task.id,
+                  targetType: 'session' as const,
+                  targetId: input.shapingSource.sessionId,
+                  relationType: 'spawned_session' as const,
+                  confidence: 1,
+                  createdAt: now,
+                  source: 'user' as const,
+                  ...(clientOrigin ? { clientOrigin } : {}),
+                  metadata: { shapingTurnId: input.shapingSource.turnId },
+                },
+              ]
+            : data.links,
+        },
+        result: task,
       };
     });
     taskWorkspaceBindingTotal.add(1, {
       outcome: workspaceBinding.availability,
       source_surface: sourceSurface,
     });
-    return task;
+    return persisted;
   }
 
   /** Owner-local idempotent creation for a bounded caller intent. */
@@ -1982,6 +2029,32 @@ export class TaskGraphService {
     if (moved)
       await this.releaseClaimForTask(input.taskId, 'task status -> done');
     return moved;
+  }
+
+  async completeProposalAcceptance(
+    taskId: string,
+    source: { sessionId: string; turnId: string },
+  ): Promise<void> {
+    await this.mutateStore((data) => ({
+      data: {
+        ...data,
+        links: data.links.map((link) =>
+          link.sourceType === 'task' &&
+          link.sourceId === taskId &&
+          link.targetType === 'session' &&
+          link.targetId === source.sessionId &&
+          link.relationType === 'spawned_session' &&
+          link.source === 'user' &&
+          link.metadata?.shapingTurnId === source.turnId
+            ? {
+                ...link,
+                metadata: { ...link.metadata, proposalBriefSaved: true },
+              }
+            : link,
+        ),
+      },
+      result: undefined,
+    }));
   }
 
   async createLink(input: RelationGraphLinkInput): Promise<RelationGraphLink> {

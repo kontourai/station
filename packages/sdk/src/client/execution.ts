@@ -151,9 +151,19 @@ export class ForegroundMessageIndeterminateError extends ChatHttpError {
   }
 }
 
+/** Station retained this message in its FIFO inbox; no provider turn is accepted yet. */
+export class ForegroundMessageQueuedError extends Error {
+  readonly status = 202;
+  readonly outcome = 'queued';
+  constructor(readonly receipt: ConversationInboxQueuedReceipt) {
+    super('This message is already waiting in the conversation inbox.');
+    this.name = 'ForegroundMessageQueuedError';
+  }
+}
+
 type ExecutionErrorResponse = {
   success: boolean;
-  data?: ForegroundMessageReceipt;
+  data?: ForegroundMessageReceipt | ConversationInboxQueuedReceipt;
   error?: string;
   code?: string;
   outcome?: unknown;
@@ -258,6 +268,17 @@ function readExecutionReceipt(
     throw chatRefusal(response, result, failed);
   }
   if (
+    response.status === 202 &&
+    'outcome' in result.data &&
+    result.data.outcome === 'queued' &&
+    typeof result.data.conversationId === 'string' &&
+    typeof result.data.clientTurnId === 'string' &&
+    result.data.entry?.conversationId === result.data.conversationId &&
+    result.data.entry.clientTurnId === result.data.clientTurnId
+  )
+    throw new ForegroundMessageQueuedError(result.data);
+  if (
+    !('providerTurnId' in result.data) ||
     typeof result.data.providerTurnId !== 'string' ||
     !result.data.providerTurnId
   ) {
