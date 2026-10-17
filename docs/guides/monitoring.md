@@ -6,9 +6,9 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
 
-Product observations use the disclosed v1 envelope: stable retry IDs, producer
+Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
 event. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
@@ -17,6 +17,14 @@ observations with unknown delivery coverage; these observations are separate fro
 canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. It keeps daily rollups,
+offers publisher-key-scoped reads, and serves public Kontour aggregates derived
+only from the same cells of at least ten pings across all dimensions. This
+receiver implementation does not establish an installed Station sender or a
+deployment. See the [Lite contract, privacy policy and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not

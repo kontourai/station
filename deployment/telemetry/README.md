@@ -68,6 +68,23 @@ keys are not operator keys, OTel keys, Grafana passwords, provider credentials
 or personal source grants. Provisioning and subsequent receipt acceptance need
 their own evidence; a live health response is not storage readiness.
 
+That source-key provisioning applies to the **opt-in full event stream**.
+The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
+instead accepts strict `station_daily` observations through a public source ID
+mapped by the operator to one publisher/channel. It never needs an installation
+secret. Publisher read keys are separate `stq_` credentials provisioned through
+the operator boundary. Do not route lite traffic through the authenticated
+full-tier endpoint or treat a public source ID as authenticating a binary.
+
+The broker also serves `/public/` and `/v1/public/aggregates` (Kontour's
+thresholded daily cells only). The private Compose profile does not publish
+these on the Internet. A public deployment must independently qualify TLS,
+ingress access/error logging without client IP/user-agent retention, proxy/NAT
+rate-limit behavior, database capacity, restart and backup/restore. The process
+uses only the socket IP for a daily salted in-memory HMAC and ignores forwarded
+IP headers; putting it behind a proxy shares one limit. No ingress, endpoint
+variable or production data flow is enabled by this source change.
+
 ## Render, validate, then run
 
 Use a unique, persistent `COMPOSE_PROJECT_NAME`. Keep it stable across upgrades
@@ -166,3 +183,51 @@ refuse without modifying retained data. Secret-binding documents containing new
 telemetry grants need a compatible pre-upgrade backup for older strict readers.
 This profile does not yet provide a qualified upgrade/rollback or release
 descriptor; those acceptance items remain open in #3458 and #3464.
+
+## Passive push-ledger queries (read only)
+
+The manual [passive report](../../packages/telemetry-broker/README.md#passive-distribution-report)
+uses public npm/GitHub download metadata. The queries below are **documentation
+only**: they have not been run against production. Use an owner-authorized
+read-only SQLite snapshot or the provider's read-only SQL inspector for the
+`ChannelLedger` Durable Object. Do not add a remote query route to the gateway
+or run its sweep/triage as an analytics operation.
+
+The authority is [`deploy/push-gateway/src/channel-ledger.ts`](../../deploy/push-gateway/src/channel-ledger.ts).
+`channels` records current broadcast channels, including a hashed Station
+signing-key thumbprint and bundle. Count only aggregates; do not select hashes,
+tokens, channel IDs or device hashes into a report:
+
+```sql
+-- Current retained channels only; the normal purge removes channels after 12h.
+SELECT environment, bundle_id,
+       COUNT(DISTINCT station_key_hash) AS distinct_station_signing_keys,
+       COUNT(*) AS retained_channels
+FROM channels
+GROUP BY environment, bundle_id;
+
+-- Accepted device-start counters for the retained UTC days, across ALL bundles.
+SELECT date(day * 86400, 'unixepoch') AS utc_day,
+       COUNT(DISTINCT device_hash) AS devices_with_accepted_starts,
+       SUM(count) AS accepted_starts
+FROM starts
+GROUP BY day
+ORDER BY day;
+```
+
+These measure different populations. A signing key is not a person or a
+permanent installation, channels can be deleted before purge, and a device hash
+is caller-supplied token material reduced to a hash. `starts` counts accepted
+APNs starts, not every app launch. Its retention is bounded by the ledger's
+normal purge, so a snapshot is not a historical daily series.
+
+**Daily device starts by bundle cannot be queried from the current ledger.**
+`starts` has only `(device_hash, day, count)`; it has no bundle, environment,
+Station-key or channel join key. Joining it to `channels` would fabricate an
+attribution. Grouping channel creation times by bundle would measure created
+channels, including starts APNs may refuse, rather than accepted device starts.
+A future bundle-aware counter requires a separately scoped gateway data-model,
+retention and privacy change. This receiver lane does not change or query that
+production service. Apply a separately reviewed suppression policy before
+publishing any ledger-derived aggregates; these SQL results are private operator
+data, not part of the broker's public release family.

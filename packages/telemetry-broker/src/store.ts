@@ -7,24 +7,9 @@ import type {
 } from '@kontourai/station-contracts/product-telemetry';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
+import { BrokerError } from './broker-error.js';
+import { assertLiteSchema, LiteRepository, migrateLite } from './lite-store.js';
 
-export class BrokerError extends Error {
-  constructor(
-    readonly code:
-      | 'source_unauthorized'
-      | 'event_conflict'
-      | 'storage_limit'
-      | 'invalid_source'
-      | 'storage_not_durable'
-      | 'query_limit'
-      | 'source_conflict'
-      | 'storage_busy'
-      | 'storage_timeout'
-      | 'schema_incompatible',
-  ) {
-    super(code);
-  }
-}
 export interface ProductSource {
   id: string;
   label: string;
@@ -48,6 +33,7 @@ export interface ProductTrends {
   }>;
 }
 export interface ProductRepository {
+  readonly lite?: LiteRepository;
   ingest(
     key: string,
     batch: ProductTelemetryBatch,
@@ -114,12 +100,25 @@ interface EventRow extends QueryResultRow {
 }
 export class PgProductRepository implements ProductRepository {
   private activeTransactions = 0;
+  readonly lite: LiteRepository;
   constructor(
     readonly pool: Pool,
     private readonly maxEvents = 1_000_000,
     private readonly maxDatabaseBytes = 1_073_741_824,
     readonly retentionDays = 90,
-  ) {}
+  ) {
+    this.lite = new LiteRepository(
+      (operation) =>
+        this.transaction(async (client) => {
+          await this.assertSchema(client);
+          return operation(client);
+        }),
+      maxEvents,
+      maxDatabaseBytes,
+    );
+    if (retentionDays < 1 || retentionDays > 90)
+      throw new Error('Retention must be between 1 and 90 days');
+  }
   private async durable(client: PoolClient): Promise<void> {
     const { rows } = await client.query<{ fsync: string; full_pages: string }>(
       "SELECT current_setting('fsync') AS fsync, current_setting('full_page_writes') AS full_pages",
@@ -180,11 +179,12 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length !== 1 ||
+          rows.length > 2 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
           throw new BrokerError('schema_incompatible');
+        await migrateLite(client);
         await this.assertSchema(client);
         return;
       }
@@ -193,6 +193,7 @@ export class PgProductRepository implements ProductRepository {
         'INSERT INTO station_telemetry.migrations VALUES(1,$1)',
         [SCHEMA_DIGEST],
       );
+      await migrateLite(client);
       await this.assertSchema(client);
     });
   }
@@ -298,11 +299,13 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 1 ||
+      rows.length !== 2 ||
       rows[0].version !== 1 ||
-      rows[0].digest !== SCHEMA_DIGEST
+      rows[0].digest !== SCHEMA_DIGEST ||
+      rows[1].version !== 2
     )
       throw new BrokerError('schema_incompatible');
+    await assertLiteSchema(client);
   }
   async ready(): Promise<void> {
     await this.transaction(async (client) => {
@@ -530,6 +533,10 @@ export class PgProductRepository implements ProductRepository {
       );
       await client.query(
         "DELETE FROM station_telemetry.events WHERE received_at < clock_timestamp()-$1*interval '1 day'",
+        [this.retentionDays],
+      );
+      await client.query(
+        "DELETE FROM station_telemetry.lite_pings WHERE received_at < clock_timestamp()-$1*interval '1 day'",
         [this.retentionDays],
       );
     });

@@ -4,6 +4,11 @@ This optional companion accepts Station's disclosed product observations and
 stores them in PostgreSQL. It is separate from the OTel Collector and from
 personal usage accounting. See [Monitoring & Telemetry](../../docs/guides/monitoring.md).
 
+**Status: source implementation; not yet a qualified deployment.** Lite receiver
+diagnostics, the existing bundled qualifier, hosted checks and deployment
+acceptance are separate evidence. Nothing here deploys a receiver, enables an
+author endpoint, or authorizes collecting telemetry from an installation.
+
 The qualified storage profile is PostgreSQL 16 with `fsync` and
 `full_page_writes` enabled. Each transaction sets `synchronous_commit=on`.
 HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
@@ -70,6 +75,10 @@ Its source exists; image/configuration/runtime and upgrade/restore qualification
 remain pending. A normal Station install does not start that profile.
 
 ## API
+
+The routes below retain the opt-in full-tier protocol. The identifier-free
+`station_daily` route and its independent public source configuration are
+described under [Lite observations](#lite-observations).
 
 | Route | Credential and outcome |
 | --- | --- |
@@ -161,3 +170,188 @@ it and report its name for diagnosis.
 The runner does not certify Station execution, persistent deployment, backup
 restore or native shells. Those remain separate from focused HTTP tests and
 live-store qualification.
+
+## Lite observations
+
+`POST /v1/lite/:source` accepts exactly one `StationDailyPing` from
+`packages/contracts/src/product-telemetry.ts`, validated by the shared
+`parseStationDailyPing`. It requires no installation credential. Unknown fields,
+unknown nested fields, excessive or duplicate array entries, unknown catalog
+IDs/versions, invalid enum/count values, and a channel different from the
+source's configured channel are refused with 400. Bodies, including streaming
+bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
+202 response is `{ "inserted": 1 }`, or `{ "inserted": 0 }` for a retained
+source/event UUID replay with identical content. A changed payload under the
+same UUID returns 409. Object order, array-set order and UUID letter case do
+not create separate rollup cells or retries. Dedupe ends when raw rows expire.
+
+The operator provisions a **public per-publisher/per-channel identifier**, not
+a secret embedded in a binary. Example operator-authenticated request body for
+`POST /v1/operator/lite/sources`:
+
+```json
+{
+  "id": "kontour-stable-v1",
+  "publisher": "kontour",
+  "channel": "stable",
+  "registryIds": [],
+  "releaseVersions": ["1.2.3"]
+}
+```
+
+The five fields are required. `publisher` uses the foundation's
+`TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
+Publisher IDs are bounded to 128 characters and retain scoped IDs such as
+`publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
+hold at most 1,000 entries. The operator must verify these are **public registry
+IDs and public release versions**, rather than accepting arbitrary client
+strings. Empty catalogs admit only contract sentinels (`custom` version,
+`none`/`custom` distribution, no public plugins). To change a catalog, provision
+a new source and revoke the old one with
+`DELETE /v1/operator/lite/sources/:source`; existing IDs cannot be repurposed.
+Only enabled sources ingest. The trusted mapping, never the request body,
+chooses the publisher. Keep official sources distinct from operator/fork sinks.
+
+Public IDs provide routing and revocation, **not authenticity**. Anyone can
+replay the protocol or manufacture fresh UUIDs. Counts are untrusted estimates;
+there is no unique-person or unique-device proof, and no Sybil resistance.
+Tier choice and notice belong to the sender; this route does not infer consent
+or promote a publisher to `full`.
+
+In addition to the receiver's existing global/concurrency bounds, lite admission
+allows 60 attempts per socket IP per UTC day, with at most 10,000 in-memory
+entries. Keys are HMAC-SHA256 of the socket IP with a random process-only salt;
+at the next UTC-day request, the map is cleared and the salt replaced. Restart
+also clears it. Raw IPs and user agents never enter SQL, logs, errors, rollups
+or receipts. Forwarded-IP headers are ignored. Behind a proxy, clients share
+the proxy's limit; behind NAT, installations share a limit. Multiple receiver
+processes do not share this limiter. A proxy-aware deployment needs a separately
+reviewed trusted ingress boundary, with access logging disabled/sanitized at
+the ingress itself. This package does not qualify infrastructure logging.
+
+### Storage and activity estimates
+
+Migration 2 adds logged `lite_sources`, `publisher_keys`, `lite_pings` and
+`lite_rollups` tables to the existing schema. It leaves full-tier rows intact;
+older binaries refuse the new migration marker. Every operation checks schema
+shape, defaults, keys, index and durability inside the transaction. Lite raw
+rows and source provisioning use the existing transaction/admission lock and
+capacity profile (one million lite pings, 10,000 lite sources and publisher keys,
+approximately 1 GiB per database; full-tier row limits remain separate).
+
+Raw lite pings use the existing 90-day deletion cutoff, swept at startup and
+hourly. A failed sweep or receiver downtime can delay physical deletion;
+this is not an autonomous database TTL or a hard wall-clock erasure guarantee.
+Rollups are updated atomically with first insertion and retained without expiry.
+They contain a daily joint cell and count, with no UUID or cross-day join key.
+Back up the entire schema, including migration 2 and retained rollups; restoring
+only raw pings cannot reconstruct older rollups. No rollup-rebuild job is run.
+
+Receipt-day pings approximate active installations. Daily first-active-week
+and first-active-month counts can be summed over a **complete calendar week or
+month** to estimate WAU/MAU. They are not rolling seven/thirty-day unique counts,
+and are not exact: retries across period boundaries, late delivery, lost pings,
+state resets, multiple publishers and dishonest clients affect them. The receiver
+uses UTC arrival day because the strict foundation ping has no producer date.
+It does not add an undisclosed date field. Calendar-period boundaries must agree
+with sender-local first-active calculations before interpreting these estimates.
+
+All allowed profile dimensions have histograms: version/channel/platform/arch,
+surface and engine sets, age and paired-device buckets, distribution, public
+plugins/private-plugin bucket, three customization flags, setup-abandonment,
+per-engine failure buckets, and both friction counters. Friction histograms
+count **pings at that counter/bucket**, not the sum of failures. Multi-valued
+surface/plugin/engine histograms can sum above the number of pings.
+
+### Public aggregates and subtraction protection
+
+`GET /v1/public/aggregates` publishes **Kontour only**, over the last 30 closed
+UTC arrival days. `GET /public/` serves the static dashboard; its JavaScript
+comes only from `/public/dashboard.js`. It uses text nodes for data and a CSP
+that permits no third-party scripts, analytics or network requests.
+
+The privacy unit is a received ping, not a verified person. The k=10 policy
+first partitions each day/publisher into **disjoint joint cells across every
+released dimension, including the first-active flags and complete sets**. Cells
+with fewer than ten pings contribute to **nothing** public. Totals, flags and
+every marginal histogram are all derived from that same retained subset. A
+ten-ping Linux cell plus a nine-ping macOS cell publishes ten represented pings,
+not nineteen; neither an opposite flag nor another dimension reveals the nine.
+No raw grand total, suppressed remainder, cell inventory, publisher split,
+arbitrary date range, dimension filter or overlapping cohort query is exposed.
+Query strings are rejected. Zero-size histogram buckets are absent. Closed
+days are immutable through the API: the admission lock fences transactions at
+midnight and the server chooses arrival day only after taking that lock. Raw
+retention does not change publication. Reading consecutive fixed daily windows
+reveals only those already-safe daily results.
+
+This deliberately conservative policy can suppress most or all of a sparse
+dataset. `representedPings` and first-active counts cover publishable cells
+only, never an unsuppressed population total. Missing days are not zero usage.
+The policy guards complementary subtraction **within the broker's public
+release family**, not outside knowledge, malicious submissions, publisher-key
+collusion, database administration or reconstruction from a different release
+policy. Without installation IDs it cannot certify ten distinct installations.
+OHTTP (receiver never sees the network IP) and DAP/Prio (receiver sees only
+totals) remain deferred; adopt before promising network-origin unlinkability
+or private aggregation. They require a separately reviewed transport/protocol.
+
+### Publisher access
+
+An independent publisher read credential is `stq_` plus 32 random base64url
+bytes. Generate and keep it privately, like the operator key. An operator
+Bearer `sto_` request to `POST /v1/operator/lite/publishers` supplies exactly
+`{ "publisher": "publisher:example", "credentialHash": "<lowercase SHA-256>" }`.
+Only the digest is stored. Repeating that operation rotates the publisher's
+key; `DELETE /v1/operator/lite/publishers/:publisher` revokes it. These routes
+use the existing operator authorization boundary.
+
+`GET /v1/publishers/:publisher/aggregates` requires that publisher's Bearer
+`stq_` credential and returns only its own unsuppressed rollups for the last
+30 closed days. Operator/source keys and a different publisher's key are
+refused. Publisher credentials never ingest. These private aggregates are not
+a public k-anonymity release and must not be republished alongside conflicting
+totals. Both query endpoints cap work at 10,000 cells and refuse an over-limit
+query instead of returning a truncated population.
+
+### Verification
+
+The existing qualifier includes `qualify-lite.mjs`: real local HTTP and
+PostgreSQL checks for strict rejection, bounded streaming bodies, replay/conflict,
+canonical cells, complementary suppression, publisher isolation/revocation,
+retention, schema refusal, and captured stdout/stderr plus database rows for IPs,
+user agents and rejected content. A smaller diagnostic (not a manifest-bound
+qualification receipt) is available after building:
+
+```sh
+STATION_TELEMETRY_QUALIFICATION_DATABASE_URL=<private-local-qa-url> \
+  node packages/telemetry-broker/qualify-lite.mjs
+npm run test:focused -- packages/telemetry-broker/src/__tests__/broker.test.ts \
+  packages/telemetry-broker/src/__tests__/lite-rate-limit.test.ts \
+  packages/telemetry-broker/src/__tests__/passive-signals.test.ts
+```
+
+The diagnostic creates a uniquely named database, removes it only on success,
+and retains failures for diagnosis. The focused limiter test uses real HTTP
+with a storage refusal fixture and a controlled UTC clock; it does not claim
+database ingestion. Passive API tests use a local HTTP fixture, not production.
+Neither path qualifies a deployed receiver, public ingestion authenticity,
+reverse-proxy logging, power-loss durability, backup/restore or a release.
+
+## Passive distribution report
+
+Run manually: `node packages/telemetry-broker/passive-signals.mjs`.
+It reads only the public [npm download-count API](https://github.com/npm/registry/blob/main/docs/download-counts.md)
+for `@kontourai/station-cli` (last available day, seven days, thirty days), and
+[GitHub release/asset metadata](https://docs.github.com/en/rest/releases/assets#list-release-assets)
+for `kontourai/station`. Both release and asset lists are paginated; each list
+is capped at 100 pages, responses at 8 MiB and requests at 15 seconds. A refused
+request, malformed count or incomplete page traversal fails without printing
+a partial summary. No token, write, scheduler or automatic startup hook is used.
+It does not download release binaries or call a broker or push gateway.
+
+The output keeps npm windows separate (they overlap) and reports GitHub
+asset lifetime counts, not daily downloads. Bots, CI, upgrades, reinstalls and
+caches prevent these from measuring people or active installations. Production
+execution is a separate manual operator action. Read-only push-ledger queries
+and their limitations are in the [deployment guide](../../deployment/telemetry/README.md#passive-push-ledger-queries-read-only).
