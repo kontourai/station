@@ -74,7 +74,7 @@ Adopted, with Station names:
 | Every attach resends up to 8 MiB of history | Resume from the client's last sequence number; full snapshot only when the journal no longer covers it |
 | Whole history file rewritten every 250 ms while busy | Append-only journal segments with background compaction |
 | One RPC per keystroke, JSON strings | Coalesced input, binary frames on one multiplexed socket |
-| Shells die with the server | On-demand detached shell host that outlives server restarts |
+| Shells die with the server | Shells are supervisor workloads that outlive core server restarts and upgrades |
 | Re-opening with a changed cwd or env silently wipes history | Explicit restart with history kept as a prior segment |
 | No find in terminal | Search over the emulator's scrollback |
 | Agent cannot read or drive terminals | Shared-terminal read and visible run tools behind approval |
@@ -91,35 +91,49 @@ Adopted, with Station names:
                                      TerminalSessions (identity, binding, cwd authority)
                                             │ ShellHost interface
                           ┌─────────────────┴─────────────────┐
-                 InProcessShellHost                  DetachedShellHost client
-                                                           │ local socket, versioned
-                                                  station-shell-host process
-                                                  (node-pty, journals, sessions)
+                 InProcessShellHost                  SupervisorShellHost
+                                                           │ workload protocol
+                                                  Station supervisor
+                                                  (PTYs, journals)
 ```
 
 ### Shell host
 
-`ShellHost` is the only owner of PTYs. It exposes spawn, write, resize,
-signal, list, and a journal reader. Two implementations:
+Terminals are workloads of the
+[Station process supervisor](process-supervisor.md). The supervisor creates
+every PTY, owns it for its whole life, and journals its output, so a shell
+survives a core server restart or upgrade. On Windows this is required as
+well as useful: a ConPTY cannot be handed to a new parent.
 
-- **In-process** runs node-pty inside the server. Used by tests and as the
-  fallback when the detached host cannot start.
-- **Detached** runs `station-shell-host`, a small Node entry point:
-  - Spawned on demand when the first terminal opens, with `detached: true`
-    and `windowsHide: true`. Never registered with launchd, systemd, or a
-    scheduler.
-  - Listens on a socket under the Station home
-    (`<home>/terminal-host/<instance>.sock`, a named pipe on Windows), mode
-    0600, plus a per-launch token file the server reads.
-  - Exits after its last session ends and a grace period.
-  - Owns its PTYs from creation, which is what makes Windows ConPTY work: a
-    ConPTY cannot be handed to a new parent.
-  - Protocol handshake carries a version. Minor versions stay compatible; on
-    a major mismatch the server asks the old host to flush journals and end
-    its shells, then starts the new host. Users see a restarted shell with
-    history, never a silent loss.
-  - Exposed to `station doctor` for listing and killing orphaned hosts.
-  - On Linux, shells run in a memory-limited scope when systemd is available.
+`ShellHost` is the core server's interface to those workloads: spawn, write,
+resize, signal, list, and journal reads. Two implementations:
+
+- **Supervisor** talks to the supervisor's workload protocol. This is the
+  default once the supervisor ships.
+- **In-process** runs node-pty inside the core server. Tests use it, and it
+  is the fallback when no supervisor is present.
+
+The supervisor survives a core server restart or upgrade, not a machine
+reboot. After a reboot, Station restores the layout instead: the same
+terminals reopen in the same working directories with their journals shown
+above a "restored after restart" divider. Nothing is re-run automatically.
+
+#### Session kinds
+
+The supervisor runs two kinds of terminal session, both journaled and
+visible in the UI:
+
+- **Interactive** is a PTY: user shells and interactive agent CLI tabs. Both
+  survive server restarts.
+- **Command** runs without a PTY by default (no colors, pagers, or isatty
+  prompts unless the caller asks), with an output cap. Agent-requested
+  commands (ACP terminal create, output, wait, kill) use this kind, so the
+  user can watch them and take over. Their journals are kept for the
+  owning turn. They outlive a core server restart together with the engine
+  that started them (see engine reattach in the supervisor design).
+
+Policy, authorization, and binding live in the core server; the supervisor
+only spawns, relays bytes, and writes journals.
 
 ### Sessions
 
@@ -138,10 +152,25 @@ a new journal segment; earlier segments stay readable.
 
 Each session writes an append-only journal of numbered output records.
 Sanitizing (query stripping) happens before a record is numbered, so every
-reader sees the same stream. The host keeps a bounded in-memory tail (lines
+reader sees the same stream. The supervisor keeps a bounded in-memory tail (lines
 and bytes) and appends segments to disk; compaction trims segments past the
 retention limit. Attach asks for `fromSeq`: served from the tail when
 covered, from disk when not, and a fresh snapshot otherwise.
+
+Retention is configurable in Settings, with these controls:
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| Keep terminal history | On | Off keeps only the in-memory tail; nothing is written to disk |
+| Storage location | `<home>/terminal-journals` | Any local directory; moving it migrates existing journals |
+| Maximum age | 30 days | Journals of closed terminals older than this are deleted |
+| Maximum size per terminal | 16 MiB | Oldest segments are compacted away first |
+| Maximum total size | 1 GiB | Least recently attached terminals are trimmed first |
+
+Settings shows current usage and a clear-history action per project and for
+everything. Each limit has a rejection path: a value outside its allowed
+range is refused, not clamped. Defaults are starting points to tune once real
+usage is measured.
 
 ### Transport
 
@@ -164,8 +193,18 @@ by a new `terminal:observe`.
   last acknowledged sequence.
 
 A decision record will supersede the terminal exception in ADR 0018 when the
-transport lands. Relay and broker routes are a separate question (see open
-questions).
+transport lands.
+
+#### Remote devices
+
+Terminals work fully over every route Station serves, including the relay
+and broker, governed only by permissions. A paired device or principal gets
+what its scopes grant: `terminal:observe` to watch, `terminal:operate` to
+type, resize, restart, and close, each checked per project. The relay and
+broker carry the terminal socket like any other authenticated stream; their
+current refusal of raw terminal egress is replaced by this scope check. The
+remote-access threat model is updated with the new egress before the relay
+route ships.
 
 ### Client runtime
 
@@ -232,7 +271,8 @@ the web surface.
 | `terminal-history/<id>.txt` | Imported as a first journal segment on first attach |
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
 | `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
-| ACP agent interactive tabs | Run on the new sessions |
+| ACP agent interactive tabs | Interactive supervisor workloads |
+| ACP agent terminal commands | Command supervisor workloads |
 
 ## Delivery
 
@@ -240,11 +280,11 @@ Each phase is its own lane and pull request, with independent review and
 verification.
 
 1. **Shell host and sessions:** `ShellHost` with both implementations,
-   sessions, cwd authority, journal, and doctor support. In-process host is
-   the default until the detached host passes its restart and upgrade
-   journeys.
+   both session kinds, cwd authority, journal, retention settings, layout
+   restore after reboot, and doctor support. Depends on the supervisor's
+   workload phase; the in-process host lets this phase start in parallel.
 2. **Transport and client runtime:** multiplexed socket, resume, flow
-   control, observe scope, SDK store.
+   control, observe scope, relay and broker routes, SDK store.
 3. **Emulator:** Ghostty port, theming, find, links, context menu.
 4. **Layout:** terminal pane, standalone route, Coding drawer with groups and
    splits, server-side layout state, shortcuts.
@@ -257,7 +297,7 @@ verification.
 
 - Server: attach without gaps under concurrent output; resume from a sequence;
   journal sanitizing; cross-session and cross-project isolation; kill
-  escalation; host restart and version-mismatch journeys run as child
+  escalation; core server handoff with a live shell, run as child
   processes.
 - Client: the ported Ghostty suites, plus resume and flow-control tests
   against a real server.
@@ -267,8 +307,6 @@ verification.
 
 ## Open questions
 
-1. Whether terminals should reach the relay and broker routes, which refuse
-   raw terminal egress today. Leaning: observe only, operate behind an
-   explicit pairing scope.
-2. Retention defaults for journals on disk.
-3. Whether the detached host should also own ACP agent terminals.
+1. Whether agent command sessions should survive a server restart once agent
+   turns can resume. Revisit with that work.
+2. Retention defaults, once usage is measured.
