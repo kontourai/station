@@ -1,5 +1,6 @@
 import {
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -23,94 +24,131 @@ export function useSessionTranscriptScroll({
   preserveReading?: boolean;
 }) {
   const follow = useRef(!preserveReading);
+  const lastSeenTop = useRef(0);
+  const wheelReachesTail = useRef(false);
   const reader = useRef(identity);
   const readyRef = useRef(ready);
   readyRef.current = ready;
   const preserving = useRef(preserveReading);
-  const [atLatest, setAtLatest] = useState(true);
+  const [atLatest, setAtLatest] = useState(!preserveReading);
 
-  const jumpToLatest = () => {
+  const pinToLatest = useCallback(() => {
     const scroll = scrollRef.current;
     if (!scroll) return;
-    follow.current = true;
     scroll.scrollTop = scroll.scrollHeight;
+    // A shrink or a disappearing Jump toolbar can clamp our own pin upward.
+    lastSeenTop.current = scroll.scrollTop;
+  }, [scrollRef]);
+
+  const jumpToLatest = () => {
+    if (!scrollRef.current) return;
+    follow.current = true;
+    wheelReachesTail.current = false;
+    pinToLatest();
     setAtLatest(true);
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: A transcript update changes the committed scroll height even when reader identity and readiness stay the same.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Transcript commits and the Jump toolbar changing visibility can change scroll height.
   useLayoutEffect(() => {
     if (reader.current !== identity) {
       reader.current = identity;
       follow.current = !preserveReading;
+      wheelReachesTail.current = false;
     }
-    if (preserveReading && !preserving.current) follow.current = false;
+    if (preserveReading && !preserving.current) {
+      follow.current = false;
+      wheelReachesTail.current = false;
+    }
     preserving.current = preserveReading;
+    if (follow.current) {
+      if (ready) pinToLatest();
+      else if (scrollRef.current) {
+        // Loading content can clamp the same scroller before it is ready.
+        lastSeenTop.current = scrollRef.current.scrollTop;
+      }
+    }
+    setAtLatest(follow.current);
+  }, [
+    identity,
+    ready,
+    contentVersion,
+    preserveReading,
+    scrollRef,
+    pinToLatest,
+    atLatest,
+  ]);
+
+  useLayoutEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll || !ready) return;
-    if (follow.current) scroll.scrollTop = scroll.scrollHeight;
-    setAtLatest(
-      scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2,
-    );
-  }, [identity, ready, contentVersion, preserveReading, scrollRef]);
+    if (!scroll) return;
+    const overflowAnchor = scroll.style.overflowAnchor;
+    // Own the tail while following; preserve native reader anchoring on pause.
+    if (atLatest) scroll.style.overflowAnchor = 'none';
+    return () => {
+      scroll.style.overflowAnchor = overflowAnchor;
+    };
+  }, [scrollRef, atLatest]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
     const content = contentRef.current;
     if (!scroll || !content) return;
-    let readerUntil = 0;
-    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
-    const onScroll = () => {
-      const distance =
-        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
-      const atBottom = distance <= 2;
-      // A pin's scroll echo can arrive after another asynchronous content resize.
-      // Keep its tolerance only while already following; a paused reader must
-      // return to the actual bottom before follow can resume.
-      follow.current =
-        performance.now() >= readerUntil &&
-        (atBottom || (follow.current && distance < 64));
-      clearTimeout(resumeTimer);
-      if (atBottom && !follow.current) {
-        resumeTimer = setTimeout(onScroll, readerUntil - performance.now());
-      }
-      setAtLatest(atBottom);
+    lastSeenTop.current = scroll.scrollTop;
+    const onWheel = (event: WheelEvent) => {
+      // Remember a pixel wheel's tail intent across a delayed scroll event.
+      wheelReachesTail.current =
+        !event.defaultPrevented &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        event.deltaY > 0 &&
+        event.deltaMode === WheelEvent.DOM_DELTA_PIXEL &&
+        scroll.scrollTop + event.deltaY >=
+          scroll.scrollHeight - scroll.clientHeight - 2;
     };
-    const stopFollowing = () => {
-      readerUntil = performance.now() + 200;
-      follow.current = false;
-      onScroll();
+    const onScroll = (event: Event) => {
+      const reachedWheelTail = wheelReachesTail.current;
+      wheelReachesTail.current = false;
+      // A nested code scroller can consume a wheel without moving this port.
+      if (event.target !== scroll) return;
+      const top = scroll.scrollTop;
+      if (top < lastSeenTop.current - 1) {
+        follow.current = false;
+      } else if (
+        scroll.scrollHeight - top - scroll.clientHeight <= 2 ||
+        (reachedWheelTail && top > lastSeenTop.current + 1)
+      ) {
+        follow.current = true;
+      }
+      lastSeenTop.current = top;
+      setAtLatest(follow.current);
     };
     const resize = () => {
-      if (readyRef.current && follow.current) {
-        scroll.scrollTop = scroll.scrollHeight;
-      }
-      setAtLatest(
-        scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2,
-      );
+      if (readyRef.current && follow.current) pinToLatest();
+      setAtLatest(follow.current);
     };
-    scroll.addEventListener('scroll', onScroll, { passive: true });
-    scroll.addEventListener('wheel', stopFollowing, { passive: true });
-    scroll.addEventListener('touchstart', stopFollowing, { passive: true });
-    scroll.addEventListener('pointerdown', stopFollowing, { passive: true });
+    scroll.addEventListener('scroll', onScroll, {
+      passive: true,
+      capture: true,
+    });
+    scroll.addEventListener('wheel', onWheel, { passive: true });
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
     observer?.observe(content);
     observer?.observe(scroll);
     return () => {
-      clearTimeout(resumeTimer);
-      scroll.removeEventListener('scroll', onScroll);
-      scroll.removeEventListener('wheel', stopFollowing);
-      scroll.removeEventListener('touchstart', stopFollowing);
-      scroll.removeEventListener('pointerdown', stopFollowing);
+      scroll.removeEventListener('scroll', onScroll, true);
+      scroll.removeEventListener('wheel', onWheel);
       observer?.disconnect();
     };
-  }, [scrollRef, contentRef]);
+  }, [scrollRef, contentRef, pinToLatest]);
 
   return {
     atLatest,
     jumpToLatest,
     pauseFollowing: () => {
       follow.current = false;
+      wheelReachesTail.current = false;
+      setAtLatest(false);
     },
   };
 }
