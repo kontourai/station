@@ -111,13 +111,16 @@ export function handleTextDeltaEvent(
     // Real content is flowing — the transient "Thinking…" hint is stale.
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
-      event.createdAt,
-    ),
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: event.delta.includes('\n')
+      ? derivePlanArtifactFromStreamingState(
+          {
+            streamingMessage: nextStreamingMessage,
+            planArtifact: chat.planArtifact,
+          },
+          event.createdAt,
+        )
+      : chat.planArtifact,
   });
 }
 
@@ -144,13 +147,16 @@ export function handleReasoningDeltaEvent(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
-      event.createdAt,
-    ),
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: event.delta.includes('\n')
+      ? derivePlanArtifactFromStreamingState(
+          {
+            streamingMessage: nextStreamingMessage,
+            planArtifact: chat.planArtifact,
+          },
+          event.createdAt,
+        )
+      : chat.planArtifact,
   });
 }
 

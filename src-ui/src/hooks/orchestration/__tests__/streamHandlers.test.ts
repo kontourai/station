@@ -20,6 +20,7 @@ let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEven
 // duplicated per-token work.
 let upsertTextPartCalls = 0;
 let toolToast: ReturnType<typeof vi.fn>;
+let resetTurnAttentionNotifications: typeof import('../turnAttentionNotifications').resetTurnAttentionNotifications;
 
 const threadId = 'thread-tool-outcome-1';
 
@@ -76,6 +77,9 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       handleToolProgressEvent,
     } = await import('../streamHandlers'));
     ({ handleRuntimeErrorEvent } = await import('../turnHandlers'));
+    ({ resetTurnAttentionNotifications } = await import(
+      '../turnAttentionNotifications'
+    ));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -85,6 +89,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
   });
 
   afterEach(() => {
+    resetTurnAttentionNotifications();
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/ToastContext');
     vi.doUnmock('../../../contexts/active-chats-store');
@@ -1363,6 +1368,63 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     expect(chat.streamingMessage?.content).toBe(
       'Plan:\n- [ ] first\n- [ ] second',
     );
+  });
+
+  test('batches unfinished plan lines and flushes the final line at turn completion', async () => {
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    expect(first?.steps).toHaveLength(2);
+    for (const delta of ['- ', 'third', ' step']) {
+      handleTextDeltaEvent(textDelta(delta));
+      expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(
+        first,
+      );
+    }
+    const { finalizeAssistantTurn } = await import('../assistantTurn');
+    finalizeAssistantTurn(threadId);
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.planArtifact?.steps,
+    ).toEqual([
+      { content: 'first', status: 'pending' },
+      { content: 'second', status: 'pending' },
+      { content: 'third step', status: 'pending' },
+    ]);
+  });
+
+  test('reuses an unchanged artifact but publishes changed raw text even when steps match', () => {
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    handleTextDeltaEvent(textDelta('\n'));
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(first);
+    handleTextDeltaEvent(textDelta('Explanation changed.\n'));
+    const next = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    expect(next?.steps).toEqual(first?.steps);
+    expect(next?.rawText).toContain('Explanation changed.');
+  });
+
+  test('flushes reasoning plans with no trailing newline', async () => {
+    const { handleReasoningDeltaEvent } = await import('../streamHandlers');
+    handleReasoningDeltaEvent({
+      ...textDelta('Plan:\n- first\n'),
+      method: 'content.reasoning-delta',
+    });
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    handleReasoningDeltaEvent({
+      ...textDelta('- second'),
+      method: 'content.reasoning-delta',
+    });
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(first);
+    const { finalizeAssistantTurn } = await import('../assistantTurn');
+    finalizeAssistantTurn(threadId);
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.planArtifact,
+    ).toMatchObject({
+      source: 'reasoning',
+      steps: [
+        { content: 'first', status: 'pending' },
+        { content: 'second', status: 'pending' },
+      ],
+    });
   });
 
   // archive#3351: the pre-dedup handler built the accumulated
