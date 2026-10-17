@@ -620,6 +620,33 @@ describe('DeltaCoalescer', () => {
     },
   );
 
+  test('disposal reports retained text and cancels every retry before storage closes', () => {
+    vi.useFakeTimers();
+    try {
+      const emitted: CanonicalRuntimeEvent[] = [];
+      let locked = false;
+      const coalescer = new DeltaCoalescer(
+        (event) => {
+          if (locked) throw new Error('SQLITE_BUSY');
+          emitted.push(event);
+        },
+        { logger: { warn: vi.fn() }, retainFailedFlush: () => true },
+      );
+      coalescer.offer(delta('t1', 'paint'));
+      coalescer.offer(delta('t1', 'held'));
+      locked = true;
+      expect(() => coalescer.dispose()).toThrow('unpublished');
+      expect(vi.getTimerCount()).toBe(0);
+      locked = false;
+      coalescer.resumeRetained('t1');
+      vi.advanceTimersByTime(1000);
+      expect(texts(emitted)).toEqual(['paint']);
+      expect(() => coalescer.offer(delta('t1', 'late'))).toThrow('disposed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a throwing delivery during flushAll does not abandon the other threads', () => {
     const emitted: CanonicalRuntimeEvent[] = [];
     let flushing = false;

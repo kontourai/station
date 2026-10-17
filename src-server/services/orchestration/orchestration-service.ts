@@ -3698,28 +3698,27 @@ export class OrchestrationService {
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
-    // An idle room thread must keep its raw Session across a server restart.
-    // Park only resumable, at-rest bindings; active work and explicit endings
-    // still use normal shutdown. Parking absorbs the engine's physical exit.
-    const roomParkingResults = await Promise.allSettled(
-      [...this.sessionAdapters].flatMap(([threadId, adapter]) =>
-        this.options.eventStore?.readProjectTaskRoomExecutionBinding(
-          threadId,
-        ) && this.isParkableIdleSession(threadId, Date.now(), 0)
-          ? [
-              this.adapterRetirement.runCleanupWithinDeadline(async () => {
-                await this.parkIdleSession(threadId, adapter, Date.now(), 0);
-              }, `${adapter.provider} room session parking`),
-            ]
-          : [],
-      ),
-    );
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    // Preserve only resumable idle room Sessions, under their lifecycle lock.
+    // An unavailable binding is a parking failure; all other teardown still runs.
+    const roomParkingResults = await Promise.allSettled(
+      [...this.sessionAdapters].map(([threadId, adapter]) =>
+        this.adapterRetirement.runCleanupWithinDeadline(async () => {
+          if (
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              threadId,
+            ) &&
+            this.isParkableIdleSession(threadId, Date.now(), 0)
+          )
+            await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+        }, `${adapter.provider} room session parking`),
+      ),
+    );
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -3781,6 +3780,11 @@ export class OrchestrationService {
     const failures = [...roomParkingResults, ...cleanupResults].flatMap(
       (result) => (result.status === 'rejected' ? [result.reason] : []),
     );
+    try {
+      this.deltaCoalescer.dispose();
+    } catch (error) {
+      failures.push(error);
+    }
     if (failures.length > 0) {
       throw new AggregateError(failures, 'Provider adapter shutdown failed.');
     }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { expect, test, vi } from 'vitest';
 import {
@@ -11,6 +12,7 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
+import type { createNativeOutputGrantAuthority } from '../../../runtime/native-output-turn-grant.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -83,6 +85,24 @@ test('shutdown preserves an idle resumable room Session for an authorized reply 
     },
   );
   expect(started.status).toBe('accepted');
+  const grants: ReturnType<typeof createNativeOutputGrantAuthority> =
+    Reflect.get(first, 'nativeOutputGrants');
+  const grant = grants.issue(
+    {
+      threadId: 'another-active-thread',
+      turnId: 'active-turn',
+      adapterId: 'station-agent',
+      principal: humanPrincipal('test', 'owner-user', 'Owner'),
+      configurationLease: { revision: 1 },
+    },
+    { isCurrent: () => true },
+  )!;
+  const scope = grants.bindNativeCall(grant, 'late-call')!;
+  const stop = before.stopSession.getMockImplementation()!;
+  before.stopSession.mockImplementation(async (id) => {
+    expect(grants.admit(scope)).toBeNull();
+    await stop(id);
+  });
   before.events.push({
     eventId: randomUUID(),
     provider: 'claude',
@@ -170,5 +190,43 @@ test('shutdown preserves an idle resumable room Session for an authorized reply 
   } finally {
     await restarted.shutdown();
     eventStore.close();
+  }
+});
+
+test('a failed room-binding inspection does not abandon provider cleanup', async () => {
+  const store = new EventStore(
+    join(makeTempDir('room-shutdown-failure-'), 'events.sqlite'),
+  );
+  const adapter = new RoomRestartAdapter();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  await service.startSessionInternal(
+    {
+      type: 'start-session',
+      input: {
+        threadId: 'shutdown-binding-failure',
+        provider: 'claude',
+        metadata: { userId: 'owner-user' },
+      },
+    },
+    { userId: 'owner-user' },
+  );
+  const lookup = vi
+    .spyOn(store, 'readProjectTaskRoomExecutionBinding')
+    .mockImplementation(() => {
+      throw new Error('Room binding unavailable');
+    });
+  try {
+    await expect(service.shutdown()).rejects.toThrow(
+      'Provider adapter shutdown failed',
+    );
+    expect(adapter.sessions.size).toBe(0);
+  } finally {
+    lookup.mockRestore();
+    store.close();
   }
 });

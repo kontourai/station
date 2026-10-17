@@ -158,6 +158,7 @@ export class DeltaCoalescer {
   ) => boolean;
   private lastDeliveryWarningAt = 0;
   private suppressedDeliveryFailures = 0;
+  private disposed = false;
 
   constructor(
     private readonly emit: (event: CanonicalRuntimeEvent) => void,
@@ -191,6 +192,7 @@ export class DeltaCoalescer {
    * that thread.
    */
   offer(event: CanonicalRuntimeEvent): boolean {
+    if (this.disposed) throw new Error('Delta coalescer is disposed');
     const text = COALESCABLE.has(event.method) ? deltaTextOf(event) : undefined;
 
     if (text === undefined) {
@@ -277,6 +279,7 @@ export class DeltaCoalescer {
    * shutdown, even after the store recovered.
    */
   resumeRetained(threadId: string): void {
+    if (this.disposed) return;
     const held = this.pending.get(threadId);
     if (held && held.timer === undefined)
       held.timer = this.setTimer(
@@ -293,6 +296,7 @@ export class DeltaCoalescer {
    * `deliver`.
    */
   flushThread(threadId: string): boolean {
+    if (this.disposed) return false;
     const event = this.pending.get(threadId)?.event;
     try {
       this.flushPending(threadId, 'propagate', true);
@@ -428,6 +432,21 @@ export class DeltaCoalescer {
       for (const threadId of [...this.streamStarts.keys()])
         this.dropMarkerIfIdle(threadId);
     }
+  }
+
+  /** Final delivery is attempted before timers are retired and storage closes. */
+  dispose(): void {
+    try {
+      if (!this.disposed) this.flushAll();
+    } finally {
+      this.disposed = true;
+      for (const held of this.pending.values()) {
+        this.clearTimer(held.timer);
+        held.timer = undefined;
+      }
+    }
+    if (this.pending.size > 0)
+      throw new Error('Content deltas remain unpublished at shutdown');
   }
 
   /** Threads currently holding buffered text. Read only by the unit suite. */
