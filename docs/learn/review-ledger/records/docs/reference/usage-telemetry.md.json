@@ -72,7 +72,11 @@
 
     "src-server/services/telemetry-local-state.ts",
 
-    "src-server/services/__tests__/telemetry-publishers.test.ts"
+    "src-server/services/__tests__/telemetry-publishers.test.ts",
+
+    "src-server/utils/logger.ts",
+
+    "src-server/routes/system/build-provenance.ts"
   ],
 
   "checks": [
