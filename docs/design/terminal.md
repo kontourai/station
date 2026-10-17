@@ -307,6 +307,4 @@ verification.
 
 ## Open questions
 
-1. Whether agent command sessions should survive a server restart once agent
-   turns can resume. Revisit with that work.
-2. Retention defaults, once usage is measured.
+1. Retention defaults, once usage is measured.

@@ -75,6 +75,11 @@ product decisions.
 - **Generations.** It starts a new core server as a trial, waits for
   readiness, hands it the listeners, then tells the old generation to stop
   accepting and drain. If the trial fails, the old generation keeps serving.
+  Draining keeps existing connections on the old generation until they close
+  or a drain deadline passes. SSE and terminal clients reconnect and resume,
+  so their deadline is short. An active voice call extends the deadline up to
+  a cap, so a live call finishes on the old generation instead of dropping.
+  Voice therefore stays in the core server rather than becoming a workload.
   This absorbs the archive launcher's pending, trial, commit, rollback
   transaction. It also restarts a crashed core server with backoff, absorbing
   the Desktop and `service run` restart loops.
@@ -187,8 +192,10 @@ installed service, and supersedes the sidecar ownership decided in
   is an explicit tray or CLI action, and asks for confirmation if turns or
   terminals are running.
 - First launch explains the background service before installing it. If the
-  user declines, Desktop runs the supervisor as its own child for that
-  session only, and quitting Desktop stops it.
+  user declines, or the machine does not allow a per-user service (for
+  example, some managed Windows machines), Desktop runs the supervisor as its
+  own child for that session only, and quitting Desktop stops it. Desktop
+  shows that Station stops on quit in this mode.
 - macOS shows its standard notice when the login item is added. On Linux,
   tray indicators cannot open their menu programmatically, so the window
   also exposes the same controls.
@@ -271,9 +278,3 @@ verification, and fault injection.
 - **Fault injection:** removing reattach makes the handoff journey fail with
   an interrupted turn; removing handle passing makes a client see a refused
   connection.
-
-## Open questions
-
-1. Whether voice becomes a workload so live calls survive upgrades.
-2. Desktop behavior on platforms where a per-user service cannot be
-   installed (for example, some locked-down Windows machines).
