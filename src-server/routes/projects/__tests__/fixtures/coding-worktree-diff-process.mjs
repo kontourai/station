@@ -2,12 +2,16 @@ import { readSync } from 'node:fs';
 import { stopLiveGitProcessGroups } from '../../../../utils/git-exec.ts';
 import { codingDiffRoutes } from './coding-worktree-diff.ts';
 
-// The parent timeout/runner interruption stops only Git groups this child owns;
-// let the route settle so its repository-snapshot finally can dispose normally.
-process.once('SIGTERM', () => {
+// Stop only this child's Git groups. Give route finally blocks a short turn to
+// dispose snapshots, then bound shutdown even if an interrupted read stalls.
+function stopChild(code) {
   stopLiveGitProcessGroups();
-});
-process.once('SIGINT', () => {
+  process.exitCode = code;
+  setTimeout(() => process.exit(code), 1000).unref();
+}
+process.once('SIGTERM', () => stopChild(143));
+process.once('SIGINT', () => stopChild(130));
+process.once('exit', () => {
   stopLiveGitProcessGroups();
 });
 
