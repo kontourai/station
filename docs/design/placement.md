@@ -921,6 +921,13 @@ does not make. An id the list no longer carries — a Board promoted, a Layout
 deleted — renders "not found" in the tab; the tab stays, because closing a
 tab is the user's act.
 
+**Personal dashboard content.** The same `LayoutRenderer` also renders a
+Board's saved dashboard definition through `PersonalBoardDashboard`, including
+when it is docked or promoted into a Project Layout. Existing Layout tabs remain
+alongside it. Authoring lives in the Main Board host; a docked copy remains a
+reading surface. Live sections use authorized owner projections and do not
+persist copies of Tasks or approvals. See [Personal Boards](../user/personal-boards.md).
+
 **A built-in tab that reads the route.** `SDKAdapter`'s `boundProjectSlug`
 rewrites the SDK's navigation, which every plugin tab reads; the built-in
 `flow-run-console` tab reads the UI's own `NavigationContext` instead, so a

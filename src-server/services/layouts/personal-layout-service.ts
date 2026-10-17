@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 /**
  * The personal scope's server-side store (#2061; design decision D1 in
  * `docs/design/shell-ownership-and-boards.md`).
@@ -38,6 +39,7 @@ import type {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
+import { personalBoardDefinitionSchema } from '@kontourai/station-sdk/personal-board';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -47,6 +49,7 @@ import {
   deriveProjectLayoutWorkingDirectory,
   type ProjectLayoutRefusalBody,
 } from '../../routes/projects/project-layout-admission.js';
+import { withPersonalLayoutOperation } from './personal-layout-operation.js';
 
 /**
  * The exact storage surface this service reads — narrower than
@@ -143,6 +146,21 @@ export class ProjectLayoutRefusedError extends Error {
   }
 }
 
+/** Reserved dashboard fields are authored through the revisioned Board boundary. */
+export class PersonalBoardMoveConflict extends Error {
+  constructor() {
+    super(
+      'The personal Board and Project copy have changed since the move began. Both copies were retained; inspect them before moving again.',
+    );
+  }
+}
+
+export class PersonalBoardAuthoringRequired extends Error {
+  constructor() {
+    super('Use the Board editor or proposal API to author a dashboard.');
+  }
+}
+
 /** A Board the caller asked to create under a slug it already owns. */
 export class PersonalLayoutConflictError extends Error {
   readonly code = 'PERSONAL_LAYOUT_EXISTS';
@@ -183,8 +201,6 @@ export class PersonalLayoutService {
     projectSlug: string,
     resourceId: string,
   ) => Promise<string | undefined>;
-  /** In-flight promote per Board; see {@link PersonalLayoutService.promote}. */
-  readonly #promotions = new Map<string, Promise<void>>();
 
   constructor(
     store: OwnedLayoutStore,
@@ -216,6 +232,38 @@ export class PersonalLayoutService {
     this.#resolveWorkspacePath = deps.resolveWorkspacePath;
   }
 
+  create(
+    owner: LayoutOwner,
+    input: PersonalLayoutInput,
+  ): Promise<LayoutConfig> {
+    return withPersonalLayoutOperation(this.#store, owner, input.slug, () =>
+      this.createExclusive(owner, input),
+    );
+  }
+  update(
+    owner: LayoutOwner,
+    slug: string,
+    patch: PersonalLayoutPatch,
+  ): Promise<LayoutConfig | undefined> {
+    return withPersonalLayoutOperation(this.#store, owner, slug, () =>
+      this.updateExclusive(owner, slug, patch),
+    );
+  }
+  promote(
+    owner: LayoutOwner,
+    slug: string,
+    projectSlug: string,
+  ): Promise<LayoutConfig | undefined> {
+    return withPersonalLayoutOperation(this.#store, owner, slug, () =>
+      this.promoteExclusive(owner, slug, projectSlug),
+    );
+  }
+  remove(owner: LayoutOwner, slug: string): Promise<boolean> {
+    return withPersonalLayoutOperation(this.#store, owner, slug, () =>
+      this.removeExclusive(owner, slug),
+    );
+  }
+
   list(owner: LayoutOwner): LayoutMetadata[] {
     return this.#store.listOwnedLayouts(owner);
   }
@@ -239,7 +287,7 @@ export class PersonalLayoutService {
    * inside the store's per-record lock, so two concurrent creates of the same
    * slug cannot both find it free.
    */
-  async create(
+  private async createExclusive(
     owner: LayoutOwner,
     input: PersonalLayoutInput,
   ): Promise<LayoutConfig> {
@@ -275,7 +323,7 @@ export class PersonalLayoutService {
    * has none under that slug. The read and the write happen in one serialized
    * transaction, so a concurrent update cannot be lost to a stale base.
    */
-  async update(
+  private async updateExclusive(
     owner: LayoutOwner,
     layoutSlug: string,
     patch: PersonalLayoutPatch,
@@ -291,14 +339,39 @@ export class PersonalLayoutService {
               `Layout '${layoutSlug}' not found`,
             );
           }
+          if (
+            patch.config &&
+            (current.config.dashboard ||
+              current.config.dashboardProposal ||
+              'dashboard' in patch.config ||
+              'dashboardProposal' in patch.config)
+          )
+            throw new PersonalBoardAuthoringRequired();
           // `current` is the store's defensive copy; spreading it rather than
           // assigning into it keeps that true for the store's own immutability
           // check on the way out.
-          return {
+          const updated = {
             ...current,
             ...definedFields(patch),
             updatedAt: now,
           };
+          if (
+            current.config.dashboard &&
+            (patch.name !== undefined || patch.description !== undefined)
+          ) {
+            const dashboard = personalBoardDefinitionSchema.parse(
+              current.config.dashboard,
+            );
+            updated.config = {
+              ...updated.config,
+              dashboard: {
+                ...dashboard,
+                name: patch.name ?? dashboard.name,
+                description: patch.description ?? dashboard.description,
+              },
+            };
+          }
+          return updated;
         },
       );
     } catch (error) {
@@ -359,51 +432,17 @@ export class PersonalLayoutService {
    * same "there is no such Board" the other methods answer, for the same
    * reason.
    */
-  async promote(
-    owner: LayoutOwner,
-    layoutSlug: string,
-    projectSlug: string,
-  ): Promise<LayoutConfig | undefined> {
-    // SERIALIZED PER BOARD (#2062 review MED-5). Two concurrent promotes of
-    // one Board to DIFFERENT projects both read it, both create their own
-    // project copy, and only one delete finds anything — leaving the Board
-    // duplicated across two projects with no resume path, because the
-    // id-lineage recovery below only recognizes a copy in the destination it
-    // is looking at. Running them one at a time makes the second find the
-    // Board already gone, which is the honest 404.
-    //
-    // In-process, like the storage adapter's own per-key queue: it holds for
-    // one Station server over one home, which is the concurrency this product
-    // has. It is NOT a cross-process lock and does not claim to be one.
-    const key = `${JSON.stringify(owner)}\u0000${layoutSlug}`;
-    const previous = this.#promotions.get(key) ?? Promise.resolve();
-    // A rejected predecessor must not reject its successor: the queue exists
-    // to order these, not to couple their outcomes.
-    const run = previous
-      .catch(() => undefined)
-      .then(() => this.#promoteExclusive(owner, layoutSlug, projectSlug));
-    const tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.#promotions.set(key, tail);
-    try {
-      return await run;
-    } finally {
-      // Only the LAST promote for this key clears the entry, so the map holds
-      // in-flight work rather than growing with every Board ever promoted, and
-      // a queued successor is never orphaned.
-      if (this.#promotions.get(key) === tail) this.#promotions.delete(key);
-    }
-  }
-
-  async #promoteExclusive(
+  private async promoteExclusive(
     owner: LayoutOwner,
     layoutSlug: string,
     projectSlug: string,
   ): Promise<LayoutConfig | undefined> {
     const board = this.get(owner, layoutSlug);
     if (board === undefined) return undefined;
+    if (board.config.dashboardProposal !== undefined)
+      throw new PersonalLayoutConflictError(
+        'Apply or dismiss the Board proposal before moving it to a Project.',
+      );
     const projectOwner: LayoutOwner = { kind: 'project', projectSlug };
     // `owner` is DROPPED rather than set to a project owner: a project record
     // persists `projectSlug` and nothing else (`normalizeProjectLayoutRecord`),
@@ -465,6 +504,10 @@ export class PersonalLayoutService {
       // Occupied by something else. Not this Board's interrupted promote, so
       // the name genuinely collides and nothing moves.
       if (occupant.id !== board.id) throw error;
+      const { updatedAt: _occupantTime, ...occupantContent } = occupant;
+      const { updatedAt: _candidateTime, ...candidateContent } = promoted;
+      if (!isDeepStrictEqual(occupantContent, candidateContent))
+        throw new PersonalBoardMoveConflict();
       await this.#completeMove(owner, layoutSlug);
       return occupant;
     }
@@ -497,7 +540,10 @@ export class PersonalLayoutService {
   }
 
   /** `false` when this owner has no Board under that slug. */
-  async remove(owner: LayoutOwner, layoutSlug: string): Promise<boolean> {
+  private async removeExclusive(
+    owner: LayoutOwner,
+    layoutSlug: string,
+  ): Promise<boolean> {
     try {
       await this.#store.deleteOwnedLayout(owner, layoutSlug);
       return true;

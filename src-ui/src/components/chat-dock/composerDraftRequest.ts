@@ -4,7 +4,7 @@ import type {
 } from '../../lib/projectChatEvents';
 
 export type ClaimedComposerDraftRequest = OpenProjectChatsDetail & {
-  projectSlug: string;
+  projectSlug: string | null;
   composerDraft: ProjectChatComposerDraft;
 };
 
@@ -27,11 +27,24 @@ export type ClaimedComposerDraftRequest = OpenProjectChatsDetail & {
  */
 export function claimComposerDraftRequest(
   event: Event,
-  pane: { hasImmutableProjectScope: boolean; projectSlug?: string },
+  pane: {
+    hasImmutableProjectScope: boolean;
+    projectSlug?: string;
+    authorityKey?: string;
+  },
 ): ClaimedComposerDraftRequest | null {
   const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
-  if (!detail?.projectSlug || !detail.composerDraft) return null;
+  if (
+    !detail?.composerDraft ||
+    (!detail.projectSlug && detail.projectSlug !== null)
+  )
+    return null;
   if (event.defaultPrevented) return null;
+  if (
+    detail.authorityKey !== undefined &&
+    detail.authorityKey !== pane.authorityKey
+  )
+    return null;
   if (pane.hasImmutableProjectScope && pane.projectSlug !== detail.projectSlug)
     return null;
   event.preventDefault();

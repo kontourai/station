@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '05776a0dd29b4edfda01bede9dd2857d50a75f97aa6ee98c43d711ccec122d24';
+  '41b1f790f57ad8399d3878bf5612fe2d6732c38996899c39e18b8776af3fc358';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -634,7 +634,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -760,6 +760,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'personal-work-board',
+  },
+  {
+    id: 'architecture-personal-board-authoring',
+    title: 'Personal Board authoring',
+    summary:
+      'Interface, composition, invariants, and documented evidence for Personal Board authoring.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Personal Board authoring\n\nPersonal Boards are principal-owned Layouts. The [authoring service](../../src-server/services/layouts/personal-board-authoring.ts)\nuses the existing owned Layout store and a [shared operation queue](../../src-server/services/layouts/personal-layout-operation.ts)\nfor edits, proposals, deletion and promotion. Queue identity uses principal ID,\nnot display name. Saved definitions and pending proposals occupy separate config\nfields; a whole-record revision precondition is checked inside the storage\nmutation. Apply saves exactly the reviewed definition and clears the proposal.\nThis serializes one running Station process over its store; it is not a claim\nof cross-process coordination.\n\nThe [personal routes](../../src-server/routes/me/personal-layouts.ts) resolve the\nrequest's authenticated principal. Agent tools can list, read and propose through\n[dedicated tools](../../src-server/tools/station-control-personal-board-tools.ts)\nand the canonical SDK transport. Agent-originated requests cannot publish.\nThe [runtime schema](../../packages/sdk/src/personal-board.ts) bounds section\nkinds, count, sizing, text and URL schemes. Generic Layout writes cannot replace\nreserved dashboard fields. Promotion refuses unpublished proposals.\n\nThe [visual authoring host](../../src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx)\nand [shared dashboard renderer](../../src-ui/src/views/personal-board/PersonalBoardDashboard.tsx)\nserve editing and preview in Main, while `LayoutRenderer` supports the same saved\ncontent in docked Boards and promoted Project Layouts. Legacy Layout tabs are\nretained. Live sections read scoped Task, attention, recent-work and Project\nqueries; the Board persists configuration rather than copies of their records.\n\nSee [Personal Boards](../user/personal-boards.md) and the\n[SDK contract](../reference/sdk.md#personal-board-authoring). Route tests cover\nownership, revision conflicts, publication, rename and move. Browser journeys\ncover desktop/phone authoring, live Task visibility, persistence and explicit\nproposal Apply. These are controlled runtime journeys, not physical multi-device\nor external Agent-provider evidence.",
+    tags: ['architecture', 'surfaces', 'Personal Board authoring'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'personal-board-authoring',
   },
   {
     id: 'architecture-connections',

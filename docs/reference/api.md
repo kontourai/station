@@ -893,7 +893,11 @@ backfill a catalog contribution. See [plugin identity projection](#which-routes-
 `{name: "Renamed"}`, and returns the updated Board. Omitted top-level fields
 remain stored; each update reads and writes under the owner's record transaction.
 Concurrent replacements of the same field still have ordinary last-write
-semantics, and `config` is not a deep merge of independent nested edits.
+semantics, and `config` is not a deep merge of independent nested edits. Dashboard fields are an
+exception: generic create/update cannot supply `config.dashboard` or
+`config.dashboardProposal`, and generic config replacement is refused once
+those fields exist. Use the revisioned authoring API below. Renaming a saved
+dashboard updates its display definition in the same mutation.
 
 The schema refuses `id`, `slug`, owner, and timestamps. It tolerates then discards
 `paneReferences`. This does **not** make an entire GET response a valid PUT body;
@@ -928,8 +932,35 @@ adding a separate membership decision in this service.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
-matching ID at the destination and finishes the personal deletion. That recovery
-is not a transaction spanning both stores.
+matching ID and equivalent admitted content at the destination before finishing
+the personal deletion. If either copy was edited, promotion returns 409 and
+retains both. A pending dashboard proposal also returns 409 until applied or
+dismissed. This recovery is not a transaction spanning both stores.
+
+### Personal Board authoring
+
+These endpoints share the same authenticated owner resolution as `/api/me/layouts`:
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/me/boards/:layoutSlug` | Layout, opaque whole-record `revision`, saved `definition`, optional `proposal` |
+| POST | `/api/me/boards/:layoutSlug/proposal` | `{revision, definition}`; null revision creates a new draft-only Board, existing revisions must match |
+| PUT | `/api/me/boards/:layoutSlug` | `{revision, definition}`; saves the exact reviewed dashboard and clears its proposal |
+| DELETE | `/api/me/boards/:layoutSlug/proposal` | `{revision}`; dismisses only the proposal |
+
+Responses use `{success:true,data:PersonalBoardDocument}`. A revision mismatch
+returns 409 without changing either definition. A new proposal's sidebar name is
+marked `(draft)`; the saved dashboard remains unchanged for an existing Board.
+Agent-originated requests cannot use PUT or DELETE to publish/dismiss; the
+`propose_personal_board` tool reaches only the proposal endpoint. The principal
+is never a body field.
+
+Definitions have version 1, name, description and at most 24 sections. Live
+sources are Tasks, attention, recent work and Projects; notes and safe HTTP/HTTPS
+or Station links are authored text. Runtime validation bounds all fields and
+refuses duplicate section IDs. Definitions contain configuration, not live rows.
+See [the SDK](sdk.md#personal-board-authoring) and
+[Personal Boards](../user/personal-boards.md) for editing and recovery.
 
 ---
 

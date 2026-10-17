@@ -323,6 +323,7 @@ export function useTasksQuery(
         config?.staleTime ??
         taskQueries.list(projectId, config?.requestScope).staleTime,
       gcTime: config?.gcTime,
+      refetchInterval: config?.refetchInterval,
       enabled: config?.requestScope
         ? scoped && (config.enabled ?? true)
         : config?.enabled,

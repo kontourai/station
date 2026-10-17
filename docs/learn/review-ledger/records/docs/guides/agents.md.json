@@ -196,6 +196,8 @@
 
     "src-ui/src/components/chat/inputRequestDrafts.ts",
 
+    "src-server/tools/station-control-personal-board-tools.ts",
+
     "src-ui/src/views/agent-editor/AgentToolPicker.tsx",
 
     "src-ui/src/views/agent-editor/AgentToolPicker.css",
