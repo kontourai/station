@@ -258,10 +258,16 @@ export class FileTreeService {
       const realRoot = await realpathAsync(root);
       const abs = resolve(realRoot, rel);
       this._assertWithin(realRoot, abs, rel);
-      if ((await lstatAsync(abs)).isSymbolicLink())
+      const entryStat = await lstatAsync(abs);
+      if (entryStat.isSymbolicLink())
         throw new Error(`Symlink target is not allowed: ${rel}`);
       const resolved = await realpathAsync(abs);
       this._assertWithin(realRoot, resolved, rel);
+      if (!entryStat.isFile())
+        throw new FilePreviewError(
+          'not-a-file',
+          'Only regular files can be previewed.',
+        );
       const handle = await open(resolved, 'r');
       try {
         const stat = await handle.stat();

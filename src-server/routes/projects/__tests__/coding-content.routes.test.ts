@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -230,6 +232,52 @@ describe('coding content routes — real git project (no mocks)', () => {
         }
       } finally {
         vi.mocked(asyncFs.open).mockImplementation(actual.open);
+      }
+    },
+  );
+
+  async function expectNonRegularRefusal(file: string) {
+    const target = realpathSync(join(repo, file));
+    const actual =
+      await vi.importActual<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      );
+    let attemptedOpen = false;
+    vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
+      if (args[0] === target) {
+        attemptedOpen = true;
+        throw new Error('Non-regular fixture reached open');
+      }
+      return actual.open(...args);
+    });
+    try {
+      const result = await get(
+        `/files/content?projectSlug=r&file=${encodeURIComponent(file)}`,
+      );
+      expect(result.status).toBe(400);
+      expect(result.json.code).toBe('not-a-file');
+      expect(attemptedOpen).toBe(false);
+      expect(
+        (await get('/files/content?projectSlug=r&file=README.md')).status,
+      ).toBe(200);
+    } finally {
+      vi.mocked(asyncFs.open).mockImplementation(actual.open);
+    }
+  }
+
+  test('refuses a directory before opening it', async () => {
+    await expectNonRegularRefusal('src');
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a real FIFO before open can block the request',
+    async () => {
+      const path = join(repo, 'preview.fifo');
+      execFileSync('mkfifo', [path], { windowsHide: true });
+      try {
+        await expectNonRegularRefusal('preview.fifo');
+      } finally {
+        rmSync(path, { force: true });
       }
     },
   );
