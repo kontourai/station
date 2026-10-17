@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-10-17T22:09:45Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2481.39073016966",
+    "sha": "b1970f240db2edb2cf692253561ed18239214080",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39073016966",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2481.39073016966 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "597e0e68889b2249d8bad509d6afaea54025391b",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3751](https://github.com/kontourai/station/pull/3751) fix(coding): include untracked additions in Task worktree diffs"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-17T20:59:11Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2481.2",
