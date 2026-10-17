@@ -244,13 +244,15 @@ export function useActiveChatState(sessionId: string): ChatUIState | null {
     );
   }
 
-  const chats = useSyncExternalStore(
-    activeChatsStore.subscribe,
-    activeChatsStore.getSnapshot,
-    activeChatsStore.getSnapshot,
+  const getSnapshot = useCallback(
+    () => activeChatsStore.getSnapshot()[sessionId] ?? null,
+    [sessionId],
   );
-
-  return chats[sessionId] || null;
+  return useSyncExternalStore(
+    activeChatsStore.subscribe,
+    getSnapshot,
+    getSnapshot,
+  );
 }
 
 /**
