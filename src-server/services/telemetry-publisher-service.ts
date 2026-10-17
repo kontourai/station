@@ -12,7 +12,6 @@ import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
-import * as telemetryBuildConstants from '../domain/telemetry-build-constants.js';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
 import { writeUserNotice } from '../utils/logger.js';
 import {
@@ -25,6 +24,7 @@ type Publisher = 'kontour' | 'operator';
 interface PublisherOptions {
   homeDir: string;
   build: ProductTelemetryBuild;
+  channel?: string;
   configuration: () => ResolvedTelemetryConfiguration;
   operatorEndpoint: () => string | undefined;
   facts?: () => Promise<
@@ -92,14 +92,12 @@ export class TelemetryPublisherService {
     this.reconfigure();
   }
   private seed(now: Date, prior?: TelemetryDailyState): TelemetryDailyState {
-    const buildChannel =
-      'STATION_TELEMETRY_BUILD_CHANNEL' in telemetryBuildConstants
-        ? telemetryBuildConstants.STATION_TELEMETRY_BUILD_CHANNEL
-        : undefined;
+    const runtimeChannel = this.options.channel;
     const channel =
-      TELEMETRY_CHANNELS.find((value) => value === buildChannel) ??
-      this.options.build.channel ??
-      'source-checkout';
+      runtimeChannel === 'beta'
+        ? 'preview'
+        : (TELEMETRY_CHANNELS.find((value) => value === runtimeChannel) ??
+          'source-checkout');
     const day = now.toISOString().slice(0, 10);
     const week = utcWeek(now);
     const month = day.slice(0, 7);

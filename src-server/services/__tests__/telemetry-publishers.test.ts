@@ -28,14 +28,10 @@ import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
 const build = vi.hoisted(() => ({
   endpoint: '',
-  channel: undefined as string | undefined,
 }));
 vi.mock('../../domain/telemetry-build-constants.js', () => ({
   get STATION_AUTHOR_TELEMETRY_ENDPOINT() {
     return build.endpoint;
-  },
-  get STATION_TELEMETRY_BUILD_CHANNEL() {
-    return build.channel;
   },
 }));
 const homes: string[] = [];
@@ -45,7 +41,6 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime('2026-10-12T10:00:00Z');
   build.endpoint = '';
-  build.channel = undefined;
 });
 afterEach(async () => {
   await Promise.all(services.splice(0).map((service) => service.shutdown()));
@@ -60,6 +55,7 @@ afterEach(async () => {
   );
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   await Promise.all(
     homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
@@ -138,7 +134,6 @@ async function service(
     homeDir: home,
     appConfig: configValue,
     version: '1.2.3',
-    buildProvenance: null,
     env,
     logger,
     fetch: fetchOverride,
@@ -226,15 +221,21 @@ test('catches up only the latest observed unsent day, preserves weekly and month
 });
 
 test.each([
-  [undefined, 'source-checkout'],
-  ['preview', 'preview'],
-  ['private-build-label', 'source-checkout'],
+  [undefined, undefined, 'source-checkout'],
+  ['beta', 'nightly', 'preview'],
+  ['stable', 'dev', 'stable'],
+  [undefined, 'nightly', 'nightly'],
+  ['private-build-label', undefined, 'source-checkout'],
 ] as const)(
-  'daily channel uses the optional official build export %s or existing metadata',
-  async (channel, expected) => {
-    build.channel = channel;
+  'daily channel serializes captured build stamp %s and environment fallback %s as %s',
+  async (channel, fallback, expected) => {
+    vi.stubGlobal('__STATION_SERVER_BUILD__', { channel });
     const sink = await receiver();
-    const { live } = await service(sink.endpoint);
+    const { live } = await service(
+      sink.endpoint,
+      {},
+      { STATION_CHANNEL: fallback },
+    );
     await live.stationStarted();
     await flush(live);
     expect(daily(sink.payloads)[0].channel).toBe(expected);

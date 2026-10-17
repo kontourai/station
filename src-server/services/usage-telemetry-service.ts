@@ -204,6 +204,7 @@ export class UsageTelemetryService {
       new TelemetryPublisherService({
         homeDir: options.homeDir,
         build: this.build,
+        channel: provenance?.channel,
         configuration: () => this.resolvedConfiguration(),
         operatorEndpoint: () => this.endpoint,
         facts: options.dailyFacts,
