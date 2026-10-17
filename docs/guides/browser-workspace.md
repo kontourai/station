@@ -104,10 +104,7 @@ same-user process can read) and agents connected over ACP with an HTTP-header to
 (`delegated-custody`: the connected app holds it). Neither credential can be attributed
 to one Session, so those engines are not offered the tools and a browser call
 from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
-MCP support. Offering them needs a new bound channel; the
-[ADR 0019 supplement](../adr/0022-browser-agent-actions-and-bound-channel.md)
-describes the required binding and remaining implementation work. Existing
-passthrough tokens have not been promoted to bound credentials.
+MCP support. Offering them would need a new bound channel, not a wiring change.
 
 `browser_status` lists the caller's sessions newest-created first, at most 20
 per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
@@ -129,6 +126,10 @@ session whose history no longer keeps it is refused rather than assumed.
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
+The [ADR 0019 supplement](../adr/0022-browser-agent-actions-and-bound-channel.md)
+describes the proposed cross-engine binding and remaining action slices. Existing
+passthrough tokens have not been promoted to bound credentials.
+
 `browser_hover` accepts the same ref, locator or viewport CSS-pixel point as
 click. `browser_drag` takes `source` and `target` objects in that shape and sends
 a left-button pointer drag with twelve intermediate moves. Both ends must be
