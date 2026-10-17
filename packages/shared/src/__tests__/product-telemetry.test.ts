@@ -294,3 +294,51 @@ describe('Lite ping privacy boundary', () => {
     );
   });
 });
+
+test('Full feature fields require public catalog membership rather than private names or build labels', () => {
+  const feature = {
+    ...batch(),
+    events: [
+      {
+        ...batch().events[0],
+        event: 'pane_opened',
+        properties: { pane: 'private-pane' },
+      },
+    ],
+  };
+  expect(() => parseProductTelemetryBatch(feature)).toThrow();
+  const publicFeature = {
+    ...feature,
+    events: [{ ...feature.events[0], properties: { pane: 'public-pane' } }],
+  };
+  expect(() =>
+    parseProductTelemetryBatch(publicFeature, ['public-pane']),
+  ).not.toThrow();
+  const client = {
+    ...batch(),
+    events: [
+      {
+        ...batch().events[0],
+        event: 'client_connected',
+        properties: {
+          surface: 'web',
+          device_class: 'desktop',
+          version: '1.2.3-private-project',
+        },
+      },
+    ],
+  };
+  expect(() => parseProductTelemetryBatch(client)).toThrow();
+  const publicClient = {
+    ...client,
+    events: [
+      {
+        ...client.events[0],
+        properties: { ...client.events[0].properties, version: '1.2.3' },
+      },
+    ],
+  };
+  expect(() =>
+    parseProductTelemetryBatch(publicClient, [], ['1.2.3']),
+  ).not.toThrow();
+});

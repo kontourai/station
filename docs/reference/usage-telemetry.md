@@ -292,7 +292,7 @@ A client connected without a device identifier.
 | --- | --- |
 | `surface` | `desktop`, `web`, `ios`, `android`, `cli` |
 | `device_class` | `desktop`, `phone`, `tablet`, `server`, `other` |
-| `version` | SemVer version (MAJOR.MINOR.PATCH, with optional prerelease/build metadata) |
+| `version` | public-release-version-or-custom |
 
 ## `setup_abandoned`
 

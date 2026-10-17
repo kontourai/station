@@ -339,8 +339,7 @@ export const USAGE_TELEMETRY_EVENTS = {
         domain: ['desktop', 'phone', 'tablet', 'server', 'other'] as const,
       },
       version: {
-        domain:
-          'SemVer version (MAJOR.MINOR.PATCH, with optional prerelease/build metadata)',
+        domain: 'public-release-version-or-custom',
       },
     },
   },
@@ -377,7 +376,9 @@ export type ProductTelemetryPropertyDefinition = {
 type UsageTelemetryPropertyValue<D extends ProductTelemetryPropertyDefinition> =
   D['domain'] extends readonly string[]
     ? D['domain'][number]
-    : D['domain'] extends 'public-registry-id-or-custom'
+    : D['domain'] extends
+          | 'public-registry-id-or-custom'
+          | 'public-release-version-or-custom'
       ? string
       : UsageTelemetrySemVer;
 export type UsageTelemetryProperties<E extends UsageTelemetryEvent> = {

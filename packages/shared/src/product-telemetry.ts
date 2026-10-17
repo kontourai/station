@@ -55,6 +55,7 @@ export function assertUsageTelemetryInventoryContract(
   event: string,
   properties: Record<string, unknown>,
   publicRegistryIds: readonly string[] = [],
+  publicReleaseVersions: readonly string[] = [],
 ): asserts properties is Record<string, string> {
   const definition = USAGE_TELEMETRY_EVENTS[event as UsageTelemetryEvent];
   if (!Object.hasOwn(USAGE_TELEMETRY_EVENTS, event) || !definition)
@@ -87,9 +88,12 @@ export function assertUsageTelemetryInventoryContract(
       : allowed === 'public-registry-id-or-custom'
         ? value === 'custom' ||
           (value.length <= 128 && publicRegistryIds.includes(value))
-        : /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
-            value,
-          );
+        : allowed === 'public-release-version-or-custom'
+          ? value === 'custom' ||
+            (value.length <= 64 && publicReleaseVersions.includes(value))
+          : /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+              value,
+            );
     if (!valid)
       throw new Error(
         `Usage telemetry inventory drift: property "${event}.${property}" has invalid value "${value}"; permitted: ${Array.isArray(allowed) ? allowed.join(', ') : allowed}.`,
@@ -231,6 +235,7 @@ export function parseProductTelemetryProbeReceipt(
 export function parseProductTelemetryBatch(
   value: unknown,
   publicRegistryIds: readonly string[] = [],
+  publicReleaseVersions: readonly string[] = [],
 ): ProductTelemetryBatch {
   if (
     !record(value) ||
@@ -266,6 +271,7 @@ export function parseProductTelemetryBatch(
       event.event,
       event.properties,
       publicRegistryIds,
+      publicReleaseVersions,
     );
     const build = event.build;
     if (!onlyKeys(build, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.build)))
