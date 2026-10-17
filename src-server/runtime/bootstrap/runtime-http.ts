@@ -424,8 +424,6 @@ export function configureRuntimeHttp({
   app.use('*', async (c, next) => {
     await next();
 
-    if (c.res.status >= 400) return;
-
     const keys = getInvalidationKeysForRequest(c.req.method, c.req.path);
     if (keys.length > 0) {
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
@@ -1573,7 +1571,8 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
     READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
   )
     return [];
-  // A draft lease keeps its watcher alive; rebuilds publish their own event.
+  // A draft lease keeps its watcher alive. Successful draft revisions publish
+  // PLUGIN_DRAFTS_REBUILT; the pane's own query refetches otherwise.
   if (
     method === 'POST' &&
     /^\/api\/projects\/[^/]+\/plugin-draft\/lease\/?$/.test(path)

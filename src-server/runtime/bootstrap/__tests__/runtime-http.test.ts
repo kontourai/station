@@ -55,15 +55,6 @@ test.each([
   ['DELETE', '/agents/demo', 200, ['agents']],
   ['POST', '/agents/demo/chat/extra', 200, ['agents']],
   ['PUT', '/agents/demo/chat', 200, ['agents']],
-  ['POST', '/api/projects', 400, []],
-  ['PATCH', '/api/projects/demo', 401, []],
-  ['PATCH', '/api/projects/demo', 403, []],
-  ['DELETE', '/api/projects/demo', 404, []],
-  ['PUT', '/api/projects/demo', 409, []],
-  ['POST', '/api/projects/demo/knowledge/upload', 422, []],
-  ['POST', '/agents', 429, []],
-  ['PATCH', '/agents/demo', 500, []],
-  ['DELETE', '/api/projects/demo', 503, []],
   ['PUT', '/api/projects/demo/file-preview', 200, ['projects']],
   ['POST', '/api/projects/demo/file-preview/rebuild', 200, ['projects']],
   ['POST', '/api/knowledge/index/rebuild', 200, ['knowledge']],
@@ -108,32 +99,6 @@ test.each([
     else expect(emit).not.toHaveBeenCalled();
   },
 );
-test.each([409, 503] as const)(
-  'does not broadcast data changes after a thrown RouteError (%s)',
-  async (status) => {
-    const emit = vi.fn();
-    const app = new Hono();
-    configureRuntimeHttp({
-      app: app as never,
-      logger: createCapturingLogger(),
-      eventBus: { emit } as unknown as EventBus,
-    });
-    app.put('/api/projects/demo', () => {
-      throw new RouteError(status, 'Project update refused');
-    });
-
-    const response = await app.request(
-      'http://station.test/api/projects/demo',
-      {
-        method: 'PUT',
-      },
-    );
-
-    expect(response.status).toBe(status);
-    expect(emit).not.toHaveBeenCalled();
-  },
-);
-
 function createCapturingLogger(): Logger {
   return {
     info: vi.fn(),
