@@ -852,6 +852,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // one scope rule (`refuseOutOfScopeDispatch`). A candidate only: a person
   // keeps it onto a Task. Not a bounded write: it reads the forge and writes
   // a durable session record, so it keeps the mutating approval.
+  read_pull_request_guide: {
+    ...OPERATOR_READ,
+    routes: [get('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide')],
+  },
+  write_pull_request_guides: {
+    ...OPERATOR_MUTATION,
+    routes: [
+      post('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide'),
+    ],
+  },
   declare_pull_request: {
     assurance: 'any',
     role: 'self',

@@ -403,6 +403,24 @@ const SETTINGS_CATALOG_SOURCE = [
   // screener rather than a fallback, which is why the Control group's caption
   // has to name both kinds of rule.
   {
+    id: 'review-guides',
+    title: 'Review guides',
+    section: 'agent-runs',
+    configKeys: ['reviewGuidesEnabled'],
+  },
+  {
+    id: 'review-guide-model',
+    title: 'Review guide model',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideModel'],
+  },
+  {
+    id: 'review-guide-instructions',
+    title: 'Review guide instructions',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideInstructions'],
+  },
+  {
     id: 'approval-guardian',
     title: 'Approval guardian',
     section: 'permissions',
