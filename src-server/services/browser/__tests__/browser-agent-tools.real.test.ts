@@ -308,16 +308,14 @@ describe('browser tools against a real installed Chromium', () => {
     // Independent browser observation: the emulation changes matchMedia itself.
     const live = sessions.liveTarget(browserSessionId)!;
     const dark = async () => {
-      const result = await live.host
-        .cdp()
-        .send<{ result: { value: boolean } }>(
-          'Runtime.evaluate',
-          {
-            expression: 'matchMedia("(prefers-color-scheme: dark)").matches',
-            returnByValue: true,
-          },
-          live.target.cdpSessionId,
-        );
+      const result = await live.host.cdp().send<{ result: { value: boolean } }>(
+        'Runtime.evaluate',
+        {
+          expression: 'matchMedia("(prefers-color-scheme: dark)").matches',
+          returnByValue: true,
+        },
+        live.target.cdpSessionId,
+      );
       return result.result.value;
     };
     const systemDark = await dark();
