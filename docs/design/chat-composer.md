@@ -42,6 +42,15 @@ list does not take focus) and reopens when focus returns with the caret in an
 `@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+The [working-chat focus owner](../../src-ui/src/hooks/useWorkingChatFocus.ts)
+requests composer focus once after selection, when the conversation
+and its textarea become writable. The request expires 60 seconds after selection,
+allowing a slow remote open without retaining focus intent indefinitely. Moving
+focus elsewhere, opening a dialog, or selecting another chat cancels it. A
+read-only, missing-session, failed-open, or replay selection cancels it and moves
+focus to the selected transcript when focus is still in the working-chat control
+or on the page body.
+
 ## Starting and resuming work
 
 The phone-width captures compare the baseline and redesigned controls in the
@@ -194,7 +203,9 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. Its Resync action
+working clock; the remote turn may still be running. Already loaded transcript
+content stays visible through a failed refresh. A successful empty history read
+replaces that retained content, and switching conversations clears it. Its Resync action
 reconnects the Station's orchestration stream and re-runs the failed history or
 conversation-open read. Resync is disabled and announces “Resyncing conversation”
 until those reads settle. History reads abort after 120 seconds and show a
@@ -641,6 +652,15 @@ caption this value **New chats**; desktop also names the current chat's project
 when it differs. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
+
+**New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
+
+Chat actions offers **Turn into Task** for a writable Station conversation,
+sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
+agent shapes a proposal; only **Create Task** on its card accepts the brief
+and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one. A seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
+the person's idea as the visible message. The answer/input **Add to Task**
+picker offers **New Task from this…** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

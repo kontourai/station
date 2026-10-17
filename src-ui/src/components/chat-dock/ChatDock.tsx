@@ -1,3 +1,4 @@
+import '../chat/TaskShaping.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
@@ -31,7 +32,10 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
-import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
+import {
+  conversationCanMutate as canMutateConversation,
+  conversationOpenPhase,
+} from '../../contexts/conversation-open-policy';
 import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
 import {
   setShortcutContext,
@@ -76,6 +80,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useWorkingChatFocus } from '../../hooks/useWorkingChatFocus';
 import {
   dockAcceptsNewChatIntent,
   readNewChatIntent,
@@ -86,6 +91,10 @@ import {
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
+import {
+  requestTaskShaping,
+  TASK_SHAPING_INSTRUCTION,
+} from '../../lib/task-shaping';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -103,6 +112,7 @@ import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
+import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
@@ -474,6 +484,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: string;
     /** Absent: only stage `files` into the new chat's composer. */
     prompt?: string;
+    ambientContext?: string;
     authority: typeof requestAuthority;
     /** Start's files: staged by this chat's own intake before the send. */
     files?: File[];
@@ -824,6 +835,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     onOpenInboxSession,
     newChatRequestEpoch,
     newChatStartWithDefault,
+    newChatTaskShaping,
     newChatInitialPrompt,
     newChatInitialFiles,
     newChatSelection,
@@ -1153,7 +1165,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (chatInput.sendBlockedReason) return;
     setPendingGoalSend(null);
     if (chatInput.input !== pendingGoalSend.prompt) return;
-    void chatInput.handleSend(pendingGoalSend.prompt);
+    void chatInput.handleSend(pendingGoalSend.prompt, undefined, {
+      ambientContext: pendingGoalSend.ambientContext,
+    });
   }, [
     activeSessionId,
     pendingGoalSend,
@@ -1338,7 +1352,29 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
+  const turnIntoTask =
+    activeSession && !activeSession.replay && !importedSessionId
+      ? () =>
+          requestTaskShaping({
+            projectSlug: activeSession.projectSlug,
+            source: {
+              sessionId: activeSession.currentSessionId ?? activeSession.id,
+              conversationId: activeSession.conversationId,
+              agentSlug: activeSession.agentSlug,
+              agentName: activeSession.agentName,
+            },
+          })
+      : undefined;
   const dockMoreActions: DockMoreAction[] = [
+    ...(turnIntoTask
+      ? [
+          {
+            key: 'turn-into-task',
+            label: 'Turn into Task',
+            onSelect: turnIntoTask,
+          },
+        ]
+      : []),
     ...copyActions,
     ...(activeSession?.conversationId && !activeSession.replay
       ? [
@@ -1507,6 +1543,33 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       focusSession(sessionId, !isFullscreenPlacement);
     },
     [focusSession, isFullscreenPlacement, setImportedSessionId],
+  );
+  const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  const composerFocusPhase = activeSession
+    ? conversationOpenPhase(activeSession)
+    : null;
+  const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
+    {
+      activeSessionId,
+      ready:
+        composerFocusPhase === 'writable' &&
+        !!executionProfile &&
+        isPaneOpen &&
+        !importedSessionId,
+      terminal:
+        !activeSession ||
+        !!activeSession.replay ||
+        composerFocusPhase === 'read-only' ||
+        composerFocusPhase === 'unverified',
+      surfaceRef: conversationSurfaceRef,
+    },
+  );
+  const selectWorkingChat = useCallback(
+    (sessionId: string) => {
+      focusSessionInPane(sessionId);
+      requestComposerFocus(sessionId);
+    },
+    [focusSessionInPane, requestComposerFocus],
   );
   const closeImportedSession = useCallback(
     () => setImportedSessionId(null),
@@ -2373,6 +2436,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // Shared creation action opens a draft without starting an engine.
               onNewChat={openNewChatDirect}
               overflow={{
+                onTurnIntoTask: turnIntoTask,
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,
@@ -2532,7 +2596,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               chatControls={{
                 sessions,
                 unreadCount,
-                focusSession: focusSessionInPane,
+                focusSession: selectWorkingChat,
                 onNewChat: () => setShowNewChatModal(true),
                 setShowChatSettings,
               }}
@@ -2607,6 +2671,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 ) : null
               }
             />
+          )}
+          {activeSession?.taskShaping && isPaneOpen && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              aria-label="Remove Shaping a Task mode"
+              onClick={() =>
+                updateChat(activeSessionId!, { taskShaping: false })
+              }
+            >
+              Shaping a Task ×
+            </Button>
           )}
 
           {(isPaneOpen || isCollapsedDragPreview) && (
@@ -2688,7 +2764,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div className="chat-dock__conversation-surface">
+                <div
+                  className="chat-dock__conversation-surface"
+                  ref={conversationSurfaceRef}
+                >
                   <div ref={sessionInventoryMountRef} />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
@@ -2783,6 +2862,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}
+                      onComposerEnabledChange={onComposerEnabledChange}
                       secondaryActions={secondaryActions}
                       onOpenAgentHandoff={() =>
                         openConversationHandoff(composerAgentTriggerRef.current)
@@ -3067,6 +3147,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           showNewChatModal,
           newChatRequestEpoch,
           newChatStartWithDefault,
+          newChatTaskShaping,
           newChatInitialPrompt,
           newChatInitialFiles,
           newChatSelection,
@@ -3155,6 +3236,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             expectedDefinitionFingerprint,
             executionOnCurrentStation,
             initialFiles,
+            ambientContext,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3193,6 +3275,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               expectedDefinitionFingerprint,
               executionOnCurrentStation,
             );
+            if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
+              updateChat(sessionId, { taskShaping: true });
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,
@@ -3212,6 +3296,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? initialMessage
                   : newChatInitialPrompt)!,
                 authority: requestAuthority,
+                ambientContext,
                 files,
               });
             } else if (sessionId && files) {
@@ -3220,6 +3305,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               setPendingGoalSend({
                 sessionId,
                 authority: requestAuthority,
+                ambientContext,
                 files,
               });
             }

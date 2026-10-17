@@ -1711,7 +1711,7 @@ const SCREENS: Screen[] = [
     waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
       for (const control of [
-        page.getByRole('button', { name: 'New task', exact: true }),
+        page.getByRole('button', { name: 'New Task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(

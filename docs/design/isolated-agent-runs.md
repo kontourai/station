@@ -11,6 +11,33 @@
 
 Status: design note
 
+## Current Project worktree source identity
+
+[Worktree provisioning](../../src-server/services/projects/worktree-provisioning-service.ts)
+resolves the configured `baseRef` (default `HEAD`) to a full Git commit before
+creating an owned Project worktree. Checkout uses that exact commit even if the
+ref moves afterwards. Resolution and checkout disable Git replacement objects,
+so a replace ref cannot silently substitute another commit's contents.
+Missing refs and non-commit objects refuse before the worktree directory or
+branch is created. Existing dirty-repository, configuration,
+path and ownership checks still apply.
+
+[Session metadata](../../packages/contracts/src/workspace-isolation.ts) retains
+both the configured `baseRef` and its resolved `baseCommit`. The
+[foreground executor](../../src-server/services/execution-target/execution-target-execution.ts)
+passes those facts with the owned worktree at Session start. `baseCommit` is
+optional for older records: absence means the starting commit was not recorded,
+not that the current value of `baseRef` reconstructs it.
+
+This records the selected starting source. It does not freeze the checkout,
+prevent agent edits, certify subsequent output, prepare tools or grant setup
+authority. Shared-workspace Sessions do not resolve a new base. The broader run
+record and command below remain proposals. Source-pinning and foreground
+metadata are covered by the
+[real Git provisioning tests](../../src-server/services/projects/__tests__/worktree-provisioning-service.test.ts)
+and [foreground caller test](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts);
+these fixtures do not establish a live engine or packaged-release journey.
+
 ## Purpose
 
 Normal chat sessions should keep using the current project checkout and runtime connection. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.

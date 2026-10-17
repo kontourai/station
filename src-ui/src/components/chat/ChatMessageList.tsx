@@ -1444,6 +1444,7 @@ function ChatMessageListComponent({
             className="chat-messages"
             ref={messagesContainerRef}
             role="log"
+            tabIndex={-1}
             aria-label="Conversation transcript"
             data-chat-session-id={activeSession.id}
             aria-live="polite"

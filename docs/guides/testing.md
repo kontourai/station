@@ -356,20 +356,21 @@ comments into a trend table; `--json` also works for history.
 | Integration failures and duration | Failed groups containing the required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled owning workflow attempts (`run_started_at` to `updated_at`, including runner waits). `ci.yml` owns new candidates only when that exact attempt contains the integration aggregate; its custom run display name does not determine ownership. Legacy integration workflows remain measurable; mixed candidates prefer the new owner without counting both. |
 | PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
 | Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
-| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
-| Time with >=18 jobs running | Sweep-line share including idle gaps; running unfinished jobs extend to `until`, while queued jobs contribute zero runner slots from creation through `until`. Completed jobs span start to completion, with completion floored at start for inverted timestamps; simultaneous completions precede starts. |
-| Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
+| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs require an assigned runner ID, a non-skipped conclusion and start/end timestamps. Queued jobs can have placeholder start timestamps; those never establish execution. Cancelled jobs without a runner contribute waiting time only. Missing attribution for other running or terminal jobs makes the snapshot incomplete and excludes their timing. Runner-hours remain completed-job measurements; runner and waiting hours are clipped to the window. Unfinished jobs have a separate count and wait-so-far distribution through `until`. |
+| Time with >=18 jobs running | Sweep-line share clipped to `since`–`until`, including idle gaps. Only assigned, non-queued jobs occupy runners; unfinished execution extends to `until`. JSON separates hosted and self-hosted concurrency from the combined inventory. Free-pool comparisons use hosted occupancy. Simultaneous completions precede starts. |
+| Jobs waiting >5 / >20 minutes; OS wait | Shares among attributed executed jobs, known unfinished jobs and cancellations before runner assignment, using observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
-Runs are selected by creation time in the half-open window; all job durations
-and available attempts for those runs are counted, even when completion lies
-outside the window. Percentiles use the baseline's sorted upper-rank definition
+Runs are selected by creation time in the half-open window, including available
+attempts. Capacity intervals are clipped to the window and exclude jobs created
+after its end. Completed per-PR and per-merge-group cost samples retain full
+job durations, even when completion lies outside the window. Percentiles use the baseline's sorted upper-rank definition
 (index `floor(n * p)`, capped at `n - 1`); empty populations are `null`/`n/a`.
 Any unfinished jobs set `incomplete: true` with reason
 `window includes N unfinished jobs` and exit nonzero. Their wait and concurrency
-stop at `until`; completed-job durations still use their full intervals.
+stop at `until`; per-PR and per-merge-group cost samples use full completed intervals.
 Collection is not an atomic GitHub snapshot. Re-running a window can change
 pending conclusions or reveal additional attempts.
 
@@ -535,6 +536,16 @@ reconciles that result for the newest applicable exact-head source run, keeping
 metadata-only suites from replacing it. Missing or incomplete proof remains
 pending; failed or cancelled proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
+
+PR source computation has repository-wide FIFO ceilings: at most two statics
+jobs and two affected-test shard jobs run across all PRs. Both families split
+work into two buckets; one-shard PRs can use both shard buckets, and larger
+plans retain every shard. Waiting jobs consume no runner. Different-head
+supersession still cancels obsolete source runs; same-head duplicates wait
+rather than cancelling another run's proof. Merge-group, push and manual
+diagnostic jobs use separate source-specific groups. These four PR computation
+slots exclude planners, security checks, platform builds and status publishers;
+they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
 exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
@@ -1295,6 +1306,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+On Linux, `ci:fast` and the full `typecheck` aggregate refuse to run inside a
+live `station-<instance>.service` cgroup. Verification started by a hosted Agent
+inherits that service's memory failure domain: an OOM kill can terminate Station
+and every active conversation with it. Run those aggregates from an external
+shell or hosted CI. Focused tests and individual typecheck lanes remain available
+inside Station; the admission guard does not impose a memory budget on arbitrary
+shell commands.
+
 Station uses the pinned native TypeScript 7 compiler for type checks and
 package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
 retained only for policy scanners and tests using its JavaScript AST API;
@@ -1307,9 +1326,12 @@ Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
 `node_modules/.cache/station-tsbuildinfo/`. The slots are lock files in
-`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path, not
-`$TMPDIR`, so sandboxes and sudo join the same pool; private to the user and
-refused if another user owns it) and in the per-user temp directory on Windows.
+`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path independent
+of `$TMPDIR`, private to the user and refused if another user owns it) and in the
+per-user temp directory on Windows. A Linux `PrivateTmp` mount gives callers
+separate pools even when the path has the same spelling. Callers in different
+mount namespaces need an explicit shared `STATION_TYPECHECK_SLOT_DIR` to share
+one pool.
 Every caller must resolve the same directory: a second directory is a second
 pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
@@ -2209,3 +2231,63 @@ AWS SDK and other provider wrappers use route/service integration tests with an
 injected or mocked provider boundary for deterministic contracts. Keep real
 provider execution in an explicit opt-in live lane; a browser interception is
 not evidence that the server-side SDK integration works.
+
+### Review repeated Gallery evidence once
+
+Gallery's comparator reports exact rendering differences, not product intent.
+Keep capture failures, pixel/dimension changes, demonstrated product defects,
+and screens without baseline coverage separate. Equal pixel counts establish
+no image identity or common cause. Read the live main rules before landing:
+when Gallery is absent from required contexts, its red result alone must not
+hold an otherwise eligible PR. A demonstrated product defect still needs an
+explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
+and exact-SHA promotion receipts establish different things.
+
+Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
+reusing a verdict or skipping capture. Run it in the exact candidate checkout
+against the downloaded artifact and that checkout's baseline:
+
+```sh
+node scripts/gallery-review-evidence.mjs --gallery=/path/to/artifact --context=/path/to/context.json --out=/path/to/review.json
+# For a later run, add --previous=/path/to/previous-reviewed-report.json
+```
+
+The context JSON must supply `sourceSha` (full candidate SHA), `runUrl`,
+`renderer` (verified pinned container/browser/font environment identity), and
+`captureContract` (SHA-256 fingerprint of the executed capture/comparison
+contract). Establish that fingerprint from the exact executed screenshot spec,
+fixture helpers, comparator/report generator, workflow and lockfile bytes. If
+those inputs or renderer provenance cannot be established, do not link reviews.
+Renderer and contract provenance are caller-supplied verified inputs; the tool
+does not establish them from a label. This is a visual-review fingerprint,
+never a complete build-cache key.
+
+After inspecting the actual images, retain the report with a `review` object
+containing `owner`, `disposition`, and `evidenceUrl`. A later report links it only
+when all image bytes, decoded pixels, dimensions, controls/capture diagnostics,
+baseline entries/reference bytes, renderer and contract match. The tool checks
+claimed primary and auxiliary PNG hashes against actual files. It refuses
+outside-gallery paths and never links incomplete or failed captures. Changing
+any signature input requires renewed review. Each report retains its own source
+and run identity and comparator exit status; a linked review does not turn red
+green or establish source correctness, determinism, merge or promotion proof.
+
+Keep retained packets in durable scratch storage with their original negative
+results. Agents should coalesce an identical signature into the original owner
+review instead of downloading or visually inspecting it again. New controls,
+routes, dimensions, missing/new screens or capture failures reopen the review.
+Do not rebaseline, mask, add thresholds, rerun unchanged code, or promote Gallery
+to a required gate as a way to dispose of repeated notifications.
+
+An observed hosted sample, run `38767328336` (2026-10-15), spent 317 seconds in
+its Gallery job: capture 186s, dependency installation 53s, container setup 34s,
+comparison 2s, artifact upload 2s. Classification took another 19s; runner queue
+wait is separate. These are one run's step timings, not averages or a speedup
+claim. Capture dominates that sample. First remove repeated triage; keep PR and
+merge-group captures intact until reuse has complete input fingerprints and
+reliable invalidation. Exact comparison itself was a small part of this cost.
+
+Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
+310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
+Across these three observed jobs, capture remained the largest step. The sample
+does not establish a workload-wide average or authorize capture reuse.
