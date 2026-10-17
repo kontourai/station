@@ -206,6 +206,16 @@ failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
+The same observer reports a missing scheduled Nightly request after four hours
+or a queued/running Nightly older than six hours, including a run whose source
+gate already passed. Active runs are checked beyond the completed-history
+lookback. A newer request does not hide an older stalled run; manual
+recovery does not prove the hourly schedule is functioning. Recent cadence or
+unchanged-source skips are healthy schedule activity, not publication proof.
+These are conservative escalation bounds, not promised runner admission or
+publication deadlines. The issue identifies the run and exact source for its
+owner; the observer does not dispatch, retry or cancel work.
+
 Delivery failures remain in the tracker beyond its 48-hour run lookback until
 the failed leg has terminal evidence: a later native ledger job or the CLI
 registry-provenance step, including manual Nightly recovery. A later skipped Nightly or green qualification cannot clear the failure. The tracker closes only when
@@ -430,6 +440,13 @@ Nightly has two entry points, both serialized on the `nightly` concurrency group
   An optional `source_sha` can only echo that SHA, never choose an older green
   ancestor. Final native provider admission still checks cadence, ancestry,
   the owner recovery lock and the source gate through GitHub's API.
+
+Cadence is checked before source tests and artifact builds. A cadence skip
+therefore leaves no qualified artifact waiting to be preserved. Once admitted,
+the durable GitHub run retains its event SHA through publication and is not
+cancelled by newer arrivals. This coalesces changes at each eligible scheduled
+request without building a backlog of stale sources. A failure retains its
+artifacts and recovery history; it does not authorize an older-source publish.
 
 Both paths run under `nightly.yml`'s existing trusted publisher identity. They
 require lint, all typecheck lanes, the native boundary ratchet and deterministic

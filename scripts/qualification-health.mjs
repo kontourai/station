@@ -6,6 +6,24 @@ import { QUALIFICATION_GATE_JOB } from './qualification-repair.mjs';
 
 const TITLE = 'Main qualification health';
 const HOUR = 60 * 60_000;
+const NIGHTLY_LIVE_STATES = new Set([
+  'queued',
+  'pending',
+  'waiting',
+  'requested',
+  'in_progress',
+]);
+const NIGHTLY_TERMINAL_RESULTS = new Set([
+  'success',
+  'failure',
+  'cancelled',
+  'timed_out',
+  'skipped',
+  'neutral',
+  'action_required',
+  'startup_failure',
+  'stale',
+]);
 
 /** Observe qualification without starting a run or retrying a repair. */
 export async function checkQualificationHealth(
@@ -95,37 +113,115 @@ export async function checkQualificationHealth(
     });
   }
   const latest = observed[0];
-  const manualRuns = await listGithub(
+  const recentNightly = await listGithub(
     `actions/workflows/nightly.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
     'workflow_runs',
     options,
   );
-  const recoveries = [];
-  for (const run of manualRuns.filter(
+  // Live work must not age out of the completed-history lookback.
+  const liveNightly = await Promise.all(
+    [...NIGHTLY_LIVE_STATES].map((status) =>
+      listGithub(
+        `actions/workflows/nightly.yml/runs?branch=main&status=${status}`,
+        'workflow_runs',
+        options,
+      ),
+    ),
+  );
+  const nightlyRuns = [...recentNightly, ...liveNightly.flat()].filter(
     (run) =>
       run.path === '.github/workflows/nightly.yml' &&
       run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
       run.head_branch === 'main' &&
-      ['schedule', 'workflow_dispatch'].includes(run.event) &&
-      run.status === 'completed',
-  )) {
+      ['schedule', 'workflow_dispatch'].includes(run.event),
+  );
+  const canonicalNightly = new Map();
+  for (const run of nightlyRuns) {
+    const created = Date.parse(run.created_at);
+    const updated = Date.parse(run.updated_at);
+    if (
+      !Number.isSafeInteger(run.id) ||
+      run.id <= 0 ||
+      !/^[0-9a-f]{40}$/.test(run.head_sha ?? '') ||
+      !Number.isSafeInteger(run.run_attempt) ||
+      run.run_attempt <= 0 ||
+      !Number.isFinite(created) ||
+      created > now ||
+      !Number.isFinite(updated) ||
+      updated < created ||
+      updated > now ||
+      (run.status === 'completed'
+        ? !NIGHTLY_TERMINAL_RESULTS.has(run.conclusion)
+        : !NIGHTLY_LIVE_STATES.has(run.status) || run.conclusion !== null)
+    )
+      throw new Error('Invalid canonical Nightly run');
+    const previous = canonicalNightly.get(run.id);
+    if (previous) {
+      const identity = (item) =>
+        JSON.stringify([
+          item.id,
+          item.run_attempt,
+          item.head_sha,
+          item.head_repository?.full_name,
+          item.head_branch,
+          item.path,
+          item.event,
+          item.created_at,
+        ]);
+      if (
+        identity(previous) !== identity(run) ||
+        (previous.updated_at === run.updated_at &&
+          (previous.status !== run.status ||
+            previous.conclusion !== run.conclusion))
+      )
+        throw new Error('Inconsistent Nightly run inventory');
+      if (Date.parse(previous.updated_at) >= updated) continue;
+    }
+    canonicalNightly.set(run.id, run);
+  }
+  const nightlyObserved = [];
+  for (const run of canonicalNightly.values()) {
+    const created = Date.parse(run.created_at);
     const jobs = await listGithub(
-      `actions/runs/${run.id}/jobs`,
+      `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
       'jobs',
       options,
     );
+    if (
+      jobs.some(
+        (job) =>
+          job.run_id !== run.id ||
+          job.run_attempt !== run.run_attempt ||
+          job.head_sha !== run.head_sha,
+      )
+    )
+      throw new Error('Invalid Nightly current-attempt job identity');
     const sourceGate = jobs.filter(
       (job) => job.name === '1 · Source gate (lint, typecheck, browser smoke)',
     );
-    recoveries.push({
-      run,
-      jobs,
-      passed:
-        sourceGate.length === 1 &&
-        sourceGate[0].status === 'completed' &&
-        sourceGate[0].conclusion === 'success',
-    });
+    if (sourceGate.length > 1) throw new Error('Ambiguous Nightly source gate');
+    const passed =
+      sourceGate.length === 1 &&
+      sourceGate[0].status === 'completed' &&
+      sourceGate[0].conclusion === 'success';
+    if (
+      passed &&
+      (!Number.isFinite(Date.parse(sourceGate[0].completed_at)) ||
+        Date.parse(sourceGate[0].completed_at) > now)
+    )
+      throw new Error('Invalid Nightly source completion');
+    nightlyObserved.push({ run, jobs, passed, created });
   }
+  const recoveries = nightlyObserved.filter(
+    (item) => item.run.status === 'completed',
+  );
+  const latestScheduled = nightlyObserved
+    .filter((item) => item.run.event === 'schedule')
+    .sort((a, b) => b.created - a.created)[0];
+  const overdueNightly = nightlyObserved.filter(
+    (item) =>
+      NIGHTLY_LIVE_STATES.has(item.run.status) && now - item.created > 6 * HOUR,
+  );
   const failures = [...observed, ...recoveries]
     .filter(
       (item) =>
@@ -210,11 +306,24 @@ export async function checkQualificationHealth(
     reasons.push(
       'The latest qualification has remained queued or running for more than 3 hours.',
     );
+  if (!latestScheduled || now - latestScheduled.created > 4 * HOUR)
+    reasons.push(
+      'No scheduled Nightly request within 4 hours (schedule freshness bound; manual runs do not establish scheduled liveness).',
+    );
+  for (const item of overdueNightly)
+    reasons.push(
+      `Nightly ${item.passed ? 'delivery wait' : 'source admission/execution wait'} exceeds 6 hours: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${item.run.id}, source \`${item.run.head_sha}\`, attempt ${item.run.run_attempt}, status ${item.run.status}, requested ${item.run.created_at}, elapsed ${Math.floor((now - item.created) / 60_000)} minutes. This is an escalation bound, not a delivery guarantee.`,
+    );
   if (pendingDelivery)
     reasons.push(
       'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     );
 
+  const nightlyNeedsAttention =
+    pendingDelivery ||
+    !latestScheduled ||
+    now - latestScheduled.created > 4 * HOUR ||
+    overdueNightly.length > 0;
   const lines = [
     'Owner: repository release maintainers; failed-source repair remains in the **Main qualification repair** episode.',
     '',
@@ -223,6 +332,9 @@ export async function checkQualificationHealth(
     latest
       ? `Latest run: ${latest.run.html_url} (${latest.run.status}; ${latest.run.conclusion || 'pending'}), source \`${latest.run.head_sha}\`.`
       : 'No canonical main qualification run found in the last 48 hours.',
+    latestScheduled
+      ? `Latest scheduled Nightly request: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${latestScheduled.run.id}, source \`${latestScheduled.run.head_sha}\`, created ${latestScheduled.run.created_at}.`
+      : 'No canonical scheduled Nightly request found in the last 48 hours.',
     green
       ? `Latest passing gate: ${green.run.html_url}, source \`${green.run.head_sha}\`, completed ${new Date(green.completed).toISOString()}.`
       : 'No passing qualification gate found in the last 48 hours.',
@@ -230,11 +342,15 @@ export async function checkQualificationHealth(
       ? `Unresolved Nightly delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
       : 'No failed Nightly delivery run found in the last 48 hours.',
     '',
-    'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run ' +
-      (pendingDelivery ? 'nightly.yml' : 'main-qualification.yml') +
-      ' --repo ' +
-      env.GITHUB_REPOSITORY +
-      (pendingDelivery ? ' --ref main`.' : ' --ref main -F force=true`.'),
+    overdueNightly.length
+      ? 'Inspect and resolve the existing Nightly run owner before considering a manual dispatch; this observer neither cancels nor duplicates live work.'
+      : 'Inspect runner availability, schedule delays, failing jobs and the existing repair episode. Review its previous attempt before authorizing another repair. Manual recovery: `gh workflow run ' +
+        (nightlyNeedsAttention ? 'nightly.yml' : 'main-qualification.yml') +
+        ' --repo ' +
+        env.GITHUB_REPOSITORY +
+        (nightlyNeedsAttention
+          ? ' --ref main`.'
+          : ' --ref main -F force=true`.'),
     'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly requires its exact-source usability gate; Beta and stable require full qualification.',
   ];
   if (reasons.length) {

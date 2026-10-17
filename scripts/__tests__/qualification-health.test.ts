@@ -20,6 +20,7 @@ const run = (id = 1, hours = 1, extra = {}) => ({
   created_at: ago(hours),
   updated_at: ago(hours - 0.2),
   html_url: `https://example.test/runs/${id}`,
+  run_attempt: 1,
   ...extra,
 });
 const gate = (extra = {}) => ({
@@ -43,7 +44,10 @@ async function observe({
   jobs = { 1: [gate()] },
   issues = [issue],
   manualRuns = [] as ReturnType<typeof run>[],
+  liveRuns = [] as ReturnType<typeof run>[],
+  scheduledRuns = [run(900, 1, { path: '.github/workflows/nightly.yml' })],
   failJobs = false,
+  failLiveInventory = false,
   enabled = true,
 }: {
   runs?: ReturnType<typeof run>[];
@@ -51,11 +55,17 @@ async function observe({
     number,
     (ReturnType<typeof gate> & {
       steps?: { name: string; conclusion: string }[];
+      run_id?: number;
+      run_attempt?: number;
+      head_sha?: string;
     })[]
   >;
   issues?: (typeof issue)[];
   manualRuns?: ReturnType<typeof run>[];
+  scheduledRuns?: ReturnType<typeof run>[];
+  liveRuns?: ReturnType<typeof run>[];
   failJobs?: boolean;
+  failLiveInventory?: boolean;
   enabled?: boolean;
 } = {}) {
   const writes: {
@@ -79,20 +89,49 @@ async function observe({
       return;
     }
     reads.push(path);
-    if (path.endsWith('/runs'))
+    if (path.endsWith('/runs')) {
+      const status = new URL(
+        request.url ?? '/',
+        'http://localhost',
+      ).searchParams.get('status');
+      if (status && failLiveInventory) {
+        response.writeHead(503);
+        response.end('{}');
+        return;
+      }
       response.end(
         JSON.stringify({
-          workflow_runs: path.includes('/nightly.yml/') ? manualRuns : runs,
+          workflow_runs: path.includes('/nightly.yml/')
+            ? status
+              ? liveRuns.filter((item) => item.status === status)
+              : [...scheduledRuns, ...manualRuns]
+            : runs,
         }),
       );
-    else if (path.endsWith('/jobs')) {
+    } else if (path.endsWith('/jobs')) {
       if (failJobs) {
         response.writeHead(503);
         response.end('{}');
         return;
       }
-      const id = Number(path.split('/').at(-2));
-      response.end(JSON.stringify({ jobs: jobs[id] ?? [] }));
+      const id = Number(/\/runs\/(\d+)\//.exec(path)?.[1]);
+      const nightly = [...scheduledRuns, ...manualRuns, ...liveRuns].find(
+        (item) => item.id === id,
+      );
+      response.end(
+        JSON.stringify({
+          jobs: (jobs[id] ?? []).map((job) =>
+            nightly
+              ? {
+                  run_id: id,
+                  run_attempt: nightly.run_attempt,
+                  head_sha: nightly.head_sha,
+                  ...job,
+                }
+              : job,
+          ),
+        }),
+      );
     } else if (path.endsWith('/issues')) response.end(JSON.stringify(issues));
     else {
       response.writeHead(404);
@@ -121,6 +160,230 @@ async function observe({
 }
 
 describe('qualification health through the GitHub API', () => {
+  it('reports a missing scheduled Nightly request even when source qualification is healthy', async () => {
+    const { result, writes } = await observe({
+      manualRuns: [],
+      scheduledRuns: [],
+    });
+    expect(result.healthy).toBe(false);
+    expect(result.reasons).toContain(
+      'No scheduled Nightly request within 4 hours (schedule freshness bound; manual runs do not establish scheduled liveness).',
+    );
+    expect(writes[0].body.state).toBe('open');
+  });
+
+  it('reports a six-hour delivery wait after a successful source gate', async () => {
+    const { result } = await observe({
+      manualRuns: [
+        run(2, 7, {
+          path: '.github/workflows/nightly.yml',
+          status: 'pending',
+          conclusion: null,
+        }),
+      ],
+      jobs: {
+        1: [gate()],
+        2: [gate({ name: '1 · Source gate (lint, typecheck, browser smoke)' })],
+      },
+    });
+    expect(result.healthy).toBe(false);
+    expect(result.summary).toContain('Nightly delivery wait exceeds 6 hours');
+    expect(result.summary).toContain('a'.repeat(40));
+    expect(result.summary).toContain('/actions/runs/2');
+  });
+
+  it('keeps a missing schedule visible despite fresh manual recovery', async () => {
+    const { result } = await observe({
+      scheduledRuns: [run(900, 5, { path: '.github/workflows/nightly.yml' })],
+      manualRuns: [
+        run(2, 0.1, {
+          path: '.github/workflows/nightly.yml',
+          event: 'workflow_dispatch',
+          updated_at: ago(0.05),
+        }),
+      ],
+    });
+    expect(result.reasons).toEqual([
+      'No scheduled Nightly request within 4 hours (schedule freshness bound; manual runs do not establish scheduled liveness).',
+    ]);
+    expect(result.summary).toContain('/actions/runs/900');
+  });
+
+  it('accepts completed cadence skips and the exact four-hour schedule boundary', async () => {
+    const { result } = await observe({
+      scheduledRuns: [run(900, 4, { path: '.github/workflows/nightly.yml' })],
+    });
+    expect(result.healthy).toBe(true);
+  });
+
+  it.each(['queued', 'pending', 'waiting', 'requested', 'in_progress'])(
+    'reports aged %s source work without requiring source success',
+    async (status) => {
+      const waiting = run(2, 7, {
+        path: '.github/workflows/nightly.yml',
+        status,
+        conclusion: null,
+      });
+      const { result, reads } = await observe({ liveRuns: [waiting] });
+      expect(result.reasons).toHaveLength(1);
+      expect(result.reasons[0]).toContain(
+        'Nightly source admission/execution wait exceeds 6 hours',
+      );
+      expect(result.reasons[0]).toContain(`/actions/runs/2`);
+      expect(result.reasons[0]).toContain('a'.repeat(40));
+      expect(result.summary).toContain(
+        'resolve the existing Nightly run owner before considering a manual dispatch',
+      );
+      expect(
+        reads.some((path) => path.includes('/runs/2/attempts/1/jobs')),
+      ).toBe(true);
+    },
+  );
+
+  it('keeps an older live delivery visible beyond the history lookback despite fresh schedule activity', async () => {
+    const waiting = run(2, 50, {
+      path: '.github/workflows/nightly.yml',
+      status: 'in_progress',
+      conclusion: null,
+    });
+    const { result } = await observe({
+      liveRuns: [waiting],
+      jobs: {
+        1: [gate()],
+        2: [
+          gate({
+            name: '1 · Source gate (lint, typecheck, browser smoke)',
+            started_at: ago(49),
+            completed_at: ago(48),
+          }),
+        ],
+      },
+    });
+    expect(result.reasons).toHaveLength(1);
+    expect(result.reasons[0]).toContain(
+      'Nightly delivery wait exceeds 6 hours',
+    );
+  });
+
+  it('does not alert before the six-hour bound and clears only after the old run is terminal', async () => {
+    const waiting = run(2, 6, {
+      path: '.github/workflows/nightly.yml',
+      status: 'pending',
+      conclusion: null,
+    });
+    expect((await observe({ liveRuns: [waiting] })).result.healthy).toBe(true);
+    const completed = {
+      ...waiting,
+      status: 'completed',
+      conclusion: 'success',
+      updated_at: ago(0.1),
+    };
+    const { result, writes } = await observe({ manualRuns: [completed] });
+    expect(result.healthy).toBe(true);
+    expect(writes[0].body).toEqual({
+      state: 'closed',
+      state_reason: 'completed',
+    });
+  });
+
+  it('deduplicates consistent recent and live snapshots', async () => {
+    const waiting = run(2, 7, {
+      path: '.github/workflows/nightly.yml',
+      status: 'pending',
+      conclusion: null,
+    });
+    const { result } = await observe({
+      manualRuns: [waiting],
+      liveRuns: [waiting],
+    });
+    expect(result.reasons).toHaveLength(1);
+  });
+
+  it('refuses changed attempt identities between recent and live inventory', async () => {
+    const waiting = run(2, 7, {
+      path: '.github/workflows/nightly.yml',
+      status: 'pending',
+      conclusion: null,
+    });
+    await expect(
+      observe({
+        manualRuns: [waiting],
+        liveRuns: [{ ...waiting, run_attempt: 2 }],
+      }),
+    ).rejects.toThrow('Inconsistent Nightly run inventory');
+  });
+
+  it('ignores noncanonical schedule lookalikes without declaring schedule health', async () => {
+    for (const override of [
+      { path: '.github/workflows/ci.yml' },
+      { head_branch: 'feature' },
+      { event: 'push' },
+      { head_repository: { full_name: 'foreign/repo' } },
+    ]) {
+      const { result } = await observe({
+        scheduledRuns: [
+          run(900, 1, { path: '.github/workflows/nightly.yml', ...override }),
+        ],
+      });
+      expect(result.reasons).toHaveLength(1);
+      expect(result.reasons[0]).toContain(
+        'No scheduled Nightly request within 4 hours',
+      );
+    }
+  });
+
+  it('refuses malformed canonical Nightly metadata or an unknown state instead of closing the tracker', async () => {
+    for (const override of [
+      { id: 0 },
+      { run_attempt: 0 },
+      { head_sha: 'invalid' },
+      { created_at: 'invalid' },
+      { created_at: ago(-1) },
+      { updated_at: ago(-1) },
+      { status: 'future-state', conclusion: null },
+      { status: 'pending', conclusion: 'success' },
+      { status: 'completed', conclusion: null },
+    ]) {
+      await expect(
+        observe({
+          scheduledRuns: [
+            run(900, 1, { path: '.github/workflows/nightly.yml', ...override }),
+          ],
+        }),
+      ).rejects.toThrow('Invalid canonical Nightly run');
+    }
+  });
+
+  it('refuses source proof from a different run, attempt or source', async () => {
+    for (const override of [
+      { run_id: 99 },
+      { run_attempt: 2 },
+      { head_sha: 'b'.repeat(40) },
+    ]) {
+      await expect(
+        observe({
+          jobs: {
+            1: [gate()],
+            900: [
+              {
+                ...gate({
+                  name: '1 · Source gate (lint, typecheck, browser smoke)',
+                }),
+                ...override,
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow('Invalid Nightly current-attempt job identity');
+    }
+  });
+
+  it('does not close the tracker when live inventory lookup is unavailable', async () => {
+    await expect(observe({ failLiveInventory: true })).rejects.toThrow(
+      'HTTP 503',
+    );
+  });
+
   it('closes the incident only after a fresh gate and recent actual job start', async () => {
     const { result, writes } = await observe();
     expect(result.healthy).toBe(true);
@@ -443,7 +706,7 @@ describe('qualification health through the GitHub API', () => {
       runs: [run(2, 1, { head_repository: { full_name: 'fork/repo' } })],
     });
     expect(result.healthy).toBe(false);
-    expect(reads.some((path) => path.endsWith('/jobs'))).toBe(false);
+    expect(reads.some((path) => path.includes('/runs/2/'))).toBe(false);
   });
 
   it('fails a GitHub lookup without closing or replacing the tracker', async () => {
