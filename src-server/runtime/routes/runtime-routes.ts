@@ -142,6 +142,10 @@ import {
 } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import {
+  type SessionStartResult,
+  startUnlessDelivered,
+} from '@kontourai/monument';
+import {
   type DevicePairingRequest,
   parseTaskTurnReference,
 } from '@kontourai/station-contracts';
@@ -553,10 +557,6 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import {
-  type SessionStartResult,
-  startUnlessDelivered,
-} from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';

@@ -32,7 +32,10 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
-import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
+import {
+  conversationCanMutate as canMutateConversation,
+  conversationOpenPhase,
+} from '../../contexts/conversation-open-policy';
 import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
 import {
   setShortcutContext,
@@ -77,6 +80,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useWorkingChatFocus } from '../../hooks/useWorkingChatFocus';
 import {
   dockAcceptsNewChatIntent,
   readNewChatIntent,
@@ -1547,6 +1551,33 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [focusSession, isFullscreenPlacement, setImportedSessionId],
   );
+  const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  const composerFocusPhase = activeSession
+    ? conversationOpenPhase(activeSession)
+    : null;
+  const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
+    {
+      activeSessionId,
+      ready:
+        composerFocusPhase === 'writable' &&
+        !!executionProfile &&
+        isPaneOpen &&
+        !importedSessionId,
+      terminal:
+        !activeSession ||
+        !!activeSession.replay ||
+        composerFocusPhase === 'read-only' ||
+        composerFocusPhase === 'unverified',
+      surfaceRef: conversationSurfaceRef,
+    },
+  );
+  const selectWorkingChat = useCallback(
+    (sessionId: string) => {
+      focusSessionInPane(sessionId);
+      requestComposerFocus(sessionId);
+    },
+    [focusSessionInPane, requestComposerFocus],
+  );
   const closeImportedSession = useCallback(
     () => setImportedSessionId(null),
     [setImportedSessionId],
@@ -2575,7 +2606,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               chatControls={{
                 sessions,
                 unreadCount,
-                focusSession: focusSessionInPane,
+                focusSession: selectWorkingChat,
                 onNewChat: () => setShowNewChatModal(true),
                 setShowChatSettings,
               }}
@@ -2731,7 +2762,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div className="chat-dock__conversation-surface">
+                <div
+                  className="chat-dock__conversation-surface"
+                  ref={conversationSurfaceRef}
+                >
                   <div ref={sessionInventoryMountRef} />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
@@ -2826,6 +2860,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}
+                      onComposerEnabledChange={onComposerEnabledChange}
                       secondaryActions={secondaryActions}
                       onOpenAgentHandoff={() =>
                         openConversationHandoff(composerAgentTriggerRef.current)

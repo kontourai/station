@@ -515,7 +515,7 @@ async function main() {
 main().catch((error: unknown) => {
   const reason =
     error instanceof assert.AssertionError &&
-    /^fixture_[a-z0-9_]+$/u.test(error.message)
+    /^fixture_[a-z0-9_]{1,80}$/u.test(error.message)
       ? `: ${error.message}`
       : '';
   process.stderr.write(`native_fresh_fixture_refused${reason}\n`);
