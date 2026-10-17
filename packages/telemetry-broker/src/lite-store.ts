@@ -3,13 +3,17 @@ import type {
   StationDailyPing,
   TelemetryPublisherId,
 } from '@kontourai/station-contracts/product-telemetry';
-import {
-  STATION_DAILY_FIELDS,
-  TELEMETRY_CHANNELS,
-} from '@kontourai/station-contracts/product-telemetry';
+import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemetry';
 import { parseStationDailyPing } from '@kontourai/station-shared/product-telemetry';
-import type { PoolClient } from 'pg';
+import type { QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
+
+interface LiteSqlClient {
+  query<Row extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: Row[]; rowCount: number | null }>;
+}
 
 const SCHEMA = `
 CREATE TABLE station_telemetry.lite_sources (
@@ -27,9 +31,31 @@ CREATE TABLE station_telemetry.lite_rollups (
  PRIMARY KEY(day,publisher,cell_hash));
 `;
 const DIGEST = createHash('sha256').update(SCHEMA).digest('hex');
-const tables = ['lite_pings', 'lite_rollups', 'lite_sources', 'publisher_keys'];
+const MARGINAL_SCHEMA = `
+DROP TABLE station_telemetry.lite_rollups;
+CREATE TABLE station_telemetry.lite_marginals (
+ day date NOT NULL, publisher text NOT NULL, dimension text NOT NULL, value text NOT NULL,
+ pings bigint NOT NULL CHECK(pings>0), clients bigint NOT NULL CHECK(clients>0), finalized boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(day,publisher,dimension,value));
+CREATE TABLE station_telemetry.lite_clients (
+ day date NOT NULL, publisher text NOT NULL, dimension text NOT NULL, value text NOT NULL,
+ client_hash bytea NOT NULL CHECK(octet_length(client_hash)=32), PRIMARY KEY(day,publisher,dimension,value,client_hash));
+CREATE TABLE station_telemetry.lite_capacity (singleton boolean PRIMARY KEY CHECK(singleton), pings bigint NOT NULL CHECK(pings>=0));
+INSERT INTO station_telemetry.lite_capacity SELECT true,count(*) FROM station_telemetry.lite_pings;
+`;
+const MARGINAL_DIGEST = createHash('sha256')
+  .update(MARGINAL_SCHEMA)
+  .digest('hex');
+const tables = [
+  'lite_capacity',
+  'lite_clients',
+  'lite_marginals',
+  'lite_pings',
+  'lite_sources',
+  'publisher_keys',
+];
 
-export async function migrateLite(client: PoolClient): Promise<void> {
+export async function migrateLite(client: LiteSqlClient): Promise<void> {
   const { rows } = await client.query<{ digest: string }>(
     'SELECT digest FROM station_telemetry.migrations WHERE version=2',
   );
@@ -41,11 +67,23 @@ export async function migrateLite(client: PoolClient): Promise<void> {
     );
   } else if (rows[0].digest !== DIGEST)
     throw new BrokerError('schema_incompatible');
+  const marginal = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=3',
+  );
+  if (!marginal.rows.length) {
+    // Legacy joint cells cannot establish distinct network contributors. Never promote them.
+    await client.query(MARGINAL_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(3,$1)',
+      [MARGINAL_DIGEST],
+    );
+  } else if (marginal.rows[0].digest !== MARGINAL_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
-export async function assertLiteSchema(client: PoolClient): Promise<void> {
+export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   await client.query(
-    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_rollups IN ACCESS SHARE MODE',
+    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_clients,station_telemetry.lite_capacity IN ACCESS SHARE MODE',
   );
   const { rows } = await client.query<{
     name: string;
@@ -60,8 +98,10 @@ export async function assertLiteSchema(client: PoolClient): Promise<void> {
     [tables],
   );
   const expected = [
+    'lite_capacity|singleton:boolean:true,pings:bigint:true',
+    'lite_clients|day:date:true,publisher:text:true,dimension:text:true,value:text:true,client_hash:bytea:true',
+    'lite_marginals|day:date:true,publisher:text:true,dimension:text:true,value:text:true,pings:bigint:true,clients:bigint:true,finalized:boolean:true',
     'lite_pings|source_id:text:true,event_id:uuid:true,received_at:timestamp with time zone:true,ping:jsonb:true',
-    'lite_rollups|day:date:true,publisher:text:true,cell_hash:bytea:true,cell:jsonb:true,pings:bigint:true',
     'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true',
     'publisher_keys|publisher:text:true,credential_hash:bytea:true',
   ];
@@ -79,17 +119,23 @@ export async function assertLiteSchema(client: PoolClient): Promise<void> {
     SELECT c.relname||'|'||pg_get_constraintdef(co.oid) AS definition,
     co.convalidated AND NOT co.condeferrable AND COALESCE(i.indisvalid AND i.indisready,true) AS valid
     FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-    LEFT JOIN pg_index i ON i.indexrelid=co.conindid WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) ORDER BY 1`,
+    LEFT JOIN pg_index i ON i.indexrelid=co.conindid WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) AND co.contype<>'n' ORDER BY 1`,
     [tables],
   );
   if (
     constraints.rows.some((r) => !r.valid) ||
     JSON.stringify(constraints.rows.map((r) => r.definition)) !==
       JSON.stringify([
+        'lite_capacity|CHECK ((pings >= 0))',
+        'lite_capacity|CHECK (singleton)',
+        'lite_capacity|PRIMARY KEY (singleton)',
+        'lite_clients|CHECK ((octet_length(client_hash) = 32))',
+        'lite_clients|PRIMARY KEY (day, publisher, dimension, value, client_hash)',
+        'lite_marginals|CHECK ((clients > 0))',
+        'lite_marginals|CHECK ((pings > 0))',
+        'lite_marginals|PRIMARY KEY (day, publisher, dimension, value)',
         'lite_pings|FOREIGN KEY (source_id) REFERENCES station_telemetry.lite_sources(id)',
         'lite_pings|PRIMARY KEY (source_id, event_id)',
-        'lite_rollups|CHECK ((pings > 0))',
-        'lite_rollups|PRIMARY KEY (day, publisher, cell_hash)',
         'lite_sources|PRIMARY KEY (id)',
         'publisher_keys|CHECK ((octet_length(credential_hash) = 32))',
         'publisher_keys|PRIMARY KEY (publisher)',
@@ -107,6 +153,7 @@ export async function assertLiteSchema(client: PoolClient): Promise<void> {
   if (
     JSON.stringify(defaults.rows.map((r) => r.definition)) !==
     JSON.stringify([
+      'lite_marginals|finalized|false',
       'lite_pings|received_at|clock_timestamp()',
       'lite_sources|enabled|true',
     ])
@@ -116,6 +163,11 @@ export async function assertLiteSchema(client: PoolClient): Promise<void> {
     'SELECT digest FROM station_telemetry.migrations WHERE version=2',
   );
   if (marker.rows[0]?.digest !== DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const marginalMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=3',
+  );
+  if (marginalMarker.rows[0]?.digest !== MARGINAL_DIGEST)
     throw new BrokerError('schema_incompatible');
   const index = await client.query(
     "SELECT indisvalid AND indisready AS valid,pg_get_indexdef(indexrelid) AS definition FROM pg_index WHERE indexrelid=to_regclass('station_telemetry.lite_received') AND indrelid='station_telemetry.lite_pings'::regclass",
@@ -153,13 +205,8 @@ function catalog(
     new Set(value).size === value.length
   );
 }
-interface CellRow {
-  day: string;
-  cell: Omit<StationDailyPing, 'event' | 'event_id'>;
-  pings: string;
-}
 type Transaction = <T>(
-  operation: (client: PoolClient) => Promise<T>,
+  operation: (client: LiteSqlClient) => Promise<T>,
 ) => Promise<T>;
 
 export class LiteRepository {
@@ -256,7 +303,7 @@ export class LiteRepository {
       );
     });
   }
-  private async admission(client: PoolClient): Promise<void> {
+  private async admission(client: LiteSqlClient): Promise<void> {
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
     );
@@ -269,6 +316,7 @@ export class LiteRepository {
   async ingest(
     sourceId: string,
     value: unknown,
+    clientKey: { day: string; hash: string },
   ): Promise<{ inserted: number }> {
     return this.transaction(async (client) => {
       await this.admission(client);
@@ -317,39 +365,60 @@ export class LiteRepository {
         return { inserted: 0 };
       }
       const count = await client.query(
-        'SELECT count(*) AS count FROM station_telemetry.lite_pings',
+        'SELECT pings FROM station_telemetry.lite_capacity WHERE singleton',
       );
-      if (Number(count.rows[0].count) >= this.maxPings)
+      if (Number(count.rows[0].pings) >= this.maxPings)
         throw new BrokerError('storage_limit');
-      // The receipt day is chosen after admission; no transaction can update a closed day.
+      // Assign arrival day after admission. A midnight waiter must retry with the new salt.
       const inserted = await client.query<{ day: string }>(
         "INSERT INTO station_telemetry.lite_pings(source_id,event_id,ping) VALUES($1,$2,$3) RETURNING to_char(received_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
         [sourceId, ping.event_id, JSON.stringify(ping)],
       );
-      const { event: _event, event_id: _id, ...cell } = ping;
+      const day = inserted.rows[0].day;
+      if (clientKey.day !== day || !/^[0-9a-f]{64}$/.test(clientKey.hash))
+        throw new BrokerError('storage_busy');
       await client.query(
-        'INSERT INTO station_telemetry.lite_rollups VALUES($1,$2,$3,$4,1) ON CONFLICT(day,publisher,cell_hash) DO UPDATE SET pings=lite_rollups.pings+1',
-        [
-          inserted.rows[0].day,
-          config.publisher,
-          hash(
-            JSON.stringify(
-              Object.keys(STATION_DAILY_FIELDS)
-                .filter((k) => k !== 'event' && k !== 'event_id')
-                .map((k) => cell[k as keyof typeof cell]),
-            ),
-          ),
-          JSON.stringify(cell),
-        ],
+        'UPDATE station_telemetry.lite_capacity SET pings=pings+1 WHERE singleton',
       );
+      for (const [dimension, value] of marginals(ping)) {
+        const contributor = await client.query(
+          'INSERT INTO station_telemetry.lite_clients VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+          [
+            day,
+            config.publisher,
+            dimension,
+            value,
+            Buffer.from(clientKey.hash, 'hex'),
+          ],
+        );
+        await client.query(
+          `INSERT INTO station_telemetry.lite_marginals(day,publisher,dimension,value,pings,clients) VALUES($1,$2,$3,$4,1,1)
+           ON CONFLICT(day,publisher,dimension,value) DO UPDATE SET pings=lite_marginals.pings+1,clients=lite_marginals.clients+$5`,
+          [day, config.publisher, dimension, value, contributor.rowCount],
+        );
+      }
       return { inserted: 1 };
     });
   }
+  async finalize(client: LiteSqlClient): Promise<void> {
+    // The same admission lock as ingest fences midnight and concurrent finalizers.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
+    );
+    const cutoff = await client.query<{ day: string }>(
+      "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
+    );
+    await client.query(
+      'UPDATE station_telemetry.lite_marginals SET finalized=true WHERE NOT finalized AND day < $1::date',
+      [cutoff.rows[0].day],
+    );
+    await client.query(
+      'DELETE FROM station_telemetry.lite_clients WHERE day < $1::date',
+      [cutoff.rows[0].day],
+    );
+  }
   async aggregates(publisher: string, key?: string) {
     return this.transaction(async (client) => {
-      await client.query(
-        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
-      );
       if (key !== undefined) {
         if (!/^stq_[A-Za-z0-9_-]{43}$/.test(key))
           throw new BrokerError('source_unauthorized');
@@ -360,66 +429,68 @@ export class LiteRepository {
         if (!authority.rows.length)
           throw new BrokerError('source_unauthorized');
       }
-      // Every public marginal comes from the SAME disjoint, thresholded cells. No raw total is released.
-      const rows = await client.query<CellRow>(
-        `SELECT to_char(day,'YYYY-MM-DD') AS day,cell,pings::text FROM station_telemetry.lite_rollups
+      const rows = await client.query<{
+        day: string;
+        dimension: string;
+        value: string;
+        pings: string;
+      }>(
+        `SELECT to_char(day,'YYYY-MM-DD') AS day,dimension,value,pings::text FROM station_telemetry.lite_marginals
         WHERE publisher=$1 AND day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-30
-        AND day < (statement_timestamp() AT TIME ZONE 'UTC')::date AND ($2::boolean OR pings>=10)
-        ORDER BY day,cell LIMIT 10001`,
-        [publisher, key !== undefined],
+        AND day < (statement_timestamp() AT TIME ZONE 'UTC')::date AND finalized AND clients>=10
+        ORDER BY day,dimension,value LIMIT 10001`,
+        [publisher],
       );
       if (rows.rows.length > 10000) throw new BrokerError('query_limit');
       const days = new Map<
         string,
-        {
-          day: string;
-          representedPings: number;
-          firstActiveThisWeek: number;
-          firstActiveThisMonth: number;
-          distributions: Record<string, Record<string, number>>;
-        }
+        { day: string; distributions: Record<string, Record<string, number>> }
       >();
-      for (const { day, cell, pings } of rows.rows) {
-        const n = Number(pings);
+      for (const { day, dimension, value, pings } of rows.rows) {
         let result = days.get(day);
         if (!result) {
-          result = {
-            day,
-            representedPings: 0,
-            firstActiveThisWeek: 0,
-            firstActiveThisMonth: 0,
-            distributions: Object.create(null),
-          };
+          result = { day, distributions: Object.create(null) };
           days.set(day, result);
         }
-        result.representedPings += n;
-        if (cell.first_active_this_week) result.firstActiveThisWeek += n;
-        if (cell.first_active_this_month) result.firstActiveThisMonth += n;
-        for (const [field, value] of Object.entries(cell)) {
-          result.distributions[field] ??= Object.create(null);
-          const histogram = result.distributions[field];
-          const values = Array.isArray(value)
-            ? value.length
-              ? value.map((v) =>
-                  typeof v === 'object' ? `${v.engine}:${v.bucket}` : String(v),
-                )
-              : ['none']
-            : [String(value)];
-          for (const bucket of values)
-            histogram[bucket] = (histogram[bucket] ?? 0) + n;
-        }
+        result.distributions[dimension] ??= Object.create(null);
+        result.distributions[dimension][value] = Number(pings);
       }
       return {
-        scope:
-          key === undefined
-            ? 'public-kontour-safe-cells'
-            : 'publisher-received-pings',
+        scope: 'daily-per-dimension-marginals',
         publisher,
-        minimumCellPings: key === undefined ? 10 : null,
+        minimumDistinctDailyClients: 10,
+        privacyUnit: 'daily-salted-IPv4-or-IPv6-/64',
         dayBasis: 'UTC-receiver-arrival',
         deliveryCoverage: 'unknown',
         days: [...days.values()],
       };
     });
   }
+}
+
+function marginals(ping: StationDailyPing): [string, string][] {
+  const { event: _event, event_id: _id, ...fields } = ping;
+  const bucketCount = (count: number) =>
+    count === 0
+      ? '0'
+      : count === 1
+        ? '1'
+        : count <= 5
+          ? '2-5'
+          : count <= 20
+            ? '6-20'
+            : '21+';
+  return Object.entries(fields).flatMap(([dimension, value]) => {
+    const values =
+      typeof value === 'number'
+        ? [bucketCount(value)]
+        : Array.isArray(value)
+          ? value.length
+            ? value.map((v) =>
+                typeof v === 'object' ? `${v.engine}:${v.bucket}` : String(v),
+              )
+            : ['none']
+          : [String(value)];
+    return values.map((value): [string, string] => [dimension, value]);
+  });
 }

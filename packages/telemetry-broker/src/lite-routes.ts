@@ -1,12 +1,17 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { HttpBindings } from '@hono/node-server';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { receiverAdmission } from './admission.js';
 import type { LiteRepository } from './lite-store.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './public-dashboard.js';
 
 export function registerLiteRoutes(
-  app: Hono<{ Bindings: HttpBindings }>,
+  app: Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>,
   store: LiteRepository,
 ) {
   let day = '';
@@ -19,16 +24,21 @@ export function registerLiteRoutes(
       salt = randomBytes(32);
       clients.clear();
     }
-    // Never trust forwarded headers. Only this daily HMAC enters process memory.
+    // Forwarded headers never select a key; only the daily HMAC reaches storage.
     const client = createHmac('sha256', salt)
-      .update(c.env?.incoming?.socket.remoteAddress ?? 'unavailable')
+      .update(
+        networkKey(c.env?.incoming?.socket.remoteAddress ?? 'unavailable'),
+      )
       .digest('hex');
     const count = clients.get(client) ?? 0;
-    if (count >= 60 || (!clients.has(client) && clients.size >= 10000)) {
+    if (count >= 60) {
       c.header('Retry-After', '86400');
       return c.json({ error: 'lite_rate_limit' }, 429);
     }
+    clients.delete(client);
+    if (clients.size >= 10000) clients.delete(clients.keys().next().value!);
     clients.set(client, count + 1);
+    c.set('dailyClient', { day, hash: client });
     await next();
   });
   app.use(
@@ -40,7 +50,10 @@ export function registerLiteRoutes(
   );
   app.post('/v1/lite/:source', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    return c.json(await store.ingest(c.req.param('source'), body), 202);
+    return c.json(
+      await store.ingest(c.req.param('source'), body, c.get('dailyClient')),
+      202,
+    );
   });
   app.post('/v1/operator/lite/sources', async (c) => {
     await store.createSource(await c.req.json().catch(() => null));
@@ -77,11 +90,38 @@ export function registerLiteRoutes(
     c.header('Cache-Control', 'no-store');
     return c.json(await store.aggregates(c.req.param('publisher'), key));
   });
+  const publicAdmission = receiverAdmission();
+  let cachedDay = '';
+  let cached:
+    | Promise<Awaited<ReturnType<LiteRepository['aggregates']>>>
+    | undefined;
   app.get('/v1/public/aggregates', async (c) => {
+    c.header('X-Content-Type-Options', 'nosniff');
     if (c.req.url.includes('?'))
       return c.json({ error: 'filters_unsupported' }, 400);
     c.header('Cache-Control', 'no-store');
-    return c.json(await store.aggregates('kontour'));
+    const today = new Date().toISOString().slice(0, 10);
+    if (cachedDay !== today) {
+      cached = undefined;
+      cachedDay = today;
+    }
+    let response = cached;
+    if (!response) {
+      const refused = await publicAdmission(c, async () => {
+        const pending = store.aggregates('kontour').catch((error) => {
+          if (cached === pending) cached = undefined;
+          throw error;
+        });
+        response = cached = pending;
+      });
+      if (refused) return refused;
+    }
+    const result = await response!;
+    c.header(
+      'Cache-Control',
+      `public, max-age=${Math.max(0, Math.floor((Date.parse(today) + 86400000 - Date.now()) / 1000))}`,
+    );
+    return c.json(result);
   });
   app.use('/public/*', async (c, next) => {
     c.header(
@@ -98,4 +138,46 @@ export function registerLiteRoutes(
       'Content-Type': 'text/javascript; charset=utf-8',
     }),
   );
+}
+
+function networkKey(address: string): string {
+  if (isIP(address) !== 6) return isIP(address) === 4 ? address : 'unavailable';
+  const [left, right] = address.split('::');
+  const words = (part: string) =>
+    part
+      ? part
+          .split(':')
+          .flatMap((word) =>
+            word.includes('.')
+              ? [
+                  (
+                    (Number(word.split('.')[0]) << 8) |
+                    Number(word.split('.')[1])
+                  ).toString(16),
+                  (
+                    (Number(word.split('.')[2]) << 8) |
+                    Number(word.split('.')[3])
+                  ).toString(16),
+                ]
+              : [word],
+          )
+      : [];
+  const start = words(left),
+    end = words(right ?? '');
+  const full =
+    right === undefined
+      ? start
+      : [...start, ...Array(8 - start.length - end.length).fill('0'), ...end];
+  const numbers = full.map((word) => parseInt(word, 16));
+  if (numbers.slice(0, 5).every((n) => n === 0) && numbers[5] === 65535)
+    return [
+      numbers[6] >> 8,
+      numbers[6] & 255,
+      numbers[7] >> 8,
+      numbers[7] & 255,
+    ].join('.');
+  return `${numbers
+    .slice(0, 4)
+    .map((n) => n.toString(16))
+    .join(':')}::/64`;
 }

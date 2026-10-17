@@ -274,38 +274,48 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
       )
     ).rows[0].day;
+    // Repository fixtures supply distinct daily network hashes; HTTP above stays on one socket IP.
+    for (let i = 0; i < 9; i++)
+      await store.lite.ingest(source, dailyPing(), {
+        day: today,
+        hash: digest(`qa-network-${i}`),
+      });
     const date = new Date(`${today}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() - 1);
     const closedDay = date.toISOString().slice(0, 10);
     // Fixture-only time travel: production always assigns the locked receiver day.
     await pool.query(
-      'UPDATE station_telemetry.lite_rollups SET day=$1 WHERE day=$2',
+      'UPDATE station_telemetry.lite_marginals SET day=$1 WHERE day=$2',
       [closedDay, today],
+    );
+    await pool.query(
+      'UPDATE station_telemetry.lite_clients SET day=$1 WHERE day=$2',
+      [closedDay, today],
+    );
+    await store.retain();
+    assert.equal(
+      (await pool.query('SELECT * FROM station_telemetry.lite_clients'))
+        .rowCount,
+      0,
+      'finalization drops contributor hashes',
     );
     const publicRead = await request('/v1/public/aggregates');
     assert.equal(publicRead.status, 200);
     const day = publicRead.body.days.find((d) => d.day === closedDay);
-    assert.equal(
-      day.representedPings,
-      10,
-      'suppressed pings excluded from every total',
-    );
+    assert.equal(publicRead.body.minimumDistinctDailyClients, 10);
+    assert.equal('representedPings' in day, false, 'no joint-derived total');
     assert.deepEqual(
       day.distributions.platform,
-      { linux: 10 },
-      'sub-ten bucket suppressed',
+      { linux: 20 },
+      'nine macOS pings from one network suppressed',
     );
-    assert.deepEqual(
-      day.distributions.home_replaced,
-      { false: 10 },
-      'complementary dimension does not reveal hidden nine',
-    );
+    assert.deepEqual(day.distributions.home_replaced, { false: 20 });
     assert.deepEqual(day.distributions.public_plugins_enabled, {
-      'public.plugin': 10,
+      'public.plugin': 19,
     });
-    assert.equal(day.distributions.engine_connect_failures['codex:2-3'], 10);
-    assert.equal(day.firstActiveThisWeek, 10);
-    assert.equal(day.firstActiveThisMonth, 10);
+    assert.equal(day.distributions.engine_connect_failures['codex:2-3'], 29);
+    assert.deepEqual(day.distributions.safe_mode_entered, { 1: 29 });
+    assert.deepEqual(day.distributions.first_active_this_week, { true: 29 });
     assert.equal(JSON.stringify(publicRead.body).includes(publisher), false);
     assert.equal(
       (await request('/v1/public/aggregates?platform=linux')).status,
@@ -321,10 +331,11 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       key,
     );
     assert.equal(own.status, 200);
-    assert.equal(own.body.days[0].representedPings, 2);
-    assert.deepEqual(own.body.days[0].distributions.version, { custom: 2 });
-    assert.equal(own.body.days[0].firstActiveThisWeek, 0);
-    assert.equal(own.body.days[0].firstActiveThisMonth, 0);
+    assert.deepEqual(
+      own.body.days,
+      [],
+      'publisher reads also suppress sub-k contributors',
+    );
     assert.equal(
       (await request('/v1/publishers/kontour/aggregates', undefined, key))
         .status,
@@ -393,7 +404,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
 
     const before = (
       await pool.query(
-        'SELECT sum(pings)::text AS count FROM station_telemetry.lite_rollups',
+        'SELECT sum(pings)::text AS count FROM station_telemetry.lite_marginals',
       )
     ).rows[0].count;
     await pool.query(
@@ -410,11 +421,11 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     assert.equal(
       (
         await pool.query(
-          'SELECT sum(pings)::text AS count FROM station_telemetry.lite_rollups',
+          'SELECT sum(pings)::text AS count FROM station_telemetry.lite_marginals',
         )
       ).rows[0].count,
       before,
-      'rollups survive raw retention',
+      'finalized marginals survive raw retention',
     );
     assert.deepEqual(
       (await request('/v1/public/aggregates')).body,
@@ -428,7 +439,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     return [
       'lite HTTP/PostgreSQL: public sources, strict unknown/nested/array/catalog rejection, bounded streaming bodies, commit/dedupe/conflict',
       'lite daily rollups: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
-      'public aggregate suppression and complementary dimensions; scoped publisher keys, revocation, static same-origin dashboard',
+      'public marginal suppression; scoped publisher keys, revocation, static same-origin dashboard',
       'IP/user-agent privacy: captured stdout/stderr plus every database table, accepted/rejected/error paths',
     ];
   } finally {

@@ -77,12 +77,21 @@ the operator boundary. Do not route lite traffic through the authenticated
 full-tier endpoint or treat a public source ID as authenticating a binary.
 
 The broker also serves `/public/` and `/v1/public/aggregates` (Kontour's
-thresholded daily cells only). The private Compose profile does not publish
+k-suppressed daily per-dimension marginals only). The private Compose profile does not publish
 these on the Internet. A public deployment must independently qualify TLS,
 ingress access/error logging without client IP/user-agent retention, proxy/NAT
 rate-limit behavior, database capacity, restart and backup/restore. The process
-uses only the socket IP for a daily salted in-memory HMAC and ignores forwarded
-IP headers; putting it behind a proxy shares one limit. No ingress, endpoint
+uses IPv4 addresses or IPv6 /64s for a daily salted HMAC and ignores forwarded
+IP headers. Behind a proxy all clients share one key and limit. Daily hashes
+are stored only until periodic closed-day finalization; the salt stays in memory.
+Migration 3 discards legacy joint cells and retains finalized marginals. Both
+public and publisher reads require ten distinct daily network keys per value;
+one IP sending ten pings cannot qualify. A botnet of at least ten distinct /64s
+or IPv4 addresses can still pad the counts. Run a single receiver process:
+restarts change the salt and can count one network again on the same day.
+Public reads use a UTC-day cache without taking the ingest lock; publication
+can lag finalization until the next refresh. Raw retention and hash deletion
+are periodic, and downtime delays them. No ingress, endpoint
 variable or production data flow is enabled by this source change.
 
 ## Render, validate, then run

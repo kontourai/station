@@ -116,8 +116,10 @@ while holding DDL locks through the operation.
 
 ## Bounds and operation
 
-The HTTP boundary permits at most 8 active requests and a global token bucket
-of 60 requests with 1 token restored per second. Rate exhaustion returns 429
+Authenticated routes, anonymous lite ingest, and public page reads have separate
+8-active-request budgets and token buckets of 60 requests, restoring one per second.
+Public aggregate cache misses have their own budget; successful fills are reused
+for the rest of the UTC day, including concurrent reads, without storage work. Rate exhaustion returns 429
 with `Retry-After`; concurrency exhaustion returns 503. Process liveness remains
 available. Bodies are capped at 128 KiB. The standalone server permits 64
 connections and sets 5-second socket/request/header timeouts.
@@ -183,7 +185,7 @@ bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
 202 response is `{ "inserted": 1 }`, or `{ "inserted": 0 }` for a retained
 source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
-not create separate rollup cells or retries. Dedupe ends when raw rows expire.
+not create separate retries. Dedupe ends when raw rows expire.
 
 The operator provisions a **public per-publisher/per-channel identifier**, not
 a secret embedded in a binary. Example operator-authenticated request body for
@@ -218,34 +220,50 @@ there is no unique-person or unique-device proof, and no Sybil resistance.
 Tier choice and notice belong to the sender; this route does not infer consent
 or promote a publisher to `full`.
 
-In addition to the receiver's existing global/concurrency bounds, lite admission
-allows 60 attempts per socket IP per UTC day, with at most 10,000 in-memory
-entries. Keys are HMAC-SHA256 of the socket IP with a random process-only salt;
-at the next UTC-day request, the map is cleared and the salt replaced. Restart
-also clears it. Raw IPs and user agents never enter SQL, logs, errors, rollups
-or receipts. Forwarded-IP headers are ignored. Behind a proxy, clients share
-the proxy's limit; behind NAT, installations share a limit. Multiple receiver
-processes do not share this limiter. A proxy-aware deployment needs a separately
-reviewed trusted ingress boundary, with access logging disabled/sanitized at
-the ingress itself. This package does not qualify infrastructure logging.
+Lite admission allows 60 attempts per daily network key, with at most 10,000
+in-memory entries. IPv4 keys use the address; IPv6 keys use the /64 prefix.
+IPv4-mapped IPv6 aliases use the same IPv4 key. The least recently used entry
+is evicted at capacity, so new clients remain admissible; eviction can reset
+an old client's attempt budget, but never changes its daily contributor hash.
+Keys use HMAC-SHA256 with a random process-only salt, replaced on the next
+UTC-day request. The salt is never stored. Raw IPs and user agents never enter
+SQL, logs, errors, marginals or receipts. Forwarded-IP headers are ignored.
+Behind a proxy all clients share one key; NAT also merges contributors.
+
+Run one receiver process. Restart changes the salt and can count the same
+network again that day; multiple processes have independent salts and limits.
+This is not a unique-person count or a Sybil defense. A botnet of at least ten
+distinct IPv6 /64s (or IPv4 addresses) can pad any marginal past k. A proxy-aware
+deployment needs a separately reviewed trusted ingress boundary, with access
+logging disabled/sanitized there. This package does not qualify infrastructure
+logging. OHTTP and DAP/Prio remain deferred.
 
 ### Storage and activity estimates
 
-Migration 2 adds logged `lite_sources`, `publisher_keys`, `lite_pings` and
-`lite_rollups` tables to the existing schema. It leaves full-tier rows intact;
-older binaries refuse the new migration marker. Every operation checks schema
-shape, defaults, keys, index and durability inside the transaction. Lite raw
-rows and source provisioning use the existing transaction/admission lock and
-capacity profile (one million lite pings, 10,000 lite sources and publisher keys,
-approximately 1 GiB per database; full-tier row limits remain separate).
+Migration 2 introduces lite sources, publisher keys and raw pings. Migration 3
+drops the legacy joint-cell table and adds logged `lite_marginals`,
+`lite_clients` and `lite_capacity`. Existing joint cells are discarded because
+they cannot prove distinct contributors; old raw rows remain subject to retention
+but are not reconstructed into publishable marginals. Full-tier rows are
+unchanged. Older binaries refuse migration 3. Back up the entire schema and
+validate upgrades against a restored private copy.
 
-Raw lite pings use the existing 90-day deletion cutoff, swept at startup and
-hourly. A failed sweep or receiver downtime can delay physical deletion;
-this is not an autonomous database TTL or a hard wall-clock erasure guarantee.
-Rollups are updated atomically with first insertion and retained without expiry.
-They contain a daily joint cell and count, with no UUID or cross-day join key.
-Back up the entire schema, including migration 2 and retained rollups; restoring
-only raw pings cannot reconstruct older rollups. No rollup-rebuild job is run.
+Each first insertion atomically updates one row per (UTC arrival day, publisher,
+dimension, value). It increments pings and increments the contributor count only
+when that daily client hash has not already contributed to that value. The
+separate contributor table contains day-scoped HMACs, never raw addresses or a
+cross-day join key. Numeric counts use `0`, `1`, `2-5`, `6-20`, `21+` before
+rollup; contract fields already expressed as buckets retain those buckets.
+There are no retained joint cells. The maintained capacity counter replaces a
+per-ingest raw-table count; raw deletion decrements it in the same transaction.
+Admission retains the one-million-lite-ping, 10,000-source/publisher-key and
+approximate 1 GiB limits.
+
+Retention runs at startup and hourly. Under the ingest admission lock it
+finalizes closed days and drops their contributor hashes; only finalized
+marginals are published and retained indefinitely. Raw pings expire after 90
+days, including UUID dedupe. Downtime or a failed sweep delays finalization and
+erasure; these are periodic operations, not database TTL guarantees.
 
 Receipt-day pings approximate active installations. Daily first-active-week
 and first-active-month counts can be summed over a **complete calendar week or
@@ -263,38 +281,32 @@ per-engine failure buckets, and both friction counters. Friction histograms
 count **pings at that counter/bucket**, not the sum of failures. Multi-valued
 surface/plugin/engine histograms can sum above the number of pings.
 
-### Public aggregates and subtraction protection
+### Public aggregates
 
-`GET /v1/public/aggregates` publishes **Kontour only**, over the last 30 closed
-UTC arrival days. `GET /public/` serves the static dashboard; its JavaScript
-comes only from `/public/dashboard.js`. It uses text nodes for data and a CSP
-that permits no third-party scripts, analytics or network requests.
+`GET /v1/public/aggregates` publishes Kontour's per-dimension marginals over the
+last 30 closed UTC arrival days. Each (day, dimension, value) must have at least
+**ten distinct daily client hashes**. The metric is still received pings;
+k measures contributing network keys, not pings or verified installations.
+One victim ping plus nine attacker pings from one IP supplies at most two keys
+and stays suppressed. A common platform value can publish even when every
+observation differs in other fields. Publisher reads use exactly the same rule.
 
-The privacy unit is a received ping, not a verified person. The k=10 policy
-first partitions each day/publisher into **disjoint joint cells across every
-released dimension, including the first-active flags and complete sets**. Cells
-with fewer than ten pings contribute to **nothing** public. Totals, flags and
-every marginal histogram are all derived from that same retained subset. A
-ten-ping Linux cell plus a nine-ping macOS cell publishes ten represented pings,
-not nineteen; neither an opposite flag nor another dimension reveals the nine.
-No raw grand total, suppressed remainder, cell inventory, publisher split,
-arbitrary date range, dimension filter or overlapping cohort query is exposed.
-Query strings are rejected. Zero-size histogram buckets are absent. Closed
-days are immutable through the API: the admission lock fences transactions at
-midnight and the server chooses arrival day only after taking that lock. Raw
-retention does not change publication. Reading consecutive fixed daily windows
-reveals only those already-safe daily results.
+No joint cells, raw grand total, suppressed remainder, arbitrary range,
+dimension filter or cohort query is exposed. Query strings are rejected.
+First-active flags appear only as independent suppressed marginals. Different
+dimensions can represent different subsets: do not join them or infer a hidden
+population total. Marginal k suppression does not prevent reconstruction using
+outside knowledge, correlated dimensions, malicious submissions or multiple
+release policies. Missing values/days mean suppressed or unavailable data,
+never zero use.
 
-This deliberately conservative policy can suppress most or all of a sparse
-dataset. `representedPings` and first-active counts cover publishable cells
-only, never an unsuppressed population total. Missing days are not zero usage.
-The policy guards complementary subtraction **within the broker's public
-release family**, not outside knowledge, malicious submissions, publisher-key
-collusion, database administration or reconstruction from a different release
-policy. Without installation IDs it cannot certify ten distinct installations.
-OHTTP (receiver never sees the network IP) and DAP/Prio (receiver sees only
-totals) remain deferred; adopt before promising network-origin unlinkability
-or private aggregation. They require a separately reviewed transport/protocol.
+The successful public response is cached per UTC day in process memory; reads
+after the first do not query storage or take the ingest advisory lock. A day
+finalized after that cache fills appears at the next UTC-day refresh. Failures
+are not cached. Responses include `nosniff` and a cache lifetime ending at UTC
+midnight. Publisher credentials are checked on every read, so revocation is
+immediate. `/public/` serves a static dashboard with text-node rendering and a
+CSP permitting no third-party scripts, analytics or network requests.
 
 ### Publisher access
 
@@ -307,18 +319,16 @@ key; `DELETE /v1/operator/lite/publishers/:publisher` revokes it. These routes
 use the existing operator authorization boundary.
 
 `GET /v1/publishers/:publisher/aggregates` requires that publisher's Bearer
-`stq_` credential and returns only its own unsuppressed rollups for the last
-30 closed days. Operator/source keys and a different publisher's key are
-refused. Publisher credentials never ingest. These private aggregates are not
-a public k-anonymity release and must not be republished alongside conflicting
-totals. Both query endpoints cap work at 10,000 cells and refuse an over-limit
-query instead of returning a truncated population.
+`stq_` credential and returns only its own k-suppressed marginals for the last
+30 closed days. Operator/source keys and a different publisher's key are refused.
+Publisher credentials never ingest. Both query endpoints cap work at 10,000
+marginal values and refuse over-limit queries rather than truncating them.
 
 ### Verification
 
 The existing qualifier includes `qualify-lite.mjs`: real local HTTP and
 PostgreSQL checks for strict rejection, bounded streaming bodies, replay/conflict,
-canonical cells, complementary suppression, publisher isolation/revocation,
+marginal suppression, publisher isolation/revocation,
 retention, schema refusal, and captured stdout/stderr plus database rows for IPs,
 user agents and rejected content. A smaller diagnostic (not a manifest-bound
 qualification receipt) is available after building:
@@ -332,7 +342,10 @@ npm run test:focused -- packages/telemetry-broker/src/__tests__/broker.test.ts \
 ```
 
 The diagnostic creates a uniquely named database, removes it only on success,
-and retains failures for diagnosis. The focused limiter test uses real HTTP
+and retains failures for diagnosis. Focused broker tests use in-memory PostgreSQL (PGlite) and synthetic socket
+bindings to exercise SQL accumulation, k suppression, single-network padding,
+count buckets and publisher isolation without an external database. PGlite is
+a development dependency, absent from the receiver bundle. The focused limiter test uses real HTTP
 with a storage refusal fixture and a controlled UTC clock; it does not claim
 database ingestion. Passive API tests use a local HTTP fixture, not production.
 Neither path qualifies a deployed receiver, public ingestion authenticity,

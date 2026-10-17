@@ -6,6 +6,7 @@ import { expect, test, vi } from 'vitest';
 import { BrokerError } from '../broker-error.js';
 import { registerLiteRoutes } from '../lite-routes.js';
 import { LiteRepository } from '../lite-store.js';
+import { socketBindings } from './lite-fixture.js';
 
 test('socket-IP admission ignores forwarded addresses and resets on the next UTC day', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -19,7 +20,10 @@ test('socket-IP admission ignores forwarded addresses and resets on the next UTC
     100,
     100,
   );
-  const app = new Hono<{ Bindings: HttpBindings }>();
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
   registerLiteRoutes(app, repository);
   app.onError((_error, c) => c.json({ error: 'source_unauthorized' }, 401));
   const server = createServer(getRequestListener(app.fetch));
@@ -53,4 +57,61 @@ test('socket-IP admission ignores forwarded addresses and resets on the next UTC
     await new Promise<void>((resolve) => server.close(() => resolve()));
     vi.useRealTimers();
   }
+});
+
+test('IPv6 /64 aliases share a daily budget; adjacent /64s and IPv4 addresses remain independent', async () => {
+  const store = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
+  registerLiteRoutes(app, store);
+  app.onError((_error, c) => c.json({ error: 'source_unauthorized' }, 401));
+  const send = (address: string) =>
+    app.request(
+      '/v1/lite/unknown',
+      { method: 'POST', body: '{}' },
+      socketBindings(address),
+    );
+  for (let i = 0; i < 60; i++)
+    expect((await send(`2001:db8:1:2::${(i + 1).toString(16)}`)).status).toBe(
+      401,
+    );
+  expect((await send('2001:0db8:0001:0002:1234::1')).status).toBe(429);
+  expect((await send('2001:db8:1:3::1')).status).toBe(401);
+  for (let i = 0; i < 60; i++)
+    expect((await send('192.0.2.1')).status).toBe(401);
+  expect((await send('::ffff:c000:201')).status).toBe(429);
+  expect((await send('::ffff:192.0.2.1')).status).toBe(429);
+  expect((await send('192.0.2.2')).status).toBe(401);
+});
+
+test('a full client map evicts oldest entries and continues accepting new clients', async () => {
+  const store = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
+  registerLiteRoutes(app, store);
+  app.onError((_error, c) => c.json({ error: 'source_unauthorized' }, 401));
+  const send = (i: number) =>
+    app.request(
+      '/v1/lite/unknown',
+      { method: 'POST', body: '{}' },
+      socketBindings(`2001:db8:${i.toString(16)}::1`),
+    );
+  for (let i = 0; i < 10001; i++) expect((await send(i)).status).toBe(401);
+  expect((await send(0)).status).toBe(401);
 });

@@ -179,7 +179,7 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length > 2 ||
+          rows.length > 3 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
@@ -299,10 +299,11 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 2 ||
+      rows.length !== 3 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
-      rows[1].version !== 2
+      rows[1].version !== 2 ||
+      rows[2].version !== 3
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);
@@ -535,9 +536,14 @@ export class PgProductRepository implements ProductRepository {
         "DELETE FROM station_telemetry.events WHERE received_at < clock_timestamp()-$1*interval '1 day'",
         [this.retentionDays],
       );
-      await client.query(
+      await this.lite.finalize(client);
+      const removed = await client.query(
         "DELETE FROM station_telemetry.lite_pings WHERE received_at < clock_timestamp()-$1*interval '1 day'",
         [this.retentionDays],
+      );
+      await client.query(
+        'UPDATE station_telemetry.lite_capacity SET pings=pings-$1 WHERE singleton',
+        [removed.rowCount],
       );
     });
   }
