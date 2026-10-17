@@ -229,6 +229,34 @@ test. Additions:
 Native mobile terminal views are out of scope; Station's mobile app renders
 the web surface.
 
+#### Accessibility
+
+The Ghostty surface draws to a canvas that is hidden from assistive
+technology; t3code's port labels only the input and the scrollbar, so a
+screen reader cannot read terminal output. xterm.js's screen reader mode
+covers this today, so shipping the port without an equivalent would be a
+regression. The emulator phase does not ship until this exists:
+
+- **Accessible output buffer.** A visually hidden, focusable text mirror of
+  the screen and scrollback, built from the emulator's rows (not from raw
+  bytes), so cursor movement and redraws produce the text a sighted user
+  sees. Screen reader users navigate it line by line and character by
+  character.
+- **Announcements.** New output is announced through a polite live region,
+  coalesced and rate-limited so a flooding command does not drown the
+  reader. Bell, shell exit, and a finished script run are announced.
+- **Screen reader mode** in terminal settings, defaulting on when the
+  operating system reports a screen reader. When off, the mirror is not
+  kept, so sighted users pay nothing for it.
+- **Keyboard parity.** Everything in the context menu, find, links, splits,
+  and the drawer is reachable from the keyboard, with visible focus and
+  shortcuts listed in the shortcut registry. Focus can always leave the
+  terminal with a documented key, since the terminal otherwise captures Tab.
+- **Contrast and motion.** Theme colors meet the design system's contrast
+  rules in light and dark; cursor blink follows reduced-motion settings.
+- **Mobile.** The mirror works with VoiceOver and TalkBack in the mobile
+  webview.
+
 ### Layout
 
 - A `terminal` pane descriptor usable in any layout region, plus a standalone
@@ -285,7 +313,8 @@ verification.
    workload phase; the in-process host lets this phase start in parallel.
 2. **Transport and client runtime:** multiplexed socket, resume, flow
    control, observe scope, relay and broker routes, SDK store.
-3. **Emulator:** Ghostty port, theming, find, links, context menu.
+3. **Emulator:** Ghostty port, theming, find, links, context menu, and the
+   accessibility requirements above.
 4. **Layout:** terminal pane, standalone route, Coding drawer with groups and
    splits, server-side layout state, shortcuts.
 5. **Agent integration:** add to chat, script runner, agent tools.
@@ -301,6 +330,11 @@ verification.
   processes.
 - Client: the ported Ghostty suites, plus resume and flow-control tests
   against a real server.
+- Accessibility: automated checks that the mirror matches rendered rows after
+  cursor-addressed redraws, that announcements are coalesced under load, and
+  that focus can leave the terminal; a manual pass with VoiceOver on macOS
+  and iOS, NVDA on Windows, and TalkBack on Android before the emulator phase
+  merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
 - Fault injection for each isolation check and for the query stripping.
