@@ -657,7 +657,7 @@ export function ChatDockBody({
   const displayedTranscriptMessages =
     transcript.messages.length > 0
       ? transcript.messages
-      : transcriptPending || transcriptReadFailed
+      : transcriptPending
         ? stickyTranscriptRef.current.messages
         : transcript.messages;
   /*
