@@ -22,8 +22,9 @@
  *     [--interval=<seconds>] [--json]
  *   station delegate targets [--on=<environment>] [--project=<slug> | --project-path=<path>] [--json]
  *
- * `--on=<environment>` is accepted on every sub-verb (not just create/targets,
- * as the issue's literal sketch showed) because the underlying service
+ * `--on=<environment>` is accepted on task supervision sub-verbs and
+ * create/targets; `attempt` instead requires the executing receiver directly.
+ * The task service
  * functions accept it to address a task living on a non-current SSH
  * environment — omitting it would silently restrict status/events/continue/
  * respond/interrupt to the current environment only, a real functional gap.
