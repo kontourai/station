@@ -187,13 +187,13 @@ function session(revision: number): ChatSession {
   } as ChatSession;
 }
 
-function dock(current: ChatSession) {
-  return (
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+function createDock() {
+  // A rerender retains the same Station/principal query namespace.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (current: ChatSession) => (
+    <QueryClientProvider client={client}>
       <ChatDockBody
         activeSession={current}
         chatFontSize={14}
@@ -213,6 +213,7 @@ function dock(current: ChatSession) {
 
 describe('ChatDockBody offline settling (station#2605)', () => {
   test('dismissing the refused turn returns the composer to normal', async () => {
+    const dock = createDock();
     // Recovery is the same derivation running over the remaining turns:
     // once the durable refused row is gone, workspaceRefused re-derives
     // false and ordinary Send returns (the transition
@@ -246,6 +247,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   });
 
   test('keeps loaded transcript and queue components mounted through repeated rejected history reloads', async () => {
+    const dock = createDock();
     fetchConversationWindow.mockReset();
     fetchCapability.mockResolvedValue(true);
     fetchConversationWindow
@@ -297,6 +299,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     expect(queueMounts).toHaveBeenCalledTimes(firstQueueMounts);
   });
   test('a turn ending refreshes the transcript in place, without a loading state', async () => {
+    const dock = createDock();
     fetchConversationWindow.mockReset();
     fetchCapability.mockResolvedValue(true);
     fetchConversationWindow
@@ -343,6 +346,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   });
 
   test('switching chats never shows the previous chat’s retained transcript', async () => {
+    const dock = createDock();
     fetchConversationWindow.mockReset();
     fetchCapability.mockResolvedValue(true);
     fetchConversationWindow
@@ -383,6 +387,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   });
 
   test('canSteer derives from capability AND live execution — idle sessions offer no steer', async () => {
+    const dock = createDock();
     // Server enforcement (typed refusal) is the backstop, but the issue
     // requires the AFFORDANCE to be absent without an active turn: pin the
     // ChatDockBody derivation, not just the row component's prop handling.
