@@ -167,13 +167,16 @@ child-work report for that row; clients retain their existing state.
 
 ## Product telemetry observations
 
-`@kontourai/station-contracts/product-telemetry` declares the content-free event
+`@kontourai/station-contracts/product-telemetry` declares the content-free Full event
 inventory and version1 batch, observation and build shapes. Stable event IDs,
 producer occurrence/admission time, inventory revision and allowlisted build
 provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
 fingerprinting belong to the [shared helper](shared.md#product-telemetry).
 Legacy payloads have no v1 guarantees and the strict parser rejects them.
+The same module owns per-publisher tiers, the identifier-free `station_daily`
+field catalog, fixed feedback reasons and bounded outbox records. Lite bodies
+use the daily catalog; Full uses the version1 observation envelope.
 See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
 
 ## Import examples
