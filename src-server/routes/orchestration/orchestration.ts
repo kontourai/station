@@ -84,7 +84,6 @@ import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
-  SSE_KEEPALIVE_INTERVAL_MS,
 } from '../../constants.js';
 import type {
   RequestDelegationResolver,
@@ -188,7 +187,7 @@ import {
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
-import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
+import { sseKeepalive, streamSSE } from '../sse-response.js';
 import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
@@ -1358,8 +1357,6 @@ function parseResumeCursor(
   const value = Number(headerValue);
   return Number.isSafeInteger(value) ? value : undefined;
 }
-
-const ORCHESTRATION_STREAM_MAX_PENDING_FRAMES = 256;
 
 /**
  * Decides replay-vs-snapshot for a reconnecting `/events` client
@@ -5934,11 +5931,7 @@ export function createOrchestrationRoutes(
       const client = describeOrchestrationStreamClient(c.req.raw);
       const rawLastEventId = c.req.header('Last-Event-ID');
       let framesWritten = 0;
-      let closeReason:
-        | 'client-abort'
-        | 'authorization-expired'
-        | 'backpressure-overflow'
-        | undefined;
+      let closeReason: 'client-abort' | 'authorization-expired' | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
       // BEFORE anything else can `await` — the push-on-completion gate
@@ -5968,7 +5961,6 @@ export function createOrchestrationRoutes(
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
-      const pending = new Set<{ event: string; data: string; id?: string }>();
       try {
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
@@ -5979,7 +5971,6 @@ export function createOrchestrationRoutes(
         const clientGone = new Promise<void>((resolve) => {
           const onGone = () => {
             closeReason ??= 'client-abort';
-            pending.clear();
             // Release what the connection holds NOW, not in `finally`: a store
             // read that never settles would otherwise keep this user counted
             // as present (suppressing push-on-completion) and subscribed. All
@@ -5993,12 +5984,22 @@ export function createOrchestrationRoutes(
           if (stream.aborted) onGone();
           else stream.onAbort(onGone);
         });
+        // ...and keep the connection audibly alive while that read runs. The
+        // client abandons a body that writes nothing for its stall deadline,
+        // and until caught-up this route used to write nothing at all, so a
+        // snapshot slower than the deadline would reconnect forever. Each
+        // frame is a single write, so a ping cannot land inside another frame.
+        stopKeepAlive = sseKeepalive(stream);
+        // Ordering fence (R4): subscribe and buffer live events FIRST, before
+        // any `await` below can yield to an event that was appended and
+        // emitted concurrently. Nothing buffered here is written until after
+        // the historical (replay-or-snapshot) frames and the caught-up marker
+        // are flushed, so a live event can never overtake buffered history.
         const writeAuthorized = async (frame: {
           event: string;
           data: string;
           id?: string;
         }) => {
-          if (stream.aborted) return;
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
@@ -6007,31 +6008,14 @@ export function createOrchestrationRoutes(
           await stream.writeSSE(frame);
           framesWritten++;
         };
-        // Keep initial-history reads audibly alive so clients do not restart
-        // a slow snapshot. A stalled writer holds at most one heartbeat;
-        // keepalives must not build their own write chain.
-        let heartbeatWriting = false;
-        const heartbeat = setInterval(() => {
-          if (heartbeatWriting || stream.aborted) return;
-          heartbeatWriting = true;
-          void writeAuthorized(SSE_KEEPALIVE_FRAME)
-            .catch(() => stream.abort())
-            .finally(() => {
-              heartbeatWriting = false;
-            });
-        }, SSE_KEEPALIVE_INTERVAL_MS);
-        stopKeepAlive = () => clearInterval(heartbeat);
         let caughtUp = false;
+        const pending: Array<{ event: string; data: string; id?: string }> = [];
         let draining = false;
         const drainPending = async () => {
           if (draining) return;
           draining = true;
           try {
-            for (const frame of pending) {
-              pending.delete(frame);
-              if (stream.aborted) break;
-              await writeAuthorized(frame);
-            }
+            while (pending.length > 0) await writeAuthorized(pending.shift()!);
           } finally {
             draining = false;
           }
@@ -6041,20 +6025,7 @@ export function createOrchestrationRoutes(
           data: string;
           id?: string;
         }) => {
-          if (stream.aborted) return;
-          // The initial snapshot must reach the client before overload can
-          // force resume; otherwise a slow snapshot can reconnect forever.
-          if (
-            caughtUp &&
-            pending.size >= ORCHESTRATION_STREAM_MAX_PENDING_FRAMES
-          ) {
-            // No cursor is advanced for dropped frames. fetchSSE reconnects
-            // with its last applied id and replays, or recovers a snapshot.
-            closeReason = 'backpressure-overflow';
-            stream.abort();
-            return;
-          }
-          pending.add(frame);
+          pending.push(frame);
           if (caughtUp) void drainPending().catch(() => {});
         };
         const dirtyActivityThreads = new Set<string>();
@@ -6101,11 +6072,6 @@ export function createOrchestrationRoutes(
               ? setTimeout(flushActivity, 100)
               : undefined;
         };
-        // Ordering fence (R4): subscribe and buffer live events FIRST, before
-        // any `await` below can yield to an event that was appended and
-        // emitted concurrently. Nothing buffered here is written until after
-        // the historical (replay-or-snapshot) frames and the caught-up marker
-        // are flushed, so a live event can never overtake buffered history.
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';

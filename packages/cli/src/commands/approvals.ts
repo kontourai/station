@@ -283,9 +283,9 @@ async function listPendingForProvider(
  *
  * `onExit` is called (not just a bare `return`) once `session.exited` is
  * observed — the caller uses it to abort the underlying fetch, because the
- * real `/api/orchestration/events` route normally stays open until abort.
- * The server may close an overflowing stream; this CLI does not yet resume
- * that observation. Ending the frame loop alone does not close a live socket.
+ * real `/api/orchestration/events` route never ends its own response (see
+ * `watchApprovals`'s docblock below); ending the frame loop alone would
+ * leave the HTTP connection open.
  */
 async function watchApprovalEvents({
   response,
@@ -333,11 +333,11 @@ async function watchApprovalEvents({
 }
 
 /**
- * The real `GET /api/orchestration/events` route streams keepalive `ping`
- * frames and normally stays open until abort, but the server may close an
- * overflowing stream. This CLI currently treats that end as final; cursor
- * resume is a follow-up. This function creates its own `AbortController`,
- * passes `signal` to `fetch`
+ * The real `GET /api/orchestration/events` route
+ * (`src-server/routes/orchestration/orchestration.ts:319-362`) never ends its own
+ * response — it streams a keepalive `ping` and only stops via
+ * `stream.onAbort()`, i.e. only when the *client* disconnects. So this
+ * function creates its own `AbortController`, passes `signal` to `fetch`
  * (mirroring `session-client.ts`'s `sendMessage`), and calls
  * `abortController.abort()` on every exit path — `session.exited` via
  * `watchApprovalEvents`'s `onExit`, and any error via the `catch` below —
