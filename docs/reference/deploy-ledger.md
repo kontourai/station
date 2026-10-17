@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-17T02:52:22Z | nightly-desktop | 0.1.11-nightly.2481 | `5634e87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
 | 2026-10-17T02:52:19Z | nightly-android | 0.1.11-nightly.2481 | `5634e87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
 | 2026-10-17T01:46:42Z | nightly-npm | 0.7.0-nightly.2481.38991378745 | `5634e87` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
 | 2026-10-16T15:13:50Z | nightly-desktop | 0.1.11-nightly.2480.9 | `9658fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38909410337) |
@@ -288,6 +289,33 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-17T02:52:22Z · nightly-desktop · 0.1.11-nightly.2481
+
+- Ship SHA: `5634e87afab9ed3ba2a4156280235019af3b1eea`
+- Artifact built at: `2026-10-17T02:01:26.911Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 38991378745)
+
+### Changelog
+
+Commits since `9658fa2` ([full sha](https://github.com/kontourai/station/commit/9658fa21a33eeaa975b083a55e1f677c56839fab)):
+
+**Features**
+
+- [#3714](https://github.com/kontourai/station/pull/3714) feat(ui): introduce the Quiet tree workspace map
+
+**Fixes**
+
+- [#3749](https://github.com/kontourai/station/pull/3749) fix(ci): reconcile infrastructure diagnostics without parser double-counting
+- [#3748](https://github.com/kontourai/station/pull/3748) fix(ci): let corrected titles replace prior status on the same head
+- [#3744](https://github.com/kontourai/station/pull/3744) fix(ci): bootstrap title validation from the workflow revision
+- [#3728](https://github.com/kontourai/station/pull/3728) fix(ci): reduce duplicate verification and preserve affected coverage
+
+**Other**
+
+- [#3750](https://github.com/kontourai/station/pull/3750) perf(ci): batch delivery checks and repair source admission
+- [#3737](https://github.com/kontourai/station/pull/3737) perf(ci): consolidate hosted verification and bound runner contention
 
 ## 2026-10-17T02:52:19Z · nightly-android · 0.1.11-nightly.2481
 
