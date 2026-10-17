@@ -9,6 +9,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { SkeletonBlock } from '../state';
 import { HtmlReply } from './HtmlReply';
 
 export function PublishedHtmlReply({
@@ -51,7 +52,7 @@ export function PublishedHtmlReply({
   });
   if (query.error)
     return <p role="status">Visual reply unavailable: {query.error.message}</p>;
-  if (!query.data) return <p role="status">Loading visual reply…</p>;
+  if (!query.data) return <SkeletonBlock label="Loading visual reply" />;
   return (
     <HtmlReply
       page={query.data.page}
