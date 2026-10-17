@@ -1,26 +1,15 @@
 import { createHash } from 'node:crypto';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { afterEach, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildGalleryReviewEvidence } from '../gallery-review-evidence.mjs';
 import { runBaseline } from '../screenshot-diff.mjs';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'gallery-review-'));
-  roots.push(root);
+  const root = makeTempDir('gallery-review-');
   const gallery = join(root, 'gallery');
   mkdirSync(gallery);
   const png = new PNG({ width: 2, height: 2 });
