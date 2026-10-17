@@ -60,7 +60,13 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts",
+
+    "src-server/domain/config-loader-app.ts",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "packages/cli/src/commands/telemetry.ts"
   ],
 
   "checks": [
