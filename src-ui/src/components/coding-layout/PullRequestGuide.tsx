@@ -8,6 +8,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
+import { Empty } from '../state';
 import './PullRequestGuide.css';
 
 /** Read-only first slice; review actions remain in the Review tab. */
@@ -76,7 +77,12 @@ export function PullRequestGuide({
       {result.guide ? (
         <GuideStops key={result.guide.generatedAt} result={result} />
       ) : (
-        !running && <p>No guide has been written for this pull request.</p>
+        !running && (
+          <Empty
+            variant="compact"
+            description="Write a tour of the changed files to start reading."
+          />
+        )
       )}
     </div>
   );
