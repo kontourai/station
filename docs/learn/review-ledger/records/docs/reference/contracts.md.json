@@ -200,7 +200,11 @@
 
     "src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx",
 
-    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "packages/contracts/src/workspace-isolation.ts",
+
+    "src-server/services/projects/worktree-provisioning-service.ts"
   ],
 
   "checks": [
