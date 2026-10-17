@@ -36,7 +36,7 @@ function child(args, env) {
   return result;
 }
 
-function build(env, expected, channel) {
+function build(env, expected, channel, telemetryChannel = channel) {
   const result = child(['esbuild.config.mjs'], {
     ...env,
     STATION_BUILD_SERVER_DIR: directory,
@@ -59,8 +59,9 @@ function build(env, expected, channel) {
       `
     import assert from 'node:assert/strict';
     ${banner}
-    const { STATION_AUTHOR_TELEMETRY_ENDPOINT } = await import('./src-server/domain/telemetry-build-constants.ts');
+    const { STATION_AUTHOR_TELEMETRY_ENDPOINT, STATION_TELEMETRY_BUILD_CHANNEL } = await import('./src-server/domain/telemetry-build-constants.ts');
     assert.equal(STATION_AUTHOR_TELEMETRY_ENDPOINT, ${JSON.stringify(expected)});
+    assert.equal(STATION_TELEMETRY_BUILD_CHANNEL, ${JSON.stringify(telemetryChannel)});
   `,
     ],
     {
@@ -97,6 +98,20 @@ try {
     },
     endpoint,
     'nightly',
+  );
+
+  // Portable staging retains its existing runtime channel in server provenance.
+  build(
+    {
+      ...official,
+      STATION_CHANNEL: 'beta',
+      GITHUB_REF: 'refs/tags/v1.2.3-preview.1',
+      GITHUB_WORKFLOW_REF:
+        'kontourai/station/.github/workflows/release.yml@refs/tags/v1.2.3-preview.1',
+    },
+    endpoint,
+    'beta',
+    'preview',
   );
 
   for (const invalid of [

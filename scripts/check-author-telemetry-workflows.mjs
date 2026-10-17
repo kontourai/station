@@ -65,6 +65,14 @@ const SCOPES = [
     `\${{ inputs.ring }}`,
   ],
   [
+    'portable-server-archives.yml',
+    'archive',
+    'Build the archive',
+    PORTABLE,
+    'RELEASE_RING',
+    `\${{ inputs.ring }}`,
+  ],
+  [
     'publish-packages.yml',
     'publish',
     'Build CLI',

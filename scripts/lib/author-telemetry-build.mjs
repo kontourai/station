@@ -1,3 +1,5 @@
+import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
+
 /** Public binary metadata. Release workflows are the only supported writers. */
 export function authorTelemetryEndpoint(channel, env = process.env) {
   const endpoint = env.STATION_AUTHOR_TELEMETRY_ENDPOINT || '';
@@ -35,7 +37,10 @@ export function authorTelemetryEndpoint(channel, env = process.env) {
     : nightly
       ? 'nightly'
       : 'stable';
-  if (channel !== expectedChannel) {
+  if (
+    channel !== expectedChannel &&
+    channel !== STATION_RELEASE_RINGS[expectedChannel].runtimeChannel
+  ) {
     throw new Error(
       'Author telemetry endpoint requires the existing build channel to match the release',
     );

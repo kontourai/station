@@ -203,7 +203,7 @@ The injection boundary is the official producer, not a workflow-wide `env`:
 | --- | --- |
 | Tagged stable/preview desktop, macOS/Windows/Linux (`release.yml`) | Repo variable in desktop producer jobs only; existing preflight channel feeds the server's `STATION_CHANNEL` build stamp. Tauri resource builds inherit it. |
 | Nightly desktop, macOS/Windows (`nightly-native-stage.yml`, called by `nightly.yml`) | Repo variable only for official main Nightly runs; server build stamp records `nightly`. The Windows wrapper and nested resource builds inherit it. There is no Nightly Linux release producer. |
-| Five portable server archive targets, stable/preview/nightly (`portable-server-archives.yml`) | Repo variable only in the server/UI build step, for official tag or main Nightly callers with release inputs; the existing `inputs.ring` supplies `STATION_CHANNEL`. Direct dispatch and PR packaging proof get no endpoint. |
+| Five portable server archive targets, stable/preview/nightly (`portable-server-archives.yml`) | Repo variable in both the initial server/UI build and the archive-packaging step, which rebuilds the server. Official tag or main Nightly callers must supply release inputs. The initial stamp uses `inputs.ring`; staging retains its existing runtime channel from the packaged-release metadata. Direct dispatch and PR packaging proof get no endpoint. |
 | npm CLI stable (`publish-packages.yml`) | Repo variable only in the CLI build step during an official main publish dispatch. The existing `STATION_CLI_BUILD_CHANNEL` stamp remains authoritative. Main push/version-PR builds get no endpoint. |
 | npm CLI Nightly (`nightly.yml`) | Repo variable only in the exact-source Nightly CLI build; existing CLI channel stamp remains `nightly`. |
 | npm CLI preview | No preview npm publisher exists. Adding one needs its own reviewed release path; do not repurpose stable publication. |
@@ -213,8 +213,10 @@ The injection boundary is the official producer, not a workflow-wide `env`:
 
 The CLI endpoint stamp does not introduce a CLI sender: the CLI installs or
 connects to a separately distributed host, whose server stamp owns telemetry.
-The server's existing `__STATION_SERVER_BUILD__.channel` metadata is the channel
-source for telemetry; no parallel telemetry channel setting is added. This
+`STATION_TELEMETRY_BUILD_CHANNEL` derives from the server's existing
+`__STATION_SERVER_BUILD__.channel` metadata and the generated release-ring table
+(`beta` becomes `preview`). No parallel telemetry channel setting is added, and
+portable runtime provenance keeps its existing `beta` identity. This
 preserves ADR 0020's separate client/host identities and ring-tagged build
 model. A future promotion model must revisit baked channel metadata together
 with the existing release identity, rather than relabeling these bytes.

@@ -8,7 +8,13 @@ import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 const makeTempDir = trackTempDirs();
 type Workflow = {
   env?: Record<string, string>;
-  jobs: Record<string, { env: Record<string, string> }>;
+  jobs: Record<
+    string,
+    {
+      env: Record<string, string>;
+      steps?: Array<{ name?: string; env?: Record<string, string> }>;
+    }
+  >;
 };
 
 function guard(script: string, args: string[] = []) {
@@ -70,6 +76,29 @@ describe('official author telemetry build boundary', () => {
       );
       writeFileSync(file, original);
     }
+    const portable = join(
+      fixture,
+      '.github/workflows/portable-server-archives.yml',
+    );
+    const portableOriginal = readFileSync(portable, 'utf8');
+    const portableWorkflow = load(portableOriginal) as Workflow;
+    const archive = portableWorkflow.jobs.archive.steps?.find(
+      (step) => step.name === 'Build the archive',
+    );
+    expect(archive).toBeDefined();
+    delete archive?.env?.STATION_AUTHOR_TELEMETRY_ENDPOINT;
+    writeFileSync(portable, dump(portableWorkflow));
+    const missingArchiveInjection = guard(
+      'check-author-telemetry-workflows.mjs',
+      [fixture],
+    );
+    expect(missingArchiveInjection.status, missingArchiveInjection.stderr).toBe(
+      1,
+    );
+    expect(missingArchiveInjection.stderr).toContain(
+      'archive/Build the archive',
+    );
+    writeFileSync(portable, portableOriginal);
     const pr = join(fixture, '.github/workflows/build-android.yml');
     const prOriginal = readFileSync(pr, 'utf8');
     writeFileSync(
