@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/pull-request-provider';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import type { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { pullRequestOps } from '../../telemetry/metrics.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
@@ -47,6 +48,8 @@ export function createPullRequestRoutes(
   providers: () => IPullRequestProvider[],
   context: (c: any, request: PullRequestContextRequest) => Promise<any>,
   options: {
+    guideWriterIdentityForRequest?: Identity;
+    guides?: PullRequestReviewGuideService;
     operatorIdentityForRequest: Identity;
     isRequestPrincipalCurrent?: (request: Request) => boolean;
   },
@@ -248,6 +251,76 @@ export function createPullRequestRoutes(
     if (!current(c))
       return c.json({ success: false, error: 'Station access changed' }, 403);
     return c.json({ success: true, data: narrow(x.provider, result) });
+  });
+  const guidePath = '/:provider/:host/:owner/:repo/:ref/guide';
+  app.on(['GET', 'POST'], guidePath, async (c) => {
+    if (!current(c))
+      return c.json({ success: false, error: 'Station access changed' }, 403);
+    if (!options.guides?.enabled())
+      return c.json({ success: true, data: { enabled: false } });
+    if (!/^[1-9]\d*$/.test(param(c, 'ref')))
+      return c.json(
+        { success: false, error: 'An exact pull request number is required' },
+        400,
+      );
+    const guideWriter = () =>
+      options.guideWriterIdentityForRequest?.(c) ?? operator(c);
+    const actor = guideWriter();
+    if (c.req.method === 'POST' && !actor)
+      return c.json(
+        { success: false, error: 'Operator authentication required' },
+        403,
+      );
+    const x = await resolve(c, false);
+    if ('refused' in x)
+      return c.json({ success: false, error: x.refused }, 404);
+    if (!x.provider.getReviewSnapshot)
+      return c.json(
+        { success: false, error: 'Provider review snapshots are unavailable' },
+        409,
+      );
+    const observed = await x.provider.getReviewSnapshot(
+      x.context,
+      param(c, 'ref'),
+    );
+    if (!current(c))
+      return c.json({ success: false, error: 'Station access changed' }, 403);
+    if (!observed.available || !observed.data)
+      return c.json(
+        { success: false, error: observed.reason ?? 'Review unavailable' },
+        409,
+      );
+    const identity = {
+      provider: param(c, 'provider'),
+      host: param(c, 'host'),
+      repository: { owner: param(c, 'owner'), name: param(c, 'repo') },
+      ref: param(c, 'ref'),
+    };
+    c.header('Cache-Control', 'private, no-store');
+    try {
+      const result =
+        c.req.method === 'POST'
+          ? options.guides.start(
+              { identity, context: x.context, snapshot: observed.data },
+              () => current(c) && guideWriter() === actor,
+            )
+          : options.guides.read(
+              identity,
+              observed.data.headSha,
+              observed.data.diff.state === 'available'
+                ? observed.data.diff.patch
+                : undefined,
+            );
+      return c.json({ success: true, data: { enabled: true, ...result } });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Guide unavailable',
+        },
+        409,
+      );
+    }
   });
   app.post(
     '/:provider/:host/:owner/:repo/:ref/review',

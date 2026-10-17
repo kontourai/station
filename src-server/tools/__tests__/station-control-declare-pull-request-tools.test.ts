@@ -109,6 +109,10 @@ async function connect() {
         arguments: args,
       });
     },
+    guide: (name: string, args: Record<string, unknown>) => {
+      id += 1;
+      return request(id, 'tools/call', { name, arguments: args });
+    },
     list: () => {
       id += 1;
       return request(id, 'tools/list');
@@ -212,4 +216,54 @@ describe('declare_pull_request tool', () => {
     expect(entry.annotations.readOnlyHint).toBe(false);
     await client.close();
   });
+});
+
+test('guide MCP validates batch bounds before any REST write and forwards exact per-project targets', async () => {
+  const client = await connect();
+  const target = {
+    provider: 'github',
+    host: 'github.com',
+    owner: 'owner',
+    repository: 'repo',
+    ref: '42',
+    project: 'project-a',
+  };
+  const overflow = await client.guide('write_pull_request_guides', {
+    targets: Array.from({ length: 21 }, () => target),
+  });
+  expect(
+    overflow.error !== undefined || overflow.result?.isError === true,
+  ).toBe(true);
+  expect(recorded.filter((entry) => entry.internal)).toEqual([]);
+  answer = {
+    success: true,
+    data: {
+      enabled: true,
+      guide: null,
+      run: { state: 'Running' },
+      currentHeadSha: 'a'.repeat(40),
+      excerptContents: [],
+    },
+  };
+  const started = await client.guide('write_pull_request_guides', {
+    targets: [target],
+  });
+  expect(started.result.isError).not.toBe(true);
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: {},
+      internal: true,
+    },
+  ]);
+  recorded.length = 0;
+  await client.guide('read_pull_request_guide', { target });
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: undefined,
+      internal: true,
+    },
+  ]);
+  await client.close();
 });

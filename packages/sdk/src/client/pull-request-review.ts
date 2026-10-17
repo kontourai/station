@@ -6,6 +6,7 @@ import type {
   PullRequestReviewOutcome,
   PullRequestReviewSnapshot,
 } from '@kontourai/station-contracts/pull-request-provider';
+import type { PullRequestReviewGuideResult } from '@kontourai/station-contracts/pull-request-review-guide';
 import { envelopeError, StationHttpError } from './api-error-message';
 import {
   type ClientRequestOptions,
@@ -152,4 +153,57 @@ export async function mergeReviewedPullRequest(
       'The merge acknowledgement could not be verified. Inspect the provider before trying again.',
     );
   return result;
+}
+
+/** Shared server guide; obsolete anchors are removed by the server. */
+export async function getPullRequestGuide(
+  apiBase: string,
+  target: PullRequestReviewTarget,
+  options?: ClientRequestOptions,
+): Promise<
+  ({ enabled: true } & PullRequestReviewGuideResult) | { enabled: false }
+> {
+  return readGuideResponse(
+    await getJson(
+      path(apiBase, target).replace('/review?', '/guide?'),
+      options,
+    ),
+  );
+}
+export async function writePullRequestGuide(
+  apiBase: string,
+  target: PullRequestReviewTarget,
+  options?: ClientRequestOptions,
+): Promise<
+  ({ enabled: true } & PullRequestReviewGuideResult) | { enabled: false }
+> {
+  return readGuideResponse(
+    await mutateJson(
+      path(apiBase, target).replace('/review?', '/guide?'),
+      'POST',
+      options,
+      {},
+    ),
+  );
+}
+async function readGuideResponse(
+  response: Response,
+): Promise<
+  ({ enabled: true } & PullRequestReviewGuideResult) | { enabled: false }
+> {
+  const value = (await readJsonBody(response)) as
+    | {
+        success?: boolean;
+        data?:
+          | ({ enabled: true } & PullRequestReviewGuideResult)
+          | { enabled: false };
+      }
+    | undefined;
+  if (
+    !response.ok ||
+    value?.success !== true ||
+    typeof value.data?.enabled !== 'boolean'
+  )
+    throw envelopeError(response, value, 'Pull request guide unavailable');
+  return value.data;
 }

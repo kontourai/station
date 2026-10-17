@@ -42,3 +42,9 @@ export const SESSION_SUMMARY_SERVICE_PRINCIPAL = servicePrincipal(
   'session-summary-generator',
   'Session summary generator',
 );
+
+/** Read-only pull request tour generation. */
+export const PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL = servicePrincipal(
+  'pull-request-guide',
+  'Pull request guide writer',
+);

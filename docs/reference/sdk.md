@@ -4572,3 +4572,14 @@ updates that exact cache and invalidates the personal Layout inventory.
 scope and read the existing authorized projections. They do not persist rows in
 the Board. The dashboard uses the scoped Task and Project queries alongside
 them. See [Personal Boards](../user/personal-boards.md) for the user journey.
+
+### Pull request guide client
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestGuide` and
+`writePullRequestGuide`. Both accept `(apiBase, target, options?)` using the
+same `PullRequestReviewTarget` and request authority as the review client.
+They return `{ enabled: false }` or `{ enabled: true, guide, run,
+currentHeadSha, excerptContents }`. Writing starts asynchronous generation;
+read again to observe completion. Obsolete guides retain their original SHA
+and prose, with excerpts and line notes removed. See the
+[pull request guide](../user/pull-request-guides.md) for settings and limits.

@@ -1,13 +1,19 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
+import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { RUNTIME_CREDENTIAL_AUTHORITY_VAR } from '../../../security/runtime-request-security.js';
 import { GitHubPullRequestProvider } from '../../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../../services/pull-requests/gitlab-pull-request-provider.js';
+import { PullRequestReviewGuideService } from '../../../services/pull-requests/pull-request-review-guide.js';
+import { PullRequestReviewGuideStore } from '../../../services/pull-requests/pull-request-review-guide-store.js';
 import { createPullRequestRoutes } from '../pull-request-routes.js';
 
 const caps = {
@@ -727,4 +733,100 @@ describe('what each route asks of the checkout (#2474, #2475)', () => {
       expect.objectContaining({ requireBranchState: true }),
     ]);
   });
+});
+
+test('guide route resolves the forge head, strips obsolete anchors and refuses unauthenticated generation', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'station-guide-route-'));
+  try {
+    const store = new PullRequestReviewGuideStore(home);
+    const identity = {
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'o', name: 'r' },
+      ref: '17',
+    };
+    store.write(identity, {
+      headSha: 'a'.repeat(40),
+      generatedAt: new Date().toISOString(),
+      modelSelection: 'model',
+      stops: [
+        {
+          title: 'Old tour',
+          summary: '',
+          attention: null,
+          excerpts: [
+            { path: 'a.ts', side: 'new', start: 1, end: 1, caption: '' },
+          ],
+          files: [],
+          notes: [],
+          questions: [],
+        },
+      ],
+    });
+    const snapshot: PullRequestReviewSnapshot = {
+      headSha: 'b'.repeat(40),
+      baseSha: 'c'.repeat(40),
+      observedAt: new Date().toISOString(),
+      pullRequest: {
+        provider: 'github',
+        host: 'github.com',
+        ref: '17',
+        title: 'Changed',
+        body: null,
+        url: 'https://github.com/o/r/pull/17',
+        repository: identity.repository,
+        author: { login: 'author' },
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        state: 'OPEN',
+        commits: 1,
+        reviewStatus: '',
+        comments: 0,
+        nativeId: '17',
+        mergeability: 'unknown',
+      },
+      diff: { state: 'available', patch: '', completeness: 'provider-output' },
+      discussion: [],
+      discussionPartial: false,
+      checks: { state: 'available', checks: [], partial: false },
+    };
+    const provider = new GitHubPullRequestProvider();
+    vi.spyOn(provider, 'getReviewSnapshot').mockResolvedValue({
+      available: true,
+      data: snapshot,
+      effectiveCapabilities: caps,
+      effectiveMergeMethods: [],
+      mergeMethodsSource: 'provider-default',
+    });
+    const generate = vi.fn();
+    const guides = new PullRequestReviewGuideService(
+      store,
+      () => ({ enabled: true, model: 'model', instructions: '' }),
+      generate,
+      () => {},
+    );
+    const routes = createPullRequestRoutes(() => [provider], context, {
+      operatorIdentityForRequest: () => undefined,
+      guides,
+    });
+    const url = '/github/github.com/o/r/17/guide?project=p';
+    const read = await routes.request(url);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({
+      success: true,
+      data: {
+        currentHeadSha: snapshot.headSha,
+        guide: { headSha: 'a'.repeat(40), stops: [{ excerpts: [] }] },
+        excerptContents: [],
+      },
+    });
+    expect((await routes.request(url, { method: 'POST' })).status).toBe(403);
+    expect(
+      (await routes.request('/github/github.com/other/r/17/guide?project=p'))
+        .status,
+    ).toBe(404);
+    expect(generate).not.toHaveBeenCalled();
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

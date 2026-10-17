@@ -9,8 +9,10 @@ vi.mock('../client/http', async (importOriginal) => ({
 }));
 
 import {
+  getPullRequestGuide,
   getPullRequestReview,
   submitPullRequestReview,
+  writePullRequestGuide,
 } from '../client/pull-request-review';
 
 const target = {
@@ -157,4 +159,30 @@ test('owner and repository compare case-insensitively; another repository is sti
   await expect(
     getPullRequestReview('http://station.test', target, options),
   ).rejects.toThrow('different or incomplete target');
+});
+
+test('guide client preserves target encoding and request authority for reads and generation', async () => {
+  const result = {
+    enabled: true,
+    guide: null,
+    run: null,
+    currentHeadSha: sha,
+    excerptContents: [],
+  };
+  transport.getJson.mockResolvedValue(response(result));
+  expect(
+    await getPullRequestGuide('http://station.test', target, options),
+  ).toEqual(result);
+  expect(transport.getJson).toHaveBeenCalledWith(
+    'http://station.test/api/pull-requests/gitlab/forge.test/group%2Fnested/repo/17/guide?project=my+project&workingDirectory=%2Fprivate%2Fworktree',
+    options,
+  );
+  transport.mutateJson.mockResolvedValue(response(result));
+  await writePullRequestGuide('http://station.test', target, options);
+  expect(transport.mutateJson).toHaveBeenCalledWith(
+    expect.stringContaining('/17/guide?'),
+    'POST',
+    options,
+    {},
+  );
 });

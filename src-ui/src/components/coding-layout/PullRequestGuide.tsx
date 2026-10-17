@@ -1,0 +1,198 @@
+import type { PullRequestReviewGuideResult } from '@kontourai/station-contracts/pull-request-review-guide';
+import {
+  getPullRequestGuide,
+  type PullRequestReviewTarget,
+  writePullRequestGuide,
+} from '@kontourai/station-sdk/pull-request-review';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { Button } from '../Button';
+import './PullRequestGuide.css';
+
+/** Read-only first slice; review actions remain in the Review tab. */
+export function PullRequestGuide({
+  target,
+  headSha,
+}: {
+  target: PullRequestReviewTarget;
+  headSha: string;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const query = useQuery({
+    queryKey: ['pull-request-guide', scope?.authorityKey, target, headSha],
+    queryFn: ({ signal }) =>
+      getPullRequestGuide(scope!.apiBase, target, {
+        signal,
+        requestScope: scope!,
+      }),
+    enabled: !!scope?.isCurrent(),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) =>
+      query.state.data?.enabled && query.state.data.run?.state === 'Running'
+        ? 3000
+        : false,
+  });
+  const write = useMutation({
+    mutationFn: () =>
+      writePullRequestGuide(scope!.apiBase, target, { requestScope: scope! }),
+    onSuccess: () => query.refetch(),
+  });
+  const result = query.data;
+  if (!scope?.isCurrent()) return <p>Reconnect to read this guide.</p>;
+  if (query.isPending) return <p role="status">Reading guide…</p>;
+  if (query.error) return <p role="alert">{query.error.message}</p>;
+  if (!result?.enabled)
+    return (
+      <p>Enable Review guides in Station settings to read AI-written tours.</p>
+    );
+  const running = result.run?.state === 'Running';
+  return (
+    <div className="pull-request-guide">
+      <div className="pull-request-guide__actions">
+        <p>AI-written tour · shared on this server</p>
+        <Button
+          disabled={running || write.isPending}
+          onClick={() => write.mutate()}
+        >
+          {running
+            ? 'Writing guide…'
+            : result.guide
+              ? 'Rewrite guide'
+              : 'Write guide'}
+        </Button>
+      </div>
+      {write.error && <p role="alert">{write.error.message}</p>}
+      {result.run?.state === 'Failed' && (
+        <p role="alert">{result.run.detail}</p>
+      )}
+      {running && (
+        <p role="status">
+          The guide is being written. You can leave this tab and return later.
+        </p>
+      )}
+      {result.guide ? (
+        <GuideStops key={result.guide.generatedAt} result={result} />
+      ) : (
+        !running && <p>No guide has been written for this pull request.</p>
+      )}
+    </div>
+  );
+}
+
+function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
+  const [index, setIndex] = useState(0);
+  const title = useRef<HTMLHeadingElement>(null);
+  const priorIndex = useRef(index);
+  useEffect(() => {
+    if (priorIndex.current !== index) title.current?.focus();
+    priorIndex.current = index;
+  }, [index]);
+  const guide = result.guide!;
+  const stop = guide.stops[index];
+  const stale =
+    !result.currentHeadSha || guide.headSha !== result.currentHeadSha;
+  if (!stop) return <p>This guide contains no stops.</p>;
+  return (
+    <>
+      {stale && (
+        <p role="status">
+          This guide describes an earlier revision. Excerpts and line notes are
+          hidden. Rewrite the guide to review the current change.
+        </p>
+      )}
+      <p className="pull-request-guide__meta">
+        {guide.modelSelection} · {new Date(guide.generatedAt).toLocaleString()}{' '}
+        · {guide.headSha.slice(0, 12)}
+      </p>
+      <nav className="pull-request-guide__actions" aria-label="Guide stops">
+        <Button disabled={index === 0} onClick={() => setIndex(index - 1)}>
+          Previous
+        </Button>
+        <span aria-live="polite">
+          Stop {index + 1} of {guide.stops.length}
+        </span>
+        <Button
+          disabled={index === guide.stops.length - 1}
+          onClick={() => setIndex(index + 1)}
+        >
+          Next
+        </Button>
+      </nav>
+      <article aria-labelledby="pull-request-guide-stop">
+        <h3 id="pull-request-guide-stop" ref={title} tabIndex={-1}>
+          {stop.title}
+        </h3>
+        <p className="pull-request-guide__summary">{stop.summary}</p>
+        {stop.attention && (
+          <aside className="pull-request-guide__attention">
+            <strong>Look closely · {stop.attention.kind}</strong>
+            <p>{stop.attention.note}</p>
+          </aside>
+        )}
+        {!stale &&
+          stop.excerpts.map((excerpt, n) => (
+            <div
+              key={`${excerpt.path}:${excerpt.side}:${excerpt.start}:${n}`}
+              className="pull-request-guide__excerpt"
+            >
+              <strong>{excerpt.path}</strong>
+              <p>
+                {excerpt.side === 'new' ? 'New' : 'Old'} lines {excerpt.start}–
+                {excerpt.end} · {excerpt.caption}
+              </p>
+              <pre>
+                <code>
+                  {result.excerptContents
+                    .find(
+                      (content) =>
+                        content.path === excerpt.path &&
+                        content.side === excerpt.side &&
+                        content.start === excerpt.start,
+                    )
+                    ?.lines.map(
+                      (line, index) => `${excerpt.start + index}  ${line}`,
+                    )
+                    .join('\n') ?? 'Excerpt unavailable in the current diff.'}
+                </code>
+              </pre>
+            </div>
+          ))}
+        {stop.files.length > 0 && (
+          <ul>
+            {stop.files.map((file) => (
+              <li key={file.path}>
+                <code>{file.path}</code>
+                {file.note ? ` — ${file.note}` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!stale &&
+          stop.notes.map((note, n) => (
+            <aside key={n}>
+              <strong>{note.title}</strong>
+              <p>
+                {note.path}:{note.line} · {note.body}
+              </p>
+            </aside>
+          ))}
+        {stop.questions.length > 0 && (
+          <>
+            <h4>Questions to consider</h4>
+            <ul>
+              {stop.questions.map((question) => (
+                <li key={question}>{question}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {index === guide.stops.length - 1 && (
+          <p>Continue in the Review tab to comment or approve this revision.</p>
+        )}
+      </article>
+    </>
+  );
+}
