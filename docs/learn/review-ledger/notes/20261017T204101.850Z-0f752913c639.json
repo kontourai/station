@@ -1,0 +1,7 @@
+{
+  "revision": "49b4dca4378e348a888402a8dc7e6cf3b138f516",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the internal sessionStructuralSharing module classification and publicBarrel manifest update: the helper serves the two existing session query hooks and adds no public query, mutation or root export. The public barrel suite passes all 14 tests. Hook fixtures retain coherent terminal/provider-absent lifecycle states; both hook cases pass. SDK cache-clock prose remains accurate; this note covers only that additional test/inventory delta.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}
