@@ -82,10 +82,43 @@ of the most recent frame. A successful input write proves only that the hub
 socket accepted bytes, not that the device applied the gesture.
 
 Human input follows the shared control lease and stale-epoch/fence checks.
-Device live-surface Agent control is not wired: its authorizer requires a human
-request. The separate toolchain **Agent access** setting installs/enables
-agent-device tooling; it does not establish an Agent grant to this shared live
-surface or prove all tool use participates in the same lease.
+The station-control `device_*` tools admit a bound, verified agent Session with
+its recorded owner and Project. The operator may use local devices; active
+Project admins/owners remain limited to devices shared with that Project. Every
+call rechecks this authority. The in-process device grant targets one host/device
+and cannot be supplied in tool arguments. See the
+[device Agent control decision](../decisions/device-agent-control.md).
+
+`device_list` lists accessible local devices and sessions opened by this
+conversation. `device_open` starts a stopped device asynchronously (a `starting`
+answer is not completed boot) or opens/joins its live session. Android boots can
+change the device ID from AVD name to emulator serial: list again and select
+the running row. A running session is watchable from Device; this first slice
+does **not** reveal the pane automatically. The tool returns `paneRevealed: false`
+and instructions for opening the existing pane.
+
+`device_input` sends bounded typed pointer, text and key events through the
+existing allowlisted producer, never a shell command. It claims only an
+unclaimed lease or renews its own; a human or another agent holding control
+refuses the action. Human takeover interrupts queued input and the producer
+checks the fence before each send. `device_snapshot` reads the bounded
+accessibility tree; `device_screenshot` returns PNG through the existing capture
+service (maximum 8 MiB, validated dimensions). Both require the agent lease and
+recheck authority and the fence before publishing. An accepted socket write is
+not proof the device applied it.
+
+`device_close` ends only a session this conversation created, leaves the device
+running, and refuses while another controller holds it. Joining a human-opened
+session does not transfer ownership. Successful agent operations renew an
+unwatched session's idle grace. Remote-host agent tools, automatic pane reveal,
+and agent shutdown are not included yet.
+
+Only a credential minted for `sdk-in-process` currently supplies bound assurance.
+Codex's `url-token` and ACP's `http-header-token` paths remain refused as
+`caller-not-bound`; a stdio connection with no verified caller is refused as
+`caller-required`. Tool visibility grants no authority. The separate toolchain
+**Agent access** setting installs/enables agent-device tooling; it does not grant
+this shared live surface or put external CLI commands under its lease.
 
 Closing or hiding a pane detaches that viewer. The
 [session service](../../src-server/services/devices/device-session-service.ts)

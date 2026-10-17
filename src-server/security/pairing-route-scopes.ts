@@ -905,6 +905,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // any paired credential that did would need the terminal authority, as
   // for driving the Browser pane itself.
   {
+    id: '/api/device-agent:terminal-operate',
+    method: '*',
+    prefix: '/api/device-agent',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/browser-agent:terminal-operate',
     method: '*',
     prefix: '/api/browser-agent',
