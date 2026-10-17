@@ -27,6 +27,11 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It carries no MCP tool or
+session bridge and does not publish or store pages.
+
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and

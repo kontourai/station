@@ -296,7 +296,8 @@ The MCP proxy endpoint serves `GET /mcp-ui/proxy`; the same dedicated listener
 also serves the fixed `/plugin-host/frame` bootstrap and the separate
 [`/html-reply/frame` page-only bridge](../decisions/html-replies.md). None is a
 general asset server. The HTML viewer is a foundation for future conversation
-publishing; it does not use the MCP Apps tool bridge. The MCP proxy does not receive the resource URI, read resources,
+publishing; it does not use the MCP Apps tool bridge. The MCP proxy does not
+receive the resource URI, read resources,
 proxy arbitrary URLs, store credentials, or execute tools.
 The outer proxy response applies only a `frame-ancestors` CSP, bound to the
 configured Station UI origins. It deliberately applies no resource directives

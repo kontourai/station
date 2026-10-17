@@ -9,7 +9,7 @@ import {
 import { afterEach, expect, test, vi } from 'vitest';
 import { HtmlReply } from '../HtmlReply';
 
-vi.mock('../../../../platform/openExternalLink', () => ({
+vi.mock('../../../platform/openExternalLink', () => ({
   openNativeExternalLink: vi.fn(async () => null),
 }));
 
