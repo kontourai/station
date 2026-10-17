@@ -313,7 +313,15 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
       .spyOn(GitHubPullRequestProvider.prototype, 'getReviewSnapshot')
       .mockResolvedValue({
         available: true,
-        data: f.snapshot,
+        data: {
+          ...f.snapshot,
+          pullRequest: {
+            ...f.snapshot.pullRequest,
+            repository: { owner: 'owner', name: 'repo' },
+            ref: '42',
+            url: 'https://github.com/owner/repo/pull/42',
+          },
+        },
         effectiveCapabilities: {
           list: true,
           detail: true,

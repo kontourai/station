@@ -4,7 +4,7 @@ subject: Generate shared pull request guides without model execution tools
 decided: 2026-10-17
 evidence:
   - kind: commit
-    ref: 82afa2f2d8a
+    ref: 86921a734ad
   - kind: doc
     ref: docs/user/pull-request-guides.md
 ---

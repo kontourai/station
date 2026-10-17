@@ -37,7 +37,7 @@
 }
 
 .pull-request-guide ul {
-  padding-inline-start: var(--k-space-5);
+  padding-inline-start: calc(var(--k-space-4) + var(--k-space-1));
 }
 .pull-request-guide article > :is(h3, h4, p, ul) {
   margin-block: var(--k-space-3);
