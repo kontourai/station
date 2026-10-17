@@ -13,6 +13,7 @@ export interface DeviceAgentAuthority {
 
 export interface DeviceAgentAccessDeps {
   resolveCaller(): StationControlCaller | null;
+  agentAccessEnabled(): boolean;
   authorizePrincipal: BrowserPrincipalAuthorizer;
   shares: DeviceAccessDeps['shares'];
   resolveAndroidAvd?: DeviceAccessDeps['resolveAndroidAvd'];
@@ -24,6 +25,8 @@ export async function authorizeDeviceAgentCaller(deps: DeviceAgentAccessDeps) {
   const refusal = browserAgentCallerRefusal(caller);
   if (refusal || !caller)
     return { ok: false as const, code: refusal?.code ?? 'caller-required' };
+  if (!deps.agentAccessEnabled())
+    return { ok: false as const, code: 'agent-access-disabled' };
   const principalId = caller.principal!.id;
   const projectId = caller.localProjectId!;
   const actor = await deps.authorizePrincipal(principalId, projectId);

@@ -4062,7 +4062,10 @@ local station-control device tools to the same session, producer and lease.
 [Agent routes](../../src-server/routes/device-agent.ts) re-derive a bound caller;
 [device grants](../../src-server/services/devices/device-agent-authority.ts)
 recheck recorded owner/Project, current role, and per-device shares. Human takeover
-fences agent input. Automatic pane reveal and remote-host agent tools remain
+fences agent input; grants are rechecked per event, and each operation releases
+its lease in finally. Live device tools require the operator Agent access opt-in;
+closing for everyone additionally requires operator standing and creator identity.
+Automatic pane reveal and remote-host agent tools remain
 outside this first slice.
 
 **Evidence.** `mobile-device-host.test.ts`, `mobile-device.routes.test.ts`,

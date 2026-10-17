@@ -3612,6 +3612,7 @@ export function configureRuntimeRoutes(
       context.app.route(
         '/api/device-agent',
         createDeviceAgentRoutes({
+          agentAccessEnabled: () => devices.agentAccessEnabled(),
           isInternalRequest: isStationInternalRequest,
           resolveCaller: (request) =>
             resolveStationControlCallerForRequest(

@@ -899,11 +899,9 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
-  // #90 browser tools' REST side: Station's own station-control tool code
-  // is its only caller (the routes answer 404 to anything that is not the
-  // internal principal). Declared so no credential reaches it by default;
-  // any paired credential that did would need the terminal authority, as
-  // for driving the Browser pane itself.
+  // Device tools' REST side: only internal requests with bound, opted-in
+  // callers are admitted. Paired credentials need terminal authority even
+  // to reach the route, which then refuses them as non-internal.
   {
     id: '/api/device-agent:terminal-operate',
     method: '*',
@@ -911,6 +909,11 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // #90 browser tools' REST side: Station's own station-control tool code
+  // is its only caller (the routes answer 404 to anything that is not the
+  // internal principal). Declared so no credential reaches it by default;
+  // any paired credential that did would need the terminal authority, as
+  // for driving the Browser pane itself.
   {
     id: '/api/browser-agent:terminal-operate',
     method: '*',

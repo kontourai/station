@@ -9,7 +9,10 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
       body: JSON.stringify(body),
     });
     if (typeof result?.ok !== 'boolean')
-      return jsonToolResult({ ok: false, code: 'unavailable' });
+      return jsonToolResult(
+        { ok: false, code: 'unavailable' },
+        { failed: true },
+      );
     if (result.ok && result.capture) {
       const { pngBase64, ...capture } = result.capture;
       return {
@@ -26,9 +29,9 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
         ],
       };
     }
-    return jsonToolResult(result);
+    return jsonToolResult(result, { failed: result.ok === false });
   } catch {
-    return jsonToolResult({ ok: false, code: 'unavailable' });
+    return jsonToolResult({ ok: false, code: 'unavailable' }, { failed: true });
   }
 }
 
@@ -46,7 +49,7 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'device_open',
-    'Start a local device if needed, or open its shared live session and claim unclaimed control. Returns starting while booting. The user opens Device to watch; this tool does not reveal the pane.',
+    'Start a local device if needed, or open its shared live session. Claims control only for the operation. Returns starting while booting. The user opens Device to watch; this tool does not reveal the pane.',
     {
       platform: z.enum(['ios', 'android']),
       deviceId: z.string().min(1).max(256),
@@ -82,7 +85,7 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'device_close',
-    'End a local device session this conversation opened, for every viewer. Leaves the device running; refused for human-opened sessions or while another controller holds it.',
+    'End a local device session this conversation opened, for every viewer. Requires operator standing. Leaves the device running; refuses human-opened sessions and other controllers.',
     { deviceSessionId },
     async (args) => callDevice('close', args),
   );

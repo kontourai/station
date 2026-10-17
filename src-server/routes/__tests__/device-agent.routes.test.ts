@@ -8,9 +8,18 @@ import {
   revokeStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
+import {
+  authorizeDeviceAgentCaller,
+  mintDeviceAgentGrant,
+} from '../../services/devices/device-agent-authority.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import {
+  DeviceToolsService,
+  deviceControlConflict,
+} from '../../services/devices/device-tools.js';
+import {
+  claimAgentControl,
   claimHumanControl,
   LiveSurfaceRegistry,
 } from '../../services/live-surface/registry.js';
@@ -21,15 +30,20 @@ import {
   withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import { createDeviceAgentRoutes } from '../device-agent.js';
+import { createDeviceToolsRoutes } from '../device-tools.js';
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   for (const dispose of disposals.splice(0)) await dispose();
+  vi.useRealTimers();
 });
 
-type ToolResult = { content: { type: string; text?: string; data?: string }[] };
+type ToolResult = {
+  content: { type: string; text?: string; data?: string }[];
+  isError?: boolean;
+};
 type Tool = (args: Record<string, unknown>) => Promise<ToolResult>;
 const parsed = (result: ToolResult) => JSON.parse(result.content[0]!.text!);
 
@@ -38,18 +52,24 @@ function harness(
     | 'sdk-in-process'
     | 'url-token'
     | 'http-header-token' = 'sdk-in-process',
+  options: { operator?: boolean; idleEndMs?: number } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
   const { token } = mintStationControlMcpToken(sessionId, channel);
   let shared = true;
   let active = true;
-  const caller = () =>
-    resolveStationControlCallerFromToken(token, () => ({
-      principal: { id: 'admin', source: 'session-owner' },
-      localProjectId: 'project',
-      projectIdSource: 'session-record',
-      conversationId: 'conversation',
-    }));
+  let enabled = true;
+  let principalId = 'admin';
+  let conversationId = 'conversation';
+  let callingSession = sessionId;
+  const extraTokens: string[] = [];
+  const record = () => ({
+    principal: { id: principalId, source: 'session-owner' as const },
+    localProjectId: 'project',
+    projectIdSource: 'session-record' as const,
+    conversationId,
+  });
+  const caller = () => resolveStationControlCallerFromToken(token, record);
   const packets: unknown[] = [];
   let onSend: (() => void) | undefined;
   class Socket extends EventEmitter {
@@ -120,6 +140,9 @@ function harness(
     host,
     endpoint: { onExit: () => () => {} },
     surfaces,
+    ...(options.idleEndMs !== undefined
+      ? { idleEndMs: options.idleEndMs }
+      : {}),
     access: {
       isOperator: async () => true,
       hasStanding: async () => true,
@@ -138,14 +161,14 @@ function harness(
     surfaces,
     tools: { accessibility },
   });
-  const routes = createDeviceAgentRoutes({
-    isInternalRequest: () => true,
-    resolveCaller: (request) =>
-      request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER) === token
+  const access = {
+    agentAccessEnabled: () => enabled,
+    resolveCaller: () =>
+      callingSession === sessionId
         ? caller()
-        : null,
+        : resolveStationControlCallerFromToken(callingSession, record),
     authorizePrincipal: createBrowserPrincipalAuthorizer({
-      isOperatorPrincipal: () => false,
+      isOperatorPrincipal: () => options.operator === true,
       membership: {
         admissionsForResolvedPrincipal: () =>
           active
@@ -173,7 +196,34 @@ function harness(
           : [],
     },
     resolveAndroidAvd: async () => 'Test',
+  };
+  const routes = createDeviceAgentRoutes({
+    ...access,
+    isInternalRequest: () => true,
+    resolveCaller: (request) => {
+      const presented = request.headers.get(
+        STATION_CONTROL_CALLER_TOKEN_HEADER,
+      );
+      return presented === token
+        ? caller()
+        : resolveStationControlCallerFromToken(presented, record);
+    },
     automation,
+  });
+  const humanTools = createDeviceToolsRoutes({
+    isRequestPrincipalCurrent: () => true,
+    access: {
+      isOperator: async () => true,
+      hasStanding: async () => true,
+      mayAccessDevice: async () => true,
+    },
+    resolveHumanCaller: () => ({ principal: 'admin', device: 'viewer' }),
+    controlConflict: (human, platform, deviceId) =>
+      deviceControlConflict({ sessions, surfaces }, platform, deviceId, human),
+    tools: new DeviceToolsService({
+      runner: { run: async () => '' },
+      hub: { connect: host.connect },
+    }),
   });
   const server = new McpServer({ name: 'device-test', version: '1' });
   registerDeviceTools(new StationControlToolRegistry(server));
@@ -190,8 +240,12 @@ function harness(
     ),
   );
   const run = (name: string, args: Record<string, unknown> = {}) =>
-    withStationControlCallerContext({ token, resolve: caller }, () =>
-      (registered[name]!.handler ?? registered[name]!.callback)!(args),
+    withStationControlCallerContext(
+      {
+        token: callingSession === sessionId ? token : callingSession,
+        resolve: access.resolveCaller,
+      },
+      () => (registered[name]!.handler ?? registered[name]!.callback)!(args),
     );
   const open = async () => {
     const result = parsed(await run('device_open', device));
@@ -213,11 +267,47 @@ function harness(
   };
   disposals.push(async () => {
     revokeStationControlMcpToken(sessionId);
+    for (const extra of extraTokens) revokeStationControlMcpToken(extra);
     await sessions.dispose();
     await surfaces.dispose();
   });
   return {
     run,
+    raw: (operation: string, body: unknown) =>
+      routes.request(`/${operation}`, {
+        method: 'POST',
+        headers: {
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }),
+    access,
+    device,
+    humanAction: () =>
+      humanTools.request(
+        '/hosts/local/devices/android/emulator-5554/tools/actions',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'set-appearance', appearance: 'dark' }),
+        },
+      ),
+    setEnabled: (value: boolean) => {
+      enabled = value;
+    },
+    setIdentity: (principal: string, conversation: string) => {
+      principalId = principal;
+      conversationId = conversation;
+    },
+    asAnotherAgent: () => {
+      const other = `device-test-${Math.random()}`;
+      extraTokens.push(other);
+      callingSession = mintStationControlMcpToken(
+        other,
+        'sdk-in-process',
+      ).token;
+    },
     open,
     take,
     packets,
@@ -244,6 +334,8 @@ function harness(
 test('bound tool input reaches the device socket, and human control refuses the next action', async () => {
   const h = harness();
   const id = await h.open();
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  expect(entry.lease.snapshot().holder, 'open releases its lease').toBeNull();
   expect(
     parsed(
       await h.run('device_input', {
@@ -253,6 +345,7 @@ test('bound tool input reaches the device socket, and human control refuses the 
     ),
   ).toMatchObject({ ok: true, accepted: 1 });
   expect(h.packets).toEqual([{ type: 'text', text: 'hello', ack: false }]);
+  expect(entry.lease.snapshot().holder, 'input releases its lease').toBeNull();
   await h.take(id);
   expect(
     parsed(
@@ -345,8 +438,8 @@ test('screenshot returns an image, then refuses publication after takeover durin
   expect(interrupted).toMatchObject({ ok: false, code: 'interrupted' });
 });
 
-test('snapshot reaches the device tools seam and close ends an owned session without shutdown', async () => {
-  const h = harness();
+test('snapshot reaches the device tools seam and operator close ends an owned session without shutdown', async () => {
+  const h = harness('sdk-in-process', { operator: true });
   const id = await h.open();
   expect(
     parsed(await h.run('device_snapshot', { deviceSessionId: id })),
@@ -418,4 +511,226 @@ test('revoked token and forged grant cannot authorize device input', async () =>
     ),
   ).toMatchObject({ ok: false, code: 'caller-required' });
   expect(h.packets).toHaveLength(0);
+});
+
+test.each(['device_screenshot', 'device_snapshot'])(
+  '%s releases the lease so the human Tools path is available immediately',
+  async (tool) => {
+    const h = harness();
+    const id = (await h.sessions.open(h.device)).sessionId;
+    const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+    expect(parsed(await h.run(tool, { deviceSessionId: id }))).toMatchObject({
+      ok: true,
+    });
+    expect(
+      entry.lease.snapshot().holder,
+      'observation must release control',
+    ).toBeNull();
+    const human = await h.humanAction();
+    expect(
+      human.status,
+      'human Tools action must not be device-controlled-by-other',
+    ).toBe(200);
+    expect(await human.json()).toMatchObject({ success: true });
+    await h.take(id);
+  },
+);
+
+test('failed observations release the lease', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.host.capture.mockRejectedValueOnce(new Error('capture failed'));
+  expect(
+    parsed(await h.run('device_screenshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false });
+  expect(
+    h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot().holder,
+  ).toBeNull();
+});
+
+test('surface authorization rechecks a minted grant after share revocation without claiming again', async () => {
+  const h = harness();
+  const id = await h.open();
+  const decided = await authorizeDeviceAgentCaller(h.access);
+  if (!decided.ok) throw new Error('fixture caller refused');
+  const grant = mintDeviceAgentGrant(h.access, decided.authority, h.device);
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  expect(await entry.authorize('admin', 'view', { agentGrant: grant })).toBe(
+    true,
+  );
+  h.revokeShare();
+  expect(
+    await entry.authorize('admin', 'view', { agentGrant: grant }),
+    'revoked minted grant must be refused at surface seam',
+  ).toBe(false);
+});
+
+test('share revocation during capture refuses publication and releases control', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.duringCapture(h.revokeShare);
+  const result = await h.run('device_screenshot', { deviceSessionId: id });
+  expect(
+    parsed(result),
+    'post-capture authorization must prevent publication',
+  ).toMatchObject({ ok: false, code: 'interrupted' });
+  expect(result.content.some((item) => item.type === 'image')).toBe(false);
+  expect(
+    h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot().holder,
+  ).toBeNull();
+});
+
+test('activity renews an unwatched session idle grace without keeping it forever', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  const h = harness('sdk-in-process', { idleEndMs: 100 });
+  const id = await h.open();
+  await vi.advanceTimersByTimeAsync(80);
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: true });
+  await vi.advanceTimersByTimeAsync(40);
+  expect(
+    h.sessions.get(id),
+    'agent activity must renew idle grace',
+  ).toBeDefined();
+  await vi.advanceTimersByTimeAsync(61);
+  expect(h.sessions.get(id)).toBeUndefined();
+});
+
+test('invalid device ID is refused by the route before touching the host', async () => {
+  const h = harness('sdk-in-process', { operator: true });
+  const response = await h.raw('open', {
+    platform: 'android',
+    deviceId: '../escape',
+  });
+  expect(await response.json()).toMatchObject({
+    ok: false,
+    code: 'invalid-target',
+  });
+  expect(h.host.inventory).not.toHaveBeenCalled();
+});
+
+test('non-operator cannot end an agent-created shared session for everyone', async () => {
+  const h = harness();
+  const id = await h.open();
+  expect(
+    parsed(await h.run('device_close', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'operator-required' });
+  expect(h.sessions.get(id)).toBeDefined();
+});
+
+test('share revocation between input events stops delivery at the next event', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.duringSend(h.revokeShare);
+  expect(
+    parsed(
+      await h.run('device_input', {
+        deviceSessionId: id,
+        events: [
+          { kind: 'text', text: 'first' },
+          { kind: 'text', text: 'revoked' },
+        ],
+      }),
+    ),
+  ).toMatchObject({ ok: false, code: 'not-authorized', accepted: 1 });
+  expect(h.packets).toEqual([{ type: 'text', text: 'first', ack: false }]);
+});
+
+test('operator Agent access opt-in gates tools and revokes existing grants', async () => {
+  const h = harness();
+  h.setEnabled(false);
+  expect(parsed(await h.run('device_list'))).toMatchObject({
+    ok: false,
+    code: 'agent-access-disabled',
+  });
+  expect(h.host.inventory).not.toHaveBeenCalled();
+  h.setEnabled(true);
+  const id = await h.open();
+  h.duringCapture(() => h.setEnabled(false));
+  expect(
+    parsed(await h.run('device_screenshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'interrupted' });
+});
+
+test.each([
+  ['other-conversation', 'admin', 'different'],
+  ['other-principal', 'other-admin', 'conversation'],
+])(
+  '%s cannot close a session it did not create',
+  async (_name, principal, conversation) => {
+    const h = harness('sdk-in-process', { operator: true });
+    const id = await h.open();
+    h.setIdentity(principal!, conversation!);
+    expect(
+      parsed(await h.run('device_close', { deviceSessionId: id })),
+    ).toMatchObject({ ok: false, code: 'not-session-owner' });
+    expect(h.sessions.get(id)).toBeDefined();
+  },
+);
+
+test('another agent is refused while a bound agent holds an in-flight operation', async () => {
+  const h = harness();
+  const id = await h.open();
+  const decided = await authorizeDeviceAgentCaller(h.access);
+  if (!decided.ok) throw new Error('fixture caller refused');
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  const claim = await claimAgentControl(
+    entry,
+    {
+      kind: 'agent',
+      principal: 'admin',
+      sessionId: decided.authority.sessionId,
+    },
+    'admin',
+    { agentGrant: mintDeviceAgentGrant(h.access, decided.authority, h.device) },
+  );
+  expect(claim).toMatchObject({ ok: true });
+  h.asAnotherAgent();
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'held-by-other' });
+  expect(h.accessibility).not.toHaveBeenCalled();
+});
+
+test('route refuses 65-event batches and oversized bodies before device dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  const response = await h.raw('input', {
+    deviceSessionId: id,
+    events: Array.from({ length: 65 }, () => ({ kind: 'text', text: 'x' })),
+  });
+  expect(await response.json(), 'route event bound').toMatchObject({
+    ok: false,
+    code: 'invalid-request',
+  });
+  const large = await h.raw('input', {
+    deviceSessionId: id,
+    events: [{ kind: 'text', text: 'x' }],
+    padding: 'x'.repeat(17 * 1024),
+  });
+  expect(await large.json(), 'route body bound').toMatchObject({
+    ok: false,
+    code: 'invalid-request',
+  });
+  expect(h.packets).toHaveLength(0);
+});
+
+test('opening a non-shared device is refused before host access', async () => {
+  const h = harness();
+  h.revokeShare();
+  expect(parsed(await h.run('device_open', h.device))).toMatchObject({
+    ok: false,
+    code: 'not-authorized',
+  });
+  expect(h.host.inventory).not.toHaveBeenCalled();
+});
+
+test('device tool refusals set MCP isError', async () => {
+  const h = harness();
+  h.setEnabled(false);
+  expect(await h.run('device_list')).toMatchObject({
+    isError: true,
+    content: [{ type: 'text' }],
+  });
 });

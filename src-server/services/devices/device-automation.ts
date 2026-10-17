@@ -7,6 +7,7 @@ import {
   claimAgentControl,
   dispatchAgentInput,
   type LiveSurfaceRegistry,
+  releaseAgentControl,
 } from '../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../mobile-device/mobile-device-host.js';
 import {
@@ -100,16 +101,44 @@ export class DeviceAutomation {
       () => deviceAgentMayAccess(access, authority, target),
       (created) => this.owners.set(created.sessionId, ownerKey(authority)),
     );
-    const selected = await this.claim(access, authority, session.sessionId);
+    const opened = await this.withControl(
+      access,
+      authority,
+      session.sessionId,
+      async () => ({
+        ok: true,
+        session,
+        paneRevealed: false,
+        instructions:
+          'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Each operation releases its lease; human takeover interrupts input.',
+      }),
+    );
+    return opened.ok
+      ? {
+          ...opened,
+          lease: this.deps.surfaces.get(session.surfaceId)?.lease.snapshot(),
+        }
+      : opened;
+  }
+
+  private async withControl<T extends object>(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    run: (
+      selected: Extract<
+        Awaited<ReturnType<DeviceAutomation['claim']>>,
+        { ok: true }
+      >,
+    ) => Promise<T>,
+  ) {
+    const selected = await this.claim(access, authority, id);
     if (!selected.ok) return selected;
-    return {
-      ok: true,
-      session,
-      lease: selected.lease,
-      paneRevealed: false,
-      instructions:
-        'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Human takeover interrupts input.',
-    };
+    try {
+      return await run(selected);
+    } finally {
+      releaseAgentControl(selected.entry, selected.agent, selected.lease.fence);
+    }
   }
 
   private async claim(
@@ -154,16 +183,24 @@ export class DeviceAutomation {
     id: string,
     events: readonly LiveSurfaceInput[],
   ) {
-    const selected = await this.claim(access, authority, id);
-    if (!selected.ok) return selected;
-    return dispatchAgentInput(
-      selected.entry,
-      selected.agent,
-      authority.principalId,
-      selected.lease.fence,
-      events,
-      selected.context,
-    );
+    return this.withControl(access, authority, id, async (selected) => {
+      let accepted = 0;
+      for (const event of events) {
+        // Re-authorize each event through the registry so revocation between
+        // events stops the batch without changing the producer's send fencing.
+        const result = await dispatchAgentInput(
+          selected.entry,
+          selected.agent,
+          authority.principalId,
+          selected.lease.fence,
+          [event],
+          selected.context,
+        );
+        accepted += result.accepted;
+        if (!result.ok) return { ...result, accepted };
+      }
+      return { ok: true, accepted, lease: selected.entry.lease.snapshot() };
+    });
   }
 
   async observe(
@@ -172,23 +209,23 @@ export class DeviceAutomation {
     id: string,
     screenshot: boolean,
   ) {
-    const selected = await this.claim(access, authority, id);
-    if (!selected.ok) return selected;
-    const result = screenshot
-      ? { capture: await this.deps.host.capture(selected.session) }
-      : { tree: await this.deps.tools.accessibility(selected.session) };
-    // An observation may complete after takeover or revocation. Publish nothing
-    // from that operation once its fence or device grant has gone stale.
-    if (
-      !(await selected.entry.authorize(
-        authority.principalId,
-        'view',
-        selected.context,
-      )) ||
-      !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-    )
-      return refused('interrupted');
-    return { ok: true, ...result };
+    return this.withControl(access, authority, id, async (selected) => {
+      const result = screenshot
+        ? { capture: await this.deps.host.capture(selected.session) }
+        : { tree: await this.deps.tools.accessibility(selected.session) };
+      // An observation may complete after takeover or revocation. Publish nothing
+      // from that operation once its fence or device grant has gone stale.
+      if (
+        !(await selected.entry.authorize(
+          authority.principalId,
+          'view',
+          selected.context,
+        )) ||
+        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
+      )
+        return refused('interrupted');
+      return { ok: true, ...result };
+    });
   }
 
   async close(
@@ -198,14 +235,17 @@ export class DeviceAutomation {
   ) {
     if (this.owners.get(id) !== ownerKey(authority))
       return refused('not-session-owner');
-    const selected = await this.claim(access, authority, id);
-    if (!selected.ok) return selected;
-    if (
-      !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-    )
-      return refused('interrupted');
-    await this.deps.sessions.close(id);
-    this.owners.delete(id);
-    return { ok: true, shutdown: false };
+    return this.withControl(access, authority, id, async (selected) => {
+      const standing = await authorizeDeviceAgentCaller(access);
+      if (!standing.ok || standing.actor.kind !== 'operator')
+        return refused('operator-required');
+      if (
+        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
+      )
+        return refused('interrupted');
+      await this.deps.sessions.close(id);
+      this.owners.delete(id);
+      return { ok: true, shutdown: false };
+    });
   }
 }
