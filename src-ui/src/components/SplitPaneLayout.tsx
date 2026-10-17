@@ -102,6 +102,8 @@ interface SplitPaneItem {
    * `section` text in this layout's own section-header style.
    */
   sectionLabel?: React.ReactNode;
+  /** Controls after the last row; a stable id preserves focus during paging. */
+  sectionFooter?: { id: string; content: React.ReactNode };
   /**
    * Optional presentation-only collapsible group. A group is emitted by a
    * caller as contiguous items; rows outside a group retain the original
@@ -216,8 +218,6 @@ interface SplitPaneLayoutProps {
   listIntro?:
     | React.ReactNode
     | ((selectItem: (id: string) => void) => React.ReactNode);
-  /** Pagination controls after the list, inside its scroll region. */
-  listOutro?: React.ReactNode;
   /**
    * Extra class on the list container (`.split-pane__list`) — for the
    * caller's own presentational opt-ins (e.g. `entrance-stagger`,
@@ -429,7 +429,6 @@ export function SplitPaneLayout({
   listFilteredEmptyNoun = 'items',
   collectionEmpty = false,
   listIntro,
-  listOutro,
   listClassName,
   heightResponsive = false,
   compact = false,
@@ -1387,7 +1386,7 @@ export function SplitPaneLayout({
             )
           ) : (
             <>
-              {items.map((item, i) => {
+              {items.flatMap((item, i) => {
                 const group = item.group;
                 const previousGroupId = items[i - 1]?.group?.id;
                 const groupStarts = group && group.id !== previousGroupId;
@@ -1410,6 +1409,7 @@ export function SplitPaneLayout({
                     .join(' ') || undefined;
                 const row = (
                   <button
+                    key={`row:${item.id}`}
                     ref={(node) => {
                       if (node) itemButtonRefs.current.set(item.id, node);
                       else itemButtonRefs.current.delete(item.id);
@@ -1471,6 +1471,7 @@ export function SplitPaneLayout({
                 );
                 const rowContent = item.trailing ? (
                   <div
+                    key={`row-content:${item.id}`}
                     className="split-pane__item-row"
                     data-split-pane-line={itemKey}
                   >
@@ -1482,7 +1483,7 @@ export function SplitPaneLayout({
                 ) : (
                   row
                 );
-                return (
+                const entry = (
                   <React.Fragment key={item.id}>
                     {item.section !== undefined &&
                       item.section !== items[i - 1]?.section && (
@@ -1535,6 +1536,18 @@ export function SplitPaneLayout({
                       : rowContent}
                   </React.Fragment>
                 );
+                return item.section &&
+                  item.section !== items[i + 1]?.section &&
+                  item.sectionFooter
+                  ? [
+                      entry,
+                      <React.Fragment
+                        key={`section-footer:${item.sectionFooter.id}`}
+                      >
+                        {item.sectionFooter.content}
+                      </React.Fragment>,
+                    ]
+                  : [entry];
               })}
               {emptySections
                 .filter(
@@ -1550,7 +1563,6 @@ export function SplitPaneLayout({
                 ))}
             </>
           )}
-          {listOutro}
         </div>
 
         {(headerActionBlock && !framedActions) || sidebarActions ? (

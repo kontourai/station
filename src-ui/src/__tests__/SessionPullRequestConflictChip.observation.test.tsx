@@ -171,6 +171,7 @@ describe('session conflict chips observe once per repository (#2937)', () => {
       class implements IntersectionObserver {
         readonly root = null;
         readonly rootMargin = '0px';
+        readonly scrollMargin = '0px';
         readonly thresholds = [0];
         takeRecords() {
           return [];

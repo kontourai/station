@@ -839,6 +839,44 @@ export function SessionsView({
     return actions;
   };
 
+  const earlierFooter =
+    settledVisibleCount < earlierCount
+      ? {
+          id: 'earlier-pagination',
+          content: (
+            <Button
+              variant="ghost"
+              className="activity-show-more"
+              aria-label="Show more earlier activity"
+              onClick={(event) => {
+                const container =
+                  event.currentTarget.closest('.split-pane__list');
+                const previous = new Set(
+                  container?.querySelectorAll('.split-pane__item'),
+                );
+                const lastPage =
+                  settledVisibleCount + SETTLED_PAGE_SIZE >= earlierCount;
+                const restoreFocus =
+                  document.activeElement === event.currentTarget;
+                setSettledVisibleCount((count) => count + SETTLED_PAGE_SIZE);
+                if (lastPage && restoreFocus)
+                  requestAnimationFrame(() => {
+                    Array.from(
+                      container?.querySelectorAll<HTMLButtonElement>(
+                        '.split-pane__item',
+                      ) ?? [],
+                    )
+                      .find((row) => !previous.has(row))
+                      ?.focus();
+                  });
+              }}
+            >
+              Show more
+            </Button>
+          ),
+        }
+      : undefined;
+
   const items = presentationLanes.flatMap(
     ({ laneId, rows: lanePresentations, count: laneCount }) => {
       if (lanePresentations.length === 0) return [];
@@ -949,6 +987,7 @@ export function SessionsView({
             // when section CHANGES between neighbours.
             section,
             sectionLabel,
+            sectionFooter: laneId === 'earlier' ? earlierFooter : undefined,
             icon: (
               <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />
             ),
@@ -1063,11 +1102,11 @@ export function SessionsView({
     ? (delegationParent.delegation?.taskId ?? delegationParent.threadId)
     : undefined;
 
-  const searchActive = search.trim().length > 0;
+  const searchActive = deferredSearch.trim().length > 0;
   const collectionEmpty = sessions.length === 0;
   const resultsEmpty = !collectionEmpty && filtered.length === 0;
   const filteredEmptyTitle = searchActive
-    ? `No activity matches “${search.trim()}”`
+    ? `No activity matches “${deferredSearch.trim()}”`
     : 'No activity matches these filters';
 
   return (
@@ -1075,39 +1114,6 @@ export function SessionsView({
       <SplitPaneLayout
         heightResponsive
         items={items}
-        listOutro={
-          settledVisibleCount < earlierCount ? (
-            <Button
-              variant="ghost"
-              className="activity-show-more"
-              aria-label="Show more earlier activity"
-              onClick={(event) => {
-                const container =
-                  event.currentTarget.closest('.split-pane__list');
-                const previous = new Set(
-                  container?.querySelectorAll('.split-pane__item'),
-                );
-                const lastPage =
-                  settledVisibleCount + SETTLED_PAGE_SIZE >= earlierCount;
-                const restoreFocus =
-                  document.activeElement === event.currentTarget;
-                setSettledVisibleCount((count) => count + SETTLED_PAGE_SIZE);
-                if (lastPage && restoreFocus)
-                  requestAnimationFrame(() => {
-                    Array.from(
-                      container?.querySelectorAll<HTMLButtonElement>(
-                        '.split-pane__item',
-                      ) ?? [],
-                    )
-                      .find((row) => !previous.has(row))
-                      ?.focus();
-                  });
-              }}
-            >
-              Show more
-            </Button>
-          ) : undefined
-        }
         selectedId={selectedId}
         onSelect={selectWithIntent}
         onDeselect={

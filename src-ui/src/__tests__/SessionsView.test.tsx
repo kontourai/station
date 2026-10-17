@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { AttachedSessionSourceMetadata } from '@kontourai/station-contracts/provider';
 
 import {
@@ -343,6 +344,30 @@ import {
 import { SessionsView } from '../views/SessionsView';
 import { foldConversationTurns } from '../views/sessions/conversation-groups';
 
+function historicalSessions() {
+  return Array.from(
+    { length: 45 },
+    (_, index) =>
+      ({
+        provider: 'claude',
+        threadId: `history-${index}`,
+        conversationId: `history-${index}`,
+        displayTitle: `Historical work ${index}`,
+        lifecycleState: 'completed',
+        status: 'closed',
+        controlMode: 'station-owned',
+        answerability: { answerable: true },
+        isLoaded: false,
+        isPersisted: true,
+        eventCount: 3,
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: new Date(
+          Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+        ).toISOString(),
+      }) satisfies OrchestrationSessionSummary,
+  );
+}
+
 /**
  * #3552: an external conversation continues from its composer — type, send,
  * confirm once — exactly as the chat dock does.
@@ -580,26 +605,8 @@ describe('SessionsView', () => {
     }));
   });
 
-  // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
-  // `loading` prop but the sessions query's `error` was never passed
-  // through, so a settled read failure rendered the same "Nothing has run
-  // yet" empty state as a host with no sessions — no error, no retry.
   test('bounds Earlier activity, pages history and searches beyond the mounted page', async () => {
-    const template = sessions[0];
-    sessions = Array.from({ length: 45 }, (_, index) => ({
-      ...template,
-      threadId: `history-${index}`,
-      conversationId: `history-${index}`,
-      displayTitle: `Historical work ${index}`,
-      lifecycleState: 'completed',
-      status: 'closed',
-      delegation: undefined,
-      isLoaded: false,
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: new Date(
-        Date.parse('2025-01-01T00:00:00Z') - index * 1000,
-      ).toISOString(),
-    }));
+    sessions = historicalSessions();
     const view = renderView();
     expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
       20,
@@ -639,6 +646,48 @@ describe('SessionsView', () => {
     ).toBeNull();
   });
 
+  test('keeps Earlier paging before the following external-session section', () => {
+    const history = historicalSessions();
+    sessions = [
+      ...history,
+      {
+        ...history[0],
+        threadId: 'external-probe',
+        conversationId: 'external-probe',
+        displayTitle: 'External probe',
+        controlMode: 'read-only-attached',
+        attachedSource: VERIFIED_ATTACHED_SOURCE,
+      },
+    ];
+    const { container } = renderView();
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    const lastHistory = rowButton('Historical work 19').closest(
+      '.split-pane__item-row',
+    );
+    const externalHeading = Array.from(
+      container.querySelectorAll('.split-pane__section-header'),
+    ).find((heading) => heading.textContent?.includes('From other apps'));
+    expect(lastHistory?.nextElementSibling).toBe(more);
+    expect(more.nextElementSibling).toBe(externalHeading);
+    expect(rowButton('External probe')).toBeTruthy();
+  });
+
+  test('keeps a deep-linked Earlier session visible beyond the first page', async () => {
+    sessions = historicalSessions();
+    const { container } = renderView('history-40');
+    await waitFor(() =>
+      expect(rowButton('Historical work 40').getAttribute('aria-current')).toBe(
+        'true',
+      ),
+    );
+    expect(container.querySelectorAll('.split-pane__item')).toHaveLength(21);
+    expect(
+      screen.queryByRole('button', { name: /^Historical work 39$/ }),
+    ).toBeNull();
+  });
+
   test('reuses the mounted conversation fold when an unrelated render leaves list inputs unchanged', () => {
     const view = renderView();
     const before = vi.mocked(foldConversationTurns).mock.calls.length;
@@ -646,6 +695,10 @@ describe('SessionsView', () => {
     expect(vi.mocked(foldConversationTurns).mock.calls.length - before).toBe(0);
   });
 
+  // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
+  // `loading` prop but the sessions query's `error` was never passed
+  // through, so a settled read failure rendered the same "Nothing has run
+  // yet" empty state as a host with no sessions — no error, no retry.
   test('renders the sessions list error state with retry when the sessions query fails', () => {
     sessions = [];
     sessionsQueryError = new Error('sessions unavailable');

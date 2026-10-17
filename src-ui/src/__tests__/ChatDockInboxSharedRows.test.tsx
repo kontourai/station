@@ -42,6 +42,19 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
+function historicalItems(): HomeWorkItem[] {
+  return Array.from({ length: 45 }, (_, index) =>
+    workItem({
+      id: `chat:history-${index}`,
+      chatSessionId: `history-${index}`,
+      orchestrationThreadId: `thread-history-${index}`,
+      title: `Historical work ${index}`,
+      lifecycleLabel: 'Completed',
+      updatedAt: NOW - 3_600_000 - index * 1000,
+    }),
+  );
+}
+
 /** The live agent catalog both hosts pass down for the rows' agent icons. */
 const AGENTS = [
   { slug: 'codex', name: 'Codex' },
@@ -123,15 +136,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   it.each(['desktop', 'mobile'] as const)(
     '%s pages Earlier history through the real host',
     (host) => {
-      const history = Array.from({ length: 45 }, (_, index) =>
-        workItem({
-          id: `chat:history-${index}`,
-          chatSessionId: `history-${index}`,
-          title: `Historical work ${index}`,
-          lifecycleLabel: 'Completed',
-          updatedAt: NOW - 3_600_000 - index * 1000,
-        }),
-      );
+      const history = historicalItems();
       const handlers = {
         activeChatSessionId: null,
         onCloseChat: vi.fn(),
@@ -192,6 +197,60 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         }),
       );
       expect(handlers.onFocusChat).toHaveBeenCalledWith('history-44');
+    },
+  );
+
+  it.each([
+    { host: 'desktop', currentId: 'history-40' },
+    { host: 'mobile', currentId: 'history-40' },
+    { host: 'desktop', currentId: 'thread-history-40' },
+    { host: 'mobile', currentId: 'thread-history-40' },
+  ])(
+    '$host keeps the current Earlier row beyond page one ($currentId)',
+    ({ host, currentId }) => {
+      const history = historicalItems();
+      const handlers = {
+        activeChatSessionId: currentId,
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        onCloseChat: vi.fn(),
+        now: NOW,
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...handlers}
+            items={history}
+            openChatSessionIds={['history-40']}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...handlers}
+            open
+            tasks={history}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      const current = screen.getByRole('button', {
+        name: 'Historical work 40, Shared project',
+      });
+      expect(current.getAttribute('aria-current')).toBe('true');
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        21,
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Historical work 39, Shared project',
+        }),
+      ).toBeNull();
     },
   );
 

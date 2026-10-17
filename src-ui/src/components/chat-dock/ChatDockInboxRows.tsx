@@ -1043,6 +1043,9 @@ export function InboxGroupList({
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const isCurrent = (item: HomeWorkItem) =>
+    item.chatSessionId === activeChatSessionId ||
+    item.orchestrationThreadId === activeChatSessionId;
   /** The rows a group actually renders: none while its section is
    *  collapsed, and older drafts only once their disclosure is open. */
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
@@ -1052,7 +1055,9 @@ export function InboxGroupList({
       !collapsible.sections[group.id];
     if (collapsed) return [];
     if (group.id === 'earlier')
-      return group.items.slice(0, settledVisibleCount);
+      return group.items.filter(
+        (item, index) => index < settledVisibleCount || isCurrent(item),
+      );
     if (group.id !== 'drafts') return group.items;
     const { recent, older } = splitDraftsByAge(group.items, now);
     return olderDraftsOpen ? [...recent, ...older] : recent;
@@ -1072,10 +1077,7 @@ export function InboxGroupList({
     <InboxRow
       key={item.id}
       item={item}
-      isCurrent={
-        item.chatSessionId === activeChatSessionId ||
-        item.orchestrationThreadId === activeChatSessionId
-      }
+      isCurrent={isCurrent(item)}
       isSnoozed={group.id === 'snoozed'}
       isOpenChat={Boolean(
         item.chatSessionId && openChatIds.has(item.chatSessionId),
