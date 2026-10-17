@@ -2129,6 +2129,11 @@ export function configureRuntimeRoutes(
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'GET',
+    '/api/html-replies/:sessionId/:pageId',
+    bindConversationReadAuthority,
+  );
   // Tolerant binding: the MCP-UI call itself does not depend on the
   // caller's principal, and its evidence attach is best-effort, so an
   // unresolvable principal binds nothing (and skips the attach) rather than

@@ -48,7 +48,8 @@ export function PublishedHtmlReply({
     staleTime: 0,
     gcTime: 0,
   });
-  if (query.error) return <p role="status">Visual reply unavailable.</p>;
+  if (query.error)
+    return <p role="status">Visual reply unavailable: {query.error.message}</p>;
   if (!query.data) return <p role="status">Loading visual reply…</p>;
   return (
     <HtmlReply
