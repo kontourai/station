@@ -436,16 +436,55 @@ describe('Notification Routes', () => {
     },
   );
 
-  test('DELETE /:id dismisses a notification', async () => {
+  test('DELETE /:id reads current state without cloning unrelated notifications', async () => {
+    const unrelated = await svc.schedule('test', {
+      title: 'Unrelated',
+      category: 'test',
+    });
     const n = await svc.schedule('test', {
       title: 'X',
       body: '',
       category: 'c',
     });
-    const body = await json(
-      await app.request(`/${n.id}`, { method: 'DELETE' }),
-    );
-    expect(body.success).toBe(true);
+    const clone = vi.spyOn(globalThis, 'structuredClone');
+    try {
+      const body = await json(
+        await app.request(`/${n.id}`, { method: 'DELETE' }),
+      );
+      expect(body.success).toBe(true);
+      expect(clone).toHaveBeenCalledWith(expect.objectContaining({ id: n.id }));
+      expect(clone).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: unrelated.id }),
+      );
+      expect((await svc.list()).find((row) => row.id === n.id)?.status).toBe(
+        'dismissed',
+      );
+
+      const writer = new NotificationService(new EventBus(), dir, 999_999);
+      try {
+        const later = await writer.schedule('test', {
+          title: 'Written by another service',
+          category: 'test',
+        });
+        clone.mockClear();
+        expect(
+          (await app.request(`/${later.id}`, { method: 'DELETE' })).status,
+        ).toBe(200);
+        expect(clone).toHaveBeenCalledWith(
+          expect.objectContaining({ id: later.id }),
+        );
+        expect(clone).not.toHaveBeenCalledWith(
+          expect.objectContaining({ id: unrelated.id }),
+        );
+        expect(
+          (await writer.list()).find((row) => row.id === later.id)?.status,
+        ).toBe('dismissed');
+      } finally {
+        await writer.shutdown();
+      }
+    } finally {
+      clone.mockRestore();
+    }
   });
 
   test('action and dismissal routes report a dispatching provider operation truthfully', async () => {
