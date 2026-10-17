@@ -7,6 +7,7 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
+import { reviewGuideFailureDetail } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import { pullRequestOps } from '../../telemetry/metrics.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
@@ -274,6 +275,42 @@ export function createPullRequestRoutes(
     const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
+    const identity = {
+      provider: param(c, 'provider'),
+      host: param(c, 'host'),
+      repository: { owner: param(c, 'owner'), name: param(c, 'repo') },
+      ref: param(c, 'ref'),
+    };
+    c.header('Cache-Control', 'private, no-store');
+    if (c.req.method === 'GET' && c.req.query('status') === '1') {
+      if (!current(c))
+        return c.json({ success: false, error: 'Station access changed' }, 403);
+      return c.json({
+        success: true,
+        data: { enabled: true, ...options.guides.status(identity) },
+      });
+    }
+    let force = false;
+    if (c.req.method === 'POST') {
+      const parsed = z
+        .object({ force: z.boolean().optional() })
+        .strict()
+        .safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Expected an optional force boolean.' },
+          400,
+        );
+      force = parsed.data.force === true;
+      try {
+        options.guides.assertCapacity(identity);
+      } catch (error) {
+        return c.json(
+          { success: false, error: reviewGuideFailureDetail(error) },
+          409,
+        );
+      }
+    }
     if (!x.provider.getReviewSnapshot)
       return c.json(
         { success: false, error: 'Provider review snapshots are unavailable' },
@@ -290,19 +327,13 @@ export function createPullRequestRoutes(
         { success: false, error: observed.reason ?? 'Review unavailable' },
         409,
       );
-    const identity = {
-      provider: param(c, 'provider'),
-      host: param(c, 'host'),
-      repository: { owner: param(c, 'owner'), name: param(c, 'repo') },
-      ref: param(c, 'ref'),
-    };
-    c.header('Cache-Control', 'private, no-store');
     try {
       const result =
         c.req.method === 'POST'
           ? options.guides.start(
               { identity, context: x.context, snapshot: observed.data },
               () => current(c) && guideWriter() === actor,
+              force,
             )
           : options.guides.read(
               identity,
@@ -312,13 +343,9 @@ export function createPullRequestRoutes(
                 : undefined,
             );
       return c.json({ success: true, data: { enabled: true, ...result } });
-    } catch {
+    } catch (error) {
       return c.json(
-        {
-          success: false,
-          error:
-            'Guide unavailable. Check guide settings, model access and server capacity, then retry.',
-        },
+        { success: false, error: reviewGuideFailureDetail(error) },
         409,
       );
     }

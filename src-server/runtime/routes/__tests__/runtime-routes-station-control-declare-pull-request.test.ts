@@ -21,6 +21,10 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import { StationControlPullRequestUnavailableError } from '../../../services/orchestration/station-control-pull-request-declarations.js';
+import { guideFixture } from '../../../services/pull-requests/__tests__/guide-fixture.js';
+import { GitHubPullRequestProvider } from '../../../services/pull-requests/github-pull-request-provider.js';
+import { PullRequestRepositoryContextResolver } from '../../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { PullRequestReviewGuideStore } from '../../../services/pull-requests/pull-request-review-guide-store.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -106,7 +110,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(guideEnabled = false, framework?: unknown) {
     const homeDir = makeTempDir('station-declare-pr-route-');
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
@@ -121,6 +125,10 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
       app,
       port: 4321,
       appConfig: {},
+      getLiveAppConfig: () => ({
+        reviewGuidesEnabled: guideEnabled,
+        structureModel: 'model',
+      }),
       configLoader: {
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
@@ -206,6 +214,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         devicePairing: deepStub({}),
       }),
     });
+    if (framework) Reflect.set(context as object, 'framework', framework);
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
@@ -222,7 +231,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     closers.unshift(
       () => new Promise<void>((resolve) => server.close(() => resolve())),
     );
-    return { base: `http://127.0.0.1:${await listening}` };
+    return { base: `http://127.0.0.1:${await listening}`, homeDir };
   }
 
   const internal = (extra: Record<string, string> = {}) => ({
@@ -265,6 +274,103 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
   }
 
   const ROLE = 'station_control_role_required';
+
+  test('bound operator MCP caller generates structured output through the production runtime wiring', async () => {
+    const f = await guideFixture(makeTempDir);
+    const generateObject = vi.fn(async () => ({
+      object: {
+        stops: [
+          {
+            title: 'Tour',
+            summary: '',
+            attention: null,
+            excerpts: [],
+            files: [],
+            notes: [],
+            questions: [],
+          },
+        ],
+      },
+    }));
+    const generateText = vi.fn();
+    const framework = {
+      createModel: vi.fn(async () => ({})),
+      createTempAgent: vi.fn(async () => ({ generateObject, generateText })),
+    };
+    const { base, homeDir } = await setup(true, framework);
+    const repo = {
+      ...f.context,
+      repository: {
+        owner: 'owner',
+        name: 'repo',
+        remote: 'https://github.com/owner/repo.git',
+      },
+    };
+    const resolve = vi
+      .spyOn(PullRequestRepositoryContextResolver.prototype, 'resolve')
+      .mockResolvedValue({ available: true, context: repo });
+    const snapshot = vi
+      .spyOn(GitHubPullRequestProvider.prototype, 'getReviewSnapshot')
+      .mockResolvedValue({
+        available: true,
+        data: f.snapshot,
+        effectiveCapabilities: {
+          list: true,
+          detail: true,
+          open: false,
+          comment: false,
+          approve: false,
+          merge: false,
+          autoMerge: false,
+        },
+        effectiveMergeMethods: [],
+        mergeMethodsSource: 'provider-default',
+      });
+    try {
+      const response = await fetch(
+        `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+        { method: 'POST', headers: as('bound', 'op-caller-a'), body: '{}' },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { enabled: true },
+      });
+      const identity = {
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'owner', name: 'repo' },
+        ref: '42',
+      };
+      const store = new PullRequestReviewGuideStore(homeDir);
+      await vi.waitFor(() =>
+        expect(store.read(identity, f.snapshot.headSha)?.stops[0]?.title).toBe(
+          'Tour',
+        ),
+      );
+      expect(framework.createTempAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: [], maxSteps: 1 }),
+      );
+      expect(generateObject).toHaveBeenCalledWith(
+        expect.stringContaining('Untrusted change data'),
+        expect.objectContaining({ structuredOutputSchema: expect.anything() }),
+      );
+      expect(generateText).not.toHaveBeenCalled();
+      const denied = await fetch(
+        `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+        {
+          method: 'POST',
+          headers: as('bearer-exposed', 'op-caller-a'),
+          body: '{}',
+        },
+      );
+      expect(denied.status).toBe(403);
+      expect(generateObject).toHaveBeenCalledOnce();
+    } finally {
+      snapshot.mockRestore();
+      resolve.mockRestore();
+    }
+  });
 
   test('hands the verified caller’s own session and the parsed identity to the declaration', async () => {
     const { base } = await setup();

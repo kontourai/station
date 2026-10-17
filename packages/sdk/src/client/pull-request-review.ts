@@ -170,10 +170,27 @@ export async function getPullRequestGuide(
     ),
   );
 }
+/** Poll process-local run status without reading the forge review snapshot. */
+export async function getPullRequestGuideStatus(
+  apiBase: string,
+  target: PullRequestReviewTarget,
+  options?: ClientRequestOptions,
+): Promise<
+  | ({ enabled: true } & Pick<PullRequestReviewGuideResult, 'run'>)
+  | { enabled: false }
+> {
+  return readGuideResponse(
+    await getJson(
+      `${path(apiBase, target).replace('/review?', '/guide?')}&status=1`,
+      options,
+    ),
+  );
+}
 export async function writePullRequestGuide(
   apiBase: string,
   target: PullRequestReviewTarget,
   options?: ClientRequestOptions,
+  input: { force?: boolean } = {},
 ): Promise<
   ({ enabled: true } & PullRequestReviewGuideResult) | { enabled: false }
 > {
@@ -182,7 +199,7 @@ export async function writePullRequestGuide(
       path(apiBase, target).replace('/review?', '/guide?'),
       'POST',
       options,
-      {},
+      input,
     ),
   );
 }

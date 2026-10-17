@@ -35,3 +35,10 @@
   white-space: pre;
   font-family: var(--k-font-mono);
 }
+
+.pull-request-guide ul {
+  padding-inline-start: var(--k-space-5);
+}
+.pull-request-guide article > :is(h3, h4, p, ul) {
+  margin-block: var(--k-space-3);
+}

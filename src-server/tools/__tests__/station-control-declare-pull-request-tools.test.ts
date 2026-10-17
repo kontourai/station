@@ -265,5 +265,17 @@ test('guide MCP validates batch bounds before any REST write and forwards exact 
       internal: true,
     },
   ]);
+  recorded.length = 0;
+  await client.guide('write_pull_request_guides', {
+    targets: [target],
+    force: true,
+  });
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: { force: true },
+      internal: true,
+    },
+  ]);
   await client.close();
 });

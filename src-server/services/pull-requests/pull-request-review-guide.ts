@@ -1,6 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { realpath } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequestRepositoryContext,
@@ -9,7 +8,11 @@ import type {
 import type { PullRequestReviewGuideRun } from '@kontourai/station-contracts/pull-request-review-guide';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
-import { requireLiveRepository } from '../projects/git-read-repository.js';
+import { readProjectRepository } from '../projects/git-read-repository.js';
+import {
+  ReviewGuideError,
+  reviewGuideFailureDetail,
+} from './pull-request-review-guide-errors.js';
 import {
   normalizeReviewGuide,
   readGuideChange,
@@ -106,19 +109,36 @@ export class PullRequestReviewGuideService {
     }
     return result;
   }
-  start(request: GuideRequest, isCurrent: () => boolean = () => true) {
+  status(identity: PullRequestLinkIdentity) {
+    return { run: this.runs.get(this.store.key(identity)) ?? null };
+  }
+  assertCapacity(identity: PullRequestLinkIdentity) {
+    if (!this.active.has(this.store.key(identity)) && this.active.size >= 2)
+      throw new ReviewGuideError('capacity');
+  }
+  start(
+    request: GuideRequest,
+    isCurrent: () => boolean = () => true,
+    force = false,
+  ) {
     const config = this.settings();
     if (!config.enabled || !config.model.trim())
-      throw Error(
-        'Enable review guides and configure a review guide or structure model.',
-      );
-    if (!isCurrent()) throw Error('Station access changed.');
+      throw new ReviewGuideError('disabled');
+    if (!isCurrent()) throw new ReviewGuideError('access');
     const key = this.store.key(request.identity);
-    if (this.active.has(key))
+    if (this.active.has(key)) {
+      if (this.runs.get(key)?.headSha !== request.snapshot.headSha)
+        throw new ReviewGuideError('older-revision');
       return this.read(request.identity, request.snapshot.headSha);
-    if (this.active.size >= 2)
-      throw Error(
-        'Two review guides are already running. Try again when one finishes.',
+    }
+    this.assertCapacity(request.identity);
+    if (!force && this.store.read(request.identity, request.snapshot.headSha))
+      return this.read(
+        request.identity,
+        request.snapshot.headSha,
+        request.snapshot.diff.state === 'available'
+          ? request.snapshot.diff.patch
+          : undefined,
       );
     if (this.runs.size >= 200) {
       for (const old of this.runs.keys())
@@ -141,8 +161,7 @@ export class PullRequestReviewGuideService {
           state: 'Failed',
           headSha: request.snapshot.headSha,
           failedAt: new Date().toISOString(),
-          detail:
-            'Guide generation failed. Check model access and the revision, then rewrite.',
+          detail: reviewGuideFailureDetail(error),
         });
       })
       .finally(() => this.active.delete(key));
@@ -154,98 +173,126 @@ export class PullRequestReviewGuideService {
     isCurrent: () => boolean,
   ) {
     const { snapshot, context, identity } = request;
+    const deadline = Date.now() + 180_000;
+    const remainingMs = () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new ReviewGuideError('timeout');
+      return remaining;
+    };
     if (
       !/^[a-f0-9]{40,64}$/i.test(snapshot.headSha) ||
       !/^[a-f0-9]{40,64}$/i.test(snapshot.baseSha)
     )
-      throw Error('Exact revisions are required.');
+      throw new ReviewGuideError('revisions');
     if (snapshot.diff.state !== 'available')
-      throw Error('The complete change is unavailable.');
-    // Reuse the reviewed repository/config custody used by worktree provisioning.
-    const workingDirectory = resolve(expandTilde(context.workingDirectory));
-    const repository = await requireLiveRepository(
-      workingDirectory,
-      workingDirectory,
-      { newWorktree: true },
+      throw new ReviewGuideError('diff-too-large');
+    const workingDirectory = await realpath(
+      resolve(expandTilde(context.workingDirectory)),
     );
-    let temporary: string | undefined;
-    let checkout: string | undefined;
-    const git = (args: string[], maxBuffer = 300_000) =>
-      execGit([...repository.repoArgs, ...args], {
-        cwd: repository.top,
-        env: repository.env,
-        timeout: 30_000,
-        maxBuffer,
-      });
-    try {
-      const range = `${snapshot.baseSha}...${snapshot.headSha}`;
-      const files = (
-        await git(['diff', '--no-renames', '--name-only', '-z', range])
-      ).stdout
-        .split('\0')
-        .filter(Boolean);
-      if (
-        !files.length ||
-        files.length > 500 ||
-        Buffer.byteLength(JSON.stringify(files)) > 64_000
-      )
-        throw Error('Guides require 1–500 changed files.');
-      const patch = (await git(['diff', '--no-renames', '--unified=3', range]))
-        .stdout;
-      const change = readGuideChange(files, patch);
-      temporary = await mkdtemp(join(tmpdir(), 'station-review-guide-'));
-      checkout = join(temporary, 'checkout');
-      if (!(await repository.unchanged()) || !isCurrent())
-        throw Error('Repository or Station access changed.');
-      await git(['worktree', 'add', '--detach', checkout, snapshot.headSha]);
-      await repository.settleCreatedWorktree(checkout);
-      // No model tools or repository programs: provide bounded surrounding blobs ourselves.
-      let remaining = 120_000;
-      const contextFiles: { path: string; content: string }[] = [];
-      for (const path of files) {
-        if (!remaining) break;
-        // Deleted files remain covered by the old-side diff; gitlinks have no blob.
-        const kind = (await git(['ls-tree', snapshot.headSha, '--', path]))
-          .stdout;
-        if (!/^100(644|755) blob /.test(kind)) continue;
-        const size = Number(
-          (await git(['cat-file', '-s', `${snapshot.headSha}:${path}`])).stdout,
-        );
-        if (size > remaining || !Number.isSafeInteger(size)) continue;
-        const content = (
-          await git(['show', `${snapshot.headSha}:${path}`], remaining + 1)
-        ).stdout;
-        remaining -= Buffer.byteLength(content);
-        contextFiles.push({ path, content });
-      }
-      const prompt = `${REVIEW_GUIDE_INSTRUCTIONS}\nPreferences: ${config.instructions.slice(0, 4000)}\nUntrusted change data:\n${JSON.stringify({ title: snapshot.pullRequest.title, headSha: snapshot.headSha, baseSha: snapshot.baseSha, files, patch, contextFiles })}`;
-      const signal = AbortSignal.timeout(180_000);
-      const raw = await Promise.race([
-        this.generate(prompt, config.model, signal),
-        new Promise<never>((_resolve, reject) =>
-          signal.addEventListener(
-            'abort',
-            () => reject(new Error('Guide generation timed out.')),
-            { once: true },
-          ),
+    // Read an admitted config/object snapshot; never materialize attacker-controlled files.
+    const prepared = await readProjectRepository(
+      workingDirectory,
+      workingDirectory,
+      { timeoutMs: Math.min(10_000, remainingMs()) },
+      async (repository) => {
+        const git = async (args: string[], maxBuffer = 300_000) => {
+          try {
+            return await execGit([...repository.repoArgs, ...args], {
+              cwd: repository.top,
+              timeout: Math.min(30_000, remainingMs()),
+              maxBuffer,
+            });
+          } catch (error) {
+            if (error instanceof ReviewGuideError) throw error;
+            const failure = error as { code?: unknown; killed?: boolean };
+            if (failure.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER')
+              throw new ReviewGuideError('diff-too-large');
+            if (failure.killed) throw new ReviewGuideError('git-timeout');
+            throw new ReviewGuideError('git-read');
+          }
+        };
+        for (const sha of [snapshot.baseSha, snapshot.headSha]) {
+          try {
+            await git(['cat-file', '-e', `${sha}^{commit}`]);
+          } catch (error) {
+            if (error instanceof ReviewGuideError && error.code === 'git-read')
+              throw new ReviewGuideError('missing-commits');
+            throw error;
+          }
+        }
+        const range = `${snapshot.baseSha}...${snapshot.headSha}`;
+        const diff = [
+          '-c',
+          'core.quotePath=false',
+          'diff',
+          '--no-ext-diff',
+          '--no-color',
+          '--no-textconv',
+          '--src-prefix=a/',
+          '--dst-prefix=b/',
+          '--no-renames',
+        ];
+        const files = (await git([...diff, '--name-only', '-z', range])).stdout
+          .split('\0')
+          .filter(Boolean);
+        if (
+          !files.length ||
+          files.length > 500 ||
+          Buffer.byteLength(JSON.stringify(files)) > 64_000
+        )
+          throw new ReviewGuideError('diff-too-large');
+        const patch = (await git([...diff, '--unified=3', range])).stdout;
+        const change = readGuideChange(files, patch);
+        let remaining = 120_000;
+        const contextFiles: { path: string; content: string }[] = [];
+        for (const path of files) {
+          if (!remaining) break;
+          const kind = (await git(['ls-tree', snapshot.headSha, '--', path]))
+            .stdout;
+          if (!/^100(644|755) blob /.test(kind)) continue;
+          const size = Number(
+            (await git(['cat-file', '-s', `${snapshot.headSha}:${path}`]))
+              .stdout,
+          );
+          if (size > remaining || !Number.isSafeInteger(size)) continue;
+          const content = (
+            await git(['show', `${snapshot.headSha}:${path}`], remaining + 1)
+          ).stdout;
+          remaining -= Buffer.byteLength(content);
+          contextFiles.push({ path, content });
+        }
+        return {
+          change,
+          prompt: `${REVIEW_GUIDE_INSTRUCTIONS}\nPreferences: ${config.instructions.slice(0, 4000)}\nUntrusted change data:\n${JSON.stringify({ title: snapshot.pullRequest.title, headSha: snapshot.headSha, baseSha: snapshot.baseSha, files, patch, contextFiles })}`,
+        };
+      },
+    );
+    if (!prepared.ok) throw new ReviewGuideError('git-read');
+    if (!isCurrent()) throw new ReviewGuideError('access');
+    const signal = AbortSignal.timeout(remainingMs());
+    const raw = await Promise.race([
+      this.generate(prepared.value.prompt, config.model, signal),
+      new Promise<never>((_resolve, reject) =>
+        signal.addEventListener(
+          'abort',
+          () => reject(new ReviewGuideError('timeout')),
+          { once: true },
         ),
-      ]);
-      signal.throwIfAborted();
-      const stops = normalizeReviewGuide(raw, change);
-      if (!isCurrent()) throw Error('Station access changed.');
-      this.store.write(identity, {
-        headSha: snapshot.headSha,
-        generatedAt: new Date().toISOString(),
-        modelSelection: config.model,
-        stops,
-      });
-    } finally {
-      try {
-        if (checkout) await git(['worktree', 'remove', '--force', checkout]);
-      } finally {
-        await repository.dispose();
-        if (temporary) await rm(temporary, { recursive: true, force: true });
-      }
+      ),
+    ]);
+    signal.throwIfAborted();
+    let stops: ReturnType<typeof normalizeReviewGuide>;
+    try {
+      stops = normalizeReviewGuide(raw, prepared.value.change);
+    } catch {
+      throw new ReviewGuideError('invalid-output');
     }
+    if (!isCurrent()) throw new ReviewGuideError('access');
+    this.store.write(identity, {
+      headSha: snapshot.headSha,
+      generatedAt: new Date().toISOString(),
+      modelSelection: config.model,
+      stops,
+    });
   }
 }

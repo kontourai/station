@@ -4583,3 +4583,8 @@ currentHeadSha, excerptContents }`. Writing starts asynchronous generation;
 read again to observe completion. Obsolete guides retain their original SHA
 and prose, with excerpts and line notes removed. See the
 [pull request guide](../user/pull-request-guides.md) for settings and limits.
+
+`getPullRequestGuideStatus(apiBase, target, options?)` returns only the enabled
+state and process-local run status without a forge snapshot.
+`writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
+or false reuses a completed guide for the current head.

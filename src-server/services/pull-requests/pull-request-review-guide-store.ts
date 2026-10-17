@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/pull-request-review-guide';
 import { JsonFileStore } from '../infra/json-store.js';
 import { assertPullRequestLinkIdentity } from './conversation-pull-request-link-store.js';
+import { ReviewGuideError } from './pull-request-review-guide-errors.js';
 import { guideOutputSchema } from './pull-request-review-guide-normalize.js';
 
 /** Versioned, per-repository/PR/head documents. No migration of pre-existing user data is needed. */
@@ -75,8 +76,14 @@ export class PullRequestReviewGuideStore {
       this.key(identity),
       guide.headSha,
     );
+    const document = { version: 1 as const, guide };
+    if (
+      Buffer.byteLength(JSON.stringify(document, null, 2), 'utf8') >
+      256 * 1024
+    )
+      throw new ReviewGuideError('stored-too-large');
     mkdirSync(directory, { recursive: true });
-    store.write({ version: 1, guide });
+    store.write(document);
     new JsonFileStore(
       join(directory, 'latest.json'),
       { head: guide.headSha },

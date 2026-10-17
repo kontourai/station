@@ -27,15 +27,26 @@ export function registerReviewGuideTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'write_pull_request_guides',
-    'Start or rewrite guides for 1–20 pull requests. Over-limit batches are rejected. At most two guides run on the server; each result reports admission or refusal. Requires operator authority and enabled review guides. Read each guide later to see completion.',
-    { targets: z.array(target).min(1).max(20) },
-    async ({ targets }) => {
+    'Start guides for 1–20 pull requests, reusing current-head guides unless force:true. Over-limit batches are rejected. At most two guides run on the server; each result reports admission or refusal. Requires operator authority and enabled review guides. Read each guide later to see completion.',
+    {
+      targets: z.array(target).min(1).max(20),
+      force: z
+        .boolean()
+        .optional()
+        .describe(
+          'Rewrite an existing guide for the current head. Defaults to false.',
+        ),
+    },
+    async ({ targets, force }) => {
       const results = [];
       for (const target of targets) {
         try {
           results.push({
             target,
-            result: await api(path(target), { method: 'POST', body: '{}' }),
+            result: await api(path(target), {
+              method: 'POST',
+              body: JSON.stringify(force === undefined ? {} : { force }),
+            }),
           });
         } catch {
           results.push({

@@ -1,16 +1,15 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import type { PullRequestReviewGuideStop } from '@kontourai/station-contracts/pull-request-review-guide';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { execGit } from '../../../utils/git-exec.js';
 import { PullRequestReviewGuideService } from '../pull-request-review-guide.js';
 import {
   normalizeReviewGuide,
   readGuideChange,
 } from '../pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../pull-request-review-guide-store.js';
+import { guideFixture } from './guide-fixture.js';
 
 const makeTempDir = trackTempDirs();
 const identity = {
@@ -84,90 +83,13 @@ test('deleted files and source lines resembling headers retain their actual side
   ).toThrow(/excerpt/);
 });
 
-async function fixture() {
-  const root = makeTempDir('station-guide-test-');
-  const git = async (...args: string[]) =>
-    (
-      await execGit(args, { cwd: root, timeout: 10_000, maxBuffer: 100_000 })
-    ).stdout.trim();
-  await git('init');
-  await writeFile(join(root, 'a.ts'), 'old\n');
-  await git('add', '.');
-  await git(
-    '-c',
-    'user.name=Guide Test',
-    '-c',
-    'user.email=guide@example.test',
-    'commit',
-    '-m',
-    'base',
-  );
-  const baseSha = await git('rev-parse', 'HEAD');
-  await writeFile(join(root, 'a.ts'), 'new\n');
-  await writeFile(join(root, 'extra.txt'), 'mechanical\n');
-  await git('add', '.');
-  await git(
-    '-c',
-    'user.name=Guide Test',
-    '-c',
-    'user.email=guide@example.test',
-    'commit',
-    '-m',
-    'change',
-  );
-  const headSha = await git('rev-parse', 'HEAD');
-  const snapshot: PullRequestReviewSnapshot = {
-    headSha,
-    baseSha,
-    observedAt: new Date().toISOString(),
-    pullRequest: {
-      provider: 'github',
-      host: 'github.com',
-      ref: '17',
-      title: 'Change value',
-      body: '',
-      url: 'https://github.com/team/repo/pull/17',
-      repository: identity.repository,
-      sourceBranch: 'feature',
-      targetBranch: 'main',
-      state: 'OPEN',
-      mergeability: 'unknown',
-      author: { login: 'author' },
-      commits: 1,
-      reviewStatus: '',
-      comments: 0,
-      nativeId: '17',
-    },
-    diff: {
-      state: 'available',
-      patch: (await execGit(['diff', `${baseSha}...${headSha}`], { cwd: root }))
-        .stdout,
-      completeness: 'provider-output',
-    },
-    discussion: [],
-    discussionPartial: false,
-    checks: { state: 'available', checks: [], partial: false },
-  };
-  const store = new PullRequestReviewGuideStore(join(root, 'home'));
-  const context = {
-    workingDirectory: root,
-    repository: {
-      ...identity.repository,
-      remote: 'https://github.com/team/repo.git',
-    },
-  };
-  return { root, git, snapshot, store, context };
-}
-
-test('generation creates and cleans a temporary checkout, persists coverage across restart and hides stale anchors after a push', async () => {
-  const f = await fixture();
+test('generation reads blobs without creating a checkout, persists coverage across restart and hides stale anchors after a push', async () => {
+  const f = await guideFixture(makeTempDir);
   const before = await f.git('worktree', 'list', '--porcelain');
   const generate = vi.fn(async (prompt: string) => {
     expect(prompt).toContain('extra.txt');
     expect(prompt).toContain('new\\n');
-    expect(await f.git('worktree', 'list', '--porcelain')).toContain(
-      'station-review-guide-',
-    );
+    expect(await f.git('worktree', 'list', '--porcelain')).toBe(before);
     return { stops: [stop()] };
   });
   const errors: unknown[] = [];
@@ -217,8 +139,8 @@ test('generation creates and cleans a temporary checkout, persists coverage acro
   expect(stale.excerptContents).toEqual([]);
 }, 20_000);
 
-test('invalid model anchors fail the run without publishing a guide and still remove the checkout', async () => {
-  const f = await fixture();
+test('invalid model anchors fail the run without publishing a guide', async () => {
+  const f = await guideFixture(makeTempDir);
   const broken = stop();
   broken.excerpts[0]!.start = 900;
   broken.excerpts[0]!.end = 900;
@@ -241,3 +163,234 @@ test('invalid model anchors fail the run without publishing a guide and still re
     'station-review-guide-',
   );
 }, 20_000);
+
+test('rejects notes outside the excerpts of their own stop', () => {
+  const invalid = stop();
+  invalid.notes = [
+    { path: 'a.ts', line: 2, title: 'Outside', body: 'Wrong anchor' },
+  ];
+  expect(() =>
+    normalizeReviewGuide(
+      { stops: [invalid] },
+      readGuideChange(['a.ts'], patch),
+    ),
+  ).toThrow('note is outside');
+});
+
+test('capacity admits two runs and refuses a third until one finishes', async () => {
+  const f = await guideFixture(makeTempDir);
+  let finish!: (value: unknown) => void;
+  const answer = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const generate = vi.fn(() => answer);
+  const service = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  const identities = ['17', '18', '19'].map((ref) => ({ ...identity, ref }));
+  try {
+    for (const identity of identities.slice(0, 2))
+      service.start({ identity, context: f.context, snapshot: f.snapshot });
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(2), {
+      timeout: 15_000,
+    });
+    expect(() =>
+      service.start({
+        identity: identities[2]!,
+        context: f.context,
+        snapshot: f.snapshot,
+      }),
+    ).toThrow('Two review guides');
+  } finally {
+    finish({ stops: [stop()] });
+    await vi.waitFor(
+      () =>
+        expect(
+          identities.every((i) => service.status(i).run?.state !== 'Running'),
+        ).toBe(true),
+      { timeout: 15_000 },
+    );
+  }
+});
+
+test('rechecks access after model completion before saving', async () => {
+  const f = await guideFixture(makeTempDir);
+  let current = true;
+  let finish!: (value: unknown) => void;
+  const answer = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const generate = vi.fn(() => answer);
+  const service = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  service.start(
+    { identity, context: f.context, snapshot: f.snapshot },
+    () => current,
+  );
+  await vi.waitFor(() => expect(generate).toHaveBeenCalledOnce(), {
+    timeout: 15_000,
+  });
+  current = false;
+  finish({ stops: [stop()] });
+  await vi.waitFor(() =>
+    expect(service.status(identity).run).toMatchObject({
+      state: 'Failed',
+      detail: expect.stringContaining('access changed'),
+    }),
+  );
+  expect(f.store.read(identity, f.snapshot.headSha)).toBeNull();
+});
+
+test('refuses a newer head while an older revision is running; reuses completed guides unless forced', async () => {
+  const f = await guideFixture(makeTempDir);
+  let finish!: (value: unknown) => void;
+  const answer = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const generate = vi.fn(() => answer);
+  const service = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  service.start({ identity, context: f.context, snapshot: f.snapshot });
+  try {
+    expect(() =>
+      service.start({
+        identity,
+        context: f.context,
+        snapshot: { ...f.snapshot, headSha: 'b'.repeat(40) },
+      }),
+    ).toThrow('older revision');
+  } finally {
+    finish({ stops: [stop()] });
+  }
+  await vi.waitFor(() => expect(service.status(identity).run).toBeNull(), {
+    timeout: 15_000,
+  });
+  expect(
+    service.start({ identity, context: f.context, snapshot: f.snapshot }).guide
+      ?.headSha,
+  ).toBe(f.snapshot.headSha);
+  expect(generate).toHaveBeenCalledTimes(1);
+  service.start(
+    { identity, context: f.context, snapshot: f.snapshot },
+    () => true,
+    true,
+  );
+  await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(2), {
+    timeout: 15_000,
+  });
+  await vi.waitFor(() => expect(service.status(identity).run).toBeNull(), {
+    timeout: 15_000,
+  });
+});
+
+test('refuses an oversized pretty-printed document before publishing either document or latest pointer', () => {
+  const store = new PullRequestReviewGuideStore(makeTempDir('guide-size-'));
+  const guide = {
+    headSha: 'a'.repeat(40),
+    generatedAt: new Date().toISOString(),
+    modelSelection: 'model',
+    stops: Array.from({ length: 8 }, () => ({
+      ...stop(),
+      files: Array.from({ length: 500 }, () => ({ path: 'a.ts', note: '' })),
+    })),
+  };
+  expect(Buffer.byteLength(JSON.stringify(guide))).toBeLessThan(128 * 1024);
+  expect(
+    Buffer.byteLength(JSON.stringify({ version: 1, guide }, null, 2)),
+  ).toBeGreaterThan(256 * 1024);
+  expect(() => store.write(identity, guide)).toThrow('serialized guide');
+  expect(store.read(identity, guide.headSha)).toBeNull();
+  expect(store.latest(identity)).toBeNull();
+});
+
+test('reads non-ASCII blobs despite global diff formatting and never runs a global checkout smudge filter', async () => {
+  const f = await guideFixture(makeTempDir, 'café.ts', true);
+  const marker = join(f.root, 'smudge-ran');
+  const script = join(f.root, 'smudge.sh');
+  const global = join(makeTempDir('guide-global-config-'), 'gitconfig');
+  await writeFile(script, `echo ran > '${marker}'\ncat\n`);
+  await writeFile(
+    global,
+    `[core]\n quotePath = true\n[diff]\n noprefix = true\n external = sh ${script}\n[color]\n ui = always\n[filter "probe"]\n smudge = sh ${script}\n`,
+  );
+  vi.stubEnv('GIT_CONFIG_GLOBAL', global);
+  try {
+    expect(await f.git('config', '--get', 'filter.probe.smudge')).toContain(
+      script,
+    );
+    const s = stop();
+    s.excerpts[0]!.path = 'café.ts';
+    const service = new PullRequestReviewGuideService(
+      f.store,
+      () => ({ enabled: true, model: 'model', instructions: '' }),
+      async (prompt) => {
+        expect(prompt).toContain('+++ b/café.ts');
+        return { stops: [s] };
+      },
+      () => {},
+    );
+    service.start({ identity, context: f.context, snapshot: f.snapshot });
+    await vi.waitFor(() => expect(service.status(identity).run).toBeNull(), {
+      timeout: 15_000,
+    });
+    expect(
+      f.store.read(identity, f.snapshot.headSha)?.stops[0]?.excerpts[0]?.path,
+    ).toBe('café.ts');
+    await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    await f.git('cat-file', '--filters', `${f.snapshot.headSha}:café.ts`);
+    expect(await readFile(marker, 'utf8')).toBe('ran\n');
+    expect(await f.git('worktree', 'list', '--porcelain')).not.toContain(
+      'station-review-guide-',
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test('missing local commits and oversized diffs produce different actionable failure details', async () => {
+  const f = await guideFixture(makeTempDir);
+  const generate = vi.fn();
+  const service = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  service.start({
+    identity,
+    context: f.context,
+    snapshot: { ...f.snapshot, headSha: 'b'.repeat(40) },
+  });
+  await vi.waitFor(() =>
+    expect(service.status(identity).run).toMatchObject({
+      state: 'Failed',
+      detail: expect.stringContaining('missing locally'),
+    }),
+  );
+  service.start({
+    identity,
+    context: f.context,
+    snapshot: {
+      ...f.snapshot,
+      diff: { state: 'unavailable', reason: 'large' },
+    },
+  });
+  await vi.waitFor(() =>
+    expect(service.status(identity).run).toMatchObject({
+      state: 'Failed',
+      detail: expect.stringContaining('diff'),
+    }),
+  );
+  expect(generate).not.toHaveBeenCalled();
+});

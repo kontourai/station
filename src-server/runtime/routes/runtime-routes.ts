@@ -2,6 +2,7 @@ import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { zodSchema } from 'ai';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -121,6 +122,8 @@ import { ProjectSharedTaskService } from '../../services/projects/project-shared
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
+import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
+import { guideOutputSchema } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
@@ -5918,16 +5921,29 @@ export function configureRuntimeRoutes(
         tools: [],
         maxSteps: 1,
       });
-      const result = await agent.generateText(prompt, {
-        signal,
-        maxOutputTokens: 16000,
-        conversationId: `review-guide-${randomUUID()}`,
-        userId: PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL.id,
-      });
-      const text = result.text ?? '';
-      if (Buffer.byteLength(text) > 128 * 1024)
-        throw Error('Guide output exceeds the size limit.');
-      return JSON.parse(text);
+      if (!agent.generateObject) throw new ReviewGuideError('model');
+      try {
+        const result = await agent.generateObject(prompt, {
+          structuredOutputSchema: zodSchema(guideOutputSchema),
+          signal,
+          abortSignal: signal,
+          maxOutputTokens: 16000,
+          conversationId: `review-guide-${randomUUID()}`,
+          userId: PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL.id,
+        });
+        return result.object;
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          [
+            'NoObjectGeneratedError',
+            'AI_NoObjectGeneratedError',
+            'SyntaxError',
+          ].includes(error.name)
+        )
+          throw new ReviewGuideError('invalid-output');
+        throw error;
+      }
     },
     (error) =>
       context.logger.warn('Pull request guide generation failed', { error }),

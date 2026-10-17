@@ -2,6 +2,7 @@
 import type { PullRequestReviewGuideResult } from '@kontourai/station-contracts/pull-request-review-guide';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,9 +12,14 @@ import {
 import { afterEach, expect, test, vi } from 'vitest';
 import { PullRequestGuide } from '../PullRequestGuide';
 
-const remote = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
+const remote = vi.hoisted(() => ({
+  read: vi.fn(),
+  write: vi.fn(),
+  status: vi.fn(),
+}));
 vi.mock('@kontourai/station-sdk/pull-request-review', () => ({
   getPullRequestGuide: remote.read,
+  getPullRequestGuideStatus: remote.status,
   writePullRequestGuide: remote.write,
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
@@ -111,4 +117,42 @@ test('hides obsolete code even if a stale response contains excerpts', async () 
   expect(screen.getByText(/earlier revision/)).toBeTruthy();
   expect(screen.queryByText(/1\s+const visible = true;/)).toBeNull();
   expect(screen.getByRole('button', { name: 'Rewrite guide' })).toBeTruthy();
+});
+
+test('running guide polls cheap status at fifteen seconds and reads the snapshot once on completion', async () => {
+  vi.useFakeTimers();
+  const writing = result();
+  writing.run = {
+    state: 'Running',
+    headSha: head,
+    startedAt: '2026-10-17T00:00:00Z',
+  };
+  remote.read.mockResolvedValue(writing);
+  remote.status.mockResolvedValue({ enabled: true, run: writing.run });
+  const view = mount();
+  try {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(remote.read).toHaveBeenCalledOnce();
+    expect(remote.status).toHaveBeenCalledOnce();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(14_000);
+    });
+    expect(remote.status).toHaveBeenCalledOnce();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    expect(remote.status.mock.calls.length).toBeGreaterThan(1);
+    expect(remote.read).toHaveBeenCalledOnce();
+    remote.status.mockResolvedValue({ enabled: true, run: null });
+    remote.read.mockResolvedValue(result());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_001);
+    });
+    expect(remote.read).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
 });

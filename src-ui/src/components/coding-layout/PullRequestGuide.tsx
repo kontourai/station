@@ -1,11 +1,12 @@
 import type { PullRequestReviewGuideResult } from '@kontourai/station-contracts/pull-request-review-guide';
 import {
   getPullRequestGuide,
+  getPullRequestGuideStatus,
   type PullRequestReviewTarget,
   writePullRequestGuide,
 } from '@kontourai/station-sdk/pull-request-review';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { Empty } from '../state';
@@ -31,14 +32,34 @@ export function PullRequestGuide({
     retry: false,
     staleTime: 0,
     gcTime: 0,
-    refetchInterval: (query) =>
-      query.state.data?.enabled && query.state.data.run?.state === 'Running'
-        ? 3000
-        : false,
   });
+  const running = query.data?.enabled && query.data.run?.state === 'Running';
+  const status = useQuery({
+    queryKey: ['pull-request-guide-status', scope?.authorityKey, target],
+    queryFn: ({ signal }) =>
+      getPullRequestGuideStatus(scope!.apiBase, target, {
+        signal,
+        requestScope: scope!,
+      }),
+    enabled: !!scope?.isCurrent() && !!running,
+    retry: false,
+    gcTime: 0,
+    refetchInterval: 15_000,
+  });
+  const statusUpdatedAt = status.dataUpdatedAt;
+  const statusRunning =
+    status.data?.enabled && status.data.run?.state === 'Running';
+  useEffect(() => {
+    if (running && statusUpdatedAt && !statusRunning) void query.refetch();
+  }, [running, statusUpdatedAt, statusRunning, query.refetch]);
   const write = useMutation({
     mutationFn: () =>
-      writePullRequestGuide(scope!.apiBase, target, { requestScope: scope! }),
+      writePullRequestGuide(
+        scope!.apiBase,
+        target,
+        { requestScope: scope! },
+        { force: !!(query.data?.enabled && query.data.guide) },
+      ),
     onSuccess: () => query.refetch(),
   });
   const result = query.data;
@@ -49,7 +70,6 @@ export function PullRequestGuide({
     return (
       <p>Enable Review guides in Station settings to read AI-written tours.</p>
     );
-  const running = result.run?.state === 'Running';
   return (
     <div className="pull-request-guide">
       <div className="pull-request-guide__actions">
@@ -92,6 +112,7 @@ export function PullRequestGuide({
 function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
   const [index, setIndex] = useState(0);
   const title = useRef<HTMLHeadingElement>(null);
+  const stopId = useId();
   const priorIndex = useRef(index);
   useEffect(() => {
     if (priorIndex.current !== index) title.current?.focus();
@@ -118,7 +139,7 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
         <Button disabled={index === 0} onClick={() => setIndex(index - 1)}>
           Previous
         </Button>
-        <span aria-live="polite">
+        <span>
           Stop {index + 1} of {guide.stops.length}
         </span>
         <Button
@@ -128,8 +149,8 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
           Next
         </Button>
       </nav>
-      <article aria-labelledby="pull-request-guide-stop">
-        <h3 id="pull-request-guide-stop" ref={title} tabIndex={-1}>
+      <article aria-labelledby={stopId}>
+        <h3 id={stopId} ref={title} tabIndex={-1}>
           {stop.title}
         </h3>
         <p className="pull-request-guide__summary">{stop.summary}</p>
@@ -169,8 +190,8 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
           ))}
         {stop.files.length > 0 && (
           <ul>
-            {stop.files.map((file) => (
-              <li key={file.path}>
+            {stop.files.map((file, index) => (
+              <li key={`${file.path}:${index}`}>
                 <code>{file.path}</code>
                 {file.note ? ` — ${file.note}` : ''}
               </li>
@@ -190,8 +211,8 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
           <>
             <h4>Questions to consider</h4>
             <ul>
-              {stop.questions.map((question) => (
-                <li key={question}>{question}</li>
+              {stop.questions.map((question, index) => (
+                <li key={`${question}:${index}`}>{question}</li>
               ))}
             </ul>
           </>

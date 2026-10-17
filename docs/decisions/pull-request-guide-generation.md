@@ -27,8 +27,11 @@ anchors. A guide is advisory text, not an approval or an executable instruction.
 
 ## Controls and limits
 
-Use Station's `requireLiveRepository` custody/config boundary and hardened Git
-runner for a detached temporary checkout. Do not expose shell or file tools to
+Use Station's `readProjectRepository` custody/config snapshot and hardened Git
+runner to read immutable blobs. Never materialize a temporary checkout: it is
+unnecessary for a tool-free model and could execute operator-global smudge
+filters selected by attacker-controlled attributes. Pin diff quoting, prefixes,
+color, external-diff and text-conversion options explicitly. Do not expose shell or file tools to
 the model. Supply bounded diff and regular changed-file blobs, omit all review
 conversations, and treat supplied text as data. No dependency installation,
 repository script, checkout modification, or forge review write occurs.
@@ -49,8 +52,14 @@ project-agent authority requires a separate ownership review.
 
 ## Evidence
 
-The guide service tests use real isolated repositories to verify temporary
-checkout cleanup, same-head coalescing, durable restart reads, file coverage,
+The guide service tests use real isolated repositories to verify
+blob-only reads with global-filter controls, same-head coalescing, durable restart reads, file coverage,
 invalid-output failure, and stale-anchor removal. MCP tests exercise the actual
 registered tool schema and REST forwarding. Live model/provider qualification
 is separate from deterministic seam evidence.
+
+Run-status polling is process-local and does not read a forge snapshot. Admission
+checks capacity before a costly snapshot and again before starting generation.
+Current-head guides are reused unless force is explicit, and a different head
+cannot silently join an older run. Check the exact pretty-printed document size
+before publishing it so every admitted write remains within the read limit.

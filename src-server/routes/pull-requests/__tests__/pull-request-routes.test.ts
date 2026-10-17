@@ -8,6 +8,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { RUNTIME_CREDENTIAL_AUTHORITY_VAR } from '../../../security/runtime-request-security.js';
+import { guideFixture } from '../../../services/pull-requests/__tests__/guide-fixture.js';
 import { GitHubPullRequestProvider } from '../../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestReviewGuideService } from '../../../services/pull-requests/pull-request-review-guide.js';
@@ -826,6 +827,183 @@ test('guide route resolves the forge head, strips obsolete anchors and refuses u
     ).toBe(404);
     expect(generate).not.toHaveBeenCalled();
   } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+test('authorized guide POST retains its access lease until the model result is saved', async () => {
+  const f = await guideFixture(makeTempDir);
+  let current = true;
+  let finish!: (value: unknown) => void;
+  const answer = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const generate = vi.fn(() => answer);
+  const guides = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  const provider = new GitHubPullRequestProvider();
+  const snapshot = vi.spyOn(provider, 'getReviewSnapshot').mockResolvedValue({
+    available: true,
+    data: f.snapshot,
+    effectiveCapabilities: caps,
+    effectiveMergeMethods: [],
+    mergeMethodsSource: 'provider-default',
+  });
+  const routes = createPullRequestRoutes(
+    () => [provider],
+    async () => ({ available: true, context: f.context }),
+    {
+      guides,
+      operatorIdentityForRequest: () => 'operator',
+      isRequestPrincipalCurrent: () => current,
+    },
+  );
+  const response = await routes.request(
+    '/github/github.com/team/repo/17/guide?project=p',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    success: true,
+    data: {
+      enabled: true,
+      run: { state: 'Running', headSha: f.snapshot.headSha },
+    },
+  });
+  expect(snapshot).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(generate).toHaveBeenCalledOnce(), {
+    timeout: 15_000,
+  });
+  current = false;
+  finish({
+    stops: [
+      {
+        title: 'Tour',
+        summary: '',
+        attention: null,
+        excerpts: [],
+        files: [],
+        notes: [],
+        questions: [],
+      },
+    ],
+  });
+  const identity = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'team', name: 'repo' },
+    ref: '17',
+  };
+  await vi.waitFor(() =>
+    expect(guides.status(identity).run).toMatchObject({
+      state: 'Failed',
+      detail: expect.stringContaining('access changed'),
+    }),
+  );
+  expect(f.store.read(identity, f.snapshot.headSha)).toBeNull();
+  vi.restoreAllMocks();
+});
+
+test('guide status polling and over-capacity admission do not read a forge snapshot', async () => {
+  const f = await guideFixture(makeTempDir);
+  let finish!: (value: unknown) => void;
+  const answer = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const generate = vi.fn(() => answer);
+  const guides = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    generate,
+    () => {},
+  );
+  const provider = new GitHubPullRequestProvider();
+  const read = vi.spyOn(provider, 'getReviewSnapshot').mockResolvedValue({
+    available: true,
+    data: f.snapshot,
+    effectiveCapabilities: caps,
+    effectiveMergeMethods: [],
+    mergeMethodsSource: 'provider-default',
+  });
+  const identity = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'team', name: 'repo' },
+    ref: '17',
+  };
+  const routes = createPullRequestRoutes(
+    () => [provider],
+    async () => ({ available: true, context: f.context }),
+    { guides, operatorIdentityForRequest: () => 'operator' },
+  );
+  try {
+    for (const ref of ['17', '18'])
+      guides.start({
+        identity: { ...identity, ref },
+        context: f.context,
+        snapshot: f.snapshot,
+      });
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(2), {
+      timeout: 15_000,
+    });
+    for (let i = 0; i < 3; i++) {
+      const response = await routes.request(
+        '/github/github.com/team/repo/17/guide?project=p&status=1',
+      );
+      expect(await response.json()).toMatchObject({
+        data: { run: { state: 'Running' } },
+      });
+    }
+    const refused = await routes.request(
+      '/github/github.com/team/repo/19/guide?project=p',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    );
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({
+      error: expect.stringContaining('Two review guides'),
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(
+      (await routes.request('/github/github.com/team/repo/17/guide?project=p'))
+        .status,
+    ).toBe(200);
+    expect(read).toHaveBeenCalledOnce();
+  } finally {
+    finish({
+      stops: [
+        {
+          title: 'Tour',
+          summary: '',
+          attention: null,
+          excerpts: [],
+          files: [],
+          notes: [],
+          questions: [],
+        },
+      ],
+    });
+    await vi.waitFor(
+      () =>
+        expect(
+          ['17', '18'].every(
+            (ref) =>
+              guides.status({ ...identity, ref }).run?.state !== 'Running',
+          ),
+        ).toBe(true),
+      { timeout: 15_000 },
+    );
     vi.restoreAllMocks();
   }
 });

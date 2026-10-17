@@ -10,6 +10,7 @@ vi.mock('../client/http', async (importOriginal) => ({
 
 import {
   getPullRequestGuide,
+  getPullRequestGuideStatus,
   getPullRequestReview,
   submitPullRequestReview,
   writePullRequestGuide,
@@ -184,5 +185,32 @@ test('guide client preserves target encoding and request authority for reads and
     'POST',
     options,
     {},
+  );
+});
+
+test('guide clients distinguish cheap status and explicit forced rewrite', async () => {
+  transport.getJson.mockResolvedValue(response({ enabled: true, run: null }));
+  await getPullRequestGuideStatus('http://station.test', target, options);
+  expect(transport.getJson).toHaveBeenCalledWith(
+    expect.stringContaining('&status=1'),
+    options,
+  );
+  transport.mutateJson.mockResolvedValue(
+    response({
+      enabled: true,
+      guide: null,
+      run: null,
+      currentHeadSha: sha,
+      excerptContents: [],
+    }),
+  );
+  await writePullRequestGuide('http://station.test', target, options, {
+    force: true,
+  });
+  expect(transport.mutateJson).toHaveBeenCalledWith(
+    expect.stringContaining('/17/guide?'),
+    'POST',
+    options,
+    { force: true },
   );
 });
