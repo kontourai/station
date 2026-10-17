@@ -356,20 +356,21 @@ comments into a trend table; `--json` also works for history.
 | Integration failures and duration | Failed groups containing the required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled owning workflow attempts (`run_started_at` to `updated_at`, including runner waits). `ci.yml` owns new candidates only when that exact attempt contains the integration aggregate; its custom run display name does not determine ownership. Legacy integration workflows remain measurable; mixed candidates prefer the new owner without counting both. |
 | PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
 | Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
-| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
-| Time with >=18 jobs running | Sweep-line share including idle gaps; running unfinished jobs extend to `until`, while queued jobs contribute zero runner slots from creation through `until`. Completed jobs span start to completion, with completion floored at start for inverted timestamps; simultaneous completions precede starts. |
-| Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
+| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs require an assigned runner ID, a non-skipped conclusion and start/end timestamps. Queued jobs can have placeholder start timestamps; those never establish execution. Cancelled jobs without a runner contribute waiting time only. Missing attribution for other running or terminal jobs makes the snapshot incomplete and excludes their timing. Runner-hours remain completed-job measurements; runner and waiting hours are clipped to the window. Unfinished jobs have a separate count and wait-so-far distribution through `until`. |
+| Time with >=18 jobs running | Sweep-line share clipped to `since`–`until`, including idle gaps. Only assigned, non-queued jobs occupy runners; unfinished execution extends to `until`. JSON separates hosted and self-hosted concurrency from the combined inventory. Free-pool comparisons use hosted occupancy. Simultaneous completions precede starts. |
+| Jobs waiting >5 / >20 minutes; OS wait | Shares among attributed executed jobs, known unfinished jobs and cancellations before runner assignment, using observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
-Runs are selected by creation time in the half-open window; all job durations
-and available attempts for those runs are counted, even when completion lies
-outside the window. Percentiles use the baseline's sorted upper-rank definition
+Runs are selected by creation time in the half-open window, including available
+attempts. Capacity intervals are clipped to the window and exclude jobs created
+after its end. Completed per-PR and per-merge-group cost samples retain full
+job durations, even when completion lies outside the window. Percentiles use the baseline's sorted upper-rank definition
 (index `floor(n * p)`, capped at `n - 1`); empty populations are `null`/`n/a`.
 Any unfinished jobs set `incomplete: true` with reason
 `window includes N unfinished jobs` and exit nonzero. Their wait and concurrency
-stop at `until`; completed-job durations still use their full intervals.
+stop at `until`; per-PR and per-merge-group cost samples use full completed intervals.
 Collection is not an atomic GitHub snapshot. Re-running a window can change
 pending conclusions or reveal additional attempts.
 
@@ -535,6 +536,16 @@ reconciles that result for the newest applicable exact-head source run, keeping
 metadata-only suites from replacing it. Missing or incomplete proof remains
 pending; failed or cancelled proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
+
+PR source computation has repository-wide FIFO ceilings: at most two statics
+jobs and two affected-test shard jobs run across all PRs. Both families split
+work into two buckets; one-shard PRs can use both shard buckets, and larger
+plans retain every shard. Waiting jobs consume no runner. Different-head
+supersession still cancels obsolete source runs; same-head duplicates wait
+rather than cancelling another run's proof. Merge-group, push and manual
+diagnostic jobs use separate source-specific groups. These four PR computation
+slots exclude planners, security checks, platform builds and status publishers;
+they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
 exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must

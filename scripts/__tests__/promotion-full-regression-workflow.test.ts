@@ -182,6 +182,37 @@ describe('promotion full-regression workflow', () => {
     expect(attest).not.toHaveProperty('continue-on-error');
   });
 
+  test('every hosted process-heavy corpus caller installs the reviewed real parser before executing it', () => {
+    const reusable = workflow('full-regression.yml');
+    const staticJob = reusable.jobs?.static;
+    if (!staticJob) throw new Error('Missing static qualification job');
+    const pinned = namedStep(staticJob, 'Install pinned actionlint');
+    expect(pinned.run).toContain('sha256sum --check --status');
+    expect(pinned.run).toContain('"$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"');
+    for (const [job, command] of [
+      [
+        reusable.jobs?.['process-heavy'],
+        'node scripts/run-full-regression-phases.mjs',
+      ],
+      [
+        workflow('ci-extended.yml').jobs?.['coverage-shard'],
+        'node scripts/run-vitest-corpus.mjs',
+      ],
+    ] as const) {
+      if (!job) throw new Error('Missing process-heavy corpus caller');
+      const install = namedStep(job, 'Install pinned actionlint');
+      const { if: condition, ...provision } = install;
+      expect(provision).toEqual(pinned);
+      if (command.includes('run-vitest-corpus'))
+        expect(condition).toBe("matrix.id == 'process-heavy'");
+      else expect(condition).toBeUndefined();
+      const steps = job.steps ?? [];
+      expect(steps.indexOf(install)).toBeLessThan(
+        steps.findIndex((step) => step.run?.includes(command)),
+      );
+    }
+  });
+
   test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
     const reusable = workflow('full-regression.yml');
     const delivery = workflow('delivery-validation.yml');
