@@ -26,6 +26,10 @@ import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  codingDiffFixture,
+  THREE_NEW_FILES,
+} from './fixtures/coding-worktree-diff.js';
 
 /**
  * A hook on every git call Station makes, so a test can change the
@@ -2155,3 +2159,24 @@ describe.skipIf(process.platform === 'win32')(
     });
   },
 );
+
+describe('whole-worktree diff additions', () => {
+  test('public diff includes three untracked additions without changing index or status', async () => {
+    const fixture = codingDiffFixture(makeTempDir('station-worktree-diff-'));
+    for (const [name, content] of Object.entries(THREE_NEW_FILES))
+      fixture.put(name, content);
+    const before = fixture.state();
+    const response = await fixture.request();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { diff: string };
+    };
+    expect(body.success).toBe(true);
+    for (const [name, content] of Object.entries(THREE_NEW_FILES)) {
+      expect(body.data.diff).toContain(`+++ b/${name}`);
+      expect(body.data.diff).toContain(`+${content.trimEnd()}`);
+    }
+    expect(fixture.state()).toEqual(before);
+  });
+});
