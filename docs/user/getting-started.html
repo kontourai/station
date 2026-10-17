@@ -209,14 +209,16 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <p>For a writable skill, <strong>Edit skill</strong> opens its definition and command settings. <strong>Back to overview</strong> asks before discarding unsaved edits. Package-owned or plugin-served skills show the server's read-only reason and keep editing unavailable.</p>
 <h2>Start Your First Task</h2>
 <ol>
-<li>Open a Project and create a Task for work you want to keep.
+<li>Open a Project and choose <strong>New Task</strong>. The normal chat composer opens in <strong>New Task</strong> mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
 </li>
-<li>Choose an Agent that is ready to run.
+<li>Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 </li>
-<li>Open the Task to follow its Sessions, files, artifacts, and evidence.
+<li>Choose <strong>Create Task</strong> on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 </li>
 </ol>
-<p>After first-run setup, Home can offer <strong>Start your first task</strong> for a confirmed Project. It uses the ordinary Task form. If the Agent is unavailable, Station shows the setup reason without creating a Task. If a start has an uncertain outcome, inspect that Task rather than creating another to retry it.</p>
+<p>An existing chat can become a Task through <strong>Turn into Task</strong> in its More menu. The <strong>Add to Task</strong> picker also offers <strong>New Task from this…</strong> for an answer or input. <strong>Turn into Task</strong> starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or remove the chip. No Task is created until acceptance.</p>
+<p>After reload, an accepted card offers <strong>Open Task</strong>. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry <strong>Create Task</strong> to finish saving the same Task.</p>
+<p>After first-run setup, Home can offer <strong>Start your first task</strong> for a confirmed Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station shows the setup reason without creating a Task. If a start has an uncertain outcome, inspect that Task rather than creating another to retry it.</p>
 <p>Task status alone does not establish that work passed a gate. Read the run and review evidence. The <a href="https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md">Starter Work guide</a> explains how Station preserves the same work identity through retries and response loss.</p>
 <h2>See Conversations Started Outside Station</h2>
 <p><strong>Activity</strong> also lists Claude Code, Codex, Grok and OpenCode conversations you ran in a terminal or another app on this machine. Station reads them; it never controls them. These conversations do not raise Station sounds, popups, desktop notifications or mobile alerts, and do not appear on mobile activity cards. A new conversation you continue in Station has its ordinary alerts. Station looks in four places:</p>
