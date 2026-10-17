@@ -19,7 +19,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { memo, type ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -33,11 +33,15 @@ const stableAgents = vi.hoisted(() => [
 
 vi.mock('../components/chat/MessageBubble', async () => {
   const react = await import('react');
+  const { TranscriptTurnContext } = await import(
+    '../components/chat/transcript-child-work'
+  );
   return {
     MessageBubble: react.memo(function MockMessageBubble(props: {
       msg: { content: string };
       idx: number;
     }) {
+      react.useContext(TranscriptTurnContext);
       bubbleRendered(props.msg.content);
       return <div data-testid={`bubble-${props.idx}`}>{props.msg.content}</div>;
     }),
@@ -60,7 +64,13 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => stableSendMessage,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
-  StreamingMessage: memo(() => <div data-testid="streaming-message" />),
+  StreamingMessage: memo(
+    ({ onContentChange }: { onContentChange: () => void }) => (
+      <button type="button" onClick={onContentChange}>
+        Flush stream
+      </button>
+    ),
+  ),
   SmoothStreamingMessage: memo(
     ({ onContentChange }: { onContentChange: () => void }) => (
       <button type="button" onClick={onContentChange}>
@@ -181,6 +191,80 @@ describe('ChatMessageList row memoisation', () => {
     expect(bubbleRendered).toHaveBeenCalledTimes(20);
     bubbleRendered.mockClear();
     view.rerender(tree());
+    expect(bubbleRendered).not.toHaveBeenCalled();
+  });
+  test('a stream flush pins imperatively without rendering the list again and respects the reader', () => {
+    const renderOverride = vi.fn(() => null);
+    const view = render(
+      wrap(
+        <ChatMessageList
+          activeSession={{
+            ...session(''),
+            orchestrationSessionStarted: true,
+            orchestrationTurnOpen: true,
+          }}
+          renderOverride={renderOverride}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+        />,
+      ),
+    );
+    const scroller = view.getByRole('log');
+    Object.defineProperties(scroller, {
+      scrollHeight: { configurable: true, value: 2000 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    expect(renderOverride).toHaveBeenCalled();
+    renderOverride.mockClear();
+    fireEvent.click(view.getByRole('button', { name: 'Flush stream' }));
+    expect(scroller.scrollTop).toBe(2000);
+    expect(renderOverride).not.toHaveBeenCalled();
+    fireEvent.wheel(scroller, { deltaY: -100 });
+    scroller.scrollTop = 500;
+    fireEvent.scroll(scroller);
+    fireEvent.click(view.getByRole('button', { name: 'Flush stream' }));
+    expect(scroller.scrollTop).toBe(500);
+  });
+
+  test('a user row keeps its preceding fork source across unrelated session renders', () => {
+    const messages = [
+      {
+        id: 'a',
+        role: 'assistant' as const,
+        content: 'answer',
+        turnId: 't1',
+        sessionId: 'execution',
+        answerEligible: true,
+        agentSlug: 'dev-agent',
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: 'answer',
+        }),
+      },
+      {
+        id: 'u',
+        role: 'user' as const,
+        content: 'next question',
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: 'next question',
+        }),
+      },
+    ];
+    const tree = (plan: string) =>
+      wrap(
+        <ChatMessageList
+          activeSession={{ ...session(plan), messages }}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+        />,
+      );
+    const view = render(tree('one'));
+    expect(bubbleRendered).toHaveBeenCalledTimes(2);
+    bubbleRendered.mockClear();
+    view.rerender(tree('two'));
     expect(bubbleRendered).not.toHaveBeenCalled();
   });
 });
