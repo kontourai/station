@@ -55,17 +55,17 @@ Existing installations retain their choice and previously imported history.
 
 In Station's web client, a completed MCP call can show its declared app directly
 below the tool row. No layout pin is needed. The integration must still be
-installed and permit rendering, and its current tool catalog must declare a UI
-resource, and the recorded result must identify the same app with
-`_meta.ui.resourceUri`. Definition-only metadata is not captured yet. Reloading the conversation mounts the app again from the recorded
-result; Station does not call the tool again to display it.
+connected and permit rendering, and its current tool definition must declare a
+UI resource. The result itself needs only the standard MCP content envelope.
+Reloading mounts a retained preview again; Station does not call the tool or
+start a disconnected server to display it.
 
-This first slice supports complete MCP result envelopes, as surfaced by the
-Codex adapter when the result includes that UI pointer. Calls without a pointer
-or whose engine exposes only text remain ordinary tool rows, including on native
-shells. Unknown or disconnected integrations add no app card.
-A result-only UI pointer cannot authorize a resource read. If a recorded pointer
-differs from today's tool declaration, Station reports that it cannot render it.
+The Codex adapter preserves complete MCP results with canonical server/tool
+identity. Claude-provider MCP calls cannot mount: their output is summarized to
+text and their flattened names lack unambiguous server identity. ACP and managed
+engines have not been qualified. Ordinary calls keep their rows and batching.
+Unknown or disconnected integrations add no app card. Result UI metadata alone
+cannot mount an app or authorize a resource read.
 
 The preview follows your theme and labels interactions as unavailable. App tool
 calls, resource reads, messages and links are refused in transcript previews.

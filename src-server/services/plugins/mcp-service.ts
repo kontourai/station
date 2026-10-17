@@ -1,3 +1,5 @@
+import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
+
 /**
  * MCP Service - handles MCP tool management and connection status
  */
@@ -1303,6 +1305,7 @@ export class MCPService {
     serverId: string,
     operation: 'connect' | 'resource-read' | 'tool-call' | 'prompt-read',
     fn: (conn: MCPConnection) => Promise<T>,
+    openOnly = false,
   ): Promise<T> {
     const claim = this.mcpCustody.acquire(serverId, 'app');
     let failed = false;
@@ -1341,6 +1344,8 @@ export class MCPService {
         }
       }
 
+      if (openOnly)
+        throw new StationOwnedToolServerError('MCP server is not connected');
       let conn: MCPConnection;
       try {
         conn = await this.establishChild(def, (child) =>
@@ -1382,6 +1387,48 @@ export class MCPService {
     }
   }
 
+  /** Snapshot only: history discovery must never start an installed server. */
+  async getOpenMCPUIToolCatalog(
+    serverId: string,
+  ): Promise<MCPUIToolCatalogResult> {
+    const conn = this.mcpConfigs.get(serverId);
+    if (!conn || conn.isUsable?.() === false) return { available: false };
+    try {
+      const def = await this.configLoader.loadIntegration(serverId);
+      if (
+        def.enabled === false ||
+        def.credentialOwnership ||
+        conn !== this.mcpConfigs.get(serverId) ||
+        conn.isUsable?.() === false
+      )
+        return { available: false };
+      return {
+        available: true,
+        tools: conn.tools.filter(
+          (tool) =>
+            !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
+        ),
+      };
+    } catch {
+      return { available: false };
+    }
+  }
+
+  /** Synchronous completion-time hint. Rendering rechecks the current catalog/policy. */
+  getOpenMCPAppResourceUri(ref: string): string | undefined {
+    const parsed = parseMcpToolRef(ref);
+    if (!parsed) return undefined;
+    const conn = this.mcpConfigs.get(parsed.serverId);
+    if (!conn || conn.isUsable?.() === false) return undefined;
+    const tool = conn.tools.find(
+      (tool) => tool.originalName === parsed.toolName,
+    );
+    const uri = extractMCPAppsToolMetadata(tool).resourceUri;
+    return uri && /^ui:\/\/[^\s]+$/.test(uri) && uri.length <= 2048
+      ? uri
+      : undefined;
+  }
+
   /**
    * The MCP-UI tool catalog for one server. Each tool carries its raw name
    * (`originalName`), raw `_meta`, and `ui.resourceUri` — the fields the
@@ -1389,7 +1436,11 @@ export class MCPService {
    * is authoritative even when every tool is disabled and `tools` is empty;
    * only an unavailable result permits compatibility-catalog fallback.
    */
-  async getMCPUIToolCatalog(serverId: string): Promise<MCPUIToolCatalogResult> {
+  async getMCPUIToolCatalog(
+    serverId: string,
+    openOnly = false,
+  ): Promise<MCPUIToolCatalogResult> {
+    if (openOnly) return this.getOpenMCPUIToolCatalog(serverId);
     try {
       const tools = await this.withMcpUiConnection(
         serverId,
@@ -1421,6 +1472,7 @@ export class MCPService {
   async readMCPUIResource(
     serverId: string,
     uri: string,
+    openOnly = false,
   ): Promise<{
     uri: string;
     mimeType?: string;
@@ -1430,35 +1482,43 @@ export class MCPService {
     _meta?: Record<string, unknown>;
     ui?: MCPAppsUiMetadata;
   }> {
-    return this.withMcpUiConnection(serverId, 'resource-read', async (conn) => {
-      const raw = await conn.client.readResource({ uri });
-      const content = firstResourceContent(raw);
-      if (!content) {
-        throw new StationOwnedToolServerError(
-          'MCP resource returned no content',
-        );
-      }
+    return this.withMcpUiConnection(
+      serverId,
+      'resource-read',
+      async (conn) => {
+        const raw = await conn.client.readResource({ uri });
+        const content = firstResourceContent(raw);
+        if (!content) {
+          throw new StationOwnedToolServerError(
+            'MCP resource returned no content',
+          );
+        }
 
-      let text = stringField(content, 'text');
-      let truncated = false;
-      if (typeof text === 'string' && text.length > MCP_UI_RESOURCE_TEXT_CAP) {
-        text = text.slice(0, MCP_UI_RESOURCE_TEXT_CAP);
-        truncated = true;
-      }
-      const meta = recordField(content, '_meta');
-      const ui = extractMCPAppsResourceMetadata(content);
-      const hasUiPolicy = Boolean(ui.csp || ui.permissions);
+        let text = stringField(content, 'text');
+        let truncated = false;
+        if (
+          typeof text === 'string' &&
+          text.length > MCP_UI_RESOURCE_TEXT_CAP
+        ) {
+          text = text.slice(0, MCP_UI_RESOURCE_TEXT_CAP);
+          truncated = true;
+        }
+        const meta = recordField(content, '_meta');
+        const ui = extractMCPAppsResourceMetadata(content);
+        const hasUiPolicy = Boolean(ui.csp || ui.permissions);
 
-      return {
-        uri,
-        mimeType: stringField(content, 'mimeType'),
-        text,
-        blob: stringField(content, 'blob'),
-        truncated: truncated || undefined,
-        ...(meta ? { _meta: meta } : {}),
-        ...(hasUiPolicy ? { ui } : {}),
-      };
-    });
+        return {
+          uri,
+          mimeType: stringField(content, 'mimeType'),
+          text,
+          blob: stringField(content, 'blob'),
+          truncated: truncated || undefined,
+          ...(meta ? { _meta: meta } : {}),
+          ...(hasUiPolicy ? { ui } : {}),
+        };
+      },
+      openOnly,
+    );
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   usePreloadToolCallBatch,
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
+import { TranscriptAppTools } from '../TranscriptAppTools';
 import {
   foldTurnWork,
   isToolCallPart,
@@ -72,7 +73,8 @@ function MessageContentComponent({
   isStreamingMessage,
   foldWork = false,
   onToolApproval,
-}: MessageContentProps) {
+  appTools,
+}: MessageContentProps & { appTools: ReadonlySet<string> }) {
   // Consecutive tool-call parts collapse into one batch (`LazyToolCallBatch`);
   // any other part in between — prose, reasoning, a file, a UI block —
   // breaks the run, so the agent's words between tool calls are never
@@ -84,8 +86,10 @@ function MessageContentComponent({
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork ? foldTurnWork(parts) : splitToolCallRuns(parts);
-  }, [contentParts, textContent, foldWork]);
+    return foldWork
+      ? foldTurnWork(parts, appTools)
+      : splitToolCallRuns(parts, appTools);
+  }, [contentParts, textContent, foldWork, appTools]);
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
@@ -307,7 +311,12 @@ function areMessageContentPropsEqual(
   );
 }
 
-export const MessageContent = memo(
-  MessageContentComponent,
-  areMessageContentPropsEqual,
-);
+export const MessageContent = memo(function MessageContentWithApps(
+  props: MessageContentProps,
+) {
+  return (
+    <TranscriptAppTools calls={props.contentParts ?? []}>
+      {(appTools) => <MessageContentComponent {...props} appTools={appTools} />}
+    </TranscriptAppTools>
+  );
+}, areMessageContentPropsEqual);

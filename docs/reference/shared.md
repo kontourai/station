@@ -30,12 +30,11 @@ owning declarations; import the canonical type rather than copying an interface.
 ## Recorded MCP app results
 
 `@kontourai/station-shared/mcp-app-result` exports
-`mcpAppResultResourceUri`. This browser-safe reader accepts a successful result
-with a content array and a non-whitespace `ui://` resource pointer of at most
-2,048 characters in `_meta.ui.resourceUri`. Errors and results without that
-signal are ordinary tool results. Transcript candidacy and bounded history
-retention share this reader. Its return value is presentation metadata, never
-permission to fetch a URI; the server still re-resolves its catalog declaration.
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in the connected tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
 See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
 ## Product telemetry

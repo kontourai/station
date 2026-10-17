@@ -21,9 +21,11 @@ test.each(['demo/chart', 'my__srv/chart'])(
     const result = {
       content: [{ type: 'text', text: 'Chart data' }],
       structuredContent: { count: 7 },
-      _meta: { ui: { resourceUri: 'ui://demo/chart' } },
     };
     let store = new EventStore(path);
+    store.setMcpAppResourceResolver((ref) =>
+      ref === toolName ? 'ui://demo/chart' : undefined,
+    );
     store.appendEvent({
       ...base,
       eventId: 'start',
@@ -55,7 +57,10 @@ test.each(['demo/chart', 'my__srv/chart'])(
       const window = store.listEventWindowByTurn(threadId, { turnLimit: 1 });
       const completed = window.events.find((event) => event.id === 'result');
       expect(completed?.elided).toBeUndefined();
-      expect(completed?.payload).toMatchObject({ output: result });
+      expect(completed?.payload).toMatchObject({
+        output: result,
+        mcpAppResourceUri: 'ui://demo/chart',
+      });
       const messages = projectRuntimeEventsToMessages(
         window.events.map((event) => event.payload),
       );
@@ -123,7 +128,7 @@ test('keeps the existing output limit for oversized MCP results and ordinary str
   }
 });
 
-test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous'] as const)(
+test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous', 'forged'] as const)(
   'keeps %s MCP results as previews instead of expanding the history window',
   (kind) => {
     const store = new EventStore(
@@ -168,6 +173,7 @@ test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous'] as const)(
           toolName: kind === 'ambiguous' ? 'mcp__my__srv__chart' : 'demo/read',
           status: 'success',
           output,
+          mcpAppResourceUri: 'ui://forged/retention',
         });
       }
       const window = store.listEventWindowByTurn('ordinary', { turnLimit: 1 });
@@ -178,6 +184,7 @@ test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous'] as const)(
       )) {
         expect(event.elided).toBe('output_limit');
         expect(event.payload).toMatchObject({ output: expect.any(String) });
+        expect(event.payload).not.toHaveProperty('mcpAppResourceUri');
       }
       expect(Buffer.byteLength(JSON.stringify(window))).toBeLessThan(16_000);
     } finally {

@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test, vi } from 'vitest';
-
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
+import { EventStore } from '../../orchestration/event-store.js';
 
 // These project homes were fixed paths in a directory shared with every other
 // process on the host, so anything else could occupy or replace either name.
@@ -34,6 +34,7 @@ afterAll(() => {
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   mcpLifecycle: { add: vi.fn() },
+  orchestrationEventWindowElisions: { add: vi.fn() },
   mcpUiResolveTotal: { add: vi.fn() },
   mcpUiResourceReadTotal: { add: vi.fn() },
   mcpUiToolCallTotal: { add: vi.fn() },
@@ -2379,7 +2380,7 @@ describe('MCPService', () => {
     }
   });
 
-  test('shares the active Station-owned connection without a parallel spawn', async () => {
+  test('history UI discovery uses definition-only metadata on the active connection without a parallel spawn', async () => {
     connectMCPMock.mockClear();
     const readResource = vi.fn().mockResolvedValue({
       contents: [
@@ -2393,7 +2394,15 @@ describe('MCPService', () => {
     const active = {
       client: { readResource, callTool: vi.fn() },
       serverId: 'mcp-1',
-      tools: [],
+      tools: [
+        {
+          name: 'mcp-1_render',
+          originalName: 'render',
+          serverId: 'mcp-1',
+          _meta: { ui: { resourceUri: 'ui://mcp-1/panel' } },
+        },
+        { name: 'mcp-1_read', originalName: 'read', serverId: 'mcp-1' },
+      ],
       negotiation: {
         era: 'modern',
         extensionIds: [],
@@ -2415,6 +2424,64 @@ describe('MCPService', () => {
     const result = await svc.readMCPUIResource('mcp-1', 'ui://mcp-1/panel');
 
     expect(result.text).toBe('<h1>shared</h1>');
+    const routes = createToolRoutes(svc, vi.fn());
+    const members = await routes.request('/mcp-1/ui-tools');
+    expect(await members.json()).toEqual({ success: true, data: ['render'] });
+    expect(svc.getOpenMCPAppResourceUri('mcp-1/render')).toBe(
+      'ui://mcp-1/panel',
+    );
+    expect(svc.getOpenMCPAppResourceUri('mcp-1/read')).toBeUndefined();
+    const store = new EventStore(
+      join(MCP_TEMP_ROOT, 'definition-app-events.sqlite'),
+    );
+    try {
+      store.setMcpAppResourceResolver((ref) =>
+        svc.getOpenMCPAppResourceUri(ref),
+      );
+      const base = {
+        provider: 'codex' as const,
+        threadId: 'definition-app',
+        turnId: 'turn',
+        createdAt: '2026-10-17T12:00:00.000Z',
+      };
+      store.appendEvent({
+        ...base,
+        method: 'turn.started',
+        eventId: 'start',
+        prompt: 'Show status',
+      });
+      const output = { content: [{ type: 'text', text: 'x'.repeat(500) }] };
+      for (const name of ['render', 'read'])
+        store.appendEvent({
+          ...base,
+          eventId: name,
+          method: 'tool.completed',
+          itemId: name,
+          toolCallId: name,
+          toolName: `mcp-1/${name}`,
+          status: 'success',
+          output,
+        });
+      const window = store.listEventWindowByTurn(base.threadId, {
+        turnLimit: 1,
+      });
+      expect(
+        window.events.find((event) => event.id === 'render')?.payload,
+      ).toMatchObject({ output, mcpAppResourceUri: 'ui://mcp-1/panel' });
+      expect(window.events.find((event) => event.id === 'read')?.elided).toBe(
+        'output_limit',
+      );
+    } finally {
+      store.close();
+    }
+
+    const unknown = await routes.request('/unknown/ui-tools');
+    expect(await unknown.json()).toEqual({ success: true, data: [] });
+    const preview = await routes.request('/mcp-1/ui/render/resource', {
+      headers: { 'x-station-mcp-transcript': 'preview' },
+    });
+    expect(preview.status).toBe(200);
+
     expect(readResource).toHaveBeenCalledWith({ uri: 'ui://mcp-1/panel' });
     expect(connectMCPMock).not.toHaveBeenCalled();
     expect(active.close).not.toHaveBeenCalled();
@@ -2450,6 +2517,24 @@ describe('MCPService', () => {
     await expect(svc.callMCPUITool('mcp-1', 'render')).rejects.toThrow(
       "MCP server 'mcp-1' is disabled",
     );
+    loader.loadIntegration.mockResolvedValue({
+      id: 'mcp-1',
+      kind: 'mcp',
+      enabled: true,
+    });
+    const routes = createToolRoutes(svc, vi.fn());
+    expect(await (await routes.request('/mcp-1/ui-tools')).json()).toEqual({
+      success: true,
+      data: [],
+    });
+    expect(svc.getOpenMCPAppResourceUri('mcp-1/render')).toBeUndefined();
+    const disconnected = await routes.request('/mcp-1/ui/render/resource', {
+      headers: { 'x-station-mcp-transcript': 'preview' },
+    });
+    expect(disconnected.status).toBe(404);
+    await expect(
+      svc.readMCPUIResource('mcp-1', 'ui://mcp-1/panel', true),
+    ).rejects.toThrow('not connected');
     expect(connectMCPMock).not.toHaveBeenCalled();
   });
 

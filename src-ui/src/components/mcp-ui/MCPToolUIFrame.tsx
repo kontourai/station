@@ -26,7 +26,6 @@ import type {
   MCPToolUIPermissions,
   MCPToolUIResolutionStatus,
 } from '@kontourai/station-shared/mcp';
-import { mcpAppResultResourceUri } from '@kontourai/station-shared/mcp-app-result';
 import type { MCPToolUICsp } from '@kontourai/station-shared/mcp-ui-csp';
 import { buildMcpUiCsp } from '@kontourai/station-shared/mcp-ui-csp';
 import type {
@@ -306,16 +305,16 @@ export function MCPToolUIFrame({
   const hostEnabled = config?.mcpUiHost !== false;
   const baseUrl = apiBase ?? apiContext.apiBase;
   const refParts = parseMcpToolRef(component.ref);
-  const recordedAppUri = mcpAppResultResourceUri(transcriptResult?.result);
 
   const resolution = useQuery<MCPToolUIResolution>({
     queryKey: ['mcp-tool-ui', component.ref, resolutionIdentity, baseUrl],
     queryFn: () =>
-      fetchMCPToolUIResolution(baseUrl, refParts as MCPToolRefParts),
-    enabled:
-      !!refParts &&
-      !nativeIframeBlocked &&
-      (!transcriptResult || !!recordedAppUri),
+      fetchMCPToolUIResolution(
+        baseUrl,
+        refParts as MCPToolRefParts,
+        !!transcriptResult,
+      ),
+    enabled: !!refParts && !nativeIframeBlocked,
     retry: false,
   });
 
@@ -345,7 +344,6 @@ export function MCPToolUIFrame({
     shouldTryEmbeddedPresentation,
   ]);
 
-  if (transcriptResult && !recordedAppUri) return null;
   if (
     transcriptResult &&
     (resolution.isError ||
@@ -440,16 +438,6 @@ export function MCPToolUIFrame({
         reason={data?.reason}
         fallbackComponent={fallbackComponent}
         fallbackComponentName={fallbackComponentName}
-      />
-    );
-  }
-
-  if (transcriptResult && recordedAppUri !== data.resourceUri) {
-    return (
-      <MCPToolUIStatus
-        status="unsupported"
-        ref={component.ref}
-        reason="The recorded app resource differs from the integration’s current declaration."
       />
     );
   }
@@ -694,7 +682,8 @@ function MCPToolUISandbox({
       resolutionIdentity,
       baseUrl,
     ],
-    queryFn: () => fetchMCPToolUIResource(baseUrl, refParts, mode),
+    queryFn: () =>
+      fetchMCPToolUIResource(baseUrl, refParts, mode, isTranscript),
     enabled: true,
     retry: false,
   });
@@ -1645,9 +1634,13 @@ function errorMessage(error: unknown): string {
 async function fetchMCPToolUIResolution(
   apiBase: string,
   refParts: MCPToolRefParts,
+  transcript = false,
 ): Promise<MCPToolUIResolution> {
   const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}`,
+    transcript
+      ? { headers: { 'x-station-mcp-transcript': 'preview' } }
+      : undefined,
   );
   const { data } = await readMCPEnvelope<MCPToolUIResolution>(
     response,
@@ -1660,12 +1653,16 @@ async function fetchMCPToolUIResource(
   apiBase: string,
   refParts: MCPToolRefParts,
   mode: 'declared' | 'embedded' = 'declared',
+  transcript = false,
 ): Promise<MCPToolUIResourceContent> {
   // 'declared' reads the SEP-1865 resource (resources/read); 'embedded' calls
   // the tool and extracts its mcp-ui.dev embedded UI resource.
   const path = mode === 'embedded' ? 'embedded' : 'resource';
   const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}/${path}`,
+    transcript
+      ? { headers: { 'x-station-mcp-transcript': 'preview' } }
+      : undefined,
   );
   const { data } = await readMCPEnvelope<MCPToolUIResourceContent>(
     response,

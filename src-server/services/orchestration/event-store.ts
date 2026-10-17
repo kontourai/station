@@ -57,7 +57,7 @@ import {
 } from '@kontourai/station-contracts/session-work-item';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { mcpAppResultResourceUri } from '@kontourai/station-shared/mcp-app-result';
+import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
   exactProcessIdentity,
   probeExactProcessIdentity,
@@ -1608,9 +1608,8 @@ function snapshotEvent(
   const payload = event.payload as unknown as Record<string, unknown>;
   let outputCut = false;
   let snapshotPayload = payload;
-  // Chat Apps need the complete saved envelope, not an 84-character string.
-  // Keep only bounded successful MCP App results; the existing window-wide budget
-  // still paginates these events. Other results retain their diagnostic preview.
+  // Only Station-stamped definition metadata can retain a bounded App envelope.
+  // Server result metadata cannot expand ordinary history windows.
   const result = payload.output;
   if (
     event.method === 'tool.completed' &&
@@ -1618,7 +1617,8 @@ function snapshotEvent(
     !payload.error &&
     typeof payload.toolName === 'string' &&
     parseMcpToolRef(payload.toolName) &&
-    mcpAppResultResourceUri(result) &&
+    typeof payload.mcpAppResourceUri === 'string' &&
+    isSuccessfulMcpResult(result) &&
     Buffer.byteLength(JSON.stringify(payload)) <= maxBytes
   )
     return event;
@@ -2031,6 +2031,14 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
+
+  /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
+  setMcpAppResourceResolver(
+    resolve: (toolRef: string) => string | undefined,
+  ): void {
+    this.mcpAppResourceResolver = resolve;
+  }
 
   constructor(
     dbPath: string,
@@ -3406,6 +3414,19 @@ export class EventStore {
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
+    // Never accept a provider/import's claim to this Station-owned field.
+    if (projectedEvent.method === 'tool.completed') {
+      delete projectedEvent.mcpAppResourceUri;
+      if (
+        projectedEvent.status === 'success' &&
+        !projectedEvent.error &&
+        !projectedEvent.outputReceipt?.truncated &&
+        isSuccessfulMcpResult(projectedEvent.output)
+      ) {
+        const uri = this.mcpAppResourceResolver?.(projectedEvent.toolName);
+        if (uri) projectedEvent.mcpAppResourceUri = uri;
+      }
+    }
     this.assertOwnershipImmutable(projectedEvent);
     let persisted: PersistedIngressForm;
     try {

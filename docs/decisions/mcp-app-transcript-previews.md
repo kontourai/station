@@ -10,12 +10,27 @@ evidence:
 # MCP app transcript previews
 
 Completed MCP calls may mount the existing hardened web host alongside their
-transcript row when the recorded result explicitly carries `_meta.ui.resourceUri`.
-Ordinary MCP results keep their diagnostic preview and batch behavior. A
-server/tool-shaped name and content array alone are insufficient. Definition-only
-metadata awaits an authenticated capture path. Rendering uses the current catalog-declared resource through
-the existing authorized resolver and resource route. A recorded result is
-presentation data, never authority to execute the tool again or read a new URI.
+transcript row only when the already-open server's tool definition declares an
+App. A cheap successful-content-envelope and provider-identity filter precedes
+membership in a per-server UI-tool catalog, cached for five minutes. Unknown or
+disconnected servers produce no membership and no card. History discovery,
+resolution and resource reads never start stdio servers. Result `_meta.ui` is
+neither required nor authority to mount, retain an envelope or read a URI.
+
+At completion, EventStore overwrites any incoming `mcpAppResourceUri` with a
+Station-owned stamp from the already-open catalog. Only stamped successful MCP
+results fitting the existing 24 KiB event bound retain their full envelope in
+windows. Ordinary results retain diagnostic previews independent of catalog
+lookup timing. This additive optional runtime-event field leaves older readers
+compatible. Pre-stamp history whose output was reduced to text stays ordinary.
+Rendering rechecks the current catalog and render policy through the hardened
+path; this is current-resource semantics, not a historical HTML snapshot.
+
+Codex exposes the required result envelope and canonical identity. Claude-provider
+MCP calls cannot mount: summarizeClaudeToolResult stringifies output and raw
+`mcp__` names are ambiguous. ACP and managed-engine preservation remain
+unqualified. The definition-only demo and seeded transcript establish browser
+resource behavior, not real-provider execution.
 
 The initial slice is preview-only. It sends the recorded tool input/result and
 follows the host theme; it refuses app tool calls, resource reads, messages and

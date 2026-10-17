@@ -330,44 +330,41 @@ completed, non-error MCP result with a stable tool-call ID. The
 [reference reader](../../src-ui/src/components/chat/mcp-app-tool-ref.ts) accepts
 canonical `server/tool` or explicit `server`/`originalName` identity, without
 guessing from flattened underscores.
-It requires an untruncated, successful result envelope with a `content` array
-and an explicit `_meta.ui.resourceUri` using the `ui://` scheme. The shared
-[result metadata reader](../../packages/shared/src/mcp-app-result.ts) gates both
-UI candidacy and history-window retention. A content array alone is an ordinary
-tool result. Provider names of the form `mcp__server__tool` are accepted only
-with an explicit provider-reported `server` and `originalName`; Station never
-splits ambiguous underscores to infer another integration. The renderer
-validates that envelope against the MCP result schema before mounting.
+It requires an untruncated successful MCP result envelope with a `content` array.
+That is only a cheap candidate filter: membership in the already-open server's
+UI-tool catalog is mandatory. The browser caches one `GET
+/integrations/:serverId/ui-tools` request per server for five minutes, shared by
+rows and batching. The endpoint reads tool-definition `_meta.ui.resourceUri`
+(or its legacy flat spelling); a result pointer alone grants nothing. Unknown,
+disconnected or unusable connections return no UI tools without starting a
+process. Candidates remain in ordinary batches until membership is confirmed.
 
 The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
-This establishes a source path for complete results, not a real-provider runtime
-qualification. Claude currently summarizes tool-result content to text in
-`claude-adapter-events.ts`; that path does not qualify. ACP and managed-engine
-result preservation have not been qualified for this slice. A supported engine
-must preserve the MCP identity, complete result envelope and recorded UI
-pointer. Definition-only metadata is not captured in this slice and remains an
-ordinary tool result; a later authenticated definition-capture path can add
-that support without catalog lookups or routing guesses for ordinary calls.
+This is a source path, not real-provider qualification. Claude-provider MCP calls
+cannot mount: `summarizeClaudeToolResult` stringifies output and their raw
+`mcp__` names lack canonical server identity. ACP and managed-engine result
+preservation remain unqualified. Explicit provider `server`/`originalName` is
+accepted; ambiguous underscore names are never split.
 
-Candidates remain outside collapsed desktop tool batches and mobile folded work.
-The existing persisted result is the mount input, so remounting requires no new
-persistence schema. The EventStore window retains complete successful MCP App
-result envelopes with the explicit recorded UI pointer when the whole event
-fits its existing 24 KiB ceiling;
-other tool results retain the 84-character diagnostic preview. The window-wide
-byte budget still paginates normally. Larger or provider-truncated results
-remain ordinary tool rows. The frame sends recorded tool input/result notifications;
-it never invokes `/initial-result` or the embedded-result fallback. Missing UI
-metadata leaves the ordinary row, including on native shells. Missing,
-disconnected or unknown integrations, missing tools/resources and resolver errors
-add no transcript card. A known recorded App can report rendering revocation;
-The success-or-revocation resolution requirement also applies on native:
-unresolved transcript occurrences remain quiet, without attempting native
-resource reads. Existing native refusal for pinned pane frames is unchanged.
-Fetches use the existing resolver/resource
-routes, which re-resolve today's catalog declaration and enforce render grants.
-A result pointer differing from that declaration is refused. A pointer appearing
-only in the result does not create resource-read authority.
+At ingress, EventStore discards incoming `mcpAppResourceUri` claims and stamps
+that optional field only for successful content envelopes whose tool definition
+is in the already-open catalog. A stamped event may retain its full envelope
+within the existing 24 KiB bound. Ordinary results, including forged result UI
+pointers, keep 84-character previews without waiting for catalog requests.
+Older readers ignore the additive field. Pre-stamp history reduced to text stays
+ordinary. Larger or provider-truncated results remain ordinary rows.
+
+The frame sends recorded input/result notifications without invoking
+`/initial-result` or the embedded-result fallback. Definition-only tools work;
+result metadata is not required. Resolution and resource requests carry
+`x-station-mcp-transcript: preview`, restricting catalog/read operations to
+already-open connections, with no compatibility-catalog fallback. A disconnect
+between membership and resource fetch cannot launch a replacement server.
+Unknown or unavailable resolution adds no card. Rendering revocation deliberately
+shows an operator-policy card for a catalog-confirmed App. Unresolved native
+occurrences remain quiet; existing native refusal for pane frames is unchanged.
+Resource fetching always re-resolves the current declaration and render grant;
+no URI supplied by a result is fetched or compared as authority.
 
 Transcript previews advertise no server-tool, server-resource, or open-link
 capabilities and refuse unsolicited requests at the handler boundary. They have
@@ -382,7 +379,7 @@ It retains the existing theme and sandbox posture and native-shell refusal.
 See the [decision](../decisions/mcp-app-transcript-previews.md).
 
 Remaining slices are authenticated occurrence/resource binding (including
-result-only pointers and integration-generation changes), owning-session
+integration-generation changes), owning-session
 liveness, per-message approval with canonical dispatch, latest bounded
 per-app context notes delivered on the next user message, general link
 confirmation, fullscreen attention return, and navigation-away termination.
