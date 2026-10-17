@@ -22,7 +22,11 @@ class ConversationsStore {
     string,
     { promise: Promise<boolean>; version: object }
   >();
-  private fetchScopes = new Map<string, { pending: number }>();
+  private nextFetchSequence = 0;
+  private fetchScopes = new Map<
+    string,
+    { pending: number; publishedSequence: number }
+  >();
   private snapshot = {
     conversations: this.conversations,
     messages: this.messages,
@@ -82,7 +86,11 @@ class ConversationsStore {
     }
 
     const version = {};
-    const scope = this.fetchScopes.get(key) ?? { pending: 0 };
+    const sequence = ++this.nextFetchSequence;
+    const scope = this.fetchScopes.get(key) ?? {
+      pending: 0,
+      publishedSequence: 0,
+    };
     scope.pending += 1;
     this.fetchScopes.set(key, scope);
     const promise = (async (): Promise<boolean> => {
@@ -115,8 +123,12 @@ class ConversationsStore {
         );
         if (this.fetchScopes.get(key) !== scope || isCurrent?.() === false)
           return false;
-        this.messages[key] = messages;
-        this.notify();
+        // A successful older read must not replace a newer published transcript.
+        if (sequence > scope.publishedSequence) {
+          scope.publishedSequence = sequence;
+          this.messages[key] = messages;
+          this.notify();
+        }
         return true;
       } catch (error) {
         log.api(`Failed to fetch messages for ${conversationId}:`, error);

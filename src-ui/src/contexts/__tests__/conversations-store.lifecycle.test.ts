@@ -197,7 +197,7 @@ test('a guarded open survives an overlapping successful rehydration of the same 
     expect(activeChatsStore.getSnapshot()[chatKey].messages).toEqual([
       expect.objectContaining({
         role: 'assistant',
-        content: 'legacy transcript',
+        content: 'rehydrated transcript',
       }),
     ]);
   } finally {
@@ -221,4 +221,65 @@ test('a guarded read whose hydration is no longer current still refuses publicat
   expect(
     conversationsStore.getSnapshot().messages['messages:assistant:conv'],
   ).toBeUndefined();
+});
+
+test('a guarded open keeps the newer post-turn refresh when reads complete out of order', async () => {
+  open('first');
+  let finishOpen!: (messages: MessageData[]) => void;
+  fetchMessages.mockImplementationOnce(
+    () =>
+      new Promise<MessageData[]>((resolve) => {
+        finishOpen = resolve;
+      }),
+  );
+  const pending = conversationsStore.fetchMessages(
+    '',
+    'assistant',
+    'conv',
+    undefined,
+    () => true,
+  );
+  const refreshed: MessageData[] = [
+    { role: 'assistant', content: 'first turn' },
+    { role: 'assistant', content: 'latest turn' },
+  ];
+  fetchMessages.mockResolvedValue(refreshed);
+  expect(
+    await conversationsStore.refreshMessages('', 'assistant', 'conv'),
+  ).toBe(true);
+  finishOpen(refreshed.slice(0, 1));
+  expect(await pending).toBe(true);
+  expect(
+    conversationsStore.getSnapshot().messages['messages:assistant:conv'],
+  ).toEqual(refreshed);
+});
+
+test('two guarded opens of the same conversation both succeed', async () => {
+  open('first');
+  let finishFirst!: (messages: MessageData[]) => void;
+  fetchMessages
+    .mockImplementationOnce(
+      () =>
+        new Promise<MessageData[]>((resolve) => {
+          finishFirst = resolve;
+        }),
+    )
+    .mockResolvedValue(messages);
+  const first = conversationsStore.fetchMessages(
+    '',
+    'assistant',
+    'conv',
+    undefined,
+    () => true,
+  );
+  const second = conversationsStore.fetchMessages(
+    '',
+    'assistant',
+    'conv',
+    undefined,
+    () => true,
+  );
+  expect(await second).toBe(true);
+  finishFirst(messages);
+  expect(await first).toBe(true);
 });
