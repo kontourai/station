@@ -62,6 +62,15 @@ test('MCP html_render publishes into the EventStore, reopens with its transcript
     const { htmlReply: reference } = JSON.parse(content.text);
     expect(content.text).not.toContain('<h1>');
     store.appendEvent({
+      eventId: 'turn-start',
+      provider: 'codex',
+      threadId: 'publisher',
+      method: 'turn.started',
+      turnId: 'turn',
+      prompt: 'Publish the page',
+      createdAt: new Date().toISOString(),
+    });
+    store.appendEvent({
       eventId: 'published',
       provider: 'codex',
       threadId: 'publisher',
@@ -80,10 +89,19 @@ test('MCP html_render publishes into the EventStore, reopens with its transcript
       '<h1>MCP retained page</h1>',
     );
     const messages = projectRuntimeEventsToMessages(
-      store.listEvents('publisher').map((row) => row.payload),
+      store
+        .listEventWindowByTurn('publisher', { turnLimit: 1 })
+        .events.map((row) => row.payload),
       { stableIds: true },
     );
     expect(JSON.stringify(messages)).toContain(reference.pageId);
+    const completed = store
+      .listEventWindowByTurn('publisher', { turnLimit: 1 })
+      .events.find((row) => row.method === 'tool.completed');
+    if (completed?.payload.method !== 'tool.completed')
+      throw new Error('Missing bounded tool result');
+    expect(completed.payload.htmlReply).toEqual(reference);
+    expect(String(completed.payload.output).length).toBeLessThanOrEqual(84);
     store.deleteThread('publisher');
     expect(store.htmlReplyPages().read(reference)).toBeUndefined();
   } finally {

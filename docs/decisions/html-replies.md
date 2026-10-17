@@ -74,6 +74,10 @@ tool result and therefore in canonical tool-completed history. Both live and
 replayed transcript paths recognize it at the tool position. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.
+Bounded history windows retain the validated reference as `htmlReply` event
+metadata before shortening ordinary tool output to 84 characters. The existing
+per-event and per-window byte ceilings still apply; page HTML never enters
+that metadata. The shared projector carries it to the tool part.
 JSON responses use no-store and nosniff; HTML executes only in the dedicated
 sandbox. Page bytes are not copied into transcript tool-output budgets.
 

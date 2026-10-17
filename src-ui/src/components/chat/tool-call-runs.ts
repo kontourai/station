@@ -111,7 +111,9 @@ export function splitToolCallRuns<P extends ToolCallLike>(
       pending.push({ part, index });
       const name = part.toolName ?? part.name ?? part.type;
       if (/(?:^|[_/-])html_render$/.test(name)) {
-        const reference = htmlReplyReference(part.output ?? part.result);
+        const reference =
+          htmlReplyReference(part) ??
+          htmlReplyReference(part.output ?? part.result);
         if (reference) {
           flushRun();
           blocks.push({
