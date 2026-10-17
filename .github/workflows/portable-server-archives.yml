@@ -140,7 +140,11 @@ jobs:
           [[ "$CALLER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a 40-hex commit SHA, got: $CALLER_REF" >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$CALLER_REF" || { echo "checked out $(git rev-parse HEAD), but the caller asked for $CALLER_REF" >&2; exit 1; }
 
-      - run: npm run build
+      - name: Build server and UI
+        env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ ((github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != '' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ inputs.ring == 'preview' && 'beta' || inputs.ring }}
+        run: npm run build
 
       - name: Build the archive
         # The provenance SHA is the commit actually checked out: under
@@ -148,6 +152,7 @@ jobs:
         # A caller's version and ring come only from workflow_call inputs;
         # every other trigger builds the v0.0.0 placeholder.
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ ((github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != '' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           RELEASE_REF: ${{ inputs.version != '' && format('v{0}', inputs.version) || 'v0.0.0' }}
           RELEASE_RING: ${{ inputs.ring }}
         run: npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
