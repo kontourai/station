@@ -511,5 +511,15 @@ export function mergeAppConfigUpdate(
       merged[key] = value;
     }
   }
+  // Older clients can PUT an entire readback including an unchanged tier map.
+  // Withdrawal must win over that copied map, independent of JSON field order.
+  if (updates.telemetryEnabled === false) {
+    merged.telemetryTier = {
+      kontour: existing.telemetryTier?.kontour ?? 'off',
+      ...existing.telemetryTier,
+      ...updates.telemetryTier,
+      operator: 'off',
+    };
+  }
   return merged as unknown as AppConfig;
 }

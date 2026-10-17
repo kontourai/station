@@ -161,5 +161,13 @@ describe('persisted telemetry migration', () => {
     expect(
       mergeAppConfigUpdate(config, { telemetryEnabled: false }).telemetryTier,
     ).toEqual({ kontour: 'off', operator: 'off' });
+    for (const update of [
+      { telemetryTier: config.telemetryTier, telemetryEnabled: false },
+      { telemetryEnabled: false, telemetryTier: config.telemetryTier },
+    ])
+      expect(mergeAppConfigUpdate(config, update).telemetryTier).toEqual({
+        kontour: 'off',
+        operator: 'off',
+      });
   });
 });
