@@ -373,6 +373,9 @@ test('queues a contended reader, restores before its takeover, and keeps readers
       requestAnimationFrame(() => resolve()),
     );
   });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
   const ownerDocument = JSON.parse(
     localStorage.getItem(
       workspacePaneHostStorageKey(supplied.scope, supplied.id),
@@ -534,6 +537,9 @@ test('renders accessible recursive tabs, roves with keys, returns focus on close
       requestAnimationFrame(() => resolve()),
     );
   });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
   expect(onChange).toHaveBeenLastCalledWith(
     expect.objectContaining({ root: expect.objectContaining({ ratio: 0.55 }) }),
   );
@@ -634,6 +640,10 @@ test('coalesces a resize burst into one animation frame and one host publication
       frames[0]?.(0);
       await Promise.resolve();
     });
+    expect(separator.getAttribute('aria-valuenow')).toBe('55');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -645,6 +655,141 @@ test('coalesces a resize burst into one animation frame and one host publication
     globalThis.cancelAnimationFrame = cancelFrame;
   }
 });
+
+test('resizing keeps ratios live but defers storage and parent publication until settling', async () => {
+  const onChange = vi.fn();
+  const mounted = render(
+    <WorkspacePaneHost
+      document={hostDocument()}
+      onDocumentChange={onChange}
+      renderPane={(pane) => <div>{pane.descriptorId}</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  onChange.mockClear();
+  const writes = vi.spyOn(Storage.prototype, 'setItem');
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi
+    .spyOn(globalThis, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+  vi.useFakeTimers();
+  try {
+    const separator = screen.getByRole('separator', {
+      name: 'Resize workspace pane groups',
+    });
+    for (const expected of ['55', '60', '65']) {
+      fireEvent.keyDown(separator, { key: 'ArrowRight' });
+      await act(async () => {
+        frames.shift()?.(0);
+      });
+      expect(separator.getAttribute('aria-valuenow')).toBe(expected);
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+    }
+    const hostWrites = () =>
+      writes.mock.calls.filter(
+        ([key]) =>
+          key ===
+          workspacePaneHostStorageKey(hostDocument().scope, hostDocument().id),
+      );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(hostWrites()).toHaveLength(0);
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(hostWrites()).toHaveLength(1);
+    expect(JSON.parse(hostWrites()[0]![1]).root.ratio).toBeCloseTo(0.65);
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+    await act(async () => {
+      frames.shift()?.(0);
+    });
+    mounted.unmount();
+    expect(JSON.parse(hostWrites().at(-1)![1]).root.ratio).toBeCloseTo(0.6);
+  } finally {
+    vi.useRealTimers();
+    raf.mockRestore();
+    writes.mockRestore();
+  }
+});
+
+test.each(['pagehide', 'visibilitychange'] as const)(
+  'flushes the latest split ratio on %s before the debounce expires',
+  async (eventType) => {
+    const onChange = vi.fn();
+    const mounted = render(
+      <WorkspacePaneHost
+        document={hostDocument()}
+        onDocumentChange={onChange}
+        renderPane={(pane) => <div>{pane.descriptorId}</div>}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    onChange.mockClear();
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const separator = screen.getByRole('separator', {
+        name: 'Resize workspace pane groups',
+      });
+      expect(separator.getAttribute('aria-disabled')).toBe('false');
+      fireEvent.keyDown(separator, { key: 'ArrowRight' });
+      expect(frames.length).toBeGreaterThan(0);
+      await act(async () => {
+        while (frames.length) frames.shift()!(0);
+      });
+      expect(separator.getAttribute('aria-valuenow')).toBe('55');
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent(
+        eventType === 'pagehide' ? window : document,
+        new Event(eventType),
+      );
+      const stored = JSON.parse(
+        localStorage.getItem(
+          workspacePaneHostStorageKey(hostDocument().scope, hostDocument().id),
+        )!,
+      );
+      expect(stored.root.ratio).toBeCloseTo(0.55);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      fireEvent(window, new Event('pagehide'));
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      mounted.unmount();
+      render(
+        <WorkspacePaneHost
+          document={hostDocument()}
+          renderPane={(pane) => <div>{pane.descriptorId}</div>}
+        />,
+      );
+      expect(screen.getByRole('separator').getAttribute('aria-valuenow')).toBe(
+        '55',
+      );
+    } finally {
+      vi.useRealTimers();
+      visibility.mockRestore();
+      raf.mockRestore();
+    }
+  },
+);
 
 test('compact projection is reset-safe, mounts only focus, and moves DOM focus with roving keys', async () => {
   render(
@@ -1383,6 +1528,36 @@ test.each([
     unmount();
   },
 );
+
+test('desktop panes mount on first selection and retain edited state after visiting', async () => {
+  const renders = vi.fn();
+  render(
+    <WorkspacePaneHost
+      document={flatHostDocument(one.instanceId)}
+      renderPane={(pane) => {
+        renders(pane.instanceId);
+        return (
+          <input aria-label={`${pane.descriptorId} draft`} defaultValue="" />
+        );
+      }}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(renders.mock.calls.map(([id]) => id)).not.toContain(two.instanceId);
+  expect(screen.queryByLabelText('Two draft')).toBeNull();
+  fireEvent.change(screen.getByLabelText('One draft'), {
+    target: { value: 'keep this' },
+  });
+  fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+  expect(screen.getByLabelText('Two draft')).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'One' }));
+  expect((screen.getByLabelText('One draft') as HTMLInputElement).value).toBe(
+    'keep this',
+  );
+  expect(screen.getByLabelText('Two draft').isConnected).toBe(true);
+});
 
 test('hydrates the exact persisted scope before its first pane render', () => {
   const persisted = flatHostDocument(two.instanceId);
