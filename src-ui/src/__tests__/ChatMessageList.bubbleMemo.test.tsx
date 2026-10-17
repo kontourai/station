@@ -18,6 +18,8 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render } from '@testing-library/react';
 import { memo, type ReactElement } from 'react';
@@ -168,16 +170,68 @@ describe('ChatMessageList row memoisation', () => {
     expect(bubbleRendered).not.toHaveBeenCalled();
   });
   test('replayed real-shape content parts do not re-render unchanged mounted bubbles', () => {
+    const events: CanonicalRuntimeEvent[] = Array.from(
+      { length: 10 },
+      (_, i) => {
+        const base = {
+          provider: 'codex' as const,
+          threadId: 'memo-session',
+          turnId: `turn-${i}`,
+          createdAt: new Date(i * 1000).toISOString(),
+        };
+        return [
+          {
+            ...base,
+            eventId: `start-${i}`,
+            method: 'turn.started' as const,
+            prompt: `question ${i}`,
+          },
+          {
+            ...base,
+            eventId: `tool-${i}`,
+            method: 'tool.started' as const,
+            itemId: `tool-${i}`,
+            toolCallId: `call-${i}`,
+            toolName: 'Read',
+            arguments: { path: `file-${i}` },
+          },
+          {
+            ...base,
+            eventId: `result-${i}`,
+            method: 'tool.completed' as const,
+            itemId: `tool-${i}`,
+            toolCallId: `call-${i}`,
+            toolName: 'Read',
+            status: 'success' as const,
+            output: 'Found it',
+          },
+          {
+            ...base,
+            eventId: `text-${i}`,
+            method: 'content.text-delta' as const,
+            itemId: `text-${i}`,
+            delta: `answer ${i}`,
+          },
+          { ...base, eventId: `done-${i}`, method: 'turn.completed' as const },
+        ];
+      },
+    ).flat();
     const messages = () =>
-      Array.from({ length: 20 }, (_, i) => ({
-        id: `answer-${i}`,
-        role: 'assistant' as const,
-        content: `answer ${i}`,
-        contentParts: conversationPartToContentParts({
-          type: 'text',
-          text: `answer ${i}`,
+      projectRuntimeEventsToMessages(events, { stableIds: true }).map(
+        (message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text ?? '')
+            .join(''),
+          contentParts: message.parts.flatMap(conversationPartToContentParts),
+          turnId: message.metadata?.turnId,
+          sessionId: message.metadata?.sessionId,
+          provenance: message.metadata?.provenance,
         }),
-      }));
+      );
+    expect(messages().filter((message) => message.provenance)).toHaveLength(10);
     const tree = () =>
       wrap(
         <ChatMessageList
@@ -192,6 +246,14 @@ describe('ChatMessageList row memoisation', () => {
     bubbleRendered.mockClear();
     view.rerender(tree());
     expect(bubbleRendered).not.toHaveBeenCalled();
+    const terminal = events[4];
+    if (terminal.method !== 'turn.completed')
+      throw new Error('Expected a completed turn fixture');
+    events[4] = { ...terminal, metadata: { reportedModel: 'updated-model' } };
+    view.rerender(tree());
+    expect(bubbleRendered.mock.calls.map(([content]) => content)).toEqual([
+      'answer 0',
+    ]);
   });
   test('a stream flush pins imperatively without rendering the list again and respects the reader', () => {
     const renderOverride = vi.fn(() => null);
