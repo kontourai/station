@@ -1,0 +1,7 @@
+{
+  "revision": "fd39284097cc9c446e63a3a30767461e7e6f7a45",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed new MCP app preview instructions against transcript renderer and existing hardened frame; bounded complete Codex result path, remount without tool replay, current-catalog resource binding, unavailable actions and native refusal are qualified. Existing setup instructions are unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

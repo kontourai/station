@@ -291,8 +291,8 @@ On a phone, a settled answer shows its tool work as one row. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
-original order. Files, UI blocks, runtime errors and calls still waiting on a
-grant stay outside the fold, and so does the last narration when no text
+original order. Files, UI blocks, MCP app preview candidates, runtime errors
+and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
