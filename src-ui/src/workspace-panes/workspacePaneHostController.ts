@@ -657,14 +657,30 @@ export function useWorkspacePaneHostController({
     }
     // Ratios render every frame; durable writes and parent notifications wait
     // until the resize settles. Other host actions still publish immediately.
-    flushResizePublication.current = publish;
-    const timer = setTimeout(() => {
-      flushResizePublication.current = null;
-      publish();
-    }, 250);
-    return () => {
+    let pending = true;
+    function flush() {
+      if (!pending) return;
+      pending = false;
       clearTimeout(timer);
       flushResizePublication.current = null;
+      publish();
+    }
+    const timer = setTimeout(flush, 250);
+    const onVisibilityChange = () => {
+      if (window.document.visibilityState === 'hidden') flush();
+    };
+    flushResizePublication.current = flush;
+    window.addEventListener('pagehide', flush);
+    window.document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      pending = false;
+      clearTimeout(timer);
+      flushResizePublication.current = null;
+      window.removeEventListener('pagehide', flush);
+      window.document.removeEventListener(
+        'visibilitychange',
+        onVisibilityChange,
+      );
     };
   }, [hasPersistenceLease, hostStorage, persistenceStatus, state.document]);
   useEffect(() => {

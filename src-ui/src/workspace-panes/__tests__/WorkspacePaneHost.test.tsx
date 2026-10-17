@@ -719,6 +719,78 @@ test('resizing keeps ratios live but defers storage and parent publication until
   }
 });
 
+test.each(['pagehide', 'visibilitychange'] as const)(
+  'flushes the latest split ratio on %s before the debounce expires',
+  async (eventType) => {
+    const onChange = vi.fn();
+    const mounted = render(
+      <WorkspacePaneHost
+        document={hostDocument()}
+        onDocumentChange={onChange}
+        renderPane={(pane) => <div>{pane.descriptorId}</div>}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    onChange.mockClear();
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const separator = screen.getByRole('separator', {
+        name: 'Resize workspace pane groups',
+      });
+      expect(separator.getAttribute('aria-disabled')).toBe('false');
+      fireEvent.keyDown(separator, { key: 'ArrowRight' });
+      expect(frames.length).toBeGreaterThan(0);
+      await act(async () => {
+        while (frames.length) frames.shift()!(0);
+      });
+      expect(separator.getAttribute('aria-valuenow')).toBe('55');
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent(
+        eventType === 'pagehide' ? window : document,
+        new Event(eventType),
+      );
+      const stored = JSON.parse(
+        localStorage.getItem(
+          workspacePaneHostStorageKey(hostDocument().scope, hostDocument().id),
+        )!,
+      );
+      expect(stored.root.ratio).toBeCloseTo(0.55);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      fireEvent(window, new Event('pagehide'));
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(onChange).toHaveBeenCalledTimes(1);
+      mounted.unmount();
+      render(
+        <WorkspacePaneHost
+          document={hostDocument()}
+          renderPane={(pane) => <div>{pane.descriptorId}</div>}
+        />,
+      );
+      expect(screen.getByRole('separator').getAttribute('aria-valuenow')).toBe(
+        '55',
+      );
+    } finally {
+      vi.useRealTimers();
+      visibility.mockRestore();
+      raf.mockRestore();
+    }
+  },
+);
+
 test('compact projection is reset-safe, mounts only focus, and moves DOM focus with roving keys', async () => {
   render(
     <WorkspacePaneHost
