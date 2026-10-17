@@ -426,3 +426,28 @@ thread reply, Brief and kept Results. The fixture home uses its canonical path:
 its earlier symlinked path correctly failed the answer-support ownership guard.
 These results qualify the controlled local room journey. They do not establish
 real-provider, native-device, public-sharing or installed-release behavior.
+
+
+## Room action hierarchy and draft ownership
+
+Chat remains the primary Task surface; Brief and Results hold the shared plan
+and kept work, with identity and execution inspection in Details. Opening an
+agent thread replaces its navigation button with answer-local Keep and run
+inspection actions. Every answer in that thread can be kept, including its first
+answer. The composer keeps one visible message prompt and an accessible label.
+
+A selected person mention remains an ordinary room message, including full names,
+agent-name collisions and newlines after the mention. Selecting an agent remains
+an explicit execution request. Removing or editing the selected human prefix
+returns subsequent input to the ordinary typed-mention rules.
+
+Cancel preserves a thread draft. Confirmed Discard clears its text, operation
+identity and delivery notice before another thread can open. A pending reply
+holds its thread until acknowledgement settles, so its result cannot clear or
+report status in another agent's thread. Results exposes Retry for failed reads
+without removing results that are still available.
+
+Focused regressions cover these boundaries with the real discard guard and
+controlled request settlement; reverting the owners reproduces the failures.
+Browser verification uses the isolated local scripted-provider fixture. These
+claims do not extend provider, native-device or release qualification.
