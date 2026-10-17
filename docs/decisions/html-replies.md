@@ -10,9 +10,10 @@ evidence:
 
 # Agent-authored HTML replies
 
-The first slice provides page preparation and a viewer primitive. It does not
-expose publishing tools or place pages in conversation history. Those require
-conversation-owned storage and authorization before they can be enabled.
+Agents publish through `station-control` using `html_render`. The tool returns
+only a page reference; the transcript fetches bytes with current Session-read
+authority. `html_preview` uses the existing Chromium acquisition and owned CDP
+host, with a disposable profile rather than a Browser-pane session.
 
 ## Decision
 
@@ -59,19 +60,67 @@ external navigation, but cannot silently open it through this bridge.
 Unquoted paths, constructed/escaped JS paths, SVG, AVIF and arbitrary external
 resources are not embedded by this slice. Network resources remain blocked.
 
-## Delivery boundary
+## Identity, retention and deletion lineage
+
+Each publication receives a server-generated UUID. Its immutable record contains
+the prepared bytes, requested height, publishing execution Session ID, canonical
+conversation ID and creation time. The EventStore's SQLite table
+`orchestration_html_reply_pages` is the byte owner. Publication checks the Session
+still exists and atomically enforces the conversation's 32-page/32-MiB quota.
+A delayed publish cannot recreate pages after the Session was deleted.
+
+The small `{version, pageId, sessionId}` reference travels in the ordinary MCP
+tool result and therefore in canonical tool-completed history. Both live and
+replayed transcript paths recognize it at the tool position. The display
+reference is not authority: the read route checks the same `canUserReadSession`
+predicate used by other history reads, then looks up that Session/page pair.
+JSON responses use no-store and nosniff; HTML executes only in the dedicated
+sandbox. Page bytes are not copied into transcript tool-output budgets.
+
+Deletion follows the publishing **execution Session**, not a borrowed predecessor
+or global content digest. `EventStore.deleteThread` deletes page rows in its own
+transaction. If deletion rolls back, pages remain. Existing conversation Draft
+discard deletes every execution member, so it removes every page in that lineage.
+Deleting one diagnostic/member Session removes only its own pages. Copying or
+adopting transcript history retains the original page reference, not a second
+copy of its bytes; source-session read authority and deletion still govern it. Closing,
+archiving or retaining a conversation is not physical deletion and preserves its
+pages, just as it preserves the transcript. This introduces no new permission to
+delete runtime history and does not change the existing read-only-history rule
+on legacy conversation deletion routes. Raw backups and forensic SQLite free
+pages remain subject to Station's existing database/backup retention; logical
+row deletion is not a secure-erasure claim.
+
+## Preview resources and trust
+
+Preview prepares the same bounded HTML, then starts a disposable Chromium through
+`ChromiumServerHost`; no new browser dependency is introduced. The host uses a
+128-MiB V8 heap limit and an egress policy denying every destination, in addition
+to the page CSP. At most two previews run concurrently. The render deadline is
+15 seconds; shutdown also bounds its Browser.close request and terminates the
+owned process tree. Viewports, content height, PNG output and console output are
+bounded as documented in the [user guide](../user/html-replies.md). Native browser
+allocations are not fully capped by the V8 limit; browser vulnerabilities and
+resource exhaustion remain residual risks.
+
+An early inline bootstrap relays page console calls, uncaught errors and size
+observations to the preview host. Messages require both the exact frame window
+and a fresh per-render token held in its bootstrap closure; the bootstrap removes
+its script element before authored scripts run. The host rejects output overflow.
+A successful screenshot is an observation of authored code, not proof of its
+claims or immunity from malicious author interference.
+
+## Owners and evidence
 
 The [preparer](../../src-server/services/html-replies.ts),
-[frame document](../../packages/shared/src/html-reply-document.ts),
-[listener](../../src-server/runtime/mcp/mcp-ui-frame-server.ts), and
-[viewer](../../src-ui/src/components/chat/HtmlReply.tsx) own this slice.
-Focused tests exercise file embedding/limits, listener and bridge behavior,
-and viewer theme/link handling. Browser fixture screenshots establish viewer
-appearance and opaque-frame access refusal, not a conversation publication.
-
-Remaining slices must add caller-bound conversation storage/deletion, small
-page-reference transcript projections, `html_render` and `html_preview` on the
-shared station-control registry, and tool-to-history-to-viewer integration
-tests. Preview should reuse Station's acquired Chromium and owned CDP host;
-no browser dependency is added here. Real Claude, Codex and ACP delivery and
-native/mobile behavior remain unverified.
+[page store](../../src-server/services/orchestration/html-reply-pages.ts),
+[tool registrar](../../src-server/tools/station-control-html-reply-tools.ts),
+[route](../../src-server/routes/orchestration/html-replies.ts),
+[preview](../../src-server/services/html-reply-preview.ts),
+[frame document](../../packages/shared/src/html-reply-document.ts), and
+[transcript viewer](../../src-ui/src/components/chat/PublishedHtmlReply.tsx)
+own the path. Focused tests exercise registered MCP publication, SQLite reopen,
+canonical result projection, mounted transcript rendering, deletion rollback,
+quotas, preview PNG/height/console and output rejection. Real Codex delivery has
+been exercised locally; Claude/ACP use the existing shared passthroughs, with
+live provider and native/mobile qualification reported separately.

@@ -206,6 +206,7 @@ import {
   type DelegationResultStore,
   migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
+import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
   createNativeInvocationRuns,
   type NativeInvocationRunReader,
@@ -1954,6 +1955,7 @@ export interface TurnActivitySeed {
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
+  private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
@@ -2281,6 +2283,7 @@ export class EventStore {
       this.nativeInvocationRuns = this.composeNativeInvocationRuns();
       this.initializeNativeInvocationRuns();
       this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
+      this.htmlReplyPages();
       this.voiceTurnRuns = this.composeVoiceTurnRuns();
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
@@ -10949,6 +10952,15 @@ export class EventStore {
     });
   }
 
+  htmlReplyPages() {
+    if (!this.htmlReplyPageStore)
+      this.htmlReplyPageStore = createHtmlReplyPages(
+        this.db,
+        (sessionId) => this.readSessionByThread(sessionId) !== undefined,
+      );
+    return this.htmlReplyPageStore;
+  }
+
   /** Deliberate composition seam; SQLite coordination remains private. */
   createSkillExperienceSnapshots(): SkillExperienceSnapshots {
     if (!this.skillExperienceSnapshots)
@@ -12730,6 +12742,7 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.htmlReplyPages().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db

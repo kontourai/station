@@ -5,6 +5,19 @@ export interface HtmlReplyPage {
   height: number;
 }
 
+/** A reference is display data, never permission to read the retained page. */
+export interface HtmlReplyReference {
+  version: 1;
+  pageId: string;
+  sessionId: string;
+}
+
+export interface PublishedHtmlReply extends HtmlReplyPage {
+  reference: HtmlReplyReference;
+  conversationId: string;
+  createdAt: string;
+}
+
 export const HTML_REPLY_LIMITS = {
   sourceBytes: 256 * 1024,
   imageBytes: 2 * 1024 * 1024,
