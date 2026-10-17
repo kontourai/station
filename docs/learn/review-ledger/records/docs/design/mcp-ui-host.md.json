@@ -38,7 +38,19 @@
 
     "src-ui/src/__tests__/MCPToolUIFrame.test.tsx",
 
-    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "src-ui/src/components/chat/TranscriptMCPApp.tsx",
+
+    "src-ui/src/components/chat/mcp-app-tool-ref.ts",
+
+    "src-ui/src/components/chat/ToolCallDisplay.tsx",
+
+    "src-ui/src/hooks/orchestration/conversationTranscriptParts.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts"
   ],
 
   "checks": [
