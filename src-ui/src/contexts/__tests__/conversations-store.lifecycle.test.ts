@@ -1,15 +1,32 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { MessageData } from '../conversation-types';
 
 const { fetchMessages } = vi.hoisted(() => ({ fetchMessages: vi.fn() }));
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk')>()),
   fetchConversationMessages: fetchMessages,
   deleteConversation: vi.fn(),
 }));
 
+vi.mock('../ActiveChatsContext', () => ({
+  useActiveChatActions: () => ({
+    initChat: (...args: Parameters<typeof activeChatsStore.initChat>) =>
+      activeChatsStore.initChat(...args),
+    updateChat: (...args: Parameters<typeof activeChatsStore.updateChat>) =>
+      activeChatsStore.updateChat(...args),
+    removeChat: (id: string) => activeChatsStore.removeChat(id),
+  }),
+}));
+
+import { rehydrateChatSession } from '../../hooks/orchestration/rehydrateChatSession';
+import { useOpenConversation } from '../../hooks/useActiveChatSessionLifecycle';
 import { activeChatsStore } from '../active-chats-store';
 import { backgroundTasksStore } from '../background-tasks-store';
+import { ConversationsProvider } from '../ConversationsContext';
 import { conversationsStore } from '../conversations-store';
 
 const messages: MessageData[] = [
@@ -93,7 +110,7 @@ test.each([false, true])(
   },
 );
 
-test('a superseded unguarded read releases its deduplication entry after a guarded read wins', async () => {
+test('overlapping successful reads release their deduplication entries', async () => {
   open('first');
   let finish!: (messages: MessageData[]) => void;
   fetchMessages.mockImplementationOnce(
@@ -114,7 +131,7 @@ test('a superseded unguarded read releases its deduplication entry after a guard
     ),
   ).toBe(true);
   finish(messages);
-  expect(await old).toBe(false);
+  expect(await old).toBe(true);
   fetchMessages.mockResolvedValue([
     { role: 'assistant', content: 'next read' },
   ]);
@@ -125,4 +142,83 @@ test('a superseded unguarded read releases its deduplication entry after a guard
   expect(
     conversationsStore.getSnapshot().messages['messages:assistant:conv'],
   ).toEqual([{ role: 'assistant', content: 'next read' }]);
+});
+
+test('a guarded open survives an overlapping successful rehydration of the same conversation', async () => {
+  let finishOpen!: (messages: MessageData[]) => void;
+  fetchMessages.mockImplementationOnce(
+    () =>
+      new Promise<MessageData[]>((resolve) => {
+        finishOpen = resolve;
+      }),
+  );
+  const queryClient = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ConversationsProvider, null, children),
+    );
+  const { result, unmount } = renderHook(() => useOpenConversation(''), {
+    wrapper,
+  });
+  let chatKey = '';
+  const cleanup = vi.fn((id: string) => activeChatsStore.removeChat(id));
+  try {
+    const pending = result.current(
+      'conv',
+      'assistant',
+      'Assistant',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      {
+        initialized: (id) => {
+          chatKey = id;
+        },
+        current: () => true,
+        cleanup,
+      },
+    );
+    expect(activeChatsStore.getSnapshot()[chatKey]).toBeDefined();
+    fetchMessages.mockResolvedValue([
+      { role: 'assistant', content: 'rehydrated transcript' },
+    ]);
+    await rehydrateChatSession(
+      '',
+      chatKey,
+      activeChatsStore.getSnapshot()[chatKey],
+    );
+    finishOpen(messages);
+    expect(await pending).toBe(chatKey);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[chatKey].messages).toEqual([
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'legacy transcript',
+      }),
+    ]);
+  } finally {
+    unmount();
+    queryClient.clear();
+  }
+});
+
+test('a guarded read whose hydration is no longer current still refuses publication', async () => {
+  open('first');
+  fetchMessages.mockResolvedValue(messages);
+  expect(
+    await conversationsStore.fetchMessages(
+      '',
+      'assistant',
+      'conv',
+      undefined,
+      () => false,
+    ),
+  ).toBe(false);
+  expect(
+    conversationsStore.getSnapshot().messages['messages:assistant:conv'],
+  ).toBeUndefined();
 });

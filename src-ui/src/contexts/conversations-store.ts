@@ -22,7 +22,7 @@ class ConversationsStore {
     string,
     { promise: Promise<boolean>; version: object }
   >();
-  private fetchVersions = new Map<string, object>();
+  private fetchScopes = new Map<string, { pending: number }>();
   private snapshot = {
     conversations: this.conversations,
     messages: this.messages,
@@ -82,7 +82,9 @@ class ConversationsStore {
     }
 
     const version = {};
-    this.fetchVersions.set(key, version);
+    const scope = this.fetchScopes.get(key) ?? { pending: 0 };
+    scope.pending += 1;
+    this.fetchScopes.set(key, scope);
     const promise = (async (): Promise<boolean> => {
       try {
         let toolMappings: Record<
@@ -111,7 +113,7 @@ class ConversationsStore {
           conversationId,
           toolMappings,
         );
-        if (this.fetchVersions.get(key) !== version || isCurrent?.() === false)
+        if (this.fetchScopes.get(key) !== scope || isCurrent?.() === false)
           return false;
         this.messages[key] = messages;
         this.notify();
@@ -120,9 +122,9 @@ class ConversationsStore {
         log.api(`Failed to fetch messages for ${conversationId}:`, error);
         return false;
       } finally {
-        if (this.fetchVersions.get(key) === version) {
-          this.fetchVersions.delete(key);
-        }
+        scope.pending -= 1;
+        if (scope.pending === 0 && this.fetchScopes.get(key) === scope)
+          this.fetchScopes.delete(key);
         if (this.fetching.get(key)?.version === version)
           this.fetching.delete(key);
       }
@@ -134,7 +136,7 @@ class ConversationsStore {
 
   forgetConversation(agentSlug: string, conversationId: string) {
     const key = `messages:${agentSlug}:${conversationId}`;
-    this.fetchVersions.delete(key);
+    this.fetchScopes.delete(key);
     this.fetching.delete(key);
     delete this.messages[key];
     delete this.statuses[`${agentSlug}:${conversationId}`];
