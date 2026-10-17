@@ -205,11 +205,11 @@ export function ProjectTaskRoomConversation({
   // The history contract pages forward through a fixed checkpoint. Read to that
   // checkpoint before presenting its newest messages; reveal older rows locally.
   useEffect(() => {
-    if (history.hasNextPage && !history.isFetchingNextPage && !history.isError)
-      void history.fetchNextPage();
+    if (history.hasNextPage && !history.isFetching && !history.isError)
+      void history.fetchNextPage({ cancelRefetch: false });
   }, [
     history.hasNextPage,
-    history.isFetchingNextPage,
+    history.isFetching,
     history.isError,
     history.fetchNextPage,
   ]);

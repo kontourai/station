@@ -28,7 +28,8 @@ class RoomRestartAdapter extends GateTestAdapter {
     return session;
   });
   override sendTurn = vi.fn(super.sendTurn.bind(this));
-  override stopSession = vi.fn(async (threadId: string) => {
+  override stopSession = vi.fn(async (threadId?: string) => {
+    if (!threadId) return;
     this.sessions.delete(threadId);
     this.events.push({
       eventId: randomUUID(),
@@ -132,7 +133,7 @@ test('shutdown preserves an idle resumable room Session for an authorized reply 
       sessionId: threadId,
       startRequired: false,
     });
-    const recheck = vi.fn(async () => {
+    const recheck = vi.fn<() => Promise<void>>(async () => {
       throw new Error('Room access revoked');
     });
     const command = {

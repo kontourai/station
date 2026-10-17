@@ -12,6 +12,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   records: [] as ProjectTaskRoomBrowserRecord[],
+  historyFetching: false,
+  historyHasNext: false,
+  fetchNext: vi.fn(),
   writable: true,
   stream: 'live',
   continue: vi.fn(),
@@ -67,6 +70,9 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   }),
   useProjectTaskRoomHistoryQuery: () => ({
     data: { pages: [{ kind: 'available', records: mocks.records }] },
+    isFetching: mocks.historyFetching,
+    hasNextPage: mocks.historyHasNext,
+    fetchNextPage: mocks.fetchNext,
     refetch: vi.fn(),
   }),
   useTaskRoomAgentRequestsQuery: () => ({
@@ -147,6 +153,9 @@ afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   mocks.records = [];
+  mocks.historyFetching = false;
+  mocks.historyHasNext = false;
+  mocks.fetchNext.mockReset();
   mocks.requestRecords = [];
   mocks.writable = true;
   mocks.stream = 'live';
@@ -158,6 +167,25 @@ beforeEach(() => {
   mocks.openConversation.mockReset().mockResolvedValue(true);
   mocks.stop.mockReset().mockResolvedValue({});
 });
+test('continues reading toward the newest history after a concurrent refresh settles', async () => {
+  mocks.records = [record(1)];
+  mocks.historyFetching = true;
+  mocks.historyHasNext = true;
+  const rendered = mount();
+  expect(mocks.fetchNext).not.toHaveBeenCalled();
+  mocks.historyFetching = false;
+  rendered.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(mocks.fetchNext).toHaveBeenCalledOnce());
+});
+
 test('groups consecutive human messages and keeps names, avatars and times', () => {
   mocks.records = [record(1), record(2)];
   mount();
