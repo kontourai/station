@@ -20,6 +20,7 @@ import type {
   ResolvedWorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
   type SetApprovalModeResult,
@@ -37,6 +38,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -47,6 +49,12 @@ import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
+import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
+import {
+  foregroundTurnSubmissionDigest,
+  snapshotTurnSubmissionFields,
+  snapshotTurnSubmissionValue,
+} from '../orchestration/turn-submission-digest.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -86,11 +94,14 @@ export interface ForegroundMessageInput {
   message: string;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
-  /** Server-only resolver that runs after Environment and child-session resolution. */
-  resolveAttachments?: (binding: {
-    threadId: string;
-    clientTurnId: string;
-  }) => ChatAttachmentInput[];
+  /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
+  resolveAttachments?: (
+    binding: {
+      threadId: string;
+      clientTurnId: string;
+    },
+    options?: { inspectOnly?: true },
+  ) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
   /**
@@ -350,7 +361,11 @@ export interface ExecutionTargetExecutionDependencies
   sendTurn: (
     access: EnvironmentAccess,
     input: ProviderSendTurnInput,
-    context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
+    context?: {
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+      submissionDigest?: string | null;
+    },
   ) => Promise<{ turnId: string }>;
   /**
    * #2436: record the approval pick a send carries on the session it is
@@ -379,15 +394,24 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
-  /**
-   * #3568: the turn ledger's answer for a key across every Session of the
-   * conversation. Read before a continuation may reserve a successor, since
-   * deduplication is per Session. Optional for remote compatibility.
-   */
+  /** An authorized sender's existing FIFO entry, before any live continuation effect. */
+  readPendingConversationSubmission?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    clientTurnId: string,
+    userId?: string,
+  ) =>
+    | {
+        entry: ConversationInboxEntry & { clientTurnId: string };
+        inputDigest?: string;
+      }
+    | undefined;
+  /** Read the key across the authorized conversation before reserving a successor. */
   inspectConversationTurnKey?: (
     access: EnvironmentAccess,
     conversationId: string,
     clientTurnId: string,
+    inputDigest?: string,
   ) => ConversationKeyInspection;
   /**
    * #3568: join the turn a live claim holds `clientTurnId` for on
@@ -398,6 +422,7 @@ export interface ExecutionTargetExecutionDependencies
     sessionId: string,
     clientTurnId: string,
     signal?: AbortSignal,
+    inputDigest?: string,
   ) => Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
@@ -498,8 +523,15 @@ export interface ExecutionTargetExecutionDependencies
   /** Exact provider effect truth for replaying an explicit handoff safely. */
   readConversationHandoffEffect?: (
     access: EnvironmentAccess,
-    input: { conversationId: string; idempotencyKey: string },
-  ) => Promise<{ providerTurnId?: string } | null>;
+    input: {
+      conversationId: string;
+      idempotencyKey: string;
+      inputDigest?: string;
+    },
+  ) => Promise<{
+    providerTurnId?: string;
+    marker?: { sessionId: string };
+  } | null>;
   /** Private captured caller guard at the existing provisioning effect. */
   admitWorktreeProvisioning?: (
     threadId: string,
@@ -556,7 +588,17 @@ async function refuseUngrantedCarriedPick(
 export async function executeForegroundMessage(
   input: ForegroundMessageInput,
   deps: ExecutionTargetExecutionDependencies,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId || input.handoffIntent) {
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
+  }
   const message = input.message.trim();
   // The route admits an attachment-only foreground turn. Keep the execution
   // seam aligned with that contract after staged references hydrate JIT; a
@@ -638,6 +680,49 @@ export async function executeForegroundMessage(
         input.target.workspace.workspaceIsolation === undefined,
     );
   }
+  const effectiveClientTurnId = requestedHandoff
+    ? `handoff:${createHash('sha256')
+        .update(`${conversationId}\0${input.handoffIntent!.idempotencyKey}`)
+        .digest('hex')}`
+    : input.clientTurnId;
+  let attachments: ChatAttachmentInput[] | undefined;
+  let submissionDigest: string | undefined;
+  let inspectedAttachments = false;
+  const captureSubmission = (sessionId: string, inspectOnly = false) => {
+    inspectedAttachments = inspectOnly;
+    const binding = {
+      threadId: sessionId,
+      clientTurnId: effectiveClientTurnId ?? '',
+    };
+    attachments = input.resolveAttachments
+      ? inspectOnly
+        ? input.resolveAttachments(binding, { inspectOnly: true })
+        : input.resolveAttachments(binding)
+      : input.attachments;
+    if (effectiveClientTurnId && attachments)
+      attachments = snapshotTurnSubmissionValue(attachments);
+    submissionDigest =
+      effectiveClientTurnId &&
+      !(context?.inboxPlacement && context.submissionDigest === undefined)
+        ? (context?.submissionDigest ??
+          foregroundTurnSubmissionDigest({ ...input, attachments }))
+        : undefined;
+  };
+  // Compare original proof before the legacy handoff effect check or accepted replay.
+  const priorHandoff = requestedHandoff
+    ? await deps.readConversationHandoffEffect?.(resolved.access, {
+        conversationId,
+        idempotencyKey: input.handoffIntent!.idempotencyKey,
+      })
+    : undefined;
+  if (priorHandoff?.marker) {
+    captureSubmission(priorHandoff.marker.sessionId);
+    await deps.readConversationHandoffEffect?.(resolved.access, {
+      conversationId,
+      idempotencyKey: input.handoffIntent!.idempotencyKey,
+      inputDigest: submissionDigest,
+    });
+  }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
@@ -713,11 +798,14 @@ export async function executeForegroundMessage(
   // the existing effect. Re-starting the marker's Session would either send
   // twice or, after settlement, fail only because that Session is terminal.
   if (preparedHandoff?.outcome === 'existing') {
+    if (submissionDigest === undefined)
+      captureSubmission(preparedHandoff.marker.sessionId);
     const existingEffect = await deps.readConversationHandoffEffect?.(
       resolved.access,
       {
         conversationId,
         idempotencyKey: input.handoffIntent!.idempotencyKey,
+        inputDigest: submissionDigest,
       },
     );
     if (existingEffect?.providerTurnId) {
@@ -760,13 +848,47 @@ export async function executeForegroundMessage(
   // a key of its own, derived from its intent, and is not checked here.
   if (binding && !validHandoff && !requestedHandoff && input.clientTurnId) {
     const clientTurnId = input.clientTurnId;
-    let decision = conversationKeyDecision(
-      deps.inspectConversationTurnKey?.(
-        resolved.access,
-        conversationId,
-        clientTurnId,
-      ),
+    const queued = context?.inboxPlacement
+      ? undefined
+      : deps.readPendingConversationSubmission?.(
+          resolved.access,
+          conversationId,
+          clientTurnId,
+          input.userId,
+        );
+    if (queued) {
+      captureSubmission(queued.entry.sessionId ?? conversationId);
+      if (
+        queued.inputDigest !== undefined &&
+        queued.inputDigest !== submissionDigest
+      )
+        throw new ClientTurnInputConflictError();
+      throw new ConversationTurnQueuedError(queued.entry);
+    }
+    if (!input.resolveAttachments) captureSubmission(conversationId);
+    const inspection = deps.inspectConversationTurnKey?.(
+      resolved.access,
+      conversationId,
+      clientTurnId,
+      submissionDigest,
     );
+    let decision = conversationKeyDecision(inspection);
+    if (
+      input.resolveAttachments &&
+      inspection &&
+      'sessionId' in inspection &&
+      typeof inspection.sessionId === 'string'
+    ) {
+      captureSubmission(inspection.sessionId, true);
+      decision = conversationKeyDecision(
+        deps.inspectConversationTurnKey?.(
+          resolved.access,
+          conversationId,
+          clientTurnId,
+          submissionDigest,
+        ),
+      );
+    }
     // A live claim on a known Session: join its turn (bounded), as a
     // same-key send meeting that claim in its own Session does.
     if (
@@ -780,6 +902,7 @@ export async function executeForegroundMessage(
         holder,
         clientTurnId,
         input.joinWaitSignal,
+        submissionDigest,
       );
       decision =
         joined.outcome === 'started'
@@ -792,10 +915,12 @@ export async function executeForegroundMessage(
       // Staged attachments are bound to the turn that took them, as for a
       // send that went through, so the route accepts (rather than strands)
       // the references this retry carries.
-      input.resolveAttachments?.({
-        threadId: decision.sessionId,
-        clientTurnId,
-      });
+      if (submissionDigest === undefined) captureSubmission(decision.sessionId);
+      else if (inspectedAttachments)
+        input.resolveAttachments?.({
+          threadId: decision.sessionId,
+          clientTurnId,
+        });
       return {
         conversationId,
         sessionId: decision.sessionId,
@@ -1218,17 +1343,12 @@ export async function executeForegroundMessage(
         });
     }
   }
-  const effectiveClientTurnId = requestedHandoff
-    ? `handoff:${createHash('sha256')
-        .update(`${conversationId}\0${input.handoffIntent!.idempotencyKey}`)
-        .digest('hex')}`
-    : input.clientTurnId;
-  const attachments = input.resolveAttachments
-    ? input.resolveAttachments({
-        threadId: sessionId,
-        clientTurnId: effectiveClientTurnId ?? '',
-      })
-    : input.attachments;
+  if (submissionDigest === undefined) captureSubmission(sessionId);
+  else if (inspectedAttachments && effectiveClientTurnId)
+    input.resolveAttachments?.({
+      threadId: sessionId,
+      clientTurnId: effectiveClientTurnId,
+    });
   const transcriptSeed =
     resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
       ? undefined
@@ -1271,8 +1391,16 @@ export async function executeForegroundMessage(
         ? { modelOptions: { ...resolved.modelOptions } }
         : {}),
     },
-    input.clientOrigin || input.principal
+    input.clientOrigin ||
+      input.principal ||
+      submissionDigest ||
+      context?.inboxPlacement
       ? {
+          ...(context?.inboxPlacement && submissionDigest === undefined
+            ? { submissionDigest: null }
+            : submissionDigest
+              ? { submissionDigest }
+              : {}),
           ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
           ...(input.principal ? { principal: input.principal } : {}),
         }

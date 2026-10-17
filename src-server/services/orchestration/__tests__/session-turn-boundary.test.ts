@@ -1118,6 +1118,10 @@ test('turn-boundary storage owns no inbox table: a store whose inbox was never o
         )
         .all();
     expect(inboxTables()).toEqual([]);
+    expect(
+      store.readPendingThreadInboxSubmission('inbox-free-thread', 'turn-1'),
+    ).toBeUndefined();
+    expect(inboxTables()).toEqual([]);
     // Control: the inbox's own storage does create it.
     store.threadInboxStore();
     expect(inboxTables()).toEqual([{ name: 'monument_inbox_entries' }]);

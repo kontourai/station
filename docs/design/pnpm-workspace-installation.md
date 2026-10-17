@@ -80,6 +80,9 @@ Advisory policy uses one registry response with separate full and production
 closures for root, SDK, and Shared. Root includes all managed workspace
 importers; SDK and Shared each select their own importer. The policy retains
 its severity and residual requirements.
+An exact reviewed local remediation can satisfy a version-reported high finding
+only with current patch, graph, and installed-byte verification; it does not
+reclassify the advisory. See the [RSA backport](../guides/dependency-security.md#rsa-signature-verification-backport-2026-10).
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of

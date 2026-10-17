@@ -54,7 +54,6 @@ import {
   sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
-  INTERNAL_SESSION_READ_SCOPE,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -132,6 +131,7 @@ import {
 } from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -6166,7 +6166,16 @@ export async function executeExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId || input.handoffIntent)
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const capturedProject = admission?.project;
   const capturedAgent = admission?.agentSpec;
   if (admission) {
@@ -6477,29 +6486,55 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    readPendingConversationSubmission: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+      userId?: string,
+    ) => {
+      if (
+        typeof orchestrationService.readPendingConversationSubmission !==
+        'function'
+      )
+        throw new Error('The requested conversation is unavailable.');
+      return orchestrationService.readPendingConversationSubmission(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        userId,
+      );
+    },
     inspectConversationTurnKey: (
       _access: EnvironmentAccess,
       conversationId: string,
       clientTurnId: string,
-    ) =>
-      typeof orchestrationService.inspectTurnDelivery === 'function'
-        ? orchestrationService.inspectTurnDelivery(
-            conversationId,
-            clientTurnId,
-            INTERNAL_SESSION_READ_SCOPE,
-          )
-        : undefined,
+      inputDigest?: string,
+    ) => {
+      if (typeof orchestrationService.inspectTurnDelivery !== 'function')
+        throw new Error('The requested conversation is unavailable.');
+      const inspection = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        inputDigest,
+      );
+      if (inspection === null)
+        throw new Error('The requested conversation is unavailable.');
+      return inspection;
+    },
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,
       clientTurnId: string,
       signal?: AbortSignal,
+      inputDigest?: string,
     ) =>
       typeof orchestrationService.joinHeldTurnKey === 'function'
         ? await orchestrationService.joinHeldTurnKey(
             sessionId,
             clientTurnId,
             signal,
+            inputDigest,
           )
         : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
@@ -6587,6 +6622,7 @@ export async function executeExecutionTargetMessage(
         handoff.conversationId,
         handoff.idempotencyKey,
         readAuthority,
+        handoff.inputDigest,
       ),
     retireNativeReturnSource: async (_access, handoffSessionId) =>
       orchestrationService.retireNativeReturnSource(
@@ -6804,6 +6840,9 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6822,6 +6861,9 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6843,7 +6885,7 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies);
+  return executeResolvedForegroundMessage(input, resolverDependencies, context);
 }
 
 /**
@@ -7011,7 +7053,17 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId)
+    input = snapshotTurnSubmissionFields(input, [
+      'model',
+      'environment',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {
@@ -7155,5 +7207,8 @@ export async function continueExecutionTargetMessage(
       },
     },
     orchestrationService,
+    undefined,
+    undefined,
+    context,
   );
 }

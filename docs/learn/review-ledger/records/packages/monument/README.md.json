@@ -42,6 +42,8 @@
 
     "scripts/__tests__/monument-pack-smoke.test.ts",
 
+    "packages/monument/src/decisions/turn-dedup.ts",
+
     "packages/monument/src/session-message-delivery.ts",
 
     "packages/monument/src/__tests__/session-message-delivery.test.ts"

@@ -90,6 +90,16 @@ may not get. A connection the host hands over (`database`) is the host's: its
 pragmas are left as they are and reported in `storage.pragmas`, so a host that
 relaxes durability on purpose is not silently undone. Pass
 `configureConnection: true` to hand the pragmas to the adapter.
+Turn-dedup claims accept an optional versioned `inputDigest`. A mismatch with a
+known original returns `conflict` before replay, contention or reclaim. Reclaim
+never attaches a retry's digest to a legacy row. Memory snapshots preserve the
+field; SQLite stores it with the current owner. A bound host may additionally
+supply `turnDedup.inputDigestColumn` after adding that nullable column. The
+adapter requires agreement with the owner JSON marker, so an older writer
+replacing the owner does not leave trusted stale proof. Owned SQLite tables
+upgrade additively on open. Older binaries and callers without digests cannot
+enforce this contract; legacy rows remain unknown.
+
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
 they are served while another connection holds the write lock. Every
