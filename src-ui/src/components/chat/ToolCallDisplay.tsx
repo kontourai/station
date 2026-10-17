@@ -9,8 +9,10 @@ import {
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import {
+  lazy,
   memo,
   type ReactNode,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -42,6 +44,7 @@ import {
   fullToolResultText,
 } from './bounded-tool-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import {
   RequestSheet,
   RequestSheetTrigger,
@@ -55,6 +58,9 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+
+const TranscriptMCPApp = lazy(() => import('./TranscriptMCPApp'));
+
 import './ToolCallDetails.css';
 
 /**
@@ -182,6 +188,7 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
+  const appToolRef = transcriptMcpToolRef(toolCall);
   const display = toolDisplayView(toolCall);
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
@@ -373,6 +380,17 @@ function ToolCallDisplayComponent({
           approvalStatus={approvalStatus}
           lastProgress={running ? undefined : progressMessage}
         />
+      )}
+      {appToolRef && (
+        <Suspense fallback={null}>
+          <TranscriptMCPApp
+            key={id}
+            toolRef={appToolRef}
+            toolCallId={id}
+            args={args}
+            result={result}
+          />
+        </Suspense>
       )}
       {awaitingApproval && onApprove && (
         <div className="tool-call__actions">

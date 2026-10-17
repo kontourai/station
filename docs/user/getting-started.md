@@ -51,6 +51,26 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## MCP app previews in chat
+
+In Station's web client, a completed MCP call can show its declared app directly
+below the tool row. No layout pin is needed. The integration must still be
+installed and permit rendering, and its current tool catalog must declare a UI
+resource. Reloading the conversation mounts the app again from the recorded
+result; Station does not call the tool again to display it.
+
+This first slice supports complete MCP result envelopes, as surfaced by the
+Codex adapter. Calls whose engine exposes only text remain ordinary tool rows.
+A result-only UI pointer cannot authorize a resource read. If a recorded pointer
+differs from today's tool declaration, Station reports that it cannot render it.
+
+The preview follows your theme and labels interactions as unavailable. App tool
+calls, resource reads, messages and links are refused in transcript previews.
+Fullscreen and model-context notes are not supported there yet. Native shells
+continue to refuse scripted MCP frames; use the web client for these previews.
+See the [host design](https://github.com/kontourai/station/blob/main/docs/design/mcp-ui-host.md#transcript-previews) for the
+capability boundary and remaining work.
+
 ## Connect your phone
 
 Your computer runs Station and the agents. Your phone connects to it to read

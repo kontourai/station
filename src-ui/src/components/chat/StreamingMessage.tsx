@@ -27,7 +27,7 @@ import {
   usePreloadToolCallBatch,
 } from './ToolCallBatchBoundary';
 import { TurnActivityProgress } from './TurnActivityProgress';
-import { splitToolCallRuns } from './tool-call-runs';
+import { isToolCallPart, splitToolCallRuns } from './tool-call-runs';
 import { useTranscriptChildBlocks } from './transcript-child-work';
 import { UIBlockRenderer } from './UIBlockRenderer';
 import { uiBlockIdentity } from './ui-block-identity';
@@ -253,6 +253,7 @@ export function StreamingMessageView({
           }
 
           const { index: i, part } = block;
+          if (isToolCallPart(part)) return renderToolCall?.(part, i) ?? null;
           if (
             part.type === 'reasoning' &&
             part.content &&

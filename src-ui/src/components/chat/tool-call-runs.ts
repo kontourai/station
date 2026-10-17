@@ -1,3 +1,5 @@
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
+
 /**
  * The STRUCTURAL half of tool-call batching: splitting a message's content
  * parts into runs of consecutive tool-call parts vs. everything else.
@@ -104,7 +106,7 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   };
 
   parts.forEach((part, index) => {
-    if (isToolCallPart(part)) {
+    if (isToolCallPart(part) && !transcriptMcpToolRef(part)) {
       pending.push({ part, index });
       return;
     }

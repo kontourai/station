@@ -15,6 +15,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { MessageContent } from '../components/chat/message-bubble/MessageContent';
+import { StreamingMessageView } from '../components/chat/StreamingMessage';
+import {
+  foldTurnWork,
+  splitToolCallRuns,
+} from '../components/chat/tool-call-runs';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import {
@@ -81,6 +87,186 @@ afterEach(() => {
 });
 
 describe('MCPToolUIFrame', () => {
+  test('renders a recorded MCP result inline through the hardened resource route after remount without replaying the tool', async () => {
+    mockConfig = { mcpUiHost: true };
+    const recorded = {
+      content: [{ type: 'text', text: 'Recorded chart' }],
+      structuredContent: { count: 7 },
+      _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+    };
+    const call = {
+      type: 'tool-invocation',
+      toolCallId: 'chart-call',
+      toolName: 'demo/chart',
+      args: { range: 'week' },
+      result: recorded,
+      state: 'result' as const,
+    };
+    const requests: string[] = [];
+    fetchMock.mockImplementation((url: string) => {
+      requests.push(url);
+      if (url.endsWith('/resource'))
+        return Promise.resolve(
+          response({
+            uri: 'ui://demo/chart',
+            mimeType: 'text/html;profile=mcp-app',
+            text: '<main>Chart</main>',
+          }),
+        );
+      if (url.endsWith('/ui/chart'))
+        return Promise.resolve(
+          response({
+            status: 'success',
+            ref: 'demo/chart',
+            resourceUri: 'ui://demo/chart',
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const mount = () =>
+      render(
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MessageContent
+            contentParts={[JSON.parse(JSON.stringify(call))]}
+            textContent=""
+            chatFontSize={14}
+            showReasoning={false}
+            showToolDetails={false}
+            isStreamingMessage={false}
+            foldWork
+          />
+        </QueryClientProvider>,
+      );
+    for (let pass = 0; pass < 2; pass++) {
+      const mounted = mount();
+      const iframe = await screen.findByTitle<HTMLIFrameElement>(
+        'MCP tool UI: demo/chart',
+      );
+      expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+      expect(iframe.srcdoc).toContain('Content-Security-Policy');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Interactions are unavailable',
+      );
+      const target = iframe.contentWindow!;
+      const sent = vi.spyOn(target, 'postMessage');
+      const send = (data: unknown) =>
+        window.dispatchEvent(
+          new MessageEvent('message', { data, source: target }),
+        );
+      send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'ui/initialize',
+        params: {
+          appInfo: { name: 'Chart', version: '1' },
+          appCapabilities: {},
+          protocolVersion: '2026-01-26',
+        },
+      });
+      send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            method: 'ui/notifications/tool-result',
+            params: recorded,
+          }),
+          '*',
+        ),
+      );
+      for (const [index, method, params] of [
+        [2, 'tools/call', { name: 'mutate', arguments: {} }],
+        [3, 'resources/read', { uri: 'file:///secret' }],
+        [
+          4,
+          'ui/message',
+          { role: 'user', content: [{ type: 'text', text: 'unapproved' }] },
+        ],
+        [5, 'ui/open-link', { url: 'https://example.com' }],
+      ] as const) {
+        send({ jsonrpc: '2.0', id: index, method, params });
+        await waitFor(() =>
+          expect(sent).toHaveBeenCalledWith(
+            expect.objectContaining({
+              id: index,
+              error: expect.any(Object),
+            }),
+            '*',
+          ),
+        );
+      }
+      mounted.unmount();
+    }
+    expect(requests.filter((url) => url.endsWith('/resource'))).toHaveLength(2);
+    expect(
+      requests.every(
+        (url) => url.endsWith('/ui/chart') || url.endsWith('/resource'),
+      ),
+    ).toBe(true);
+  });
+
+  test('keeps completed app calls in the streaming transcript outside the batch sheet', () => {
+    render(
+      <StreamingMessageView
+        sessionId="stream"
+        agentIcon={null}
+        agentIconStyle={{}}
+        fontSize={14}
+        contentParts={[
+          {
+            type: 'tool-invocation',
+            toolCallId: 'app-call',
+            toolName: 'demo/chart',
+            result: { content: [] },
+          },
+        ]}
+        streamingText=""
+        hasContent
+        contentRevision={1}
+        elapsedMs={0}
+        renderToolCall={(part) => (
+          <span key={part.toolCallId}>Visible {part.toolName}</span>
+        )}
+      />,
+    );
+    expect(screen.getByText('Visible demo/chart')).toBeTruthy();
+  });
+
+  test('keeps app candidates visible outside desktop batches and folded mobile work', () => {
+    const parts = [
+      {
+        type: 'tool-invocation',
+        toolCallId: 'a',
+        toolName: 'read_file',
+        result: 'a',
+      },
+      { type: 'text', content: 'Checking' },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'b',
+        toolName: 'demo/chart',
+        result: { content: [] },
+      },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'c',
+        toolName: 'read_file',
+        result: 'c',
+      },
+      { type: 'text', content: 'Done' },
+    ];
+    for (const split of [splitToolCallRuns, foldTurnWork]) {
+      expect(split(parts)).toContainEqual({
+        type: 'content-part',
+        index: 2,
+        part: parts[2],
+      });
+    }
+  });
+
   test('reports fixed host dimensions and safe-area boundaries without granting layout authority', () => {
     document.documentElement.style.setProperty('--safe-top', '12px');
     document.documentElement.style.setProperty('--safe-bottom', '8px');

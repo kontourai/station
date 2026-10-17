@@ -19,7 +19,11 @@ import {
   usePreloadToolCallBatch,
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
-import { foldTurnWork, splitToolCallRuns } from '../tool-call-runs';
+import {
+  foldTurnWork,
+  isToolCallPart,
+  splitToolCallRuns,
+} from '../tool-call-runs';
 import { useTranscriptChildBlocks } from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 import { uiBlockIdentity } from '../ui-block-identity';
@@ -181,6 +185,7 @@ function MessageContentComponent({
           }
 
           const { index, part } = block;
+          if (isToolCallPart(part)) return renderToolCall(part, index);
           if (part.type === 'reasoning' && part.content) {
             // #2211: reasoning is the STREAMING row's follow-along surface.
             // Once a row settles, the reasoning record opens from the turn's

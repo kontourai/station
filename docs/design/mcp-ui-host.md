@@ -322,6 +322,58 @@ All App requests cross the same server-side authorization boundary as other
 Station actions. The host bridge does not expose its configured provider
 credentials or direct MCP transport to the App.
 
+## Transcript previews
+
+[ToolCallDisplay](../../src-ui/src/components/chat/ToolCallDisplay.tsx) mounts
+[TranscriptMCPApp](../../src-ui/src/components/chat/TranscriptMCPApp.tsx) beside a
+completed, non-error MCP result with a stable tool-call ID. The
+[reference reader](../../src-ui/src/components/chat/mcp-app-tool-ref.ts) accepts
+canonical `server/tool`, provider `mcp__server__tool`, or explicit
+`server`/`originalName` identity, without guessing from flattened underscores.
+It requires an untruncated result envelope with a `content` array. The renderer
+validates that envelope against the MCP result schema before mounting.
+
+The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
+This establishes a source path for complete results, not a real-provider runtime
+qualification. Claude currently summarizes tool-result content to text in
+`claude-adapter-events.ts`; that path does not qualify. ACP and managed-engine
+result preservation have not been qualified for this slice. A supported engine
+must preserve both the MCP identity and complete result envelope.
+
+Candidates remain outside collapsed desktop tool batches and mobile folded work.
+The existing persisted result is the mount input, so remounting requires no new
+persistence schema. The EventStore window retains complete successful MCP
+result envelopes when the whole event fits its existing 24 KiB ceiling;
+other tool results retain the 84-character diagnostic preview. The window-wide
+byte budget still paginates normally. Larger or provider-truncated results
+remain ordinary tool rows. The frame sends recorded tool input/result notifications;
+it never invokes `/initial-result` or the embedded-result fallback. Missing UI
+metadata leaves the ordinary row. Missing integrations and revoked rendering
+remain visible degraded states. Fetches use the existing resolver/resource
+routes, which re-resolve today's catalog declaration and enforce render grants.
+A result pointer differing from that declaration is refused. A pointer appearing
+only in the result does not create resource-read authority.
+
+Transcript previews advertise no server-tool, server-resource, or open-link
+capabilities and refuse unsolicited requests at the handler boundary. They have
+no message or model-context handler. The visible unavailable label applies even
+while an engine is running: this slice has no owning-session interaction lease.
+It retains the existing theme and sandbox posture and native-shell refusal.
+See the [decision](../decisions/mcp-app-transcript-previews.md).
+
+Remaining slices are authenticated occurrence/resource binding (including
+result-only pointers and integration-generation changes), owning-session
+liveness, per-message approval with canonical dispatch, latest bounded
+per-app context notes delivered on the next user message, general link
+confirmation, fullscreen attention return, and navigation-away termination.
+No stored result proves that today's integration serves identical historical
+HTML. This slice retains current-catalog resource semantics.
+
+#3136 owns authored visual skill linkage and guided-session behavior, which this
+slice does not add. #3284 owns prompts/resources/elicitation/sampling, which
+rendering does not qualify. #3274 owns the standards compatibility matrix;
+this preview must not be advertised as complete MCP Apps interaction support.
+
 ## Threat controls
 
 | Threat | Control |

@@ -175,6 +175,8 @@ export function sessionInventoryV2OpenLinkCapability(
 
 export interface MCPToolUIFrameProps {
   component: MCPToolUILayoutComponentRef;
+  /** Transcript-only display: no replay, resource forwarding, or app actions. */
+  transcriptResult?: { result: CallToolResult };
   fallbackComponent?: FallbackComponent;
   fallbackComponentName?: string;
   /**
@@ -276,6 +278,7 @@ const STATUS_COPY: Record<
 
 export function MCPToolUIFrame({
   component,
+  transcriptResult,
   fallbackComponent,
   fallbackComponentName,
   onResolutionStatus,
@@ -314,7 +317,8 @@ export function MCPToolUIFrame({
     hostEnabled &&
     !!refParts &&
     resolution.data?.status === 'missing_resource' &&
-    component.approvalPolicy === 'read-only';
+    component.approvalPolicy === 'read-only' &&
+    !transcriptResult;
 
   useEffect(() => {
     const status = resolution.data?.status;
@@ -361,6 +365,7 @@ export function MCPToolUIFrame({
   }
 
   if (resolution.isLoading) {
+    if (transcriptResult) return null;
     return <MCPToolUIStatus status="loading" ref={component.ref} />;
   }
 
@@ -379,6 +384,9 @@ export function MCPToolUIFrame({
   }
 
   const data = resolution.data;
+  // Ordinary MCP calls stay ordinary rows. A result cannot grant a new URI;
+  // resource loading remains pinned to the live server catalog on the server.
+  if (transcriptResult && data?.status === 'missing_resource') return null;
 
   // mcp-ui.dev embedded-dialect fallback. A SEP-1865 resolve needs a declared
   // `_meta.ui.resourceUri`; servers shipping the older mcp-ui.dev convention
@@ -390,6 +398,7 @@ export function MCPToolUIFrame({
     return (
       <MCPToolUISandbox
         component={component}
+        transcriptResult={transcriptResult}
         refParts={refParts as MCPToolRefParts}
         baseUrl={baseUrl}
         mode="embedded"
@@ -423,10 +432,30 @@ export function MCPToolUIFrame({
     );
   }
 
+  const recordedUi = transcriptResult?.result._meta?.ui;
+  const recordedUri =
+    recordedUi && typeof recordedUi === 'object' && 'resourceUri' in recordedUi
+      ? recordedUi.resourceUri
+      : undefined;
+  if (
+    transcriptResult &&
+    typeof recordedUri === 'string' &&
+    recordedUri !== data.resourceUri
+  ) {
+    return (
+      <MCPToolUIStatus
+        status="unsupported"
+        ref={component.ref}
+        reason="The recorded app resource differs from the integration’s current declaration."
+      />
+    );
+  }
+
   if (hostEnabled && refParts) {
     return (
       <MCPToolUISandbox
         component={component}
+        transcriptResult={transcriptResult}
         refParts={refParts as MCPToolRefParts}
         baseUrl={baseUrl}
         resourceUri={data.resourceUri ?? data.url}
@@ -569,6 +598,7 @@ function mcpUiToolCallDecision(
 
 function MCPToolUISandbox({
   component,
+  transcriptResult,
   refParts,
   baseUrl,
   resourceUri,
@@ -588,6 +618,7 @@ function MCPToolUISandbox({
   openExternalLink,
 }: {
   component: MCPToolUILayoutComponentRef;
+  transcriptResult?: MCPToolUIFrameProps['transcriptResult'];
   refParts: MCPToolRefParts;
   baseUrl: string;
   resourceUri?: string;
@@ -608,6 +639,7 @@ function MCPToolUISandbox({
   requestAuthority?: ReturnType<typeof useHostRequestAuthorityScope>;
   openExternalLink: NonNullable<MCPToolUIFrameProps['openExternalLink']>;
 }) {
+  const isTranscript = !!transcriptResult;
   const { theme } = useDeviceSettings();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
@@ -622,6 +654,8 @@ function MCPToolUISandbox({
   const hostAvailableDisplayModesRef = useRef(hostAvailableDisplayModes);
   const requestDisplayModeRef = useRef(onRequestDisplayMode);
   const displayModeDecisionRef = useRef(onDisplayModeDecision);
+  const transcriptResultRef = useRef(transcriptResult);
+  transcriptResultRef.current = transcriptResult;
   const themeRef = useRef(theme);
   paneIdentityRef.current = paneIdentity;
   currentDisplayModeRef.current = currentDisplayMode ?? 'inline';
@@ -828,15 +862,17 @@ function MCPToolUISandbox({
           null,
           { name: 'Station', version: '1.0.0' },
           {
-            ...(sessionInventoryV2OpenLinks && resultAuthority
+            ...(!isTranscript && sessionInventoryV2OpenLinks && resultAuthority
               ? { openLinks: {} }
               : {}),
             logging: {},
-            serverResources: {},
+            ...(!isTranscript ? { serverResources: {} } : {}),
             // Only advertise tool-call proxying when the policy permits it, so a
             // well-behaved read-only View hides its tool affordances. Calls are
             // also enforced in the handler below regardless.
-            ...(!readOnly || basisReadSession ? { serverTools: {} } : {}),
+            ...(!isTranscript && (!readOnly || basisReadSession)
+              ? { serverTools: {} }
+              : {}),
             sandbox: {
               csp: effectiveCsp,
               permissions: appsPermissions,
@@ -866,6 +902,15 @@ function MCPToolUISandbox({
         };
         bridge.oninitialized = () => {
           lifecycle = 'active';
+          if (transcriptResultRef.current) {
+            if (initialResultSent) return;
+            initialResultSent = true;
+            bridge?.sendToolInput({
+              arguments: capturedInitialArguments ?? {},
+            });
+            bridge?.sendToolResult(transcriptResultRef.current.result);
+            return;
+          }
           if (!capturedInitialArguments || initialResultSent) return;
           initialResultSent = true;
           bridge?.sendToolInput({ arguments: capturedInitialArguments });
@@ -979,7 +1024,7 @@ function MCPToolUISandbox({
           });
           return { mode: currentDisplayModeRef.current };
         };
-        if (sessionInventoryV2OpenLinks && resultAuthority) {
+        if (!isTranscript && sessionInventoryV2OpenLinks && resultAuthority) {
           bridge.onopenlink = async ({ url }) => {
             // Active lifecycle + unchanged pane identity are the host's
             // current principal/occurrence witness. No stale/replaced frame
@@ -1016,6 +1061,10 @@ function MCPToolUISandbox({
         };
         // Resource reads are side-effect-free → always proxied (even read-only).
         bridge.onreadresource = async (params: { uri: string }) => {
+          if (transcriptResultRef.current)
+            throw new Error(
+              'App interactions are unavailable in transcript previews.',
+            );
           const content = await proxyResourceRead(
             baseUrl,
             serverId,
@@ -1040,6 +1089,10 @@ function MCPToolUISandbox({
           name: string;
           arguments?: Record<string, unknown>;
         }) => {
+          if (transcriptResultRef.current)
+            throw new Error(
+              'App interactions are unavailable in transcript previews.',
+            );
           const basisCall = isBasisContinuationCall(
             basisReadSession,
             serverId,
@@ -1161,6 +1214,7 @@ function MCPToolUISandbox({
       }
     };
   }, [
+    isTranscript,
     frameContentReady,
     baseUrl,
     readOnly,
@@ -1227,6 +1281,11 @@ function MCPToolUISandbox({
       data-pane-state-key={paneIdentity?.stateKey}
       data-display-mode={currentDisplayMode}
     >
+      {transcriptResult && (
+        <p className="mcp-tool-ui-frame__description" role="status">
+          App preview · Interactions are unavailable in the transcript.
+        </p>
+      )}
       <iframe
         ref={iframeRef}
         className="mcp-tool-ui-frame__iframe"

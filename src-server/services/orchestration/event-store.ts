@@ -31,6 +31,7 @@ import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
@@ -1606,6 +1607,23 @@ function snapshotEvent(
   const payload = event.payload as unknown as Record<string, unknown>;
   let outputCut = false;
   let snapshotPayload = payload;
+  // Chat Apps need the complete saved envelope, not an 84-character string.
+  // Keep only bounded successful MCP results; the existing window-wide budget
+  // still paginates these events. Other results retain their diagnostic preview.
+  const result = payload.output;
+  if (
+    event.method === 'tool.completed' &&
+    payload.status === 'success' &&
+    !payload.error &&
+    typeof payload.toolName === 'string' &&
+    (parseMcpToolRef(payload.toolName) ||
+      /^mcp__.+?__.+$/.test(payload.toolName)) &&
+    result &&
+    typeof result === 'object' &&
+    Array.isArray((result as { content?: unknown }).content) &&
+    Buffer.byteLength(JSON.stringify(payload)) <= maxBytes
+  )
+    return event;
   if (event.method === 'tool.completed') {
     // archive#3427: an empty-string error is a tool that failed with no
     // message — a fact about the run, not the absence of one — so it is
