@@ -83,7 +83,11 @@ $env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontoura
 <pre><code>
 ~/.local/bin/station-nightly start
 </code></pre>
-<p>On Windows, use <code>station-nightly start</code> in PowerShell. The default browser address is <code>http://localhost:38000</code>; use the sign-in link when access is requested. Run the same install command again to upgrade, and <code>station-nightly --version</code> to see the installed build. Set <code>STATION_INSTALL_PUBLIC_MANIFEST_URL</code> to install from a different signed manifest instead. The Station Nightly desktop app uses the same ports and data directory; the installer refuses to share them silently (see <a href="https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md">channel identity and coexistence</a>).</p>
+<p>On Windows, in PowerShell:</p>
+<pre><code>
+&amp; &quot;$env:USERPROFILE\.local\bin\station-nightly.cmd&quot; start
+</code></pre>
+<p>The default browser address is <code>http://localhost:38000</code>; use the sign-in link when access is requested. Run the same install command again to upgrade. Replace <code>start</code> with <code>--version</code> in the launch command to see the installed build. Set <code>STATION_INSTALL_PUBLIC_MANIFEST_URL</code> to install from a different signed manifest instead. The Station Nightly desktop app uses the same ports and data directory; the installer refuses to share them silently (see <a href="https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md">channel identity and coexistence</a>).</p>
 <p>Each Nightly's own <code>install.sh</code> and <code>install.ps1</code> are also attached to its immutable <code>v&lt;version&gt;</code> release, next to its archives.</p>
 <h3>Nightly desktop downloads</h3>
 <p>Each Nightly desktop publication also uploads its installers under fixed names, so these links always serve the newest published build:</p>
