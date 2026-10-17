@@ -124,6 +124,10 @@ See the [provider contract](../../packages/contracts/src/provider.ts),
 [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
 
+Session inventory preserves Surface's `not-chosen` reviewed-source state and
+`reviewed-source-review-not-chosen` gap when a review selected another candidate.
+The row remains `contributed-to`; that state does not establish support for the answer.
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager

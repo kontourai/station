@@ -1150,18 +1150,20 @@ Two consequences worth stating plainly:
   own commit that changes nothing else. A regeneration on a developer machine
   bakes in that machine's fonts along with whatever upstream drift has
   accumulated, under whoever happens to be holding the branch.
-- **Bump the container in lockstep with `@playwright/test`**, and expect a
-  re-baseline to be part of that change. A rebuilt base image published under
-  the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.63.0-noble`.
+- **Bump the container in lockstep with `@playwright/test`** and review renderer
+  differences separately. Baseline changes need a reviewed commit of their own.
+  A rebuilt base image published under the same tag is a different renderer
+  wearing the same name, which is why the pin is a digest rather than
+  `v1.64.1-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
   resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
-  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
-  not checked and cannot be — nothing in this repository derives it. A digest
-  that no longer matches its tag's contents therefore surfaces as a Playwright
-  launch error in the nightly, not as a silent renderer change.
+  `package.json`, so a resolved minor bump cannot slip past). The local test
+  checks the **digest** syntax, not its registry contents. Before updating the
+  pin, verify the published tag's OCI index and selected platform manifest and
+  config against their content digests. That registry check is separate from
+  an actual container/browser run and Gallery pixel review.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
