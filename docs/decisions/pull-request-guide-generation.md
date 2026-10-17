@@ -1,5 +1,12 @@
 ---
 status: current
+subject: Generate shared pull request guides without model execution tools
+decided: 2026-10-17
+evidence:
+  - kind: source
+    ref: src-server/services/pull-requests/pull-request-review-guide.ts
+  - kind: source
+    ref: src-server/tools/station-control-policy.ts
 ---
 
 # Pull request guide generation
