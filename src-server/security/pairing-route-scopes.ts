@@ -2606,6 +2606,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/boards/:layoutSlug' },
+    { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
+    { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
@@ -3646,6 +3650,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sends session titles and project names off the machine to this phone.
     { method: 'POST', path: '/api/system/native-push/register' },
     { method: 'DELETE', path: '/api/system/native-push' },
+    // Whether the caller's own device is still registered (its registration
+    // id, never a token or key): the family read tier, like the reads below.
+    { method: 'GET', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`

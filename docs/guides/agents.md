@@ -58,6 +58,20 @@ the draft. Catalog browsing retains Project permissions and approval defaults.
 **Origin not recorded** means provenance is missing, invalid, or no longer
 matches the saved connection; it does not describe connection health.
 
+When Station Control is available to an Agent, Personal Board authoring uses
+three actions from that source: `list_personal_boards` and `get_personal_board`
+are readers; `propose_personal_board` writes a private proposal. Search
+**Add tools** for `propose_personal_board`, then open the matching source and
+select those actions for an Agent that should build dashboards. Review the proposal action's approval choice beside its
+selection. These tools cannot publish: the person reviews and applies the
+proposal in the Board. **Build with chat** offers context in a new projectless
+chat without sending it; see [Personal Boards](../user/personal-boards.md).
+
+Station Control publishes native MCP titles, behavioral annotations and
+`ai.kontour/tool-group` hints. These catalog hints do not grant access or change
+approval rules. MCP has no standard category field; grouping does not require
+separate servers.
+
 On Station and Claude, newly added Station-classified reads default to **Always
 allow**. Changes, unknown actions and publisher-classified reads default to
 **Ask me**. Existing choices remain. Other engines show their supported controls;

@@ -628,6 +628,14 @@
 
     "packages/sdk/src/client/http.ts",
 
+    "packages/contracts/src/personal-board.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "packages/sdk/src/client/personal-boards.ts",
+
+    "packages/sdk/src/query-domains/personalBoards.ts",
+
     "packages/contracts/src/tool.ts",
 
     "packages/sdk/src/query-domains/catalog.ts",
@@ -644,7 +652,9 @@
 
     "src-ui/src/views/account/GuestDeviceOnboarding.tsx",
 
-    "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    "src-ui/src/views/project-page/MemberProjectPage.tsx",
+
+    "packages/sdk/src/__tests__/client-execution.test.ts"
   ],
 
   "checks": [

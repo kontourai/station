@@ -224,6 +224,7 @@ export {
   type MessageSearchInstance,
   type MessageSearchResponse,
   type MessageSearchResult,
+  nativePushRegistrationStatus,
   type OrchestrationCommandDispatchResult,
   type OrchestrationCommandInput,
   type OrchestrationCommandReceipt,
@@ -396,6 +397,12 @@ export {
   peerCredentialQueries,
   usePeerCredentialsQuery,
 } from './query-domains/peerCredentials';
+export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
 export {
   type AgentHealthStatus,
   createWorkspaceHomeRoleRequest,

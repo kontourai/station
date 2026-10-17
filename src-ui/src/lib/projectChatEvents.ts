@@ -24,7 +24,10 @@ export const OPEN_PROJECT_CHATS_EVENT = 'station:open-project-chats';
  * name and the dock reports what it was told. A second dispatcher gets its own
  * entry here rather than being mislabelled as this one.
  */
-type ProjectChatEntrySource = 'project-page-cta' | 'new-plugin';
+type ProjectChatEntrySource =
+  | 'project-page-cta'
+  | 'new-plugin'
+  | 'personal-board';
 
 /**
  * Text offered for the NEW chat's composer. The dock shows it in the New
@@ -44,7 +47,10 @@ export type ProjectChatComposerDraft = {
 };
 
 export type OpenProjectChatsDetail = {
-  projectSlug?: string;
+  /** Captured Station authority for a draft; a pane on another Station cannot claim it. */
+  authorityKey?: string;
+  /** Null explicitly requests a new chat without a Project. */
+  projectSlug?: string | null;
   projectName?: string;
   /** Absent only from a caller predating this field; the dock says so. */
   source?: ProjectChatEntrySource;

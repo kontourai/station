@@ -18,6 +18,14 @@
 
     "packages/monument/src/adapter.ts",
 
+    "packages/monument/src/records.ts",
+
+    "packages/monument/src/commands.ts",
+
+    "packages/monument/src/decisions/turn-dedup.ts",
+
+    "packages/monument/src/testing/conformance.ts",
+
     "packages/monument/src/session-message-delivery.ts",
 
     "packages/monument/src/index.ts",

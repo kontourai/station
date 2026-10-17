@@ -8,7 +8,6 @@ import {
   type ToolCallback,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
 import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
@@ -16,6 +15,7 @@ import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
+import { registerPersonalBoardTools } from './station-control-personal-board-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
 import {
   evaluateStationControlPolicy,
@@ -91,7 +91,7 @@ function stationControlToolMetadata(name: string) {
     ['Agents', /agent/],
     // The Sessions in a Project: a chat-level read, not a Project record.
     ['Chats', /^list_project_activity$/],
-    ['Projects', /project|layout|^board_/],
+    ['Projects', /project|layout|^board_|personal_board/],
     ['Chats', /conversation|session|message/],
     ['Tasks', /task|delegat|ssh_environment|pull_request/],
     ['Scheduling', /job|schedul/],
@@ -264,6 +264,7 @@ export function createSelectedStationControlMcpServer(
   }
   registerAgentTools(registry);
   registerBoardTools(registry);
+  registerPersonalBoardTools(registry);
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerPlatformTools(registry);

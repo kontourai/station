@@ -16378,6 +16378,61 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test.each([
+      { name: 'text', change: { input: 'B' } },
+      { name: 'exact whitespace', change: { input: 'A ' } },
+      { name: 'ambient context', change: { ambientContext: 'different context' } },
+      { name: 'requested model', change: { modelId: 'claude-sonnet' } },
+      { name: 'requested options', change: { modelOptions: { effort: 'high' } } },
+      { name: 'attachment content', change: { attachments: [{ kind: 'file' as const, name: 'note.txt', mimeType: 'text/plain' as const, size: 1, dataUrl: 'data:text/plain;base64,Qg==' }] } },
+    ])('#3567: same key with changed $name conflicts without accepting B or invoking again', async ({ change }) => {
+      const threadId = 'thread-input-conflict';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
+      claude.sendTurn.mockClear();
+      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const first = await service.dispatch({ type: 'sendTurn', input: original });
+      await expect(service.dispatch({ type: 'sendTurn', input: { ...original, ...change } })).rejects.toMatchObject({ code: 'client_turn_input_conflict', receipt: { status: 'rejected' } });
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      expect(claude.sendTurn.mock.calls[0][0].input).toBe('A');
+      expect(await service.dispatch({ type: 'sendTurn', input: original })).toEqual(first);
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('#3567: retained caller mutations cannot change the submitted adapter payload or replay identity', async () => {
+      const threadId = 'thread-owned-submission';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      claude.sendTurn.mockClear();
+      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', ambientContext: 'context A', modelOptions: { effort: 'low' }, attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const retry = structuredClone(original);
+      const signal = new AbortController().signal; original.signal = signal;
+      let entered!: () => void;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const reached = new Promise<void>((resolve) => { entered = resolve; });
+      const read = service.readSession.bind(service);
+      const spy = vi.spyOn(service, 'readSession').mockImplementationOnce(async (...args) => { entered(); await held; return read(...args); });
+      const pending = service.dispatch({ type: 'sendTurn', input: original });
+      await reached;
+      original.modelOptions!.effort = 'high'; original.input = 'B'; original.ambientContext = 'context B'; original.attachments![0].dataUrl = 'data:text/plain;base64,Qg==';
+      release();
+      const first = await pending;
+      spy.mockRestore();
+      expect(claude.sendTurn.mock.calls[0][0]).toMatchObject({ displayInput: 'A', modelOptions: { effort: 'low' }, attachments: retry.attachments });
+      expect(claude.sendTurn.mock.calls[0][0].signal).toBe(signal);
+      expect(claude.sendTurn.mock.calls[0][0].input).not.toContain('context B');
+      expect(await service.dispatch({ type: 'sendTurn', input: retry })).toEqual(first);
+      await expect(service.dispatch({ type: 'sendTurn', input: original })).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('#3567: unsupported JSON options are refused before any adapter send', async () => {
+      const threadId = 'thread-unsupported-digest';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
+      claude.sendTurn.mockClear();
+      await expect(service.dispatch({ type: 'sendTurn', input: { threadId, input: 'A', clientTurnId: 'K', modelOptions: { effort: undefined } } })).rejects.toMatchObject({ code: 'client_turn_input_unsupported', receipt: { status: 'rejected' } });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
     test('#3559: records invocation before the provider call, and sends nothing when that record fails', async () => {
       const ledger = eventStore.createTurnDeduplicator();
       let failBegin = true;

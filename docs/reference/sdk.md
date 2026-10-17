@@ -4505,6 +4505,30 @@ credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
 
+### Queued foreground retries
+
+A live retry whose key already names its own waiting inbox entry stays in FIFO
+order. Identical known input returns the existing HTTP 202 queue receipt;
+different known input returns `client_turn_input_conflict` without another send.
+`queueExecutionMessage` returns the queue receipt. Ordinary
+`sendExecutionMessage` and `continueExecutionMessage` preserve their accepted
+provider-turn return types and throw `ForegroundMessageQueuedError` with
+`status: 202`, `outcome: 'queued'` and the original queue `receipt`. Inspect or
+withdraw that entry through the inbox APIs instead of resending it. This error
+does not supply a provider turn id or report an indeterminate start.
+
+### Keyed orchestration input conflicts
+
+Existing keyed foreground, background, continuation and explicit handoff sends can return HTTP
+409 with `code: client_turn_input_conflict` when the key already names different
+submitted input. Execution callers receive `ChatHttpError` with that status and
+code; no new provider turn is accepted. Resubmit the original input to replay its
+result, or use a fresh key for a distinct turn. Legacy records without original
+digest proof and older servers cannot enforce this comparison. Key generation
+and the separate `/chat` stream ledger are outside this bounded #3567 slice.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for the
+submission digest scope and mixed-version limits.
+
 ## Account preferences
 
 The React-free client entry exports `getAccountPreferences(apiBase, options)`
@@ -4519,3 +4543,40 @@ engine, and null for one engine removes only that engine's default. Import uses
 These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
+
+
+## Personal Board authoring
+
+The `@kontourai/station-contracts/personal-board` contract defines a versioned,
+data-only dashboard: a name, description and at most 24 sections. Sections are
+Tasks, attention, recent work, Projects, notes or links, with bounded item counts
+and text. The `@kontourai/station-sdk/personal-board` subpath exports the runtime
+schemas used by HTTP validation, chat tools and the visual editor.
+
+The client barrel exports `getPersonalBoard`, `proposePersonalBoard`,
+`savePersonalBoard` and `dismissPersonalBoardProposal`. Their API base and optional
+`ClientRequestOptions` retain the canonical authenticated transport. Routes live
+under `/api/me/boards/:slug`; ownership comes from authenticated request identity,
+never a supplied user ID. A returned `PersonalBoardDocument` contains the Layout,
+its saved definition, optional proposal and opaque whole-record revision.
+
+A proposal uses `POST /proposal`, `{revision, definition}`. Null revision creates
+a new draft-only Board; editing an existing one requires its current revision.
+A save uses `PUT` and `{revision, definition}`; dismissal uses `DELETE /proposal`
+and `{revision}`. Both are person actions, unavailable to Station-control tool
+requests. Changes compare the whole current Layout revision under the owning
+operation lock; stale requests return 409. Publication atomically replaces the
+definition and clears the proposal. Existing config and Layout tabs survive.
+Generic Layout config updates cannot author the reserved dashboard fields.
+
+`usePersonalBoardQuery(slug, requestScope)` and
+`useSavePersonalBoardMutation(slug, requestScope)` bind reads and writes to a
+captured host authority. Query keys partition by authority and Board slug;
+missing scope disables the read and refuses writes. The Board read polls every
+five seconds so proposals from other callers become visible. The mutation
+updates that exact cache and invalidates the personal Layout inventory.
+
+`useBoardAttentionQuery` and `useBoardRecentWorkQuery` take the same captured
+scope and read the existing authorized projections. They do not persist rows in
+the Board. The dashboard uses the scoped Task and Project queries alongside
+them. See [Personal Boards](../user/personal-boards.md) for the user journey.

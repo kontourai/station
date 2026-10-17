@@ -69,6 +69,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
@@ -398,7 +399,7 @@ send is refused with `provider_session_start_failed`, and the client keeps the
 message queued with the reason and Retry without re-sending it on its own. If
 it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
-re-sends it. A retry whose idempotency key an earlier attempt still holds
+re-sends it. A retry of the same submitted input whose idempotency key an earlier attempt still holds
 waits for that attempt's turn (up to five minutes). If none arrives, or the
 attempt released the key without sending, the retry is refused with the
 retryable code `client_turn_in_flight` and re-sent with the same key; that
@@ -797,7 +798,10 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 `@kontourai/station-contracts/native-push` owns the agent-activity push
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
-gateway delivers to, and the request/response shapes. The response's
+gateway delivers to, and the request/response shapes.
+`NativePushRegistrationStatus`, the `GET` answer on
+`NATIVE_PUSH_REGISTRATION_PATH`, carries only `registered` and the caller's
+own `registrationId`, never a token or key. The registration response's
 `registrationId`, `stationId` and `stationKey` are public identity checks for
 incoming pushes; none of those three is a credential. The response also includes
 `payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.
@@ -897,6 +901,16 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+### Keyed orchestration send identity
+
+The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`
+(`client_turn_input_conflict`). Existing keyed orchestration sends return this
+nonretryable refusal when a known original submission digest differs. This is
+an additive code, not a requirement for keys on all routes. The server captures
+the digest; clients cannot supply it as provider metadata. Legacy input proof
+and mixed-version limits are described in
+[TurnDeduplicator](../architecture/module-map.md#turndeduplicator).
 
 ## Engine durability declarations
 

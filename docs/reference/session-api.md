@@ -141,6 +141,23 @@ Agent, engine kind, provider, and honest model launch plan.
 
 ### Find out what became of a send
 
+An existing keyed send with different submitted input returns HTTP `409`,
+`success: false`, and `code: client_turn_input_conflict`; it does not accept a
+new turn. The original input can still replay its provider turn. This applies
+to the foreground, background, continue and explicit handoff orchestration routes.
+Conversation-wide replay and live-key joins compare retained original proof
+before returning a prior turn or reserving a successor Session. Inbox admission
+also compares known proof before answering queued; queued placement retains that
+server-captured digest through restart. Accepted handoff replay compares retained
+original input proof without starting or sending again. While the inbox is actively placing a key, its route guard
+may refuse a retry with `client_turn_in_flight` before this comparison; that
+transient refusal accepts, queues and replays nothing. The legacy handoff marker
+alone binds prepared effects, including trimmed text; it cannot establish the original raw input. Legacy rows
+without original digest proof remain unknown, and older binaries cannot enforce
+these conflicts. Keys remain optional outside surfaces that already require
+one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
+the exact submission scope, unsupported-input refusal and mixed-version limits.
+
 A send that names its own idempotency key (`clientTurnId`, up to 200
 characters) and its `conversationId` can be looked up afterwards, for example
 by a device whose connection dropped before the answer arrived, or that was
@@ -189,9 +206,19 @@ A key is one send for the whole conversation, not only for one of its
 Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
-of the conversation. A key whose turn already started is answered with that
-turn (`providerTurnId`), whatever the retry changed, and staged attachments
-the retry carries are bound to that turn. A key another attempt still holds
+of the conversation. Known original input is compared before replay or a new
+provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
+can replay a started turn (`providerTurnId`); authorized staged attachments
+are bound to that turn. Staged bytes are authorized against the earlier claim's
+Session and read without binding before digest comparison, including retained,
+dead-invoked and reclaimable claims. The production continuation uses the caller's
+read authority across every materialized Session; an unavailable or unreadable
+lineage fails closed before key inspection or staged hydration. The same rule
+applies before inbox admission and to the recorded sender's inspections during
+placement and abandoned-start recovery; an unavailable result is never an empty
+ledger or permission to send. Only after a safe start or replay is chosen
+are they bound to its actual Session; tombstones retain no input proof.
+An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
 it does not resolve in time. That includes a claim the delivery lookup calls
@@ -223,7 +250,12 @@ another device and a restart.
   `turnId`, once Station sent it). Sent when the conversation is idle and
   holds nothing, it takes the live path, whose turn claim answers with the
   turn already started. The same key with a different message is refused
-  `409` with `code: "inbox_key_conflict"`. A send to `POST /chat` or
+  `409` with `code: "client_turn_input_conflict"` when original submitted
+  identity is known; queue submissions against older entries without that proof
+  retain the inbox's `inbox_key_conflict` payload comparison. A live retry by the same sender under
+  a waiting key also stays in the inbox: matching input returns its existing
+  `202` receipt, and different known input returns the typed conflict before
+  any provider effect. A send to `POST /chat` or
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
