@@ -1,0 +1,7 @@
+{
+  "revision": "67bc2a8a49f731d434757dcc50c76679ecddd671",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed notification service and route lookup deltas at 67bc2a8a49f. Single-id authorization reads now call get(id) instead of materializing list(); the same read-eligibility predicate and mutation paths remain. Internal get is not an SDK or HTTP export. NotificationsAPI methods, status filtering, transport and scheduling limits remain accurate. Owner/route suites passed 162 tests, including hosted authorization and cross-service freshness; no external SDK install or live provider verification.","inputs":["docs/reference/sdk.md","src-server/routes/operations/notifications.ts","src-server/services/notifications/notification-service.ts"]}
+  ]
+}
