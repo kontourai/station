@@ -47,6 +47,7 @@ import {
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { useWorkObservation } from '../../contexts/work-observation';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
 import {
   ensureOrchestrationEventStream,
@@ -471,6 +472,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const workObservation = useWorkObservation();
   const requestAuthority = useHostRequestAuthorityScope();
   // #3159: inbox rows drag a conversation reference under this scope;
   // stable across renders for the inbox panel's `memo()`.
@@ -1718,6 +1720,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       const controller = await loadConversationOpenController();
       const opened = await controller.openConversationForDock(conversation, {
         apiBase,
+        observation: workObservation,
         open: keepReader
           ? openConversationInScopedPane
           : openUserSelectedConversationInScopedPane,
@@ -1738,6 +1741,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [
       apiBase,
+      workObservation,
       openConversationInScopedPane,
       setImportedSessionId,
       openUserSelectedConversationInScopedPane,
@@ -1756,8 +1760,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       updateChat,
       () => showToast('Conversation resolution is unavailable. Try again.'),
       (tabId) => activeChatsStore.getSnapshot()[tabId],
+      workObservation,
     );
-  }, [activeSession, apiBase, showToast, updateChat]);
+  }, [activeSession, apiBase, showToast, updateChat, workObservation]);
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
     await openConversationForDock(conversationOpenRecovery.conversation);

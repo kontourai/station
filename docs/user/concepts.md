@@ -71,6 +71,24 @@ Example: “Explain this function” can be a direct chat. “Refactor this modu
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.
 
+When a conversation status/history read or an inbox read fails, retained
+conversation rows say **Last known:** before their computed status. The status
+uses a muted style without a pulsing indicator or running clock. The transcript's
+background-work indicator also says **Last known**. Each reader keeps its own failure until that reader succeeds; loading older
+history does not clear a failed current-history read. A live update past the
+failed observation’s sequence within the same stream epoch supersedes that failure individually: it verifies
+current status, even if the older read fails after that update. The sequence is
+captured when the read starts. A stream epoch change (such as replacing the
+orchestration database) resets sequence fences and retires pending old-epoch
+reads. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
+reader recovers. Hiding and
+showing a row preserves its last-known status. Observations are released when
+the conversation is absent from the loaded inventory and no row or reader
+references it, or its authority query cache is cleared. A released reader cannot
+recreate an observation when its pending read settles. Other conversations and
+Stations retain their own observations. Use **Resync** on the
+conversation or **Refresh inbox** to request fresh observations.
+
 ## Gates, Evidence, And Receipts
 
 - A **gate** decides whether work may advance.

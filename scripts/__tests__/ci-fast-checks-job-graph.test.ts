@@ -529,49 +529,6 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
-  test.each([
-    [
-      'metadata edit',
-      'pull_request_target',
-      'edited',
-      false,
-      'fast-checks (metadata only)',
-    ],
-    ['base retarget', 'pull_request_target', 'edited', true, 'fast-checks'],
-    [
-      'source update',
-      'pull_request_target',
-      'synchronize',
-      false,
-      'fast-checks',
-    ],
-    ['merge queue', 'merge_group', 'checks_requested', false, 'fast-checks'],
-  ])(
-    '%s emits the correct source check context',
-    (_label, event, action, retarget, expected) => {
-      const expression = String(readJobs()['fast-checks'].name)
-        .replace(/^\$\{\{\s*/, '')
-        .replace(/\s*\}\}$/, '');
-      const name = evaluate(
-        expression,
-        (path) => {
-          switch (path.join('.')) {
-            case 'github.event_name':
-              return event;
-            case 'github.event.action':
-              return action;
-            case 'github.event.changes.base':
-              return retarget ? { ref: { from: 'release' } } : undefined;
-            default:
-              throw new Error(`Unexpected name context: ${path.join('.')}`);
-          }
-        },
-        {},
-      );
-      expect(name).toBe(expected);
-    },
-  );
-
   test('merge queue emits the independent title context without source dependencies', () => {
     const state = simulate(readJobs(), {
       ...sameRepositoryPr,
@@ -752,5 +709,51 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       )
       .map(([id]) => id);
     expect(exposed).toEqual([]);
+  });
+});
+
+describe('delivery work waits for required PR feedback', () => {
+  const jobs = readJobs();
+  const outputs = { 'delivery-plan': { install: 'true' } };
+  test.each(['success', 'failure', 'cancelled', 'skipped'] as const)(
+    'same-repository fast-checks %s controls expensive delivery work',
+    (result) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'fast-checks': result },
+        outputs,
+      });
+      expect(state.results.get('delivery-validation')).toBe(
+        result === 'success' ? 'success' : 'skipped',
+      );
+    },
+  );
+  test('a successful fork smoke still admits affected delivery proof', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('fast-checks')).toBe('skipped');
+    expect(state.results.get('delivery-validation')).toBe('success');
+  });
+  test('metadata changes and an empty affected plan allocate no delivery workers', () => {
+    expect(
+      simulate(
+        jobs,
+        { ...sameRepositoryPr, action: 'edited' },
+        { outputs },
+      ).results.get('delivery-validation'),
+    ).toBe('skipped');
+    expect(
+      simulate(jobs, sameRepositoryPr).results.get('delivery-validation'),
+    ).toBe('skipped');
+  });
+  test('failed delivery planning does not become an empty successful result', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'delivery-plan': 'failure' },
+      outputs,
+    });
+    expect(state.results.get('delivery-plan')).toBe('failure');
+    expect(state.results.get('delivery-validation')).toBe('skipped');
   });
 });

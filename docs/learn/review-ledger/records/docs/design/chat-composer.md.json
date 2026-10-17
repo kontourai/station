@@ -138,6 +138,12 @@
 
     "src-ui/src/hooks/useAnchoredPopup.tsx",
 
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
+
     "src-ui/src/hooks/useSTT.ts",
 
     "src-ui/src/components/chat-start/useStartDictation.ts",

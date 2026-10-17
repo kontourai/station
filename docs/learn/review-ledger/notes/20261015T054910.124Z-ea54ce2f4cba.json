@@ -1,0 +1,7 @@
+{
+  "revision": "2c5dab36fe25d00fea821d1055db95a11f2b6ab4",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix round 2: re-read Session/activity/SSE contract claims and followed snapshot/caught-up activity callers. Idless activity still does not advance the replay cursor; freshness compares asOfSequence and keeps failures per read source. No contract/wire changes; executed stream and row tests pass. No server/provider qualification added.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}
