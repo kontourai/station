@@ -74,6 +74,14 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  deliverSessionMessage,
+  parseSessionDeliveryDecision,
+  type SessionDeliveryBranch,
+  type SessionMessageDeliveryPorts,
+  type SessionStartResult,
+  type SessionSteerResult,
+} from '@kontourai/monument';
+import {
   CLIENT_ORIGIN_VERSION,
   type ClientOrigin,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
@@ -90,14 +98,6 @@ import {
   isSessionLifecycleState,
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
-import {
-  deliverSessionMessage,
-  parseSessionDeliveryDecision,
-  type SessionDeliveryBranch,
-  type SessionMessageDeliveryPorts,
-  type SessionStartResult,
-  type SessionSteerResult,
-} from './session-message-delivery.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,

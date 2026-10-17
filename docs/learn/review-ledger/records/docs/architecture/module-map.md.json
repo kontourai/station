@@ -1048,7 +1048,11 @@
 
     "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
 
-    "src-server/security/coding-authority.ts"
+    "src-server/security/coding-authority.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts"
   ],
 
   "checks": [

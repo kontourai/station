@@ -1,0 +1,7 @@
+{
+  "revision": "1edb1961ebcd23121e5e93bba8dbc90ea1efc567",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Final Windows launch/version examples now use the explicit default launcher from the installer; --version replaces start in that same command, avoiding a second PATH-dependent example. Source default launcher, quoting and no-PATH-write behavior reviewed. Isolated signed248009 Windows start/open and two HTTP200 observations remain the bounded executed evidence; service/reboot/native delivery are not claimed. Other Getting Started claims unchanged. This extends the prior Windows-command review.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

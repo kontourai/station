@@ -208,7 +208,9 @@
 
     ".github/workflows/pr-ci-supersession.yml",
 
-    "scripts/__tests__/pr-ci-supersession.test.ts"
+    "scripts/__tests__/pr-ci-supersession.test.ts",
+
+    "scripts/lib/live-service-verification.mjs"
   ],
 
   "checks": [
