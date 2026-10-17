@@ -1354,6 +1354,14 @@ available) after the replay/snapshot boundary, before buffered live delivery.
 Do not assume the first frame is a snapshot; keepalive frames may arrive while
 history is being read.
 
+Snapshot and caught-up session summaries use the same scope as the stream:
+`?threadId=X` includes only X; the global stream includes all readable sessions.
+A slow connection can buffer at most 256 live frames, plus an in-flight event
+write and one keepalive write. Overflow closes the connection without advancing
+a cursor for discarded frames. Reconnect with the last applied cursor to replay
+the gap or recover a fresh snapshot. This recovery applies to the orchestration
+stream; the separate bare `/events` broadcast stream has no durable replay.
+
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.

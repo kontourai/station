@@ -9,11 +9,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { fetchSSE } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { OrchestrationStreamPresence } from '../../../services/orchestration/orchestration-stream-presence.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const USER = 'owner-user';
@@ -245,6 +247,78 @@ describe('conversation activity through GET /events (#2309)', () => {
       }
     },
   );
+
+  test('an overflowing slow stream releases presence and fetchSSE resumes every missed event', async () => {
+    const presence = new OrchestrationStreamPresence();
+    const logger = { debug: vi.fn() };
+    const route = createOrchestrationRoutes(service, {
+      eventBus,
+      logger,
+      getUserId: () => USER,
+      presence,
+    });
+    const cursors: Array<string | null> = [];
+    const fetcher = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        cursors.push(new Headers(init?.headers).get('Last-Event-ID'));
+        return route.request(new Request(String(input), init));
+      },
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const received = new Set<string>();
+    let snapshots = 0;
+    let flooded = false;
+    let connectedBeforeBurst: boolean | undefined;
+    let connectedAfterBurst: boolean | undefined;
+    const stream = fetchSSE('http://station.test/events', {
+      authentication: 'omit',
+      retryDelayMs: 1,
+      maxRetryDelayMs: 1,
+      onMessage: (frame) => {
+        if (frame.event === 'orchestration:snapshot') snapshots++;
+        if (frame.event === 'orchestration:event') {
+          const { event } = JSON.parse(frame.data) as {
+            event: CanonicalRuntimeEvent;
+          };
+          received.add(event.eventId);
+        }
+        if (frame.event !== 'orchestration:caughtUp' || flooded) return;
+        flooded = true;
+        connectedBeforeBurst = presence.isConnected(USER);
+        // The reader cannot consume again until this callback returns.
+        for (let index = 0; index < 300; index++)
+          publish({
+            eventId: `slow-${index}`,
+            provider: 'claude',
+            threadId: root,
+            createdAt: '2026-09-22T09:00:01.000Z',
+            method: 'content.text-delta',
+            itemId: 'slow-item',
+            delta: 'x',
+          });
+        connectedAfterBurst = presence.isConnected(USER);
+      },
+    });
+    try {
+      await vi.waitFor(() => expect(received.size).toBe(300), {
+        timeout: 10_000,
+      });
+      expect(connectedBeforeBurst).toBe(true);
+      expect(connectedAfterBurst).toBe(false);
+      expect(cursors).toEqual([null, '2']);
+      expect(snapshots).toBe(1);
+      for (let index = 0; index < 300; index++)
+        expect(received.has(`slow-${index}`)).toBe(true);
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Orchestration event stream closed',
+        expect.objectContaining({ reason: 'backpressure-overflow' }),
+      );
+    } finally {
+      stream.close();
+      await stream.completed;
+      vi.unstubAllGlobals();
+    }
+  });
 
   const midTurn: CanonicalRuntimeEvent[] = [
     {
