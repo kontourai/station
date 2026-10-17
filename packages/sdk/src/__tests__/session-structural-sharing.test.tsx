@@ -87,6 +87,8 @@ test.each([
       });
 
       response = sessions(third);
+      response[0].lifecycleState = 'idle';
+      response[0].status = 'ready';
       response[0].answerability = {
         answerable: false,
         qualification: 'provider_absent',
