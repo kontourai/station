@@ -487,6 +487,7 @@ export class ActiveChatsStore {
       };
       sendFailure?: boolean;
       queuedRetry?: boolean;
+      childWorkKey?: string;
       backgroundTaskNotice?: BackgroundTaskNotice;
     },
   ) {

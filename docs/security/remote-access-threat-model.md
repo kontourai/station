@@ -580,9 +580,42 @@ is an exact method/path allowlist, not the whole pairing family; personal tokens
 delegation credentials and inherited `access:manage` do not qualify. The group
 ceiling is applied on each request. Only the operator may grant or remove
 `access:devices` itself, so device administration cannot delegate itself.
-A credential minted by proving local Station-home possession has a separate
-pairing-family exception, still subject to the current route scope. The chosen
+A native credential minted by proving local Station-home possession has a
+separate pairing-family exception, still subject to the current route scope.
+A launcher browser session bearing the private `home-possession` locality and
+`ui-bootstrap` mint record may create/cancel Device invitations, decide pending
+requests and administer paired Devices while its effective grant retains
+`access:manage`. Its admission is an exact method/path allowlist; it cannot
+administer passkeys, people, accounts or peer credentials. It cannot delegate
+its private mint record or introduce scopes whose sole declared grant path is
+operator promotion, except the Device-use permissions `coding:exec` and
+`approval:full-access`. This restriction covers both invitation modes, the final
+scope kept when confirming an existing request (including operator-created or
+older browser offers), and newly added scopes on paired Devices. In particular,
+a host session must not convey `relay:manage`, `access:approve` or
+`consent:decide` authority to invitees. It can narrow a pending grant or remove
+an existing permission; retaining an existing protected permission is not a new
+promotion. Raw operator request-time approval and explicitly promoted
+`access:devices` administrators retain their existing authority. Ordinary
+Devices with inherited `access:manage` remain refused. This deliberately trusts
+the host-issued browser session, including code on its origin, with Device
+administration; the native consent broker still requires `local-grant`, so
+browser custody never becomes native consent authority. The chosen
 scope is shown before the grant is created and again on the resulting offer.
+
+Operator-created invitations can record approval at creation (`approval:
+'on-create'`). The private offer stores that decision; its challenge authorizes
+one recipient for exactly the recorded scope until expiry or cancellation.
+The requester cannot choose this mode or enlarge that scope. Such invitations
+must be ordinary Devices and cannot carry `access:manage` or protected
+operator-promotion scopes. This service rule applies to operator callers too:
+a preapproved bearer invitation bypasses the later decision where protected
+promotion would be reviewed. `coding:exec` and `approval:full-access` remain
+available as explicit Device-use grants. A leaked invitation can be redeemed by
+its first holder; use request-time approval when the operator needs to identify the recipient
+before granting access. Default API offers and unsolicited access requests
+retain request-time confirmation. Host CLI invitations and the pairing panel
+explicitly select approval at creation.
 
 Two other paths do not go through the preset selector at all, and both
 default to the historical four-token grant rather than Standard:

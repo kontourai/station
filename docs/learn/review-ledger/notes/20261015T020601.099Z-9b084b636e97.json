@@ -1,0 +1,7 @@
+{
+  "revision": "da594305fdc738ffe666301495fbc1feae75d888",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the phone tool-work folding and streaming-versus-settled explanation against tool-call-runs.ts and both renderers for #3671 fix round 1. The new optional content-block key only preserves text slice identity around child cards; tool-run grouping and phone folding claims remain accurate. Codex cards use canonical spawn position and do not change composer behavior.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-runs.ts"]}
+  ]
+}

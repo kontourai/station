@@ -1,0 +1,7 @@
+{
+  "revision": "c78f11879f8b1c8c0c18a080394c09bdbb1a8083",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Final #3671 spawn-position review: the UI fold records parent turn, preceding native tool and text position from canonical events. The native-Codex-tool regression joins both captured Codex spawn formats, Claude partial windows, 65 settled children, completion notice identity and multi-child Muse. All 37 mounted tests pass. Card/pane and missing-field claims remain accurate; no contract or server changes were needed.","inputs":["docs/design/placement.md","src-ui/src/components/chat/transcript-child-work.ts"]}
+  ]
+}

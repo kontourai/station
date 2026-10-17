@@ -1,0 +1,7 @@
+{
+  "revision": "ec57d04a6409934fc5bb54c38c65c8309ba62ef0",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Bounded PR3746 repair at ec57d04a640: reviewed only the delta from candidate 6001d2e4f1f in host offer creation, final kept request scope and setDeviceScope, plus the declared grant paths and device-requestable exceptions. HTTP boundary suite passed 32/32 and pairing owner/route suites passed 253/253. Host browser cannot newly transfer protected promotion scopes; coding/full-access, legacy raw-operator on-request issuance and explicit access:devices administrator grants remain. Universal on-create refusal prevents bypassing deliberate promotion via preapproved bearer invitations. Existing native enrollment, signing-key, account, Project and direct relay guards are outside this source delta; no new runtime or release qualification.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/ssh/device-pairing-service.ts"]}
+  ]
+}

@@ -16,6 +16,12 @@ including remote CLI and UI requests. It grants no operator identity and uses
 no passkey step-up. Only the operator can grant or remove that permission.
 The [current threat model](../security/remote-access-threat-model.md) and
 [CLI reference](../reference/cli.md#environment) own its behavior and limits.
+A same-machine launcher browser session can now create invitations and manage
+paired Devices through its private host-possession/`ui-bootstrap` provenance.
+This grants no operator identity. Its invitations, request approvals and scope
+introductions cannot transfer protected administration or consent scopes;
+`coding:exec` and `approval:full-access` remain explicit Device-use grants.
+Native consent custody stays separate.
 The dated passkey proposal below remains the separate operator-session design;
 its former blanket ordinary-device refusals are historical assumptions.
 
