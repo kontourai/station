@@ -6,7 +6,7 @@ export interface ObservedAgentCatalog {
   agents?: ReadonlyArray<{
     slug: string;
     kind?: string;
-    execution?: { agentConnectionId?: string | null };
+    execution?: { agentConnectionId?: string | null; approvalMode?: string };
   }>;
   catalogState?: string;
 }

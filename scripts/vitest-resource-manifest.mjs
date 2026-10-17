@@ -127,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Invokes the real pinned actionlint parser against isolated stdin fixtures.
+  'scripts/__tests__/actionlint-queue-compat.test.ts',
   // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
   'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
@@ -141,6 +143,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.
   'scripts/__tests__/advisory-review-gate.test.ts',
+  // Executes cancellation against a loopback Actions API; owns one short Node child.
+  'scripts/__tests__/pr-ci-supersession.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
   'scripts/__tests__/qualification-repair.test.ts',
   // #3101: runs the dequeue report as a child against temporary Git remotes
@@ -410,6 +414,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
+  'scripts/__tests__/pr-delivery-plan.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
@@ -1179,6 +1184,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
+  // Runs real canvas/React startup handoffs with Chromium's controlled clock.
+  'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone

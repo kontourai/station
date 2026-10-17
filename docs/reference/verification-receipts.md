@@ -216,6 +216,11 @@ with no recoverable failure evidence. Counts remain the canonical failure
 tally — `recoveredFailures` is corroborating identity, never an independent
 count source.
 
+Changed-test diagnostic reconciliation counts an execution error as either an
+infrastructure error or a parser error, never both. Retaining a consistent
+partial diagnostic preserves its `complete: false` and the owner's non-pass
+status/counts; it does not qualify the interrupted execution.
+
 An exhausted related-discovery budget stops the changed-test selector during
 preparation and produces infrastructure-error evidence, not failed test
 counts or a passing empty selection. A malformed deadline environment value
@@ -450,9 +455,10 @@ the artifact-path contract.
 ## Canonical completion lane
 
 The [testing guide](../guides/testing.md#available-escalation-lanes) owns when
-to run each lane. Ordinary pull requests use focused evidence and `ci:fast`,
-then the required merge queue checks. Hosted Nightly/tagged promotions own
-canonical full-regression completion. A local `full:regression` run is an
+to run each lane. Ordinary pull requests use focused local evidence, normal
+push hooks and required hosted PR and merge-queue checks. Scheduled main qualification and tagged Preview/Stable promotions own
+canonical full-regression completion. Nightly uses a distinct exact-source
+usability gate and does not emit full qualification evidence. A local `full:regression` run is an
 explicit diagnostic escalation, not a routine response to upstream movement.
 
 Only one lane can certify the final exact workspace: `full-regression`, whose

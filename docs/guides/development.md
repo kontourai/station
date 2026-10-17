@@ -231,7 +231,7 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
-| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), shaped for publication but `private: true` until its first, owner-gated publish (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite. Station runs its turn dedup and session-control request keys on it, over its own tables; turn boundaries are still Station's |
+| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite. Station consumes these over its existing tables and supplies host admission, terminal facts and owner liveness |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
 The contracts, SDK, and shared packages ship raw TypeScript source, so their
@@ -343,6 +343,11 @@ That example is not a root-checkout install command or a way to replace
 Station's pinned workspace dependencies.
 
 ## Commit Messages
+
+The required `PR title policy` commit status applies the same grammar to live
+squash titles using trusted workflow code. It validates all open main-target
+PRs sharing a head, so correcting one cannot hide another invalid title. Title/body edits rerun that small check,
+not source CI. A title correction cannot clear an actual source-check failure.
 
 Commit subjects follow the Conventional Commits grammar enforced by the
 repository hooks:
@@ -490,7 +495,7 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
-Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
+`npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
@@ -502,24 +507,27 @@ The required `fast-checks` result combines job outcomes with exact-plan shard
 receipts. A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Follow the [local feedback rule](testing.md#what-counts-as-tested).
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-Nightly and tagged preview and stable promotions pass one exact source SHA
-to the hosted qualification authority.
-
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
-one exact source through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs after main source changes with an hourly fallback.
-It finishes the active source and coalesces pending candidates. Eligible Nightly
-delivery uses a separate lease and a configurable interval (six hours by default). Nightly has no independent schedule; its
-manual dispatch remains available for recovery. The hourly qualification-health
-watchdog reports missed starts, stale success and failed delivery. Nightly
-and tagged Preview/Stable require that qualification, with bounded reuse of
-exact-source evidence. See [the release process](releasing.md) for receipt
-admission, failure repair and promotion.
+one exact source SHA through every canonical phase and the Android viewport suite.
+`Main: Qualification` runs every six hours or manually, then runs all five
+packaging/platform validation families after successful qualification. Optional
+PR delivery families run in sequence after core fast checks, selected by a
+trusted base-owned diff planner; required integration contexts stay unchanged.
+Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
+
+Nightly runs independently: an hourly eligibility decision enforces a six-hour
+default publication minimum before source tests or builds. Eligible sources
+must pass exact-SHA lint, all typecheck lanes, native boundary checks and real
+browser smoke, followed by signed artifact and provider gates. That usability
+gate does not emit a full qualification receipt. Manual Nightly recovery retains
+the same gates. The hourly health watchdog reports stale qualification and
+failed publication separately. See [the release process](releasing.md).
 A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.

@@ -112,10 +112,11 @@ The review ledger records document purpose separately from source review.
 
 `docs:truth:gate` already includes the ledger freshness test through
 `docs:foundations:test`. It is selected as required Veritas evidence, including
-through `ci:fast`'s readiness call and the pre-push hook. There, freshness is
+through required hosted `fast-checks-statics` and its `ci:fast` readiness call.
+There, freshness is
 scoped: a stale record blocks when the change's own diff touches its document,
 a recorded source or the record itself. In the merge queue, on `main` and in
-Nightly static verification the same test only reports staleness, so another
+Scheduled full qualification the same test only reports staleness, so another
 PR's change cannot dequeue this one; a Nightly sweep keeps one tracking issue
 for what remains. The separate same-repository PR source-scan job reports
 freshness too and is not a required status check. A normal reader build can
@@ -128,7 +129,7 @@ source drift. See [documentation maintenance](../docs/guides/documentation.md#ge
 None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
-Hosted `fast-checks` now aggregates an affected-test plan, one to four planned shards, and
+Hosted `fast-checks` now aggregates an affected-test plan, zero to four planned shards, and
 `fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
 scope and includes its Veritas readiness call. The required documentation
 evidence is unioned with default, routed or explicitly selected checks; it

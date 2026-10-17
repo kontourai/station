@@ -1,0 +1,9 @@
+{
+  "revision": "cf448756816bb4b957b0dc45831e68d73907fed1",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the sole corpus.json delta at cf448756816: an exact exclusion for docs/reviews/workspace-map-20261015/README.md classifies the local screenshot/review report outside the published manual. Documents, topics, decisions, builtOn, pins and all existing exclusions are unchanged. The guide still accurately describes explicit Pages/manual admission and the pinned Corpus check; no workflow or publication claim changes.","inputs":["docs/guides/documentation.md","corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the sole corpus.json delta at cf448756816 against the publication boundary: the workspace-map screenshot report is repository review evidence and is excluded by its exact Markdown path. The Pages allowlist, manual bundle-only entry, topics, document order, URLs and builder remain unchanged. Existing text about unpublished internal engineering records remains accurate. Hosted failure is retained as negative classification evidence; this review does not claim deployment.","inputs":["docs/pages/README.md","corpus.json"]}
+  ]
+}

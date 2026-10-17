@@ -798,7 +798,7 @@ export function createSessionTurnBoundaryAuthority(options: {
     },
     hasPossibleEffect(threadId) {
       try {
-        retryPendingTransitions();
+        // Polling is read-only; unresolved intents retry on the next writer.
         return {
           kind: 'available',
           active: options.coordinator.hasPossibleEffect(threadId),

@@ -1218,6 +1218,31 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
   });
 
+  test('superseded capability reads cannot consume recovery or leave a retry after unmount', async () => {
+    vi.useFakeTimers();
+    let finish!: (value: boolean | undefined) => void;
+    const capability = new Promise<boolean | undefined>((resolve) => {
+      finish = resolve;
+    });
+    fetchCapability.mockReturnValue(capability);
+    const { result, unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    act(() => {
+      void result.current.reload();
+      void result.current.reload();
+    });
+    await act(async () => finish(undefined));
+    expect(claimRecovery).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    const requests = fetchCapability.mock.calls.length;
+    unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(fetchCapability).toHaveBeenCalledTimes(requests);
+  });
+
   test('manual history Retry keeps failed observation unavailable until the recovered transcript arrives', async () => {
     let cachedFailure = true;
     fetchCapability.mockImplementation(async () =>

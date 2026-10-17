@@ -81,7 +81,14 @@ export type TurnClaimInspection =
   | { state: 'resolved'; value: string }
   | { state: 'in-flight' }
   | { state: 'reclaimable' }
-  | { state: 'indeterminate' }
+  /**
+   * `ageOnly`: unresolved past the in-flight bound while its owner is alive
+   * or unknown. Nothing proves it may have been sent, and a live owner may
+   * still resolve it (#3660), so a resend may still join it; the delivery
+   * lookup still answers it `indeterminate`. Without it: this owner gave the
+   * key up after a possible effect, or a dead owner may have invoked.
+   */
+  | { state: 'indeterminate'; ageOnly?: true }
   | { state: 'expired' };
 
 export class TurnIdempotencyStore {
@@ -237,7 +244,7 @@ export class TurnIdempotencyStore {
     // not a send in flight, whoever owns it (and an abandoned claim the
     // bounded `retained` memory has forgotten still lands here).
     if (now - record.createdAt > TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS)
-      return { state: 'indeterminate' };
+      return { state: 'indeterminate', ageOnly: true };
     return { state: 'in-flight' };
   }
   /**

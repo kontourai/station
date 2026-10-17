@@ -30,7 +30,10 @@ import type {
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
-import { ACP_MODEL_OVERRIDE_PER_TURN } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  ACP_ENGINE_DURABILITY,
+  ACP_MODEL_OVERRIDE_PER_TURN,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
@@ -659,6 +662,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // ACP's `loadSession` is negotiated per connected CLI. A global adapter
     // declaration would overstate arbitrary/older connections; the inspector
     // must project an observed connection-specific capability instead.
+    durability: ACP_ENGINE_DURABILITY,
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('acp'),

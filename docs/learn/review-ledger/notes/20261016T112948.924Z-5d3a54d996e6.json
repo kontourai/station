@@ -1,0 +1,9 @@
+{
+  "revision": "f9f54b3eb30c133910f41334210a5f2695e8d874",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed merged entry guidance at f9f54b3eb30: preserved the Codex-first chat, reachable phone pairing and launcher-authority instructions, followed by upstream account preferences. The first-send caller retains upstream personal approval selection, explicit/Agent precedence, account namespace and request scope; our late HTTP catch only settles an already observed exact-key start. The new section keeps cross-device account choices distinct from device hardware/access and does not promise unattended or cross-Station propagation. Canonical generated topics preserve all114upstream topics with only OutboundDispatchModule differing. This scoped merge review is not live cross-device/native qualification.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed this branch delta from upstream in useActiveChatSessionMessaging: moved bounded delivery-check helper and exact-key started retirement in the late transport catch. Upstream account-preference loading/saving refusal, first interactive send selection, explicit and Agent priority, queued approval namespace retirement, dispatch deferral and account-bound request scope are preserved. None changes approval intent or grants authority after a late error; this settles the already started send. The account/default section remains accurate for this bounded delta; no prose change or new live account-sync qualification is claimed.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

@@ -1694,6 +1694,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2374,6 +2376,8 @@ describe('Orchestration Routes', () => {
       userId: 'bound-user',
       // #2493: the test app has no auth boundary, so no grant.
       fullAccessGrant: null,
+      // #3568: stops only a same-key retry's join wait; never the send.
+      joinWaitSignal: expect.any(AbortSignal),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },

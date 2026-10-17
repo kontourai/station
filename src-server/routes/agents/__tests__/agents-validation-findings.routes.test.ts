@@ -155,7 +155,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       {
         capability: 'prompt',
         engineId: 'unknown',
-        message: "My Engine can't receive a system prompt from Station",
+        message: "My Engine can't receive instructions from Station",
       },
       {
         capability: 'skills',

@@ -96,7 +96,15 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/lib/startup-presentation.ts",
+
+    "src-ui/src/components/StartupHandoff.tsx",
+
+    "src-ui/src/platform/native/startupPresentation.ts",
+
+    "src-ui/src/__tests__/startup-presentation.browser.test.tsx"
   ],
 
   "checks": [

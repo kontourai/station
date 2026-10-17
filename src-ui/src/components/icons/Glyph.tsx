@@ -91,6 +91,10 @@ export const DatabaseGlyph = /* @__PURE__ */ glyph(
   'M3 4c0-1 2.2-1.8 5-1.8S13 3 13 4s-2.2 1.8-5 1.8S3 5 3 4Zm0 0v4c0 1 2.2 1.8 5 1.8S13 9 13 8V4m-10 4v4c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V8',
 );
 /** Two compared branch nodes (git-compare) — the Diff pane tile. */
+/** A personal dashboard: independent tiles rather than workflow columns. */
+export const DashboardGlyph = /* @__PURE__ */ glyph(
+  'M2.5 2.5h4v4h-4v-4Zm7 0h4v4h-4v-4Zm-7 7h4v4h-4v-4Zm7 0h4v4h-4v-4Z',
+);
 export const DiffGlyph = /* @__PURE__ */ glyph(
   'M4.5 6.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 0v7M11.5 9.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm0 0v-7',
 );
@@ -222,6 +226,9 @@ export const ShieldGlyph = /* @__PURE__ */ glyph(
 );
 export const SparkleGlyph = /* @__PURE__ */ glyph(
   'M8 1.5 9.2 5 12.5 6.5 9.2 8 8 11.5 6.8 8 3.5 6.5 6.8 5 8 1.5Zm4 8 .6 1.8 1.9.7-1.9.7-.6 1.8-.6-1.8-1.9-.7 1.9-.7.6-1.8Z',
+);
+export const SidebarGlyph = /* @__PURE__ */ glyph(
+  'M2.5 3h11v10h-11V3Zm3.5 0v10',
 );
 export const SunGlyph = /* @__PURE__ */ glyph(
   'M8 3.5v-2m0 13v-2m4.5-4.5h2m-13 0h2m7.7-3.2 1.4-1.4m-9.2 9.2 1.4-1.4m6.4 0 1.4 1.4M3.4 3.4l1.4 1.4M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z',

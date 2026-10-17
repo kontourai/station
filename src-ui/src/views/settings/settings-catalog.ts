@@ -5,6 +5,7 @@ import { interpolate } from '../../i18n/LocaleContext';
 import { pseudoLocalize } from '../../i18n/pseudo';
 
 export type SettingsSectionId =
+  | 'account-preferences'
   // #2182 dissolved 'station-config'. It was a card named after a FILE
   // FORMAT that had collected sixteen unrelated controls — a permission
   // screener beside a shell path beside a telemetry switch — and nobody
@@ -52,6 +53,7 @@ export interface SettingsCatalogEntry {
   configKeys?: readonly string[];
   /** The persistence authority that owns an edit, when this is editable. */
   scope?:
+    | 'account'
     | 'station'
     | 'defaults'
     | 'device'
@@ -87,6 +89,7 @@ export interface SettingsCatalogEntry {
 export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
 
 export const SETTINGS_SECTIONS = [
+  { id: 'account-preferences', title: 'Your account', group: 'you' },
   { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
@@ -154,6 +157,31 @@ export const SETTINGS_SECTIONS = [
 
 const SETTINGS_CATALOG_SOURCE = [
   {
+    id: 'account-preference-sync',
+    title: 'Import previous preferences',
+    section: 'account-preferences',
+    keywords: ['account', 'sync', 'device', 'migration', 'preferences'],
+  },
+  {
+    id: 'personal-codex-approval',
+    title: 'New Codex chats',
+    section: 'account-preferences',
+    keywords: ['codex', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-claude-approval',
+    title: 'New Claude chats',
+    section: 'account-preferences',
+    keywords: ['claude', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-muse-approval',
+    title: 'New Muse chats',
+    section: 'account-preferences',
+    keywords: ['muse', 'approval', 'full access', 'personal', 'default'],
+  },
+
+  {
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
     section: 'system',
@@ -207,6 +235,8 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Enable developer tools',
     section: 'developer-tools',
     keywords: ['developer', 'logs', 'telemetry', 'debug', 'advanced'],
+
+    configKeys: ['developerToolsEnabled'],
   },
   {
     id: 'shared-answers',
@@ -558,13 +588,6 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
-    id: 'sidebar-sections',
-    title: 'Sidebar sections',
-    section: 'appearance',
-    keywords: ['open chats', 'drafts', 'sidebar', 'hide', 'remove'],
-    configKeys: ['sidebarSections'],
-  },
-  {
     id: 'haptic-feedback',
     title: 'Haptic feedback',
     section: 'appearance',
@@ -656,6 +679,8 @@ const SETTINGS_MESSAGES = {
   paletteGroup: 'Settings',
   scopeStation: 'Saved to this Station.',
   scopeDefaults: 'Saved as Station defaults.',
+  scopeAccount:
+    'Saved to your account on this Station when signed in; otherwise saved on this device.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
@@ -792,6 +817,8 @@ function scopeForEntry(
   section: SettingsSectionId,
   configKeys: readonly string[] | undefined,
 ): NonNullable<SettingsCatalogEntry['scope']> {
+  if (section === 'account-preferences' || id === 'smooth-answer-reveal')
+    return 'account';
   const override = SETTING_SCOPE_OVERRIDES[id];
   if (override) return override;
   const declaredKey = configKeys?.[0];

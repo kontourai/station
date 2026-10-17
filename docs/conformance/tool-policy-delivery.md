@@ -503,8 +503,8 @@ Closing the sheet hides it without answering; that prompt remains dismissed
 until Answer or Needs approval reopens it. A newly opened prompt can open the
 sheet again. Sending and failure state survive hiding the sheet.
 
-Approval toasts open the originating conversation and send the selected
-decision. Accepted approval actions in notification history and Attention also
+Approval toasts send the selected decision. If the originating conversation
+is already visible, its layout stays in place; otherwise the action opens it. Accepted approval actions in notification history and Attention also
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 

@@ -9,6 +9,7 @@ import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
+import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -92,6 +93,7 @@ import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-ho
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
 import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-device-tools.js';
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
+import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
@@ -147,7 +149,10 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import {
+  type ClientOrigin,
+  UNKNOWN_CLIENT_ORIGIN,
+} from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
@@ -172,7 +177,10 @@ import {
   pairingScopeIncludes,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
-import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type {
+  EnvironmentRef,
+  ExecutionModelRequest,
+} from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
@@ -543,7 +551,13 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
+import {
+  type SessionStartResult,
+  startUnlessDelivered,
+} from '../../services/orchestration/session-message-delivery.js';
+import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
@@ -701,10 +715,9 @@ import {
 } from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
+  deviceSessionCookieName,
   installStationEnvelopeMarker,
-  LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
-  SECURE_DEVICE_SESSION_COOKIE,
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
@@ -4376,94 +4389,79 @@ export function configureRuntimeRoutes(
       config: context.configLoader,
     }));
 
-  function createDelegationResultDelivery(
-    eventStore: EventStore,
-  ): DelegationResultDelivery {
-    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
-    return new DelegationResultDelivery({
-      store: eventStore.delegationResultStore(),
-      foldEvents: (threadId) =>
+  /**
+   * Continue a conversation as an actor a durable record kept (#3158's
+   * delegating dispatch, #3568's queued sender), never as the operator and
+   * never with a full-access grant: a grant is one request's authority and is
+   * not stored. A throw is a clean refusal; an uncertain outcome is
+   * `indeterminate`.
+   */
+  async function continueAsRecordedActor(
+    input: {
+      conversationId: string;
+      message: string;
+      clientTurnId: string;
+      userId: string;
+      principal?: PrincipalRef;
+      ownerAttribution: StartOwnerAttribution | undefined;
+      clientOrigin: ClientOrigin;
+      ambientContext?: string;
+      model?: ExecutionModelRequest;
+    },
+    threadId: string,
+  ): Promise<SessionStartResult> {
+    try {
+      const handle = await continueExecutionTargetMessage(
+        {
+          ...input,
+          fullAccessGrant: null,
+          readAuthority: readAuthorityForExecution(input.userId),
+        },
+        context.orchestrationService,
+        remoteStations,
+      );
+      if (!isForegroundDispatchHandle(handle))
+        return { outcome: 'indeterminate' };
+      const started = handle as { sessionId?: unknown };
+      return {
+        outcome: 'started',
+        conversationId: handle.conversationId,
+        sessionId:
+          typeof started.sessionId === 'string' ? started.sessionId : threadId,
+        turnId: handle.providerTurnId,
+      };
+    } catch (error) {
+      if (isForegroundIndeterminateShape(error))
+        return { outcome: 'indeterminate' };
+      throw error;
+    }
+  }
+
+  /** The fold, ownership and bus ports both durable deliveries read. */
+  function conversationDeliveryPorts(eventStore: EventStore) {
+    return {
+      foldEvents: (threadId: string) =>
         eventStore
           .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
           .map((stored) => ({
             sequence: stored.sequence,
             event: stored.payload,
           })),
-      headSequence: (threadId) =>
+      headSequence: (threadId: string) =>
         eventStore.readSessionInventoryHighWater(threadId),
-      turnEvents: (threadId, turnId, methods, limit) =>
-        eventStore
-          .listTurnEventsByMethods(threadId, turnId, methods, limit)
-          .map((stored) => ({
-            ...(stored.turnId ? { turnId: stored.turnId } : {}),
-            method: stored.method,
-            payload: stored.payload,
-          })),
-      conversationOf: (threadId) =>
+      conversationOf: (threadId: string) =>
         eventStore.conversationForSession(threadId)?.conversationId ?? threadId,
-      currentSessionId: (conversationId) =>
+      currentSessionId: (conversationId: string) =>
         context.orchestrationService.currentConversationSessionId(
           conversationId,
         ),
-      coordinatorBusy: (threadId) =>
+      coordinatorBusy: (threadId: string) =>
         context.orchestrationService.hasActiveTurn(threadId),
-      sessionOwnerId: (threadId) =>
+      sessionOwnerId: (threadId: string) =>
         context.orchestrationService.sessionRecordedOwnerId(threadId),
-      // Delivery acts exactly as the delegating dispatch did (its user,
-      // owner attribution and principal, recorded when it armed), never as
-      // the operator and never with a stronger attribution.
-      start: stationServerEntry(
-        async ({
-          parentConversationId,
-          threadId,
-          actor,
-          text,
-          clientTurnId,
-        }) => {
-          try {
-            const handle = await continueExecutionTargetMessage(
-              {
-                conversationId: parentConversationId,
-                message: text,
-                clientTurnId,
-                userId: actor.userId,
-                principal: actor.principal,
-                ownerAttribution: actor.attribution,
-                fullAccessGrant: null,
-                clientOrigin: origin,
-                readAuthority: readAuthorityForExecution(actor.userId),
-              },
-              context.orchestrationService,
-              remoteStations,
-            );
-            if (!isForegroundDispatchHandle(handle))
-              return { outcome: 'indeterminate' as const };
-            const started = handle as { sessionId?: unknown };
-            return {
-              outcome: 'started' as const,
-              conversationId: handle.conversationId,
-              sessionId:
-                typeof started.sessionId === 'string'
-                  ? started.sessionId
-                  : threadId,
-              turnId: handle.providerTurnId,
-            };
-          } catch (error) {
-            if (isForegroundIndeterminateShape(error))
-              return { outcome: 'indeterminate' as const };
-            throw error;
-          }
-        },
-      ),
-      steer: stationServerEntry(
-        createDelegationResultSteerPort((command, dispatchContext) =>
-          context.orchestrationService.dispatchWithReceipt(
-            command,
-            dispatchContext,
-          ),
-        ),
-      ),
-      subscribe: (listener) =>
+      subscribe: (
+        listener: (event: { threadId: string; method: string }) => void,
+      ) =>
         context.eventBus.subscribe((frame) => {
           if (frame.event !== 'orchestration:event') return;
           const inner = (
@@ -4478,6 +4476,117 @@ export function configureRuntimeRoutes(
             listener({ threadId: inner.threadId, method: inner.method });
         }),
       logger: context.logger,
+    };
+  }
+
+  /** #3568: follow-ups a busy conversation holds until its turn ends. */
+  function createThreadInboxDelivery(
+    eventStore: EventStore,
+  ): ThreadInboxDelivery {
+    const service = context.orchestrationService;
+    return new ThreadInboxDelivery({
+      ...conversationDeliveryPorts(eventStore),
+      store: eventStore.threadInboxStore(),
+      // The live continuation's own rule (`canContinueConversation`): the
+      // conversation's recorded owner, or a reader a personal Station lets
+      // continue it.
+      mayContinue: (conversationId, userId) => {
+        if (
+          service.sessionRecordedOwnerId(
+            service.currentConversationSessionId(conversationId),
+          ) === userId
+        )
+          return true;
+        const authority = readAuthorityForExecution(userId);
+        return (
+          authority.mode === 'personal' &&
+          service.canUserReadSession(conversationId, authority)
+        );
+      },
+      deviceMaySend: (deviceId, since) =>
+        context.environmentSecurityService.deviceMaySendChat(deviceId, since),
+      inspectDelivery: (conversationId, clientTurnId) =>
+        service.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      start: stationServerEntry(
+        ({ conversationId, threadId, payload, clientTurnId }) =>
+          continueAsRecordedActor(
+            {
+              conversationId,
+              message: payload.message,
+              clientTurnId,
+              userId: payload.actor.userId,
+              principal: payload.actor.principal,
+              ownerAttribution: payload.actor.ownerAttribution,
+              clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
+              ...(payload.ambientContext
+                ? { ambientContext: payload.ambientContext }
+                : {}),
+              ...(payload.model ? { model: payload.model } : {}),
+            },
+            threadId,
+          ),
+      ),
+    });
+  }
+
+  function createDelegationResultDelivery(
+    eventStore: EventStore,
+  ): DelegationResultDelivery {
+    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
+    return new DelegationResultDelivery({
+      ...conversationDeliveryPorts(eventStore),
+      store: eventStore.delegationResultStore(),
+      turnEvents: (threadId, turnId, methods, limit) =>
+        eventStore
+          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .map((stored) => ({
+            ...(stored.turnId ? { turnId: stored.turnId } : {}),
+            method: stored.method,
+            payload: stored.payload,
+          })),
+      // Delivery acts exactly as the delegating dispatch did (its user,
+      // owner attribution and principal, recorded when it armed), never as
+      // the operator and never with a stronger attribution.
+      // #3568 fix round (D1): a re-driven start answers from the whole
+      // conversation's ledger first, so it can never land a second time in a
+      // successor Session the continuation reserves.
+      start: stationServerEntry(
+        ({ parentConversationId, threadId, actor, text, clientTurnId }) =>
+          startUnlessDelivered({
+            conversationId: parentConversationId,
+            inspect: () =>
+              context.orchestrationService.inspectTurnDelivery(
+                parentConversationId,
+                clientTurnId,
+                INTERNAL_SESSION_READ_SCOPE,
+              ),
+            start: () =>
+              continueAsRecordedActor(
+                {
+                  conversationId: parentConversationId,
+                  message: text,
+                  clientTurnId,
+                  userId: actor.userId,
+                  principal: actor.principal,
+                  ownerAttribution: actor.attribution,
+                  clientOrigin: origin,
+                },
+                threadId,
+              ),
+          }),
+      ),
+      steer: stationServerEntry(
+        createDelegationResultSteerPort((command, dispatchContext) =>
+          context.orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          ),
+        ),
+      ),
     });
   }
 
@@ -4502,11 +4611,32 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // #3568: the same constraint, for the same reason: placement runs outside
+  // any request. Optional: without it `/chat` refuses a busy send as before
+  // and the client keeps holding it.
+  const threadInbox = (() => {
+    if (!context.orchestrationEventStore || hostedTenantRegistry !== undefined)
+      return undefined;
+    try {
+      const delivery = createThreadInboxDelivery(
+        context.orchestrationEventStore,
+      );
+      delivery.start();
+      return delivery;
+    } catch (error) {
+      context.logger.warn('thread inbox delivery is unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  })();
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
       ...(delegationResults ? { delegationResults } : {}),
+      ...(threadInbox ? { threadInbox } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
@@ -5460,6 +5590,18 @@ export function configureRuntimeRoutes(
   // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
   // constructs a manifest store, a bindings store and a resolver, and the
   // projects routes below take theirs the same way.
+  context.app.route(
+    '/api/me',
+    createAccountPreferencesRoutes({
+      store: new AccountPreferencesStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      tenantId: (request) =>
+        tenantExecutionContextForRequest(request)?.tenantId,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
+  );
   const personalLayoutResolver =
     buildProjectResolutionRouteDeps(context).resolver;
   context.app.route(
@@ -7158,6 +7300,16 @@ export function configureRuntimeRoutes(
           error: error instanceof Error ? error.message : String(error),
         }),
       );
+  // #3568: follow-ups a restart left queued or mid-send. Never part of
+  // readiness, like the delegated results above.
+  if (threadInbox)
+    void kitLifecycleReady
+      .then(() => threadInbox.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('thread inbox reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
 
   return {
     schedulerService,
@@ -8101,7 +8253,10 @@ export function configureDevicePairingPublicRoutes(
     // in a browser, and the holder loses nothing they still needed. Leaving it
     // live was the common outcome of the tray's docs launch (#1259), since the
     // default browser usually already holds a session.
-    const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
+    const existingCredential = parseDeviceSessionCookie(
+      c.req.header('cookie'),
+      (candidate) => pairing.identifyDevice(candidate) !== null,
+    );
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
@@ -8172,9 +8327,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,
@@ -8632,9 +8788,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,

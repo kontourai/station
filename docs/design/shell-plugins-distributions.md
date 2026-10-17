@@ -173,8 +173,8 @@ behavior.
   `layoutOwner()` ([layout.ts](../../packages/contracts/src/layout.ts)). A
   Layout has no subject field.
 - Boards exist:
-  - The sidebar `+` creates an "Untitled Board" and enters rename. The section,
-    and with it the `+`, renders nothing while no Board exists
+  - The Personal Boards `+` creates an "Untitled Board" and enters rename.
+    The section and its `+` remain visible when no Board exists
     ([ProjectSidebarBoards.tsx](../../src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx)).
   - The palette offers "New Board".
   - Rename, delete and promote exist

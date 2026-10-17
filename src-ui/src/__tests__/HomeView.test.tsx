@@ -1422,10 +1422,11 @@ describe('HomeView', () => {
 
     // Shown once: in the Continue card, not again in the list below it.
     expect(screen.getAllByText('Durable local work')).toHaveLength(1);
-    // The Continue row reads like every work row: the honest agent fallback
-    // and the project, never an invented Agent.
+    // The Continue row reads like every work row: no invented Agent, the
+    // project, and the Task's own status rather than a session lifecycle.
     expect(continueRow().textContent).toContain('Durable local work');
-    expect(continueRow().textContent).toContain('Agent unavailable · station');
+    expect(continueRow().textContent).toContain('No agent assigned · station');
+    expect(continueRow().textContent).toContain('Task · To do');
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();

@@ -7,11 +7,11 @@ and what it leaves to other packages.
 
 The API may change in any release until a second consumer exists.
 
-It is `private: true` in this checkout. `publish-packages.yml` exchanges an
-OIDC token for every public workspace, and npm can attach a trusted publisher
-only to a name that already exists, so a public manifest would fail every
-release until the first version is published another way. Publishing is an
-owner decision.
+It remains `private: true` in this checkout until its first functional release
+is qualified and the manifest is changed in a reviewed PR. CI publishing uses
+npm Trusted Publisher for `kontourai/station`, workflow `publish-packages.yml`.
+A registry bootstrap or placeholder enables setup; it does not qualify a
+functional package release.
 
 The published package is compiled ES modules (`dist/*.js`) with type
 declarations (`dist/*.d.ts`), built by `npm run build`. It runs on plain Node 24
@@ -87,7 +87,8 @@ const storage = openSqliteKernelStorage({
 - The host creates a bound table. The adapter checks its columns at open and
   never creates or alters it, and creates no `monument_*` table for a machine
   it is not given: bind it, or mark it `'unused'`, and its commands are
-  refused. An area left out keeps the adapter's own tables.
+  refused. An area left out keeps the adapter's own tables. The `inbox` area
+  has no bound form: it is the adapter's own table or `'unused'`.
 - `ownerIdField` is the `owner_json` field that names the owner. It is read
   and written under that name, never as `id`, so a writer from before the
   kernel still parses the rows.
@@ -105,8 +106,10 @@ it, and a command that throws or is refused undoes only itself.
 
 ## Host boundary rows and terminal facts
 
-Boundary binding is available for the phase-2b integration; Station's boundary
-coordinator has not switched to it yet. The binding supports the default
+Station's production boundary coordinator uses this binding for create,
+transition, remove, accepted-turn recording, terminal observation and listing.
+Station retains sealed-task admission, storage-error classification and
+process-owner reconciliation. The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
 `owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
 layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,
@@ -121,6 +124,7 @@ const storage = openSqliteKernelStorage({
   tables: {
     turnDedup: 'unused',
     requestKeys: 'unused',
+    inbox: 'unused',
     turnBoundary: {
       table: 'host_boundaries',
       ownerEncoding: 'columns',
@@ -146,7 +150,7 @@ Terminal callbacks are fixed at open. Command context carries only liveness
 and limits; it cannot change the terminal authority. Adapter authors pass
 `KernelTerminalFacts` as the final argument to `runKernelTransactionStep`
 (`./adapter`), from their storage-open configuration.
-Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with either
+Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with any
 host callback, is rejected before any command. Host mode creates no terminal table. With every area bound or unused, the adapter creates no `monument_*` tables.
 
 `creationSequence` is optional and specific to a bound SQLite table. Its
@@ -163,18 +167,37 @@ above the fence. A missing terminal retains fenced rows. Rows with no fence
 and turn-scoped terminals retain the timestamp generation check; lifecycle
 and task-dispatch rows retain their separate settlement owners.
 
-This API does not move Station's runtime terminal reconciler. Its current
-`hasPossibleEffect` deletes event-retired rows. Replacing that path with a
-read-only command requires an event-authoritative read view and an explicit
-choice of when physical retirement runs; opting a writing participant into
-reads would take the write lock and does not satisfy that requirement.
+A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
+open (the SQLite binding receives `database` first). Only
+`turnBoundary.hasPossibleEffect` excludes those IDs from its raw thread rows.
+`get`, `listThread`, `listAll`, listing and recovery still see the retained rows;
+the default memory and SQLite terminal behavior is unchanged. No command or
+context can replace these facts.
+
+Station uses its canonical event log for that read projection, with the exact
+same predicate as physical retirement: session sequence strictly above the
+creation fence, timestamp fallback for NULL legacy fences, turn timestamp and
+provider-ID matching, and the existing lifecycle, task-dispatch, admission-error
+and recovery-terminal exclusions. Its polling path takes a deferred read
+transaction, does not drain pending transitions, and can read committed facts
+while a peer holds the WAL writer. An uncommitted terminal is invisible; after
+commit the next poll can answer inactive while the boundary row remains.
+
+Physical cleanup joins write-only participant admission for both create and
+accepted-turn recording, before occupancy and capacity decisions. It rolls back
+with the command or outer event append. Boot cleanup still precedes raw owner
+recovery. Claim, prepare, observe and reconcile paths retain pending-transition
+retries; until a writer retries, polling conservatively reads the unresolved
+stored fact. No Station participant opts into `observeReads`.
 
 `hostBoundaryConformanceCases` in `./testing` is a portable contract for hosts
 that bind a creation fence. Its harness supplies a durable creation-sequence
 source and terminal callbacks, without exposing SQL to the cases. It verifies
 capture and preservation across transition/reopen, terminal lookup, missing
-facts, strict ordering (earlier, equal, later), and acceptance against the fixed
-host terminal authority. The default-table suite
+facts, strict ordering (earlier, equal, later), acceptance against the fixed
+host terminal authority, and live read-projection facts across reopen while raw
+listing and dead-owner recovery retain the rows. The SQLite binding also rejects
+a projection callback in kernel-terminal mode at open. The default-table suite
 remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart

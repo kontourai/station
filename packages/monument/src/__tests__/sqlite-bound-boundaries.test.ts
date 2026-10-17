@@ -37,6 +37,8 @@ function tables(
   return {
     turnDedup: 'unused',
     requestKeys: 'unused',
+    // #3568: the inbox is another machine this storage does not own.
+    inbox: 'unused',
     turnBoundary: {
       table: 'host_boundaries',
       ownerEncoding,
@@ -356,6 +358,7 @@ it.each([
   'host without terminalSeen',
   'kernel with terminalSeen',
   'kernel with terminalSequence',
+  'kernel with retiredBoundaryIds',
 ] as const)('rejects %s at open', (misconfiguration) => {
   const db = new DatabaseSync(':memory:');
   callbacks.push(() => db.close());
@@ -378,6 +381,10 @@ it.each([
           terminalSequence:
             misconfiguration === 'kernel with terminalSequence'
               ? () => 17
+              : undefined,
+          retiredBoundaryIds:
+            misconfiguration === 'kernel with retiredBoundaryIds'
+              ? () => []
               : undefined,
         },
       },
@@ -453,12 +460,16 @@ for (const encoding of ['json', 'columns'] as const) {
                 tables: {
                   turnDedup: 'unused',
                   requestKeys: 'unused',
+                  // #3568: the inbox is another machine this storage does not own.
+                  inbox: 'unused',
                   turnBoundary: {
                     ...binding,
                     terminalSeen: (_db, thread, turn) =>
                       facts.terminalSeen(thread, turn),
                     terminalSequence: (_db, thread, id) =>
                       facts.terminalSequence(thread, id),
+                    retiredBoundaryIds: (_db, thread) =>
+                      facts.retiredBoundaryIds?.(thread) ?? [],
                   },
                 },
                 prepare: (db) => db.exec(schema),

@@ -11,11 +11,11 @@
  */
 import type { ApprovalGuardianConfig } from '@kontourai/station-contracts/config';
 import { InfoTip } from '../../components/InfoTip';
-import { PageRow } from '../../components/PageRow';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { Toggle } from '../../components/Toggle';
 import type { RegistryRowComponentProps } from './registry-row-types';
 import { SettingDescription } from './SettingDescription';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 
 export function ApprovalGuardianEditor({
   definition,

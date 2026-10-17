@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -9,13 +8,7 @@ import {
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
   WorkItemResultProjector,
 } from '../work-item-result-projector.js';
-import {
-  at,
-  context,
-  open,
-  owner,
-  tables,
-} from './fixtures/monument-boundary.js';
+import { at, open } from './fixtures/monument-boundary.js';
 
 const metrics = vi.hoisted(() => ({ count: vi.fn(), duration: vi.fn() }));
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -69,7 +62,7 @@ function workItemCandidate() {
   return projected;
 }
 for (const failOuter of [false, true]) {
-  test(`EventStore owns the real commit with a nested Monument boundary, admission, metrics and publication (outer rollback: ${failOuter})`, () => {
+  test(`EventStore owns the real commit with the production boundary authority, admission, metrics and publication (outer rollback: ${failOuter})`, () => {
     const root = makeTempDir('monument-append-commit-');
     const path = join(root, 'events.sqlite');
     const store = open(path);
@@ -108,7 +101,7 @@ for (const failOuter of [false, true]) {
           .get(),
         boundary: !!peer
           .prepare(
-            "SELECT 1 FROM orchestration_turn_boundaries WHERE boundary_id = 'nested-boundary'",
+            "SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = 'session-a' AND provider_turn_id = 'turn-a'",
           )
           .get(),
         association: !!peer
@@ -134,13 +127,9 @@ for (const failOuter of [false, true]) {
         notices.push({ deferred: notice.deferred });
       },
     });
-    const kernel = openSqliteKernelStorage({
-      database: db,
-      tables,
-      participants: [
-        { name: 'nested-commit-probe', commit: () => capture('kernel-hook') },
-      ],
-    });
+    const prepared = store
+      .sessionTurnBoundaryAuthority()
+      .prepareProviderTurn('session-a', 'turn-a', at(1));
     const event: CanonicalRuntimeEvent = {
       eventId: 'event-a',
       provider: 'claude',
@@ -154,20 +143,9 @@ for (const failOuter of [false, true]) {
       status: 'success',
     };
     const coCommit = () => {
-      const result = kernel.executeSync(
-        {
-          type: 'turnBoundary.recordAccepted',
-          boundaryId: 'nested-boundary',
-          threadId: 'session-a',
-          providerTurnId: 'turn-a',
-          owner,
-          now: at(1),
-        },
-        context(),
-        { withinHostTransaction: true },
-      );
+      const result = prepared.record();
       expect(result).toEqual({ kind: 'applied' });
-      capture('kernel-return');
+      capture('boundary-return');
     };
     if (failOuter) {
       const exec = db.exec.bind(db);
@@ -186,7 +164,7 @@ for (const failOuter of [false, true]) {
       expect(
         peer
           .prepare(
-            "SELECT 1 FROM orchestration_turn_boundaries WHERE boundary_id = 'nested-boundary'",
+            "SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = 'session-a' AND provider_turn_id = 'turn-a'",
           )
           .get(),
       ).toBeUndefined();
@@ -198,23 +176,16 @@ for (const failOuter of [false, true]) {
       observations.length = 0;
     }
     expect(store.appendEvent(event, [], coCommit)).toBe(1);
-    expect(observations.filter((o) => o.phase.startsWith('kernel'))).toEqual([
+    expect(observations.filter((o) => o.phase === 'boundary-return')).toEqual([
       {
-        phase: 'kernel-hook',
-        inTransaction: true,
-        event: false,
-        boundary: false,
-        association: false,
-      },
-      {
-        phase: 'kernel-return',
+        phase: 'boundary-return',
         inTransaction: true,
         event: false,
         boundary: false,
         association: false,
       },
     ]);
-    expect(observations.filter((o) => !o.phase.startsWith('kernel'))).toEqual(
+    expect(observations.filter((o) => o.phase !== 'boundary-return')).toEqual(
       expect.arrayContaining(
         ['admission', 'metric-counter', 'metric-duration', 'publication'].map(
           (phase) => ({

@@ -210,14 +210,36 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
       reentries[classification]++;
     }
   }
+  const candidateKey = (run) => `${run.head_branch}:${run.head_sha}`;
+  const isCiWorkflow = (run) =>
+    run.path === '.github/workflows/ci.yml' ||
+    (run.path == null && run.name === 'PR: CI');
+  const ownsIntegration = (run) =>
+    isCiWorkflow(run) &&
+    jobs.some(
+      (job) =>
+        job.name === 'Merge-queue regression' &&
+        job.health_run_key === `${run.id}:${run.run_attempt ?? 1}`,
+    );
+  // PR: CI predates integration ownership; the attempt-bound aggregate job
+  // distinguishes it. Select before filtering cancelled/unfinished evidence.
+  const currentOwners = new Set(
+    runs
+      .filter((r) => r.event === 'merge_group' && ownsIntegration(r))
+      .map(candidateKey),
+  );
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
-      [
-        'Merge-queue regression',
-        'Merge integration',
-        'PR: Merge integration',
-      ].includes(r.name) &&
+      (isCiWorkflow(r) ||
+        [
+          'Merge-queue regression',
+          'Merge integration',
+          'PR: Merge integration',
+        ].includes(r.name)) &&
+      (isCiWorkflow(r)
+        ? ownsIntegration(r)
+        : !currentOwners.has(candidateKey(r))) &&
       r.conclusion != null &&
       r.conclusion !== 'cancelled' &&
       r.run_started_at &&

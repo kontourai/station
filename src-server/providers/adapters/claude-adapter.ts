@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { InputRequestForm } from '@kontourai/station-contracts/input-request';
 import type {
   CapabilityDeliveryChannelReport,
@@ -1206,6 +1207,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       'image-input',
       'file-input',
     ],
+    durability: STEERING_ENGINE_DURABILITY,
     continuity: this.continuity,
     connectionId: engineConnectionId('claude'),
     builtin: true,
