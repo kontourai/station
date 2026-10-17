@@ -59,10 +59,10 @@ the draft. Catalog browsing retains Project permissions and approval defaults.
 matches the saved connection; it does not describe connection health.
 
 When Station Control is available to an Agent, Personal Board authoring uses
-three actions from its **Station** source: `list_personal_boards` and
-`get_personal_board` are readers; `propose_personal_board` writes a private
-proposal. Open the source and select those actions for an Agent that should
-build dashboards. Review the proposal action's approval choice beside its
+three actions from that source: `list_personal_boards` and `get_personal_board`
+are readers; `propose_personal_board` writes a private proposal. Search
+**Add tools** for `propose_personal_board`, then open the matching source and
+select those actions for an Agent that should build dashboards. Review the proposal action's approval choice beside its
 selection. These tools cannot publish: the person reviews and applies the
 proposal in the Board. **Build with chat** offers context in a new projectless
 chat without sending it; see [Personal Boards](../user/personal-boards.md).
