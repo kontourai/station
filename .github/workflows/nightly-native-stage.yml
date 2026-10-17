@@ -363,6 +363,9 @@ jobs:
     environment: native-release
     timeout-minutes: 120
     permissions: { contents: read, id-token: write, attestations: write }
+    env:
+      STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+      STATION_CHANNEL: nightly
     steps:
       - id: macos_cohort_deadline
         name: Reserve one fixed macOS cleanup deadline
@@ -499,6 +502,9 @@ jobs:
     environment: native-release
     timeout-minutes: 120
     permissions: { contents: read, id-token: write, attestations: write }
+    env:
+      STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+      STATION_CHANNEL: nightly
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.source_sha }}', fetch-depth: 0, persist-credentials: false }

@@ -177,6 +177,64 @@ The installer's defaults are unchanged. `install.sh` already accepts a stable
 or preview manifest through `STATION_INSTALL_PUBLIC_MANIFEST_URL`, and making
 these URLs its default is #2960.
 
+## Author telemetry in official builds
+
+The repository **Actions variable** `STATION_AUTHOR_TELEMETRY_ENDPOINT` is public
+build metadata. It is embedded in distributed JavaScript, so it must never
+contain a secret. An unset or empty variable produces an empty constant and no
+author sink. Runtime environment variables cannot enable that sink in an
+already built binary or a source checkout.
+
+Setting this variable is an **owner-gated activation**, separate from merging
+these workflows. After the owner has authorized the receiver and real data
+flow, an owner with repository administration access can open **Settings →
+Secrets and variables → Actions → Variables**, create the repository variable
+`STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. The
+build rejects malformed URLs, credentials, queries, fragments and whitespace.
+Do not set it as a secret. Do not set it, deploy a receiver, tag, publish or
+dispatch a release as part of an implementation or verification task.
+Removing the variable disables the author endpoint in subsequent builds;
+previously distributed bytes retain their baked value. User telemetry policy
+and opt-out still govern whether an available sink may send.
+
+The injection boundary is the official producer, not a workflow-wide `env`:
+
+| Build path | Endpoint and channel |
+| --- | --- |
+| Tagged stable/preview desktop, macOS/Windows/Linux (`release.yml`) | Repo variable in desktop producer jobs only; existing preflight channel feeds the server's `STATION_CHANNEL` build stamp. Tauri resource builds inherit it. |
+| Nightly desktop, macOS/Windows (`nightly-native-stage.yml`, called by `nightly.yml`) | Repo variable only for official main Nightly runs; server build stamp records `nightly`. The Windows wrapper and nested resource builds inherit it. There is no Nightly Linux release producer. |
+| Five portable server archive targets, stable/preview/nightly (`portable-server-archives.yml`) | Repo variable only in the server/UI build step, for official tag or main Nightly callers with release inputs; the existing `inputs.ring` supplies `STATION_CHANNEL`. Direct dispatch and PR packaging proof get no endpoint. |
+| npm CLI stable (`publish-packages.yml`) | Repo variable only in the CLI build step during an official main publish dispatch. The existing `STATION_CLI_BUILD_CHANNEL` stamp remains authoritative. Main push/version-PR builds get no endpoint. |
+| npm CLI Nightly (`nightly.yml`) | Repo variable only in the exact-source Nightly CLI build; existing CLI channel stamp remains `nightly`. |
+| npm CLI preview | No preview npm publisher exists. Adding one needs its own reviewed release path; do not repurpose stable publication. |
+| iOS device/simulator and Android stable/preview/nightly | These clients build the UI, not a Node server. No server author constant or author sink is embedded in those apps. A connected host uses its own build's endpoint and channel. Mobile channel metadata remains owned by the native release pipeline. |
+| Portable source archives (`station-portable.tar.gz`) | Source archives contain no built server. Building them on the user's machine remains a source build without an author endpoint. Use the prebuilt server archives above for an official server stamp. |
+| Source, development, PR/fork CI, Docker images | No endpoint. Docker release producers are deliberately outside desktop job environments. |
+
+The CLI endpoint stamp does not introduce a CLI sender: the CLI installs or
+connects to a separately distributed host, whose server stamp owns telemetry.
+The server's existing `__STATION_SERVER_BUILD__.channel` metadata is the channel
+source for telemetry; no parallel telemetry channel setting is added. This
+preserves ADR 0020's separate client/host identities and ring-tagged build
+model. A future promotion model must revisit baked channel metadata together
+with the existing release identity, rather than relabeling these bytes.
+
+[`author-telemetry-build.mjs`](../../scripts/lib/author-telemetry-build.mjs)
+refuses a nonempty endpoint outside the official repository's release workflow
+contexts or when it disagrees with the existing build channel.
+[`check-author-telemetry-workflows.mjs`](../../scripts/check-author-telemetry-workflows.mjs)
+checks the producer allowlist and excludes workflow-wide, PR and container
+injection; the ordinary actionlint gate runs it too. The focused build test
+runs the real server and CLI bundlers as children, checks exit statuses and
+baked metadata, and exercises URL/context rejection and workflow leaks:
+
+```sh
+npm run test:focused -- scripts/__tests__/author-telemetry-build.test.ts
+```
+
+These are build and policy checks. They do not deploy a receiver, enable data
+flow, or prove signed native artifacts or store delivery.
+
 ## Publish a preview
 
 Release actions below require an authorized release handoff. Use a clean
