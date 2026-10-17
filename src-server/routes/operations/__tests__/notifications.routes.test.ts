@@ -452,6 +452,7 @@ describe('Notification Routes', () => {
         await app.request(`/${n.id}`, { method: 'DELETE' }),
       );
       expect(body.success).toBe(true);
+      expect(clone).toHaveBeenCalledWith(expect.objectContaining({ id: n.id }));
       expect(clone).not.toHaveBeenCalledWith(
         expect.objectContaining({ id: unrelated.id }),
       );
@@ -469,6 +470,9 @@ describe('Notification Routes', () => {
         expect(
           (await app.request(`/${later.id}`, { method: 'DELETE' })).status,
         ).toBe(200);
+        expect(clone).toHaveBeenCalledWith(
+          expect.objectContaining({ id: later.id }),
+        );
         expect(clone).not.toHaveBeenCalledWith(
           expect.objectContaining({ id: unrelated.id }),
         );

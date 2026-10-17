@@ -86,9 +86,9 @@ function wire(
   const canUserReadSession =
     overrides.canUserReadSession ??
     vi.fn((_sessionId: string, _authority: SessionReadAuthority) => true);
-  const listNotifications =
-    overrides.listNotifications ??
-    vi.fn(async (): Promise<Notification[]> => []);
+  const getNotification =
+    overrides.getNotification ??
+    vi.fn(async (_id: string): Promise<Notification | undefined> => undefined);
   const logger_ = { warn: vi.fn() };
   const wiring = wireNotificationDelivery({
     enabled: true,
@@ -110,7 +110,7 @@ function wire(
     webPushService: { send },
     ...overrides,
     canUserReadSession,
-    listNotifications,
+    getNotification,
   });
   const pushedTo = () =>
     send.mock.calls.map(([subscription]) =>
@@ -120,7 +120,7 @@ function wire(
     eventBus,
     send,
     canUserReadSession,
-    listNotifications,
+    getNotification,
     wiring,
     pushedTo,
     logger_,
@@ -193,10 +193,12 @@ describe('wireNotificationDelivery (production composition)', () => {
         id: read ? 'n-read' : 'n-unread',
         ...(read ? { status: 'dismissed' as const } : {}),
       });
-      const { eventBus, pushedTo, listNotifications } = wire({
+      const { eventBus, pushedTo, getNotification } = wire({
         focus: focusOnDesk,
         inAppLiveness: { isLive: () => true },
-        listNotifications: vi.fn(async () => [record]),
+        getNotification: vi.fn(async (id: string) =>
+          id === record.id ? record : undefined,
+        ),
       });
       eventBus.emit(
         SERVER_EVENTS.NOTIFICATION_DELIVERED,
@@ -206,7 +208,7 @@ describe('wireNotificationDelivery (production composition)', () => {
       // The person is at their desk: the phone waits.
       expect(pushedTo()).toEqual([]);
       await vi.advanceTimersByTimeAsync(180_000);
-      expect(listNotifications).toHaveBeenCalled();
+      expect(getNotification).toHaveBeenCalledWith(record.id);
       expect(pushedTo()).toEqual(read ? [] : ['phone', 'tablet']);
     }
   });
