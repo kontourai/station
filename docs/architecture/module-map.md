@@ -3925,8 +3925,9 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 emulation use that same authority path and record attributable actions. Select
 runs prototype-based DOM access in an isolated world; it does not grant general
 page evaluation. Human takeover clears existing snapshot refs, including after
-hand-back. Control operations capture a lease fence and check it
-around asynchronous steps. JavaScript evaluation additionally needs the
+hand-back. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+records the authority constraints and proposed cross-engine binding. Control
+operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are

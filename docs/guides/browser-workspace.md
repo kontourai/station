@@ -126,7 +126,7 @@ session whose history no longer keeps it is refused rather than assumed.
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
-The [ADR 0019 supplement](../adr/0022-browser-agent-actions-and-bound-channel.md)
+The [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
 describes the proposed cross-engine binding and remaining action slices. Existing
 passthrough tokens have not been promoted to bound credentials.
 

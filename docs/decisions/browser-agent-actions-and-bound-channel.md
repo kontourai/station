@@ -1,8 +1,24 @@
-# ADR 0022 — Browser Agent actions and cross-engine binding
+---
+status: current
+subject: Browser Agent actions and cross-engine binding
+decided: 2026-10-17
+evidence:
+  - kind: adr
+    ref: docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md
+  - kind: pr
+    ref: https://github.com/kontourai/station/pull/3779
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/3530
+  - kind: doc
+    ref: docs/guides/browser-workspace.md
+---
 
-**Status:** Accepted constraints and incremental action implementation,
-2026-10-17. Cross-engine channel design is proposed and NOT_IMPLEMENTED.
-This supplements [ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
+# Browser Agent actions and cross-engine binding
+
+This record holds the current authority constraints and incremental action
+implementation. The cross-engine channel design remains proposed and
+NOT_IMPLEMENTED. It builds on frozen
+[ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
 whose historical text remains unchanged. The [Browser guide](../guides/browser-workspace.md)
 owns the current inventory.
 
