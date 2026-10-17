@@ -63,19 +63,26 @@ replies, continue chats, and review work. Start on your computer:
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 
-Creating an invitation requires an operator session. A browser opened through a
-launcher sign-in link may use Station without being allowed to pair other
-Devices. If it says this device cannot create pairing codes, run
-`station-nightly environment offer` on the computer running your Nightly install
-(or `./station environment offer` from a source checkout). Approve the phone’s
-request there with `station-nightly environment access approve --latest --force`.
-If Station restarts, keep it running and choose **Try again**. The browser
-rechecks access without reloading. Returning to the app or restoring the network
-also retries an unavailable host. If access was refused, **Request access**
-starts a new approval request for the selected Station.
+A browser opened with the host's one-time sign-in link can create invitations
+and manage paired devices. Choose Read-only, Standard or Full device access
+before creating the invitation;
+anyone holding it can pair once before it expires, without another approval.
+Cancel an unused invitation to prevent it being redeemed. Revoking a paired
+device removes access it already received.
 
-Use the launcher and home for the same Station throughout. The regular browser
-sign-in link does not grant pairing-administration authority.
+For a terminal-only host, run `station-nightly environment offer` on the
+computer running your Nightly install (or `./station environment offer` from a
+source checkout). This prints a single-use invitation with Standard access.
+Use `--scope=orchestration:read` for read-only access or `--require-approval`
+to review the recipient before granting access.
+
+A browser that arrives without an invitation can choose **Request access**.
+Approve that request in a trusted session or with the displayed command on the
+Station host. Bare host-approval commands discover the running Station in the
+selected local home before consulting saved Station defaults, so a saved remote
+Station does not override that local instance. Use the same home and channel
+that started Station; a remote host requires running the command there, such
+as over SSH.
 
 The address in that invitation must be reachable from your phone. `localhost`
 means the device you are using, so a computer’s localhost address does not reach

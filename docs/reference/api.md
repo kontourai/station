@@ -3717,10 +3717,39 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 /api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
 account session.
 
+## Create a device invitation
+
+`POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
+`approval: "on-create" | "on-request"`. The host CLI and pairing panel send
+`on-create`: creating the invitation approves the selected access, and its
+first recipient can request and exchange it once before expiry without another
+approval. The returned offer retains its existing wire shape; the approval
+record is private server state. `DELETE /api/pairing/offers/:offerId` cancels it.
+
+The default is `on-request` for older callers and the desktop SSH flow. Public
+access requests always need confirmation; a requester cannot set its own
+approval policy. Preapproved offers must be ordinary Devices with an explicit
+scope that excludes `access:manage` and protected operator-promotion scopes,
+including `relay:manage`, `access:approve` and `consent:decide`. Explicit
+`coding:exec` and `approval:full-access` Device-use grants remain available.
+Invitations do not grant the creator's private host-possession provenance.
+
+A host-issued browser session may create/cancel invitations, decide pending
+requests and manage already-paired Devices while retaining its effective
+`access:manage`. Its server-recorded `home-possession` locality and `ui-bootstrap`
+mint kind distinguish it from an ordinary Device with the same wire scope.
+This does not grant operator identity, people/account administration, passkey
+administration, or the native consent broker's `local-grant` authority.
+The browser cannot transfer protected management or consent scopes through
+either offer mode, final request approval, or newly added Device permissions.
+Existing operator request-time approval and explicitly promoted Device
+administrators keep their separate authority.
+
 ## Decide a pending paired-device request
 
-A current operator, qualifying local-grant credential, or Device explicitly
-promoted with `access:approve` can use these exact routes:
+A current operator, qualifying local-grant credential, host-issued browser
+session with its private `ui-bootstrap` provenance and effective `access:manage`,
+or Device explicitly promoted with `access:approve` can use these exact routes:
 
 - `GET /api/pairing/requests`
 - `POST /api/pairing/requests/:requestId/confirm`
@@ -3747,7 +3776,8 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential or a qualifying local-grant credential; an `access:approve` Device or
+credential, a qualifying local-grant credential or that host-issued browser
+session; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device

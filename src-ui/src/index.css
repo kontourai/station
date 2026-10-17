@@ -5845,6 +5845,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
 .chat-dock__content-area {
+  min-width: 0;
   display: flex;
   flex: 1;
   min-height: 0;

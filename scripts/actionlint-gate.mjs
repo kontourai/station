@@ -1675,9 +1675,21 @@ function referencesCredential(job) {
  * base-only PR title topology may read the token; its full shape is
  * independently checked by primaryCiRouterFindings.
  */
+function isExactDeliveryPlanner(job) {
+  return (
+    Boolean(job) &&
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(job)))
+      .digest('hex') ===
+      'efa2060d84816e992561847620bdedf194161da42421ed2054be0ae336e41be2'
+  );
+}
+
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
+      if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
+        return false;
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {
@@ -2577,6 +2589,12 @@ function primaryCiRouterFindings(file, document) {
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
       !(jobId === 'source-policy' && isExactSourcePolicyCall(job)) &&
+      !(
+        jobId === 'delivery-plan' &&
+        hasExactKeys(job.permissions, ['contents', 'pull-requests']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions['pull-requests'] === 'read'
+      ) &&
       !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
@@ -2634,7 +2652,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(orderedPolicy(deliveryJobs)))
       .digest('hex') !==
-    '75f482a9585254aef98c8068f5d381c91da241dd1eb632130c370b636c6b4f78'
+    '9fece1308abc7868f6dc46d1ac46d0c871e80b417b6878036b01bf4b71fef371'
   )
     findings.push({
       file,
@@ -2967,6 +2985,22 @@ function orderedPolicy(value) {
   return value;
 }
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
+  if (file === '.github/workflows/pr-ci-supersession.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest ===
+      '99c330b45152a22b47092698f8be1d3007d99b616639b3b4c617bbbb9ad25a05'
+      ? []
+      : [
+          {
+            file,
+            jobId: 'cancel-obsolete',
+            message:
+              'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/source-verification-policy.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(orderedPolicy(document)))

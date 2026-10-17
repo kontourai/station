@@ -1,0 +1,7 @@
+{
+  "revision": "e281c0f0fe7fc0e665f427fe2bb1b44dd00075e0",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Verified final optional-call narrowing in the UI child display fold; it preserves cards for turn-anchored children with no call ID. UI typecheck and 37 mounted tests pass. The canonical Codex browser geometry check passes at 1280px, and full-screen 390px captures were visually inspected with the result and transcript action together. Claims remain fixture/source evidence only.","inputs":["docs/design/placement.md","src-ui/src/components/chat/transcript-child-work.ts"]}
+  ]
+}

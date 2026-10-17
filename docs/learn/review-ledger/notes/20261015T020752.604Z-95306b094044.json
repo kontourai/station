@@ -1,0 +1,7 @@
+{
+  "revision": "da594305fdc738ffe666301495fbc1feae75d888",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the documented live/settled UIBlock pipeline and chat form submission against the changed ChatMessageList, StreamingMessage and MessageContent. #3671 adds child display blocks and completion-notice deduplication but retains UIBlock ingestion, rendering, identity and sender calls. The historical/current classification and form dispatch claims need no prose change; no provider/native qualification is inferred.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/StreamingMessage.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

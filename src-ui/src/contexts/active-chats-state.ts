@@ -241,6 +241,8 @@ export type EphemeralMessage = ChatMessage & {
    * set by `createEphemeralMessageState` — every producer goes through
    * `addEphemeralMessage` so this (and `id`/`timestamp`) is never missing. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
 };
 
 export type ToolCallState = {
@@ -1758,6 +1760,7 @@ export function createEphemeralMessageState(
     };
     sendFailure?: boolean;
     queuedRetry?: boolean;
+    childWorkKey?: string;
     backgroundTaskNotice?: BackgroundTaskNotice;
   },
   now: () => number,

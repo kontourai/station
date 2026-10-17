@@ -181,6 +181,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopeIncludes,
+  parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import type {
@@ -626,6 +627,7 @@ import {
   type DeviceAccessApproval,
   DevicePairingError,
   type DevicePairingService,
+  isProtectedPairingPromotionScope,
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
@@ -7681,6 +7683,8 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
   'endpoint,kind',
   'endpoint,kind,scope',
   'endpoint,scope',
+  'approval,endpoint',
+  'approval,endpoint,scope',
 ]);
 
 async function readPairingOfferJson(
@@ -7841,7 +7845,7 @@ function isDirectLoopbackCaller(c: {
  * as this user, satisfies all three. That is unchanged from the direct-socket
  * path this widens and is why the credential it mints keeps mint kind
  * `ui-bootstrap`, which the native consent broker refuses (station#3677 PR 3)
- * — this buys presentation and log-read locality, never approval authority.
+ * — browser Device administration never becomes native consent authority.
  */
 function isSameMachineBrowserCaller(c: {
   env: unknown;
@@ -8351,7 +8355,15 @@ export function configureDevicePairingPublicRoutes(
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
-    if (existingDevice) {
+    // A fresh launcher can upgrade an ordinary session only on the host.
+    // Off-host redemption cannot add that authority, so preserve its identity.
+    if (
+      existingDevice &&
+      (!matchedPurpose ||
+        !isSameMachineBrowserCaller(c) ||
+        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isLocalGrantMintedCredential(existingCredential!))
+    ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
@@ -9158,6 +9170,13 @@ export function configureDevicePairingHostRoutes(
     }
   };
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const isHostBrowser = (request: Request): boolean => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    return (
+      principal?.authority === 'device-credential' &&
+      pairing.credentialMayManagePairing(principal.credential)
+    );
+  };
   const currentOperator = (context: unknown, request: Request): boolean => {
     const authority = (context as { get: (key: string) => unknown }).get(
       RUNTIME_CREDENTIAL_AUTHORITY_VAR,
@@ -9261,10 +9280,30 @@ export function configureDevicePairingHostRoutes(
     ) {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    if (
+      body.approval !== undefined &&
+      body.approval !== 'on-create' &&
+      body.approval !== 'on-request'
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+      return approvalRequiresOperator(c);
+    }
+    if (
+      isHostBrowser(c.req.raw) &&
+      (body.kind === 'delegation' ||
+        (
+          parsePairingScope((body.scope as string | undefined) ?? '') ?? []
+        ).some(isProtectedPairingPromotionScope))
+    ) {
+      return approvalRequiresOperator(c);
+    }
     try {
       return c.json(
         pairing.createOffer({
           endpoint: body.endpoint,
+          approval: body.approval as 'on-create' | 'on-request' | undefined,
           scope: body.scope as string | undefined,
           kind: body.kind as 'device' | 'delegation' | undefined,
         }),
@@ -9279,7 +9318,10 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/offers/:offerId', (c) => {
     try {
-      pairing.cancelOffer(c.req.param('offerId'));
+      pairing.cancelOffer(
+        c.req.param('offerId'),
+        isHostBrowser(c.req.raw) ? 'device' : undefined,
+      );
       return c.body(null, 204);
     } catch (error) {
       return c.json(
@@ -9477,21 +9519,30 @@ export function configureDevicePairingHostRoutes(
         const requested = pairing
           .listRequests()
           .find((candidate) => candidate.requestId === requestId);
+        if (requested?.kind === 'delegation' && isHostBrowser(c.req.raw)) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         const kept = grantedScope ?? requested?.scope ?? '';
+        if (
+          isHostBrowser(c.req.raw) &&
+          (parsePairingScope(kept) ?? []).some(isProtectedPairingPromotionScope)
+        ) {
+          throw new DevicePairingError('approval_requires_operator');
+        }
         if (deviceRequestedExtraScopes(kept).length > 0) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =
             actor?.authority === 'operator-credential' &&
             options.verifyOperatorCredential?.(actor.credential) === true;
-          // The same operator test person binding uses: the operator
-          // credential, or the desktop's own home-possession local grant.
+          // Device-use grants may also be approved by the host-issued
+          // browser session; verified-person binding remains separate.
           const localGrant =
             actor?.authority === 'device-credential' &&
             actor.locality === 'home-possession' &&
-            actor.mintKind === 'local-grant' &&
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
-            pairing.credentialMintKind(actor.credential) === 'local-grant';
+            (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
+              pairing.credentialMayManagePairing(actor.credential));
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
           if (!operatorCredential && !localGrant)
@@ -9583,7 +9634,10 @@ export function configureDevicePairingHostRoutes(
           throw new DevicePairingError('request_not_found');
         request = { ...pending, status: 'denied' };
       } else {
-        request = pairing.denyRequest(requestId);
+        request = pairing.denyRequest(
+          requestId,
+          isHostBrowser(c.req.raw) ? 'device' : undefined,
+        );
       }
       devicePairingRequests.add(1, {
         source: request.source,

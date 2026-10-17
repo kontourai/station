@@ -1,4 +1,7 @@
-import { decodeDevicePairingPayload } from './devicePairing';
+import {
+  decodeDevicePairingPayload,
+  encodeDevicePairingPayload,
+} from './devicePairing';
 import {
   devPairingDeepLinkScheme,
   RELEASE_PAIRING_DEEP_LINK_SCHEMES,
@@ -106,6 +109,65 @@ export function parsePairingDeepLink(
       );
     }
     return { status: 'ok', payload };
+  } catch {
+    return pairingLinkError('This Station pairing link is malformed.');
+  }
+}
+
+/** A browser invitation keeps the one-time proof out of HTTP request URLs. */
+export function encodeBrowserPairingLink(input: {
+  payload: string;
+  browserUrl: string;
+}): string {
+  const url = new URL(input.browserUrl);
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error('Use an HTTP or HTTPS Station browser address.');
+  }
+  url.pathname = '/';
+  url.search = '';
+  url.hash = new URLSearchParams([
+    ['station-pairing', input.payload],
+  ]).toString();
+  return url.toString();
+}
+
+export function parseBrowserPairingLink(
+  url: string,
+): PairingDeepLinkParseResult | undefined {
+  try {
+    const parsed = new URL(url);
+    const hash = new URLSearchParams(parsed.hash.slice(1));
+    if (!hash.has('station-pairing')) return undefined;
+    const payload = hash.get('station-pairing');
+    const offer = payload
+      ? decodeDevicePairingPayload(payload, {
+          requireCanonicalOfferFields: true,
+        })
+      : null;
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username ||
+      parsed.password ||
+      hash.getAll('station-pairing').length !== 1 ||
+      !offer
+    ) {
+      return pairingLinkError(
+        'This Station pairing offer is invalid or expired.',
+      );
+    }
+    // The browser UI proxies this Station's API; a separate API origin would
+    // fail browser pairing provenance and could not install its session cookie.
+    return {
+      status: 'ok',
+      payload: encodeDevicePairingPayload({
+        ...offer,
+        endpoint: parsed.origin,
+      }),
+    };
   } catch {
     return pairingLinkError('This Station pairing link is malformed.');
   }
