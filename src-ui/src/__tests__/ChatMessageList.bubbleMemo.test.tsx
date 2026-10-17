@@ -61,10 +61,17 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: memo(() => <div data-testid="streaming-message" />),
-  SmoothStreamingMessage: memo(() => <div data-testid="streaming-message" />),
+  SmoothStreamingMessage: memo(
+    ({ onContentChange }: { onContentChange: () => void }) => (
+      <button type="button" onClick={onContentChange}>
+        Flush stream
+      </button>
+    ),
+  ),
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -148,6 +155,32 @@ describe('ChatMessageList row memoisation', () => {
     bubbleRendered.mockClear();
     view.rerender(wrap(listFor('plan v2')));
 
+    expect(bubbleRendered).not.toHaveBeenCalled();
+  });
+  test('replayed real-shape content parts do not re-render unchanged mounted bubbles', () => {
+    const messages = () =>
+      Array.from({ length: 20 }, (_, i) => ({
+        id: `answer-${i}`,
+        role: 'assistant' as const,
+        content: `answer ${i}`,
+        contentParts: conversationPartToContentParts({
+          type: 'text',
+          text: `answer ${i}`,
+        }),
+      }));
+    const tree = () =>
+      wrap(
+        <ChatMessageList
+          activeSession={{ ...session(''), messages: messages() }}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+        />,
+      );
+    const view = render(tree());
+    expect(bubbleRendered).toHaveBeenCalledTimes(20);
+    bubbleRendered.mockClear();
+    view.rerender(tree());
     expect(bubbleRendered).not.toHaveBeenCalled();
   });
 });

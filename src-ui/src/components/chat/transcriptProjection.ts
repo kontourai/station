@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../types';
+import { isShallowEqual } from '../../utils/isShallowEqual';
 
 type TranscriptRowKind =
   | 'message:user'
@@ -30,22 +31,11 @@ function messageIdentity(sessionId: string, message: ChatMessage): string {
 
 function sameMessage(left: ChatMessage, right: ChatMessage): boolean {
   return (
-    left.role === right.role &&
-    left.content === right.content &&
-    left.model === right.model &&
-    left.modelOptions === right.modelOptions &&
-    left.ephemeral === right.ephemeral &&
-    left.showContinue === right.showContinue &&
-    left.timestamp === right.timestamp &&
-    left.traceId === right.traceId &&
-    left.fromPrompt === right.fromPrompt &&
     sameParts(left.contentParts, right.contentParts) &&
-    left.attachments === right.attachments &&
-    left.toolCalls === right.toolCalls &&
-    left.turnId === right.turnId &&
-    left.sessionId === right.sessionId &&
-    left.agentSlug === right.agentSlug &&
-    left.provenance === right.provenance
+    Object.keys(left).length === Object.keys(right).length &&
+    (Object.keys(left) as Array<keyof ChatMessage>).every(
+      (key) => key === 'contentParts' || Object.is(left[key], right[key]),
+    )
   );
 }
 
@@ -58,7 +48,7 @@ function sameParts(
     (left !== undefined &&
       right !== undefined &&
       left.length === right.length &&
-      left.every((part, index) => part === right[index]))
+      left.every((part, index) => isShallowEqual(part, right[index])))
   );
 }
 
