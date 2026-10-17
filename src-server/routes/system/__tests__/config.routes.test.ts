@@ -1017,6 +1017,64 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     },
   );
 
+  test.each([
+    { tier: 'off', legacy: undefined, dnt: '', status: 403 },
+    { tier: 'off', legacy: undefined, dnt: '1', status: 403 },
+    { tier: '', legacy: 'false', dnt: '', status: 403 },
+    { tier: 'lite', legacy: undefined, dnt: '1', status: 200 },
+  ])(
+    'tier-only raises respect the environment default ($tier/$legacy) independently of DNT=$dnt',
+    async ({ tier, legacy, dnt, status }) => {
+      vi.stubEnv('STATION_TELEMETRY_TIER', tier);
+      vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', legacy);
+      vi.stubEnv('DO_NOT_TRACK', dnt);
+      const home = makeTempDir('station-tier-default-authority-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'credential',
+          credential: 'standard-device',
+          authority: undefined,
+          deviceId: 'standard-device',
+          deviceKind: 'device',
+          source: 'bearer',
+        });
+        setGrantedPairingScope(
+          c as never,
+          'orchestration:read orchestration:operate',
+        );
+        await next();
+      });
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      const put = (value: string) =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier: { operator: value } }),
+        });
+      try {
+        await loader.loadAppConfig();
+        const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        expect((await put('lite')).status).toBe(status);
+        if (status === 403)
+          expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+            before,
+          );
+        expect((await put('off')).status).toBe(200);
+        expect((await loader.loadAppConfig()).telemetryTier?.operator).toBe(
+          'off',
+        );
+      } finally {
+        loader.dispose();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   test.each(['lite', 'off'] as const)(
     'a standard paired device can lower Full to %s but cannot raise it again',
     async (tier) => {

@@ -31,6 +31,7 @@ import {
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import {
   persistableCredentialProfiles,
@@ -729,6 +730,11 @@ export function createConfigRoutes(
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
+            // DNT blocks sending without changing the underlying choice/default.
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+            ).publishers;
             const publishers = new Set([
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
@@ -737,8 +743,8 @@ export function createConfigRoutes(
               const key = publisher as keyof NonNullable<
                 AppConfig['telemetryTier']
               >;
-              const before = current.telemetryTier?.[key] ?? 'lite';
-              const after = next.telemetryTier?.[key] ?? 'lite';
+              const before = current.telemetryTier?.[key] ?? defaults[key].tier;
+              const after = next.telemetryTier?.[key] ?? defaults[key].tier;
               if (rank[after] > rank[before] && !mayRaiseTelemetry)
                 throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             }
