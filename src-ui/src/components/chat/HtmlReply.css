@@ -1,0 +1,29 @@
+.html-reply {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  overflow: hidden;
+  background: var(--k-bg);
+  color: var(--k-text);
+}
+.html-reply__controls {
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--k-line);
+}
+.html-reply__controls button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.html-reply__viewport {
+  overflow: auto;
+}
+.html-reply__viewport iframe {
+  display: block;
+  border: 0;
+}
+.station-dialog.html-reply__dialog {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+}

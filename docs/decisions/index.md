@@ -10,3 +10,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
