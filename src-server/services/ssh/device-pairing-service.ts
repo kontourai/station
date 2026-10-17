@@ -2910,6 +2910,30 @@ export class DevicePairingService {
   }
 
   /**
+   * The device's current registration id on either platform, or `null` when
+   * neither file holds one (or the device is not active). Picks the newer
+   * record like {@link listNativePushRegistrationsByPlatform}. An unreadable
+   * file throws rather than reading as "not registered", which would make
+   * the phone register again over a registration that still exists.
+   */
+  nativePushRegistrationId(deviceId: string): string | null {
+    if (!this.#activeDeviceIds().has(deviceId)) return null;
+    const [android, ios] = onBothNativePushFiles<
+      NativePushRegistration | undefined
+    >([
+      () => this.#nativePush.list().get(deviceId),
+      () => this.#nativePushIos.list().get(deviceId),
+    ]);
+    const current =
+      android && ios
+        ? ios.updatedAt > android.updatedAt
+          ? ios
+          : android
+        : (android ?? ios);
+    return current?.registrationId ?? null;
+  }
+
+  /**
    * Drops an iOS registration's alert token (APNs answered that it no
    * longer reaches the app) while it is still `expectedAlertToken`; the
    * registration and its Live Activity stay.
