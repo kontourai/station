@@ -704,7 +704,7 @@ you scroll up, **Jump to latest** returns you there. **Load earlier messages**
 appears above the visible history. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
-source and evidence available through **Answer details**.
+source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station

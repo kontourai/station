@@ -370,7 +370,7 @@ its admitted `room-reply` client turn ID and principal, then publishes the
 subsequent agent answer into the same room thread. The deterministic upstream
 is a local scripted model, not a real-provider qualification.
 
-Two acceptance blockers remain; green CI does not close them:
+The acceptance run reproduced two blockers; green CI did not close them:
 
 - Multi-chunk streaming can lose durable deltas during SQLite contention. A
   1,356-character response emitted in 32-character chunks produced only 1,292
@@ -381,11 +381,48 @@ Two acceptance blockers remain; green CI does not close them:
   synchronous offer flushes, it does not retain retryable uncommitted content.
 - Continuing the existing Session after a server restart is still refused with
   `Portable execution authority changed before forwarding.` The reply draft
-  remains visible as Not delivered and no new turn is observed. The exact
-  pre-effect refusal source remains under investigation; authority checks must
-  remain intact.
+  remains visible as Not delivered and no new turn is observed. The refusal came from shutdown closing the raw Session and continuation
+  reserving a successor; the room correctly rejects that replacement.
 
 These are local runtime observations, with raw event/history and build receipts
 retained by the owning acceptance run. They establish neither native-device nor
-public-sharing/provider acceptance. Keep the room redesign in draft until both
-paths pass through the rendered room with complete retained answer text.
+public-sharing/provider acceptance. These observations kept the redesign in
+draft until the corrections below were exercised through the rendered room.
+
+
+## Acceptance corrections (2026-10-17)
+
+`DeltaCoalescer` now retains timer-flushed text only when the runtime confirms a
+retryable, uncommitted publication failure. It retries with the same event identity
+and delivers that text before later events. Final disposal cancels all timers and
+reports any remaining unpublished text as a shutdown failure; committed events
+are not replayed. The regression suite covers timer recovery and turn-boundary
+ordering, and a deliberate loss of rearming fails the timer case.
+
+Shutdown parks idle, resumable room-bound Sessions through the existing lifecycle
+lock before stopping their engines. Private native-output authority is revoked
+first. Binding-read and recovery-disposal failures are collected while provider
+cleanup and final delta disposal still run. A parked Session remains the exact
+Session admitted by the room; active work, ended/replaced Sessions and engines
+without a resume cursor keep their existing semantics. The restart regression
+also refuses a reply when authority is revoked.
+
+History paging waits for an in-progress query refresh to settle and never cancels
+it to fetch the next page. This lets a reloaded room reach its newest checkpoint
+before older messages are revealed locally.
+
+The isolated production fixture used a local scripted model emitting 1,356
+characters in 32-character chunks. A synchronized 6.3-second SQLite write lock
+exceeded the five-second busy bound and produced the expected publication
+warning. After recovery, canonical deltas and terminal output retained identical
+text (SHA-256 `6f9c55a052401a16999a8a54a8c22a71deceaefb6a3893a7f868e388d81a9897`).
+A real server shutdown and restart preserved the same raw room Session; its
+rendered follow-up retained the same complete answer, authenticated principal,
+and admitted client-turn identity. The final shutdown-review corrections are
+verified separately against their new regression controls.
+
+Desktop and 390px phone layouts were inspected in both themes, including Chat,
+thread reply, Brief and kept Results. The fixture home uses its canonical path:
+its earlier symlinked path correctly failed the answer-support ownership guard.
+These results qualify the controlled local room journey. They do not establish
+real-provider, native-device, public-sharing or installed-release behavior.

@@ -2464,7 +2464,13 @@ thread replies, and canonical completed-answer reads. Turn events and startup
 reconcile the existing agent-publish text append path; no new history body or
 storage worker is needed. Browser records add optional timestamps, opaque actor
 identity and execution/thread correlation. Older records remain readable;
-older closed DTO readers reject the additive fields. Full runs open in the dock.
+older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
+under the lifecycle lock at shutdown so replies retain their raw Session identity
+after restart; authority is revoked before cleanup and rechecked before a new
+turn. Retryable, uncommitted timer-flush failures retain text and event identity.
+Final coalescer disposal cancels retry timers and reports undelivered text;
+parking or recovery failures do not skip provider cleanup. History paging waits
+for query refreshes rather than canceling them to fetch another page.
 The request journal refreshes before fresh submissions and after acknowledgements.
 Live presence and history use room SSE. Publication reconciliation is coalesced
 and scheduled after HTTP responses. A bounded proposal cache and durable lookup
