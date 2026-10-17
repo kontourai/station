@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useSyncExternalStore,
 } from 'react';
 import { log } from '@/utils/logger';
@@ -29,10 +30,14 @@ export function useConversations(agentSlug: string): ConversationData[] {
 
   if (error) log.api(`Failed to fetch conversations for ${agentSlug}:`, error);
 
-  return (data || []).map((conversation: any) => ({
-    ...conversation,
-    agentSlug: conversation.resourceId || agentSlug,
-  }));
+  return useMemo(
+    () =>
+      (data || []).map((conversation: any) => ({
+        ...conversation,
+        agentSlug: conversation.resourceId || agentSlug,
+      })),
+    [data, agentSlug],
+  );
 }
 
 // Asserted by proof:repo-governance.

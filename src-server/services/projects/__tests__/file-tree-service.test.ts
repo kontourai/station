@@ -36,17 +36,32 @@ describe('FileTreeService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('listDirectory returns files and directories', () => {
-    const entries = svc.listDirectory(dir);
+  test('listDirectory returns files and directories', async () => {
+    const entries = await svc.listDirectory(dir);
     const names = entries.map((e) => e.name);
     expect(names).toContain('index.ts');
     expect(names).toContain('src');
   });
 
-  test('listDirectory skips node_modules', () => {
-    const entries = svc.listDirectory(dir, { depth: 3 });
+  test('listDirectory skips node_modules', async () => {
+    const entries = await svc.listDirectory(dir, { depth: 3 });
     const allPaths = JSON.stringify(entries);
     expect(allPaths).not.toContain('node_modules');
+  });
+
+  test('listDirectory yields to the event loop while traversing files', async () => {
+    for (let i = 0; i < 100; i += 1) writeFileSync(join(dir, `entry-${i}`), '');
+    let heartbeats = 0;
+    const timer = setInterval(() => {
+      heartbeats += 1;
+    }, 1);
+    try {
+      const entries = await svc.listDirectory(dir);
+      expect(entries.length).toBeGreaterThanOrEqual(100);
+      expect(heartbeats).toBeGreaterThan(0);
+    } finally {
+      clearInterval(timer);
+    }
   });
 
   test('readFile returns content', () => {

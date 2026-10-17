@@ -46,6 +46,25 @@ describe('ActiveChatsStore', () => {
     vi.useRealTimers();
   });
 
+  test('forgets activity after the final chat for a conversation closes', () => {
+    const store = new ActiveChatsStore({ storage: new MemoryStorage() });
+    store.initChat('first', { conversationId: 'conv' });
+    store.initChat('second', { conversationId: 'conv' });
+    store.applyConversationActivity({
+      conversationId: 'conv',
+      asOfSequence: 10,
+    });
+    store.removeChat('first');
+    store.initChat('third', { conversationId: 'conv' });
+    expect(store.getSnapshot().third.conversationActivity?.asOfSequence).toBe(
+      10,
+    );
+    store.removeChat('second');
+    store.removeChat('third');
+    store.initChat('reopened', { conversationId: 'conv' });
+    expect(store.getSnapshot().reopened.conversationActivity).toBeUndefined();
+  });
+
   test('composer draft capabilities are revision-bound and single-use', () => {
     const store = new ActiveChatsStore({ storage: new MemoryStorage() });
     store.initChat('chat');
