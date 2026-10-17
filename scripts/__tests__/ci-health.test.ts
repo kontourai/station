@@ -379,6 +379,24 @@ describe('CI health metrics', () => {
       mergeMetrics(runs, ownerJobs(runs), {}, at(0), at(60)).regressionMinutes;
     expect(measure(historical)).toEqual({ count: 4, median: 6, p90: 8 });
     expect(measure(current)).toEqual({ count: 2, median: 9, p90: 9 });
+    const renamed = current.map((r) => ({
+      ...r,
+      name: 'Source verification',
+      path: '.github/workflows/ci.yml',
+    }));
+    expect(
+      mergeMetrics(renamed, ownerJobs(current), {}, at(0), at(60))
+        .regressionMinutes,
+    ).toEqual({ count: 2, median: 9, p90: 9 });
+    expect(
+      mergeMetrics(
+        renamed.map((r) => ({ ...r, path: '.github/workflows/unrelated.yml' })),
+        ownerJobs(current),
+        {},
+        at(0),
+        at(60),
+      ).regressionMinutes.count,
+    ).toBe(0);
     const transitional = [
       integration(5, 'PR: Merge integration', 40),
       ...current,

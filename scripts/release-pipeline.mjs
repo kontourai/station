@@ -10,6 +10,12 @@ import {
 import { github, listGithub } from './qualification-evidence.mjs';
 
 export function runnerProfile(env = process.env) {
+  const capacityClass =
+    env.STATION_QUALIFICATION_CAPACITY_CLASS || 'background';
+  if (!['background', 'integration', 'release'].includes(capacityClass))
+    throw new Error(
+      'STATION_QUALIFICATION_CAPACITY_CLASS must be background, integration or release',
+    );
   const name = env.STATION_QUALIFICATION_RUNNER_PROFILE || 'free';
   if (!['free', 'expanded', 'custom'].includes(name))
     throw new Error(
@@ -69,6 +75,7 @@ export function runnerProfile(env = process.env) {
     );
   return {
     name,
+    capacityClass,
     ordinary,
     heavy,
     background,
@@ -120,7 +127,7 @@ export function recoveryDisposition(runs, source, repository) {
   };
 }
 
-export async function qualificationAdmission(env = process.env) {
+export async function qualificationOccupancy(env = process.env) {
   const profile = runnerProfile(env);
   // Observe all workflows in this repository, not just this qualification.
   // Matrix caps bound our own fanout; this is a snapshot, not an org reservation.
@@ -166,7 +173,7 @@ export async function qualificationAdmission(env = process.env) {
     repositories,
     occupied,
     macosOccupied: macos,
-    admitted:
+    headroomObserved:
       occupied + profile.background <= profile.total && macos < profile.macos,
     observedAt: new Date().toISOString(),
     scope:
@@ -174,104 +181,31 @@ export async function qualificationAdmission(env = process.env) {
   };
 }
 
-// A capacity denial waits instead of failing (#3612): a failed resolve is a red
-// required check, and the merge queue dequeues the green entry. The ceiling
-// must sit below the merge_queue rule's check_response_timeout_minutes (120),
-// which counts from the queue's check request. Across 103 merge-queue
-// qualifications that reached this step (2026-10-05..13, failed runs
-// included), the slowest start before it was 29 minutes and the slowest
-// finish after it was 72, so 29 + 15 + 72 = 116 concludes inside the queue's
-// window even when both worst cases coincide. Those observations predate
-// ancillary-job serialization and do not bound the current critical path.
-// Each observation costs a few dozen API calls, so the ceiling also bounds
-// that spend. The wait never relaxes the rule; it only re-observes it.
-export const ADMISSION_WAIT_CEILING_MS = 15 * 60_000;
-export const ADMISSION_OBSERVE_INTERVAL_MS = 60_000;
-
-const sleepFor = (ms) => new Promise((done) => setTimeout(done, ms));
-
-// Re-observes capacity until admitted or the ceiling elapses. An observation
-// that throws (API error, invalid configuration) propagates at once: it fails
-// closed exactly as a single observation always has, and is never retried.
-async function awaitQualificationAdmission({
-  observe,
-  record,
-  now,
-  sleep,
-  ceilingMs = ADMISSION_WAIT_CEILING_MS,
-  intervalMs = ADMISSION_OBSERVE_INTERVAL_MS,
-}) {
-  const started = now();
-  for (let attempt = 1; ; attempt++) {
-    const receipt = {
-      ...(await observe()),
-      attempt,
-      waitedMs: now() - started,
-    };
-    record(receipt);
-    if (receipt.admitted) return receipt;
-    const remaining = started + ceilingMs - now();
-    if (remaining <= 0)
-      throw new Error(
-        `qualification admission timed out after ${ceilingMs / 60_000} minutes ` +
-          `without repository capacity (${attempt} observations); last observed ` +
-          `at ${receipt.observedAt}: occupied ${receipt.occupied} + background ` +
-          `${receipt.background} exceeds total ${receipt.total}, or macOS ` +
-          `occupied ${receipt.macosOccupied} is not below ${receipt.macos}`,
-      );
-    await sleep(Math.min(intervalMs, remaining));
-  }
-}
-
+// Optional operator telemetry only. Scheduler admission happens in GitHub's
+// concurrency queue before a runner is allocated; observations grant no lease.
 export async function main(
   argv = process.argv.slice(2),
-  {
-    env = process.env,
-    observe = () => qualificationAdmission(env),
-    now = Date.now,
-    sleep = sleepFor,
-  } = {},
+  { env = process.env, observe = () => qualificationOccupancy(env) } = {},
 ) {
   if (argv[0] === 'publisher') return publisherAdmission();
-  if (!['admission', 'profile'].includes(argv[0]))
-    throw new Error('usage: release-pipeline.mjs profile|admission');
-  const summarize = (line) => {
-    if (env.GITHUB_STEP_SUMMARY)
-      appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
-  };
-  let receipt;
+  if (!['observe', 'profile'].includes(argv[0]))
+    throw new Error('usage: release-pipeline.mjs profile|observe|publisher');
+  const receipt = argv[0] === 'profile' ? runnerProfile(env) : await observe();
+  console.log(JSON.stringify(receipt));
+  if (env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      env.GITHUB_STEP_SUMMARY,
+      `Qualification ${argv[0]} (not an organization reservation): ${JSON.stringify(receipt)}\n`,
+    );
   if (argv[0] === 'profile') {
-    receipt = runnerProfile(env);
-    console.log(JSON.stringify(receipt));
-  } else {
-    try {
-      receipt = await awaitQualificationAdmission({
-        observe,
-        now,
-        sleep,
-        // One JSON line per observation: the workflow retains them all.
-        record: (observation) => {
-          console.log(JSON.stringify(observation));
-          summarize(
-            `- Qualification admission observation ${observation.attempt} ` +
-              `(${observation.admitted ? 'admitted' : 'waiting for capacity'}): ` +
-              `\`${JSON.stringify(observation)}\``,
-          );
-        },
-      });
-    } catch (error) {
-      summarize(`- Qualification admission failed: ${error.message}`);
-      throw error;
-    }
+    if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT required');
+    appendFileSync(
+      env.GITHUB_OUTPUT,
+      `ordinary=${receipt.ordinary}\nheavy=${receipt.heavy}\n`,
+    );
   }
-  if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT required');
-  appendFileSync(
-    env.GITHUB_OUTPUT,
-    `admitted=${receipt.admitted}\nordinary=${receipt.ordinary}\nheavy=${receipt.heavy}\n`,
-  );
-  if (argv[0] === 'profile')
-    summarize(`Qualification admission: ${JSON.stringify(receipt)}`);
 }
+
 if (invokedDirectly(import.meta.url))
   main().catch((error) => {
     console.error(error.message);

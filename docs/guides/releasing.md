@@ -66,17 +66,32 @@ whose consumers only the queue runs. Every other candidate takes the fast path
 `fast-checks`, security, Windows portable floor and relevant iOS checks retain
 their integration protections.
 
-The reusable regression performs the same capacity admission as main
-qualification. Insufficient observed capacity holds the resolve job before
-fanout: it re-observes every minute for up to 15 minutes, and the required
-check stays pending meanwhile. The ceiling sits below the merge queue's
-120-minute check timeout. Historical timing predates the ancillary-job
-sequencing below and does not establish the new worst-case duration. Only
-an elapsed ceiling fails the check, with an explicit timeout naming the last
-observed capacity. A deferral is never regression evidence. Keep the admission
-receipt, one JSON line per observation, when diagnosing a dequeue. A genuine
-capacity change needs a fresh assessment before another attempt, rather than a
-blind rerun.
+Background qualification and optional delivery enter one GitHub-native
+`station-background-compute` concurrency group before allocating their runners.
+`queue: max` retains up to 100 pending requests, ordered by arrival at that
+group; overflow is cancelled, never qualification. There is no outer
+single-pending queue that can replace an admitted request. Required merge-group
+qualification uses a separate source-specific class, and release qualification
+uses a separate release class. They do not wait behind the optional backlog.
+
+The default Free profile bounds a background qualification to four jobs;
+delivery validation uses at most two. Thus participating background work is
+bounded across Station invocations, rather than independently per PR. Nightly
+and required feedback retain their own scheduling. This is repository-scoped
+admission, not an organization-wide reservation or a promise of immediate
+runner availability. Other repositories still consume the shared hosted pool.
+
+`release-pipeline.mjs profile` validates the execution envelope without polling
+GitHub. Its explicit `observe` command is a one-shot diagnostic snapshot; it
+allocates no work and grants no admission. The old fifteen-minute runner-held
+capacity loop is removed. A manual `hosted-capacity-probe.yml` can demonstrate
+native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
+it performs no source qualification, installs nothing and publishes nothing.
+
+Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
+validates only the three reviewed native-queue shapes, then removes that field
+from private lint copies. All other actionlint checks and the original-document
+security checks still run; unknown queue shapes fail rather than being ignored.
 
 ### Delivery validation after core checks
 
@@ -93,8 +108,9 @@ and preview exercises into six jobs instead of eight; native Rust/Kotlin checks
 share one job instead of four; all five portable targets remain, capped at two
 concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
 and ecosystem one. Thus one delivery-validation invocation uses at most two
-runners at once. This is a per-invocation bound, not an organization-wide
-reservation; unrelated workflows and repositories still share hosted capacity.
+runners at once. The shared background group serializes these invocations
+with background qualification; unrelated workloads and repositories still
+share hosted capacity.
 
 ## Qualification cadence and evidence reuse
 
@@ -206,20 +222,17 @@ job to pass. Together with the corpus matrices, the Free peak is four runners
 and the integration planning reserve is twelve; Expanded uses seven and twenty. These are planning bounds,
 not a cross-workflow reservation or a guarantee that another repository will
 leave capacity unused. The merge queue builds one candidate at a time, with
-up to three entries per merge batch. Per-source qualification groups remain
-independent; the peak is per invocation, not an organization-wide ceiling.
+up to three entries per merge batch. Background callers share the native FIFO
+group described above; integration uses source-specific groups and release
+qualification has its own group. The class input is validated before fanout.
+These groups do not reserve slots across other repositories.
 
-Before fresh corpus execution, the resolver observes all in-progress jobs in
-the configured repositories, including active jobs in its own workflow run,
-and retains a dated admission receipt. Counting the admission runner itself
-conservatively leaves one extra slot until it exits.
-Insufficient observed headroom waits before fanout, re-observing every minute,
-and fails admission only when the 15-minute ceiling elapses. An observation
-error fails at once and is not retried. Other repositories
-share the pool and are not certified by that snapshot. Valid exact-source reuse
-avoids this expensive fanout. Main source qualification is serialized independently
-of the `nightly` delivery lock. Native staging uses two platform build slots and
-one macOS slot by ordering iOS after macOS and Windows after Android.
+The resolver validates its profile and exact-source reuse without waiting on
+an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
+single diagnostic inventory of configured repositories; its output explicitly
+reports observed headroom, not admission. An API error fails the observation,
+with no retry loop or work allocation. Native staging uses two platform build
+slots and one macOS slot by ordering iOS after macOS and Windows after Android.
 
 `STATION_NIGHTLY_INTERVAL_HOURS` defaults to 6 and accepts integers 1–168.
 Admission under the Nightly delivery lock rechecks this interval, the

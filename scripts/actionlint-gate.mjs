@@ -34,10 +34,20 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load } from 'js-yaml';
+import { dump, load } from 'js-yaml';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -846,9 +856,10 @@ function isExactMergeQueueFullRegressionCall(file, jobId, job) {
     hasExactKeys(job.permissions, ['contents', 'actions']) &&
     job.permissions.contents === 'read' &&
     job.permissions.actions === 'read' &&
-    hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
+    hasExactKeys(job.with, ['source_sha', 'allow_reuse', 'capacity_class']) &&
     job.with.source_sha === `\${{ github.sha }}` &&
-    job.with.allow_reuse === true
+    job.with.allow_reuse === true &&
+    job.with.capacity_class === 'integration'
   );
 }
 
@@ -3427,6 +3438,49 @@ export function readWorkflowDocuments() {
     }));
 }
 
+// GitHub supports queue:max, but pinned actionlint 1.7.12 does not yet:
+// https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+// Validate the complete reviewed concurrency shapes before removing ONLY the
+// new schema field from a temporary lint copy. Security policy uses originals.
+const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
+export function legacyActionlintSources(workflows) {
+  const expected = {
+    '.github/workflows/delivery-validation.yml': 'station-background-compute',
+    '.github/workflows/hosted-capacity-probe.yml': 'station-background-compute',
+    '.github/workflows/full-regression.yml': BACKGROUND_QUALIFICATION_GROUP,
+  };
+  return workflows.map(({ file, document }) => {
+    const copy = structuredClone(document);
+    const concurrency = copy?.concurrency;
+    if (Object.hasOwn(expected, file)) {
+      if (
+        !concurrency ||
+        typeof concurrency !== 'object' ||
+        Array.isArray(concurrency) ||
+        !hasExactKeys(concurrency, ['group', 'queue', 'cancel-in-progress']) ||
+        concurrency.group !== expected[file] ||
+        concurrency.queue !== 'max' ||
+        concurrency['cancel-in-progress'] !== false
+      )
+        throw new Error(`Unreviewed FIFO concurrency in ${file}`);
+      delete concurrency.queue;
+    } else if (
+      concurrency &&
+      typeof concurrency === 'object' &&
+      Object.hasOwn(concurrency, 'queue')
+    )
+      throw new Error(`Unreviewed FIFO workflow ${file}`);
+    for (const job of Object.values(document?.jobs ?? {}))
+      if (
+        job?.concurrency &&
+        typeof job.concurrency === 'object' &&
+        Object.hasOwn(job.concurrency, 'queue')
+      )
+        throw new Error(`Unreviewed FIFO job in ${file}`);
+    return { file, source: dump(copy, { lineWidth: -1, noRefs: true }) };
+  });
+}
+
 function main() {
   if (!existsSync(WORKFLOW_DIR)) {
     console.error(
@@ -3471,30 +3525,39 @@ function main() {
     }).exitCode;
   }
 
-  // No arguments: actionlint discovers `.github/workflows` from the repo root
-  // itself. Passing the directory is a USAGE ERROR (exit 3, "is a directory"),
-  // not a scan — and the first draft of this gate did exactly that, parsed the
-  // resulting error text into zero findings, and reported OK. A gate that
-  // never ran its own tool and calls that a pass is the precise failure this
-  // gate exists to prevent, so the exit status is now classified rather than
-  // assumed.
-  //
-  //   0 → clean scan
-  //   1 → scan ran, findings reported (the normal path here)
-  //   anything else → the tool did not scan; FAIL loudly
+  let sources;
+  try {
+    sources = legacyActionlintSources(readWorkflowDocuments());
+  } catch (error) {
+    console.error(`[actionlint] ${error.message}`);
+    return 1;
+  }
+  const lintRoot = mkdtempSync(join(tmpdir(), 'station-actionlint-'));
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSyncBounded(binary, [], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    mkdirSync(join(lintRoot, '.git'));
+    mkdirSync(join(lintRoot, '.github/workflows'), { recursive: true });
+    const config = join(REPO_ROOT, '.github/actionlint.yaml');
+    if (existsSync(config))
+      copyFileSync(config, join(lintRoot, '.github/actionlint.yaml'));
+    for (const { file, source } of sources)
+      writeFileSync(join(lintRoot, file), source);
+    stdout = execFileSyncBounded(
+      binary,
+      sources.map(({ file }) => file),
+      {
+        cwd: lintRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    // A capture overflow or spawn failure carries no child output; its
-    // message is the only diagnostic, so never print an empty detail.
     stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
+  } finally {
+    rmSync(lintRoot, { recursive: true, force: true });
   }
 
   if (status !== 0 && status !== 1) {
