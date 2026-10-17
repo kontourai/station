@@ -1,0 +1,15 @@
+{
+  "revision": "a5d3fac6a7081c854fb76e947b301335235a7028",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed Gallery additions against code-quality push boundaries, .githooks/pre-push and FAST_STATIC_COMMANDS: optional pixel review links preserve exact comparator failure, hosted strict statics, and source/queue/promotion distinctions. No hook, workflow, capture or build-cache behavior changed. Existing guide remains accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed offline report against script rules: actual comparator caller preserves failure; primary/aux containment and digests verified, no child spawn or allowlist bypass. Six report tests and 56 comparator tests passed; stale-key mutation caught two failures. Generated schedule unchanged; scope instructions remain accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed Gallery review data against server evidence/freshness boundaries. Offline fingerprint is not execution authority, server request cache or performance proof; no server API/service/process behavior changes. Focused caller and mutation guidance remains accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed Gallery guidance against UI evidence rules: identical PNGs do not prove hit testing, writable state, layout correctness or source performance. Demonstrated product defects retain owner disposition; no React Query/navigation/picker/focus/44px or style changes. UI instructions remain accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed new guidance against fixture fidelity, actual actions, animation settlement and qualification rules: review linking skips no capture and reuses no verdict; hermetic PNG report fixtures invoke real comparator. Existing browser bootstrap/pairing/fixture and deferred-evidence rules remain unchanged and accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

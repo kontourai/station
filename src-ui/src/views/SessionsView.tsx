@@ -47,6 +47,7 @@ import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
+import { requestTaskShaping } from '../lib/task-shaping';
 import { relativeTime } from '../utils/relativeTime';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
@@ -387,7 +388,7 @@ export function SessionsView({
   // it here can invalidate a valid browser session.
   const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const [isDelegationOpen, setIsDelegationOpen] = useState(false);
-  /** The row a "Delegate subtask…" was chosen from; null for "New task". */
+  /** The row whose Delegate subtask action opened the launcher. */
   const [delegationParent, setDelegationParent] =
     useState<OrchestrationSessionSummary | null>(null);
   const delegationReturnFocusRef = useRef<HTMLElement[]>([]);
@@ -1010,12 +1011,7 @@ export function SessionsView({
     setIsDelegationOpen(true);
   }
   const openTopLevelDelegation = () =>
-    openDelegation(
-      null,
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null,
-    );
+    requestTaskShaping({ projectSlug: delegationProjectSlug ?? undefined });
 
   const closeDelegation = () => {
     const chain = delegationReturnFocusRef.current;
@@ -1097,19 +1093,19 @@ export function SessionsView({
         listEmptyDescription={
           resultsEmpty
             ? 'Try another search, or clear the search and filters.'
-            : 'Start a task with New task, or open a chat. What runs shows up here.'
+            : 'Start a task with New Task, or open a chat. What runs shows up here.'
         }
         /* Always the plain empty state: Activity's filtered-empty copy and
            its reset ("Clear search and filters", in the filter bar just
            above) cover filters as well as the query, which the layout's own
            search-only FilteredEmpty cannot. */
         collectionEmpty
-        /* "New task" is the header's primary action in every placement:
+        /* "New Task" is the header's primary action in every placement:
            framed (Activity as the main page) the layout puts `onAdd` in the
            page header; unframed (a dock pane) the layout would put it in the
            list FOOTER, so it renders at the top of the list instead. */
         {...(framed
-          ? { onAdd: openTopLevelDelegation, addLabel: 'New task' }
+          ? { onAdd: openTopLevelDelegation, addLabel: 'New Task' }
           : {})}
         listIntro={(selectItem) => {
           selectItemRef.current = selectItem;
@@ -1122,7 +1118,7 @@ export function SessionsView({
                     size="sm"
                     onClick={openTopLevelDelegation}
                   >
-                    New task
+                    New Task
                   </Button>
                 </div>
               )}
@@ -1184,9 +1180,7 @@ export function SessionsView({
         )}
       </SplitPaneLayout>
 
-      {/* "New task" is always a TOP-LEVEL task (no parent), so the launcher
-          never silently files it as someone else's subtask; a subtask comes
-          only from a delegated row's "Delegate subtask…". */}
+      {/* Delegated rows keep their existing subtask launcher. */}
       <DelegationLauncher
         isOpen={isDelegationOpen}
         apiBase={apiBase}

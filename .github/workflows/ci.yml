@@ -228,9 +228,19 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # The shard is part of the identity, or the legs would cancel each other.
-      group: ci-fast-shard-${{ matrix.shard }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
-      cancel-in-progress: true
+      # Two repository-wide PR shard slots retain every planned matrix leg.
+      # PR parity XOR shard parity distributes one-shard and four-shard plans.
+      # Required integration and diagnostics use separate source identities.
+      group: >-
+        ${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
+        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
+        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
+        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
+        (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
+        matrix.shard, github.event_name, github.event.pull_request.number || github.ref,
+        github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
     # shard runner itself) + actionlint (5) + install (15) + zsh (5) +
@@ -387,22 +397,19 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # PR numbers isolate candidate feedback from main's push lane. Event
-      # type keeps dispatches isolated from pushes on refs/heads/main.
-      #
-      # The head sha is part of the identity because the WORK is a commit, not
-      # a pull request. Without it, two runs for the same PR at different heads
-      # share a group, and `cancel-in-progress` resolves that collision by
-      # arrival order — which is not commit recency. Observed four times in one
-      # day (#1445): on #1345 the stale pre-rebase run survived and the current
-      # head's run was cancelled; on #1348, #1352 and #1353 the current head's
-      # own run was cancelled with nothing to replace it, leaving a required
-      # check in a state that is neither pass nor fail. #1348 had auto-merge
-      # armed and merged within minutes of a manual re-run.
-      #
-      # Metadata-only edits never enter source-job concurrency groups.
-      group: ci-fast-statics-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
-      cancel-in-progress: true
+      # Two repository-wide PR statics slots, with no pending replacement.
+      # Obsolete heads are cancelled by the trusted supersession workflow.
+      # Metadata-only edits never enter this source-job group.
+      group: >-
+        ${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
+        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
+        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
+        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) &&
+        'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
+        github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha,
+        github.event.pull_request.base.sha) }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     # The declared bounds sum to 53 minutes: actionlint install (5), a
     # bounded 20-minute Chromium installation, the fifteen-minute raw
@@ -858,6 +865,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: background
       source_sha: ${{ github.sha }}
 
   # No separate browser-smoke job. It needed full-regression without
@@ -1016,6 +1024,7 @@ jobs:
       actions: read
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: integration
       source_sha: ${{ github.sha }}
       allow_reuse: true
 

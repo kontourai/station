@@ -1,20 +1,17 @@
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { main as decideMain } from '../nightly-qualification-decide.mjs';
 import {
-  ADMISSION_OBSERVE_INTERVAL_MS,
-  ADMISSION_WAIT_CEILING_MS,
   finalPublicationDecision,
   nightlySourceGate,
   main as pipelineMain,
   publicationInterval,
-  qualificationAdmission,
+  qualificationOccupancy,
   recoveryDisposition,
   reservationRecovery,
   runnerProfile,
@@ -203,20 +200,21 @@ it('admission observes peer and same-run jobs, and the real CLI retains its snap
     count = 2;
     const green = await exec(
       process.execPath,
-      [resolve(import.meta.dirname, '../release-pipeline.mjs'), 'admission'],
+      [resolve(import.meta.dirname, '../release-pipeline.mjs'), 'observe'],
       { env, windowsHide: true },
     );
     expect(JSON.parse(green.stdout)).toMatchObject({
       occupied: 4,
-      admitted: true,
+      headroomObserved: true,
       repositories: ['owner/station', 'owner/peer'],
     });
-    expect(readFileSync(output, 'utf8')).toContain('admitted=true');
+    expect(green.stdout).not.toContain('admitted');
+    expect(green.stdout).toContain('not certified');
     count = 7;
     sameRunCount = 4;
-    expect(await qualificationAdmission(env)).toMatchObject({
+    expect(await qualificationOccupancy(env)).toMatchObject({
       occupied: 18,
-      admitted: false,
+      headroomObserved: false,
     });
     // An unobservable repository fails closed at once; it is never waited on.
     writeFileSync(output, '');
@@ -224,7 +222,7 @@ it('admission observes peer and same-run jobs, and the real CLI retains its snap
     await expect(
       exec(
         process.execPath,
-        [resolve(import.meta.dirname, '../release-pipeline.mjs'), 'admission'],
+        [resolve(import.meta.dirname, '../release-pipeline.mjs'), 'observe'],
         { env, windowsHide: true, timeout: 30_000 },
       ),
     ).rejects.toMatchObject({
@@ -253,6 +251,10 @@ it('recovers the reserved producer after a partial ship adds a ledger-only event
               jobs: [
                 {
                   name: 'qualification / Full source qualification',
+                  conclusion: 'success',
+                },
+                {
+                  name: 'nightly / 2 · Stage native builds / Plan cohort (reserve version code)',
                   conclusion: 'success',
                 },
               ],
@@ -351,165 +353,46 @@ it('checks the current provider pointers without requiring retired ledger histor
   ).toMatchObject({ androidNeeded: false });
 });
 
-describe('qualification admission waits for capacity instead of failing (#3612)', () => {
-  const capacity = (occupied: number, macosOccupied = 0) => ({
-    ...runnerProfile({}),
-    repositories: ['owner/station'],
-    occupied,
-    macosOccupied,
-    admitted: occupied + 4 <= 20 && macosOccupied < 5,
-    observedAt: '2026-10-12T09:26:20.800Z',
-    scope:
-      'configured repository snapshot; omitted organization workloads are not certified',
-  });
-  const makeTempDir = trackTempDirs();
-  const workflowFiles = () => {
-    const root = makeTempDir('station-admission-wait-');
-    const env = {
-      GITHUB_OUTPUT: join(root, 'output'),
-      GITHUB_STEP_SUMMARY: join(root, 'summary'),
-    };
-    writeFileSync(env.GITHUB_OUTPUT, '');
-    writeFileSync(env.GITHUB_STEP_SUMMARY, '');
-    return env;
-  };
-  const quiet = () => vi.spyOn(console, 'log').mockImplementation(() => {});
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  it('pins the ceiling and the observation interval', () => {
-    expect(ADMISSION_WAIT_CEILING_MS).toBe(15 * 60_000);
-    expect(ADMISSION_OBSERVE_INTERVAL_MS).toBe(60_000);
-  });
-
-  it('gives the resolve job room to reach the ceiling and report it', () => {
-    type Step = { name?: string; run?: string; 'timeout-minutes'?: number };
-    const workflow = load(
-      readFileSync(
-        resolve(
-          import.meta.dirname,
-          '../../.github/workflows/full-regression.yml',
-        ),
-        'utf8',
-      ),
-      { schema: JSON_SCHEMA },
-    ) as {
-      jobs: { resolve: { 'timeout-minutes': number; steps: Step[] } };
-    };
-    const job = workflow.jobs.resolve;
-    const admission = job.steps.find((step) =>
-      step.run?.includes('node scripts/release-pipeline.mjs admission'),
-    );
-    const ceilingMinutes = ADMISSION_WAIT_CEILING_MS / 60_000;
-    // A backstop that fires first kills the step without the explicit
-    // timeout message, so both must outlast the ceiling.
-    expect(admission?.['timeout-minutes']).toBe(18);
-    expect(admission?.['timeout-minutes']).toBeGreaterThan(ceilingMinutes);
-    expect(job['timeout-minutes']).toBe(30);
-    expect(job['timeout-minutes']).toBeGreaterThan(
-      admission?.['timeout-minutes'] ?? Infinity,
-    );
-  });
-
-  it('admits on a later observation, writes the outputs and summarizes every observation', async () => {
-    quiet();
-    // The production clock and sleep run on fake timers: no real waiting.
-    vi.useFakeTimers();
-    const env = workflowFiles();
-    const observations = [capacity(18, 4), capacity(15, 5), capacity(16, 4)];
-    const observe = vi.fn(async () => {
-      const next = observations.shift();
-      if (!next) throw new Error('observed past admission');
-      return next;
+describe('qualification scheduler profile and optional one-shot telemetry', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('observes once even when there is no headroom, without granting admission or writing scheduler outputs', async () => {
+    const root = trackTempDirs()('station-occupancy-');
+    const output = join(root, 'output');
+    writeFileSync(output, '');
+    const observe = vi.fn(async () => ({
+      ...runnerProfile({}),
+      repositories: ['owner/station'],
+      occupied: 20,
+      macosOccupied: 0,
+      headroomObserved: false,
+      observedAt: '2026-10-17T03:00:00Z',
+      scope: 'diagnostic snapshot; not a reservation',
+    }));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await pipelineMain(['observe'], {
+      env: { GITHUB_OUTPUT: output },
+      observe,
     });
-    const run = pipelineMain(['admission'], { env, observe });
-    await vi.advanceTimersByTimeAsync(ADMISSION_OBSERVE_INTERVAL_MS - 1);
     expect(observe).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(2 * ADMISSION_OBSERVE_INTERVAL_MS);
-    await run;
-    expect(observe).toHaveBeenCalledTimes(3);
-    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe(
-      'admitted=true\nordinary=2\nheavy=1\n',
-    );
-    const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')
-      .trim()
-      .split('\n');
-    expect(summary).toHaveLength(3);
-    expect(summary[0]).toContain('observation 1 (waiting for capacity)');
-    expect(summary[0]).toContain('"occupied":18');
-    expect(summary[1]).toContain('"macosOccupied":5');
-    expect(summary[2]).toContain('observation 3 (admitted)');
-    expect(summary[2]).toContain(
-      `"waitedMs":${2 * ADMISSION_OBSERVE_INTERVAL_MS}`,
-    );
+    expect(readFileSync(output, 'utf8')).toBe('');
   });
-
-  it('fails with an explicit timeout and the last observed capacity once the ceiling elapses', async () => {
-    quiet();
-    const env = workflowFiles();
-    let clock = 0;
-    const wakes: number[] = [];
-    // Each observation takes 7 s of wall clock, which counts against the
-    // ceiling: 13 full one-minute sleeps, then a short one that lands on it.
-    const observe = vi.fn(async () => {
-      clock += 7_000;
-      return capacity(18, 5);
+  it('writes a validated profile without any API observation and rejects unknown scheduler classes', async () => {
+    const root = trackTempDirs()('station-profile-');
+    const output = join(root, 'output');
+    const observe = vi.fn();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await pipelineMain(['profile'], {
+      env: {
+        GITHUB_OUTPUT: output,
+        STATION_QUALIFICATION_CAPACITY_CLASS: 'integration',
+      },
+      observe,
     });
-    await expect(
-      pipelineMain(['admission'], {
-        env,
-        observe,
-        now: () => clock,
-        sleep: async (ms: number) => {
-          // A broken ceiling would loop on microtasks forever; fail instead.
-          if (wakes.length > 100) throw new Error('admission never timed out');
-          clock += ms;
-          wakes.push(clock);
-        },
-      }),
-    ).rejects.toThrow(
-      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 4 exceeds total 20, or macOS occupied 5 is not below 5/,
-    );
-    expect(observe).toHaveBeenCalledTimes(15);
-    // The last re-observation starts exactly at the ceiling, never past it.
-    expect(wakes).toHaveLength(14);
-    expect(Math.max(...wakes)).toBe(ADMISSION_WAIT_CEILING_MS);
-    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
-    const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8');
-    expect(summary.match(/waiting for capacity/g)).toHaveLength(15);
-    expect(summary).toContain(
-      'Qualification admission failed: qualification admission timed out',
-    );
-  });
-
-  it('fails closed at once when an observation throws, without retrying or sleeping', async () => {
-    quiet();
-    const env = workflowFiles();
-    const slept: number[] = [];
-    let calls = 0;
-    const observe = vi.fn(async () => {
-      calls++;
-      if (calls === 1) return capacity(18);
-      throw new Error('GitHub GET actions/runs: HTTP 502');
-    });
-    await expect(
-      pipelineMain(['admission'], {
-        env,
-        observe,
-        now: () => slept.reduce((sum, ms) => sum + ms, 0),
-        sleep: async (ms: number) => {
-          slept.push(ms);
-        },
-      }),
-    ).rejects.toThrow('GitHub GET actions/runs: HTTP 502');
-    expect(observe).toHaveBeenCalledTimes(2);
-    expect(slept).toEqual([ADMISSION_OBSERVE_INTERVAL_MS]);
-    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
-    expect(readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')).toContain(
-      'Qualification admission failed: GitHub GET actions/runs: HTTP 502',
-    );
+    expect(observe).not.toHaveBeenCalled();
+    expect(readFileSync(output, 'utf8')).toBe('ordinary=2\nheavy=1\n');
+    expect(() =>
+      runnerProfile({ STATION_QUALIFICATION_CAPACITY_CLASS: 'typo' }),
+    ).toThrow(/CAPACITY_CLASS/);
   });
 });
 
@@ -584,6 +467,9 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
     path: '.github/workflows/nightly.yml',
     event: 'schedule',
   };
+  let runs: Array<
+    Omit<typeof run, 'conclusion'> & { conclusion: string | null }
+  > = [run];
   let jobs = [
     {
       name: '1 · Source gate (lint, typecheck, browser smoke)',
@@ -595,7 +481,7 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
     response.setHeader('content-type', 'application/json');
     response.end(
       JSON.stringify(
-        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: [run] },
+        request.url?.includes('/jobs') ? { jobs } : { workflow_runs: runs },
       ),
     );
   });
@@ -620,7 +506,272 @@ it('recovers terminal Nightly delivery only after its actual source gate succeed
       jobs = rejected;
       expect((await reservationRecovery(source, env)).recover).toBe(false);
     }
+    jobs = [good];
+    for (const held of [
+      [{ ...run, status: 'in_progress', conclusion: null }],
+      [run, { ...run, id: 2 }, { ...run, id: 3 }],
+      [{ ...run, conclusion: 'cancelled' }],
+    ]) {
+      runs = held;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+const qualificationReferences = (sha = source) =>
+  [
+    'full-regression.yml',
+    'delivery-validation.yml',
+    'install-smoke.yml',
+    'portable-server-archives.yml',
+    'desktop-rust.yml',
+    'desktop-clean-checkout.yml',
+    'ecosystem-packaging.yml',
+  ].map((name) => ({
+    path: `owner/repo/.github/workflows/${name}@${sha}`,
+    ref: 'refs/heads/main',
+    sha,
+  }));
+
+it.each(['live', 'queued-empty', 'failed', 'three-failures'])(
+  'ignores positively independent %s full qualification during Nightly recovery',
+  async (scenario) => {
+    const nightly = {
+      ...producer,
+      path: '.github/workflows/nightly.yml',
+      event: 'schedule',
+    };
+    const qualifications = Array.from(
+      { length: scenario === 'three-failures' ? 3 : 1 },
+      (_, index) => ({
+        ...producer,
+        id: index + 10,
+        status:
+          scenario === 'queued-empty'
+            ? 'queued'
+            : scenario === 'live'
+              ? 'in_progress'
+              : 'completed',
+        conclusion: ['live', 'queued-empty'].includes(scenario)
+          ? null
+          : 'failure',
+      }),
+    );
+    const reads: string[] = [];
+    const server = createServer((request, response) => {
+      reads.push(request.url ?? '');
+      response.setHeader('content-type', 'application/json');
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const detail = qualifications.find((run) =>
+        path.endsWith(`/runs/${run.id}`),
+      );
+      const body = detail
+        ? { ...detail, referenced_workflows: qualificationReferences() }
+        : path.endsWith('/jobs')
+          ? {
+              jobs: path.includes('/runs/1/')
+                ? [
+                    {
+                      name: '1 · Source gate (lint, typecheck, browser smoke)',
+                      status: 'completed',
+                      conclusion: 'success',
+                    },
+                  ]
+                : scenario === 'queued-empty'
+                  ? []
+                  : [
+                      {
+                        name: 'qualification / Full source qualification',
+                        status: 'completed',
+                        conclusion: 'failure',
+                      },
+                    ],
+            }
+          : { workflow_runs: [nightly, ...qualifications] };
+      response.end(JSON.stringify(body));
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('HTTP fixture unavailable');
+    try {
+      expect(
+        (
+          await reservationRecovery(source, {
+            GITHUB_REPOSITORY: 'owner/repo',
+            GITHUB_RUN_ID: '42',
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          })
+        ).recover,
+      ).toBe(true);
+      expect(reads.filter((path) => /\/runs\/\d+$/.test(path))).toEqual([
+        '/repos/owner/repo/actions/runs/10',
+      ]);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  },
+);
+
+it('holds live legacy producers and unknown provider graph or job inventories', async () => {
+  const nightly = {
+    ...producer,
+    path: '.github/workflows/nightly.yml',
+    event: 'schedule',
+  };
+  const qualification = {
+    ...producer,
+    id: 10,
+    status: 'queued',
+    conclusion: null,
+  };
+  const independent = qualificationReferences();
+  let references: unknown = independent;
+  let detailFailure = false;
+  let jobFailure = false;
+  let missingJobs = false;
+  let wrongIdentity = false;
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.endsWith('/runs/10')) {
+      if (detailFailure) {
+        response.writeHead(503);
+        response.end('{}');
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          ...qualification,
+          head_sha: wrongIdentity ? prior : source,
+          referenced_workflows: references,
+        }),
+      );
+    } else if (path.includes('/runs/10/jobs')) {
+      if (jobFailure) {
+        response.writeHead(503);
+        response.end('{}');
+        return;
+      }
+      response.end(JSON.stringify(missingJobs ? {} : { jobs: [] }));
+    } else if (path.endsWith('/jobs'))
+      response.end(
+        JSON.stringify({
+          jobs: [
+            {
+              name: '1 · Source gate (lint, typecheck, browser smoke)',
+              status: 'completed',
+              conclusion: 'success',
+            },
+          ],
+        }),
+      );
+    else
+      response.end(JSON.stringify({ workflow_runs: [nightly, qualification] }));
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  const env = {
+    GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_RUN_ID: '42',
+    GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+  };
+  try {
+    expect((await reservationRecovery(source, env)).recover).toBe(true);
+    for (const held of [
+      undefined,
+      null,
+      {},
+      [],
+      [independent[0]],
+      [...independent, independent[0]],
+      qualificationReferences(prior),
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `foreign/repo/.github/workflows/full-regression.yml@${source}`,
+        },
+      ],
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `owner/repo/.github/workflows/unknown.yml@${source}`,
+        },
+      ],
+      [
+        ...independent,
+        {
+          ...independent[0],
+          path: `owner/repo/.github/workflows/nightly.yml@${source}`,
+        },
+      ],
+    ]) {
+      references = held;
+      expect((await reservationRecovery(source, env)).recover).toBe(false);
+    }
+    references = independent;
+    wrongIdentity = true;
+    expect((await reservationRecovery(source, env)).recover).toBe(false);
+    wrongIdentity = false;
+    detailFailure = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow('HTTP 503');
+    detailFailure = false;
+    jobFailure = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow('HTTP 503');
+    jobFailure = false;
+    missingJobs = true;
+    await expect(reservationRecovery(source, env)).rejects.toThrow(
+      'Incomplete GitHub listing',
+    );
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it('loads the actual Nightly decision before dependencies are installed', async () => {
+  const exec = promisify(execFile);
+  const makeTempDir = trackTempDirs();
+  const root = makeTempDir('station-nightly-no-dependencies-');
+  const repo = resolve(import.meta.dirname, '../..');
+  const copied = new Set<string>();
+  const copyModule = (path: string) => {
+    if (copied.has(path)) return;
+    copied.add(path);
+    const contents = readFileSync(join(repo, path), 'utf8');
+    const destination = join(root, path);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, contents);
+    for (const match of contents.matchAll(
+      /(?:from\s*|import\s*)['"]([^'"]+)['"]/g,
+    )) {
+      if (match[1].startsWith('.')) copyModule(join(dirname(path), match[1]));
+    }
+  };
+  copyModule('scripts/nightly-qualification-decide.mjs');
+  try {
+    await exec(
+      process.execPath,
+      [join(root, 'scripts/nightly-qualification-decide.mjs')],
+      { cwd: root, windowsHide: true, timeout: 15_000 },
+    );
+    throw new Error(
+      'Decision without required arguments unexpectedly succeeded',
+    );
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining(
+        'usage: node scripts/nightly-qualification-decide.mjs',
+      ),
+    });
+    expect(error).not.toMatchObject({
+      stderr: expect.stringContaining('ERR_MODULE_NOT_FOUND'),
+    });
   }
 });

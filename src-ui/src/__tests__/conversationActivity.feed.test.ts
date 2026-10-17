@@ -13,7 +13,9 @@ import type {
   ConversationTurnActivity,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { describe, expect, test } from 'vitest';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -76,46 +78,53 @@ function init(conversationId: string) {
   });
 }
 
+function renderFeed(input: Parameters<typeof useConversationActivityFeed>[0]) {
+  const client = new QueryClient();
+  client.setQueryData(['orchestration-sessions'], input.sessions);
+  client.setQueryData(['conversation-inventory'], {
+    pages: [{ items: input.conversations ?? [] }],
+    pageParams: [undefined],
+  });
+  return renderHook(() => useConversationActivityFeed(input), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children),
+  });
+}
+
 describe('#2309 useConversationActivityFeed', () => {
   test('a sessions read made after mount makes the thread live', () => {
     const conv = 'claude:feed-sessions';
     init(conv);
-    renderHook(() =>
-      useConversationActivityFeed({
-        sessions: [summary(conv, 3)],
-        sessionsFetchedAfterMount: true,
-        conversations: undefined,
-        conversationsFetchedAfterMount: false,
-      }),
-    );
+    renderFeed({
+      sessions: [summary(conv, 3)],
+      sessionsFetchedAfterMount: true,
+      conversations: undefined,
+      conversationsFetchedAfterMount: false,
+    });
     expect(isTurnInFlight(activeChatsStore.getSnapshot()[conv])).toBe(true);
   });
 
   test('a conversation-list read made after mount makes the thread live', () => {
     const conv = 'claude:feed-list';
     init(conv);
-    renderHook(() =>
-      useConversationActivityFeed({
-        sessions: [],
-        sessionsFetchedAfterMount: false,
-        conversations: [listItem(conv, 4)],
-        conversationsFetchedAfterMount: true,
-      }),
-    );
+    renderFeed({
+      sessions: [],
+      sessionsFetchedAfterMount: false,
+      conversations: [listItem(conv, 4)],
+      conversationsFetchedAfterMount: true,
+    });
     expect(isTurnInFlight(activeChatsStore.getSnapshot()[conv])).toBe(true);
   });
 
   test('a list restored from a persisted cache (not fetched after mount) never feeds liveness', () => {
     const conv = 'claude:feed-cached';
     init(conv);
-    renderHook(() =>
-      useConversationActivityFeed({
-        sessions: [summary(conv, 5)],
-        sessionsFetchedAfterMount: false,
-        conversations: [listItem(conv, 6)],
-        conversationsFetchedAfterMount: false,
-      }),
-    );
+    renderFeed({
+      sessions: [summary(conv, 5)],
+      sessionsFetchedAfterMount: false,
+      conversations: [listItem(conv, 6)],
+      conversationsFetchedAfterMount: false,
+    });
     expect(
       activeChatsStore.getSnapshot()[conv]?.conversationActivity,
     ).toBeUndefined();

@@ -11,6 +11,13 @@ on:
 
 permissions: { contents: read }
 
+# Shared with scheduled full qualification, across distinct source revisions.
+# GitHub holds pending invocations before allocating their first runner.
+concurrency:
+  group: station-background-compute
+  queue: max
+  cancel-in-progress: false
+
 # These proofs follow required PR feedback, or one combined scheduled main
 # candidate. Sequence families instead of allocating every platform at once.
 jobs:

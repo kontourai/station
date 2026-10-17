@@ -127,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Invokes the real pinned actionlint parser against isolated stdin fixtures.
+  'scripts/__tests__/actionlint-queue-compat.test.ts',
   // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.
   'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.

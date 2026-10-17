@@ -306,6 +306,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;

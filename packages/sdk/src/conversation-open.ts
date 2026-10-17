@@ -4,7 +4,7 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import { authenticatedFetch } from './client/http';
+import { authenticatedFetch, type ClientRequestOptions } from './client/http';
 import { StationRequestTimeoutError } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
 
@@ -16,12 +16,14 @@ import { resolveApiBase } from './query-core';
 export async function resolveConversationOpen(
   conversationId: string,
   apiBase?: string,
+  options?: Pick<ClientRequestOptions, 'signal' | 'timeoutMs'>,
 ): Promise<ConversationOpenResolution> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   let response: Response;
   try {
     response = await authenticatedFetch(
       `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
+      options,
     );
   } catch (cause) {
     throw conversationOpenResolutionError('network', cause);

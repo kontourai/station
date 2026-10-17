@@ -115,6 +115,7 @@ describe('Nightly publication admission', () => {
     condition: string,
     needs: Record<string, unknown>,
     sha: string,
+    cancelled = false,
   ) => {
     const expression = condition
       .slice(3, -2)
@@ -131,7 +132,7 @@ describe('Nightly publication admission', () => {
       { ref: 'refs/heads/main', sha, event_name: 'schedule' },
       {},
       () => true,
-      () => false,
+      () => cancelled,
     );
   };
   it.each(publishers)(
@@ -156,6 +157,7 @@ describe('Nightly publication admission', () => {
           ),
         ).toBe(false);
       expect(evaluate(job.if ?? '', needs, 'b'.repeat(40))).toBe(false);
+      expect(evaluate(job.if ?? '', needs, sha, true)).toBe(false);
       expect(job.needs).toContain('test-gate');
     },
   );

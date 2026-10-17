@@ -40,6 +40,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: release
       source_sha: ${{ github.sha }}
 
   publish:

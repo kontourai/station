@@ -240,8 +240,12 @@ detached checkout at the exact commit that no other session shares.
    sessions it started (decision 5). Needs a scope token, an ownership join
    from the claim's caller grant to the session, and refusal tests for a
    session another caller started.
-3. **CLI and SDK.** A `station delegate` spelling that reads the caller's
-   own checkout `HEAD` and sends the requirement. Not decided.
+3. **CLI and SDK.** The CLI accepts an explicit full Git object id through
+   `--portable-project`, `--resource`, `--source-commit` and `--attempt-id`,
+   and sends the existing SDK prepared target. It reads no caller checkout.
+   `delegate attempt` exposes receiver-local, grant-bound lookup without
+   resending. See the [CLI reference](../reference/cli.md#require-a-source-version-before-execution).
+   Automatic caller-`HEAD` selection remains deferred.
 4. **Isolated guarantee.** With #484 portable worktrees: an owned detached
    checkout at the exact commit, so `protected-during-execution` can be met.
 5. **Transfer of unpublished work.** Only after the open decision above and

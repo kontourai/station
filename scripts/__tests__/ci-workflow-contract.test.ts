@@ -937,10 +937,6 @@ describe('CI verification workflow contracts', () => {
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
-    expect(workflow('full-regression.yml')).toContain(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      'group: hosted-full-regression-${{ inputs.source_sha }}',
-    );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );

@@ -8,6 +8,7 @@ import {
   useConversationActions,
 } from '../contexts/ConversationsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { TASK_SHAPING_INSTRUCTION } from '../lib/task-shaping';
 import type { ChatExecutionMetadata } from '../utils/execution';
 import { deriveLatestPlanArtifactFromMessages } from '../utils/planArtifacts';
 import { rehydrateChatSession } from './orchestration/rehydrateChatSession';
@@ -80,6 +81,11 @@ export function useOpenConversation(apiBase: string) {
       inventoryUpdatedAt?: string,
       /** A newly replay-seeded fork has copied history before its first execution Session. */
       hydrateMessages = false,
+      hydration?: {
+        initialized: (id: string) => void;
+        current: () => boolean;
+        cleanup: (id: string) => void;
+      },
     ): Promise<string | null> => {
       // Orchestration events are keyed by provider thread id. Reopening one of
       // those conversations must preserve that identity so recovered events,
@@ -105,13 +111,21 @@ export function useOpenConversation(apiBase: string) {
           Boolean(execution?.provider) && !hydrateMessages,
       });
 
+      hydration?.initialized(sessionId);
+
       if (execution?.provider && !hydrateMessages) {
         return sessionId;
       }
 
-      const fetched = await fetchMessages(apiBase, agentSlug, conversationId);
-      if (!fetched) {
-        removeChat(sessionId);
+      const fetched = await fetchMessages(
+        apiBase,
+        agentSlug,
+        conversationId,
+        hydration?.current,
+      );
+      if (!fetched || hydration?.current() === false) {
+        if (hydration) hydration.cleanup(sessionId);
+        else removeChat(sessionId);
         return null;
       }
 
@@ -155,6 +169,7 @@ export function useLaunchChat(apiBase: string) {
       projectSlug?: string,
       projectName?: string,
       execution?: ChatExecutionMetadata,
+      ambientContext?: string,
     ) => {
       const sessionId = createChatSession(
         agentSlug,
@@ -165,11 +180,24 @@ export function useLaunchChat(apiBase: string) {
         execution,
       );
 
+      if (ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
+        activeChatsStore.updateChat(sessionId, { taskShaping: true });
       navigation.setActiveChat(sessionId);
       showChatPageOrDock(() => navigation.setDockState(true));
 
       if (initialMessage?.trim()) {
-        await sendMessage(sessionId, agentSlug, undefined, initialMessage);
+        if (ambientContext) {
+          await sendMessage(
+            sessionId,
+            agentSlug,
+            undefined,
+            initialMessage,
+            undefined,
+            ambientContext,
+          );
+        } else {
+          await sendMessage(sessionId, agentSlug, undefined, initialMessage);
+        }
       }
 
       return sessionId;
