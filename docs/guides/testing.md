@@ -1295,6 +1295,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+On Linux, `ci:fast` and the full `typecheck` aggregate refuse to run inside a
+live `station-<instance>.service` cgroup. Verification started by a hosted Agent
+inherits that service's memory failure domain: an OOM kill can terminate Station
+and every active conversation with it. Run those aggregates from an external
+shell or hosted CI. Focused tests and individual typecheck lanes remain available
+inside Station; the admission guard does not impose a memory budget on arbitrary
+shell commands.
+
 Station uses the pinned native TypeScript 7 compiler for type checks and
 package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
 retained only for policy scanners and tests using its JavaScript AST API;
@@ -1307,9 +1315,12 @@ Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
 `node_modules/.cache/station-tsbuildinfo/`. The slots are lock files in
-`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path, not
-`$TMPDIR`, so sandboxes and sudo join the same pool; private to the user and
-refused if another user owns it) and in the per-user temp directory on Windows.
+`/tmp/station-typecheck-slots-<uid>` on macOS and Linux (a fixed path independent
+of `$TMPDIR`, private to the user and refused if another user owns it) and in the
+per-user temp directory on Windows. A Linux `PrivateTmp` mount gives callers
+separate pools even when the path has the same spelling. Callers in different
+mount namespaces need an explicit shared `STATION_TYPECHECK_SLOT_DIR` to share
+one pool.
 Every caller must resolve the same directory: a second directory is a second
 pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
