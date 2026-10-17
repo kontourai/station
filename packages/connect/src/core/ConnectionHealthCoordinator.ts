@@ -104,6 +104,11 @@ export class ConnectionHealthCoordinator {
 
   trigger = (): void => {
     this.clearTimer();
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    )
+      return;
     if (this.inFlight) {
       this.rerunRequested = true;
       return;
@@ -285,6 +290,12 @@ export class ConnectionHealthCoordinator {
 
   private schedule(delay: number): void {
     this.clearTimer();
+    // useConnectionStatus owns foreground recovery, including native resumes.
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    )
+      return;
     this.timer = setTimeout(this.trigger, delay);
   }
 
