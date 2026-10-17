@@ -78,7 +78,13 @@
 
 :root[data-page-hidden] .live-status-glyph *,
 :root[data-page-hidden] .chat-status-pill,
-:root[data-page-hidden] .chat-status-pill * {
+:root[data-page-hidden] .chat-status-pill *,
+:root[data-page-hidden] .tool-call__pulse::after,
+:root[data-page-hidden] .tool-call-batch__pulse::after,
+:root[data-page-hidden] .workflow-plan-panel__runtime-dot--live::after,
+:root[data-page-hidden] .voice-pill,
+:root[data-page-hidden] .voice-pill::after,
+:root[data-page-hidden] .browser-pane__chip-dot::after {
   animation-play-state: paused !important;
 }
 
