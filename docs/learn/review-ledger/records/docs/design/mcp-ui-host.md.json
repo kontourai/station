@@ -50,7 +50,13 @@
 
     "src-server/services/orchestration/event-store.ts",
 
-    "src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts"
+    "src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts",
+
+    "packages/shared/src/mcp-app-result.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.css",
+
+    "examples/mcp-ui-demo/server.mjs"
   ],
 
   "checks": [
