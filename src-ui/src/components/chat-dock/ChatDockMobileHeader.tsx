@@ -24,6 +24,7 @@ const loadChatDockMobileOverflowSheet = () =>
 
 export interface ChatDockMobileOverflowActions {
   onTurnIntoTask?: () => void;
+  turnIntoTaskLabel?: string;
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;

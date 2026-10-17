@@ -59,9 +59,11 @@ Backlog, In progress, Blocked, Review, Done, and Canceled. Select a card and
 choose **Open Task** to enter its workspace. **Refresh tasks** reads the current
 Task records; status is not a percentage complete or proof that an agent is
 running. Connected provider items retain their separate read-only behavior.
-The Task workspace starts with the objective and available shared-room panes;
-**Task and workspace details** expands identity and local workspace metadata.
-Recorded answers, saved outputs, references, and inspection remain available.
+The Task workspace opens on **Chat** and makes the viewer present. **Brief** is
+the autosaved shared plan; its Goal and checklist appear beside desktop Chat.
+**Results** collects kept answers, file outputs and pull requests. **Details**
+contains identity, local workspace metadata, Basis, references and inspection.
+On narrow screens **About** holds the desktop rail context.
 
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.

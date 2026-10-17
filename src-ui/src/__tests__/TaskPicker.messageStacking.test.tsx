@@ -73,8 +73,8 @@ function userRow() {
         <div className="message__task-input-action">
           <TaskPicker
             target={{ sessionId: 'session-1', eventId: 'event-1' }}
-            triggerLabel="Add input to Task"
-            dialogTitle="Add input to Task"
+            triggerLabel="Add to Task"
+            dialogTitle="Add to Task"
             eyebrow="Pinned input"
             adapter={{ tasks: [{ id: 'task-1', title: 'Ship it' }] }}
             initiallyOpen

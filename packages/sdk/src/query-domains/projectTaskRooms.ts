@@ -471,10 +471,14 @@ export function useProjectTaskRoomStream(
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
               notifyCurrent(() => callbackRef.current?.onRoom?.(live));
-            else
+            else {
               void client.invalidateQueries({
                 queryKey: projectTaskRoomQueries.history(taskId).queryKey,
               });
+              void client.invalidateQueries({
+                queryKey: ['task-graph', taskId],
+              });
+            }
           } else if (event.kind === 'snapshot') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)

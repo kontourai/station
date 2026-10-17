@@ -19,8 +19,9 @@ matters: work can exist before an engine is ready to execute it.
 
 ![A Project with a saved Task and workspace details.](media/project-with-task.png)
 
-The Task's shared document and conversation keep revisions and discussion with
-that work. In this example a person saved a document; the room history records
+The Task's shared brief and conversation keep revisions and discussion with
+that work. The capture below is replaced with the chat-first Task's Brief tab;
+the document was saved through the real autosave path. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
 brief room to breathe. [#2844](https://github.com/kontourai/station/issues/2844)
@@ -36,7 +37,7 @@ The Task
 document capture was replaced after actual single-user save/send/reopen checks.
 The current Task
 workspace leads with the objective and shared room, keeps technical identity
-behind **Task and workspace details**, and gives the editor and message field
+in **Details › Workspace & branch**, and gives the editor and message field
 responsive width. The captures above do not verify agent participation,
 two-human collaboration, or every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
 records the broader channel, board, agent and preview work still to deliver.

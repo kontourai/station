@@ -231,12 +231,12 @@ describe('ProjectTasksSection', () => {
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
     render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Existing task, todo' }),
+      screen.getByRole('button', { name: 'Existing task, To do' }),
     );
     expect(dispatchTask).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh tasks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Tasks' }));
     expect(refetchTasks).toHaveBeenCalledOnce();
   });
 
@@ -469,6 +469,20 @@ describe('ProjectTasksSection', () => {
       });
     },
   );
+
+  test('keeps the linked Session identity inside Details', () => {
+    tasks[0] = { ...tasks[0], sessionId: 'session:fixture-linked-run' };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    expect(screen.queryByText('Session session:fixture-linked-run')).toBeNull();
+    const identity = screen.getByText('session:fixture-linked-run', {
+      exact: true,
+    });
+    const details = identity.closest('details');
+    expect(details?.open).toBe(false);
+    fireEvent.click(screen.getByText('Details', { exact: true }));
+    expect(details?.open).toBe(true);
+    expect(details?.contains(identity)).toBe(true);
+  });
 
   test('opens an existing Task and preserves dispatch behavior', async () => {
     dispatchTask.mockResolvedValue({
@@ -1026,7 +1040,7 @@ describe('ProjectTasksSection error state (Review H1)', () => {
     expect(screen.queryByText('No tasks yet.')).toBeNull();
   });
 
-  test('a settled-empty read still renders "No tasks yet.", with no error state', () => {
+  test('a settled-empty read offers creating a Task without an error state', () => {
     useTasksQuery.mockImplementation(() => ({
       data: [],
       error: undefined,
@@ -1035,7 +1049,7 @@ describe('ProjectTasksSection error state (Review H1)', () => {
 
     render(<ProjectTasksSection slug="project-alpha" />);
 
-    expect(screen.getByText('No tasks yet.')).toBeTruthy();
+    expect(screen.getByText('Start a Task')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

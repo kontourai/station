@@ -1,0 +1,7 @@
+{
+  "revision": "b40604727441f27716342ba3a17690a3d2f588f6",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed shell scan relocation from TaskWorkspaceView to the live AgentsView SplitPaneLayout integration control. Scan roots, matcher and both zero ceilings are unchanged. Task header ownership is in PageFrame through usePageHeader; the document already distinguishes current frame owners from historical migration instances. Focused shell and route tests passed; planted stacked heading and removed Task frame controls failed as intended, then source bytes were restored. No new rendered or accessibility claim.","inputs":["docs/design/shell-skeletons.md","scripts/shell-conformance-ratchet.mjs"]}
+  ]
+}

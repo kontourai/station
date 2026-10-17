@@ -4,6 +4,7 @@ import type {
   ProjectSharedTaskHistory,
   ProjectSharedTaskPublicationExpectation,
 } from '@kontourai/station-contracts/project-shared-task';
+import type { ProjectTaskRoomCursor } from '@kontourai/station-contracts/project-task-room';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -210,6 +211,17 @@ export function createProjectSharedTaskRoutes(deps: {
   });
   app.get('/:slug/shared-work/:taskId/history', async (c) => {
     try {
+      const token = c.req.query('cursor');
+      let cursor: ProjectTaskRoomCursor | undefined;
+      if (token !== undefined) {
+        if (!/^[A-Za-z0-9_-]{1,4096}$/.test(token))
+          return c.json({ success: true, data: { kind: 'invalid-cursor' } });
+        try {
+          cursor = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
+        } catch {
+          return c.json({ success: true, data: { kind: 'invalid-cursor' } });
+        }
+      }
       const authority = await deps.authority(c.req.raw);
       const admission = await deps.service.admitRead(
         await deps.scope(c.req.raw, c.req.param('slug')),
@@ -219,6 +231,7 @@ export function createProjectSharedTaskRoutes(deps: {
       const value = await deps.room.sharedHistory({
         taskId: admission.taskId,
         request: c.req.raw,
+        ...(cursor ? { cursor } : {}),
         current: async () => {
           try {
             await deps.service.revalidate(admission, authority);
@@ -334,11 +347,10 @@ export function createProjectSharedTaskRoutes(deps: {
 function humanHistory(value: unknown): ProjectSharedTaskHistory | undefined {
   const parsed = parseProjectTaskRoomBrowserHistory(value);
   if (parsed?.kind !== 'available') return undefined;
-  if (parsed.hasMore) return { kind: 'unavailable' };
   return {
     kind: 'available',
     records: parsed.records.flatMap((record) =>
-      record?.body?.kind === 'human-message'
+      record?.body?.kind === 'human-message' && record.actor.kind === 'human'
         ? [
             {
               actor: { kind: record.actor.kind, label: record.actor.label },
@@ -359,6 +371,7 @@ function humanHistory(value: unknown): ProjectSharedTaskHistory | undefined {
       retainedAnchorSeq: parsed.checkpoint.retainedAnchorSeq,
       retainedAnchorDigest: parsed.checkpoint.retainedAnchorDigest,
     },
-    hasMore: false,
+    hasMore: parsed.hasMore,
+    ...(parsed.nextCursor ? { nextCursor: parsed.nextCursor } : {}),
   };
 }

@@ -620,6 +620,12 @@ export async function observeDelegatedTaskEvents(
 
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
+  taskRoomReply?: {
+    taskId: string;
+    taskCreatedAt: string;
+    operationId: string;
+    attachBrief?: boolean;
+  };
   message: string;
   /**
    * Deliver `message` only as the answer to this exact open input request
@@ -638,6 +644,8 @@ export interface ContinueDelegatedTaskInput
 }
 
 export interface DelegatedTaskFollowUpHandle {
+  /** The turn can be accepted while its shared human reply could not be posted. */
+  taskRoomReplyDelivery?: 'posted' | 'unpublished';
   conversationId: string;
   taskId: string;
   sessionId: string;

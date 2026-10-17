@@ -83,7 +83,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
     trigger.focus();
     fireEvent.click(trigger);
     const attach = await screen.findByRole('menuitem', {
-      name: /Add this answer to a Task/,
+      name: 'Add to Task: answer',
     });
     attach.focus();
     fireEvent.click(attach);
@@ -92,9 +92,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
     });
     search.focus();
     await waitFor(() => expect(document.activeElement).toBe(search));
-    expect(
-      screen.getByRole('dialog', { name: 'Add answer to Task' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /^Add to Task/ })).toBeTruthy();
     expect(screen.queryByRole('menu', { name: 'Answer actions' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -111,7 +109,8 @@ describe('Task attachment affordances follow the Task catalog', () => {
       else renderUserInput();
       fireEvent.click(
         screen.getByRole('button', {
-          name: kind === 'answer' ? /Add this answer/ : 'Add input to Task',
+          name:
+            kind === 'answer' ? 'Add to Task: answer' : 'Add to Task: message',
         }),
       );
       expect(
@@ -121,7 +120,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
       ).toBeTruthy();
       expect(screen.queryByText('Tasks are not available')).toBeNull();
       fireEvent.click(
-        await screen.findByRole('button', { name: 'New Task from this…' }),
+        await screen.findByRole('button', { name: 'New Task from this' }),
       );
       expect(listener).toHaveBeenCalledTimes(1);
       expect(listener.mock.calls[0][0].detail.source).toEqual(
@@ -149,9 +148,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
     };
 
     renderUserInput();
-    expect(
-      screen.getByRole('button', { name: 'Add input to Task' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Add to Task/ })).toBeTruthy();
   });
 
   test('asks the catalog without waiting for a click', () => {
@@ -170,9 +167,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
     (_label, state) => {
       tasksQuery.state = state;
       renderUserInput();
-      expect(
-        screen.getByRole('button', { name: 'Add input to Task' }),
-      ).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Add to Task/ })).toBeTruthy();
     },
   );
 });

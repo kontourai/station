@@ -430,6 +430,39 @@ describe('Station-agent conversation storage (#3112)', () => {
     expect(conversation?.title ?? '').not.toContain('[Timezone:');
   });
 
+  test('a room delegation persists the human title while the model receives the brief', async () => {
+    const title = 'How do we persist user preferences today?';
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conv-room-title',
+          provider: 'station-agent',
+          metadata: {
+            agentId: SLUG,
+            agentSlug: SLUG,
+            userId: OWNER,
+            conversationId: 'conv-room-title',
+            delegationTitle: title,
+          },
+        },
+      },
+      { userId: OWNER },
+    );
+    expect(started.status).toBe('accepted');
+    await send(
+      'conv-room-title',
+      `${title}\n\n---\n# Task brief: Settings\nPrivate plan details`,
+      1,
+    );
+    expect(
+      (await memoryAdapter.getConversation('conv-room-title'))?.title,
+    ).toBe(title);
+    expect(JSON.stringify(languageModel.doStreamCalls[0]?.prompt)).toContain(
+      'Private plan details',
+    );
+  });
+
   test('a turn sent after a failed turn is in the conversation read, with its failure marker, in order', async () => {
     await failTwice('conv-failed');
 

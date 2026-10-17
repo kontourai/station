@@ -19,12 +19,12 @@
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393",
-      "alt": "A Task with its shared document, live room and saved revision history.",
-      "caption": "A saved Task document and its room history.",
-      "scenario": "Save a shared revision",
-      "evidence": "Actual isolated production Station at 1440x1400. Created Project and Task through UI, saved a multi-paragraph shared document, sent a human room message and reopened the Task. Document and room history persisted. Editor also measured 310x256 and composer 310x96 at 390px without page overflow. One human identity only; no external Agent/provider, public publication, native device or full #2844 closure proof. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
-      "capturedRevision": "fbb464a6f50ad701f4c11b95cd8badaf73d3b391",
+      "digest": "da9619093072eff21f93bdc16c0ff9b2c16865466dcd8181ac9fc20bf1cf2823",
+      "alt": "A Task Brief tab displaying an automatically saved shared plan.",
+      "caption": "The Brief tab displays the shared plan after autosave.",
+      "scenario": "Autosave a shared brief",
+      "evidence": "Actual production server and UI built from clean source 3804112230b15c60b52c6f0cafa0c5ec2745eec9, isolated OS and Station homes, instance polish2, ports 3632/5732. Sample Project and Tasks were seeded through public APIs; this structured Brief was typed in the UI and saved through the live plan/batch protocol, then reopened after rebuilds. Screenshot at 1440x900, dark theme, DPR 1. The same Brief was inspected at 1024x975 and 390x844 in both themes. Related room/thread/shaping and invited local-account human-history fixtures used a deterministic local fake Ollama model; they are separate evidence from this frame. No real provider, native, hosted or release qualification is claimed. The optional setup reminder was dismissed through Continue Without Setup before the final unobstructed capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the Brief feature, not current sidebar/header appearance.",
+      "capturedRevision": "3804112230b15c60b52c6f0cafa0c5ec2745eec9",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",

@@ -36,6 +36,8 @@ type RoomContextValue = {
     command: ProjectTaskRoomLiveCommand,
   ): Promise<ProjectTaskRoomLiveResult>;
   commandPending: boolean;
+  presenceError?: string;
+  retryPresence(): void;
   subscribeDocument(
     listener: (document: AuthoritativeRoomDocument) => void,
   ): () => void;
@@ -104,6 +106,7 @@ export function ProjectTaskRoomProvider({
     useState<RoomContextValue['stream']>('connecting');
   const [live, setLive] = useState<ProjectTaskRoomBrowserLiveSnapshot>();
   const [ownActorId, setOwnActorId] = useState<string>();
+  const [presenceError, setPresenceError] = useState<string>();
   const streamRef = useRef(stream);
   const liveGenerationRef = useRef<string | undefined>(undefined);
   const terminalGenerationRef = useRef<string | undefined>(undefined);
@@ -229,6 +232,78 @@ export function ProjectTaskRoomProvider({
     (value: ProjectTaskRoomLiveCommand) => mutation.mutateAsync(value),
     [mutation.mutateAsync],
   );
+  const presenceChain = useRef<Promise<void>>(Promise.resolve());
+  const [presenceAttempt, setPresenceAttempt] = useState(0);
+  const retryPresence = useCallback(
+    () => setPresenceAttempt((value) => value + 1),
+    [],
+  );
+  const liveAvailable =
+    discovery.data?.kind === 'opened' || discovery.data?.kind === 'existing'
+      ? discovery.data.capabilities.live
+      : false;
+  useEffect(() => {
+    void taskId;
+    void presenceAttempt;
+    if (!liveAvailable) return;
+    let departed = false;
+    const join = async () => {
+      if (departed) return;
+      setPresenceError(undefined);
+      const joined = await command({ command: 'join' });
+      if (departed) return;
+      if (
+        joined.kind !== 'available' ||
+        !['joined', 'refreshed'].includes(joined.snapshot.result?.outcome ?? '')
+      ) {
+        setPresenceError('Presence could not join this Task. Try again.');
+        return;
+      }
+      // Announcing publishes the otherwise private join in the room projection.
+      const published = await command({ command: 'announce' });
+      if (departed) return;
+      setPresenceError(
+        published.kind === 'available' &&
+          ['updated', 'refreshed'].includes(
+            published.snapshot.result?.outcome ?? '',
+          )
+          ? undefined
+          : 'Presence could not be published. Try again.',
+      );
+    };
+    const connect = () => {
+      presenceChain.current = presenceChain.current
+        .catch(() => {})
+        .then(join)
+        .catch(() => {
+          if (!departed)
+            setPresenceError('Presence could not connect. Try again.');
+        });
+    };
+    connect();
+    const depart = () => {
+      departed = true;
+      presenceChain.current = presenceChain.current
+        .catch(() => {})
+        .then(async () => {
+          await command({ command: 'depart' });
+        })
+        .catch(() => {});
+    };
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        departed = false;
+        connect();
+      }
+    };
+    window.addEventListener('pageshow', restore);
+    window.addEventListener('pagehide', depart);
+    return () => {
+      window.removeEventListener('pageshow', restore);
+      window.removeEventListener('pagehide', depart);
+      depart();
+    };
+  }, [command, liveAvailable, taskId, presenceAttempt]);
   const subscribeDocument = useCallback(
     (listener: (document: AuthoritativeRoomDocument) => void) => {
       documentListeners.current.add(listener);
@@ -279,6 +354,8 @@ export function ProjectTaskRoomProvider({
       ...(ownActorId ? { ownActorId } : {}),
       command,
       commandPending: mutation.isPending,
+      presenceError,
+      retryPresence,
       subscribeDocument,
     });
     return rooms;
@@ -288,6 +365,8 @@ export function ProjectTaskRoomProvider({
     live,
     mutation.isPending,
     ownActorId,
+    presenceError,
+    retryPresence,
     parent,
     stream,
     subscribeDocument,

@@ -21,7 +21,10 @@ const LazyConnectedSessionInventory = lazy(() =>
   ),
 );
 
-export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+export function BasisWorkspacePane({
+  instance,
+  presentation = 'tabbed',
+}: BuiltinWorkspacePaneProps & { presentation?: 'tabbed' | 'chromeless' }) {
   const host = useWorkspacePaneHostOpenAction();
   /**
    * The sentence for the reason the host gave, not one covering every reason
@@ -72,7 +75,7 @@ export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
     return <section role="alert">Basis pane identity is unavailable.</section>;
   return (
     <>
-      {portable ? (
+      {portable && presentation !== 'chromeless' ? (
         <div className="basis-pane-portable-action">
           <button
             type="button"

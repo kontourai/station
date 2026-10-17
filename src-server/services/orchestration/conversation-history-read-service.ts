@@ -5,6 +5,7 @@ import type {
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
 import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
 
@@ -151,7 +152,8 @@ export class ConversationHistoryReadService {
           // A personal pre-agent record is authorized before it reaches this
           // projection; Station is its explicit compatibility presentation.
           agentSlug: publicAgentIdFromRuntimeKey(record.agentSlug ?? 'station'),
-          title: record.title,
+          title:
+            derivedConversationTitle(summary.delegation?.title) ?? record.title,
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
           messageCount: record.messageCount,

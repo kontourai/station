@@ -1,14 +1,16 @@
-import type {
-  TaskRecord,
-  TaskStatus,
+import {
+  type TaskRecord,
+  type TaskStatus,
+  taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
+import { Empty, StatusBadge } from '@kontourai/ui/react';
 import './ProjectTaskBoard.css';
 
 const COLUMNS: readonly { label: string; statuses: readonly TaskStatus[] }[] = [
-  { label: 'Backlog', statuses: ['todo', 'ready', 'triage'] },
+  { label: taskStatusLabel('todo'), statuses: ['todo', 'ready', 'triage'] },
   { label: 'In progress', statuses: ['in_progress'] },
   { label: 'Blocked', statuses: ['blocked'] },
-  { label: 'Review', statuses: ['review', 'verification'] },
+  { label: taskStatusLabel('review'), statuses: ['review', 'verification'] },
   { label: 'Done', statuses: ['done'] },
   { label: 'Canceled', statuses: ['canceled'] },
 ];
@@ -28,6 +30,16 @@ export function ProjectTaskBoard({
         const items = tasks.filter((task) =>
           column.statuses.includes(task.status),
         );
+        if (column.label === 'Canceled' && !items.length)
+          return (
+            <details
+              className="project-task-board__canceled-disclosure"
+              key={column.label}
+            >
+              <summary>Canceled · 0</summary>
+              <Empty label="Tasks you cancel appear here." />
+            </details>
+          );
         return (
           <section
             className="project-task-board__column"
@@ -43,7 +55,7 @@ export function ProjectTaskBoard({
                   <button
                     type="button"
                     className="project-task-board__card"
-                    aria-label={`${task.title}, ${task.status.replaceAll('_', ' ')}`}
+                    aria-label={`${task.title}, ${taskStatusLabel(task.status)}`}
                     aria-pressed={selectedTaskId === task.id}
                     onClick={() => onSelect(task.id)}
                   >
@@ -54,13 +66,19 @@ export function ProjectTaskBoard({
                       </span>
                     ) : null}
                     <span>
-                      {task.status.replaceAll('_', ' ')} · {task.priority}
+                      <StatusBadge
+                        tone={
+                          task.status === 'done'
+                            ? 'positive'
+                            : task.status === 'blocked'
+                              ? 'caution'
+                              : 'neutral'
+                        }
+                        status={taskStatusLabel(task.status)}
+                      />
+                      {task.priority !== 'normal' && ` · ${task.priority}`}
                     </span>
-                    <span>
-                      {task.agentId
-                        ? `Assigned to ${task.agentId}`
-                        : 'No agent assigned'}
-                    </span>
+                    {task.agentId && <span>Assigned to {task.agentId}</span>}
                   </button>
                 </li>
               ))}

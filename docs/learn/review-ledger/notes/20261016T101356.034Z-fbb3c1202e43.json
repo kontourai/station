@@ -1,0 +1,13 @@
+{
+  "revision": "1bde3134790ca24692c9c281d9a8a4b52232e6a2",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Final image review replaced a fixture frame obstructed by an optional setup reminder. The normal Continue Without Setup control was used; no CSS/UI bypass or pixel editing was applied. The current figure is the exact live production-browser Brief frame from clean code build 3804112230b15c60b52c6f0cafa0c5ec2745eec9. Its digest/evidence were updated together; provider, native and hosted limits remain.","inputs":["docs/guides/starter-work.md","docs/learn/media.json","docs/learn/media.json#/captures/1","docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Final image review replaced a fixture frame obstructed by an optional setup reminder. The normal Continue Without Setup control was used; no CSS/UI bypass or pixel editing was applied. The current figure is the exact live production-browser Brief frame from clean code build 3804112230b15c60b52c6f0cafa0c5ec2745eec9. Its digest/evidence were updated together; provider, native and hosted limits remain.","inputs":["docs/learn/walkthroughs.md","docs/learn/media.json#/captures/1","docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Final image review replaced a fixture frame obstructed by an optional setup reminder. The normal Continue Without Setup control was used; no CSS/UI bypass or pixel editing was applied. The current figure is the exact live production-browser Brief frame from clean code build 3804112230b15c60b52c6f0cafa0c5ec2745eec9. Its digest/evidence were updated together; provider, native and hosted limits remain.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","docs/learn/media.json#/captures/1","docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Final image review replaced a fixture frame obstructed by an optional setup reminder. The normal Continue Without Setup control was used; no CSS/UI bypass or pixel editing was applied. The current figure is the exact live production-browser Brief frame from clean code build 3804112230b15c60b52c6f0cafa0c5ec2745eec9. Its digest/evidence were updated together; provider, native and hosted limits remain.","inputs":["docs/learn/media/shared-task-document.png"]}
+  ]
+}

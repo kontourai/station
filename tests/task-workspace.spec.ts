@@ -195,11 +195,17 @@ test.describe
       expect(dispatch.success).toBe(true);
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
       await expect(
-        page.getByText('task-primary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-primary', { exact: true }),
       ).toBeVisible();
       await page.getByRole('button', { name: /artifact.md/ }).click();
       await expect(page.getByText('artifact evidence')).toBeVisible();
@@ -282,11 +288,17 @@ test.describe
         secondaryRepo,
         'task-secondary',
       );
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
       await expect(
-        page.getByText('task-secondary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-secondary', { exact: true }),
       ).toBeVisible();
       await expect(page.getByText('Unavailable', { exact: true })).toHaveCount(
         2,
@@ -306,6 +318,7 @@ test.describe
       );
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
@@ -319,6 +332,7 @@ test.describe
       await stopStation(live);
       await startStation(live, false);
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
@@ -427,29 +441,42 @@ test.describe
       await page.goto(`${live.ui}/projects/${projectSlug}?dock=open`);
       await expect(
         page
-          .getByRole('button', { name: /^Manage Stations/ })
+          .getByRole('button', { name: /^Choose Station/ })
           .getByLabel('connected'),
       ).toBeVisible({ timeout: 30_000 });
-      const newChat = page.getByTitle(/^New Chat/);
+      const newChat = page
+        .locator('.chat-dock__tab-actions')
+        .getByRole('button', { name: 'New chat', exact: true });
       await expect(newChat).toBeVisible({ timeout: 20_000 });
       await newChat.click();
-      // Chromium can paint this lazy route-transition dialog before its role
-      // is reflected in the accessibility snapshot. Keep the semantic DOM
-      // contract exact while avoiding that transient accessibility-tree race.
-      const picker = page.locator(
-        '.new-chat-modal[role="dialog"][aria-label="New Chat"]',
-      );
+      const picker = page.getByRole('dialog', {
+        name: 'New chat',
+        exact: true,
+      });
+      const start = picker.getByRole('form', { name: 'Start work' });
       await expect(picker).toBeVisible();
-      await picker.locator('.new-chat-modal__context-button').click();
-      await picker.locator(`[data-context-value="${projectSlug}"]`).click();
+      await start.getByRole('button', { name: /^Project: / }).click();
+      await page
+        .getByRole('dialog', { name: 'Choose project' })
+        .locator(`[data-context-value="${projectSlug}"]`)
+        .click();
       await expect(
-        picker.locator('.new-chat-modal__context-button'),
+        start.getByRole('button', { name: /^Project: / }),
       ).toContainText(projectSlug);
-      await picker.getByRole('button', { name: new RegExp(agentName) }).click();
-      const composer = page.getByPlaceholder(/^Type a message/);
-      await expect(composer).toBeVisible({ timeout: 20_000 });
-      await composer.fill('Give me the public answer.');
-      await composer.press('Enter');
+      await start.getByRole('button', { name: /^Agent:/ }).click();
+      const agents = page.getByRole('dialog', { name: 'Choose agent' });
+      await agents
+        .locator('.new-chat-modal__agent', { hasText: agentName })
+        .click();
+      await expect(agents).toHaveCount(0);
+      await expect(
+        start.getByRole('button', { name: /^Agent:/ }),
+      ).toContainText(agentName);
+      await start
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .fill('Give me the public answer.');
+      await start.getByRole('button', { name: 'Start', exact: true }).click();
+      await expect(picker).toHaveCount(0);
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
       const moreAnswerActions = page.getByRole('button', {
@@ -598,10 +625,15 @@ test.describe
       await expect(attachDialog).toHaveCount(0);
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByRole('heading', { name: 'Kept answers', exact: true }),
       ).toBeVisible();
-      await expect(page.getByText(answer, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText(answer, { exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByText(
           /semantic support is separate and has not been assessed/i,
@@ -623,7 +655,12 @@ test.describe
         uiOrigin: live.ui,
       });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await expect(page.getByText(answer, { exact: true })).toBeVisible({
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await expect(
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText(answer, { exact: true }),
+      ).toBeVisible({
         timeout: 30_000,
       });
 

@@ -573,6 +573,80 @@ describe('DeltaCoalescer', () => {
     expect(coalescer.pendingThreadCount()).toBe(0);
   });
 
+  test.each(['window', 'turn-boundary'] as const)(
+    'retries uncommitted timer text before %s without losing or duplicating it',
+    (recovery) => {
+      vi.useFakeTimers();
+      try {
+        const emitted: CanonicalRuntimeEvent[] = [];
+        let locked = false;
+        const coalescer = new DeltaCoalescer(
+          (event) => {
+            if (locked) throw new Error('SQLITE_BUSY');
+            emitted.push(event);
+          },
+          {
+            windowMs: 60,
+            logger: { warn: vi.fn() },
+            retainFailedFlush: (_event, error) =>
+              error instanceof Error && error.message === 'SQLITE_BUSY',
+          },
+        );
+        coalescer.offer(delta('t1', 'first'));
+        coalescer.offer(delta('t1', '-retained', { eventId: 'held-event' }));
+        locked = true;
+        expect(() => vi.advanceTimersByTime(120)).not.toThrow();
+        expect(coalescer.pendingThreadCount()).toBe(1);
+        locked = false;
+        if (recovery === 'window') vi.advanceTimersByTime(60);
+        else {
+          coalescer.offer(delta('t1', '-later'));
+          const terminal = other('t1', 'turn.completed');
+          if (!coalescer.offer(terminal)) emitted.push(terminal);
+        }
+        vi.advanceTimersByTime(180);
+        expect(texts(emitted).filter((text) => text !== undefined)).toEqual([
+          'first',
+          recovery === 'window' ? '-retained' : '-retained-later',
+        ]);
+        expect(emitted[1].eventId).toBe('held-event');
+        if (recovery === 'turn-boundary')
+          expect(emitted[2].method).toBe('turn.completed');
+        expect(coalescer.pendingThreadCount()).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test('disposal reports retained text and cancels every retry before storage closes', () => {
+    vi.useFakeTimers();
+    try {
+      const emitted: CanonicalRuntimeEvent[] = [];
+      let locked = false;
+      const coalescer = new DeltaCoalescer(
+        (event) => {
+          if (locked) throw new Error('SQLITE_BUSY');
+          emitted.push(event);
+        },
+        { logger: { warn: vi.fn() }, retainFailedFlush: () => true },
+      );
+      coalescer.offer(delta('t1', 'paint'));
+      coalescer.offer(delta('t1', 'held'));
+      locked = true;
+      expect(() => coalescer.dispose()).toThrow('unpublished');
+      expect(vi.getTimerCount()).toBe(0);
+      locked = false;
+      coalescer.resumeRetained('t1');
+      vi.advanceTimersByTime(1000);
+      expect(texts(emitted)).toEqual(['paint']);
+      expect(() => coalescer.offer(delta('t1', 'late'))).toThrow('disposed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a throwing delivery during flushAll does not abandon the other threads', () => {
     const emitted: CanonicalRuntimeEvent[] = [];
     let flushing = false;

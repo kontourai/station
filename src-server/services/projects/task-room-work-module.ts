@@ -21,6 +21,11 @@ const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_REQUESTS = 256;
 type StoredRecord = Omit<TaskRoomWorkRecord, 'requesterId'> & {
   ownerId: string;
+  replyAdmissions?: {
+    operationId: string;
+    requesterId: string;
+    clientTurnId: string;
+  }[];
 };
 const CONTEXT_STORE_VERSION = 'station.task-room-work-store/v2' as const;
 const EXECUTION_STORE_VERSION = 'station.task-room-work-store/v3' as const;
@@ -39,6 +44,9 @@ export type TaskRoomWorkScope = {
   requesterId: string;
 };
 export type TaskRoomInvocationAdmission = ReceiverExecutionEffectAdmission & {
+  readonly expectedSessionId?: string;
+  readonly clientTurnId?: string;
+  readonly releasePublication?: () => void;
   readonly roomBinding: { readonly projectId: string; readonly taskId: string };
 };
 type Scope = TaskRoomWorkScope;
@@ -60,6 +68,7 @@ function validRecord(value: unknown): value is StoredRecord {
     Object.keys(r).length ===
       11 +
         Number(r.context !== undefined) +
+        Number(r.replyAdmissions !== undefined) +
         Number(r.executionAgentId !== undefined) +
         Number(r.modelId !== undefined) +
         Number(r.modelOptionsDigest !== undefined) +
@@ -73,6 +82,20 @@ function validRecord(value: unknown): value is StoredRecord {
     (r.modelOptionsDigest === undefined ||
       (typeof r.modelOptionsDigest === 'string' &&
         /^[0-9a-f]{64}$/.test(r.modelOptionsDigest))) &&
+    (r.replyAdmissions === undefined ||
+      (Array.isArray(r.replyAdmissions) &&
+        r.replyAdmissions.length <= MAX_REQUESTS &&
+        r.replyAdmissions.every((reply: unknown) => {
+          if (!reply || typeof reply !== 'object') return false;
+          const value = reply as Record<string, unknown>;
+          return (
+            Object.keys(value).length === 3 &&
+            validText(value.operationId, 160) &&
+            validText(value.requesterId, 512) &&
+            typeof value.clientTurnId === 'string' &&
+            /^room-reply:[0-9a-f-]{36}$/.test(value.clientTurnId)
+          );
+        }))) &&
     validText(r.taskId, 160) &&
     validText(r.projectId, 160) &&
     validText(r.taskCreatedAt, 40) &&
@@ -144,7 +167,7 @@ function checkedStore(value: unknown): Store {
 }
 
 function publishedRecord(record: StoredRecord): TaskRoomWorkRecord {
-  const { ownerId, ...view } = record;
+  const { ownerId, replyAdmissions: _replyAdmissions, ...view } = record;
   return { ...view, requesterId: requesterDisplayId(record.taskId, ownerId) };
 }
 
@@ -195,6 +218,80 @@ export class TaskRoomWorkModule {
         );
       },
     );
+  }
+
+  /** Private server admissions; never included in the browser request journal. */
+  async admitReply(input: {
+    taskId: string;
+    sessionId: string;
+    operationId: string;
+    scope: Scope;
+  }): Promise<string> {
+    let clientTurnId: string | undefined;
+    await mutateJsonFile<Store>(
+      this.file,
+      { version: TASK_ROOM_WORK_VERSION, records: [] },
+      (raw) => {
+        const store = checkedStore(raw);
+        const record = store.records.find(
+          (record) =>
+            record.sessionId === input.sessionId &&
+            record.taskId === input.taskId &&
+            record.projectId === input.scope.projectId &&
+            record.taskCreatedAt === input.scope.taskCreatedAt &&
+            record.state !== 'refused',
+        );
+        if (!record)
+          throw new TaskRoomWorkAuthorityChangedError(
+            'Room reply request changed.',
+          );
+        record.replyAdmissions ??= [];
+        const admissions = record.replyAdmissions;
+        const existing = admissions.find(
+          (entry) =>
+            entry.operationId === input.operationId &&
+            entry.requesterId === input.scope.requesterId,
+        );
+        if (existing) clientTurnId = existing.clientTurnId;
+        else {
+          if (admissions.length >= MAX_REQUESTS)
+            throw new TaskRoomWorkUnavailableError(
+              'Room reply admission limit reached.',
+            );
+          clientTurnId = `room-reply:${randomUUID()}`;
+          admissions.push({
+            operationId: input.operationId,
+            requesterId: input.scope.requesterId,
+            clientTurnId,
+          });
+        }
+        return store;
+      },
+      { maxBytes: MAX_BYTES, label: 'Agent request history' },
+    );
+    if (!clientTurnId)
+      throw new TaskRoomWorkUnavailableError(
+        'Room reply admission is unavailable.',
+      );
+    return clientTurnId;
+  }
+
+  async readReplyAdmissions(sessionId: string): Promise<readonly string[]> {
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(this.file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    if (bytes.length > MAX_BYTES)
+      throw new TaskRoomWorkUnavailableError(
+        'Agent request history exceeds its limit.',
+      );
+    const record = checkedStore(
+      JSON.parse(bytes.toString('utf8')),
+    ).records.find((record) => record.sessionId === sessionId);
+    return record?.replyAdmissions?.map((entry) => entry.clientTurnId) ?? [];
   }
 
   async list(

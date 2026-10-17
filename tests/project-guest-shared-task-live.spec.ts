@@ -363,6 +363,7 @@ test.describe
             .click();
           await guest.getByRole('button', { name: 'Read shared Task' }).click();
           await expect(guest.getByText(messageMarker)).toBeVisible();
+          await guest.getByRole('tab', { name: 'Brief', exact: true }).click();
           await expect(guest.getByText(documentMarker)).toBeVisible();
         };
 
@@ -423,10 +424,11 @@ test.describe
           }, path);
         // Exact refusal protocol, source-pinned: an account-bound device may
         // only reach the public allowlist (403
-        // account_bound_device_route_forbidden for everything else — task
-        // reads, access management), while a non-member Project read that IS
-        // on the allowlist fails membership with an opaque 404. A server
-        // error must never count as a denial.
+        // account_bound_device_route_forbidden for everything else, such as
+        // task reads). Access management is on the allowlist and is refused by
+        // membership instead (403 project_access_forbidden), while a non-member
+        // Project read fails membership with an opaque 404. A server error
+        // must never count as a denial.
         for (const expected of [
           {
             path: `/api/projects/${privateProject.slug}`,
@@ -441,7 +443,7 @@ test.describe
           {
             path: `/api/projects/${shared.slug}/access`,
             status: 403,
-            fragment: 'account_bound_device_route_forbidden',
+            fragment: 'project_access_forbidden',
           },
         ]) {
           const denied = await guestRead(expected.path);

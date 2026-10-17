@@ -1,5 +1,4 @@
 /** @vitest-environment jsdom */
-
 import { toWorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 import {
   act,
@@ -9,6 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 
 const mocks = vi.hoisted(() => ({
   discovery: {
@@ -94,7 +94,6 @@ import {
   subscribeInteractiveWorkspacePerformanceMarks,
 } from '../performance/interactive-workspace-performance-hooks';
 import { TaskRoomEditorPane } from '../workspace-panes/TaskRoomEditorPane';
-import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 
 function planned() {
   return {
@@ -108,7 +107,7 @@ function planned() {
 }
 
 function editor() {
-  return screen.getByRole('textbox', { name: 'Task document' });
+  return screen.getByRole('textbox', { name: 'Task brief' });
 }
 
 function changeDraft(value = 'local draft') {
@@ -156,6 +155,44 @@ beforeEach(() => {
 });
 
 describe('TaskRoomEditorPane', () => {
+  test('the Brief display renders Markdown and explicitly enters the same live editor', async () => {
+    await import('../components/chat/MarkdownRenderer');
+    mocks.document.data.text = '## Goal\nA useful shared plan';
+    render(<TaskRoomEditorPane taskId="task-1" startInPreview />);
+    expect(await screen.findByRole('heading', { name: 'Goal' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
+    expect((editor() as HTMLTextAreaElement).value).toBe(
+      mocks.document.data.text,
+    );
+  });
+
+  test('autosaves without a Save gesture and retains typing during an in-flight commit', async () => {
+    let settle!: (value: unknown) => void;
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('first draft');
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
+    changeDraft('latest draft');
+    await act(async () =>
+      settle({
+        kind: 'committed',
+        revision: 'revision-2',
+        text: 'first draft',
+      }),
+    );
+    expect((editor() as HTMLTextAreaElement).value).toBe('latest draft');
+    expect(
+      screen.queryByRole('button', { name: 'Save shared document' }),
+    ).toBeNull();
+  });
+
   test('marks the real input handler and exact React layout commit', async () => {
     const marks: unknown[] = [];
     const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>
@@ -310,11 +347,7 @@ describe('TaskRoomEditorPane', () => {
       expect((editor() as HTMLTextAreaElement).value).toBe('stream applied');
       expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
       expect(screen.getByText(status)).toBeTruthy();
-      const save = screen.getByRole('button', {
-        name: 'Save shared document',
-      });
-      expect(save.matches(':disabled')).toBe(true);
-      fireEvent.click(save);
+      fireEvent.blur(editor());
       expect(mocks.plan).not.toHaveBeenCalled();
     },
   );
@@ -331,9 +364,7 @@ describe('TaskRoomEditorPane', () => {
       );
       const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
       changeDraft('pending gap draft');
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Save shared document' }),
-      );
+      fireEvent.blur(editor());
       await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
       mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
       rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
@@ -354,60 +385,141 @@ describe('TaskRoomEditorPane', () => {
     },
   );
 
-  test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
-    navigationStore.navigate('/guard-back-origin');
-    navigationStore.navigate('/guard-back-editor');
+  test.each(['route', 'back', 'forward'])(
+    'navigation flushes the pending brief before committing %s',
+    async (direction) => {
+      navigationStore.navigate('/brief-origin');
+      navigationStore.navigate('/brief-editor');
+      if (direction === 'forward') {
+        navigationStore.navigate('/brief-destination');
+        window.history.back();
+        await waitFor(() =>
+          expect(window.location.pathname).toBe('/brief-editor'),
+        );
+      }
+      let settle!: (value: unknown) => void;
+      mocks.plan.mockResolvedValue(planned());
+      mocks.batch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            settle = resolve;
+          }),
+      );
+      mocks.adoptCommitted.mockReturnValue({
+        kind: 'snapshot',
+        revision: 'revision-2',
+        text: 'navigation draft',
+      });
+      render(<TaskRoomEditorPane taskId="task-1" />);
+      changeDraft('navigation draft');
+      if (direction === 'route') navigationStore.navigate('/brief-destination');
+      else if (direction === 'back') window.history.back();
+      else window.history.forward();
+      await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
+      expect(window.location.pathname).toBe('/brief-editor');
+      expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
+      await act(async () =>
+        settle({
+          kind: 'committed',
+          revision: 'revision-2',
+          text: 'navigation draft',
+        }),
+      );
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          direction === 'back' ? '/brief-origin' : '/brief-destination',
+        ),
+      );
+    },
+  );
+
+  test('a pending save preserves guarded precommit navigation admission', async () => {
+    navigationStore.navigate('/brief-precommit-editor');
+    let settle!: (value: unknown) => void;
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    mocks.adoptCommitted.mockReturnValue({
+      kind: 'snapshot',
+      revision: 'revision-2',
+      text: 'precommit draft',
+    });
     render(<TaskRoomEditorPane taskId="task-1" />);
-    changeDraft('back draft');
-
-    window.history.back();
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/guard-back-editor'),
+    changeDraft('precommit draft');
+    const prepare = vi.fn().mockResolvedValue(true);
+    const navigation = navigationStore.navigateWithPrecommit(
+      '/brief-precommit-destination',
+      { current: () => true, prepare, signal: new AbortController().signal },
     );
-    expect((editor() as HTMLTextAreaElement).value).toBe('back draft');
-
-    window.history.back();
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/guard-back-origin'),
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
+    expect(window.location.pathname).toBe('/brief-precommit-editor');
+    await act(async () =>
+      settle({
+        kind: 'committed',
+        revision: 'revision-2',
+        text: 'precommit draft',
+      }),
     );
+    await expect(navigation).resolves.toBe(true);
+    expect(window.location.pathname).toBe('/brief-precommit-destination');
+    expect(prepare).toHaveBeenCalledOnce();
   });
 
-  test('guards browser Forward and keeps the draft on cancel before replaying on confirm', async () => {
-    navigationStore.navigate('/guard-forward-editor');
-    navigationStore.navigate('/guard-forward-target');
-    window.history.back();
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/guard-forward-editor'),
-    );
+  test('a rejected plan under co-editing refreshes and retries autosave without another gesture', async () => {
+    mocks.plan
+      .mockResolvedValueOnce({ kind: 'rejected', reason: 'document changed' })
+      .mockResolvedValueOnce(planned());
+    mocks.refetchAuthoritative.mockImplementation(async () => {
+      mocks.document.data = {
+        kind: 'snapshot',
+        revision: 'revision-2',
+        text: 'remote edit',
+      };
+      return mocks.document.data;
+    });
+    mocks.batch.mockResolvedValue({
+      kind: 'committed',
+      revision: 'revision-3',
+      text: 'co-edit draft',
+    });
+    mocks.adoptCommitted.mockReturnValue({
+      kind: 'snapshot',
+      revision: 'revision-3',
+      text: 'co-edit draft',
+    });
     render(<TaskRoomEditorPane taskId="task-1" />);
-    changeDraft('forward draft');
-
-    window.history.forward();
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/guard-forward-editor'),
-    );
-    expect((editor() as HTMLTextAreaElement).value).toBe('forward draft');
-
-    window.history.forward();
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
-    await waitFor(() =>
-      expect(window.location.pathname).toBe('/guard-forward-target'),
-    );
+    changeDraft('co-edit draft');
+    fireEvent.blur(editor());
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce(), {
+      timeout: 4000,
+    });
+    expect(mocks.plan).toHaveBeenCalledTimes(2);
+    expect((editor() as HTMLTextAreaElement).value).toBe('co-edit draft');
   });
 
-  test('uses one dirty guard for beforeunload, pane close, and cancel/confirm navigation', async () => {
-    window.history.replaceState({}, '', '/projects/station');
-    window.dispatchEvent(new PopStateEvent('popstate'));
+  test('beforeunload flushes the pending save and protects the still-dirty host pane', async () => {
     const runtime = new WorkspacePaneHostRuntime();
-    const paneId = toWorkspacePaneInstanceId('pane-1');
+    const paneId = toWorkspacePaneInstanceId('brief-pane');
     runtime.register(paneId, {
       mount: () => undefined,
       suspend: () => undefined,
       resume: () => undefined,
       dispose: () => undefined,
+    });
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch.mockResolvedValue({
+      kind: 'committed',
+      revision: 'revision-2',
+      text: 'flush draft',
+    });
+    mocks.adoptCommitted.mockReturnValue({
+      kind: 'snapshot',
+      revision: 'revision-2',
+      text: 'flush draft',
     });
     render(
       <TaskRoomEditorPane
@@ -416,31 +528,60 @@ describe('TaskRoomEditorPane', () => {
         instanceId={paneId}
       />,
     );
-    changeDraft('guarded draft');
-    const unload = new Event('beforeunload', { cancelable: true });
-    window.dispatchEvent(unload);
-    expect(unload.defaultPrevented).toBe(true);
+    changeDraft('flush draft');
     await expect(runtime.requestClose(paneId)).resolves.toEqual({
       status: 'confirm',
       reason: 'dirty',
     });
+    const unload = new Event('beforeunload', { cancelable: true });
+    fireEvent(window, unload);
+    expect(mocks.plan).toHaveBeenCalledOnce();
+    expect(unload.defaultPrevented).toBe(true);
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('Saved'),
+    );
+    const cleanUnload = new Event('beforeunload', { cancelable: true });
+    fireEvent(window, cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+    await expect(runtime.requestClose(paneId)).resolves.toMatchObject({
+      status: 'closed',
+    });
+  });
 
-    navigationStore.navigate('/agents');
-    expect(window.location.pathname).toBe('/projects/station');
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
-    expect(window.location.pathname).toBe('/projects/station');
-    navigationStore.navigate('/agents');
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
-    await waitFor(() => expect(window.location.pathname).toBe('/agents'));
+  test('persistent co-edit rejection stops after three automatic retries', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.plan.mockResolvedValue({
+        kind: 'rejected',
+        reason: 'document changed',
+      });
+      mocks.refetchAuthoritative.mockResolvedValue(mocks.document.data);
+      render(<TaskRoomEditorPane taskId="task-1" />);
+      changeDraft('bounded retry draft');
+      for (let step = 0; step < 14; step += 1)
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(500);
+        });
+      expect(mocks.plan).toHaveBeenCalledTimes(4);
+      expect(mocks.refetchAuthoritative).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(mocks.plan).toHaveBeenCalledTimes(4);
+      expect(
+        screen.getByRole('button', { name: 'Retry autosave' }),
+      ).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('settles unchanged without submitting and clears dirty state', async () => {
     mocks.plan.mockResolvedValue({ kind: 'unchanged' });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     expect(
       await screen.findByText(
         'No changes were needed; your draft already matches the shared document.',
@@ -450,10 +591,8 @@ describe('TaskRoomEditorPane', () => {
     expect(editor().getAttribute('value')).toBeNull();
     expect((editor() as HTMLTextAreaElement).value).toBe('local draft');
     expect(
-      screen
-        .getByRole('button', { name: 'Save shared document' })
-        .matches(':disabled'),
-    ).toBe(true);
+      screen.queryByRole('button', { name: 'Save shared document' }),
+    ).toBeNull();
   });
 
   test('retains a refused draft and offers an ordinary retry', async () => {
@@ -463,14 +602,12 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('refused draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Room policy changed Draft retained; the shared document was not changed.',
     );
     expect((editor() as HTMLTextAreaElement).value).toBe('refused draft');
-    expect(screen.getByRole('button', { name: 'Retry save' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry autosave' })).toBeTruthy();
     expect(mocks.batch).not.toHaveBeenCalled();
   });
 
@@ -491,18 +628,12 @@ describe('TaskRoomEditorPane', () => {
         });
       render(<TaskRoomEditorPane taskId="task-1" />);
       changeDraft();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Save shared document' }),
-      );
+      fireEvent.blur(editor());
       await waitFor(() =>
         expect((editor() as HTMLTextAreaElement).value).toBe('server settled'),
       );
       expect(
-        screen.getByText(
-          kind === 'committed'
-            ? 'Shared document saved.'
-            : 'This exact edit was already saved.',
-        ),
+        screen.getByText(kind === 'committed' ? 'Saved' : 'Saved'),
       ).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Retry identical batch' }),
@@ -527,9 +658,7 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly saved');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() =>
       expect((editor() as HTMLTextAreaElement).value).toBe(
         'newer converged text',
@@ -540,7 +669,7 @@ describe('TaskRoomEditorPane', () => {
       mocks.queryClient,
       'task-1',
     );
-    expect(screen.getByText('This exact edit was already saved.')).toBeTruthy();
+    expect(screen.getByText('Saved')).toBeTruthy();
   });
 
   test('committed settlement falls back to a no-cache authoritative read for a cache gap', async () => {
@@ -558,9 +687,7 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
 
     await waitFor(() =>
       expect((editor() as HTMLTextAreaElement).value).toBe('resynced document'),
@@ -581,15 +708,13 @@ describe('TaskRoomEditorPane', () => {
     mocks.refetchAuthoritative.mockRejectedValue(new Error('read failed'));
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly saved');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
 
     expect(
       await screen.findByRole('button', { name: 'Retry identical batch' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('possibly saved');
-    expect(screen.queryByText('This exact edit was already saved.')).toBeNull();
+    expect(screen.queryByText('Saved')).toBeNull();
     expect(mocks.refetchAuthoritative).toHaveBeenCalledWith(
       mocks.queryClient,
       'task-1',
@@ -609,15 +734,13 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('gap custody draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
 
     expect(
       await screen.findByRole('button', { name: 'Retry identical batch' }),
     ).toBeTruthy();
     expect((editor() as HTMLTextAreaElement).value).toBe('gap custody draft');
-    expect(screen.queryByText('This exact edit was already saved.')).toBeNull();
+    expect(screen.queryByText('Saved')).toBeNull();
   });
 
   test.each([
@@ -633,9 +756,7 @@ describe('TaskRoomEditorPane', () => {
     );
     const rendered = render(<TaskRoomEditorPane taskId="task-a" />);
     changeDraft('task a draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() => expect(mocks.plan).toHaveBeenCalledTimes(1));
 
     mocks.document.data = {
@@ -662,9 +783,7 @@ describe('TaskRoomEditorPane', () => {
     );
     const rendered = render(<TaskRoomEditorPane taskId="task-a" />);
     changeDraft('abandoned task a draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() => expect(mocks.plan).toHaveBeenCalledTimes(1));
 
     mocks.document.data = {
@@ -707,9 +826,7 @@ describe('TaskRoomEditorPane', () => {
       );
       const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
       changeDraft('old-task draft');
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Save shared document' }),
-      );
+      fireEvent.blur(editor());
       await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(1));
 
       if (lifecycle === 'switches task') {
@@ -756,9 +873,7 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly saved');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
       name: 'Retry identical batch',
     });
@@ -794,9 +909,7 @@ describe('TaskRoomEditorPane', () => {
     });
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('possibly committed');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     fireEvent.click(
       await screen.findByRole('button', { name: 'Retry identical batch' }),
     );
@@ -832,9 +945,7 @@ describe('TaskRoomEditorPane', () => {
     );
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('terminal plan draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() => expect(mocks.plan).toHaveBeenCalledTimes(1));
 
     mocks.stream = 'terminal';
@@ -861,9 +972,7 @@ describe('TaskRoomEditorPane', () => {
     );
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('authorization ABA draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() => expect(mocks.plan).toHaveBeenCalledTimes(1));
 
     mocks.stream = 'terminal';
@@ -895,9 +1004,7 @@ describe('TaskRoomEditorPane', () => {
     });
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('retained draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     const retry = await screen.findByRole('button', {
       name: 'Retry identical batch',
     });
@@ -924,15 +1031,14 @@ describe('TaskRoomEditorPane', () => {
     mocks.batch.mockResolvedValue({ kind: 'unavailable' });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('first exact draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await screen.findByRole('button', { name: 'Retry identical batch' });
     changeDraft('new ordinary draft');
 
-    const save = screen.getByRole('button', { name: 'Save shared document' });
-    expect(save.matches(':disabled')).toBe(true);
-    fireEvent.click(save);
+    fireEvent.blur(editor());
+    expect(
+      screen.queryByRole('button', { name: 'Save shared document' }),
+    ).toBeNull();
     expect(mocks.plan).toHaveBeenCalledTimes(1);
     expect(mocks.batch).toHaveBeenCalledTimes(1);
   });
@@ -950,9 +1056,7 @@ describe('TaskRoomEditorPane', () => {
     );
     const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('terminal batch draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(1));
 
     mocks.stream = 'terminal';
@@ -988,9 +1092,7 @@ describe('TaskRoomEditorPane', () => {
     });
     render(<TaskRoomEditorPane taskId="task-1" />);
     changeDraft('stale draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
     expect((await screen.findByRole('alert')).textContent).toContain(
       'Stale edit plan',
     );
@@ -998,7 +1100,7 @@ describe('TaskRoomEditorPane', () => {
     expect(
       screen.queryByRole('button', { name: 'Retry identical batch' }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Retry save' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry autosave' })).toBeTruthy();
   });
 
   test('states readable read-only and failed-read modes truthfully', () => {
@@ -1031,10 +1133,8 @@ describe('TaskRoomEditorPane', () => {
     expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
     expect(
-      screen
-        .getByRole('button', { name: 'Save shared document' })
-        .matches(':disabled'),
-    ).toBe(true);
+      screen.queryByRole('button', { name: 'Save shared document' }),
+    ).toBeNull();
   });
 
   test('does not apply a query notification that arrives after stream revocation', async () => {

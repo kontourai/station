@@ -1,56 +1,121 @@
 .task-room-composer {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-3);
+  flex-shrink: 0;
   min-width: 0;
+  gap: var(--k-space-2);
+  margin: var(--k-space-3) var(--k-space-4) var(--k-space-4);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
   overflow-wrap: anywhere;
 }
-
 .task-room-composer textarea {
+  grid-column: 1 / -1;
   box-sizing: border-box;
   width: 100%;
-  min-height: calc(var(--k-space-6) * 3);
-  padding: var(--k-space-3);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-  background: var(--k-panel);
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--k-text);
   font: inherit;
-  resize: vertical;
+  resize: none;
 }
-
 .task-room-composer textarea:focus-visible {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
-
+.task-room-composer .task-room-message-label {
+  grid-column: 1 / -1;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+.task-room-composer .task-room-agent-action,
+.task-room-composer fieldset {
+  grid-column: 1;
+  align-self: center;
+}
+.task-room-composer fieldset {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-xs);
+}
+.task-room-composer .task-room-brief-choice {
+  flex: 1;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+  gap: var(--k-space-2);
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+.task-room-composer .task-room-send {
+  grid-column: 3;
+  align-self: center;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
+.task-room-composer .task-room-composer-help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.task-room-composer > [role="status"],
+.task-room-composer > [role="alert"],
+.task-room-composer > [role="listbox"] {
+  grid-column: 1 / -1;
+  font-size: var(--k-text-sm);
+}
 .task-room-composer [role="listbox"] {
-  border: 1px solid var(--k-line-strong);
+  max-height: calc(var(--k-space-6) * 8);
+  overflow-y: auto;
+  border: var(--k-border-thin) solid var(--k-line-strong);
   border-radius: var(--k-radius-sm);
   padding: var(--k-space-2);
   background: var(--k-panel-raised);
 }
-
 .task-room-composer [role="option"] {
   min-height: calc(var(--k-space-6) + var(--k-space-3));
   width: 100%;
   text-align: start;
 }
-
 .task-room-composer [role="option"][aria-selected="true"] {
-  outline: 2px solid var(--k-focus);
-  outline-offset: -2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-offset));
+}
+.task-room-brief-short {
+  display: none;
+}
+.task-room-inline-status {
+  margin: var(--k-space-1) 0;
+  color: var(--k-text-muted);
+  font: var(--k-text-xs) / var(--k-leading-normal) var(--k-font-ui);
+  overflow-wrap: anywhere;
+  width: auto;
+}
+.task-room-inline-status[role="alert"] {
+  color: var(--k-negative);
 }
 
-.task-room-brief-choice {
+.task-room-composer-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--k-space-2);
-  min-height: calc(var(--k-space-6) + var(--k-space-3));
 }
-.task-room-brief-preview pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: calc(var(--k-space-6) * 8);
-  overflow: auto;
+.task-room-composer-actions fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.task-room-composer .task-room-send {
+  margin-inline-start: auto;
 }

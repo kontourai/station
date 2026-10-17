@@ -57,6 +57,7 @@ import {
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
   ServerEvent,
@@ -146,6 +147,7 @@ interface StationAgentResumeCursor {
 }
 
 interface StationAgentSessionRecord {
+  conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
@@ -909,6 +911,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
           ?.mode === 'worktree',
       session,
+      conversationTitle: derivedConversationTitle(
+        stringField(input.metadata?.delegationTitle),
+      ),
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
@@ -1131,6 +1136,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                 : {}),
               options: {
                 conversationId: input.threadId,
+                ...(record.conversationTitle
+                  ? { title: record.conversationTitle }
+                  : {}),
                 ...(record.userId ? { userId: record.userId } : {}),
                 ...(record.delegation ? { delegation: record.delegation } : {}),
                 ...(modelId ? { model: modelId } : {}),
