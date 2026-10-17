@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
@@ -41,36 +42,102 @@ describe('portable release-ring workflow', () => {
       resolve(repoRoot, '.github/workflows/install-smoke.yml'),
       'utf8',
     );
-    expect(smoke).toContain('channel: [stable, preview]');
-    expect(smoke).toContain(
-      'RUNTIME_CHANNEL: $' +
-        "{{ matrix.channel == 'preview' && 'beta' || 'stable' }}",
+    const document = load(smoke) as {
+      jobs: Record<
+        string,
+        {
+          strategy?: { matrix: { os: string[] } };
+          steps: Array<{ run?: string; env?: Record<string, string> }>;
+        }
+      >;
+    };
+    const sourceJob = document.jobs['install-without-clone'];
+    expect(sourceJob.strategy?.matrix.os).toEqual([
+      'ubuntu-latest',
+      'macos-latest',
+    ]);
+    const installs = sourceJob.steps.filter(
+      (step) => step.run === 'bash scripts/smoke-install-source.sh',
     );
-    expect(smoke).toContain('launcher_name=station');
-    expect(smoke).toContain('"$launcher" upgrade');
-    expect(smoke).toContain('installs/$runtime_channel');
-    expect(smoke).toContain('instances/$runtime_channel');
-    expect(smoke).toContain('Expected failed candidate start');
-    expect(smoke).toContain('previous_current');
-    expect(smoke).toContain('STATION_INSTALL_PUBLIC_MANIFEST_URL=');
-    expect(smoke).toContain('STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=');
-    expect(smoke).toContain('STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1');
-    expect(smoke).toContain('scripts/ecosystem-manifest.mjs');
+    expect(
+      installs.map((step) => [
+        step.env?.RELEASE_CHANNEL,
+        step.env?.RUNTIME_CHANNEL,
+      ]),
+    ).toEqual([
+      ['stable', 'stable'],
+      ['preview', 'beta'],
+    ]);
+    for (const key of ['SMOKE_HOME', 'RELEASE_DIR', 'SERVER_PORT', 'UI_PORT']) {
+      expect(new Set(installs.map((step) => step.env?.[key])).size).toBe(2);
+    }
+    const sourceSmoke = readFileSync(
+      resolve(repoRoot, 'scripts/smoke-install-source.sh'),
+      'utf8',
+    );
+    expect(sourceSmoke).toContain('launcher_name=station');
+    expect(sourceSmoke).toContain('"$launcher" upgrade');
+    expect(sourceSmoke).toContain('installs/$runtime_channel');
+    expect(sourceSmoke).toContain('instances/$runtime_channel');
+    expect(sourceSmoke).toContain('Expected failed candidate start');
+    expect(sourceSmoke).toContain('previous_current');
+    expect(sourceSmoke).toContain('STATION_INSTALL_PUBLIC_MANIFEST_URL=');
+    expect(sourceSmoke).toContain('STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=');
+    expect(sourceSmoke).toContain('STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1');
+    expect(sourceSmoke).toContain('scripts/ecosystem-manifest.mjs');
     // The smoke installs through the unauthenticated public-manifest path, so
     // its fixture must not fake gh either.
-    expect(smoke).toContain('gh must not run in the public installer path');
+    expect(sourceSmoke).toContain(
+      'gh must not run in the public installer path',
+    );
     // The bad-release leg must swap the served fixture the packaged upgrade
     // verifies against, not just a local directory the installer never reads.
-    expect(smoke).toContain(
+    expect(sourceSmoke).toContain(
       'cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"',
     );
-    const initialInstallIndex = smoke.indexOf(
-      'STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/',
+    const initialInstallIndex = sourceSmoke.indexOf(
+      'STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:${MANIFEST_PORT}/',
     );
-    const captureCurrentIndex = smoke.indexOf('previous_current=$(readlink');
-    const packagedUpgradeIndex = smoke.indexOf('"$launcher" upgrade');
+    const captureCurrentIndex = sourceSmoke.indexOf(
+      'previous_current=$(readlink',
+    );
+    const packagedUpgradeIndex = sourceSmoke.indexOf('"$launcher" upgrade');
     expect(initialInstallIndex).toBeGreaterThan(-1);
     expect(captureCurrentIndex).toBeGreaterThan(initialInstallIndex);
     expect(packagedUpgradeIndex).toBeGreaterThan(captureCurrentIndex);
+  });
+  it('keeps all native proofs on one runner without turning a failed proof into success', () => {
+    const native = load(
+      readFileSync(
+        resolve(repoRoot, '.github/workflows/desktop-rust.yml'),
+        'utf8',
+      ),
+    ) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            name?: string;
+            run?: string;
+            if?: string;
+            'continue-on-error'?: boolean;
+          }>;
+        }
+      >;
+    };
+    expect(Object.keys(native.jobs)).toHaveLength(1);
+    const steps = Object.values(native.jobs)[0].steps;
+    for (const command of [
+      'cargo fmt --check --manifest-path src-desktop/Cargo.toml',
+      'cargo check --target aarch64-linux-android --lib',
+      'node scripts/run-agent-activity-android-unit-tests.mjs --no-daemon',
+      'npm run verify:desktop-rust',
+    ]) {
+      const proof = steps.find((step) => step.run?.includes(command));
+      expect(proof, command).toBeDefined();
+      expect(proof?.if).toContain('!cancelled()');
+      expect(proof?.if).toContain("steps.prerequisites.outcome == 'success'");
+      expect(proof?.['continue-on-error']).not.toBe(true);
+    }
   });
 });
