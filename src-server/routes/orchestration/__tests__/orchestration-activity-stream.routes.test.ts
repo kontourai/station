@@ -259,9 +259,10 @@ describe('conversation activity through GET /events (#2309)', () => {
     });
     const cursors: Array<string | null> = [];
     const fetcher = vi.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        cursors.push(new Headers(init?.headers).get('Last-Event-ID'));
-        return route.request(new Request(String(input), init));
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        cursors.push(request.headers.get('Last-Event-ID'));
+        return route.request(request);
       },
     );
     vi.stubGlobal('fetch', fetcher);
