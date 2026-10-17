@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../../src-server/__test-utils__/temp-dirs.js';
 import { createHtmlReplyRoutes } from '../../../../../src-server/routes/orchestration/html-replies.js';
 import { createHtmlReplyPages } from '../../../../../src-server/services/orchestration/html-reply-pages.js';
+import { conversationPartToContentParts } from '../../../hooks/orchestration/conversationTranscriptParts';
 import { MessageContent } from '../message-bubble/MessageContent';
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
@@ -136,7 +137,7 @@ test('render route stores immutable bytes and the transcript mounts its replayed
     const view = render(
       <QueryClientProvider client={query}>
         <MessageContent
-          contentParts={row.parts}
+          contentParts={row.parts.flatMap(conversationPartToContentParts)}
           textContent=""
           chatFontSize={14}
           showReasoning={false}
