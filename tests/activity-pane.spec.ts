@@ -30,6 +30,7 @@
  * context's own `regionArrangement` device setting (localStorage).
  */
 
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
@@ -694,10 +695,15 @@ fixtureTest.describe('Earlier history paging', () => {
         await expect(rows.first()).toBeVisible();
         const captureName = mobile ? 'phone-switcher.png' : 'activity.png';
         await page.screenshot({
-          path: process.env.STATION_E2E_GALLERY_DIR
-            ? resolve(process.env.STATION_E2E_GALLERY_DIR, captureName)
-            : testInfo.outputPath(captureName),
+          path: testInfo.outputPath(captureName),
         });
+        if (process.env.STATION_E2E_GALLERY_DIR) {
+          mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
+          copyFileSync(
+            testInfo.outputPath(captureName),
+            resolve(process.env.STATION_E2E_GALLERY_DIR, captureName),
+          );
+        }
         await expect(rows).toHaveCount(20);
         const more = root.getByRole('button', {
           name: mobile
