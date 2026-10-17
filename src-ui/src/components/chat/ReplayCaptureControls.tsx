@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useId, useRef, useState, useSyncExternalStore } from 'react';
 import { openReplayFromTape } from '../../hooks/orchestration/replay/controller';
 import {
   getCapturedTape,
@@ -33,6 +33,8 @@ export function ReplayCaptureControls({
   );
   const [error, setError] = useState<string>();
   const [includeContent, setIncludeContent] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const importInputId = useId();
   const tape = getCapturedTape();
   const guard = (action: () => void) => {
     try {
@@ -105,27 +107,44 @@ export function ReplayCaptureControls({
           </button>
         </>
       )}
-      <label>
+      {/* The native file input draws the platform's own "Choose File" chrome
+          beside these styled buttons, so a matching button opens it instead.
+          The input stays labelled and in the document for the picker and for
+          assistive technology that reaches it directly. */}
+      <button
+        type="button"
+        className="button button--secondary"
+        onClick={() => importInputRef.current?.click()}
+      >
+        Import replay file…
+      </button>
+      <label className="sr-only" htmlFor={importInputId}>
         Import replay file
-        <input
-          type="file"
-          accept="application/json,.json"
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            try {
-              const imported = await readSessionTapeFile(file);
-              openReplayFromTape(imported, {
-                agentSlug: imported.source.agentSlug,
-                agentName: 'Replay',
-              });
-              onOpen();
-            } catch (cause) {
-              setError(cause instanceof Error ? cause.message : String(cause));
-            }
-          }}
-        />
       </label>
+      <input
+        ref={importInputRef}
+        id={importInputId}
+        className="sr-only"
+        tabIndex={-1}
+        type="file"
+        accept="application/json,.json"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          // Choosing the same file again must still fire a change.
+          event.target.value = '';
+          if (!file) return;
+          try {
+            const imported = await readSessionTapeFile(file);
+            openReplayFromTape(imported, {
+              agentSlug: imported.source.agentSlug,
+              agentName: 'Replay',
+            });
+            onOpen();
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        }}
+      />
       {error && <p role="alert">{error}</p>}
     </div>
   );

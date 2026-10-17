@@ -172,7 +172,13 @@
 
     "packages/connect/package.json#/scripts",
 
-    "packages/connect/package.json#/sideEffects"
+    "packages/connect/package.json#/sideEffects",
+
+    "packages/connect/src/core/pairingDeepLink.ts",
+
+    "src-ui/src/components/GuidedConnect.tsx",
+
+    "src-ui/src/hooks/usePairingDeepLink.ts"
   ],
 
   "checks": [

@@ -884,6 +884,11 @@ export const PROVIDER_SESSION_START_FAILED_CODE =
  * re-send it.
  */
 export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+/** The key already names a different submitted intent. No turn was accepted. */
+export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+/** This keyed input cannot be represented completely by the supported digest. */
+export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
+  'client_turn_input_unsupported';
 
 /**
  * A send refused before any engine effect because the bound engine cannot
@@ -994,6 +999,7 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  askBeforeUse?: string[];
   /**
    * #90 D14: `false` when the agent's operator switched the built-in browser
    * tools (`station-browser`) off. Absent means the engine's default: an

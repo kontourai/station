@@ -1675,9 +1675,21 @@ function referencesCredential(job) {
  * base-only PR title topology may read the token; its full shape is
  * independently checked by primaryCiRouterFindings.
  */
+function isExactDeliveryPlanner(job) {
+  return (
+    Boolean(job) &&
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(job)))
+      .digest('hex') ===
+      'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
+  );
+}
+
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
+      if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
+        return false;
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {
@@ -2577,6 +2589,12 @@ function primaryCiRouterFindings(file, document) {
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
       !(jobId === 'source-policy' && isExactSourcePolicyCall(job)) &&
+      !(
+        jobId === 'delivery-plan' &&
+        hasExactKeys(job.permissions, ['contents', 'pull-requests']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions['pull-requests'] === 'read'
+      ) &&
       !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
@@ -2634,7 +2652,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(orderedPolicy(deliveryJobs)))
       .digest('hex') !==
-    'b14ff30bc4c65b56446880a51a8660342a0cf44f0845e396ceeb0e10b006cc46'
+    'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
   )
     findings.push({
       file,
@@ -2967,6 +2985,22 @@ function orderedPolicy(value) {
   return value;
 }
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
+  if (file === '.github/workflows/pr-ci-supersession.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest ===
+      '6bcfb0af788025369a0f9d1a90fc61dae2826dd06cb1d56bf2bc933d9bec044b'
+      ? []
+      : [
+          {
+            file,
+            jobId: 'cancel-obsolete',
+            message:
+              'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/source-verification-policy.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(orderedPolicy(document)))
@@ -3443,6 +3477,10 @@ export function readWorkflowDocuments() {
 // Validate the complete reviewed concurrency shapes before removing ONLY the
 // new schema field from a temporary lint copy. Security policy uses originals.
 const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
+const PR_SOURCE_FIFO_GROUPS = {
+  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+};
 export function legacyActionlintSources(workflows) {
   const expected = {
     '.github/workflows/delivery-validation.yml': 'station-background-compute',
@@ -3470,13 +3508,33 @@ export function legacyActionlintSources(workflows) {
       Object.hasOwn(concurrency, 'queue')
     )
       throw new Error(`Unreviewed FIFO workflow ${file}`);
-    for (const job of Object.values(document?.jobs ?? {}))
-      if (
+    for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
+      const queued =
         job?.concurrency &&
         typeof job.concurrency === 'object' &&
-        Object.hasOwn(job.concurrency, 'queue')
-      )
-        throw new Error(`Unreviewed FIFO job in ${file}`);
+        Object.hasOwn(job.concurrency, 'queue');
+      if (
+        file === '.github/workflows/ci.yml' &&
+        Object.hasOwn(PR_SOURCE_FIFO_GROUPS, jobId)
+      ) {
+        const concurrency = job?.concurrency;
+        if (
+          !concurrency ||
+          !hasExactKeys(concurrency, [
+            'group',
+            'queue',
+            'cancel-in-progress',
+          ]) ||
+          concurrency.group !== PR_SOURCE_FIFO_GROUPS[jobId] ||
+          concurrency.queue !== 'max' ||
+          concurrency['cancel-in-progress'] !== false
+        )
+          throw new Error(`Unreviewed PR source FIFO job ${jobId}`);
+      } else if (queued) throw new Error(`Unreviewed FIFO job in ${file}`);
+    }
+    for (const job of Object.values(copy?.jobs ?? {}))
+      if (job?.concurrency && Object.hasOwn(job.concurrency, 'queue'))
+        delete job.concurrency.queue;
     return { file, source: dump(copy, { lineWidth: -1, noRefs: true }) };
   });
 }

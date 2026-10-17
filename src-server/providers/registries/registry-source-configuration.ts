@@ -22,6 +22,7 @@ const selectionSchema = z
   .strict();
 
 export const registryItemSchema = z.object({
+  providesTools: z.boolean().optional(),
   id: z.string().min(1).max(1500),
   displayName: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),

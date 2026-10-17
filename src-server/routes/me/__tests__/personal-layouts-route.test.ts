@@ -31,6 +31,7 @@ import {
   FileStorageConflictError,
   FileStorageNotFoundError,
 } from '../../../domain/project-file-transactions.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
@@ -958,6 +959,41 @@ describe('promote a Board into a project (#2062)', () => {
     expect(storage.getLayout('demo', 'daily').id).toBe(board.id);
   });
 
+  test('an interrupted move cannot discard a personal Board edited after the Project copy was created', async () => {
+    const { dir, storage, app } = await seededWithProjects();
+    const created = await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Original',
+    });
+    const original = (
+      await json<{
+        data: import('@kontourai/station-contracts/layout').LayoutConfig;
+      }>(created)
+    ).data;
+    const { owner: _owner, ...snapshot } = original;
+    await storage.createLayout('demo', { ...snapshot, projectSlug: 'demo' });
+    const renamed = await app.request(
+      '/layouts/daily',
+      as('alice-laptop', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Newer personal revision' }),
+      }),
+    );
+    expect(renamed.status).toBe(200);
+    const resumed = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(resumed.status).toBe(409);
+    expect(existsSync(join(personalDir(dir, alice), 'daily.json'))).toBe(true);
+    const personal = (
+      await json<{ data: { name: string } }>(
+        await readBoard(app, 'alice-laptop', 'daily'),
+      )
+    ).data;
+    expect(personal.name).toBe('Newer personal revision');
+    expect(storage.getLayout('demo', 'daily').name).toBe('Original');
+  });
+
   test('a promote body may name only the destination project', async () => {
     const { app } = await seededWithProjects();
     await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
@@ -1238,4 +1274,367 @@ describe('a Board tab whose plugin its owner cannot see (#2090)', () => {
     expect(stored.name).toBe('Renamed');
     expect(stored).not.toHaveProperty('paneReferences');
   });
+});
+
+describe('Personal Board authoring', () => {
+  const definition = {
+    version: 1,
+    name: 'Daily brief',
+    description: 'Tasks and decisions',
+    sections: [
+      {
+        id: 'tasks',
+        kind: 'tasks',
+        title: 'Active tasks',
+        width: 'half',
+        limit: 8,
+      },
+    ],
+  };
+  const author = (
+    app: ReturnType<typeof seeded>['app'],
+    path: string,
+    method: string,
+    body?: unknown,
+    device = 'alice-laptop',
+    headers: Record<string, string> = {},
+  ) =>
+    app.request(
+      path,
+      as(device, {
+        method,
+        headers,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      }),
+    );
+
+  test.each(['project.v2', 'a_b-2'])(
+    'a Board can save a live section for existing Project %s',
+    async (projectSlug) => {
+      const { app } = seeded();
+      const proposed = await author(app, '/boards/daily.v2/proposal', 'POST', {
+        revision: null,
+        definition: {
+          ...definition,
+          sections: [{ ...definition.sections[0], projectSlug }],
+        },
+      });
+      expect(proposed.status).toBe(200);
+      const draft = (await json(proposed)).data;
+      const saved = await author(app, '/boards/daily.v2', 'PUT', {
+        revision: draft.revision,
+        definition: draft.proposal,
+      });
+      expect(saved.status).toBe(200);
+      expect((await json(saved)).data.definition.sections[0].projectSlug).toBe(
+        projectSlug,
+      );
+    },
+  );
+
+  test.each([
+    'a..b',
+    '../project',
+    'a/b',
+    'a\\b',
+    '.hidden',
+    '-leading',
+    '_leading',
+  ])(
+    'refuses unsafe Project filter %s before persisting a proposal',
+    async (projectSlug) => {
+      const { app } = seeded();
+      const proposed = await author(app, '/boards/daily/proposal', 'POST', {
+        revision: null,
+        definition: {
+          ...definition,
+          sections: [{ ...definition.sections[0], projectSlug }],
+        },
+      });
+      expect(proposed.status).toBe(400);
+      expect((await author(app, '/boards/daily', 'GET')).status).toBe(404);
+    },
+  );
+
+  test('chat proposes privately; exact preview can be applied, persists across devices, and moves into a Project without its proposal', async () => {
+    const { app } = await seededWithProjects();
+    const proposed = await author(app, '/boards/daily/proposal', 'POST', {
+      revision: null,
+      definition,
+    });
+    expect(proposed.status).toBe(200);
+    const draft = (await json(proposed)).data;
+    expect(draft.definition).toBeNull();
+    expect(draft.proposal.name).toBe('Daily brief');
+    expect(
+      (await author(app, '/boards/daily', 'GET', undefined, 'bob-laptop'))
+        .status,
+    ).toBe(404);
+    expect(
+      (await author(app, '/boards/daily', 'GET', undefined, 'alice-phone'))
+        .status,
+    ).toBe(200);
+    expect(
+      (await promote(app, 'alice-laptop', 'daily', { projectSlug: 'demo' }))
+        .status,
+    ).toBe(409);
+    for (const [method, path, body] of [
+      ['PUT', '/boards/daily', { revision: draft.revision, definition }],
+      ['DELETE', '/boards/daily/proposal', { revision: draft.revision }],
+    ] as const) {
+      const internal = new Request(
+        `http://station.test${path}`,
+        as('alice-laptop', { method, body: JSON.stringify(body) }),
+      );
+      setRuntimeAuthenticatedRequestPrincipal(internal, {
+        kind: 'internal',
+        credential: 'fixture-internal',
+        authority: undefined,
+        source: 'bearer',
+      });
+      expect((await app.request(internal)).status).toBe(403);
+    }
+    const agentHeaders = { 'x-station-control-origin': 'agent-tool' };
+    expect(
+      (
+        await author(
+          app,
+          '/boards/daily',
+          'PUT',
+          { revision: draft.revision, definition },
+          'alice-laptop',
+          agentHeaders,
+        )
+      ).status,
+    ).toBe(403);
+    const applied = await author(app, '/boards/daily', 'PUT', {
+      revision: draft.revision,
+      definition,
+    });
+    expect(applied.status).toBe(200);
+    const saved = (await json(applied)).data;
+    expect(saved.definition).toEqual(definition);
+    expect(saved.proposal).toBeNull();
+    const phone = (
+      await json(
+        await author(app, '/boards/daily', 'GET', undefined, 'alice-phone'),
+      )
+    ).data;
+    expect(phone.definition).toEqual(definition);
+    const renamed = await app.request(
+      '/layouts/daily',
+      as('alice-laptop', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Renamed morning' }),
+      }),
+    );
+    expect(renamed.status).toBe(200);
+    const afterRename = (await json(await author(app, '/boards/daily', 'GET')))
+      .data;
+    expect(afterRename.definition.name).toBe('Renamed morning');
+    const moved = await promote(app, 'alice-laptop', 'daily', {
+      projectSlug: 'demo',
+    });
+    expect(moved.status).toBe(200);
+    const layout = (await json(moved)).data;
+    expect(layout.config.dashboard).toEqual({
+      ...definition,
+      name: 'Renamed morning',
+    });
+    expect(layout.config.dashboardProposal).toBeUndefined();
+    expect((await author(app, '/boards/daily', 'GET')).status).toBe(404);
+  });
+
+  test('stale proposals and saves cannot replace a newer proposal; dismissal preserves the published Board and legacy tabs', async () => {
+    const { app } = seeded();
+    await createBoard(app, 'alice-laptop', {
+      slug: 'daily',
+      name: 'Daily',
+      config: {
+        tabs: [
+          { id: 'existing', label: 'Existing pane', component: 'standard' },
+        ],
+      },
+    });
+    const initial = (await json(await author(app, '/boards/daily', 'GET')))
+      .data;
+    const first = (
+      await json(
+        await author(app, '/boards/daily', 'PUT', {
+          revision: initial.revision,
+          definition,
+        }),
+      )
+    ).data;
+    const replacement = { ...definition, name: 'Review desk' };
+    const proposal = (
+      await json(
+        await author(app, '/boards/daily/proposal', 'POST', {
+          revision: first.revision,
+          definition: replacement,
+        }),
+      )
+    ).data;
+    expect(
+      (
+        await author(app, '/boards/daily', 'PUT', {
+          revision: first.revision,
+          definition,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await author(app, '/boards/daily/proposal', 'POST', {
+          revision: first.revision,
+          definition,
+        })
+      ).status,
+    ).toBe(409);
+    const latest = (await json(await author(app, '/boards/daily', 'GET'))).data;
+    expect(latest.definition.name).toBe('Daily brief');
+    expect(latest.proposal.name).toBe('Review desk');
+    const dismissed = (
+      await json(
+        await author(app, '/boards/daily/proposal', 'DELETE', {
+          revision: proposal.revision,
+        }),
+      )
+    ).data;
+    expect(dismissed.definition).toEqual(definition);
+    expect(dismissed.proposal).toBeNull();
+    expect(dismissed.layout.config.tabs[0].id).toBe('existing');
+    expect(
+      (
+        await app.request(
+          '/layouts/daily',
+          as('alice-laptop', {
+            method: 'PUT',
+            body: JSON.stringify({ config: { dashboard: replacement } }),
+          }),
+        )
+      ).status,
+    ).toBe(400);
+  });
+
+  test.each([
+    {
+      ...definition,
+      sections: [
+        {
+          id: 'note',
+          kind: 'note',
+          title: 'Bad width',
+          width: 'huge',
+          body: '',
+        },
+      ],
+    },
+    {
+      ...definition,
+      sections: [
+        {
+          id: 'links',
+          kind: 'links',
+          title: 'Unsafe',
+          width: 'half',
+          links: [{ label: 'Run', href: 'javascript:alert(1)' }],
+        },
+      ],
+    },
+    {
+      ...definition,
+      sections: [...definition.sections, ...definition.sections],
+    },
+    {
+      ...definition,
+      sections: Array.from({ length: 25 }, (_, i) => ({
+        ...definition.sections[0],
+        id: `t${i}`,
+      })),
+    },
+  ])(
+    'invalid section definitions are refused before creating a Board %#',
+    async (invalid) => {
+      const { app } = seeded();
+      expect(
+        (
+          await author(app, '/boards/daily/proposal', 'POST', {
+            revision: null,
+            definition: invalid,
+          })
+        ).status,
+      ).toBe(400);
+      expect((await json(await listBoards(app, 'alice-laptop'))).data).toEqual(
+        [],
+      );
+    },
+  );
+});
+
+test('promotion serializes with proposals from the same principal under a different display name', async () => {
+  const { app, storage } = await seededWithProjects();
+  await createBoard(app, 'alice-laptop', { slug: 'daily', name: 'Daily' });
+  const store = ownedLayoutStore(storage);
+  const { PersonalBoardAuthoring, BoardRevisionConflict } = await import(
+    '../../../services/layouts/personal-board-authoring.js'
+  );
+  const { PersonalLayoutService } = await import(
+    '../../../services/layouts/personal-layout-service.js'
+  );
+  const document = (
+    await json<{
+      data: import('@kontourai/station-contracts/personal-board').PersonalBoardDocument;
+    }>(await app.request('/boards/daily', as('alice-laptop')))
+  ).data;
+  const owner = document.layout.owner;
+  if (owner?.kind !== 'principal')
+    throw new Error('Expected a principal-owned fixture Board');
+  let release!: () => void;
+  let entered!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reached = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const service = new PersonalLayoutService(store, {
+    newId: () => 'unused',
+    listAgents: async () => {
+      entered();
+      await paused;
+      return knownAgents;
+    },
+  });
+  const moving = service.promote(owner, 'daily', 'demo');
+  await reached;
+  const authoring = new PersonalBoardAuthoring(store);
+  const proposing = authoring
+    .propose(
+      {
+        ...owner,
+        principal: { ...owner.principal, display: 'A different display' },
+      },
+      'daily',
+      {
+        revision: document.revision,
+        definition: {
+          version: 1,
+          name: 'Later edit',
+          description: '',
+          sections: [],
+        },
+      },
+    )
+    .then(
+      () => 'unexpected saved proposal',
+      (error: unknown) => error,
+    );
+  release();
+  const moved = await moving;
+  expect(await proposing).toBeInstanceOf(BoardRevisionConflict);
+  expect(moved?.config.dashboardProposal).toBeUndefined();
+  expect((await app.request('/boards/daily', as('alice-laptop'))).status).toBe(
+    404,
+  );
 });

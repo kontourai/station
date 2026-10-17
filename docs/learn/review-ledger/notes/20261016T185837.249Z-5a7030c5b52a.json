@@ -1,0 +1,7 @@
+{
+  "revision": "2b6ee762569a5b8133c5159bea706a321650f9da",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed only tauri-context report guidance against test caller changes. Production probe concurrency,10/30s deadlines,cleanup and asyncCLI remain unchanged; test-only caller envelope/diagnostic retention does not change this guide's product claims. Focused callers/redaction31PASS4platformSKIP; scriptsTS PASS; nativeWindows proof pending. Remaining desktop/update/CSP/platform claims outside this review.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/tauri-context.test.ts"]}
+  ]
+}

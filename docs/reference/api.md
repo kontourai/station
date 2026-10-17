@@ -104,6 +104,15 @@ is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
 
+## Create a Task from a chat proposal
+
+`POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
+when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
+carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
@@ -601,6 +610,46 @@ GET /agents/:slug/health
 
 ---
 
+## Project tool library
+
+All routes below use `/api/tool-library`, return `Cache-Control: no-store`, and
+revalidate current person, Device scope and Project authority. Project mutations
+pin `projectId` and `expectedActor`. Global Agent mutation APIs remain
+operator-only; these scoped routes do not enable member execution.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /access` | Current Station role and effective roles across Projects |
+| `GET /catalog?project=<slug>` | Safe source metadata, descriptions, provenance, recorded actions, Project permission and request state |
+| `POST /sources/:id/discover` | Refresh safe action metadata using the caller’s own account; does not attach tools |
+| `POST /add` | Operator installs/connects an integration (`id`, `kind: "integration"`, `expectedActor`); plugins use existing package preview/consent |
+| `GET /requests?project=<slug>` | Project requests; operator may list all |
+| `POST /requests` | Admin/Owner requests a permitted catalog source |
+| `POST /requests/:id/approve` | Operator begins installation/setup |
+| `POST /requests/:id/complete` | Operator resumes setup and admits a ready, exact-source request |
+| `POST /requests/:id/decline` | Operator resolves a request, including an obsolete Project request |
+| `PUT /projects/:slug/policy` | Owner changes `mode`, `sources` with expected `revision` |
+| `PUT /sources/:id/sharing` | Operator changes source availability to Projects |
+| `GET /projects/:slug/agents` | Admin/Owner reads agents authored through this Project surface |
+| `POST /projects/:slug/agents` | Admin/Owner creates a constrained Project agent |
+| `PUT /projects/:slug/agents/:agent` | Admin/Owner edits a bound agent in the same Project incarnation |
+| `GET /accounts/:id?project=<slug>` | Own personal account status for a permitted source |
+| `POST /accounts/:id/authorize` | Start own personal account sign-in |
+| `POST /accounts/:id/callback` | Finish own personal account sign-in |
+
+Agent drafts accept `name`, optional `description`, `prompt`, `engineId`, and
+`tools` (`mcpServers`, `available`, `autoApprove`, `askBeforeUse`). Unknown fields
+are refused. `engineId: "station"` selects managed Station and is persisted
+without `execution.agentConnectionId`; other choices name an available engine
+connection. The catalog includes Station separately from connection inventory.
+The server generates identity, binds the exact Project, selects Ask
+posture and replaces harness MCP configuration. Request states are `pending`,
+`setting-up`, `available`, `declined`, and `failed`; installed alone is not
+available. Approving installation cannot widen the Owner's policy or sign in to
+a personal account. Personal tool accounts require the managed Station engine;
+external delivery reports those sources as unsupported. The owning implementation is
+[tool-library routes](../../src-server/routes/tool-library.ts).
+
 ## Integration Management
 
 These routes manage MCP integration definitions through the
@@ -614,6 +663,14 @@ a successful probe, and tool availability on an Agent are separate states.
 augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
 names/descriptions, and `renderAllowed`. This is not a complete raw definition
 or proof that every listed tool can currently execute.
+
+`POST /integrations/:id/reconnect` returns a redacted definition with the latest
+`probe`. Check `probe.ok` independently of HTTP success. Successful discovery
+includes up to 200 `probe.tools` entries with raw `name`, optional `description`
+(up to 2,000 characters), and optional `group` (up to 100 characters). Legacy
+`probe.toolNames` remains available. Package-owned and personal-account probes
+can return this metadata without persisting it to a local integration definition.
+Discovery metadata is a browsing snapshot, not execution authority.
 
 ### Create Integration
 
@@ -836,7 +893,11 @@ backfill a catalog contribution. See [plugin identity projection](#which-routes-
 `{name: "Renamed"}`, and returns the updated Board. Omitted top-level fields
 remain stored; each update reads and writes under the owner's record transaction.
 Concurrent replacements of the same field still have ordinary last-write
-semantics, and `config` is not a deep merge of independent nested edits.
+semantics, and `config` is not a deep merge of independent nested edits. Dashboard fields are an
+exception: generic create/update cannot supply `config.dashboard` or
+`config.dashboardProposal`, and generic config replacement is refused once
+those fields exist. Use the revisioned authoring API below. Renaming a saved
+dashboard updates its display definition in the same mutation.
 
 The schema refuses `id`, `slug`, owner, and timestamps. It tolerates then discards
 `paneReferences`. This does **not** make an entire GET response a valid PUT body;
@@ -871,8 +932,35 @@ adding a separate membership decision in this service.
 
 Create-then-delete preserves the record if the process stops between writes,
 but can temporarily leave both copies. Repeating promotion recognizes the
-matching ID at the destination and finishes the personal deletion. That recovery
-is not a transaction spanning both stores.
+matching ID and equivalent admitted content at the destination before finishing
+the personal deletion. If either copy was edited, promotion returns 409 and
+retains both. A pending dashboard proposal also returns 409 until applied or
+dismissed. This recovery is not a transaction spanning both stores.
+
+### Personal Board authoring
+
+These endpoints share the same authenticated owner resolution as `/api/me/layouts`:
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/me/boards/:layoutSlug` | Layout, opaque whole-record `revision`, saved `definition`, optional `proposal` |
+| POST | `/api/me/boards/:layoutSlug/proposal` | `{revision, definition}`; null revision creates a new draft-only Board, existing revisions must match |
+| PUT | `/api/me/boards/:layoutSlug` | `{revision, definition}`; saves the exact reviewed dashboard and clears its proposal |
+| DELETE | `/api/me/boards/:layoutSlug/proposal` | `{revision}`; dismisses only the proposal |
+
+Responses use `{success:true,data:PersonalBoardDocument}`. A revision mismatch
+returns 409 without changing either definition. A new proposal's sidebar name is
+marked `(draft)`; the saved dashboard remains unchanged for an existing Board.
+Agent-originated requests cannot use PUT or DELETE to publish/dismiss; the
+`propose_personal_board` tool reaches only the proposal endpoint. The principal
+is never a body field.
+
+Definitions have version 1, name, description and at most 24 sections. Live
+sources are Tasks, attention, recent work and Projects; notes and safe HTTP/HTTPS
+or Station links are authored text. Runtime validation bounds all fields and
+refuses duplicate section IDs. Definitions contain configuration, not live rows.
+See [the SDK](sdk.md#personal-board-authoring) and
+[Personal Boards](../user/personal-boards.md) for editing and recovery.
 
 ---
 
@@ -1402,6 +1490,14 @@ question answers bind `{identity, eventId}` in `expectedSkillExperience` and hol
 the current package grant; ordinary user controls omit that frame admission.
 See the [Session API](session-api.md#visual-skill-presentation) for ownership and
 unavailable-history behavior.
+
+Existing keyed foreground, background, continue and explicit handoff sends reject a different
+submission under the same key with HTTP `409` and
+`code: client_turn_input_conflict`, before any additional engine send. This
+bounded contract retains legacy unknown-input rows and optional-key behavior;
+it does not cover the private Station-engine stream ledger. See
+[keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
+[submission digest contract](../architecture/module-map.md#turndeduplicator).
 
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
@@ -3684,10 +3780,39 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 /api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
 account session.
 
+## Create a device invitation
+
+`POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
+`approval: "on-create" | "on-request"`. The host CLI and pairing panel send
+`on-create`: creating the invitation approves the selected access, and its
+first recipient can request and exchange it once before expiry without another
+approval. The returned offer retains its existing wire shape; the approval
+record is private server state. `DELETE /api/pairing/offers/:offerId` cancels it.
+
+The default is `on-request` for older callers and the desktop SSH flow. Public
+access requests always need confirmation; a requester cannot set its own
+approval policy. Preapproved offers must be ordinary Devices with an explicit
+scope that excludes `access:manage` and protected operator-promotion scopes,
+including `relay:manage`, `access:approve` and `consent:decide`. Explicit
+`coding:exec` and `approval:full-access` Device-use grants remain available.
+Invitations do not grant the creator's private host-possession provenance.
+
+A host-issued browser session may create/cancel invitations, decide pending
+requests and manage already-paired Devices while retaining its effective
+`access:manage`. Its server-recorded `home-possession` locality and `ui-bootstrap`
+mint kind distinguish it from an ordinary Device with the same wire scope.
+This does not grant operator identity, people/account administration, passkey
+administration, or the native consent broker's `local-grant` authority.
+The browser cannot transfer protected management or consent scopes through
+either offer mode, final request approval, or newly added Device permissions.
+Existing operator request-time approval and explicitly promoted Device
+administrators keep their separate authority.
+
 ## Decide a pending paired-device request
 
-A current operator, qualifying local-grant credential, or Device explicitly
-promoted with `access:approve` can use these exact routes:
+A current operator, qualifying local-grant credential, host-issued browser
+session with its private `ui-bootstrap` provenance and effective `access:manage`,
+or Device explicitly promoted with `access:approve` can use these exact routes:
 
 - `GET /api/pairing/requests`
 - `POST /api/pairing/requests/:requestId/confirm`
@@ -3714,7 +3839,8 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential or a qualifying local-grant credential; an `access:approve` Device or
+credential, a qualifying local-grant credential or that host-issued browser
+session; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device

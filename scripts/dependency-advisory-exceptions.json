@@ -3,23 +3,13 @@
   "exceptions": [
     {
       "scope": "root",
-      "package": "node-forge",
-      "advisory": "GHSA-86w9-cpqp-85rv",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved temporary acceptance until exclusive 2026-10-17T00:00:00Z, recorded in https://github.com/kontourai/station/issues/3122#issuecomment-6207936292. node-forge 1.4.0 remains affected by remote RSA PKCS#1 v1.5 signature forgery with applicable low-exponent keys; no patched npm release exists at source review. The root production chain runs through VoltAgent/SAP to jks-js 1.1.7. The inspected converter parses destination-supplied JKS/PKCS#12 data and serializes PEM; its inspected calls do not invoke forge RSA signature verification. Destination content is not limited to local files. Dynamic/plugin/temporary-model and endpoint exposure remain NOT_VERIFIED. This is time-boxed risk acceptance, not remediation or a universal nonreachability claim. Reassess on any VoltAgent/SAP/jks/forge or provider/config boundary change; keep #3122 open while the upstream residual remains.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
-      "expires": "2026-10-17"
-    },
-    {
-      "scope": "root",
       "package": "braces",
       "advisory": "GHSA-vfj7-8cjw-p6xm",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: npm latest remains 3.0.3; GitHub advisory covers <=3.0.3 with no first patched version. Threat model: an untrusted deeply nested brace pattern reaching expansion and exhausting a Station Node process stack. Dependency paths include micromatch/fast-glob and VoltAgent; Station-specific entry-point exploitability and non-reachability remain unproved. Exact-root seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified mitigation lands. No unrelated critical/high identity is accepted.",
+      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6228009161: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z. Registry/advisory review on 2026-10-17 still identifies latest braces 3.0.3 as affected, with no first patched release. Threat: untrusted deeply nested brace expansion exhausting the Node process stack. Production dependency presence is known; a reachable Station exploit or non-reachability remains unproved. No graph or policy workaround is proposed. Reassess upstream releases and graph/entry-point changes; remove only after verified mitigation. Keep #3150 open.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-17"
+      "expires": "2026-10-18"
     }
   ],
   "residuals": [
@@ -64,6 +54,44 @@
       "trackingUrl": "https://github.com/kontourai/station/issues/3510",
       "expires": "2026-11-07",
       "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
+    }
+  ],
+  "remediations": [
+    {
+      "scope": "root",
+      "package": "node-forge",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
+      "version": "1.4.0",
+      "reason": "Station-managed backport of digitalbazaar/forge#1152 at ceba34402e329f0365134f23fe19898756527d65 rejects extra nested DigestAlgorithm children. Covers lib/rsa.js and both shipped browser bundles. Public-key-only forgery and valid-signature controls exercise each installed public API. This record remediates only GHSA-86w9-cpqp-85rv at the exact installed version and hashes; registry severity remains high. It is not a claim about Station endpoint reachability or an official upstream release. Replace with an independently verified upstream release and remove this binding when available; recheck on any patch, dependency, provider or entrypoint change.",
+      "patchBinding": {
+        "schemaVersion": 1,
+        "package": "node-forge",
+        "version": "1.4.0",
+        "patchPath": "patches/node-forge-1.4.0.patch",
+        "patchSha256": "c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e",
+        "nodeMajor": 24,
+        "installedEntrypoints": [
+          {
+            "path": "node_modules/node-forge/lib/index.js",
+            "sha256": "c231851a9d065df1fae045d6e6fb17cf5688b260f9ee0db4965fe1ef3c0607ab"
+          },
+          {
+            "path": "node_modules/node-forge/lib/rsa.js",
+            "sha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.min.js",
+            "sha256": "ef3be90b3604ef95427040949136ebfd440fccef9c0f23db0356988c9ffc6ff6"
+          },
+          {
+            "path": "node_modules/node-forge/dist/forge.all.min.js",
+            "sha256": "c6f575cd72b56bf78b5a0e4acb274ce8f41e804228c0b508bfe0e3856e704882"
+          }
+        ]
+      }
     }
   ]
 }

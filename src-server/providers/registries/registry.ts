@@ -861,7 +861,16 @@ export function getIntegrationRegistryProvider(): IIntegrationRegistryProvider {
     ]);
   }
   providers.push(new BuiltinIntegrationRegistryProvider());
-  return createIntegrationRegistryProvider(providers);
+  return createIntegrationRegistryProvider(
+    providers,
+    undefined,
+    new Map(
+      entries.map((entry) => [
+        entry.provider as IIntegrationRegistryProvider,
+        entry.source,
+      ]),
+    ),
+  );
 }
 
 // ── Skill Registry ─────────────────────────────────────

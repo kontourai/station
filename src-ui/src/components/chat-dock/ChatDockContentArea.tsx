@@ -63,6 +63,7 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -125,6 +126,7 @@ function ChatDockContentAreaImpl({
   onExecutionModelSelect,
   modelsLoading,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -259,6 +261,7 @@ function ChatDockContentAreaImpl({
               onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}
               chatInput={chatInput}
+              onComposerEnabledChange={onComposerEnabledChange}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}

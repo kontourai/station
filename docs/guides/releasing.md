@@ -89,15 +89,18 @@ native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
 it performs no source qualification, installs nothing and publishes nothing.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates only the three reviewed native-queue shapes, then removes that field
+validates the three reviewed workflow-level queues and the two PR source-job
+queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
 
 ### Delivery validation after core checks
 
-Required PR contexts remain unchanged. After core fast checks succeed, the
-trusted base-owned [delivery planner](../../scripts/pr-delivery-plan.mjs)
-selects optional packaging/platform families from the PR diff. The reusable
+Required PR contexts remain unchanged. After core fast checks succeed and
+source publication, repository scans, bundle-delta and title jobs settle, the
+trusted base-owned [delivery planner](../../scripts/pr-delivery-plan.mjs) checks
+the live PR is open at the same head and repository, then selects optional
+packaging/platform families from the PR diff. The reusable
 [delivery workflow](../../.github/workflows/delivery-validation.yml) sequences
 install → portable archives → native checks → desktop clean checkout → ecosystem
 packaging. A failed family does not cancel later selected families. Scheduled
@@ -110,7 +113,12 @@ concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
 and ecosystem one. Thus one delivery-validation invocation uses at most two
 runners at once. The shared background group serializes these invocations
 with background qualification; unrelated workloads and repositories still
-share hosted capacity.
+share hosted capacity. A trusted merged-close handler retires remaining optional
+PR delivery only after successful source proof, a complete recognized job graph
+and final ownership checks. Unknown or failed source and open shared-head PRs
+prevent cancellation. This releases obsolete background work without claiming
+that unfinished delivery passed; request acceptance alone does not prove the
+run stopped. See [testing](testing.md) for the cancellation boundaries.
 
 ## Qualification cadence and evidence reuse
 
@@ -159,9 +167,14 @@ runner/Node environment, job results and any reused producer.
 The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, release or
 manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
-completed full qualification remain eligible; the new usability gate is not. It requires the successful
-qualification job, all four ordinary corpus jobs and an unexpired receipt
-artifact. A reused run cannot become another reuse source and extend the
+completed full qualification remain eligible; the new usability gate is not.
+It requires all eleven canonical source jobs to have completed successfully in
+the current run attempt, bound to the same source, plus an unexpired receipt
+artifact and a final run/attempt identity check. Trusted main and historical
+Nightly parents may still be queued, pending, waiting or running optional
+delivery: their successful source proof remains reusable without declaring the
+whole workflow successful. Other producers require successful whole-run
+completion. Missing, failed or cancelled source jobs remain ineligible. A reused run cannot become another reuse source and extend the
 original evidence's age. The same source binds the checked-in workflow,
 lockfile, toolchain pins and phase plan. A newer commit or expired/missing
 evidence runs fresh qualification. A newer failed qualification invalidates
@@ -192,6 +205,21 @@ execution delay. It also reports a
 failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
+
+The same observer reports a missing scheduled Nightly request after four hours
+or a queued/running Nightly older than six hours, including a run whose source
+gate already passed. Active runs are checked beyond the completed-history
+lookback, and their identities remain in the issue until a later observation
+reconciles the terminal outcome. Missing runs or changed attempts fail the
+observation without clearing the incident. A newer request does not hide an
+older stalled run. A retained source failure resolves only after a later
+successful Nightly verifies source and records actual native or registry-bound
+CLI publication; its recovery summary links both runs. Manual recovery does not
+prove the hourly schedule is functioning. Recent cadence or
+unchanged-source skips are healthy schedule activity, not publication proof.
+These are conservative escalation bounds, not promised runner admission or
+publication deadlines. The issue identifies the run and exact source for its
+owner; the observer does not dispatch, retry or cancel work.
 
 Delivery failures remain in the tracker beyond its 48-hour run lookback until
 the failed leg has terminal evidence: a later native ledger job or the CLI
@@ -227,6 +255,15 @@ group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
 
+The current operating choice is the existing Free shared pool. Coordinate
+repository budgets before increasing concurrency: Station, Flow Agents and
+other organization workflows compete for the same total and macOS limits.
+Count all overlapping job families, including required PR feedback, merge
+groups, publishers, cache warmers and release staging. A per-invocation cap
+does not bound a family across many open PRs. Repository concurrency groups
+can enforce participating families' ceilings, but cannot reserve a slot from
+another repository or establish a hard organization-wide ceiling.
+
 The resolver validates its profile and exact-source reuse without waiting on
 an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
 single diagnostic inventory of configured repositories; its output explicitly
@@ -253,6 +290,15 @@ reported as not attempted in the new cohort, rather than lending their older
 receipt to new staged bytes. Finality and provider observations remain independent
 per platform. An explicit manual rebuild can request new native versions, while
 source usability, ancestry, recovery-lock and fence checks remain mandatory.
+
+Independent main qualification does not consume Nightly recovery attempts or
+hold recovery merely because it is still running. The recovery reader requires
+GitHub's exact-source reusable-workflow inventory to identify the known
+qualification/delivery graph before excluding that run. Missing, foreign or
+unrecognized references keep recovery held. Historical qualification runs that
+call Nightly remain producers, including live runs whose nested jobs have not
+started. Direct Nightly failures still count toward the attempt limit even
+when they failed before creating a reservation.
 
 ## One repair sweep per failure episode
 
@@ -399,6 +445,13 @@ Nightly has two entry points, both serialized on the `nightly` concurrency group
   An optional `source_sha` can only echo that SHA, never choose an older green
   ancestor. Final native provider admission still checks cadence, ancestry,
   the owner recovery lock and the source gate through GitHub's API.
+
+Cadence is checked before source tests and artifact builds. A cadence skip
+therefore leaves no qualified artifact waiting to be preserved. Once admitted,
+the durable GitHub run retains its event SHA through publication and is not
+cancelled by newer arrivals. This coalesces changes at each eligible scheduled
+request without building a backlog of stale sources. A failure retains its
+artifacts and recovery history; it does not authorize an older-source publish.
 
 Both paths run under `nightly.yml`'s existing trusted publisher identity. They
 require lint, all typecheck lanes, the native boundary ratchet and deterministic

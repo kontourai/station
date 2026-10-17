@@ -5,7 +5,13 @@ import { pnpmDependencyGraph } from './pnpm-dependency-graph.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from './pnpm-lockfile.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
-const CORE_FILES = ['src/sprintf.js', 'dist/sprintf.min.js'];
+const FORMATTER_FILES = ['src/sprintf.js', 'dist/sprintf.min.js'];
+const FORGE_FILES = [
+  'lib/index.js',
+  'lib/rsa.js',
+  'dist/forge.min.js',
+  'dist/forge.all.min.js',
+];
 const FIELDS = new Set([
   'schemaVersion',
   'package',
@@ -40,20 +46,25 @@ export function requiresDependencyPatchBinding(residual) {
   );
 }
 
-/** This binding admits only the reviewed formatter remediation, not other patches. */
+/** Only these reviewed advisory/version pairs can use installed-byte remediation. */
 export function validateDependencyPatchBinding(residual) {
   const b = residual.patchBinding;
   if (!b || typeof b !== 'object' || Array.isArray(b))
     refuse('missing binding');
   if (Object.keys(b).some((key) => !FIELDS.has(key)))
     refuse('unknown binding field');
+  const formatter =
+    requiresDependencyPatchBinding(residual) &&
+    residual.severity === 'moderate' &&
+    residual.reachability === 'production';
+  const forge =
+    residual.scope === 'root' &&
+    residual.package === 'node-forge' &&
+    residual.version === '1.4.0' &&
+    residual.advisory === 'GHSA-86w9-cpqp-85rv' &&
+    residual.severity === 'high';
   if (
-    residual.scope !== 'root' ||
-    residual.package !== 'sprintf-js' ||
-    residual.version !== '1.0.3' ||
-    residual.advisory !== 'GHSA-hp3w-g68c-fv3c' ||
-    residual.severity !== 'moderate' ||
-    residual.reachability !== 'production' ||
+    (!formatter && !forge) ||
     b.schemaVersion !== 1 ||
     b.package !== residual.package ||
     b.version !== residual.version ||
@@ -239,9 +250,16 @@ export function verifyDependencyPatchBinding(root, residual) {
   const consumed = new Set();
   for (const directory of instances) {
     const manifest = json(root, join(directory, 'package.json'));
-    if (manifest.main !== CORE_FILES[0] || manifest.exports || manifest.browser)
+    const coreFiles =
+      b.package === 'node-forge' ? FORGE_FILES : FORMATTER_FILES;
+    const browser =
+      b.package === 'node-forge'
+        ? JSON.stringify(manifest.browser) ===
+          JSON.stringify({ buffer: false, crypto: false, process: false })
+        : !manifest.browser;
+    if (manifest.main !== coreFiles[0] || manifest.exports || !browser)
       refuse('runtime entrypoint contract changed');
-    for (const file of CORE_FILES) {
+    for (const file of coreFiles) {
       const path = join(directory, file);
       const rel = relative(root, path).split(sep).join('/');
       const digest = expected.get(rel);

@@ -1,0 +1,7 @@
+{
+  "revision": "53c3d0a62d9aa78f4a40bb24b4473631c99a01b4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed bounded #3567 keyed-send conflicts: authorized exact submission precedes prompt preparation; canonical JSON and attachment content digests, typed 409/SDK mapping, legacy unknown proof and old-writer marker invalidation. Own before-RED at f6f64e40cee production: 7 intended failures (changed input replayed claude-turn); restored service/production routes 601 passed. Comparison-disabled clean-commit mutation: 3 conformance failures; restored focused 173 passed. Mandatory keys, direct /chat digest coverage, durable intent, mixed-binary runtime and provider proof remain outside this slice. Parent owns independent review/landing.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts","src-server/services/orchestration/turn-deduplicator.ts","src-server/services/turn-idempotency.ts","src-server/services/orchestration/turn-submission-digest.ts","src-server/services/execution-target/execution-target-execution.ts","src-server/tools/station-control-delegation.ts","src-server/domain/migrations/015-turn-dedup-input-digest.ts","src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts"]}
+  ]
+}

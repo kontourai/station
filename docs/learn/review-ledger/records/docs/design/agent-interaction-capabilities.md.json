@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/agent-interaction-capabilities.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposal for one Browser access and Computer access experience across engines, with target-preserving backend selection and common authority/control requirements. Separately records the current Claude-to-Station browser delivery and human-only device-control limit.",
+
+  "limits": "Design exploration only. Cross-engine browser resolution, native harness alternatives, packaged computer control and full multi-provider execution are not implemented or qualified by this document.",
+
+  "sources": [
+    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx",
+
+    "src-server/services/orchestration/session-agent-resolution.ts",
+
+    "src-server/providers/adapters/claude-adapter.ts",
+
+    "src-server/services/devices/device-session-service.ts",
+
+    "docs/guides/browser-workspace.md"
+  ],
+
+  "checks": [
+    "Read proposal against the cited current implementation and kept all proposed behavior explicitly unimplemented."
+  ]
+}

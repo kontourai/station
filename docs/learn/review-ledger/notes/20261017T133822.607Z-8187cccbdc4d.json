@@ -1,0 +1,7 @@
+{
+  "revision": "ea681cf515b6ad27063a69885de717e90d659266",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed merge ea681cf515b6ad27063a69885de717e90d659266 of main 86ca1e92b9443cf2564121e9196e82af06da98d1. Preserved the exact Forge installed-byte remediation and imported only the four other approved main exception records unchanged. Verified named approval at issue 3150 comment 6228009161 and issue 3122 comment 6228008931. The real six-view audit passes; the same normalized audit passes at 2026-10-17T23:59:59.999Z and rejects exactly four expired exceptions at 2026-10-18T00:00:00Z while Forge remains PATCHED in both root views. Guide exact-identity, expiry, unused-record and remove-on-remediation claims remain accurate. No new renewal authority, dependency graph change, endpoint reachability or hosted qualification claimed.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

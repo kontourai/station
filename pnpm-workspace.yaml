@@ -79,6 +79,7 @@ overrides:
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
   "http-cache-semantics@4.3.0": patches/http-cache-semantics-4.3.0.patch
+  "node-forge@1.4.0": patches/node-forge-1.4.0.patch
   "js-yaml@3.15.2": patches/js-yaml-3.15.2-argparse2-cli.patch
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch

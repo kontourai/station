@@ -1,0 +1,7 @@
+{
+  "revision": "48141e60edaa61152a858faff936428d93992123",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked: the manifest gains tests/subagent-transcript-cards.spec.ts in the product bucket (parallel-safe). The Core Nav table routes representative surfaces and claims no completeness; no chat-transcript row exists to update. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

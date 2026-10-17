@@ -996,6 +996,36 @@
 
     "src-server/knowledge-index/embedding-identity.ts",
 
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/modals/TaskChatStart.css",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
+
+    "src-ui/src/lib/newChatIntent.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
     "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
 
     "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
@@ -1004,7 +1034,51 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
 
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/tools/station-control-personal-board-tools.ts",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-ui/src/views/personal-board/PersonalBoardDashboard.tsx",
+
+    "src-server/security/coding-authority.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-server/domain/migrations/015-turn-dedup-input-digest.ts",
+
+    "src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts",
+
+    "src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts",
+
+    "src-server/services/orchestration/attachment-staging-service.ts",
+
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
   ],
 
   "checks": [

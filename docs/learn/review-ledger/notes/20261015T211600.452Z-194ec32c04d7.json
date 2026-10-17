@@ -1,0 +1,15 @@
+{
+  "revision": "d033b5aca270c5e1c1040dd7e2f37445d8df4de9",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Traced source discovery versus selection, static built-in catalogs, Station-wide sharing and pre-run policy checks; checked visible Browser access and Workflow files against current Claude-only delivery. Updated names and linked the explicitly unimplemented browser/computer capability proposal.","inputs":["docs/guides/agents.md","src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/AgentToolLibrary.tsx","src-ui/src/views/agent-editor/AgentToolPicker.css"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Updated shipped tool-picker guidance for Check for new tools, Edit connection, direct future-tool selection and Station-wide Project sharing. Verified Browser access is separate and Claude-only current delivery; no new provider support is claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked renamed external-source discovery control still reaches the same discover mutation and preserves explicit action selection; updated the example path to About this source / Check for new tools.","inputs":["examples/mcp-ui-demo/README.md","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Guide changes clarify controls and link a proposed capability layer; persisted Agent IDs and engine identity contracts remain unchanged, so the inventory remains accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Recorded proposal status separately from source-verified current browser delivery and device-control limits. Inspected target identity, credentials, Project/host authority, takeover, approval limits and acceptance cases; no cross-engine or computer implementation proof is asserted.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/session-agent-resolution.ts","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx"]}
+  ]
+}

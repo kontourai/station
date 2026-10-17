@@ -91,7 +91,12 @@ function useFixedMenuPlacement(
 }
 
 export interface TurnActionsMenuProps {
-  taskTarget?: { sessionId: string; turnId: string; projectId?: string };
+  taskTarget?: {
+    sessionId: string;
+    turnId: string;
+    projectId?: string;
+    excerpt?: string;
+  };
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /**

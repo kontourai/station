@@ -64,7 +64,7 @@ export function usePersonalLayoutsQuery(
   return useApiQuery(
     personalLayoutsKey(),
     async () => listPersonalLayouts(await _getApiBase()),
-    config,
+    { refetchOnMount: 'always', refetchInterval: 10000, ...config },
   );
 }
 

@@ -1,0 +1,23 @@
+{
+  "revision": "aa038cc409edf96e5fe26c1674be43565416ccd9",
+
+  "notes": [
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed current Project worktree source pinning through hardened repository admission, commit resolution before mkdir, exact checkout argument and returned baseRef/baseCommit. Real Git race test moves the base ref before checkout; existing foreground test observes metadata delivery. Legacy missing identity remains unknown; no source fence, setup executor or broader proposed isolated-run command is claimed. 80 owner/caller tests executed; source-pin mutation caught and restored byte-identically. No live engine or released artifact proof.","inputs":["docs/design/isolated-agent-runs.md","packages/contracts/src/workspace-isolation.ts","src-server/services/projects/worktree-provisioning-service.ts","src-server/services/projects/__tests__/worktree-provisioning-service.test.ts","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed additive workspace-isolation row against canonical metadata and real new-worktree producer/caller. Optional baseCommit preserves legacy records; source pinning is historical selected input, not a current checkout or authorization guarantee. Other contract reference claims are unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/workspace-isolation.ts","src-server/services/projects/worktree-provisioning-service.ts"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed work/execution and evidence sections against optional resolved base commit metadata. Existing Project/Task/Session, Agent and receipt distinctions remain unchanged. No new context authority or filesystem fence is introduced.","inputs":["CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed runtime/evidence context relationships against owned-worktree commit pinning. Existing runtime owns workspace and metadata; no new context or integration boundary is created.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed Project/Task/Session/worktree vocabulary against historical selected base commit. Pinning source for one owned workspace does not change lifecycle meanings, execution completion or isolation guarantees; no vocabulary edit needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public contracts routing and hosted execution boundary against new workspace-isolation reference row. Source identity remains one local preparation fact; no cloud backend, tenant isolation, budget, toolchain preparation or managed service is implied. Existing routing remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed published-contract and historical integration guidance against additive workspace-isolation metadata. No sibling internals or AX package dependency added; existing integration ownership unchanged.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed routed contracts rules: workspace-isolation remains a domain metadata type with an additive optional field and focused real consumer evidence. No Node/runtime helper added to contracts; guidance unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/CLAUDE.md","note":"Paired instruction import still routes to unchanged contracts AGENTS rules; additive metadata and reference changes do not alter it.","inputs":["packages/contracts/CLAUDE.md"]}
+  ]
+}

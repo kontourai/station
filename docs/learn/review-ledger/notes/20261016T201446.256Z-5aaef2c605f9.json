@@ -1,0 +1,7 @@
+{
+  "revision": "7cd719d86c83d7aea2fb2f7b1d4dd572c022724a",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the RSA nested DigestAlgorithm backport against upstream ceba344, package main and both browser bundles, managed patch registration, exact high-severity remediation schema and installed-byte verification. Removed only the Forge temporary acceptance, preserving other records. The forged signature failed on all three pristine APIs and passes rejection after repair; 139 focused controls pass, omission of the high-severity verifier caused nine drift assertion failures, and byte-identical restoration returned 139 green. Six live advisory views pass with PATCHED rather than ACCEPTED for Forge. No Station endpoint, hosted, native, or release claim. Official-release replacement stays in #3122 and optional packaging in #3745.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml#/snapshots","pnpm-workspace.yaml","scripts/dependency-advisory-exceptions.json","scripts/dependency-advisory-policy.mjs","scripts/lib/dependency-patch-binding.mjs","patches/node-forge-1.4.0.patch","scripts/__tests__/node-forge-rsa-backport.test.ts","scripts/__tests__/dependency-patch-binding.test.ts"]}
+  ]
+}

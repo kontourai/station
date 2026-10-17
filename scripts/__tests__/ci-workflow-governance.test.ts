@@ -369,23 +369,20 @@ describe('primary CI workflow governance', () => {
         'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}',
       'cancel-in-progress': true,
     });
-    // Every part job keys its own group on the head sha (#1445), and each
-    // shard on its index, so no leg or part cancels another's run.
-    for (const [id, prefix] of [
-      ['fast-checks-statics', 'ci-fast-statics-'],
-      ['fast-checks-plan', 'ci-fast-plan-'],
+    // The planner retains head isolation; statics/shard FIFO routing belongs
+    // to the executable graph tests and the exact actionlint shape guards.
+    const planGroup = String(
+      (
+        parsedJob(workflow, 'fast-checks-plan')?.concurrency as {
+          group?: string;
+        }
+      )?.group,
+    );
+    expect(planGroup.startsWith('ci-fast-plan-')).toBe(true);
+    expect(planGroup).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      ['fast-checks-shard', 'ci-fast-shard-${{ matrix.shard }}-'],
-    ]) {
-      const group = String(
-        (parsedJob(workflow, id)?.concurrency as { group?: string })?.group,
-      );
-      expect(group.startsWith(prefix), id).toBe(true);
-      expect(group, id).toContain(
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-        '${{ github.event.pull_request.head.sha || github.sha }}',
-      );
-    }
+      '${{ github.event.pull_request.head.sha || github.sha }}',
+    );
     const forkSmoke = parsedJob(workflow, 'fork-smoke');
     expect(forkSmoke?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.

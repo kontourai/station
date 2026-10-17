@@ -50,7 +50,11 @@ vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
 vi.mock('../components/profile/StationPeoplePanel', () => ({
   StationPeoplePanel: () => <div>Paired profiles</div>,
 }));
+vi.mock('../components/profile/MyAccessPanel', () => ({
+  MyAccessPanel: () => <div>My access</div>,
+}));
 vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => null,
 }));
 
