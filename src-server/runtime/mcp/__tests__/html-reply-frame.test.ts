@@ -47,6 +47,18 @@ function proxy() {
 }
 
 describe('HTML reply sandbox bridge', () => {
+  test('repeats readiness only for its authenticated parent after the iframe load handshake', () => {
+    const p = proxy();
+    p.parent.postMessage.mockClear();
+    p.dispatch({ type: 'html-reply-connect' }, 'https://evil.example');
+    expect(p.parent.postMessage).not.toHaveBeenCalled();
+    p.dispatch({ type: 'html-reply-connect' });
+    expect(p.parent.postMessage).toHaveBeenCalledWith(
+      { type: 'html-reply-ready' },
+      'https://station.example',
+    );
+  });
+
   test('serves only a fixed frame on the existing isolated listener', async () => {
     const app = createMcpUiFrameApp({
       frameAncestors: ['https://station.example'],

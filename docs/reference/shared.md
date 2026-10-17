@@ -29,8 +29,8 @@ owning declarations; import the canonical type rather than copying an interface.
 
 The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
 the restrictive page document and page-only proxy bootstrap used by the
-[HTML reply sandbox](../decisions/html-replies.md). It carries no MCP tool or
-session bridge and does not publish or store pages.
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
 
 ## Product telemetry
 

@@ -2,6 +2,10 @@ import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply
 import { HTML_REPLY_LIMITS } from '@kontourai/station-contracts/html-reply';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'html-replies' });
+
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { prepareHtmlReply } from '../../services/html-replies.js';
 import type { createHtmlReplyPages } from '../../services/orchestration/html-reply-pages.js';
@@ -83,10 +87,15 @@ export function createHtmlReplyRoutes(deps: {
         ),
       });
     } catch (error) {
+      logger.warn('HTML reply preparation or rendering failed', { error });
       return c.json(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'HTML reply failed',
+          error:
+            error instanceof Error &&
+            /^(HTML (reply|preview)|Invalid HTML reply)/.test(error.message)
+              ? error.message
+              : 'HTML reply could not be prepared or rendered. Check workspace images and Chromium availability.',
         },
         400,
       );

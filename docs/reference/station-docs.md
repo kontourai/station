@@ -242,6 +242,15 @@ A skill can also declare itself runnable as a slash command, which is how a reus
 
 Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
 
+For a visual reply, attach station-control and select `html_preview` and
+`html_render`. Preview self-contained HTML, inspect the returned screenshot,
+height and console output, then publish the same HTML. Pages appear at the tool
+result and survive reload. Use the host theme CSS variables; network requests
+and app/session access are blocked inside the page sandbox. Publishing is a
+bounded write and respects engine tool approval. Chromium is needed only for
+preview. See the [visual replies guide](../user/html-replies.md) for byte,
+image, viewport, time and retention limits.
+
 Two built-in servers serve different purposes here. `station-control` exposes
 Station operations as tools; `station-docs` serves static shipped prose without
 credentials or live state. This is not an exhaustive server inventory: the

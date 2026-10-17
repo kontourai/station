@@ -151,6 +151,13 @@ export function HtmlReply({
             src={`${origin}/html-reply/frame`}
             sandbox="allow-scripts allow-same-origin"
             referrerPolicy="no-referrer"
+            onLoad={() => {
+              setReady(null);
+              frame.current?.contentWindow?.postMessage(
+                { type: 'html-reply-connect' },
+                origin,
+              );
+            }}
             style={{
               width: `${100 / zoom}%`,
               height: `${100 / zoom}%`,

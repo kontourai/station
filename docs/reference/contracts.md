@@ -28,8 +28,8 @@ durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-u
 for current implementation and unexecuted acceptance limits.
 
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
-bytes, byte/height limits and theme variable names for the
-[HTML viewer foundation](../user/html-replies.md). It grants no publication or
+bytes, publication references, byte/height limits and theme variable names for
+[visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
 | Module | Owns |
