@@ -693,9 +693,12 @@ fixtureTest.describe('Earlier history paging', () => {
             : '.split-pane__item',
         );
         await expect(rows.first()).toBeVisible();
+        await expect(page.locator('.station-startup-frame')).toBeHidden();
+        await page.evaluate(() => document.fonts.ready);
         const captureName = mobile ? 'phone-switcher.png' : 'activity.png';
         await page.screenshot({
           path: testInfo.outputPath(captureName),
+          animations: 'disabled',
         });
         if (process.env.STATION_E2E_GALLERY_DIR) {
           mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
