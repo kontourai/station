@@ -3,9 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildHtmlReplyDocument } from '@kontourai/station-shared/html-reply-document';
-
 import { ChromiumAcquisition } from './browser/chromium-acquisition.js';
 import { ChromiumServerHost } from './browser/hosts/chromium-server-host.js';
+import { HtmlReplyRefusal } from './html-reply-errors.js';
 
 const LIMIT = {
   milliseconds: 15_000,
@@ -26,14 +26,14 @@ export class HtmlReplyPreview {
     theme: 'light' | 'dark',
   ) {
     if (this.active >= 2)
-      throw new Error('HTML preview concurrency limit exceeded');
+      throw new HtmlReplyRefusal('HTML preview concurrency limit exceeded');
     if (!Number.isInteger(width) || width < 320 || width > 1920)
-      throw new Error('HTML preview width must be 320–1920');
+      throw new HtmlReplyRefusal('HTML preview width must be 320–1920');
     const executablePath = new ChromiumAcquisition(
       this.home,
     ).resolveExecutable();
     if (!executablePath)
-      throw new Error(
+      throw new HtmlReplyRefusal(
         'HTML preview needs Chromium. Install it through the Browser workspace first.',
       );
     this.active++;
@@ -55,12 +55,12 @@ export class HtmlReplyPreview {
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           expired = true;
-          reject(new Error('HTML preview exceeded 15 seconds'));
+          reject(new HtmlReplyRefusal('HTML preview exceeded 15 seconds'));
         }, LIMIT.milliseconds);
       });
       const work = async () => {
         directory = await mkdtemp(join(tmpdir(), 'station-html-preview-'));
-        if (expired) throw new Error('HTML preview expired');
+        if (expired) throw new HtmlReplyRefusal('HTML preview expired');
         const target = await host.openTarget({
           profileDir: directory,
           viewport: { width, height: page.height, deviceScaleFactor: 1 },
@@ -111,7 +111,7 @@ export class HtmlReplyPreview {
           { expression, awaitPromise: true, returnByValue: true },
         );
         if (evaluated.exceptionDetails)
-          throw new Error('HTML preview bootstrap failed');
+          throw new HtmlReplyRefusal('HTML preview bootstrap failed');
         const size = await send<{
           result: {
             value?: {
@@ -125,7 +125,7 @@ export class HtmlReplyPreview {
           returnByValue: true,
         });
         if (!size.result.value)
-          throw new Error('HTML preview measurement failed');
+          throw new HtmlReplyRefusal('HTML preview measurement failed');
         const capture = size.result.value;
         const contentHeight = capture.height;
         if (
@@ -134,11 +134,13 @@ export class HtmlReplyPreview {
           contentHeight < 1 ||
           contentHeight > LIMIT.height
         )
-          throw new Error(
+          throw new HtmlReplyRefusal(
             'HTML preview content height exceeds 2000 pixels or is invalid',
           );
         if (capture.exceeded)
-          throw new Error('HTML preview console exceeds 128 entries or 64 KiB');
+          throw new HtmlReplyRefusal(
+            'HTML preview console exceeds 128 entries or 64 KiB',
+          );
         await send('Emulation.setDeviceMetricsOverride', {
           width,
           height: contentHeight,
@@ -150,9 +152,9 @@ export class HtmlReplyPreview {
           captureBeyondViewport: false,
         });
         if (Buffer.byteLength(png.data, 'base64') > LIMIT.pngBytes)
-          throw new Error('HTML preview screenshot exceeds 8 MiB');
+          throw new HtmlReplyRefusal('HTML preview screenshot exceeds 8 MiB');
         if (capture.exceeded)
-          throw new Error('HTML preview console exceeds its limit');
+          throw new HtmlReplyRefusal('HTML preview console exceeds its limit');
         return {
           png: png.data,
           contentHeight,

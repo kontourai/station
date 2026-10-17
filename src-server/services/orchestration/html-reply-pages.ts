@@ -6,6 +6,7 @@ import {
   type HtmlReplyReference,
   type PublishedHtmlReply,
 } from '@kontourai/station-contracts/html-reply';
+import { HtmlReplyRefusal } from '../html-reply-errors.js';
 
 export function createHtmlReplyPages(
   db: {
@@ -29,7 +30,7 @@ export function createHtmlReplyPages(
     ): HtmlReplyReference {
       const bytes = Buffer.byteLength(page.html);
       if (!sessionExists(sessionId))
-        throw new Error('HTML reply session no longer exists');
+        throw new HtmlReplyRefusal('HTML reply session no longer exists');
       if (
         page.version !== 1 ||
         bytes > HTML_REPLY_LIMITS.pageBytes ||
@@ -37,7 +38,7 @@ export function createHtmlReplyPages(
         page.height < HTML_REPLY_LIMITS.minHeight ||
         page.height > HTML_REPLY_LIMITS.maxHeight
       )
-        throw new Error('Invalid HTML reply page');
+        throw new HtmlReplyRefusal('Invalid HTML reply page');
       const reference: HtmlReplyReference = {
         version: 1,
         pageId: randomUUID(),
@@ -54,14 +55,16 @@ export function createHtmlReplyPages(
       db.exec('BEGIN IMMEDIATE');
       try {
         if (!sessionExists(sessionId))
-          throw new Error('HTML reply session no longer exists');
+          throw new HtmlReplyRefusal('HTML reply session no longer exists');
         const usage = db
           .prepare(
             'SELECT COUNT(*) AS count, COALESCE(SUM(bytes),0) AS bytes FROM orchestration_html_reply_pages WHERE conversation_id = ?',
           )
           .get(conversationId) as { count: number; bytes: number };
         if (usage.count >= 32 || usage.bytes + storedBytes > 32 * 1024 * 1024)
-          throw new Error('HTML reply conversation exceeds 32 pages or 32 MiB');
+          throw new HtmlReplyRefusal(
+            'HTML reply conversation exceeds 32 pages or 32 MiB',
+          );
         db.prepare(
           'INSERT INTO orchestration_html_reply_pages (id, thread_id, conversation_id, page_json, bytes) VALUES (?, ?, ?, ?, ?)',
         ).run(

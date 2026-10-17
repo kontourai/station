@@ -422,18 +422,33 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       expect(requiredPairingScope(method, path)).toBe('orchestration:operate');
     }
   });
-  test('covers every context.app.route(...) mount in runtime-routes.ts', () => {
+  test('covers every declared router through its root or every discovered method leaf', () => {
     const bases = scanMountedRouteBases();
     expect(bases.length).toBeGreaterThan(20); // sanity: the scan itself found routes
 
+    const leaves = scanRegisteredLeafRoutes(RUNTIME_ROUTES_PATH);
     const uncovered: string[] = [];
     for (const base of new Set(bases)) {
       if (PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS.includes(base)) continue;
+      if (requiredExternalSurfaceCapability('http', 'GET', base) !== undefined)
+        continue;
+      // A mount need not expose GET at its root. Exact-leaf families must
+      // still have discoverable routes, and every actual method must classify.
+      const actual = leaves.filter(
+        (leaf) => leaf.path === base || leaf.path.startsWith(`${base}/`),
+      );
       if (
-        requiredExternalSurfaceCapability('http', 'GET', base) === undefined
-      ) {
+        !actual.length ||
+        actual.some(
+          (leaf) =>
+            requiredExternalSurfaceCapability(
+              'http',
+              leaf.method,
+              leaf.path,
+            ) === undefined,
+        )
+      )
         uncovered.push(base);
-      }
     }
     expect(uncovered).toEqual([]);
   });

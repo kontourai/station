@@ -8,6 +8,7 @@ const logger = createLogger({ name: 'html-replies' });
 
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { prepareHtmlReply } from '../../services/html-replies.js';
+import { HtmlReplyRefusal } from '../../services/html-reply-errors.js';
 import type { createHtmlReplyPages } from '../../services/orchestration/html-reply-pages.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 
@@ -93,10 +94,11 @@ export function createHtmlReplyRoutes(deps: {
         {
           success: false,
           error:
-            error instanceof Error &&
-            /^(HTML (reply|preview)|Invalid HTML reply)/.test(error.message)
-              ? error.message
-              : 'HTML reply could not be prepared or rendered. Check workspace images and Chromium availability.',
+            error instanceof HtmlReplyRefusal
+              ? error.reason
+              : error instanceof z.ZodError || error instanceof SyntaxError
+                ? 'Invalid HTML reply input'
+                : 'HTML reply could not be prepared or rendered. Check workspace images and Chromium availability.',
         },
         400,
       );
