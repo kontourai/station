@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -119,14 +120,20 @@ test('runtime composition binds page reads to current session authority before r
       headers: { Authorization: `Bearer ${operator}` },
     });
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const responseSchema = z.object({
+      data: z.object({ html: z.string() }),
+      frameOrigin: z.string(),
+    });
+    const body = responseSchema.parse(await response.json());
     expect(body.data.html).toBe('<h1>Authorized page</h1>');
     expect(body.frameOrigin).toBe(frameOrigin);
     frameOrigin = 'http://sandbox-two.test';
     const afterRestart = await app.request(path, {
       headers: { Authorization: `Bearer ${operator}` },
     });
-    expect((await afterRestart.json()).frameOrigin).toBe(frameOrigin);
+    expect(responseSchema.parse(await afterRestart.json()).frameOrigin).toBe(
+      frameOrigin,
+    );
     expect(canRead).toHaveBeenCalledWith(
       'publisher',
       expect.objectContaining({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
