@@ -464,6 +464,38 @@ describe('#2458 Codex subagents as child work — real captures', () => {
   });
 });
 
+describe('Codex self activity is not background child work', () => {
+  test.each(['started', 'interacted', 'completed', 'interrupted'])(
+    'ignores the session thread in %s activity while retaining a real child',
+    (kind) => {
+      const { events } = replayCodexCapture(
+        synthetic([
+          spawn(),
+          parentItem('completed', {
+            type: 'subAgentActivity',
+            id: 'self-activity',
+            kind,
+            agentThreadId: PARENT,
+            agentPath: '/root',
+          }),
+          {
+            method: 'turn/completed',
+            params: {
+              threadId: PARENT,
+              turn: { id: PARENT_TURN, status: 'completed' },
+            },
+          },
+        ]),
+      );
+      expect(fold(events).map((item) => item.childId)).toEqual([CHILD]);
+      expect(child(events).status).toBe('running');
+      expect(events.some((event) => event.method === 'turn.completed')).toBe(
+        true,
+      );
+    },
+  );
+});
+
 describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
   const statusCases: Array<[string, string | null, ChildWorkItem['status']]> = [
     ['completed', 'all good', 'completed'],
