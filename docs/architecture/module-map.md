@@ -4057,6 +4057,21 @@ The separate [Device producer](../../src-server/services/devices/device-live-sur
 feeds the shared live-surface path. The Tools drawer uses its own typed
 [service](../../src-server/services/devices/device-tools.ts), device
 access and control-conflict checks; it is not a generic extension of capture.
+[DeviceAutomation](../../src-server/services/devices/device-automation.ts) binds
+local station-control device tools to the same session, producer and lease.
+[Agent routes](../../src-server/routes/device-agent.ts) re-derive a bound caller;
+[device grants](../../src-server/services/devices/device-agent-authority.ts)
+recheck recorded owner/Project, current role, and per-device shares. Human takeover
+fences agent input; grants are rechecked per event, and each operation releases
+control after the last overlapping call by that agent finishes. Pointer/key
+holds must finish within one input batch; incomplete gestures and unsupported
+kinds are refused before delivery. Input batches are serialized; observations
+may overlap. Failed dispatch cancels held input by releasing its fence.
+Input reports the post-completion lease.
+Live device tools require the operator Agent access opt-in;
+closing for everyone additionally requires operator standing and creator identity.
+Automatic pane reveal and remote-host agent tools remain
+outside this first slice.
 
 **Evidence.** `mobile-device-host.test.ts`, `mobile-device.routes.test.ts`,
 `device-live-surface-producer.test.ts` and SDK tests exercise helper fixtures,
