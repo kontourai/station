@@ -18,6 +18,55 @@ function markdownFilesUnder(directory: string): string[] {
 }
 
 describe('public product documentation source links', () => {
+  it('renders unique section targets from visible heading text in each document', () => {
+    const source = [
+      '# Install **Nightly**',
+      '## Install `snake_case` & [Flow](https://example.com/hidden-target)',
+      '### Install Nightly',
+      '#### Install Nightly-1',
+      '##### Install Nightly',
+      '###### Café 中文',
+      '## <Quoted> "text"',
+    ].join('\n');
+    const html = renderMarkdown(source);
+    const headings = [...html.matchAll(/<h[1-6]\b[^>]*\bid="([^"]*)"/g)];
+    expect(headings.map((heading) => heading[1])).toEqual([
+      'install-nightly',
+      'install-snake_case--flow',
+      'install-nightly-1',
+      'install-nightly-1-1',
+      'install-nightly-2',
+      'café-中文',
+      'quoted-text',
+    ]);
+    expect(html).toContain(
+      'Install <code>snake_case</code> &amp; <a href="https://example.com/hidden-target">Flow</a>',
+    );
+    expect(html).toContain('&lt;Quoted&gt; &quot;text&quot;');
+    expect(renderMarkdown('# Install Nightly')).toContain(
+      '<h1 id="install-nightly">Install Nightly</h1>',
+    );
+  });
+
+  it('resolves the getting-started installation links to rendered sections', () => {
+    const source = readFileSync('docs/user/getting-started.md', 'utf8');
+    const html = renderMarkdown(source);
+    const links = [...html.matchAll(/<a\b[^>]*\bhref="(#[^"]+)"/g)];
+    const ids = new Set(
+      [...html.matchAll(/\bid="([^"]+)"/g)].map((id) => id[1]),
+    );
+    expect(links.map((link) => link[1])).toEqual(
+      expect.arrayContaining([
+        '#install-nightly',
+        '#nightly-desktop-downloads',
+        '#install-or-upgrade',
+      ]),
+    );
+    for (const link of links) {
+      expect(ids.has(decodeURIComponent(link[1].slice(1))), link[0]).toBe(true);
+    }
+  });
+
   it('uses the canonical Station repository in the Pages source and generator', () => {
     for (const file of [
       'docs/pages/index.html',

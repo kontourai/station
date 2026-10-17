@@ -32,6 +32,13 @@ Markdown, and checks every emitted HTML file for broken or escaping relative
 links. It writes disposable output to `dist-pages/`; do not edit that directory
 by hand.
 
+Rendered headings have section IDs from their visible text, using the same
+heading rules as the learning reader. Repeated headings receive unique numeric
+suffixes within each document. Links such as the getting-started guide's
+`#install-nightly` resolve to those sections in the generated page. The Pages
+link checker validates target files; the renderer tests cover these heading
+targets. Neither check proves the hosted site has deployed the current source.
+
 An admitted document may link relatively only to another admitted document;
 link anything else by its absolute
 `https://github.com/kontourai/station/blob/main/...` URL. `npm run
