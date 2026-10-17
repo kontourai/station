@@ -517,5 +517,7 @@ test('the phone chat actions offer New Task from this and dismiss the sheet befo
     await screen.findByRole('menuitem', { name: 'New Task from this' }),
   );
   expect(turnIntoTask).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('menuitem', { name: 'New Task from this' })).toBeNull();
+  expect(
+    screen.queryByRole('menuitem', { name: 'New Task from this' }),
+  ).toBeNull();
 });

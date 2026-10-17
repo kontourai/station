@@ -108,7 +108,6 @@ import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
-import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
@@ -2651,18 +2650,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 ) : null
               }
             />
-          )}
-          {activeSession?.taskShaping && isPaneOpen && (
-            <Button
-              className="task-chat-start__chip"
-              size="sm"
-              aria-label="Remove Shaping a Task mode"
-              onClick={() =>
-                updateChat(activeSessionId!, { taskShaping: false })
-              }
-            >
-              Shaping a Task ×
-            </Button>
           )}
 
           {(isPaneOpen || isCollapsedDragPreview) && (
