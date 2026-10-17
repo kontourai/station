@@ -224,6 +224,7 @@ export {
   type MessageSearchInstance,
   type MessageSearchResponse,
   type MessageSearchResult,
+  nativePushRegistrationStatus,
   type OrchestrationCommandDispatchResult,
   type OrchestrationCommandInput,
   type OrchestrationCommandReceipt,

@@ -798,7 +798,10 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 `@kontourai/station-contracts/native-push` owns the agent-activity push
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
-gateway delivers to, and the request/response shapes. The response's
+gateway delivers to, and the request/response shapes.
+`NativePushRegistrationStatus`, the `GET` answer on
+`NATIVE_PUSH_REGISTRATION_PATH`, carries only `registered` and the caller's
+own `registrationId`, never a token or key. The registration response's
 `registrationId`, `stationId` and `stationKey` are public identity checks for
 incoming pushes; none of those three is a credential. The response also includes
 `payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.

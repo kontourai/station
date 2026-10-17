@@ -7193,6 +7193,10 @@ export function configureRuntimeRoutes(
           deviceId,
         );
       },
+      nativePushRegistrationId: (deviceId) =>
+        context.environmentSecurityService.devicePairing.nativePushRegistrationId(
+          deviceId,
+        ),
       onRegistered: () => agentActivityPublisher.requestFlush(),
     }),
   );
