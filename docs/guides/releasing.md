@@ -89,7 +89,8 @@ native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
 it performs no source qualification, installs nothing and publishes nothing.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates only the three reviewed native-queue shapes, then removes that field
+validates the three reviewed workflow-level queues and the two PR source-job
+queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
 
