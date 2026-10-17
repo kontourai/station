@@ -180,3 +180,13 @@ paths = [
   '''(^|/)docs/learn/review-ledger/notes/20261015T233817\.683Z-f60a1ba05c1a\.json$''',
   '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
 ]
+
+# Public values copied from the integrity-pinned Forge 1.4.0 bundles.
+# AND binds these exact code values to this exact package patch.
+[[allowlists]]
+description = "Published Forge TLS handler expression and PKCS12 cipher identifier"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^patches/node-forge-1\.4\.0\.patch$''']
+regexTarget = "secret"
+regexes = ['''^F=u\.handleCertificateVerify$''', '''^pbewithSHAAnd40BitRC2\-CBC$''']

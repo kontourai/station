@@ -628,6 +628,8 @@
 
     "packages/sdk/src/client/http.ts",
 
+    "packages/sdk/src/__tests__/client-execution.test.ts",
+
     "packages/contracts/src/tool.ts",
 
     "packages/sdk/src/query-domains/catalog.ts",

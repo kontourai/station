@@ -23,6 +23,8 @@ export interface TurnDedupRecord {
   readonly createdAt: number;
   readonly owner?: OwnerIdentity;
   readonly invocation?: TurnClaimInvocation;
+  /** Versioned submission digest; absent means the original input is unknown. */
+  readonly inputDigest?: string;
 }
 
 export type TurnBoundaryState =

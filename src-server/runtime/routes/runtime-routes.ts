@@ -4518,6 +4518,8 @@ export function configureRuntimeRoutes(
       clientOrigin: ClientOrigin;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      inputDigest?: string;
+      inboxPlacement?: true;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -4530,6 +4532,10 @@ export function configureRuntimeRoutes(
         },
         context.orchestrationService,
         remoteStations,
+        {
+          submissionDigest: input.inputDigest,
+          ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+        },
       );
       if (!isForegroundDispatchHandle(handle))
         return { outcome: 'indeterminate' };
@@ -4616,18 +4622,24 @@ export function configureRuntimeRoutes(
       },
       deviceMaySend: (deviceId, since) =>
         context.environmentSecurityService.deviceMaySendChat(deviceId, since),
-      inspectDelivery: (conversationId, clientTurnId) =>
-        service.inspectTurnDelivery(
+      inspectDelivery: (conversationId, clientTurnId, inputDigest, userId) => {
+        if (!userId)
+          throw new Error('The requested conversation is unavailable.');
+        return service.inspectTurnDelivery(
           conversationId,
           clientTurnId,
-          INTERNAL_SESSION_READ_SCOPE,
-        ),
+          readAuthorityForExecution(userId),
+          inputDigest,
+        );
+      },
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(
             {
               conversationId,
               message: payload.message,
+              inputDigest: payload.inputDigest,
+              inboxPlacement: true,
               clientTurnId,
               userId: payload.actor.userId,
               principal: payload.actor.principal,
@@ -4875,7 +4887,7 @@ export function configureRuntimeRoutes(
       resolveRequestDelegation: createRequestDelegationResolver(
         requestDelegationSources,
       ),
-      hydrateStagedAttachments: (principal, references, binding) =>
+      hydrateStagedAttachments: (principal, references, binding, options) =>
         attachmentStaging.bindAndHydrate(
           {
             principalId: principal.id,
@@ -4885,6 +4897,7 @@ export function configureRuntimeRoutes(
           },
           references,
           binding,
+          options,
         ),
       releaseStagedAttachments: (principal, references, binding) =>
         attachmentStaging.releaseBinding(

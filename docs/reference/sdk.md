@@ -4504,6 +4504,31 @@ Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' 
 'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
 Keep the human draft visible and inspect the full run before resending; the field
 does not grant retry or execution authority.
+
+### Queued foreground retries
+
+A live retry whose key already names its own waiting inbox entry stays in FIFO
+order. Identical known input returns the existing HTTP 202 queue receipt;
+different known input returns `client_turn_input_conflict` without another send.
+`queueExecutionMessage` returns the queue receipt. Ordinary
+`sendExecutionMessage` and `continueExecutionMessage` preserve their accepted
+provider-turn return types and throw `ForegroundMessageQueuedError` with
+`status: 202`, `outcome: 'queued'` and the original queue `receipt`. Inspect or
+withdraw that entry through the inbox APIs instead of resending it. This error
+does not supply a provider turn id or report an indeterminate start.
+
+### Keyed orchestration input conflicts
+
+Existing keyed foreground, background, continuation and explicit handoff sends can return HTTP
+409 with `code: client_turn_input_conflict` when the key already names different
+submitted input. Execution callers receive `ChatHttpError` with that status and
+code; no new provider turn is accepted. Resubmit the original input to replay its
+result, or use a fresh key for a distinct turn. Legacy records without original
+digest proof and older servers cannot enforce this comparison. Key generation
+and the separate `/chat` stream ledger are outside this bounded #3567 slice.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for the
+submission digest scope and mixed-version limits.
+
 ## Account preferences
 
 The React-free client entry exports `getAccountPreferences(apiBase, options)`

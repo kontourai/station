@@ -11979,6 +11979,25 @@ export class EventStore {
   }
 
   /** #3568: follow-ups held for a conversation's next turn boundary. */
+  readPendingThreadInboxSubmission(
+    conversationId: string,
+    clientTurnId: string,
+  ) {
+    if (
+      !this.threadInbox &&
+      !this.db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monument_inbox_entries'",
+        )
+        .get()
+    )
+      return undefined;
+    return this.threadInboxStore().readPendingSubmission(
+      conversationId,
+      clientTurnId,
+    );
+  }
+
   threadInboxStore(): ThreadInboxStore {
     this.threadInbox ??= createSqliteThreadInboxStore(this.db);
     return this.threadInbox;

@@ -560,6 +560,7 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   }
 
   test('startup places a held follow-up through the production start port, as its sender', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
     const { store } = await compose((store) => held(store, 'k1'));
     await vi.waitFor(() => expect(support.continued).toHaveLength(1));
     expect(support.continued[0]).toMatchObject({
@@ -588,6 +589,7 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   });
 
   test('a reader the personal Station lets continue the conversation has a held follow-up delivered', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
     // The conversation's recorded owner is the operator; this sender is not,
     // but may read (and so, by the live rule, continue) it.
     const { store } = await compose((store) =>
