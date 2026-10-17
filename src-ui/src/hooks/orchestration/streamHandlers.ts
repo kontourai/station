@@ -228,7 +228,10 @@ function committedMessageIndexForTurn(
  * (same reasoning the terminal's historical branch already carries).
  */
 function upsertToolPartOnEventTurn(
-  event: { threadId: string; toolCallId: string; turnId?: string },
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'tool.started' | 'tool.progress' }
+  >,
   updates: Parameters<typeof upsertToolPart>[2],
 ): void {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -254,6 +257,14 @@ function upsertToolPartOnEventTurn(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     isProcessingStep: true,
+    ...(event.method === 'tool.started'
+      ? {
+          planArtifact: derivePlanArtifactFromStreamingState(
+            chat,
+            event.createdAt,
+          ),
+        }
+      : {}),
     streamingMessage: {
       ...streamingMessage,
       contentParts: upsertToolPart(

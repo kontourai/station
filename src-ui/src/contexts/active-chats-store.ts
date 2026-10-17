@@ -2,6 +2,7 @@ import type { ConversationTurnActivity } from '@kontourai/station-contracts/orch
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { log } from '../utils/logger';
+import { derivePlanArtifactFromStreamingState } from '../utils/planArtifacts';
 import {
   type ActiveChatMetadata,
   type ActiveChatsMap,
@@ -350,6 +351,23 @@ export class ActiveChatsStore {
     const current = targetSessionId ? this.chats[targetSessionId] : undefined;
     if (!current) {
       return;
+    }
+    const replacesStream =
+      Object.hasOwn(updates, 'streamingMessage') &&
+      (updates.streamingMessage === undefined ||
+        (updates.streamingMessage.content === '' &&
+          updates.streamingMessage.contentParts?.length === 0));
+    // Flush the last unterminated line before any lifecycle path drops its
+    // stream. An explicit artifact from a transcript/terminal fold wins.
+    if (
+      current.streamingMessage &&
+      (replacesStream || updates.orchestrationTurnOpen === false) &&
+      !Object.hasOwn(updates, 'planArtifact')
+    ) {
+      updates = {
+        ...updates,
+        planArtifact: derivePlanArtifactFromStreamingState(current),
+      };
     }
     const { chat, shouldPersist, droppedQueuedMessages } = mergeChatUpdates(
       current,

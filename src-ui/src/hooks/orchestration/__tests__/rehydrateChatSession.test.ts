@@ -4,9 +4,14 @@ const updateChat = vi.fn();
 const fetchMessages = vi.fn();
 const refreshMessages = vi.fn();
 let messagesByKey: Record<string, unknown[]> = {};
+let currentChats: Record<
+  string,
+  { planArtifact?: import('../../../utils/planArtifacts').PlanArtifact }
+> = {};
 
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
+    getSnapshot: () => currentChats,
     updateChat: (...args: unknown[]) => updateChat(...args),
   },
 }));
@@ -27,6 +32,7 @@ describe('rehydrateChatSession (station#1225)', () => {
     fetchMessages.mockClear();
     refreshMessages.mockClear();
     messagesByKey = {};
+    currentChats = {};
   });
 
   test('is a no-op when the chat has no agentSlug/conversationId', async () => {
@@ -118,6 +124,37 @@ describe('rehydrateChatSession (station#1225)', () => {
       'agent-1',
       'conv-1',
       fakeQueryClient,
+    );
+  });
+
+  test('rehydration does not overwrite a newly flushed plan with its captured pre-sync fallback', async () => {
+    const previous = {
+      source: 'assistant' as const,
+      rawText: 'Plan:\n- first',
+      steps: [{ content: 'first', status: 'pending' as const }],
+      updatedAt: '2026-10-17T00:00:00.000Z',
+    };
+    const flushed = {
+      ...previous,
+      rawText: 'Plan:\n- first\n- second',
+      steps: [
+        ...previous.steps,
+        { content: 'second', status: 'pending' as const },
+      ],
+    };
+    currentChats['session-1'] = { planArtifact: flushed };
+    messagesByKey['messages:agent-1:conv-1'] = [
+      { role: 'assistant', content: 'No plan in this window.' },
+    ];
+    await rehydrateChatSession('http://api', 'session-1', {
+      agentSlug: 'agent-1',
+      conversationId: 'conv-1',
+      inputHistory: [],
+      planArtifact: previous,
+    });
+    expect(updateChat).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ planArtifact: flushed }),
     );
   });
 
