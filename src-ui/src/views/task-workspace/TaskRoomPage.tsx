@@ -17,6 +17,8 @@ import { useTaskOutputsQuery } from '@kontourai/station-sdk/task-outputs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { ActionOverflowMenu } from '../../components/ActionOverflowMenu';
+import { Button } from '../../components/Button';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import {
   ArrowDownGlyph,
   CheckGlyph,
@@ -24,17 +26,14 @@ import {
 } from '../../components/icons/Glyph';
 import { PageFrameActions, usePageHeader } from '../../components/page-frame';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
-
-const ChecklistBoxGlyph = glyph('M3 3h10v10H3Z');
-const ChecklistBulletGlyph = glyph('M7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0');
-
-import { Button } from '../../components/Button';
-import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
 import { ProjectTaskRoomPresence } from '../../workspace-panes/ProjectTaskRoomPresence';
 import { ProjectTaskSharingControl } from '../project-page/ProjectTaskSharingControl';
 import { TaskOutputRow } from './TaskOutputsSection';
+
+const ChecklistBoxGlyph = glyph('M3 3h10v10H3Z');
+const ChecklistBulletGlyph = glyph('M7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0');
 
 async function readResult<T>(response: Response): Promise<T> {
   const body = await response.json();
@@ -277,7 +276,21 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
       </p>
       {unavailable && (
         <p role="alert">
-          Some results could not be loaded. Reopen Results to retry.
+          Some results could not be loaded.{' '}
+          <Button
+            size="sm"
+            aria-label="Retry results"
+            disabled={
+              answers.isFetching || outputs.isFetching || prs.isFetching
+            }
+            onClick={() => {
+              if (answers.error) void answers.refetch();
+              if (outputs.error) void outputs.refetch();
+              if (prs.error) void prs.refetch();
+            }}
+          >
+            Retry
+          </Button>
         </p>
       )}
       {(answers.isLoading || outputs.isLoading || prs.isLoading) && (

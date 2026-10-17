@@ -55,6 +55,7 @@ export function TaskRoomComposer({
   });
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState<{ id: string; name: string }>();
+  const [leadingPerson, setLeadingPerson] = useState<string>();
   const [mention, setMention] = useState<{
     start: number;
     end: number;
@@ -124,6 +125,7 @@ export function TaskRoomComposer({
     if (!agent?.ready || !mention) return;
     setDraftOwner(owner);
     if (agent.person) {
+      if (!draft.slice(0, mention.start).trim()) setLeadingPerson(agent.name);
       setDraft(
         draft.slice(0, mention.start) +
           `@${agent.name} ` +
@@ -134,6 +136,7 @@ export function TaskRoomComposer({
       return;
     }
     briefSelection.current += 1;
+    setLeadingPerson(undefined);
     setRecipient({ id: agent.id, name: agent.name });
     setBrief(
       !requests.isError && scope?.isCurrent()
@@ -200,7 +203,11 @@ export function TaskRoomComposer({
       }
       let selectedRecipient = recipient;
       let selectedDraft = draft;
-      if (!selectedRecipient && !unconfirmed) {
+      if (
+        !selectedRecipient &&
+        !unconfirmed &&
+        !(leadingPerson && draft.trimStart().startsWith(`@${leadingPerson} `))
+      ) {
         const typed = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
         if (typed) {
           const matches =
@@ -304,9 +311,10 @@ export function TaskRoomComposer({
           proposalId: randomCorrelationId(),
           text: draft.trim(),
         });
-        if (outcome.kind === 'committed' || outcome.kind === 'duplicate')
+        if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
           setDraft((current) => (current === draft ? '' : current));
-        else setNotice('Message rejected. Draft retained.');
+          setLeadingPerson(undefined);
+        } else setNotice('Message rejected. Draft retained.');
       } catch {
         setNotice(
           'Message acknowledgement is unavailable. Check room history before resending.',
@@ -319,7 +327,7 @@ export function TaskRoomComposer({
   };
   return (
     <div className="task-room-composer">
-      <label className="task-room-message-label" htmlFor={`${id}-message`}>
+      <label className="sr-only" htmlFor={`${id}-message`}>
         Message the Task
       </label>
       <TaskRoomMessageInput

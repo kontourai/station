@@ -352,7 +352,7 @@ export function ProjectTaskRoomConversation({
   const message = (
     record: ProjectTaskRoomBrowserRecord,
     previous?: ProjectTaskRoomBrowserRecord,
-    threadParent = false,
+    inThread = false,
   ) => {
     if (
       record.body.kind === 'live-work-finished' &&
@@ -463,25 +463,21 @@ export function ProjectTaskRoomConversation({
               </div>
             )}
           </div>
-          {execution && !threadParent && (
+          {execution && (
             <ActionRow
               className="task-room-message-actions"
               primary={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    guard(() => {
-                      setThread(execution.sessionId);
-                      setUncertain(false);
-                      setNotice('');
-                    })
-                  }
-                >
-                  {replies
-                    ? `${replies} ${replies === 1 ? 'reply' : 'replies'}`
-                    : 'Reply in thread'}
-                </Button>
+                !inThread && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => changeThread(execution.sessionId)}
+                  >
+                    {replies
+                      ? `${replies} ${replies === 1 ? 'reply' : 'replies'}`
+                      : 'Reply in thread'}
+                  </Button>
+                )
               }
               secondary={
                 <Button
@@ -546,6 +542,17 @@ export function ProjectTaskRoomConversation({
       </li>
     );
   };
+  const changeThread = (next?: string) => {
+    if (next === thread) return;
+    guard(() => {
+      setThread(next);
+      setReply('');
+      replyOperation.current = undefined;
+      setAttachBrief(true);
+      setUncertain(false);
+      setNotice('');
+    });
+  };
   return (
     <section
       className={`project-task-room-conversation${thread ? ' task-room-conversation--thread-open' : ''}`}
@@ -554,7 +561,7 @@ export function ProjectTaskRoomConversation({
       <SplitPaneCompanion
         sheet={{
           label: `${threadRecords[0]?.actor.label ?? 'Agent'} · Thread`,
-          onDismiss: () => guard(() => setThread(undefined)),
+          onDismiss: () => changeThread(),
         }}
         companion={
           thread ? (
@@ -563,14 +570,14 @@ export function ProjectTaskRoomConversation({
                 <h3>{threadRecords[0]?.actor.label ?? 'Agent'} · Thread</h3>
                 <IconButton
                   aria-label="Close thread"
-                  onClick={() => guard(() => setThread(undefined))}
+                  onClick={() => changeThread()}
                 >
                   <CloseGlyph />
                 </IconButton>
               </header>
               <ol className="task-room-thread-messages">
                 {threadRecords.map((record, index) =>
-                  message(record, threadRecords[index - 1], index === 0),
+                  message(record, threadRecords[index - 1], true),
                 )}
               </ol>
               <form

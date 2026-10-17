@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  realGuard: false,
   records: [] as ProjectTaskRoomBrowserRecord[],
   historyFetching: false,
   historyHasNext: false,
@@ -50,12 +51,18 @@ vi.mock('../contexts/open-chats-store', () => ({
 vi.mock('../components/chat/LazyMarkdown', () => ({
   LazyMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
-vi.mock('../hooks/useUnsavedGuard', () => ({
-  useUnsavedGuard: () => ({
-    DiscardModal: () => null,
-    guard: (action: () => void) => action(),
-  }),
-}));
+vi.mock('../hooks/useUnsavedGuard', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useUnsavedGuard')>();
+  return {
+    useUnsavedGuard: (dirty: boolean) => {
+      const real = actual.useUnsavedGuard(mocks.realGuard && dirty);
+      return mocks.realGuard
+        ? real
+        : { DiscardModal: () => null, guard: (action: () => void) => action() };
+    },
+  };
+});
 vi.mock('../workspace-panes/TaskRoomComposer', () => ({
   TaskRoomComposer: ({ writable }: { writable: boolean }) => (
     <textarea aria-label="Message the Task" disabled={!writable} />
@@ -152,6 +159,7 @@ function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
 afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
+  mocks.realGuard = false;
   mocks.records = [];
   mocks.historyFetching = false;
   mocks.historyHasNext = false;
@@ -544,4 +552,70 @@ test('answers that fit do not show an expansion control', () => {
   mount();
   expect(screen.getByText('A short answer.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+});
+
+test('cancel retains a thread draft, while confirmed discard cannot carry it to another agent', async () => {
+  mocks.realGuard = true;
+  const second = record(2, true);
+  mocks.records = [
+    record(1, true),
+    {
+      ...second,
+      actor: { ...second.actor, label: 'Builder' },
+      execution: { sessionId: 'session-2', turnId: 'turn-2' },
+    },
+  ];
+  mount();
+  const history = screen.getByRole('list', { name: 'Task room history' });
+  fireEvent.click(
+    within(history).getAllByRole('button', { name: 'Reply in thread' })[0],
+  );
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Reply to this agent' }),
+    { target: { value: 'Draft for Claude only' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Cancel', exact: true }),
+  );
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'Reply to this agent',
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('Draft for Claude only');
+  fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Discard', exact: true }),
+  );
+  fireEvent.click(
+    within(history).getAllByRole('button', { name: 'Reply in thread' })[1],
+  );
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'Reply to this agent',
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('');
+  expect(
+    screen.getByRole('heading', { name: 'Builder · Thread' }),
+  ).toBeTruthy();
+  expect(mocks.continue).not.toHaveBeenCalled();
+});
+
+test('an open thread offers Keep for every answer without navigation back into itself', () => {
+  mocks.records = [record(1, true), record(2, true)];
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: '1 reply' }));
+  const thread = screen.getByRole('region', { name: 'Agent thread' });
+  expect(
+    within(thread).queryByRole('button', {
+      name: /^(Reply in thread|\d+ repl(?:y|ies))$/,
+    }),
+  ).toBeNull();
+  expect(
+    within(thread).getAllByRole('button', { name: 'Keep', exact: true }),
+  ).toHaveLength(2);
 });

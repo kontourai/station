@@ -295,3 +295,34 @@ test('a heading-only document does not substitute the description or later secti
   expect(goal.textContent).not.toContain('Stale description');
   expect(goal.textContent).not.toContain('Not the goal');
 });
+
+test('Results retries a failed read in place and preserves the kept content', async () => {
+  mocks.get
+    .mockReset()
+    .mockRejectedValueOnce(new Error('Results offline'))
+    .mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: [] })),
+    );
+  mocks.answers = [
+    {
+      id: 'answer',
+      state: 'available',
+      sessionId: 'session',
+      turnId: 'turn',
+      answer: { content: 'Kept investigation' },
+    },
+  ];
+  mount(<TaskRoomResults task={task} />);
+  await screen.findByText(/Some results could not be loaded/);
+  expect(
+    screen.getByRole('button', { name: 'Kept investigation' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry results' }));
+  await waitFor(() =>
+    expect(screen.queryByText(/Some results could not be loaded/)).toBeNull(),
+  );
+  expect(mocks.get).toHaveBeenCalledTimes(2);
+  expect(
+    screen.getByRole('button', { name: 'Kept investigation' }),
+  ).toBeTruthy();
+});

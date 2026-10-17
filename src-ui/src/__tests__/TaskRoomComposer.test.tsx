@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     documentRevision: 'revision-1',
     text: 'Agreed brief.',
   },
+  people: [] as string[],
   refetch: vi.fn(),
   status: vi.fn(),
   agent: vi.fn(),
@@ -37,7 +38,14 @@ vi.mock('../hooks/useUnsavedGuard', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({ updateTaskStatus: mocks.status }));
 vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
-  useProjectTaskRoomContext: () => undefined,
+  useProjectTaskRoomContext: () => ({
+    live: {
+      participants: mocks.people.map((name) => ({
+        publication: 'published',
+        actor: { kind: 'human', label: name, actorId: name },
+      })),
+    },
+  }),
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   TaskRoomWorkNotSentError: class extends Error {},
@@ -98,6 +106,7 @@ const props = {
 };
 beforeEach(() => {
   mocks.scope.authorityKey = 'home-a';
+  mocks.people = [];
   mocks.brief = {
     version: 'station.task-room-context/v1',
     digest: 'a'.repeat(64),
@@ -382,3 +391,24 @@ test('Enter sends the room message while Shift+Enter and IME retain the draft', 
     ),
   );
 });
+
+test.each(['Alice Example', 'Researcher'])(
+  'selecting the person %s sends a room message without invoking an agent',
+  async (name) => {
+    mocks.people = [name];
+    render(<TaskRoomComposer {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+    fireEvent.click(screen.getByRole('option', { name, exact: true }));
+    const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+    fireEvent.change(textbox, {
+      target: { value: `@${name} Please review the brief.` },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+    await waitFor(() =>
+      expect(mocks.message).toHaveBeenCalledWith(
+        expect.objectContaining({ text: `@${name} Please review the brief.` }),
+      ),
+    );
+    expect(mocks.agent).not.toHaveBeenCalled();
+  },
+);
