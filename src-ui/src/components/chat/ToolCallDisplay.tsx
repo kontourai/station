@@ -9,10 +9,8 @@ import {
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import {
-  lazy,
   memo,
   type ReactNode,
-  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -37,6 +35,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import {
   boundedToolResultText,
@@ -59,7 +58,7 @@ import {
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
 
-const TranscriptMCPApp = lazy(() => import('./TranscriptMCPApp'));
+const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
 import './ToolCallDetails.css';
 
@@ -382,15 +381,17 @@ function ToolCallDisplayComponent({
         />
       )}
       {appToolRef && (
-        <Suspense fallback={null}>
-          <TranscriptMCPApp
-            key={id}
-            toolRef={appToolRef}
-            toolCallId={id}
-            args={args}
-            result={toolCall.output ?? toolCall.result}
-          />
-        </Suspense>
+        <LazyBoundary
+          key={id}
+          load={loadTranscriptMCPApp}
+          pending={null}
+          componentProps={{
+            toolRef: appToolRef,
+            toolCallId: id,
+            args,
+            result: toolCall.output ?? toolCall.result,
+          }}
+        />
       )}
       {awaitingApproval && onApprove && (
         <div className="tool-call__actions">
