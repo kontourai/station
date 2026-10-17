@@ -92,7 +92,7 @@ function harness(
     runtime: 'Android 16',
     booted: true,
   };
-  let finishCapture: (() => void) | undefined;
+  let finishCapture: (() => void | Promise<void>) | undefined;
   const host = {
     inventory: vi.fn(
       async (): Promise<MobileDeviceInventory> => ({
@@ -111,7 +111,7 @@ function harness(
       height: 200,
     })),
     capture: vi.fn(async () => {
-      if (finishCapture) finishCapture();
+      if (finishCapture) await finishCapture();
       return {
         captureId: 'capture',
         target: device,
@@ -325,7 +325,7 @@ function harness(
     duringSend: (fn: () => void) => {
       onSend = fn;
     },
-    duringCapture: (fn: () => void) => {
+    duringCapture: (fn: () => void | Promise<void>) => {
       finishCapture = fn;
     },
   };
@@ -473,6 +473,7 @@ test('tap, swipe and key events traverse the existing producer mapping', async (
   expect(
     parsed(await h.run('device_input', { deviceSessionId: id, events })),
   ).toMatchObject({ ok: true, accepted: 5 });
+  expect(h.packets).toHaveLength(5);
   expect(h.packets.slice(0, 3)).toEqual([
     { type: 'touch', action: 'down', x: 0.1, y: 0.1, ack: false },
     { type: 'touch', action: 'move', x: 0.5, y: 0.5, ack: false },
@@ -734,3 +735,139 @@ test('device tool refusals set MCP isError', async () => {
     content: [{ type: 'text' }],
   });
 });
+
+test.each([false, true])(
+  'parallel same-agent calls retain the lease until the last operation finishes (human takeover=%s)',
+  async (takeover) => {
+    const h = harness();
+    const id = await h.open();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.duringCapture(() => {
+      entered();
+      return held;
+    });
+    const capture = h.run('device_screenshot', { deviceSessionId: id });
+    try {
+      await started;
+      expect(
+        parsed(
+          await h.run('device_input', {
+            deviceSessionId: id,
+            events: [{ kind: 'text', text: 'parallel' }],
+          }),
+        ),
+      ).toMatchObject({ ok: true, accepted: 1 });
+      if (takeover) await h.take(id);
+      release();
+      expect(
+        parsed(await capture),
+        'parallel input must not interrupt the capture',
+      ).toMatchObject(
+        takeover ? { ok: false, code: 'interrupted' } : { ok: true },
+      );
+      const holder = h.surfaces
+        .get(h.sessions.get(id)!.surfaceId)!
+        .lease.snapshot().holder;
+      if (takeover)
+        expect(holder).toMatchObject({ kind: 'human', principal: 'admin' });
+      else
+        expect(
+          holder,
+          'last concurrent operation must release control',
+        ).toBeNull();
+    } finally {
+      release();
+      await capture;
+    }
+  },
+);
+
+test.each([
+  [{ kind: 'pointer', type: 'down', x: 10, y: 20, pointerType: 'touch' }],
+  [{ kind: 'pointer', type: 'up', x: 10, y: 20, pointerType: 'touch' }],
+  [{ kind: 'key', type: 'down', key: 'Enter', code: 'Enter' }],
+  [{ kind: 'key', type: 'up', key: 'Enter', code: 'Enter' }],
+])(
+  'split-call gesture %j is refused before delivering any event',
+  async (event) => {
+    const h = harness();
+    const id = await h.open();
+    expect(
+      parsed(
+        await h.run('device_input', {
+          deviceSessionId: id,
+          events: [{ kind: 'text', text: 'must not send' }, event],
+        }),
+      ),
+    ).toMatchObject({ ok: false, code: 'incomplete-gesture', accepted: 0 });
+    expect(h.packets).toEqual([]);
+  },
+);
+
+test('input returns the current lease after the final operation releases it', async () => {
+  const h = harness();
+  const id = await h.open();
+  const result = parsed(
+    await h.run('device_input', {
+      deviceSessionId: id,
+      events: [{ kind: 'text', text: 'done' }],
+    }),
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    accepted: 1,
+    lease: { holder: null },
+  });
+  expect(result.lease).toEqual(
+    h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot(),
+  );
+});
+
+test('unsupported input kinds reject the entire batch before a supported event is delivered', async () => {
+  const h = harness();
+  const id = await h.open();
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  // A producer advertising fewer supported kinds exercises the public producer
+  // contract without adding a fictitious wire event or weakening route parsing.
+  Object.defineProperty(entry.producer, 'capabilities', {
+    value: { ...entry.producer.capabilities, input: ['text'] },
+  });
+  expect(
+    parsed(
+      await h.run('device_input', {
+        deviceSessionId: id,
+        events: [
+          { kind: 'text', text: 'must not send' },
+          { kind: 'device-button', button: 'home' },
+        ],
+      }),
+    ),
+  ).toMatchObject({ ok: false, code: 'unsupported-input', accepted: 0 });
+  expect(h.packets).toEqual([]);
+});
+
+test.each([false, true])(
+  'admin close is refused before claiming or renewing idle grace (human holder=%s)',
+  async (human) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const h = harness('sdk-in-process', { idleEndMs: 100 });
+    const id = await h.open();
+    await vi.advanceTimersByTimeAsync(80);
+    if (human) await h.take(id);
+    expect(
+      parsed(await h.run('device_close', { deviceSessionId: id })),
+    ).toMatchObject({ ok: false, code: 'operator-required' });
+    await vi.advanceTimersByTimeAsync(21);
+    expect(
+      h.sessions.get(id),
+      'refused close must not renew idle grace',
+    ).toBeUndefined();
+  },
+);

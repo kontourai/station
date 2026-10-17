@@ -34,9 +34,34 @@ const ownerKey = (authority: DeviceAgentAuthority) =>
   ]);
 const refused = (code: string) => ({ ok: false as const, code });
 
+/** Holds are scoped to one tool call; refuse unbalanced input before any send. */
+function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
+  const pointers = new Set<string>();
+  const keys = new Set<string>();
+  for (const event of events) {
+    if (event.kind === 'pointer') {
+      const button = event.button ?? 'left';
+      if (event.type === 'down') pointers.add(button);
+      if (event.type === 'up' && !pointers.delete(button)) return false;
+    } else if (event.kind === 'key') {
+      const key = event.code || event.key;
+      if (event.type === 'down') keys.add(key);
+      else if (!keys.delete(key)) return false;
+    }
+  }
+  return pointers.size === 0 && keys.size === 0;
+}
+
 /** Local-device agent path. All input uses the existing allowlisted hub producer. */
 export class DeviceAutomation {
   private readonly owners = new Map<string, string>();
+  private readonly inFlight = new Map<
+    string,
+    {
+      active: number;
+      releases: Map<number, () => void>;
+    }
+  >();
   constructor(private readonly deps: DeviceAutomationDeps) {}
 
   async list(access: DeviceAgentAccessDeps, authority: DeviceAgentAuthority) {
@@ -110,7 +135,7 @@ export class DeviceAutomation {
         session,
         paneRevealed: false,
         instructions:
-          'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Each operation releases its lease; human takeover interrupts input.',
+          'Open Device in the pane chooser and select this local device to watch. Use device_input with deviceSessionId and events (surface pixel coordinates), device_snapshot for accessibility, and device_screenshot for PNG. Control is released after your last overlapping operation; human takeover interrupts input.',
       }),
     );
     return opened.ok
@@ -132,12 +157,36 @@ export class DeviceAutomation {
       >,
     ) => Promise<T>,
   ) {
-    const selected = await this.claim(access, authority, id);
-    if (!selected.ok) return selected;
+    const key = JSON.stringify([
+      id,
+      authority.principalId,
+      authority.sessionId,
+    ]);
+    const group = this.inFlight.get(key) ?? {
+      active: 0,
+      releases: new Map<number, () => void>(),
+    };
+    this.inFlight.set(key, group);
+    // Reserve before awaiting authorization: an already-running operation must
+    // not release the shared fence while another call is still claiming it.
+    group.active += 1;
     try {
+      const selected = await this.claim(access, authority, id);
+      if (!selected.ok) return selected;
+      group.releases.set(selected.lease.fence, () => {
+        releaseAgentControl(
+          selected.entry,
+          selected.agent,
+          selected.lease.fence,
+        );
+      });
       return await run(selected);
     } finally {
-      releaseAgentControl(selected.entry, selected.agent, selected.lease.fence);
+      if (--group.active === 0) {
+        this.inFlight.delete(key);
+        // Old fences cannot release a human or a newer controller's lease.
+        for (const release of group.releases.values()) release();
+      }
     }
   }
 
@@ -183,24 +232,39 @@ export class DeviceAutomation {
     id: string,
     events: readonly LiveSurfaceInput[],
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      let accepted = 0;
-      for (const event of events) {
-        // Re-authorize each event through the registry so revocation between
-        // events stops the batch without changing the producer's send fencing.
-        const result = await dispatchAgentInput(
-          selected.entry,
-          selected.agent,
-          authority.principalId,
-          selected.lease.fence,
-          [event],
-          selected.context,
-        );
-        accepted += result.accepted;
-        if (!result.ok) return { ...result, accepted };
-      }
-      return { ok: true, accepted, lease: selected.entry.lease.snapshot() };
-    });
+    if (!completeGestures(events))
+      return { ...refused('incomplete-gesture'), accepted: 0 };
+    const result = await this.withControl(
+      access,
+      authority,
+      id,
+      async (selected) => {
+        const supported = selected.entry.producer.capabilities.input;
+        if (!events.every((event) => supported.includes(event.kind)))
+          return { ...refused('unsupported-input'), accepted: 0 };
+        let accepted = 0;
+        for (const event of events) {
+          // Re-authorize each event through the registry so revocation between
+          // events stops the batch without changing the producer's send fencing.
+          const result = await dispatchAgentInput(
+            selected.entry,
+            selected.agent,
+            authority.principalId,
+            selected.lease.fence,
+            [event],
+            selected.context,
+          );
+          accepted += result.accepted;
+          if (!result.ok) return { ...result, accepted };
+        }
+        return { ok: true, accepted };
+      },
+    );
+    const session = this.deps.sessions.get(id);
+    const lease = session
+      ? this.deps.surfaces.get(session.surfaceId)?.lease.snapshot()
+      : undefined;
+    return { ...result, ...(lease ? { lease } : {}) };
   }
 
   async observe(
@@ -235,10 +299,10 @@ export class DeviceAutomation {
   ) {
     if (this.owners.get(id) !== ownerKey(authority))
       return refused('not-session-owner');
+    const standing = await authorizeDeviceAgentCaller(access);
+    if (!standing.ok || standing.actor.kind !== 'operator')
+      return refused('operator-required');
     return this.withControl(access, authority, id, async (selected) => {
-      const standing = await authorizeDeviceAgentCaller(access);
-      if (!standing.ok || standing.actor.kind !== 'operator')
-        return refused('operator-required');
       if (
         !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
       )

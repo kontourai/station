@@ -26,20 +26,35 @@ fencing and bounded dispatch.
 
 The existing shared lease remains the authority for input: agents may claim an
 unclaimed lease or renew their own, never preempt a human or another agent.
-Every operation claims only for its duration and releases in `finally`, including
-failed observations and opening an existing session. An idle agent does not
-retain the lease for its TTL. Human takeover advances the fence, interrupts
-queued events and stops producer sends. Screenshot/accessibility publication also checks its fence after the
-observation completes. Input uses the existing allowlisted device-hub transport,
+Operations reserve a per-device, per-agent in-flight count before authorization.
+Overlapping calls by the same agent share control; only the last completing call
+releases the recorded fences in `finally`. Old fences cannot release a human or
+newer controller. An idle agent does not retain the lease for its TTL. Responses
+report the lease after that completion/release, which may still name the agent
+when another operation remains active. Human takeover advances the fence,
+interrupts queued events and stops producer sends. Screenshot/accessibility
+publication also checks its fence after the observation completes. Input uses the existing allowlisted device-hub transport,
 not arbitrary shell commands. Captures retain the existing 8 MiB PNG bound.
+
+Pointer and key gestures must be complete within one `device_input` batch: send
+down/move/up or key down/up together. Unmatched down or up returns
+`incomplete-gesture` with zero events delivered, including any earlier events in
+that batch. Cross-call holds, drags and held keys are unsupported; there is no
+wait/duration event for a long press. This deliberately avoids retaining a lease
+and hidden held input between calls. Before dispatch, the entire batch's kinds
+are checked against the producer's declared capabilities; an unsupported kind
+returns `unsupported-input` before any event is sent. Platform-specific failures
+can still occur during dispatch and report the accepted count.
 
 The first slice supports local simulator/emulator devices. Opening a stream
 makes it available in Device but does not automatically reveal the pane; the
 tool reports that limitation. Closing is limited to sessions created by the
 same principal, Project and conversation, requires current operator standing,
-leaves the device running, and respects the lease. Close ends the shared session
-for everyone, matching the operator-only human DELETE route; Project admins
-may observe and drive shared devices but may not end their shared session. Shutdown, remote agent hosting and automatic pane reveal are deferred.
+leaves the device running, and respects the lease. Operator standing is checked
+before claiming control or renewing idle grace. Close ends the shared session
+for everyone, matching the operator-only human DELETE route; Project admins may
+observe and drive shared devices but may not end their shared session. Shutdown,
+remote agent hosting and automatic pane reveal are deferred.
 The existing operator-controlled toolchain **Agent access** setting is the
 explicit opt-in for these live tools as well as managed agent-device tooling.
 It defaults off and is re-read on each call and surface authorization. Shared

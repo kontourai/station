@@ -70,7 +70,7 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'device_input',
-    'Send up to 64 typed live-surface events through the shared lease. Pointer down/move/up use screen pixels for tap/swipe; text and key down/up are supported. Human takeover interrupts the batch.',
+    'Send up to 64 live-surface events. Complete pointer/key gestures within one batch; unmatched down/up is refused before delivery. Tap/drag uses screen pixels. Human takeover interrupts input.',
     {
       deviceSessionId,
       events: z

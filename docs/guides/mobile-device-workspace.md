@@ -103,8 +103,17 @@ existing allowlisted producer, never a shell command. It claims only an
 unclaimed lease or renews its own; a human or another agent holding control
 refuses the action. Human takeover interrupts queued input and the producer
 checks the fence before each send. The grant is rechecked before each event
-in a batch. Every operation releases its lease in `finally`, so opening or
-observing a device does not leave an idle agent blocking the human Tools drawer. `device_snapshot` reads the bounded
+in a batch. Concurrent calls from the same agent retain their shared control
+until the last call finishes; it releases in `finally`. Opening or observing a
+device does not leave an idle agent blocking the human Tools drawer. Input
+responses carry the lease after completion/release; it may still name the agent
+if another concurrent call remains active.
+
+Complete pointer/key gestures within one batch: send down/move/up or key down/up
+together. Unmatched presses/releases return `incomplete-gesture` before any event
+is sent. Cross-call holds, drags and held keys are unsupported, and this API has
+no wait/duration event for a timed long press. Unsupported input kinds are also
+refused for the whole batch before delivery. `device_snapshot` reads the bounded
 accessibility tree; `device_screenshot` returns PNG through the existing capture
 service (maximum 8 MiB, validated dimensions). Both require the agent lease and
 recheck authority and the fence before publishing. An accepted socket write is
@@ -113,8 +122,9 @@ not proof the device applied it.
 `device_close` requires current operator standing and ends only a session this
 conversation created. It ends that shared session for everyone, leaves the device
 running, and refuses while another controller holds it. Project admins cannot
-end a shared session. Joining a human-opened
-session does not transfer ownership. Successful agent operations renew an
+end a shared session. Operator standing is checked before a close can claim
+control or renew idle grace. Joining a human-opened session does not transfer
+ownership. Successful agent operations renew an
 unwatched session's idle grace. Remote-host agent tools, automatic pane reveal,
 and agent shutdown are not included yet.
 
