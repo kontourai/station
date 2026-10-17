@@ -1212,7 +1212,7 @@
     "intended": "4.3.0",
     "override": "4.3.0",
     "patch": "patches/http-cache-semantics-4.3.0.patch",
-    "patchSha256": "7d230cfcfad1440d4fb5b7f8ac026d1ff9074d9f001fbf8806a0521abe0f5f47",
+    "patchSha256": "88d463d98aef02aa04f4263556dea7fe3fb8cf07121e1ea7a8e424e8bbeb7c15",
     "threat": "Remote shared-cache caller selecting another user cookie-bearing response through max-stale, stale-while-revalidate or stale-if-error without explicit public/immutable opt-in.",
     "limits": [
       "No endpoint exploit or non-reachability claim.",
