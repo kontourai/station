@@ -113,7 +113,10 @@ Complete pointer/key gestures within one batch: send down/move/up or key down/up
 together. Unmatched presses/releases return `incomplete-gesture` before any event
 is sent. Cross-call holds, drags and held keys are unsupported, and this API has
 no wait/duration event for a timed long press. Unsupported input kinds are also
-refused for the whole batch before delivery. `device_snapshot` reads the bounded
+refused for the whole batch before delivery. Concurrent input batches run in
+sequence so their pointer/key events cannot interleave; observations can overlap.
+A dispatch failure releases control immediately to cancel uncertain held input
+and can interrupt other operations sharing that fence. `device_snapshot` reads the bounded
 accessibility tree; `device_screenshot` returns PNG through the existing capture
 service (maximum 8 MiB, validated dimensions). Both require the agent lease and
 recheck authority and the fence before publishing. An accepted socket write is

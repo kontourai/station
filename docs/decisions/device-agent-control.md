@@ -39,7 +39,10 @@ not arbitrary shell commands. Captures retain the existing 8 MiB PNG bound.
 Pointer and key gestures must be complete within one `device_input` batch: send
 down/move/up or key down/up together. Unmatched down or up returns
 `incomplete-gesture` with zero events delivered, including any earlier events in
-that batch. Cross-call holds, drags and held keys are unsupported; there is no
+that batch. Concurrent input batches are serialized per device, while observations remain
+concurrent. A dispatch failure releases its fence immediately to cancel uncertain
+held input; overlapping operations on that fence may then report `interrupted`.
+Cross-call holds, drags and held keys are unsupported; there is no
 wait/duration event for a long press. This deliberately avoids retaining a lease
 and hidden held input between calls. Before dispatch, the entire batch's kinds
 are checked against the producer's declared capabilities; an unsupported kind

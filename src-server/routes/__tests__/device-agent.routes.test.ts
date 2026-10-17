@@ -894,3 +894,90 @@ test('operator standing revoked during control admission cannot close the shared
   expect(h.sessions.get(id)).toBeDefined();
   expect(entry.lease.snapshot().holder).toBeNull();
 });
+
+test('parallel input batches deliver complete gestures without interleaving their pointer events', async () => {
+  const h = harness();
+  const id = await h.open();
+  const first = h.run('device_input', {
+    deviceSessionId: id,
+    events: [
+      { kind: 'pointer', type: 'down', x: 10, y: 20, pointerType: 'touch' },
+      { kind: 'pointer', type: 'up', x: 10, y: 20, pointerType: 'touch' },
+    ],
+  });
+  const second = h.run('device_input', {
+    deviceSessionId: id,
+    events: [
+      { kind: 'pointer', type: 'down', x: 80, y: 160, pointerType: 'touch' },
+      { kind: 'pointer', type: 'up', x: 80, y: 160, pointerType: 'touch' },
+    ],
+  });
+  for (const result of await Promise.all([first, second]))
+    expect(parsed(result)).toMatchObject({ ok: true, accepted: 2 });
+  const a = [
+    { type: 'touch', action: 'down', x: 0.1, y: 0.1, ack: false },
+    { type: 'touch', action: 'up', x: 0.1, y: 0.1, ack: false },
+  ];
+  const b = [
+    { type: 'touch', action: 'down', x: 0.8, y: 0.8, ack: false },
+    { type: 'touch', action: 'up', x: 0.8, y: 0.8, ack: false },
+  ];
+  expect(
+    h.packets,
+    'both complete gestures must reach the device',
+  ).toHaveLength(4);
+  expect(
+    [
+      [...a, ...b],
+      [...b, ...a],
+    ],
+    'each input batch must remain contiguous',
+  ).toContainEqual(h.packets);
+});
+
+test('failed input cancels held state without waiting for a parallel observation', async () => {
+  const h = harness();
+  const id = await h.open();
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  h.duringCapture(() => {
+    entered();
+    return held;
+  });
+  const capture = h.run('device_screenshot', { deviceSessionId: id });
+  try {
+    await started;
+    h.duringSend(h.revokeShare);
+    expect(
+      parsed(
+        await h.run('device_input', {
+          deviceSessionId: id,
+          events: [
+            {
+              kind: 'pointer',
+              type: 'down',
+              x: 10,
+              y: 20,
+              pointerType: 'touch',
+            },
+            { kind: 'pointer', type: 'up', x: 10, y: 20, pointerType: 'touch' },
+          ],
+        }),
+      ),
+    ).toMatchObject({ ok: false, code: 'not-authorized', accepted: 1 });
+    expect(
+      h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot().holder,
+      'failed input must release immediately to cancel held state',
+    ).toBeNull();
+    expect(h.packets.at(-1)).toMatchObject({ type: 'touch', action: 'up' });
+  } finally {
+    release();
+    await capture;
+  }
+});

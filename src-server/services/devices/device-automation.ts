@@ -55,6 +55,7 @@ function completeGestures(events: readonly LiveSurfaceInput[]): boolean {
 /** Local-device agent path. All input uses the existing allowlisted hub producer. */
 export class DeviceAutomation {
   private readonly owners = new Map<string, string>();
+  private readonly inputBatches = new Map<string, Promise<void>>();
   private readonly inFlight = new Map<
     string,
     {
@@ -226,6 +227,25 @@ export class DeviceAutomation {
     };
   }
 
+  private async withInputBatch<T>(
+    surfaceId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.inputBatches.get(surfaceId) ?? Promise.resolve();
+    const operation = previous.then(run);
+    const completed = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.inputBatches.set(surfaceId, completed);
+    try {
+      return await operation;
+    } finally {
+      if (this.inputBatches.get(surfaceId) === completed)
+        this.inputBatches.delete(surfaceId);
+    }
+  }
+
   async input(
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
@@ -238,27 +258,37 @@ export class DeviceAutomation {
       access,
       authority,
       id,
-      async (selected) => {
-        const supported = selected.entry.producer.capabilities.input;
-        if (!events.every((event) => supported.includes(event.kind)))
-          return { ...refused('unsupported-input'), accepted: 0 };
-        let accepted = 0;
-        for (const event of events) {
-          // Re-authorize each event through the registry so revocation between
-          // events stops the batch without changing the producer's send fencing.
-          const result = await dispatchAgentInput(
-            selected.entry,
-            selected.agent,
-            authority.principalId,
-            selected.lease.fence,
-            [event],
-            selected.context,
-          );
-          accepted += result.accepted;
-          if (!result.ok) return { ...result, accepted };
-        }
-        return { ok: true, accepted };
-      },
+      async (selected) =>
+        this.withInputBatch(selected.session.surfaceId, async () => {
+          const supported = selected.entry.producer.capabilities.input;
+          if (!events.every((event) => supported.includes(event.kind)))
+            return { ...refused('unsupported-input'), accepted: 0 };
+          let accepted = 0;
+          for (const event of events) {
+            // Re-authorize each event through the registry so revocation between
+            // events stops the batch without changing the producer's send fencing.
+            const result = await dispatchAgentInput(
+              selected.entry,
+              selected.agent,
+              authority.principalId,
+              selected.lease.fence,
+              [event],
+              selected.context,
+            );
+            accepted += result.accepted;
+            if (!result.ok) {
+              // A partial/uncertain gesture must be cancelled even while an
+              // overlapping observation is still active on the same fence.
+              releaseAgentControl(
+                selected.entry,
+                selected.agent,
+                selected.lease.fence,
+              );
+              return { ...result, accepted };
+            }
+          }
+          return { ok: true, accepted };
+        }),
     );
     // A refusal before device admission must not acquire screen/control metadata.
     if (!('accepted' in result) && !('lease' in result)) return result;

@@ -4065,7 +4065,9 @@ recheck recorded owner/Project, current role, and per-device shares. Human takeo
 fences agent input; grants are rechecked per event, and each operation releases
 control after the last overlapping call by that agent finishes. Pointer/key
 holds must finish within one input batch; incomplete gestures and unsupported
-kinds are refused before delivery. Input reports the post-completion lease.
+kinds are refused before delivery. Input batches are serialized; observations
+may overlap. Failed dispatch cancels held input by releasing its fence.
+Input reports the post-completion lease.
 Live device tools require the operator Agent access opt-in;
 closing for everyone additionally requires operator standing and creator identity.
 Automatic pane reveal and remote-host agent tools remain
