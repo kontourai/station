@@ -194,7 +194,9 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. Its Resync action
+working clock; the remote turn may still be running. Already loaded transcript
+content stays visible through a failed refresh. A successful empty history read
+replaces that retained content, and switching conversations clears it. Its Resync action
 reconnects the Station's orchestration stream and re-runs the failed history or
 conversation-open read. Resync is disabled and announces “Resyncing conversation”
 until those reads settle. History reads abort after 120 seconds and show a

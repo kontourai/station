@@ -291,7 +291,24 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       );
       expect(screen.queryByText('Loading chat')).toBeNull();
       expect(screen.queryByText('Loading offline messages')).toBeNull();
+      expect(screen.getByText(/Station unreachable/)).toBeTruthy();
     }
+
+    fetchConversationWindow.mockResolvedValue({
+      protocolVersion: 1,
+      conversationId: 'offline-thread',
+      currentSessionId: 'offline-thread',
+      watermark: 2,
+      hasMore: false,
+      events: [],
+    });
+    view.rerender(dock(session(4)));
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(5),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/Saved transcript/)).toBeNull(),
+    );
 
     expect(transcriptMounts).toHaveBeenCalledTimes(firstTranscriptMounts);
     expect(queueMounts).toHaveBeenCalledTimes(firstQueueMounts);
