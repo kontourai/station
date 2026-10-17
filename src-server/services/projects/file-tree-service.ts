@@ -1,8 +1,8 @@
 import {
+  type Dirent,
   existsSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -61,16 +61,16 @@ export class FilePreviewError extends Error {
 }
 
 export class FileTreeService {
-  listDirectory(
+  async listDirectory(
     dirPath: string,
     opts?: { depth?: number; maxEntries?: number },
-  ): FileEntry[] {
+  ): Promise<FileEntry[]> {
     fileTreeOps.add(1, { operation: 'listDirectory' });
     const depth = opts?.depth ?? 3;
     const maxEntries = opts?.maxEntries ?? MAX_ENTRIES;
     const results: FileEntry[] = [];
-    const realRoot = this._realWorkspaceRoot(dirPath);
-    this._walk(realRoot, realRoot, depth, maxEntries, results);
+    const realRoot = await realpathAsync(dirPath);
+    await this._walk(realRoot, realRoot, depth, maxEntries, results);
     return this._buildTree(results);
   }
 
@@ -93,26 +93,28 @@ export class FileTreeService {
     return roots;
   }
 
-  private _walk(
+  private async _walk(
     base: string,
     current: string,
     depth: number,
     maxEntries: number,
     results: FileEntry[],
-  ): void {
+  ): Promise<void> {
     if (depth < 0 || results.length >= maxEntries) return;
-    let entries: string[];
+    let entries: Dirent[];
     try {
-      entries = readdirSync(current);
+      entries = await readdirAsync(current, { withFileTypes: true });
     } catch (e) {
       logger.debug('Failed to read directory', { path: current, error: e });
       return;
     }
-    for (const name of entries) {
+    for (const entry of entries) {
       if (results.length >= maxEntries) break;
+      if (entry.isSymbolicLink()) continue;
+      const name = entry.name;
       const fullPath = join(current, name);
       try {
-        if (lstatSync(fullPath).isSymbolicLink()) continue;
+        if ((await lstatAsync(fullPath)).isSymbolicLink()) continue;
       } catch (e) {
         logger.debug('Failed to inspect directory entry', {
           path: fullPath,
@@ -122,7 +124,7 @@ export class FileTreeService {
       }
       let resolvedPath: string;
       try {
-        resolvedPath = realpathSync(fullPath);
+        resolvedPath = await realpathAsync(fullPath);
         this._assertWithin(base, resolvedPath, name);
       } catch (e) {
         // Do not disclose an escaped symlink through the directory listing.
@@ -132,9 +134,9 @@ export class FileTreeService {
         });
         continue;
       }
-      let stat: ReturnType<typeof statSync>;
+      let stat: Awaited<ReturnType<typeof statAsync>>;
       try {
-        stat = statSync(resolvedPath);
+        stat = await statAsync(resolvedPath);
       } catch (e) {
         logger.debug('Failed to stat file', { path: fullPath, error: e });
         continue;
@@ -149,7 +151,7 @@ export class FileTreeService {
         modified: stat.mtime.toISOString(),
       });
       if (isDir && depth > 0) {
-        this._walk(base, resolvedPath, depth - 1, maxEntries, results);
+        await this._walk(base, resolvedPath, depth - 1, maxEntries, results);
       }
     }
   }

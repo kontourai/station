@@ -72,6 +72,50 @@ describe('coding content routes — real git project (no mocks)', () => {
     expect(tree).toContain('src');
   });
 
+  test.each([
+    'depth=NaN',
+    'depth=Infinity',
+    'depth=-1',
+    'depth=1.5',
+    'depth=11',
+    'depth=',
+    'maxEntries=NaN',
+    'maxEntries=Infinity',
+    'maxEntries=0',
+    'maxEntries=-1',
+    'maxEntries=1.5',
+    'maxEntries=5001',
+    'maxEntries=',
+  ])('refuses invalid tree bounds: %s', async (query) => {
+    const result = await get(`/files?projectSlug=r&${query}`);
+    expect(result.status).toBe(400);
+    expect(result.json.success).toBe(false);
+    expect(result.json.error).toContain('integer');
+  });
+
+  test('accepts boundary options, caps the tree, and excludes symlink entries', async () => {
+    const link = join(repo, 'inside-link.txt');
+    symlinkSync('README.md', link);
+    try {
+      const shallow = await get('/files?projectSlug=r&depth=0&maxEntries=1');
+      expect(shallow.status).toBe(200);
+      expect(shallow.json.data).toHaveLength(1);
+      const deep = await get('/files?projectSlug=r&depth=10&maxEntries=5000');
+      expect(deep.status).toBe(200);
+      expect(deep.json.data).toContainEqual(
+        expect.objectContaining({
+          name: 'src',
+          children: [expect.objectContaining({ name: 'index.ts' })],
+        }),
+      );
+      expect(
+        deep.json.data.map((entry: { name: string }) => entry.name),
+      ).not.toContain('inside-link.txt');
+    } finally {
+      rmSync(link);
+    }
+  });
+
   test('reads file content via a workspace-relative path', async () => {
     // `path` is the workspace root; `file` is relative to it — exactly what the
     // file tree emits. README.md does NOT exist under process.cwd(), so this
