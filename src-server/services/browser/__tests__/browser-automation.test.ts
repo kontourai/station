@@ -1823,3 +1823,194 @@ describe('renderAccessibilitySnapshot bounds', () => {
 });
 
 vi.setConfig({ testTimeout: 20_000 });
+
+describe('additional browser actions preserve control authority', () => {
+  const actions = [
+    [
+      'hover',
+      (a: BrowserAutomation, auth: BrowserAgentAuthority, id: string) =>
+        a.hover(auth, id, { x: 100, y: 50 }),
+    ],
+    [
+      'drag',
+      (a: BrowserAutomation, auth: BrowserAgentAuthority, id: string) =>
+        a.drag(auth, id, { x: 100, y: 50 }, { x: 200, y: 100 }),
+    ],
+    [
+      'select',
+      (a: BrowserAutomation, auth: BrowserAgentAuthority, id: string) =>
+        a.selectOption(auth, id, { ref: 'e1' }, { label: 'Blue' }),
+    ],
+    [
+      'color scheme',
+      (a: BrowserAutomation, auth: BrowserAgentAuthority, id: string) =>
+        a.colorScheme(auth, id, 'dark'),
+    ],
+  ] as const;
+
+  test.each(actions)(
+    '%s refuses a human holder before sending any page action',
+    async (_name, act) => {
+      const h = await harness();
+      scriptButton(h.fake);
+      const session = await h.open();
+      const auth = await authorityFor();
+      await h.automation.snapshot(auth, session.browserSessionId);
+      const entry = h.entryOf(session.browserSessionId);
+      expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+      const before = h.fake.sent.length;
+      expect(
+        await act(h.automation, auth, session.browserSessionId),
+      ).toMatchObject({ ok: false, code: 'human-controlling' });
+      expect(
+        h.fake.sent
+          .slice(before)
+          .filter((s) => s.method !== 'Runtime.releaseObjectGroup'),
+      ).toEqual([]);
+      expect(entry.lease.snapshot().holder).toMatchObject(HUMAN);
+      expect(kindsOf(h, session.browserSessionId)).toContain('agent-refused');
+    },
+  );
+
+  test('hover dispatches only a pointer move; drag holds then releases the left button and records both actions', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const auth = await authorityFor();
+    expect(
+      await h.automation.hover(auth, session.browserSessionId, {
+        x: 100,
+        y: 50,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(h.fake.mouse()).toEqual([
+      expect.objectContaining({
+        type: 'mouseMoved',
+        x: 100,
+        y: 50,
+        buttons: 0,
+      }),
+    ]);
+    expect(
+      await h.automation.drag(
+        auth,
+        session.browserSessionId,
+        { x: 100, y: 50 },
+        { x: 200, y: 100 },
+      ),
+    ).toMatchObject({ ok: true });
+    const mouse = h.fake.mouse();
+    expect(mouse[2]).toMatchObject({ type: 'mousePressed', buttons: 1 });
+    expect(mouse.slice(3, -1)).toHaveLength(12);
+    expect(
+      mouse
+        .slice(3, -1)
+        .every((m) => m.type === 'mouseMoved' && m.buttons === 1),
+    ).toBe(true);
+    expect(mouse.at(-1)).toMatchObject({
+      type: 'mouseReleased',
+      x: 200,
+      y: 100,
+      buttons: 0,
+    });
+    expect(kindsOf(h, session.browserSessionId)).toEqual(
+      expect.arrayContaining(['hovered', 'dragged']),
+    );
+    expect(
+      h.entryOf(session.browserSessionId).lease.snapshot().holder,
+    ).toBeNull();
+  });
+
+  test('a human takeover between drag events cancels held input and prevents the remaining agent path', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const auth = await authorityFor();
+    const entry = h.entryOf(session.browserSessionId);
+    h.fake.onSend((method, params) => {
+      if (
+        method === 'Input.dispatchMouseEvent' &&
+        params.type === 'mousePressed'
+      )
+        claimHumanControl(entry, HUMAN);
+      return undefined;
+    });
+    expect(
+      await h.automation.drag(
+        auth,
+        session.browserSessionId,
+        { x: 100, y: 50 },
+        { x: 200, y: 100 },
+      ),
+    ).toMatchObject({ ok: false, code: 'interrupted' });
+    expect(h.fake.mouse().some((m) => m.x === 200 && m.y === 100)).toBe(false);
+    expect(kindsOf(h, session.browserSessionId)).not.toContain('dragged');
+  });
+
+  test('human takeover expires refs even after control is handed back', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    const session = await h.open();
+    const auth = await authorityFor();
+    expect(
+      await h.automation.snapshot(auth, session.browserSessionId),
+    ).toMatchObject({ ok: true, refCount: 1 });
+    const entry = h.entryOf(session.browserSessionId);
+    expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+    expect(
+      releaseHumanControl(entry, HUMAN, entry.lease.snapshot().epoch).ok,
+    ).toBe(true);
+    expect(
+      await h.automation.hover(auth, session.browserSessionId, { ref: 'e1' }),
+    ).toMatchObject({ ok: false, code: 'stale-ref' });
+    expect(h.fake.mouse()).toEqual([]);
+    await h.automation.snapshot(auth, session.browserSessionId);
+    expect(
+      await h.automation.hover(auth, session.browserSessionId, { ref: 'e1' }),
+    ).toMatchObject({ ok: true });
+  });
+
+  test('media emulation is fenced after CDP acknowledgement and does not report success after takeover', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const auth = await authorityFor();
+    h.fake.onSend((method) => {
+      if (method === 'Emulation.setEmulatedMedia')
+        claimHumanControl(h.entryOf(session.browserSessionId), HUMAN);
+      return undefined;
+    });
+    expect(
+      await h.automation.colorScheme(auth, session.browserSessionId, 'dark'),
+    ).toMatchObject({ ok: false, code: 'interrupted' });
+    expect(kindsOf(h, session.browserSessionId)).not.toContain(
+      'color-scheme-changed',
+    );
+  });
+});
+
+test('invalid additional actions are refused before browser work', async () => {
+  const h = await harness();
+  const auth = await authorityFor();
+  const id = (await h.open()).browserSessionId;
+  const before = h.fake.sent.length;
+  expect(
+    await h.automation.selectOption(
+      auth,
+      id,
+      { ref: 'e1' },
+      { value: 'a', label: 'A' },
+    ),
+  ).toMatchObject({ ok: false, code: 'invalid-request' });
+  expect(
+    await h.automation.selectOption(auth, id, { ref: 'e1' }, {}),
+  ).toMatchObject({ ok: false, code: 'invalid-request' });
+  expect(await h.automation.colorScheme(auth, id, 'sepia')).toMatchObject({
+    ok: false,
+    code: 'invalid-request',
+  });
+  expect(
+    await h.automation.drag(auth, id, { x: Number.NaN, y: 1 }, { x: 5, y: 5 }),
+  ).toMatchObject({ ok: false, code: 'invalid-request' });
+  expect(h.fake.sent.length).toBe(before);
+});

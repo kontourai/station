@@ -3921,7 +3921,11 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 `station-browser-mcp-server.ts` registers `station-control-browser-tools.ts`;
 `browser-agent.ts` re-derives the verified caller, and
 `browser-agent-authority.ts` mints the exact Project/profile grant consumed by
-`BrowserAutomation`. Control operations capture a lease fence and check it
+`BrowserAutomation`. Hover, pointer drag, native select and color-scheme
+emulation use that same authority path and record attributable actions. Select
+runs prototype-based DOM access in an isolated world; it does not grant general
+page evaluation. Human takeover clears existing snapshot refs, including after
+hand-back. Control operations capture a lease fence and check it
 around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.

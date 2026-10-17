@@ -89,8 +89,8 @@ The proxy checks current target registrations on new connection decisions.
 ## Agent authority and human input
 
 The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
-provide status, open, close, navigate, resize, snapshot, click, type, press,
-scroll, wait and evaluation operations through
+provide status, open, close, navigate, resize, snapshot, click, hover, drag,
+select, type, press, scroll, color-scheme emulation, wait and evaluation operations through
 [browser-agent routes](../../src-server/routes/browser-agent.ts). They require
 a verified, bound calling Session, its recorded owner and Project, and current
 operator/admin standing. Bearer-exposed or delegated-custody credentials do not
@@ -104,7 +104,10 @@ same-user process can read) and agents connected over ACP with an HTTP-header to
 (`delegated-custody`: the connected app holds it). Neither credential can be attributed
 to one Session, so those engines are not offered the tools and a browser call
 from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
-MCP support. Offering them would need a new bound channel, not a wiring change.
+MCP support. Offering them needs a new bound channel; the
+[ADR 0019 supplement](../adr/0022-browser-agent-actions-and-bound-channel.md)
+describes the required binding and remaining implementation work. Existing
+passthrough tokens have not been promoted to bound credentials.
 
 `browser_status` lists the caller's sessions newest-created first, at most 20
 per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
@@ -126,8 +129,30 @@ session whose history no longer keeps it is refused rather than assumed.
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
+`browser_hover` accepts the same ref, locator or viewport CSS-pixel point as
+click. `browser_drag` takes `source` and `target` objects in that shape and sends
+a left-button pointer drag with twelve intermediate moves. Both ends must be
+visible together; it does not synthesize HTML drag data or transfer files.
+`browser_select` takes a ref or locator for a native `<select>` and exactly one
+`value` or `label`. It selects one enabled, exact matching option, clears the
+other selections and emits `input` and `change`; duplicate matches, disabled
+options/optgroups, disabled selects and non-select targets are refused
+`not-selectable`. This Station-owned isolated-world operation does not require
+page evaluation permission. Its history records the selection method and text
+length, not the chosen value or label.
+
+`browser_color_scheme` accepts `scheme: "light"`, `"dark"` or `"system"`.
+It emulates the page's `prefers-color-scheme` media feature; system clears that
+override and follows the server browser's preference, not the viewer's Device.
+The override lasts until changed or the browser session is reopened; it is not
+a saved profile preference. These four actions are sensitive tools and claim
+the same control lease as click. Success records the Agent action in history;
+a human holder refuses the operation before page-changing steps.
+
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
-a live human holder. Watching needs no control lease. The pane's control line
+a live human holder. A human takeover invalidates existing snapshot refs,
+including after hand-back; take a fresh snapshot to act by ref again. Watching
+needs no control lease. The pane's control line
 says who is driving in one word (**Agent** or **You**) with the float-over-chat's
 rule (the lease holder, or an Agent whose last input is under ten seconds old).
 There is no Take control button: a click or key on the page takes control, and

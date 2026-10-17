@@ -100,6 +100,7 @@ export type BrowserToolRefusalCode =
   | 'invalid-locator'
   | 'locator-engine-unavailable'
   | 'not-editable'
+  | 'not-selectable'
   | 'not-visible'
   | 'outside-viewport'
   | 'obscured'
@@ -609,6 +610,7 @@ interface IsolatedWorld {
 }
 
 interface SnapshotTable {
+  offControl: () => void;
   generation: number;
   refs: Map<string, RefEntry>;
 }
@@ -686,6 +688,31 @@ const FOCUS_FN = `function (clear) {
       Selection.prototype.addRange.call(selection, range);
     }
   }
+  return 'ok';
+}`;
+
+// Native prototype access in the isolated world avoids page-clobbered properties.
+const SELECT_OPTION_FN = `function (by, match) {
+  if (!(this instanceof HTMLSelectElement) || ${PROTO_GET('HTMLSelectElement', 'disabled')}.call(this)) return 'invalid';
+  const options = ${PROTO_GET('HTMLSelectElement', 'options')}.call(this);
+  const count = ${PROTO_GET('HTMLOptionsCollection', 'length')}.call(options);
+  const matches = [];
+  for (let i = 0; i < count; i += 1) {
+    const option = HTMLOptionsCollection.prototype.item.call(options, i);
+    const value = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, by).get.call(option);
+    if (value === match) matches.push(option);
+  }
+  if (matches.length !== 1) return 'invalid';
+  const chosen = matches[0];
+  const parent = ${PROTO_GET('Node', 'parentElement')}.call(chosen);
+  if (${PROTO_GET('HTMLOptionElement', 'disabled')}.call(chosen) ||
+      (parent instanceof HTMLOptGroupElement && ${PROTO_GET('HTMLOptGroupElement', 'disabled')}.call(parent))) return 'invalid';
+  for (let i = 0; i < count; i += 1) {
+    const option = HTMLOptionsCollection.prototype.item.call(options, i);
+    Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, 'selected').set.call(option, option === chosen);
+  }
+  EventTarget.prototype.dispatchEvent.call(this, new Event('input', { bubbles: true }));
+  EventTarget.prototype.dispatchEvent.call(this, new Event('change', { bubbles: true }));
   return 'ok';
 }`;
 
@@ -1076,12 +1103,15 @@ export class BrowserAutomation {
       if (
         this.deps.sessions.liveTarget(browserSessionId)?.generation !==
         table.generation
-      )
+      ) {
+        table.offControl();
         this.snapshots.delete(key);
+      }
     }
     while (this.snapshots.size > SNAPSHOT_TABLES_MAX) {
       const oldest = this.snapshots.keys().next().value;
       if (oldest === undefined) break;
+      this.snapshots.get(oldest)?.offControl();
       this.snapshots.delete(oldest);
     }
   }
@@ -1683,6 +1713,8 @@ export class BrowserAutomation {
         height?: number;
       };
     }>(authority, browserSessionId, async (selected) => {
+      const lease = this.entryFor(selected.record)?.lease;
+      const epoch = lease?.snapshot().epoch;
       const send = this.reader(selected);
       const page = await this.isolatedEval<{ url?: string; title?: string }>(
         selected,
@@ -1732,8 +1764,17 @@ export class BrowserAutomation {
       }
       this.pruneSnapshots();
       const key = this.snapshotKey(authority, selected.record.browserSessionId);
+      this.snapshots.get(key)?.offControl();
       this.snapshots.delete(key);
+      // Reads do not claim control, but a takeover during or after the read
+      // must not leave actionable refs from the previous controller's page.
+      if (lease?.snapshot().epoch !== epoch) rendered.refs.clear();
+      const offControl =
+        lease?.onChange((next) => {
+          if (next.holder?.kind === 'human') rendered.refs.clear();
+        }) ?? (() => {});
       this.snapshots.set(key, {
+        offControl,
         generation: selected.live.generation,
         refs: rendered.refs,
       });
@@ -1852,6 +1893,219 @@ export class BrowserAutomation {
           await control.dispatch(events);
           this.record(authority, selected, 'clicked', point.label);
           return { ok: true, clicked: point.label };
+        },
+      ),
+    );
+  }
+
+  async hover(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    target: BrowserActionTarget,
+  ) {
+    const bad = validateTarget(target);
+    if (bad) return bad;
+    return this.withLive(authority, browserSessionId, (selected) =>
+      this.withControl<{ hovered: string }>(
+        authority,
+        selected,
+        async (control) => {
+          const point = await this.targetPoint(
+            authority,
+            selected,
+            target,
+            control.send,
+            { hitTest: true },
+          );
+          await control.dispatch([
+            { kind: 'pointer', type: 'move', x: point.x, y: point.y },
+          ]);
+          this.record(authority, selected, 'hovered', point.label);
+          return { ok: true, hovered: point.label };
+        },
+      ),
+    );
+  }
+
+  /** Pointer drag, with each event fenced by the shared input chain. */
+  async drag(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    source: BrowserActionTarget,
+    target: BrowserActionTarget,
+  ) {
+    const bad = validateTarget(source) ?? validateTarget(target);
+    if (bad) return bad;
+    return this.withLive(authority, browserSessionId, (selected) =>
+      this.withControl<{ dragged: true }>(
+        authority,
+        selected,
+        async (control) => {
+          // Resolve the destination first: scrolling it must not invalidate the source point.
+          await this.targetPoint(authority, selected, target, control.send, {
+            hitTest: true,
+          });
+          const start = await this.targetPoint(
+            authority,
+            selected,
+            source,
+            control.send,
+            { hitTest: true },
+          );
+          await control.dispatch([
+            { kind: 'pointer', type: 'move', x: start.x, y: start.y },
+          ]);
+          if (start.backendNodeId !== undefined)
+            await this.assertHits(
+              selected,
+              control.send,
+              start.backendNodeId,
+              start,
+            );
+          // Re-resolving an offscreen destination can scroll the source away. Refuse
+          // that case before pressing; this operation requires both ends in view.
+          const end = await this.targetPoint(
+            authority,
+            selected,
+            target,
+            control.send,
+            { hitTest: true },
+          );
+          if (start.backendNodeId !== undefined)
+            await this.assertHits(
+              selected,
+              control.send,
+              start.backendNodeId,
+              start,
+            );
+          await control.dispatch([
+            {
+              kind: 'pointer',
+              type: 'down',
+              x: start.x,
+              y: start.y,
+              button: 'left',
+            },
+          ]);
+          const moves: LiveSurfaceInput[] = [];
+          for (let step = 1; step <= 12; step += 1)
+            moves.push({
+              kind: 'pointer',
+              type: 'move',
+              x: start.x + ((end.x - start.x) * step) / 12,
+              y: start.y + ((end.y - start.y) * step) / 12,
+            });
+          moves.push({
+            kind: 'pointer',
+            type: 'up',
+            x: end.x,
+            y: end.y,
+            button: 'left',
+          });
+          await control.dispatch(moves);
+          this.record(
+            authority,
+            selected,
+            'dragged',
+            `${start.label} → ${end.label}`,
+          );
+          return { ok: true, dragged: true };
+        },
+      ),
+    );
+  }
+
+  async selectOption(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    target: { ref: string } | { locator: string },
+    option: { value?: string; label?: string },
+  ) {
+    const bad = validateTarget(target);
+    if (bad) return bad;
+    if (
+      'x' in target ||
+      !option ||
+      (typeof option.value === 'string') ===
+        (typeof option.label === 'string') ||
+      (option.value !== undefined && typeof option.value !== 'string') ||
+      (option.label !== undefined && typeof option.label !== 'string') ||
+      (option.value ?? option.label ?? '').length > TYPE_MAX_TEXT
+    )
+      return refuse(
+        'invalid-request',
+        'Give an element ref or locator and exactly one option value or label (at most 8192 characters).',
+      );
+    return this.withLive(authority, browserSessionId, (selected) =>
+      this.withControl<{ selected: true }>(
+        authority,
+        selected,
+        async (control) => {
+          const element = await this.resolveElement(
+            authority,
+            selected,
+            target,
+            control.send,
+          );
+          await this.elementPoint(element.backendNodeId, control.send);
+          const objectId = await this.isolatedNode(
+            selected,
+            control.send,
+            element.backendNodeId,
+          );
+          if (!objectId)
+            return refuse('stale-ref', 'The select is no longer on the page.');
+          const result = await control.send<{
+            result?: { value?: string };
+            exceptionDetails?: unknown;
+          }>('Runtime.callFunctionOn', {
+            objectId,
+            functionDeclaration: SELECT_OPTION_FN,
+            arguments: [
+              { value: option.value !== undefined ? 'value' : 'label' },
+              { value: option.value ?? option.label },
+            ],
+            returnByValue: true,
+          });
+          if (result.exceptionDetails || result.result?.value !== 'ok')
+            return refuse(
+              'not-selectable',
+              'Target must be an enabled select with exactly one enabled matching option.',
+            );
+          this.record(
+            authority,
+            selected,
+            'option-selected',
+            `${(option.value ?? option.label ?? '').length} characters by ${option.value !== undefined ? 'value' : 'label'}`,
+          );
+          return { ok: true, selected: true };
+        },
+      ),
+    );
+  }
+
+  async colorScheme(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    scheme: unknown,
+  ) {
+    if (scheme !== 'light' && scheme !== 'dark' && scheme !== 'system')
+      return refuse('invalid-request', 'scheme must be light, dark or system.');
+    return this.withLive(authority, browserSessionId, (selected) =>
+      this.withControl<{ colorScheme: string }>(
+        authority,
+        selected,
+        async (control) => {
+          await control.send('Emulation.setEmulatedMedia', {
+            features: [
+              {
+                name: 'prefers-color-scheme',
+                value: scheme === 'system' ? '' : scheme,
+              },
+            ],
+          });
+          this.record(authority, selected, 'color-scheme-changed', scheme);
+          return { ok: true, colorScheme: scheme };
         },
       ),
     );
