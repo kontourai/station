@@ -699,7 +699,11 @@ export function createCodingRoutes(
       if (e instanceof FilePreviewError)
         return c.json(
           { success: false, code: e.code, error: errorMessage(e) },
-          e.code === 'file-too-large' ? 413 : 400,
+          e.code === 'file-too-large'
+            ? 413
+            : e.code === 'not-found'
+              ? 500
+              : 400,
         );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

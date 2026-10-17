@@ -52,7 +52,11 @@ export const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 
 export class FilePreviewError extends Error {
   constructor(
-    public readonly code: 'file-too-large' | 'binary-file' | 'not-a-file',
+    public readonly code:
+      | 'file-too-large'
+      | 'binary-file'
+      | 'not-a-file'
+      | 'not-found',
     message: string,
   ) {
     super(message);
@@ -250,52 +254,58 @@ export class FileTreeService {
   async readFilePreviewWithin(root: string, rel: string): Promise<string> {
     fileTreeOps.add(1, { operation: 'readFilePreviewWithin' });
     if (!rel?.trim()) throw new Error('path required');
-    const realRoot = await realpathAsync(root);
-    const abs = resolve(realRoot, rel);
-    this._assertWithin(realRoot, abs, rel);
-    if ((await lstatAsync(abs)).isSymbolicLink())
-      throw new Error(`Symlink target is not allowed: ${rel}`);
-    const resolved = await realpathAsync(abs);
-    this._assertWithin(realRoot, resolved, rel);
-    const handle = await open(resolved, 'r');
     try {
-      const stat = await handle.stat();
-      if (!stat.isFile())
-        throw new FilePreviewError(
-          'not-a-file',
-          'Only regular files can be previewed.',
-        );
-      const tooLarge = () =>
-        new FilePreviewError(
-          'file-too-large',
-          'This file is too large to preview. The limit is 2 MiB. Open it in an editor instead.',
-        );
-      if (stat.size > MAX_PREVIEW_BYTES) throw tooLarge();
-      const sample = Buffer.alloc(8192);
-      const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
-      if (sample.subarray(0, bytesRead).includes(0))
-        throw new FilePreviewError(
-          'binary-file',
-          'This file appears to be binary and cannot be previewed.',
-        );
-      // Read one overflow byte as well: a file may grow after the stat.
-      const buffer = Buffer.alloc(MAX_PREVIEW_BYTES + 1);
-      sample.copy(buffer, 0, 0, bytesRead);
-      let length = bytesRead;
-      while (length < buffer.length) {
-        const next = await handle.read(
-          buffer,
-          length,
-          buffer.length - length,
-          length,
-        );
-        if (next.bytesRead === 0) break;
-        length += next.bytesRead;
+      const realRoot = await realpathAsync(root);
+      const abs = resolve(realRoot, rel);
+      this._assertWithin(realRoot, abs, rel);
+      if ((await lstatAsync(abs)).isSymbolicLink())
+        throw new Error(`Symlink target is not allowed: ${rel}`);
+      const resolved = await realpathAsync(abs);
+      this._assertWithin(realRoot, resolved, rel);
+      const handle = await open(resolved, 'r');
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile())
+          throw new FilePreviewError(
+            'not-a-file',
+            'Only regular files can be previewed.',
+          );
+        const tooLarge = () =>
+          new FilePreviewError(
+            'file-too-large',
+            'This file is too large to preview. The limit is 2 MiB. Open it in an editor instead.',
+          );
+        if (stat.size > MAX_PREVIEW_BYTES) throw tooLarge();
+        const sample = Buffer.alloc(8192);
+        const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
+        if (sample.subarray(0, bytesRead).includes(0))
+          throw new FilePreviewError(
+            'binary-file',
+            'This file appears to be binary and cannot be previewed.',
+          );
+        // Read one overflow byte as well: a file may grow after the stat.
+        const buffer = Buffer.alloc(MAX_PREVIEW_BYTES + 1);
+        sample.copy(buffer, 0, 0, bytesRead);
+        let length = bytesRead;
+        while (length < buffer.length) {
+          const next = await handle.read(
+            buffer,
+            length,
+            buffer.length - length,
+            length,
+          );
+          if (next.bytesRead === 0) break;
+          length += next.bytesRead;
+        }
+        if (length > MAX_PREVIEW_BYTES) throw tooLarge();
+        return buffer.toString('utf8', 0, length);
+      } finally {
+        await handle.close();
       }
-      if (length > MAX_PREVIEW_BYTES) throw tooLarge();
-      return buffer.toString('utf8', 0, length);
-    } finally {
-      await handle.close();
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
+        throw new FilePreviewError('not-found', `Not found: ${rel}`);
+      throw error;
     }
   }
 

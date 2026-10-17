@@ -166,6 +166,16 @@ describe('coding content routes — real git project (no mocks)', () => {
     expect(accepted.json.data.content).toBe('now text');
   });
 
+  test('a missing preview keeps the established status and an actionable typed relative-path error', async () => {
+    const result = await get('/files/content?projectSlug=r&file=missing.txt');
+    expect(result.status).toBe(500);
+    expect(result.json).toEqual({
+      success: false,
+      code: 'not-found',
+      error: 'Not found: missing.txt',
+    });
+  });
+
   test('reads a nested workspace-relative path', async () => {
     const res = await get(
       `/files/content?projectSlug=r&path=${encodeURIComponent(repo)}&file=${encodeURIComponent('src/index.ts')}`,
