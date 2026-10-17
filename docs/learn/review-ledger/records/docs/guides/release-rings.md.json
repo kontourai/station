@@ -102,7 +102,13 @@
 
     "scripts/__tests__/author-telemetry-build.test.ts",
 
-    "scripts/actionlint-gate.mjs"
+    "scripts/actionlint-gate.mjs",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "scripts/pr-delivery-paths.json",
+
+    "packages/shared/src/release-rings.generated.mjs"
   ],
 
   "checks": [
