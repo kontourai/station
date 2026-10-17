@@ -1,4 +1,5 @@
 name: "PR: CI"
+run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}
 on:
   push:
     branches: [main]
@@ -541,8 +542,8 @@ jobs:
   fast-checks:
     name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
-    # Required source aggregate. Metadata-only events use another check name
-    # even when skipped, so they cannot replace a failed source verdict.
+    # Source execution aggregate; the trusted source-policy reconciler owns
+    # admission independently of metadata-only check-suite replacement.
     # `always()` without `!cancelled()`, deliberately: a
     # skipped required check reports success, so an aggregator that skipped
     # itself when a run was cancelled would let a cancelled run read green.
@@ -628,6 +629,57 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
+
+  source-policy:
+    name: Publish source admission
+    needs: [fast-checks, fork-smoke]
+    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    permissions: { contents: read, actions: read, statuses: write }
+    uses: ./.github/workflows/source-verification-policy.yml
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  delivery-plan:
+    name: Plan affected delivery checks
+    needs: [fast-checks, fork-smoke, source-policy]
+    if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions: { contents: read }
+    outputs:
+      install: ${{ steps.plan.outputs.install }}
+      portable: ${{ steps.plan.outputs.portable }}
+      native: ${{ steps.plan.outputs.native }}
+      desktop: ${{ steps.plan.outputs.desktop }}
+      ecosystem: ${{ steps.plan.outputs.ecosystem }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
+      - id: plan
+        name: Classify the complete candidate diff using trusted policy
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          node scripts/pr-delivery-plan.mjs "$BASE_SHA" "$HEAD_SHA"
+
+  delivery-validation:
+    needs: delivery-plan
+    if: ${{ always() && !cancelled() && needs.delivery-plan.result == 'success' && (needs.delivery-plan.outputs.install == 'true' || needs.delivery-plan.outputs.portable == 'true' || needs.delivery-plan.outputs.native == 'true' || needs.delivery-plan.outputs.desktop == 'true' || needs.delivery-plan.outputs.ecosystem == 'true') }}
+    permissions: { contents: read }
+    uses: ./.github/workflows/delivery-validation.yml
+    with:
+      install: ${{ needs.delivery-plan.outputs.install == 'true' }}
+      portable: ${{ needs.delivery-plan.outputs.portable == 'true' }}
+      native: ${{ needs.delivery-plan.outputs.native == 'true' }}
+      desktop: ${{ needs.delivery-plan.outputs.desktop == 'true' }}
+      ecosystem: ${{ needs.delivery-plan.outputs.ecosystem == 'true' }}
 
   pr-title:
     # This check run is diagnostic. The required context is a mutable commit
@@ -806,6 +858,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: background
       source_sha: ${{ github.sha }}
 
   # No separate browser-smoke job. It needed full-regression without
@@ -964,6 +1017,7 @@ jobs:
       actions: read
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: integration
       source_sha: ${{ github.sha }}
       allow_reuse: true
 

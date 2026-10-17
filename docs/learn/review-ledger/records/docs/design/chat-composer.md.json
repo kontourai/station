@@ -143,6 +143,11 @@
     "src-ui/src/components/chat-dock/ChatDockContentArea.tsx",
 
     "src-ui/src/components/chat/ChatMessageList.tsx",
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
 
     "src-ui/src/hooks/useSTT.ts",
 
