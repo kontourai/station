@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-17T11:21:43Z | nightly-npm | 0.7.0-nightly.2481.39027702530 | `8e2eff7` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39027702530) |
 | 2026-10-17T02:52:22Z | nightly-desktop | 0.1.11-nightly.2481 | `5634e87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
 | 2026-10-17T02:52:19Z | nightly-android | 0.1.11-nightly.2481 | `5634e87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
 | 2026-10-17T01:46:42Z | nightly-npm | 0.7.0-nightly.2481.38991378745 | `5634e87` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38991378745) |
@@ -289,6 +290,40 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-17T11:21:43Z · nightly-npm · 0.7.0-nightly.2481.39027702530
+
+- Ship SHA: `8e2eff7302d3ecf2fb74af1be2f94ca6111104fd`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2481.39027702530 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5634e87` ([full sha](https://github.com/kontourai/station/commit/5634e87afab9ed3ba2a4156280235019af3b1eea)):
+
+**Features**
+
+- [#3720](https://github.com/kontourai/station/pull/3720) feat(tasks): shape ideas in chat before creating Tasks
+- [#3761](https://github.com/kontourai/station/pull/3761) feat(cli): expose version-matched portable delegation
+- [#3756](https://github.com/kontourai/station/pull/3756) feat(gallery): link repeated visual review evidence without reusing verdicts
+
+**Fixes**
+
+- [#3766](https://github.com/kontourai/station/pull/3766) fix(ci): retire merged delivery and reuse completed source proof
+- [#3739](https://github.com/kontourai/station/pull/3739) fix(onboarding): clarify Windows launch and retain recovery diagnostics
+- [#3670](https://github.com/kontourai/station/pull/3670) fix(chat): improve mobile settings, task notices, and start-sheet scrolling
+- [#3765](https://github.com/kontourai/station/pull/3765) fix(verification): prevent broad checks from killing live Station turns
+- [#3755](https://github.com/kontourai/station/pull/3755) fix(ci): repair process-heavy qualification prerequisites
+- [#3764](https://github.com/kontourai/station/pull/3764) fix(workspaces): pin prepared worktree source commits
+- [#3754](https://github.com/kontourai/station/pull/3754) fix(ci): combine qualification repairs and bound PR computation
+- [#3676](https://github.com/kontourai/station/pull/3676) fix(ui): mark inbox status as last known after failed reads
+
+**Other**
+
+- [#3711](https://github.com/kontourai/station/pull/3711) refactor(monument): extract session delivery decisions and sequencing
+- [#3753](https://github.com/kontourai/station/pull/3753) test(ci): remove superseded qualification group assertion
+- [#3752](https://github.com/kontourai/station/pull/3752) perf(ci): admit background work before allocating runners
 
 ## 2026-10-17T02:52:22Z · nightly-desktop · 0.1.11-nightly.2481
 
