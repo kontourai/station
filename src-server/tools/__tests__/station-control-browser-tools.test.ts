@@ -199,3 +199,47 @@ describe('station-control browser tools', () => {
     expect(result).toMatchObject({ ok: false, code: 'unavailable' });
   });
 });
+
+test.each([
+  ['browser_hover', { ref: 'e1' }, 'hover', { target: { ref: 'e1' } }],
+  [
+    'browser_drag',
+    { source: { x: 1, y: 2 }, target: { locator: '#end' } },
+    'drag',
+    { source: { x: 1, y: 2 }, target: { locator: '#end' } },
+  ],
+  [
+    'browser_select',
+    { ref: 'e2', label: 'Blue' },
+    'select',
+    { target: { ref: 'e2' }, label: 'Blue' },
+  ],
+  [
+    'browser_color_scheme',
+    { scheme: 'dark' },
+    'color-scheme',
+    { scheme: 'dark' },
+  ],
+])(
+  '%s forwards its bounded action to the authenticated browser route',
+  async (name, args, operation, body) => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    expect(
+      parse(await run(good, name, { browserSessionId: 'bs_x', ...args })),
+    ).toEqual({ ok: true });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      `http://browser-tools.test/api/browser-agent/${operation}`,
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      browserSessionId: 'bs_x',
+      ...body,
+    });
+  },
+);
