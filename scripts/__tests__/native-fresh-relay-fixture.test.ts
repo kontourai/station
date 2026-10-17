@@ -188,7 +188,10 @@ test('explicit cleanup recovery observes expired owner withdrawal and permits on
       successorDirectory,
       '1',
     );
-    expect(prepared.status, prepared.stderr || prepared.error?.message).toBe(0);
+    expect(
+      prepared.status,
+      prepared.stderr || prepared.error?.message || prepared.stdout,
+    ).toBe(0);
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),
     );
@@ -273,7 +276,7 @@ test('operator successor retains the genuine Station home and trust, provisions 
     );
     expect(
       { status: prepared.status, errorType: prepared.error?.name },
-      prepared.stderr || prepared.error?.message,
+      prepared.stderr || prepared.error?.message || prepared.stdout,
     ).toEqual({ status: 0, errorType: undefined });
     const successor = loadNativeFreshFixturePlan(
       join(successorDirectory, 'plan.json'),

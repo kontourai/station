@@ -1,0 +1,7 @@
+{
+  "revision": "83d060d5f5cbe680554e6724524728cc5e66af67",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round 2: re-read fixture fidelity, mutation, gallery and focused-browser evidence guidance. The real recovery journey now requires desktop Last known to survive history recovery while inventory remains failed, then clears it after Refresh inbox succeeds; mobile picker recovery remains real-action based. Existing screenshot selection, browser lifecycle, request deduplication and no-baseline-waiver policy remain intact. Fixture typecheck and policy passed; prior journey failure retained as diagnosed old cross-source expectation, corrected journey will be rerun.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

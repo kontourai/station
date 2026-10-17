@@ -1,0 +1,7 @@
+{
+  "revision": "929c9210d4ecd37cd77d8a247ebb286e916861d8",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Fix round 6 delta review: re-read SDK open-conversation host callback and canonical-resolution authority claims, followed controller picker/retry and revalidator consumers. Epoch checks gate host patches while SDK signatures, hydration return shape and execution authority remain unchanged. Seven caller regressions pass; no provider or published SDK qualification claimed.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

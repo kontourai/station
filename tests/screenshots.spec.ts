@@ -1095,6 +1095,36 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({
+    path: join(GALLERY_DIR, `freshness-failed-${width}.png`),
+    animations: 'disabled',
+  });
+  if (width > 600) {
+    const row = page
+      .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+      .filter({ hasText: 'Mismatch demo chat' });
+    await expect(row.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await expect(row.locator('.inbox-row__status-glyph')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
+  } else {
+    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+    await expect(picker.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await page.screenshot({
+      path: join(GALLERY_DIR, `freshness-failed-picker-${width}.png`),
+      animations: 'disabled',
+    });
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+  }
   await mockRuntimeConversation(page, {
     id: 'gallery-mismatch-conversation',
     agentSlug: 'demo-agent',
@@ -1241,6 +1271,33 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       await page.screenshot({
         path: testInfo.outputPath(`resync-recovered-${width}.png`),
       });
+      // A successful history read cannot clear the independently failed inventory.
+      if (width > 600) {
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).toContainText(
+          'Last known:',
+        );
+      }
+      await page.screenshot({
+        path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+        animations: 'disabled',
+      });
+      if (width === 390) {
+        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-picker-${width}.png`),
+          animations: 'disabled',
+        });
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+      }
       expect(historyReads - failedHistoryReads).toBe(1);
       console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
         width,
@@ -1297,6 +1354,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByRole('button', { name: 'Refresh inbox', exact: true }),
         ).toBeEnabled();
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+          animations: 'disabled',
+        });
         expect(inventoryReads).toBe(1);
         console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
           inventoryReads,
@@ -1644,7 +1711,7 @@ const SCREENS: Screen[] = [
     waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
       for (const control of [
-        page.getByRole('button', { name: 'New task', exact: true }),
+        page.getByRole('button', { name: 'New Task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(

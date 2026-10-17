@@ -10,7 +10,7 @@
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
 - `npm run test:changed -- --base=origin/main --explain` selects diagnostics; deferral is not completion. Ordinary PRs use focused evidence and normal hooks; hosted PR/queue checks own broad integration. Use local `npm run ci:fast` only for a specific failure or an explicit request. Do not run `npm run full:regression` locally merely because `main` moved.
 - Hosted `fast-checks` owns readiness and full typechecking. Locally use `gate:for` or one `typecheck:<lane>`; never background full `typecheck` or `ci:fast` to poll its sentinel. Lanes share [host-wide tsc slots](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles).
-- The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
+- Hosted full-regression owns canonical receipts for scheduled main and tagged preview/stable promotions. Nightly has a separate exact-source usability gate. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
@@ -43,7 +43,7 @@ queue is part of it. What that means in practice:
     mergeQueue { entries(first:20) { nodes {
       position state pullRequest { number } } } } } }'
   ```
-- **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
+- **The queue batches** (1 build, up to 3 merges, `ALLGREEN`); a red entry is
   removed and those behind it rebuild.
 - **Automate with the app token, not your quota**
   ([setup](docs/guides/development.md#github-automation-token)); read PR and

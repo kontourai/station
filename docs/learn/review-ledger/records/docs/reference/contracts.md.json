@@ -196,7 +196,11 @@
 
     "src-ui/src/components/acp-connections/EngineCapabilitySummary.tsx",
 
-    "src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx"
+    "src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx",
+
+    "packages/contracts/src/workspace-isolation.ts",
+
+    "src-server/services/projects/worktree-provisioning-service.ts"
   ],
 
   "checks": [

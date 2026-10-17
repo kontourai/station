@@ -513,11 +513,11 @@ async function main() {
   throw new Error('fixture_usage');
 }
 main().catch((error: unknown) => {
-  const code =
+  const reason =
     error instanceof assert.AssertionError &&
-    /^fixture_[a-z_]{1,80}$/u.test(error.message)
+    /^fixture_[a-z0-9_]{1,80}$/u.test(error.message)
       ? `: ${error.message}`
       : '';
-  process.stderr.write(`native_fresh_fixture_refused${code}\n`);
+  process.stderr.write(`native_fresh_fixture_refused${reason}\n`);
   process.exitCode = 1;
 });

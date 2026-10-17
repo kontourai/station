@@ -1,5 +1,116 @@
 [
   {
+    "timestampUtc": "2026-10-17T02:52:22Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2481",
+    "sha": "5634e87afab9ed3ba2a4156280235019af3b1eea",
+    "artifactBuiltAt": "2026-10-17T02:01:26.911Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38991378745",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38991378745)"
+    ],
+    "changelog": {
+      "previousSha": "9658fa21a33eeaa975b083a55e1f677c56839fab",
+      "groups": {
+        "feat": [
+          "[#3714](https://github.com/kontourai/station/pull/3714) feat(ui): introduce the Quiet tree workspace map"
+        ],
+        "fix": [
+          "[#3749](https://github.com/kontourai/station/pull/3749) fix(ci): reconcile infrastructure diagnostics without parser double-counting",
+          "[#3748](https://github.com/kontourai/station/pull/3748) fix(ci): let corrected titles replace prior status on the same head",
+          "[#3744](https://github.com/kontourai/station/pull/3744) fix(ci): bootstrap title validation from the workflow revision",
+          "[#3728](https://github.com/kontourai/station/pull/3728) fix(ci): reduce duplicate verification and preserve affected coverage"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3750](https://github.com/kontourai/station/pull/3750) perf(ci): batch delivery checks and repair source admission",
+          "[#3737](https://github.com/kontourai/station/pull/3737) perf(ci): consolidate hosted verification and bound runner contention"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-17T02:52:19Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2481",
+    "sha": "5634e87afab9ed3ba2a4156280235019af3b1eea",
+    "artifactBuiltAt": "2026-10-17T02:07:14.173Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38991378745",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38991378745)"
+    ],
+    "changelog": {
+      "previousSha": "9658fa21a33eeaa975b083a55e1f677c56839fab",
+      "groups": {
+        "feat": [
+          "[#3714](https://github.com/kontourai/station/pull/3714) feat(ui): introduce the Quiet tree workspace map"
+        ],
+        "fix": [
+          "[#3749](https://github.com/kontourai/station/pull/3749) fix(ci): reconcile infrastructure diagnostics without parser double-counting",
+          "[#3748](https://github.com/kontourai/station/pull/3748) fix(ci): let corrected titles replace prior status on the same head",
+          "[#3744](https://github.com/kontourai/station/pull/3744) fix(ci): bootstrap title validation from the workflow revision",
+          "[#3728](https://github.com/kontourai/station/pull/3728) fix(ci): reduce duplicate verification and preserve affected coverage"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3750](https://github.com/kontourai/station/pull/3750) perf(ci): batch delivery checks and repair source admission",
+          "[#3737](https://github.com/kontourai/station/pull/3737) perf(ci): consolidate hosted verification and bound runner contention"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-17T01:46:42Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2481.38991378745",
+    "sha": "5634e87afab9ed3ba2a4156280235019af3b1eea",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38991378745",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2481.38991378745 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "9658fa21a33eeaa975b083a55e1f677c56839fab",
+      "groups": {
+        "feat": [
+          "[#3714](https://github.com/kontourai/station/pull/3714) feat(ui): introduce the Quiet tree workspace map"
+        ],
+        "fix": [
+          "[#3749](https://github.com/kontourai/station/pull/3749) fix(ci): reconcile infrastructure diagnostics without parser double-counting",
+          "[#3748](https://github.com/kontourai/station/pull/3748) fix(ci): let corrected titles replace prior status on the same head",
+          "[#3744](https://github.com/kontourai/station/pull/3744) fix(ci): bootstrap title validation from the workflow revision",
+          "[#3728](https://github.com/kontourai/station/pull/3728) fix(ci): reduce duplicate verification and preserve affected coverage"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3750](https://github.com/kontourai/station/pull/3750) perf(ci): batch delivery checks and repair source admission",
+          "[#3737](https://github.com/kontourai/station/pull/3737) perf(ci): consolidate hosted verification and bound runner contention"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-10-16T15:13:50Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2480.9",
