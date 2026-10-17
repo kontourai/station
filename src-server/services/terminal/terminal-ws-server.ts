@@ -268,7 +268,9 @@ export class TerminalWebSocketServer {
 
       // Only `open` may name a session this socket has not opened. Every other
       // session command is refused with one frame whether or not the session
-      // exists, so a socket cannot drive or probe another client's shell.
+      // exists. This scopes commands to sessions the socket opened; it is not
+      // per-project authorization, since `open` can still attach to any
+      // running session the socket's `terminal:operate` grant can name.
       if (
         SESSION_COMMANDS.has(msg.type as string) &&
         !this.clientSessions.get(ws)?.has(msg.sessionId as string)
@@ -410,8 +412,8 @@ export class TerminalWebSocketServer {
     this.unsubscribe = this.terminalService.subscribe(
       (event: TerminalEvent) => {
         const msg = JSON.stringify(event);
-        // Deliver only to sockets that opened this session; terminal output
-        // must never reach another client, project, or paired device.
+        // Deliver only to sockets that opened this session, so one panel's
+        // output never reaches a socket that did not open it.
         for (const client of this.clients) {
           if (
             client.readyState === client.OPEN &&
