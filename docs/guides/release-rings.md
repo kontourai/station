@@ -214,8 +214,12 @@ The injection boundary is the official producer, not a workflow-wide `env`:
 The channel source is the server's existing `__STATION_SERVER_BUILD__.channel`
 metadata, also exposed as `BuildProvenance.channel` by the system API. Official
 server builds use runtime channels `stable`, `beta` and `nightly`; the release
-protocol calls the `beta` ring `preview`. There is no separate telemetry channel
-export or setting. This
+protocol calls the `beta` ring `preview`. The shared
+[`mapRuntimeChannelToTelemetryChannel`](../../packages/shared/src/product-telemetry.ts)
+maps runtime `beta` to telemetry `preview`, preserves other permitted telemetry
+channels, and omits unknown channels. The usage telemetry service applies it
+when capturing build metadata. There is no separate telemetry channel export
+or setting. This
 preserves ADR 0020's separate client/host identities and ring-tagged build
 model. A future promotion model must revisit baked channel metadata together
 with the existing release identity, rather than relabeling these bytes.

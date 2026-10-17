@@ -18,6 +18,7 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  mapRuntimeChannelToTelemetryChannel,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
 } from '@kontourai/station-shared/product-telemetry';
@@ -139,6 +140,7 @@ export class UsageTelemetryService {
       options.buildProvenance === undefined
         ? captureBuildProvenance(env)
         : options.buildProvenance;
+    const channel = mapRuntimeChannelToTelemetryChannel(provenance?.channel);
     this.build = {
       version: options.version,
       platform: process.platform,
@@ -148,12 +150,7 @@ export class UsageTelemetryService {
       provenance.shaSource
         ? { sha: provenance.fullSha, sha_source: provenance.shaSource }
         : {}),
-      ...(provenance?.channel &&
-      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
-        provenance.channel,
-      )
-        ? { channel: provenance.channel as ProductTelemetryBuild['channel'] }
-        : {}),
+      ...(channel ? { channel } : {}),
       ...(provenance?.dirty !== undefined ? { dirty: provenance.dirty } : {}),
     };
     const resolved = resolveProductTelemetryEnabled(options.appConfig, env);
