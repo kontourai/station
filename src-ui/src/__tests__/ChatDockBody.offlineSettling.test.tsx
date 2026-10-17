@@ -3,7 +3,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 const fetchCapability = vi.hoisted(() => vi.fn());
@@ -187,13 +187,13 @@ function session(revision: number): ChatSession {
   } as ChatSession;
 }
 
-function dock(current: ChatSession) {
+function DockFixture({ current }: { current: ChatSession }) {
+  const [client] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  useEffect(() => () => client.clear(), [client]);
   return (
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={client}>
       <ChatDockBody
         activeSession={current}
         chatFontSize={14}
@@ -209,6 +209,10 @@ function dock(current: ChatSession) {
       />
     </QueryClientProvider>
   );
+}
+
+function dock(current: ChatSession) {
+  return <DockFixture current={current} />;
 }
 
 describe('ChatDockBody offline settling (station#2605)', () => {
