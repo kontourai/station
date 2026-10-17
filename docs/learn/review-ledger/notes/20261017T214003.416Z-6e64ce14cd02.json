@@ -1,0 +1,9 @@
+{
+  "revision": "ea2ac498c05b8c6b8755b4ad3e7482107459c3d0",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the final transcript mount correction: ToolCallDisplay now uses the established retry-capable LazyBoundary keyed to the tool-call identity. Failed chunk imports expose the shared recovery surface. Preview result delivery and app-action denial are unchanged. The lazy-boundary ratchet, 85 focused UI tests and UI typecheck passed; the prior bare Suspense rejection is retained in the push log.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the final transcript mount correction: ToolCallDisplay now uses the established retry-capable LazyBoundary keyed to the tool-call identity. Failed chunk imports expose the shared recovery surface. Preview result delivery and app-action denial are unchanged. The lazy-boundary ratchet, 85 focused UI tests and UI typecheck passed; the prior bare Suspense rejection is retained in the push log.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}
