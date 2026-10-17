@@ -1356,8 +1356,11 @@ history is being read.
 
 Snapshot and caught-up session summaries use the same scope as the stream:
 `?threadId=X` includes only X; the global stream includes all readable sessions.
-A slow connection can buffer at most 256 live frames, plus an in-flight event
-write and one keepalive write. Overflow closes the connection without advancing
+Live frames arriving during the initial snapshot or replay are buffered until
+`orchestration:caughtUp` is written, so a slow snapshot can complete before
+backpressure forces a reconnect. After that marker, the queue is limited to 256
+live frames, plus an in-flight event write and one keepalive write.
+Overflow closes the connection without advancing
 a cursor for discarded frames. Reconnect with the last applied cursor to replay
 the gap or recover a fresh snapshot. This recovery applies to the orchestration
 stream; the separate bare `/events` broadcast stream has no durable replay.

@@ -13,10 +13,10 @@ export const streamSSE: typeof honoStreamSSE = (c, callback, onError) => {
 
 /**
  * The `event: ping` keepalive frame shared by the four event-style ping
- * streams under `routes/`: `operations/scheduler.ts`,
- * `orchestration/orchestration.ts` (both through `sseKeepalive` below),
- * `orchestration/events.ts` and `orchestration/project-task-rooms.ts` (both
- * keeping their own loops, for the reasons on `sseKeepalive`). One definition
+ * streams under `routes/`: `operations/scheduler.ts` through
+ * `sseKeepalive` below, and `orchestration/orchestration.ts`,
+ * `orchestration/events.ts` and `orchestration/project-task-rooms.ts` through
+ * their own loops, for the reasons on `sseKeepalive`. One definition
  * so a fifth event-style stream cannot quietly invent `keepalive` or
  * `heartbeat`.
  *
@@ -63,9 +63,11 @@ export interface SseKeepaliveOptions {
  * aborted during setup never calls back.
  *
  * Only for streams that write the keepalive straight to the stream at the
- * shared cadence. Four other keepalive loops deliberately keep their own:
+ * shared cadence. Five other keepalive loops deliberately keep their own:
  * `routes/operations/monitoring.ts` (a synthetic `MonitoringEvent`
- * heartbeat, not this frame); `routes/orchestration/events.ts` (writes
+ * heartbeat, not this frame); `routes/orchestration/orchestration.ts` (one
+ * outstanding authorized heartbeat write to bound slow-client backlog);
+ * `routes/orchestration/events.ts` (writes
  * through its paired-device `writeFrame` and touches a connection lease on
  * success); `routes/orchestration/project-task-rooms.ts` (a 15s
  * authorization cadence that pings as a side effect); and

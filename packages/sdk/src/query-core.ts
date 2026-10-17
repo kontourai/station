@@ -1,6 +1,7 @@
 import {
   hashKey,
   keepPreviousData,
+  type UseQueryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -37,7 +38,8 @@ import { _getApiBase } from './api';
  */
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
-export interface QueryConfig<_T> {
+export interface QueryConfig<T> {
+  structuralSharing?: UseQueryOptions<T>['structuralSharing'];
   staleTime?: number;
   gcTime?: number;
   enabled?: boolean;
@@ -224,6 +226,9 @@ function useApiQueryWithMountPolicy<T>(
     ...(config?.retryDelay === undefined
       ? {}
       : { retryDelay: config.retryDelay }),
+    ...(config?.structuralSharing === undefined
+      ? {}
+      : { structuralSharing: config.structuralSharing }),
     placeholderData: config?.keepPreviousData ? keepPreviousData : undefined,
   });
 

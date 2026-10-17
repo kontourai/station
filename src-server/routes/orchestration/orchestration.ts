@@ -5993,16 +5993,6 @@ export function createOrchestrationRoutes(
           if (stream.aborted) onGone();
           else stream.onAbort(onGone);
         });
-        // ...and keep the connection audibly alive while that read runs. The
-        // client abandons a body that writes nothing for its stall deadline,
-        // and until caught-up this route used to write nothing at all, so a
-        // snapshot slower than the deadline would reconnect forever. Each
-        // frame is a single write, so a ping cannot land inside another frame.
-        // Ordering fence (R4): subscribe and buffer live events FIRST, before
-        // any `await` below can yield to an event that was appended and
-        // emitted concurrently. Nothing buffered here is written until after
-        // the historical (replay-or-snapshot) frames and the caught-up marker
-        // are flushed, so a live event can never overtake buffered history.
         const writeAuthorized = async (frame: {
           event: string;
           data: string;
@@ -6017,8 +6007,9 @@ export function createOrchestrationRoutes(
           await stream.writeSSE(frame);
           framesWritten++;
         };
-        // A stalled writer holds at most one heartbeat in addition to the
-        // bounded event queue; keepalives must not build their own write chain.
+        // Keep initial-history reads audibly alive so clients do not restart
+        // a slow snapshot. A stalled writer holds at most one heartbeat;
+        // keepalives must not build their own write chain.
         let heartbeatWriting = false;
         const heartbeat = setInterval(() => {
           if (heartbeatWriting || stream.aborted) return;
@@ -6051,7 +6042,12 @@ export function createOrchestrationRoutes(
           id?: string;
         }) => {
           if (stream.aborted) return;
-          if (pending.size >= ORCHESTRATION_STREAM_MAX_PENDING_FRAMES) {
+          // The initial snapshot must reach the client before overload can
+          // force resume; otherwise a slow snapshot can reconnect forever.
+          if (
+            caughtUp &&
+            pending.size >= ORCHESTRATION_STREAM_MAX_PENDING_FRAMES
+          ) {
             // No cursor is advanced for dropped frames. fetchSSE reconnects
             // with its last applied id and replays, or recovers a snapshot.
             closeReason = 'backpressure-overflow';
@@ -6105,6 +6101,11 @@ export function createOrchestrationRoutes(
               ? setTimeout(flushActivity, 100)
               : undefined;
         };
+        // Ordering fence (R4): subscribe and buffer live events FIRST, before
+        // any `await` below can yield to an event that was appended and
+        // emitted concurrently. Nothing buffered here is written until after
+        // the historical (replay-or-snapshot) frames and the caught-up marker
+        // are flushed, so a live event can never overtake buffered history.
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
