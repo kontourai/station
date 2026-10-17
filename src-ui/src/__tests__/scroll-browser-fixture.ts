@@ -24,7 +24,20 @@ export async function scrollBrowserFixture(
       'process.env.NODE_ENV': '"development"',
       'import.meta.env': '{"MODE":"test"}',
     },
-    plugins,
+    plugins: [
+      {
+        name: 'workspace-connect-source',
+        setup(builder) {
+          builder.onResolve(
+            { filter: /^@kontourai\/station-connect$/ },
+            () => ({
+              path: resolve(ROOT, 'packages/connect/src/index.ts'),
+            }),
+          );
+        },
+      },
+      ...plugins,
+    ],
   });
   const javascript = result.outputFiles.find((file) =>
     file.path.endsWith('.js'),
