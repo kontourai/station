@@ -37,6 +37,7 @@ import {
   readProjectRepository,
 } from '../../services/projects/git-read-repository.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
+import { readWorkspaceDiff } from '../../services/projects/workspace-diff-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -98,7 +99,6 @@ function codingExecNotGranted(request: Request) {
  */
 const GIT_QUICK_TIMEOUT_MS = 10_000;
 const GIT_READ_TIMEOUT_MS = 20_000;
-const GIT_DIFF_TIMEOUT_MS = 30_000;
 const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
 
 const GIT_TIMEOUT_MESSAGE =
@@ -886,15 +886,8 @@ export function createCodingRoutes(
       if (location instanceof Response) return location;
       // A multi-repo workspace root isn't itself a repo; return an empty diff
       // instead of letting `git diff` fail with "not a git repository".
-      // #2363: `diff` runs repository-defined filters and diff drivers.
       return await gitRead(c, location, { diff: '' }, async (repository) => ({
-        diff: (
-          await execGit([...repository.repoArgs, 'diff'], {
-            cwd: repository.top,
-            encoding: 'utf-8',
-            timeout: GIT_DIFF_TIMEOUT_MS,
-          })
-        ).stdout,
+        diff: await readWorkspaceDiff(repository),
       }));
     } catch (e: unknown) {
       return gitFailure(c, e);
