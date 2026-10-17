@@ -1303,7 +1303,6 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  scrollbar-gutter: stable;
   overflow-x: hidden;
   /* The transcript owns prepend and height anchoring; native anchoring would
      otherwise compete with that deterministic position restoration. */
@@ -1322,6 +1321,11 @@ button:hover {
      who keeps scrolling by hand. Surfaced by /activity's stacked mobile
      header pushing the sessions list's bottom actions below the fold. */
   scroll-padding-bottom: var(--dock-bottom-clearance);
+}
+
+/* Fill frames delegate scrolling to their bodies and need the full width. */
+.content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
+  scrollbar-gutter: stable;
 }
 
 /* Root-route (`/`) restore placeholder (archive#223) — holds the content pane's
