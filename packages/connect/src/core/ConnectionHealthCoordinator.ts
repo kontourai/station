@@ -102,21 +102,21 @@ export class ConnectionHealthCoordinator {
     };
   };
 
-  /** Whether this call started a run, rather than skipping or queuing it. */
-  trigger = (): boolean => {
+  /** Reports whether a probe was started, queued behind a running probe, or skipped. */
+  trigger = (): 'started' | 'queued' | 'skipped' => {
     this.clearTimer();
     if (
       typeof document !== 'undefined' &&
       document.visibilityState === 'hidden'
     )
-      return false;
-    if (this.listeners.size === 0) return false;
+      return 'skipped';
+    if (this.listeners.size === 0) return 'skipped';
     if (this.inFlight) {
       this.rerunRequested = true;
-      return false;
+      return 'queued';
     }
     void this.run();
-    return true;
+    return 'started';
   };
 
   stop(): void {

@@ -339,6 +339,49 @@ describe('useConnectionStatus', () => {
     expect(checkHealth).toHaveBeenCalledTimes(2);
   });
 
+  it('deduplicates a wake burst that straddles queued probe completions', async () => {
+    vi.useFakeTimers();
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('visible');
+    const pending: Array<(ok: boolean) => void> = [];
+    const checkHealth = vi.fn(
+      () => new Promise<boolean>((resolve) => pending.push(resolve)),
+    );
+    const store = storeWithUrl('https://queued-resume.example.test');
+    const { unmount } = renderHook(
+      () => useConnectionStatus({ checkHealth, pollInterval: 10_000 }),
+      { wrapper: wrapper(store) },
+    );
+    try {
+      await act(async () => Promise.resolve());
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+      act(() => window.dispatchEvent(new Event('focus')));
+      await act(async () => {
+        pending.shift()!(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(checkHealth).toHaveBeenCalledTimes(2);
+      act(() => window.dispatchEvent(new Event('pageshow')));
+      await act(async () => {
+        pending.shift()!(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await act(async () => {
+        pending.shift()?.(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(checkHealth).toHaveBeenCalledTimes(2);
+      await act(async () => vi.advanceTimersByTimeAsync(10_000));
+      expect(checkHealth).toHaveBeenCalledTimes(3);
+    } finally {
+      unmount();
+      visibility.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('suppresses separately scheduled events from one resume but probes a later resume', async () => {
     vi.useFakeTimers();
     const checkHealth = vi.fn().mockResolvedValue(true);
