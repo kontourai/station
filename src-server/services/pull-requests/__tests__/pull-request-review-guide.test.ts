@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import type { PullRequestReviewGuideStop } from '@kontourai/station-contracts/pull-request-review-guide';
-import { afterEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGit } from '../../../utils/git-exec.js';
 import { PullRequestReviewGuideService } from '../pull-request-review-guide.js';
 import {
@@ -12,11 +12,7 @@ import {
 } from '../pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../pull-request-review-guide-store.js';
 
-const roots: string[] = [];
-afterEach(async () => {
-  for (const root of roots.splice(0))
-    await rm(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 const identity = {
   provider: 'github',
   host: 'github.com',
@@ -89,8 +85,7 @@ test('deleted files and source lines resembling headers retain their actual side
 });
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'station-guide-test-'));
-  roots.push(root);
+  const root = makeTempDir('station-guide-test-');
   const git = async (...args: string[]) =>
     (
       await execGit(args, { cwd: root, timeout: 10_000, maxBuffer: 100_000 })

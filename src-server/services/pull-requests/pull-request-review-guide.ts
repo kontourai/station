@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequestRepositoryContext,
@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/pull-request-provider';
 import type { PullRequestReviewGuideRun } from '@kontourai/station-contracts/pull-request-review-guide';
 import { execGit } from '../../utils/git-exec.js';
+import { expandTilde } from '../../utils/paths.js';
 import { requireLiveRepository } from '../projects/git-read-repository.js';
 import {
   normalizeReviewGuide,
@@ -161,9 +162,10 @@ export class PullRequestReviewGuideService {
     if (snapshot.diff.state !== 'available')
       throw Error('The complete change is unavailable.');
     // Reuse the reviewed repository/config custody used by worktree provisioning.
+    const workingDirectory = resolve(expandTilde(context.workingDirectory));
     const repository = await requireLiveRepository(
-      context.workingDirectory,
-      context.workingDirectory,
+      workingDirectory,
+      workingDirectory,
       { newWorktree: true },
     );
     let temporary: string | undefined;

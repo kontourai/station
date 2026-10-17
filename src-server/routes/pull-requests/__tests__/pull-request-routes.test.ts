@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
@@ -8,6 +5,7 @@ import {
 import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { RUNTIME_CREDENTIAL_AUTHORITY_VAR } from '../../../security/runtime-request-security.js';
 import { GitHubPullRequestProvider } from '../../../services/pull-requests/github-pull-request-provider.js';
@@ -16,6 +14,7 @@ import { PullRequestReviewGuideService } from '../../../services/pull-requests/p
 import { PullRequestReviewGuideStore } from '../../../services/pull-requests/pull-request-review-guide-store.js';
 import { createPullRequestRoutes } from '../pull-request-routes.js';
 
+const makeTempDir = trackTempDirs();
 const caps = {
   list: true,
   detail: true,
@@ -736,7 +735,7 @@ describe('what each route asks of the checkout (#2474, #2475)', () => {
 });
 
 test('guide route resolves the forge head, strips obsolete anchors and refuses unauthenticated generation', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'station-guide-route-'));
+  const home = makeTempDir('station-guide-route-');
   try {
     const store = new PullRequestReviewGuideStore(home);
     const identity = {
@@ -827,6 +826,6 @@ test('guide route resolves the forge head, strips obsolete anchors and refuses u
     ).toBe(404);
     expect(generate).not.toHaveBeenCalled();
   } finally {
-    await rm(home, { recursive: true, force: true });
+    vi.restoreAllMocks();
   }
 });
