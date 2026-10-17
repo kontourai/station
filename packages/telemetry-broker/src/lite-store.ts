@@ -346,6 +346,9 @@ export class LiteRepository {
   }
   async aggregates(publisher: string, key?: string) {
     return this.transaction(async (client) => {
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
+      );
       if (key !== undefined) {
         if (!/^stq_[A-Za-z0-9_-]{43}$/.test(key))
           throw new BrokerError('source_unauthorized');
@@ -356,9 +359,6 @@ export class LiteRepository {
         if (!authority.rows.length)
           throw new BrokerError('source_unauthorized');
       }
-      await client.query(
-        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
-      );
       // Every public marginal comes from the SAME disjoint, thresholded cells. No raw total is released.
       const rows = await client.query<CellRow>(
         `SELECT to_char(day,'YYYY-MM-DD') AS day,cell,pings::text FROM station_telemetry.lite_rollups
