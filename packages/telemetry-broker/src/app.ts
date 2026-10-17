@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { HttpBindings } from '@hono/node-server';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import {
   parseProductTelemetryBatch,
@@ -7,6 +8,7 @@ import {
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { registerLiteRoutes } from './lite-routes.js';
 import { BrokerError, type ProductRepository } from './store.js';
 
 export function createProductBroker(
@@ -16,7 +18,7 @@ export function createProductBroker(
   if (!/^sto_[A-Za-z0-9_-]{43}$/.test(operatorKey))
     throw new Error('A private product operator credential is required');
   const operatorHash = createHash('sha256').update(operatorKey).digest();
-  const app = new Hono();
+  const app = new Hono<{ Bindings: HttpBindings }>();
   let active = 0;
   let tokens = 60;
   let replenishedAt = performance.now();
@@ -149,6 +151,7 @@ export function createProductBroker(
       ? c.json({ receipt })
       : c.json({ error: 'receipt_unavailable' }, 404);
   });
+  if (store.lite) registerLiteRoutes(app, store.lite);
   app.onError((error, c) => {
     if (error instanceof BrokerError) {
       const status =
@@ -160,7 +163,8 @@ export function createProductBroker(
               ? 507
               : error.code === 'query_limit'
                 ? 422
-                : error.code === 'invalid_source'
+                : error.code === 'invalid_source' ||
+                    error.code === 'invalid_daily_ping'
                   ? 400
                   : 503;
       return c.json({ error: error.code }, status);
