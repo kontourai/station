@@ -231,7 +231,9 @@ with its optional reason in that same config request, preserving omitted
 publishers. The Full disclosure dialog offers the same optional prompt before
 its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is
 offered under DNT. Failed writes do not acknowledge. Feedback is action metadata,
-not a persisted setting.
+not a persisted setting. The optional prompt focuses its heading once when
+opened and returns keyboard focus to the Settings tier control after a reason
+or Skip is chosen.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action

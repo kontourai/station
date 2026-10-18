@@ -378,6 +378,9 @@ test('publisher controls render registry publishers without borrowing Kontour id
   ).toBe(document.activeElement);
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
   expect(onFeedback).toHaveBeenCalledWith('publisher:example.tools', 'skip');
+  expect(
+    screen.getByRole('combobox', { name: 'example.tools telemetry' }),
+  ).toBe(document.activeElement);
   expect(onChange).toHaveBeenCalledWith({
     telemetryTier: { 'publisher:example.tools': 'off' },
   });

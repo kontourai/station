@@ -2,7 +2,7 @@ import {
   TELEMETRY_FEEDBACK_REASONS,
   type TelemetryFeedbackReason,
 } from '@kontourai/station-contracts/product-telemetry';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
 import './TelemetryPrivacy.css';
 
@@ -27,9 +27,13 @@ export function TelemetryFeedbackPrompt({
   deferred?: boolean;
 }) {
   const id = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
   return (
     <section className="telemetry-feedback" aria-labelledby={id}>
-      <h3 id={id} tabIndex={-1} ref={(element) => element?.focus()}>
+      <h3 id={id} tabIndex={-1} ref={heading}>
         Why lower {publisher} telemetry? (optional)
       </h3>
       <p>

@@ -32,6 +32,7 @@ export function TelemetryTierSettings({
   const [pending, setPending] = useState<{
     publisher: TelemetryPublisherId;
     tier: TelemetryTier;
+    trigger: HTMLSelectElement;
   }>();
   const choices: TelemetryTierChoices | undefined = config.telemetryTier;
   const rank = { off: 0, lite: 1, full: 2 };
@@ -80,7 +81,11 @@ export function TelemetryTierSettings({
                       status?.reason !== 'DNT' &&
                       rank[tier] < rank[previous]
                     )
-                      setPending({ publisher, tier });
+                      setPending({
+                        publisher,
+                        tier,
+                        trigger: event.currentTarget,
+                      });
                     else change(publisher, tier, 'skip');
                   }}
                 >
@@ -99,7 +104,11 @@ export function TelemetryTierSettings({
                 <TelemetryFeedbackPrompt
                   deferred
                   publisher={telemetryPublisherLabel(publisher)}
-                  onChoose={(reason) => change(publisher, pending.tier, reason)}
+                  onChoose={(reason) => {
+                    const { tier, trigger } = pending;
+                    change(publisher, tier, reason);
+                    trigger.focus();
+                  }}
                 />
               )}
               {pending?.publisher === publisher && status?.reason === 'DNT' && (

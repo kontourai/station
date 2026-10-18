@@ -2231,6 +2231,10 @@ describe('settings catalog completeness', () => {
         telemetryTier: { operator: 'lite' },
       }),
     );
+    expect(updateConfig).toHaveBeenCalledWith({
+      telemetryTier: { kontour: 'lite' },
+    });
+    expect(updateConfig).toHaveBeenCalledTimes(2);
   });
 
   test.each([false, true])(
