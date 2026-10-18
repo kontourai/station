@@ -1408,8 +1408,7 @@
 .settings .section-nav-rail__body:focus {
   outline: none;
 }
-.settings__section .provenance-badge,
-.settings__section .scope-badge {
+.settings__section .provenance-badge {
   font-size: var(--k-text-xs);
 }
 
