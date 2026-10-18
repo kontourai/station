@@ -14,7 +14,7 @@
  * injected service behind the checkout launcher.
  */
 
-import { describeCliError, runCli } from './cli.js';
+import { reportCliError, runCli } from './cli.js';
 import { promptYN } from './commands/platform.js';
 
 await runCli(process.argv.slice(2), {
@@ -29,7 +29,7 @@ await runCli(process.argv.slice(2), {
   confirm: promptYN,
   isInteractive: Boolean(process.stdin.isTTY),
 }).catch((error: unknown) => {
-  console.error('Error:', describeCliError(error));
+  reportCliError(error);
   // Defense in depth, mirroring `scripts/station-cli.ts`: an explicit
   // `process.exit(1)` guarantees the CLI terminates even if a command path
   // left a stray timer or handle behind.

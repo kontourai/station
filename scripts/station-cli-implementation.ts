@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describeCliError, runCli } from '../packages/cli/src/cli.js';
+import { reportCliError, runCli } from '../packages/cli/src/cli.js';
 import { promptYN } from '../packages/cli/src/commands/platform.js';
 import { PeerCredentialStore } from '../src-server/services/peers/peer-credential-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
@@ -52,7 +52,7 @@ export async function runStationCliImplementation(): Promise<void> {
     confirm: promptYN,
     isInteractive: Boolean(process.stdin.isTTY),
   }).catch((error: unknown) => {
-    console.error('Error:', describeCliError(error));
+    reportCliError(error);
     process.exit(1);
   });
 }

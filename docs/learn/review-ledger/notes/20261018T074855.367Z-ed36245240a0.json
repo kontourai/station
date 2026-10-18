@@ -1,0 +1,7 @@
+{
+  "revision": "290e573445efa781c6a4c3911702d779e937f43b",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Reviewed the package README chat-key paragraph and help/reference reading routes against the merged CLI at290e573445efa781c6a4c3911702d779e937f43b. The retained-input stable clientTurnId/conversation retry explanation still matches chat help; main’s additive telemetry status/set help entry and CLI-reference section introduce no backend-installation or implicit-start claim in this README. Target, timeout, stream, pairing and distribution explanations remain unchanged in this merge. No prose or human record fields/citations/checks were changed. Merged core/core-HTTP fixtures passed95/95 and scoped CLI types passed; existing release, Windows, keyring, hosted/network and real-provider limits remain unverified and historical receipts keep their own revisions.","inputs":["packages/cli/README.md","packages/cli/src/help.ts"]}
+  ]
+}

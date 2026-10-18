@@ -1,15 +1,19 @@
 # Station process supervisor
 
-> **Reading status: proposal (2026-10-17).** Nothing here is implemented. The
+> **Reading status: proposal (2026-10-17), phase 1 core implemented.** The
+> supervisor package ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
+> implements the control channel, listener handoff, sequential generation
+> handoff with rollback, and crash restart, verified against a fixture core
+> server. No launch mode runs it yet, and the core server has no supervised
+> mode. The [process supervisor decision](../decisions/process-supervisor.md)
+> records the ownership change. Until adoption, the
 > current lifecycle is owned by the Desktop sidecar supervisor
 > (`run_sidecar_supervisor` in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs)),
 > [`station service run`](../../packages/cli/src/commands/service-run.ts), the
 > [archive launcher](../../packaging/portable-server/bin/station-launcher.mjs),
 > and [owned-child tracking](../../src-server/services/infra/process-utils.ts).
 > Claims about current behavior are from source inspection on 2026-10-17, not
-> from executed journeys. A decision record superseding parts of
-> [ADR 0015](../adr/0015-restore-desktop-owned-command-station-sidecar.md) is
-> required before the first phase lands.
+> from executed journeys.
 
 ## Why
 
@@ -68,21 +72,158 @@ in [station-topology.md](station-topology.md) is updated when this lands.
 The supervisor is deliberately thin. It makes no authorization, routing, or
 product decisions.
 
-- **Listeners.** It binds the instance's ports and passes the listening
-  handles to the active core server over IPC. Node supports handle passing on
-  macOS, Linux, and Windows; it is what the `cluster` module is built on.
-  Connections go straight to the core server, so there is no proxy hop.
-- **Generations.** It starts a new core server as a trial, waits for
-  readiness, hands it the listeners, then tells the old generation to stop
-  accepting and drain. If the trial fails, the old generation keeps serving.
-  Draining keeps existing connections on the old generation until they close
-  or a drain deadline passes. SSE and terminal clients reconnect and resume,
-  so their deadline is short. An active voice call extends the deadline up to
-  a cap, so a live call finishes on the old generation instead of dropping.
-  Voice therefore stays in the core server rather than becoming a workload.
-  This absorbs the archive launcher's pending, trial, commit, rollback
-  transaction. It also restarts a crashed core server with backoff, absorbing
-  the Desktop and `service run` restart loops.
+- **Listeners.** The supervisor holds every listening socket open but never
+  accepts on it. The first core generation binds its ports normally and sends
+  each raw listening handle (`server._handle`) to the supervisor over the
+  Node IPC channel. Later generations receive the held handle and call
+  `server.listen(handle)`. Because the socket stays in the listening state
+  while no generation accepts, connections made during a swap or a crash
+  restart wait in the kernel backlog instead of being refused. Connections
+  go straight to the core server, so there is no proxy hop.
+  - A `net.Server` listening in the supervisor would accept connections
+    itself, so the supervisor holds only the raw handle. A core must send
+    `server._handle`, not the server: Node turns a sent `net.Server` into a
+    listening server in the receiver. The supervisor refuses anything but a
+    raw TCP or Pipe handle, closes it, and fails that generation.
+  - Node's `cluster` module was prototyped and rejected: sibling
+    generations' ephemeral `listen(0)` calls collided.
+  - `_handle` is a Node internal. A guard test
+    ([`handle-guard.test.ts`](../../packages/supervisor/src/__tests__/handle-guard.test.ts))
+    fails if a Node upgrade breaks sending, holding, or adopting it.
+- **Generations.** Phase 1 swaps generations one at a time
+  (hold-and-swap), because two generations cannot share a Station home yet:
+  boot consumes interrupted-turn boundaries, runs the schema gate, and opens
+  single-writer stores. A handoff from generation N to N+1:
+  1. Start N+1, which loads its code and reports `parked` before touching
+     the home. If it fails to park, N was never disturbed and keeps serving.
+  2. Send `drain` to N. N closes its copies of the listeners, finishes
+     in-flight requests, and exits. A drain deadline then escalates to
+     SIGTERM and SIGKILL. An active voice call extends the deadline up to a
+     cap, so a live call finishes on N instead of dropping. Voice therefore
+     stays in the core server rather than becoming a workload.
+  3. When N has exited, `promote` N+1 and send it each held handle with
+     `listener.adopt`. N+1 boots and reports `ready` with its boot id.
+  4. Commit, once N+1 has stayed up for a short grace after `ready`. If N+1
+     exits before then or misses its readiness timeout, the supervisor kills
+     it, starts N's entry again as a new generation, and reports
+     `rolled-back`.
+
+  Clients wait during the swap but are not refused. Draining sets
+  `Connection: close` on every response, so busy keep-alive connections
+  close after their response and reconnect into the backlog. Connections
+  still idle after a short grace are then closed with
+  `closeIdleConnections()`. Closing idle connections immediately, which
+  `http.Server.close()` does on Node 19 and later, resets keep-alive clients
+  whose next request is already in flight: the fixture saw every
+  connection reset on every handoff until the grace was added. SSE and
+  terminal clients reconnect and resume.
+
+  Overlapping generations, where N+1 boots while N still serves, need a
+  home-writer lease that hands the home from one generation to the next. That
+  is a later phase; the `parked` and `promote` steps exist so the protocol
+  does not have to change for it.
+
+  A crash of the active generation, outside a drain, restarts it with
+  exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
+  serving. A crash during a handoff counts toward the same failure budget.
+  After five failures within five minutes the supervisor gives up and exits
+  nonzero, so its launcher's restart policy takes over. Stopping the
+  supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
+  active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
+  by default, below service managers' stop timeouts; the long voice cap
+  applies only to handoffs.
+
+  One supervisor runs per home and instance, enforced by lock epochs and
+  process identity. The argument is written out in
+  [`instance-lock.ts`](../../packages/supervisor/src/instance-lock.ts).
+  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, with n written
+    without leading zeros, created only with `wx`, so each epoch n has
+    exactly one winner. The highest n is the current lock. Its content is
+    the holder's pid, a random nonce, its process start fingerprint, its
+    creation time, and its control endpoint.
+  - The holder is live while its pid exists with the start fingerprint it
+    recorded. It is dead only when its epoch is marked released, its pid is
+    gone, or the pid now belongs to a process with a different fingerprint.
+    A fingerprint that cannot be read counts as live. An empty or
+    half-written lock counts as live for 30 seconds. Reaching the holder is
+    never part of the decision, so a holder that is stopped, has a full
+    accept backlog, or has lost its socket file is still live. A stopped
+    holder therefore keeps the instance until it is continued or killed.
+  - A starter refuses while the holder is live. If it is dead, the starter
+    creates the next epoch; if another starter created it first, it starts
+    over and finds that one live.
+  - The winner binds its control socket. An existing socket file is
+    replaced only by the holder of the top epoch, and only if connecting to
+    it is refused or finds nothing; a successful connect or any other error
+    refuses. The winner then confirms the top epoch is still its own,
+    collects older epochs, publishes the token, reaps, and serves.
+  - Node unlinks a Unix socket's bound path when the server closes, whoever
+    owns that path by then. So the socket is bound at a private name in the
+    same directory and published at the real path with `link()`, which
+    refuses an existing path. Closing the server removes only the private
+    name; the real path is removed only after it is moved aside and found
+    to be the inode this process bound.
+    Filesystems that refuse `link()` (some FUSE, SMB, or 9p mounts) make
+    the bind fail closed, and a control path whose directory leaves no room
+    for the private name within the socket path limit is refused at start.
+    A third process that binds the path in the instant it is moved aside
+    loses it when this process puts it back; its self-check then sees the
+    conflict and it exits with status 1 (an accepted gap). While holding the
+    lock, the supervisor removes leftover private names of exactly its own
+    pattern that are sockets older than a minute, so names from a killed
+    process do not accumulate.
+  - Every 5 seconds the holder confirms the top epoch is still its own,
+    draining and exiting with status 1 if not. If its socket file was
+    deleted or replaced (on Windows, if the pipe server stopped listening)
+    it re-binds, but only when nothing else listens on the path; if another
+    process does, it refuses to take the path back, logs the conflicting
+    path, drains, and exits with status 1.
+  - A clean exit never deletes the top epoch. It marks its own epoch
+    released, by rewriting it through a temporary file, and only while the
+    file still holds its nonce and pid. Epoch numbers therefore never go
+    backwards.
+  - Earlier designs decided liveness by reaching the holder, or by comparing
+    `ps` output that follows the time zone and locale. Each let a second
+    supervisor take over a live one.
+
+  A core must exit when its IPC channel disconnects, which is how it learns
+  the supervisor has died. What backs that up differs by platform:
+  - **POSIX.** Each generation leads its own process group. The supervisor
+    records each generation's pid and process start time in its run
+    directory (on Linux the start time includes the boot id). The next
+    supervisor, holding the lock, sends SIGTERM to a recorded generation's
+    group that is still the same process, waits briefly, then sends SIGKILL,
+    and reports it reaped only once the group is gone. If it survives, the
+    supervisor refuses to start rather than fail on a held port. A pid whose
+    start time differs has been reused and is left alone; one whose start
+    time cannot be read is left alone and kept on record. `ps` runs with
+    `TZ=UTC` and `LC_ALL=C`, so the recorded value does not depend on the
+    environment. This covers the generation and processes in its group; a
+    process that left the group is not covered. If a generation's leader is
+    gone but its group still has members, the group cannot be verified (the
+    id may since belong to an unrelated group), so it is logged and left
+    alone: an accepted gap.
+  - **Windows.** Node starts non-detached children inside a job object that
+    is killed when the parent exits (libuv's `src/win/process.c`), so a core
+    dies with its supervisor even if it ignores disconnect. That is verified
+    on a Windows host with `taskkill /F` on the supervisor. The job does not
+    include the core's own children, and when the supervisor already runs
+    inside a job that forbids breakaway the assignment silently fails; both
+    are gaps. A recorded generation that escaped anyway, for example from
+    an older build, is reaped with `taskkill /T /F`. Reading a process start
+    time there takes one PowerShell call, about 145 ms. PowerShell exits 1
+    on any failed statement, so the call prints a sentinel instead: `GONE`
+    only when `Get-Process` reports no such process; the start time from
+    `Get-Process` or, if that is denied, from CIM's `Win32_Process`
+    CreationDate, truncated to microseconds so both agree; anything else is
+    unknown, which counts as live. On a Windows host both sources returned
+    the same instant for a live process at the same integrity level; under
+    a restricted token CIM was denied while `Get-Process` succeeded. A
+    non-elevated query of an elevated process is not verified.
+
+  This absorbs the archive launcher's pending, trial,
+  commit, rollback transaction and the Desktop and `service run` restart
+  loops.
 - **Workloads.** A workload is a process whose lifetime the supervisor owns,
   so it outlives core server generations. The rule for what becomes one:
   anything that holds live external state across a turn. Request-scoped work
@@ -105,8 +246,74 @@ product decisions.
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
 - **Control channel.** A versioned protocol on a local socket in the Station
-  home (mode 0600), or a named pipe on Windows. The core server, the CLI, and
+  home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
   the tray are its clients.
+  - The socket is `<home>/run/supervisor-<instance>.sock`. When that path
+    exceeds the platform's socket path limit (104 bytes on macOS), a hashed
+    path in a private temporary directory is used instead. Clients derive the
+    same path.
+  - On Windows the pipe is `\\.\pipe\station-supervisor-<hash>`, named from
+    a hash of the home and instance.
+  - Every connection starts with `hello`, carrying the protocol version and
+    the token from `<home>/run/supervisor-<instance>.token` (mode 0600 on
+    Unix; Windows relies on the home directory's ACL). A different major
+    version or a wrong token is refused, and the supervisor disconnects a
+    refused client promptly so it cannot hold a connection slot.
+  - The supervisor creates its run directories at 0700 and refuses an
+    existing one that is a symlink, belongs to another user, or is open to
+    group or others; it never changes the mode of a directory it did not
+    create. On Unix the client checks the same of the socket's directory
+    before sending the token.
+  - Requests are `status`, `handoff` (streams progress, then a result of
+    `committed`, `rolled-back`, or `refused`), `stop`, and, with the
+    `events` capability, `subscribe`.
+  - A handoff entry must be a `.js` or `.mjs` file whose real path is inside
+    the supervisor's build root; otherwise it is refused as
+    `entry-outside-build-root` without starting a process. This bounds where
+    the entry file lives, not what code runs: a process that can write into
+    the build root can still change what the supervisor starts. Same-user
+    write access to the build root is out of scope here and tracked for
+    phase 4.
+  - The types and constants are exported from
+    [`@kontourai/station-supervisor/protocol`](../../packages/supervisor/src/protocol.ts).
+
+### Recovery
+
+The lock fails closed: when the supervisor cannot prove the holder is gone,
+it refuses to start. Its refusal names the lock file, the holder's pid, and
+the remedy. A holder that is running as this instance's supervisor is
+stopped with SIGTERM or the control channel's `stop` request. Anything else
+goes through the guarded command:
+
+```sh
+station-supervisor --break-lock --home <home> --instance <id> [--force] [--reason <text>]
+```
+
+It re-checks the holder itself. Its output shows only the holder's
+executable name and first argument, without control characters, since later
+arguments can carry secrets. A holder that is live by its recorded
+process fingerprint is refused. A holder whose identity cannot be verified,
+or a lock still being written, needs `--force`; the refusal shows the
+holder's pid and command line so an operator can decide. Otherwise it marks
+the top epoch released, recording `releasedBy: break-lock` and the reason.
+It never deletes an epoch, so the next starter takes the next one.
+
+- **A zombie holder.** A zombie's pid still exists and keeps its start time,
+  so it reads as live until its parent reaps it. Reap or kill the parent;
+  `--break-lock --force` is the fallback once the operator has confirmed it
+  is not running.
+- **A holder that recorded no fingerprint and then crashed.** Its lock reads
+  as live while any process holds its pid. Once the pid is gone it is dead;
+  if the pid was reused, use `--break-lock --force` after checking the
+  command line.
+- **Windows with PowerShell blocked or slow.** Fingerprints are unknown, so
+  every holder whose pid exists reads as live. Use `--break-lock --force`
+  after checking the pid.
+- **PID namespaces, or a home shared across hosts or containers.** Process
+  ids and start times mean something only on one host in one pid namespace.
+  Sharing a Station home across hosts or containers is not supported: the
+  lock may refuse a start, or, if pids collide with a different
+  fingerprint, allow one.
 
 ### Implementation
 
@@ -206,8 +413,15 @@ Every path becomes a generation handoff:
 
 - the Desktop updater;
 - the archive launcher;
-- the in-app git-pull update and `install.sh --relaunch`;
-- `station upgrade`, which no longer needs the service stopped.
+- the in-app git-pull update and `install.sh --relaunch`. Under supervision
+  the core server sends `handoff.request` over its IPC channel instead of
+  exiting, so the update is not disabled when supervised. The supervisor
+  answers `handoff.refused` when it cannot run one, for example while a
+  handoff is already in progress;
+- `station upgrade`, which no longer needs the service stopped. A rollback
+  relaunches the previous generation's entry, so that entry must still exist
+  unchanged after the new build. This needs build directories pinned per
+  generation (phase 4) instead of rebuilding `dist-server/` in place.
 
 ### Per operating system
 
@@ -232,7 +446,8 @@ Every path becomes a generation handoff:
 | Failure | Outcome |
 | --- | --- |
 | Core server crash | Supervisor restarts it; workloads keep running and reattach. |
-| Trial generation fails readiness | Old generation keeps serving; the update is rolled back and reported. |
+| Trial generation fails to park | The old generation was never drained and keeps serving; the handoff is reported as rolled back. |
+| Trial generation fails readiness | The old generation has already exited in phase 1, so its entry is started again as a new generation. Connections wait in the backlog; the handoff is reported as rolled back. |
 | Supervisor crash | Workloads end, because their stdio and PTYs die with it. Boot behaves as today: interrupt, then auto-resume. Keeping the supervisor small keeps this rare. |
 | Disk journal full | Oldest closed segments are trimmed; a running workload's tail is never dropped silently. The trim is reported. |
 
@@ -250,8 +465,11 @@ Each phase is its own lane and pull request, with independent review,
 verification, and fault injection.
 
 1. **Supervisor core:** package, control protocol, listener handle passing,
-   generation handoff with trial and rollback, crash restart. Adopted by
-   `station start`, `service run`, and containers first.
+   sequential generation handoff with rollback, crash restart. The package is
+   implemented; a supervised mode in the core server and adoption by
+   `station start`, `service run`, and containers follow in their own pull
+   requests. Handle passing must be verified on a real Windows host before
+   adoption.
 2. **Workloads and terminals:** workload host and journals, then the terminal
    redesign on top of it (see [terminal.md](terminal.md)).
 3. **Engines:** workload-stream transport per adapter, reattach before
@@ -269,8 +487,8 @@ verification, and fault injection.
 - **Handoff journey:** a real live terminal, a scripted engine turn, and an
   open browser-pane page, handed from generation N to N+1. Same PIDs, no
   sequence gap, the turn recorded exactly once, and the page still loaded.
-- **Rollback journey:** generation N+1 fails readiness; N keeps serving and
-  clients see no error.
+- **Rollback journey:** generation N+1 fails readiness; the previous entry
+  serves again and clients see no refused connection.
 - **Compatibility:** old and new supervisors and core servers in every
   pairing, run as child processes.
 - **Per OS:** journeys run on real macOS, Windows, and Linux hosts.
@@ -278,3 +496,8 @@ verification, and fault injection.
 - **Fault injection:** removing reattach makes the handoff journey fail with
   an interrupted turn; removing handle passing makes a client see a refused
   connection.
+- **Phase 1 evidence:** the package's real-process tests run a fixture core
+  server that speaks the IPC protocol. Under keep-alive HTTP load and an SSE
+  client, repeated handoffs, rollbacks, and crash restarts produce no refused
+  connection, and handoffs produce no reset connection, on one port
+  throughout. They do not yet cover the real core server or Windows.

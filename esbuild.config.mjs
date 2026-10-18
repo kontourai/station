@@ -1,5 +1,10 @@
+import { cpSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as esbuild from 'esbuild';
+import {
+  SUPERVISOR_BUNDLE_NAME,
+  supervisorBuildOptions,
+} from './packages/supervisor/build-options.mjs';
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
@@ -52,8 +57,17 @@ const shared = {
 const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
 
 await generateStationDocs({ check: true });
+mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
+for (const name of ['LICENSE', 'NOTICE']) {
+  cpSync(`packaging/licenses/cedar/${name}`, `${serverDir}/third-party/cedar/${name}`);
+}
 
 await Promise.all([
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/cedar-policy-probe.ts'],
+    outfile: `${serverDir}/cedar-policy-probe.js`,
+  }),
   esbuild.build({
     ...shared,
     entryPoints: [
@@ -66,6 +80,12 @@ await Promise.all([
     entryPoints: ['./src-server/index.ts'],
     outfile: `${serverDir}/command-station.js`,
   }),
+  // The process supervisor holds listeners and hands them between core
+  // generations. It is self-contained (Node built-ins only) and does not share
+  // the server banner or externals: it must run with no node_modules beside it.
+  esbuild.build(
+    supervisorBuildOptions(`${serverDir}/${SUPERVISOR_BUNDLE_NAME}`),
+  ),
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/tools/station-control-server.ts'],
