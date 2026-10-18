@@ -7,7 +7,7 @@ import {
   type RenderOptions,
   render as renderTestingLibrary,
 } from '@testing-library/react';
-import type { PropsWithChildren, ReactElement } from 'react';
+import type { PropsWithChildren, ReactNode } from 'react';
 
 /** The app's remote-data prerequisites, isolated per test render. */
 function createQueryTestBoundary(CallerWrapper?: RenderOptions['wrapper']) {
@@ -32,7 +32,7 @@ function createQueryTestBoundary(CallerWrapper?: RenderOptions['wrapper']) {
     );
   };
 }
-export function render(ui: ReactElement, options?: RenderOptions) {
+export function render(ui: ReactNode, options?: RenderOptions) {
   const { wrapper, ...rest } = options ?? {};
   return renderTestingLibrary(ui, {
     ...rest,
