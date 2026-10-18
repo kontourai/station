@@ -1899,7 +1899,9 @@ only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; 
 fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
 Same-origin plugin code shares the existing shell trust model: it can omit those
 headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
-shared query cache. Isolating that code remains a separate platform item.
+shared query cache. It can also mint tokens under another plugin’s name to evict that
+plugin’s live tokens within the 16-token limit. Distinct-origin isolation is tracked
+in [#3826](https://github.com/kontourai/station/issues/3826).
 
 Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
 

@@ -20,7 +20,16 @@ import { JsonManifestRegistryProvider } from '../../../providers/registries/json
 import { replacePluginProvidersForSource } from '../../../providers/registries/registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import * as transport from '../../../services/plugin-telemetry-transport.js';
-import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
+import {
+  closePluginActivationSession,
+  completePluginActivationComposition,
+  createPluginActivationSession,
+  preparePluginActivationComposition,
+} from '../../../services/plugins/plugin-activation-composition.js';
+import {
+  installPluginFromSource,
+  uninstallInstalledPlugin,
+} from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import * as pluginPermissions from '../../../services/plugins/plugin-permissions.js';
 import * as telemetryAdmission from '../../../services/plugins/plugin-telemetry-admission.js';
@@ -939,6 +948,13 @@ test('one plugin minting 2000 Pane capabilities cannot block another plugin', as
       update: (state: T | null) => T | null,
     ) => update(null),
   );
+  const other = await f.post('/api/telemetry/panes', {
+    plugin: 'telemetry-reader',
+  });
+  expect(other.status).toBe(200);
+  const {
+    data: { token },
+  } = (await other.json()) as { data: { token: string } };
   const oldest = await f.capability();
   const body = { events: [{ event: 'closed', attributes: {} }] };
   const countWith = (capability: string) =>
@@ -961,13 +977,6 @@ test('one plugin minting 2000 Pane capabilities cannot block another plugin', as
     if (i === 14) expect((await countWith(oldest)).status).toBe(200);
     if (i === 15) expect((await countWith(oldest)).status).toBe(400);
   }
-  const other = await f.post('/api/telemetry/panes', {
-    plugin: 'telemetry-reader',
-  });
-  expect(other.status).toBe(200);
-  const {
-    data: { token },
-  } = (await other.json()) as { data: { token: string } };
   expect((await countWith(oldest)).status).toBe(400);
   expect((await countWith(newest)).status).toBe(200);
   expect((await countWith(token)).status).toBe(200);
@@ -1036,4 +1045,71 @@ test('an aborted uninstall restores counting and consent without releasing a pre
   expect(
     (f.received[0] as { events: Array<{ name: string }> }).events[0].name,
   ).toBe('closed');
+});
+
+test('captured nested-uninstall rollback restores telemetry counting and Full consent', async () => {
+  const f = await fixture();
+  await f.install();
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  const disclosure = await f.service.disclosure(f.id);
+  await f.service.acknowledgeDisclosure(
+    disclosure.inventoryRevision,
+    f.id,
+    disclosure.destination,
+  );
+  expect((await f.count()).status).toBe(200);
+  type Recovery = NonNullable<Parameters<typeof uninstallInstalledPlugin>[2]>;
+  const capture = vi.fn<Recovery['capture']>();
+  const activationSession = createPluginActivationSession();
+  cleanups.push(() => closePluginActivationSession(activationSession));
+  await uninstallInstalledPlugin(
+    'telemetry-writer',
+    {
+      ...f.deps,
+      activationSession,
+      beforeTelemetryRemoval: (publisher) =>
+        f.service.pluginUninstalled(publisher),
+    },
+    { root: join(f.home, 'nested-removal-backup'), capture },
+  );
+  expect(capture).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      await f.post('/api/telemetry/panes', {
+        plugin: 'telemetry-writer',
+      })
+    ).status,
+  ).toBe(400);
+
+  // The parent transaction invokes the captured compensation when it rolls back.
+  await capture.mock.calls[0][0]();
+  await completePluginActivationComposition(
+    await preparePluginActivationComposition(activationSession, 'compensation'),
+  );
+  const renewed = await f.post('/api/telemetry/panes', {
+    plugin: 'telemetry-writer',
+  });
+  expect(renewed.status, await renewed.clone().text()).toBe(200);
+  const {
+    data: { token },
+  } = (await renewed.json()) as { data: { token: string } };
+  const counted = await f.app.request('/api/telemetry/events', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-station-plugin-capability': token,
+    },
+    body: JSON.stringify({ events: [{ event: 'closed', attributes: {} }] }),
+  });
+  expect(counted.status, await counted.clone().text()).toBe(200);
+  await f.service.flush();
+  expect(f.received).toHaveLength(1);
+  expect(
+    (f.received[0] as { events: Array<{ name: string }> }).events.map(
+      (event) => event.name,
+    ),
+  ).toEqual(['opened', 'closed']);
 });
