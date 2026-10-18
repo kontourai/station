@@ -1092,3 +1092,99 @@ it('host observation checks every supplied event field even after its boundary i
     terminal: fact('eN', 'N'),
   });
 });
+
+for (const shape of [
+  'complete',
+  'incomplete',
+  'async',
+  'unknown-field',
+] as const)
+  it(`inherited ${shape} invocation bundle rejects at open before any callback or participant write`, () => {
+    const db = new DatabaseSync(':memory:');
+    cleanup.push(() => db.close());
+    db.exec(schema);
+    let callbacks = 0;
+    let admissions = 0;
+    const own: SqliteInvocationTerminalFacts = {
+      find: () => {
+        callbacks++;
+        return { kind: 'absent' };
+      },
+      readRetirement: () => {
+        callbacks++;
+        return undefined;
+      },
+      recordRetirement: () => {
+        callbacks++;
+      },
+    };
+    const candidate =
+      shape === 'incomplete'
+        ? { find: own.find }
+        : shape === 'async'
+          ? {
+              ...own,
+              recordRetirement: async () => {
+                callbacks++;
+              },
+            }
+          : shape === 'unknown-field'
+            ? { ...own, constructor: () => {} }
+            : own;
+    const binding: SqliteTurnBoundaryTable = Object.setPrototypeOf(
+      {
+        table: 'boundaries',
+        ownerEncoding: 'json' as const,
+        terminalFacts: 'host' as const,
+        intentColumns,
+        terminalSeen: () => false,
+      },
+      { invocationTerminals: candidate },
+    );
+    expect(Object.hasOwn(binding, 'invocationTerminals')).toBe(false);
+    expect(() => {
+      const opened = openSqliteKernelStorage({
+        database: db,
+        tables: { turnBoundary: binding },
+        participants: [
+          {
+            name: 'must not be admitted',
+            admit(_command, database) {
+              admissions++;
+              database
+                .prepare("UPDATE intents SET envelope='participant mutation'")
+                .run();
+            },
+          },
+        ],
+      });
+      cleanup.push(() => opened.close());
+    }).toThrow(/Invocation terminal/);
+    expect(callbacks).toBe(0);
+    expect(admissions).toBe(0);
+    expect(
+      db.prepare('SELECT envelope, retirement FROM intents').get(),
+    ).toEqual({ envelope: 'unchanged envelope', retirement: null });
+  });
+
+it('an own complete invocation bundle remains usable through the real write path (inherited refusal control)', async () => {
+  let writes = 0;
+  const f = fixture('columns', 'executeSync', {
+    ...hostFacts,
+    recordRetirement(db, witness) {
+      writes++;
+      hostFacts.recordRetirement(db, witness);
+    },
+  });
+  await begin(f.run);
+  append(f.db, fact('own-control', 'N'));
+  expect(await f.run(observation(fact('own-control', 'N')))).toEqual({
+    kind: 'applied',
+  });
+  expect(writes).toBe(1);
+  expect(hostFacts.readRetirement(f.db, 't', 'b')?.boundary).toEqual(expected);
+  expect(await f.run(command)).toEqual({
+    kind: 'terminal',
+    terminal: fact('own-control', 'N'),
+  });
+});
