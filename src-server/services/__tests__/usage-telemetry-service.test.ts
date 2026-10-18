@@ -928,36 +928,59 @@ describe('UsageTelemetryService', () => {
       'acknowledged disclosure did not permit telemetry emission',
     ).toHaveBeenCalledTimes(1);
   });
-  test('DISCLOSURE REVISION DEFECT: an old inventory receipt stops emission until re-acknowledged', async () => {
-    const root = await home();
-    await mkdir(join(root, 'config'));
-    await writeFile(
-      join(root, 'config', 'usage-telemetry-disclosure.json'),
-      JSON.stringify({
-        acknowledgedAt: new Date().toISOString(),
-        // Frozen event-only inventory revision from main 558d3a91; it never disclosed envelope metadata.
-        inventoryRevision:
-          'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
-      }),
-    );
-    const fetch = vi.fn();
-    const subject = new UsageTelemetryService({
-      homeDir: root,
-      appConfig: { telemetryTier: { operator: 'full' } } as any,
-      version: '1.2.3',
-      logger: logger(),
-      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
-      fetch,
-      setInterval: vi.fn() as any,
-    });
-    await subject.stationStarted();
-    expect(
-      fetch,
-      'stale disclosure receipt permitted telemetry emission',
-    ).not.toHaveBeenCalled();
-    expect((await subject.disclosure()).acknowledged).toBe(false);
-    expect(subject.bufferedCount).toBe(0);
-  });
+  test.each([
+    [
+      'event-only inventory',
+      'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
+    ],
+    // Frozen revision at reviewed head 0134b835: the lede previously overstated anonymity.
+    [
+      'before pseudonymous wording reset',
+      'b271907cca72f7553c4570a1fed28e0d00c9d085f14712be5a2a29c2b3565e08',
+    ],
+  ])(
+    'DISCLOSURE REVISION DEFECT: %s receipt stops emission until re-acknowledged',
+    async (_label, previousRevision) => {
+      const root = await home();
+      await mkdir(join(root, 'config'));
+      await writeFile(
+        join(root, 'config', 'usage-telemetry-disclosure.json'),
+        JSON.stringify({
+          acknowledgedAt: new Date().toISOString(),
+          inventoryRevision: previousRevision,
+        }),
+      );
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const subject = new UsageTelemetryService({
+        homeDir: root,
+        appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+        version: '1.2.3',
+        logger: logger(),
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+        setInterval: vi.fn() as any,
+      });
+      await subject.stationStarted();
+      expect(
+        fetch,
+        'stale disclosure receipt permitted telemetry emission',
+      ).not.toHaveBeenCalled();
+      expect((await subject.disclosure()).acknowledged).toBe(false);
+      expect(subject.bufferedCount).toBe(0);
+      expect(
+        (await subject.telemetryStatus()).publishers.operator,
+      ).toMatchObject({
+        tier: 'lite',
+        reason: 'disclosure',
+        userChoice: 'full',
+      });
+      await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      await subject.stationStarted();
+      await subject.shutdown();
+      expect((await subject.disclosure()).acknowledged).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
   test('RESTART DISCLOSURE DEFECT: bootstrap receipt load activates an existing valid receipt without an HTTP request', async () => {
     const root = await home();
     await mkdir(join(root, 'config'));

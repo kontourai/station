@@ -51,7 +51,7 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
     for (const [name, value] of Object.entries(status.publishers))
       console.log(
         `${name}: ${value.tier} (${value.reason})${
-          value.reason === 'environment'
+          name === 'operator' && value.reason === 'environment'
             ? '; environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.'
             : ''
         }`,

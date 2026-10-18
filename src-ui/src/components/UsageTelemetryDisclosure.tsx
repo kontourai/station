@@ -808,25 +808,32 @@ function useUsageTelemetryDecision(
     : acknowledgeProtected.isError;
   return {
     labels:
-      tierAware && savedChoice === 'full' && operator?.reason === 'disclosure'
+      operator?.reason === 'DNT'
         ? {
-            keep: 'Allow Full usage telemetry',
-            change: 'Turn off usage telemetry',
+            keep: 'Save operator choice as Off',
+            change: 'Save operator choice as Full',
           }
-        : tierAware
-          ? enabled
-            ? {
-                keep: 'Keep Full usage telemetry on',
-                change: 'Turn off usage telemetry',
-              }
-            : {
-                keep:
-                  savedChoice === 'off' || operator?.tier === 'off'
-                    ? 'Keep usage telemetry off'
-                    : 'Turn off usage telemetry',
-                change: 'Allow Full usage telemetry',
-              }
-          : usageTelemetryDecisionLabels(enabled),
+        : tierAware &&
+            savedChoice === 'full' &&
+            operator?.reason === 'disclosure'
+          ? {
+              keep: 'Allow Full usage telemetry',
+              change: 'Turn off usage telemetry',
+            }
+          : tierAware
+            ? enabled
+              ? {
+                  keep: 'Keep Full usage telemetry on',
+                  change: 'Turn off usage telemetry',
+                }
+              : {
+                  keep:
+                    savedChoice === 'off' || operator?.tier === 'off'
+                      ? 'Keep usage telemetry off'
+                      : 'Turn off usage telemetry',
+                  change: 'Allow Full usage telemetry',
+                }
+            : usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () => decide(enabled),
     change: () => decide(!enabled),
@@ -847,7 +854,9 @@ function useUsageTelemetryDecision(
           )}
         {operator?.reason === 'DNT' && (
           <p className="usage-telemetry-disclosure__lede">
-            DO_NOT_TRACK is active: telemetry is Off.
+            DO_NOT_TRACK is active: telemetry is Off. Saving a choice here
+            replaces your saved operator choice; telemetry stays Off while
+            DO_NOT_TRACK is active.
           </p>
         )}
         {acknowledgeErrorNotice(

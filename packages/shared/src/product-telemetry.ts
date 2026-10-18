@@ -41,10 +41,14 @@ export function renderUsageTelemetryInventory(): string {
     .join('\n\n');
 }
 
+// Revision 2 corrects the disclosure's earlier overstatement of anonymity.
+const FULL_DISCLOSURE_WORDING_REVISION = 2;
+
 /** A receipt covers this exact published inventory, not a vague telemetry policy. */
 export const USAGE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
   .update(
-    renderUsageTelemetryEnvelopeInventory() +
+    `full-disclosure-wording:${FULL_DISCLOSURE_WORDING_REVISION}\n\n` +
+      renderUsageTelemetryEnvelopeInventory() +
       '\n\n' +
       renderUsageTelemetryInventory(),
   )
