@@ -1,0 +1,11 @@
+{
+  "revision": "48098b2e8db84ce79470c70d47089b0c913d555c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Merge reconciliation only: inspected both parent histories and preserved the Lite receiver section alongside main browser/device descriptions. Traced strict Lite ingestion, operator-only exact views, immutable weekly fixed-domain publications, cursor validation and cache limits through lite-routes.ts, lite-store.ts, public-domain.ts and noisy-count.ts. Regenerated MCP content and merged independent ledger source additions with the repository migration command. Runtime qualification is recorded separately; no deployment or installed sender claim.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Merge reconciliation only: retained foundation Full consent and DO_NOT_TRACK conditions plus receiver-owned exact operator marginals and weekly noisy network-day publication. Read foundation squash and receiver publication commits, inspected Lite HTTP routes and storage publication owners, and preserved main session-parent migration dependency through the repository ledger merge command. No new claim about local monitoring, deployed privacy, proxy logging or installed sender behavior.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Merge reconciliation only: CLI guide bytes match main. Inspected the main stable-turn-key help/bin/core-http additions and telemetry command dependency; the repository ledger migration command preserved every independent source addition from both parents. No CLI behavior changed in this lane and no new CLI runtime verification claim.","inputs":["docs/reference/cli.md"]}
+  ]
+}
