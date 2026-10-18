@@ -29,19 +29,27 @@ IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits
 Public dashboards and scoped publisher keys receive only **weekly noisy
 estimates** over ten profile/adoption fields. The fixed public domain includes
 all enum values and operator-configured public versions/registry IDs, even true
-zero; no true-count k pre-filter remains. Sensitivity 40 and per-count ε=1/280
-compose to ε≤1/7 per ping and ε≤1 per honest install-week at seven pings. The
+zero; no true-count k pre-filter remains. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
 ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
 sampling qualify this implementation. Expected absolute noise is about 280
-weekly pings. Multiple weeks/publishers compose. Counters and friction stay in
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
 the exact operator view. Set histograms overlap and cannot be summed or joined.
 
 Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
 cursor pages replace the published row cap; repeated/restarted reads return the
 same stored values. A blocked dimension retains its publisher/day's associations
 while others erase theirs. Independent retention expires raw pings after 90
-days. Public reads never acquire the ingest admission lock; successful pages
-cache until UTC midnight. Failed credential refresh beyond 60 seconds returns
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
 503. This receiver implementation does not establish an installed Station sender
 or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
