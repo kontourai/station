@@ -218,3 +218,11 @@ source is constant; the only preceding evaluation obtains the page global
 object. Agent-authored bytes never become part of that function source. The
 real preview regression reads script delimiters, Unicode separators and template
 syntax back from inside the opaque frame without changing their UTF-8 bytes.
+
+
+The shared sandbox UDP regression requires Chromium. WebKit runs only when its
+Playwright executable is installed; otherwise the test reports an explicit
+named skip with the missing executable path. The process-heavy CI lane installs
+Chromium alone, so WebKit viewer-residual evidence is local-only and is not a
+claim of WebKit verification by that lane. Neither engine's absence is treated
+as a passing browser execution.

@@ -1,11 +1,17 @@
 import { createSocket } from 'node:dgram';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { chromium, webkit } from 'playwright-core';
 import { expect, test } from 'vitest';
 import { createMcpUiFrameApp } from '../mcp-ui-frame-server.js';
 
 for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
-  test(`${engine}: shared MCP and HTML sandboxes block direct RTC but record the nested-srcdoc residual with a UDP listener`, async () => {
+  test(`${engine}: shared MCP and HTML sandboxes block direct RTC but record the nested-srcdoc residual with a UDP listener`, async (ctx) => {
+    if (engine === 'webkit' && !existsSync(browserType.executablePath())) {
+      const reason = `WebKit executable is not installed at ${browserType.executablePath()}; residual verification is local-only when CI installs Chromium alone`;
+      process.stdout.write(`SKIP webkit: ${reason}\n`);
+      return ctx.skip(reason);
+    }
     const udp = createSocket('udp4');
     await new Promise<void>((resolve) => udp.bind(0, '127.0.0.1', resolve));
     let packets = 0;

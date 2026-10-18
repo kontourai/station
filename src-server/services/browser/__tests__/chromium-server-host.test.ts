@@ -235,6 +235,10 @@ describe('ChromiumServerHost with a fake browser', () => {
     const { host, calls, profileDir, launcher } = harness();
     const target = await host.openTarget({ profileDir, viewport: VIEWPORT });
     expect(target).toEqual({ targetId: 'T1', cdpSessionId: 'S-T1' });
+    expect(
+      calls.some((call) => call.method === 'Runtime.evaluate'),
+      'ordinary Browser hosts must not evaluate preview policy diagnostics',
+    ).toBe(false);
     expect(launcher).toHaveBeenCalledTimes(1);
     const methods = calls.map((c) => c.method);
     const firstTarget = methods.indexOf('Target.createTarget');
