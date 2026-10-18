@@ -1188,3 +1188,80 @@ it('an own complete invocation bundle remains usable through the real write path
     terminal: fact('own-control', 'N'),
   });
 });
+
+for (const layout of ['json', 'columns'] as const)
+  for (const via of ['execute', 'executeSync'] as const) {
+    for (const absent of [false, true])
+      it(`${layout} ${via}: exact retained false observation rejects changed content with boundary ${absent ? 'absent' : 'retained'}`, async () => {
+        const f = fixture(layout, via);
+        await begin(f.run, true);
+        if (absent)
+          expect(
+            await f.run({
+              type: 'turnBoundary.remove',
+              boundaryId: 'b',
+              ownerId: owner.id,
+              from: ['invoking'],
+            }),
+          ).toEqual({ kind: 'applied' });
+        const actual = fact('false-event', 'N', false);
+        append(f.db, actual);
+        expect(await f.run(observation(actual))).toEqual({ kind: 'applied' });
+        const before = {
+          boundary: f.db.prepare('SELECT * FROM boundaries').all(),
+          dedup: f.db.prepare('SELECT * FROM monument_turn_dedup').all(),
+          audit: f.db.prepare('SELECT * FROM intents').all(),
+          events: f.db.prepare('SELECT * FROM events').all(),
+        };
+        expect(
+          hostFacts.find(f.db, {
+            threadId: 't',
+            invocationId: 'B',
+            providerTurnId: 'N',
+            allowMissingProviderTurnId: true,
+            terminalEventId: actual.terminalEventId,
+          }),
+        ).toEqual({ kind: 'absent' });
+        for (const changed of [
+          { ...actual, terminalCreatedAt: 'changed' },
+          { ...actual, providerTurnId: 'M' },
+          fact('false-event', undefined, false),
+          { ...actual, retire: true },
+          { ...actual, invocationId: 'other' },
+          { ...actual, threadId: 'other' },
+        ]) {
+          await expect(f.run(observation(changed))).rejects.toThrow();
+          expect(f.db.prepare('SELECT * FROM boundaries').all()).toEqual(
+            before.boundary,
+          );
+          expect(
+            f.db.prepare('SELECT * FROM monument_turn_dedup').all(),
+          ).toEqual(before.dedup);
+          expect(f.db.prepare('SELECT * FROM intents').all()).toEqual(
+            before.audit,
+          );
+          expect(f.db.prepare('SELECT * FROM events').all()).toEqual(
+            before.events,
+          );
+        }
+      });
+    it(`${layout} ${via}: a missing false observation cannot substitute another retained event after boundary removal`, async () => {
+      const f = fixture(layout, via);
+      await begin(f.run);
+      expect(
+        await f.run({
+          type: 'turnBoundary.remove',
+          boundaryId: 'b',
+          ownerId: owner.id,
+          from: ['invoking'],
+        }),
+      ).toEqual({ kind: 'applied' });
+      append(f.db, fact('other-false', 'N', false));
+      const before = f.db.prepare('SELECT * FROM intents').all();
+      await expect(
+        f.run(observation(fact('missing-false', 'N', false))),
+      ).rejects.toThrow();
+      expect(await f.rows()).toEqual([]);
+      expect(f.db.prepare('SELECT * FROM intents').all()).toEqual(before);
+    });
+  }
