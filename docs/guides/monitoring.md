@@ -22,9 +22,13 @@ The companion receiver additionally accepts identifier-free `station_daily`
 Lite pings through public publisher/channel source IDs. It keeps daily
 per-dimension marginals and applies the same suppression to publisher-scoped
 reads and public Kontour reads: each value needs ten distinct daily network
-keys (IPv4 addresses or IPv6 /64s). Numeric counters are bucketed before rollup.
-Periodic finalization removes contributor hashes; raw pings expire after 90 days.
-Public reads use a UTC-day cache. These are untrusted ping counts, with botnet,
+keys (IPv4 addresses or IPv6 /48s, separately from /64 rate limits). Secondary
+suppression removes further values until each dimension's uncovered-ping
+remainder is empty or backed by ten distinct contributors. Set histograms
+can overlap and cannot be summed to a total. Numeric counters are bucketed before
+rollup. Finalization removes contributor hashes and raw contribution associations;
+raw pings expire after 90 days. The first public read finalizes closed days before
+filling its UTC-day cache. These are untrusted ping counts, with botnet,
 proxy/NAT and restart limits documented by the receiver. This
 receiver implementation does not establish an installed Station sender or a
 deployment. See the [Lite contract, privacy policy and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
