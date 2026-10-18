@@ -208,18 +208,19 @@ describe('supervisor control protocol (real processes)', () => {
           socket.write(hello);
         },
       );
-    const refused = await Promise.all(
-      Array.from({ length: CONTROL_MAX_CONNECTIONS }, async () => {
-        let result: { socket: Socket; closed: Promise<void> } | undefined;
-        await vi.waitFor(
-          async () => {
-            result = await refusedClient();
-          },
-          { timeout: 10_000, interval: 50 },
-        );
-        return result as { socket: Socket; closed: Promise<void> };
-      }),
-    );
+    // One at a time: a burst of 64 simultaneous connects is not the behavior
+    // under test, and on Windows named pipes it stalls under host load.
+    const refused: Array<{ socket: Socket; closed: Promise<void> }> = [];
+    for (let i = 0; i < CONTROL_MAX_CONNECTIONS; i += 1) {
+      let result: { socket: Socket; closed: Promise<void> } | undefined;
+      await vi.waitFor(
+        async () => {
+          result = await refusedClient();
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      refused.push(result as { socket: Socket; closed: Promise<void> });
+    }
     // The supervisor ends every refused connection itself (the clients are
     // half-open by choice, so `end` is the signal, not `close`).
     await Promise.all(refused.map(({ closed }) => closed));
