@@ -6770,6 +6770,98 @@ describe('EventStore', () => {
   // superset queries grouped in memory), so agreement here is real evidence,
   // not tautology.
   describe('listSessionProjectionEventsForThreads (station#4466 batched read)', () => {
+    test('positive start seeks stay indexed across large legacy-only and raw-suffix histories', () => {
+      const database = store['db'];
+      const size = 6000;
+      const createdAt = '2030-01-01T00:00:00Z';
+      store.appendEvent({
+        eventId: 'indexed-B',
+        provider: 'claude',
+        threadId: 'raw-suffix',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt,
+      });
+      const insert = database.prepare(
+        'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES (?,?,?,?,?,?,?,?,?)',
+      );
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        for (const threadId of ['legacy-only', 'raw-suffix'])
+          for (let index = 1; index <= size; index++) {
+            const event = {
+              eventId: `${threadId}:raw:${index}`,
+              provider: 'claude',
+              threadId,
+              turnId: 'N',
+              method: 'turn.started',
+              prompt: 'unassigned',
+              createdAt,
+            };
+            insert.run(
+              event.eventId,
+              event.provider,
+              threadId,
+              'N',
+              event.method,
+              JSON.stringify(event),
+              createdAt,
+              index + 1,
+              (threadId === 'legacy-only' ? 0 : size) + index + 1,
+            );
+          }
+        database.exec('COMMIT');
+      } catch (cause) {
+        database.exec('ROLLBACK');
+        throw cause;
+      }
+      const started = performance.now();
+      const direct = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEvents('raw-suffix')
+            .some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+        store.listSessionProjectionEvents('legacy-only');
+      });
+      const singleMs = performance.now() - started;
+      const batchStarted = performance.now();
+      const batch = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEventsForThreads([
+              'legacy-only',
+              'raw-suffix',
+            ])
+            .get('raw-suffix')
+            ?.some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+      });
+      const selected = [...direct, ...batch].filter(
+        ({ sql }) =>
+          sql.includes("'$.metadata.trigger'") &&
+          sql.includes("method = 'turn.started'"),
+      );
+      expect(selected).toHaveLength(3);
+      const plans = selected.map((statement) => capturedPlan(store, statement));
+      console.info(
+        '[positive-start-work]',
+        JSON.stringify({
+          startsPerThread: size,
+          singleMs,
+          batchMs: performance.now() - batchStarted,
+          statements: selected,
+          plans,
+        }),
+      );
+      for (const plan of plans) {
+        expect(plan).toContain('idx_events_positive_turn_start');
+        expect(plan).not.toContain('USE TEMP B-TREE');
+      }
+    });
+
     test('the latest-any slot seeks once per requested thread instead of ranking history', () => {
       for (const threadId of ['seek-a', 'seek-b']) {
         seedProjectionThread(threadId, 'ordinary');
