@@ -77,6 +77,10 @@ export type BrowserSessionActionKind =
   // An agent's browser tool actions (#90 #122/#123), always with an agent
   // actor (`recordAgentAction`). Typed text and scripts are never recorded,
   // only their size.
+  | 'hovered'
+  | 'dragged'
+  | 'option-selected'
+  | 'color-scheme-changed'
   | 'clicked'
   | 'typed'
   | 'key-pressed'
@@ -95,6 +99,10 @@ export type BrowserSessionActionKind =
 /** The kinds `recordAgentAction` accepts; every other kind has its own writer. */
 const BROWSER_AGENT_ACTION_KINDS: ReadonlySet<BrowserSessionActionKind> =
   new Set([
+    'hovered',
+    'dragged',
+    'option-selected',
+    'color-scheme-changed',
     'clicked',
     'typed',
     'key-pressed',
@@ -143,6 +151,10 @@ const NON_DRIVING_KINDS: ReadonlySet<BrowserSessionActionKind> = new Set([
 
 /** An agent's successful input or navigation: what "an agent is driving" means. */
 const AGENT_INPUT_KINDS: ReadonlySet<BrowserSessionActionKind> = new Set([
+  'hovered',
+  'dragged',
+  'option-selected',
+  'color-scheme-changed',
   'clicked',
   'typed',
   'key-pressed',
