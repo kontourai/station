@@ -178,26 +178,32 @@ describe('instance lock (real processes)', () => {
           // Gone.
         }
       });
-      // Fill the stopped holder's accept backlog until connects are refused.
+      // Fill the stopped holder's accept backlog, in batches, until a connect
+      // is not queued. The queue length differs by platform (macOS 128 here,
+      // Linux up to the listen backlog of 511).
       const flood: Socket[] = [];
       cleanups.push(() => {
         for (const socket of flood) socket.destroy();
       });
-      const outcomes = await Promise.all(
-        Array.from(
-          { length: 400 },
-          () =>
-            new Promise<string>((resolve) => {
-              const socket = createConnection(first.endpoint.path);
-              flood.push(socket);
-              socket.once('connect', () => resolve('queued'));
-              socket.once('error', (error: NodeJS.ErrnoException) =>
-                resolve(error.code ?? 'error'),
-              );
-              socket.setTimeout(3_000, () => resolve('pending'));
-            }),
-        ),
-      );
+      const connectOnce = () =>
+        new Promise<string>((resolve) => {
+          const socket = createConnection(first.endpoint.path);
+          flood.push(socket);
+          socket.once('connect', () => resolve('queued'));
+          socket.once('error', (error: NodeJS.ErrnoException) =>
+            resolve(error.code ?? 'error'),
+          );
+          socket.setTimeout(3_000, () => resolve('pending'));
+        });
+      const outcomes: string[] = [];
+      while (
+        outcomes.length < 1_500 &&
+        outcomes.every((outcome): boolean => outcome === 'queued')
+      ) {
+        outcomes.push(
+          ...(await Promise.all(Array.from({ length: 100 }, connectOnce))),
+        );
+      }
       // The backlog is saturated: some connects were not queued. macOS refuses
       // them (ECONNREFUSED); Linux fails them or leaves them pending.
       const counts = outcomes.reduce<Record<string, number>>((all, outcome) => {
