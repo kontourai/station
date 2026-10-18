@@ -210,7 +210,7 @@ test.each([
 test.each([
   'Tool: station-control/html_render',
   'mcp__station-control__html_render',
-])('mounts a qualified ACP tool result: %s', (toolName) => {
+])('recognizes a qualified ACP tool result: %s', (toolName) => {
   const htmlReply = {
     version: 1,
     sessionId: 's',
