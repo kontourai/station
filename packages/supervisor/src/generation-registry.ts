@@ -127,7 +127,7 @@ export async function processFingerprint(
  * own group leaders on POSIX), falling back to the pid alone. On Windows the
  * whole tree is killed with taskkill.
  */
-export function signalGenerationTree(
+function signalGenerationTree(
   pid: number,
   signal: 'SIGTERM' | 'SIGKILL',
 ): void {
