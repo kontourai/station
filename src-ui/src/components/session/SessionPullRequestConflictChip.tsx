@@ -8,6 +8,8 @@ import {
   usePullRequestMergeabilityQuery,
 } from '@kontourai/station-sdk';
 
+import { useEffect, useRef, useState } from 'react';
+
 /**
  * Conflicts change on the forge's schedule, not this client's; two minutes
  * keeps the indicator honest without spending the operator's forge quota
@@ -36,10 +38,25 @@ export function SessionPullRequestConflictChip({
 }: {
   session: OrchestrationSessionSummary;
 }) {
+  const marker = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(
+    () => typeof IntersectionObserver === 'undefined',
+  );
+  useEffect(() => {
+    const element = marker.current;
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    // Observe the row's box: an absent chip has no area of its own.
+    const row = element.closest('button') ?? element.parentElement ?? element;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry) setVisible(entry.isIntersecting);
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
   const project = session.projectSlug ?? '';
   const context = usePullRequestContextQuery(
     { project, thread: session.threadId },
-    { ...observed, enabled: Boolean(session.projectSlug) },
+    { ...observed, enabled: visible && Boolean(session.projectSlug) },
   );
   const identity = context.data?.available ? context.data : undefined;
   const mergeability = usePullRequestMergeabilityQuery(
@@ -48,7 +65,7 @@ export function SessionPullRequestConflictChip({
     identity?.repository.owner ?? '',
     identity?.repository.name ?? '',
     project,
-    { ...observed, enabled: Boolean(identity) },
+    { ...observed, enabled: visible && Boolean(identity) },
   );
   const result = mergeability.data as
     | PullRequestResult<PullRequestBranchMergeability[]>
@@ -65,13 +82,16 @@ export function SessionPullRequestConflictChip({
         pullRequest.mergeability === 'conflicting',
     );
 
-  if (!isConflicted) return null;
   return (
-    <span
-      className="session-pr-conflict-chip"
-      title="The pull request for this session's branch has conflicts"
-    >
-      PR conflict
+    <span ref={marker}>
+      {isConflicted && (
+        <span
+          className="session-pr-conflict-chip"
+          title="The pull request for this session's branch has conflicts"
+        >
+          PR conflict
+        </span>
+      )}
     </span>
   );
 }

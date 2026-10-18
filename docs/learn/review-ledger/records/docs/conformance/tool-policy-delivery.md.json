@@ -92,7 +92,17 @@
 
     "src-server/services/orchestration/session-agent-resolution.ts",
 
-    "src-server/services/orchestration/session-agent-start-policy.ts"
+    "src-server/services/orchestration/session-agent-start-policy.ts",
+
+    "src-server/providers/adapters/codex-approval-mode.ts",
+
+    "src-server/providers/adapters/codex-adapter-notifications.ts",
+
+    "src-server/providers/adapters/codex-adapter.ts",
+
+    "src-ui/src/utils/approvalMode.ts",
+
+    "src-ui/src/components/badges/ComposerModeSheet.tsx"
   ],
 
   "checks": [

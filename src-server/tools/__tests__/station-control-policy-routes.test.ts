@@ -112,6 +112,15 @@ const HEX64 = 'a'.repeat(64);
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  device_open: { platform: 'android', deviceId: 'emulator-5554' },
+  device_screenshot: { deviceSessionId: 'device-session' },
+  device_snapshot: { deviceSessionId: 'device-session' },
+  device_input: {
+    deviceSessionId: 'device-session',
+    events: [{ kind: 'text', text: 'hello' }],
+  },
+  device_close: { deviceSessionId: 'device-session' },
+
   get_personal_board: { slug: 'daily' },
   propose_personal_board: {
     slug: 'daily.v2',

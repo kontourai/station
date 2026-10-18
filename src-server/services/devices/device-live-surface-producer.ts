@@ -94,10 +94,8 @@ import type {
  *   human who takes control mid-event stops it at the next send
  *   (`interrupted`).
  *
- * Agent control is NOT wired yet: no agent tool claims a device surface,
- * and the surface authorizer admits only a request-bearing human caller, so
- * an agent path fails closed today. When it lands it goes through the same
- * lease (human input preempts; an agent never bypasses it).
+ * Bound agent tools use the same lease and authorizer through
+ * DeviceAutomation. Human takeover interrupts their input at the next send.
  *
  * Every hub call goes through the allowlisted connection
  * (`DeviceHubAccessConnection`): `request` for the MJPEG stream and the

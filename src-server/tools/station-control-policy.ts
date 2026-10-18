@@ -315,7 +315,24 @@ const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
 
 const NAVIGATE_ROUTE = post('/api/ui');
 
+const DEVICE_AGENT = {
+  assurance: 'bound',
+  role: 'project',
+  projectAction: 'edit',
+  toolClass: 'mutating',
+  personOnly: 'never',
+  enforcedBy: 'route',
+  routes: [post('/api/device-agent/:operation')],
+} as const satisfies StationControlToolPolicy;
+
 export const STATION_CONTROL_TOOL_POLICY = {
+  device_list: DEVICE_AGENT,
+  device_open: DEVICE_AGENT,
+  device_screenshot: DEVICE_AGENT,
+  device_snapshot: DEVICE_AGENT,
+  device_input: DEVICE_AGENT,
+  device_close: DEVICE_AGENT,
+
   // ── agents + conversations ─────────────────────────────────────────────
   list_agents: { ...READ, routes: [get('/agents')] },
   // Reaches `GET /agents/:slug`, which has no handler (404) — recorded as it
