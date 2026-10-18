@@ -8,6 +8,7 @@
 import { type ChildProcess, fork } from 'node:child_process';
 import { once } from 'node:events';
 import http from 'node:http';
+import { createConnection } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -83,6 +84,19 @@ describe(`listening-handle internals on Node ${process.version}`, () => {
     expect(held).not.toBeInstanceOf(http.Server);
 
     const port = bound.message.port;
+    // The supervisor tells a listening TCP wrap from a connected one by
+    // getpeername: it fails (non-zero) when listening and succeeds (0) when connected.
+    const peer = (
+      held as unknown as { getpeername(out: object): number }
+    ).getpeername({});
+    expect(peer).not.toBe(0);
+    const client = createConnection(port, '127.0.0.1');
+    await once(client, 'connect');
+    const connected = (
+      client as unknown as { _handle: { getpeername(out: object): number } }
+    )._handle;
+    expect(connected.getpeername({})).toBe(0);
+    client.destroy();
     expect(await get(port)).toBe(`bind:${binder.pid}`);
 
     binder.send({ type: 'exit' });

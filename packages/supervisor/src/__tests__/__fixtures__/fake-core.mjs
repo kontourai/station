@@ -18,10 +18,13 @@
  *   FAKE_CORE_SEND_SERVER=1         send the net.Server itself with listener.bound (a protocol violation)
  *   FAKE_CORE_EXIT_AFTER_READY=1    exit(1) in the same tick as reporting ready
  *   FAKE_CORE_IGNORE_DISCONNECT=1   keep running when the supervisor's IPC channel closes (a protocol violation)
+ *   FAKE_CORE_CHILD_PID_FILE=<path> start a long-running child process and write its pid there
  *
  * @import { CoreToSupervisorMessage, SupervisorToCoreMessage } from '../../protocol.ts'
  */
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { SUPERVISOR_ENV } from '../../protocol.ts';
@@ -41,6 +44,20 @@ if (
   process.exit(3);
 }
 if (process.env.FAKE_CORE_EXIT_ON_BOOT === '1') process.exit(1);
+
+// A helper process of the core's own, as a real core starts engines.
+if (process.env.FAKE_CORE_CHILD_PID_FILE) {
+  const helper = spawn(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    {
+      stdio: 'ignore',
+      windowsHide: true,
+    },
+  );
+  if (helper.pid)
+    writeFileSync(process.env.FAKE_CORE_CHILD_PID_FILE, String(helper.pid));
+}
 
 /** @param {CoreToSupervisorMessage} message @param {unknown} [handle] */
 function send(message, handle) {

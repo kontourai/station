@@ -1430,6 +1430,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/stale-generation.test.ts',
   // Spawns a sleeper process to prove a mismatched fingerprint is never killed.
   'packages/supervisor/src/__tests__/generation-registry.test.ts',
+  // Two and three supervisor processes contending for one instance lock.
+  'packages/supervisor/src/__tests__/instance-lock.test.ts',
+  // A supervisor whose run directory turns read-only, and one loaded with a fatal-error injector.
+  'packages/supervisor/src/__tests__/registry-failure.test.ts',
   // Runs the supervisor entry and its built bundle as child processes.
   'packages/supervisor/src/__tests__/cli.test.ts',
   'packages/supervisor/src/__tests__/bundle.test.ts',

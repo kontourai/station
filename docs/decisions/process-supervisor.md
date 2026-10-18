@@ -46,6 +46,8 @@ reasoning, phases, and verification plan.
 
 - Phase 1 hands off one generation at a time. Overlapping generations wait
   for a home-writer lease.
+- One supervisor per home and instance, enforced by an exclusive lock file
+  taken before anything else, whatever control socket it is given.
 - The supervisor makes no authorization, routing, or product decisions.
 - A handoff runs only a `.js` or `.mjs` entry whose real path is strictly
   inside the supervisor's build root (`--build-root`, by default the

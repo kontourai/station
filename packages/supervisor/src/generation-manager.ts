@@ -124,7 +124,18 @@ function isRawListenerHandle(value: unknown): value is ListenerHandle {
   if (!isClosable(value) || value instanceof EventEmitter) return false;
   const name = (value as { constructor?: { name?: unknown } }).constructor
     ?.name;
-  return name === 'TCP' || name === 'Pipe';
+  if (name === 'Pipe') return true;
+  if (name !== 'TCP') return false;
+  // A connected TCP wrap is a TCP wrap too. getpeername fails (ENOTCONN) on a
+  // listening one. Pipe wraps have no such query, so a connected pipe cannot
+  // be told apart here; the handle-guard test pins the TCP behavior.
+  const getpeername = (value as { getpeername?: unknown }).getpeername;
+  if (typeof getpeername !== 'function') return false;
+  try {
+    return getpeername.call(value, {}) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 function closeQuietly(handle: unknown): void {

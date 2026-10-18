@@ -28,7 +28,7 @@ const FAKE_CORE = fileURLToPath(
 /** Ports owned by the user's own Station instances. Tests must never touch them. */
 const RESERVED_PORTS = new Set([3000, 3141, 3142, 3143, 3144]);
 
-async function freePort(): Promise<number> {
+export async function freePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -123,6 +123,8 @@ export async function startSupervisor(options: {
   args?: string[];
   /** Use this script instead of the source entry, for example a built bundle. */
   main?: string;
+  /** Node flags for the supervisor process itself, for example `--import`. */
+  nodeArgs?: string[];
   waitForServing?: boolean;
 }): Promise<RunningSupervisor> {
   const instance = options.instance ?? 'test';
@@ -131,6 +133,7 @@ export async function startSupervisor(options: {
   const child = spawn(
     process.execPath,
     [
+      ...(options.nodeArgs ?? []),
       options.main ?? SUPERVISOR_MAIN,
       '--entry',
       options.entry ?? FAKE_CORE,

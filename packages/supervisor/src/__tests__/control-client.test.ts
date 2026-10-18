@@ -4,10 +4,14 @@
  */
 import { chmodSync, mkdirSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { connectControl } from '../control-client.ts';
-import { CONTROL_MAX_LINE_BYTES, SUPERVISOR_PROTOCOL } from '../protocol.ts';
+import {
+  CONTROL_MAX_LINE_BYTES,
+  resolveControlEndpoint,
+  SUPERVISOR_PROTOCOL,
+} from '../protocol.ts';
 import { makeShortHome } from './harness.ts';
 
 const posixOnly = process.platform === 'win32' ? it.skip : it;
@@ -29,10 +33,14 @@ async function fakeSupervisor(
   connections: () => number;
   received: () => string;
 }> {
-  const dir = join(makeShortHome(), 'run');
-  mkdirSync(dir);
-  chmodSync(dir, dirMode);
-  const path = join(dir, 's.sock');
+  // The real endpoint derivation: a socket in <home>/run, or a named pipe on Windows.
+  const home = makeShortHome();
+  const { path } = resolveControlEndpoint({ home, instance: 't' });
+  if (process.platform !== 'win32') {
+    const dir = dirname(path);
+    mkdirSync(dir);
+    chmodSync(dir, dirMode);
+  }
   let connections = 0;
   let received = '';
   const server = createServer((socket) => {

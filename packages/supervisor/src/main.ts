@@ -11,6 +11,7 @@ import { realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createEntryBoundary } from './entry-boundary.ts';
+import { SupervisorStartError } from './instance-lock.ts';
 import {
   type ControlEndpoint,
   isValidInstanceId,
@@ -170,6 +171,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof SupervisorStartError) {
+    process.stderr.write(`station-supervisor: ${error.message}\n`);
+    process.exit(1);
+  }
   process.stderr.write(
     `station-supervisor: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   );

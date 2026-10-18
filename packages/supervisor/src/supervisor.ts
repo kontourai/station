@@ -16,6 +16,8 @@ import {
   GenerationRegistry,
   reapStaleGenerations,
 } from './generation-registry.ts';
+import { acquireInstanceLock, type InstanceLock } from './instance-lock.ts';
+import { ensurePrivateDir } from './private-dir.ts';
 import {
   type ControlEndpoint,
   SUPERVISOR_ENV,
@@ -39,6 +41,19 @@ export interface SupervisorOptions {
   exit?: (code: number) => void;
 }
 
+/** Signals a generation and, on POSIX, every process in its group. */
+function killTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+  if (process.platform !== 'win32' && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Not a group leader (or already gone): signal the process alone.
+    }
+  }
+  child.kill(signal);
+}
+
 /** Forks core generations on the Node IPC channel; tracks them for exit cleanup. */
 function createForkLauncher(options: {
   log: (message: string) => void;
@@ -59,6 +74,11 @@ function createForkLauncher(options: {
         stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
         serialization: 'json',
         windowsHide: true,
+        // POSIX: each generation leads its own process group, so stopping or
+        // reaping it reaches the processes it started. Not on Windows: there a
+        // non-detached child dies with the supervisor, which is the orphan
+        // protection the design relies on.
+        detached: process.platform !== 'win32',
       });
       options.children.add(child);
       const running = () =>
@@ -86,8 +106,9 @@ function createForkLauncher(options: {
           });
         },
         kill(signal) {
-          if (child.exitCode === null && child.signalCode === null)
-            child.kill(signal);
+          if (child.exitCode === null && child.signalCode === null) {
+            killTree(child, signal);
+          }
         },
         onMessage(listener) {
           child.on('message', (message, handle) => listener(message, handle));
@@ -113,15 +134,21 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     dirname(options.endpoint.tokenPath),
     `supervisor-${options.instance}.generations.json`,
   );
-  const registry = new GenerationRegistry(registryPath);
+  const registry = new GenerationRegistry(registryPath, log);
+  const lockPath = join(
+    dirname(options.endpoint.tokenPath),
+    `supervisor-${options.instance}.lock`,
+  );
+  let lock: InstanceLock | null = null;
   const subscribers = new Set<(event: SupervisorEvent) => void>();
   let shuttingDown = false;
 
   process.on('exit', () => {
     for (const child of children) {
       if (child.exitCode === null && child.signalCode === null)
-        child.kill('SIGKILL');
+        killTree(child, 'SIGKILL');
     }
+    lock?.release();
   });
 
   const manager = new GenerationManager({
@@ -167,6 +194,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     log(`shutting down with exit code ${code}`);
     manager.closeListeners();
     await control.close();
+    lock?.release();
     exit(code);
   }
 
@@ -182,10 +210,47 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     });
   }
 
-  await control.listen();
-  // Owning the control endpoint means no other supervisor for this instance is
-  // alive, so any generation still recorded was orphaned by one that died.
-  await reapStaleGenerations(registryPath, { log });
+  // A genuinely unexpected error: say so, drain what is running, exit nonzero.
+  let fatal = false;
+  const onFatal = (error: unknown) => {
+    const text =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    if (fatal) {
+      log(`fatal again while draining: ${text}`);
+      process.exit(1);
+    }
+    fatal = true;
+    log(`fatal: ${text}`);
+    log('draining the active generation before exiting');
+    void manager
+      .stop()
+      .catch((cause: unknown) => log(`drain failed: ${String(cause)}`))
+      .finally(() => void shutdown(1));
+  };
+  process.on('uncaughtException', onFatal);
+  process.on('unhandledRejection', onFatal);
+
+  // The instance lock comes first: it is keyed by home and instance alone, so
+  // no other supervisor for this instance can be alive while we hold it, and
+  // only then is it safe to touch the token, the registry, or the socket.
+  ensurePrivateDir(dirname(lockPath), process.platform, () =>
+    process.getuid?.(),
+  );
+  lock = await acquireInstanceLock({
+    path: lockPath,
+    description: `instance ${options.instance} in ${dirname(dirname(options.endpoint.tokenPath))}`,
+    log,
+  });
+  try {
+    // Holding the lock, any generation still on record was orphaned by a
+    // supervisor that died; reaping refuses to start if one survives.
+    const { kept } = await reapStaleGenerations(registryPath, { log });
+    registry.keep(kept);
+    await control.listen();
+  } catch (error) {
+    lock.release();
+    throw error;
+  }
   log(
     `supervisor ${SUPERVISOR_VERSION} (protocol ${SUPERVISOR_PROTOCOL.major}.${SUPERVISOR_PROTOCOL.minor}) instance=${options.instance} control=${options.endpoint.path}`,
   );

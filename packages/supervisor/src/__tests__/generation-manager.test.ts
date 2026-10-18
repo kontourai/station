@@ -135,8 +135,13 @@ class FakeGeneration implements GenerationProcess {
 /** Shaped like Node's raw TCP wrap: not an EventEmitter, class named TCP. */
 class TCP implements ListenerHandle {
   closed = false;
+  /** Node returns ENOTCONN (non-zero) for a listening wrap, 0 for a connected one. */
+  connected = false;
   close(): void {
     this.closed = true;
+  }
+  getpeername(): number {
+    return this.connected ? 0 : -57;
   }
 }
 
@@ -512,6 +517,23 @@ describe('GenerationManager', () => {
       active: { generation: 2 },
       restarts: { consecutiveFailures: 1 },
       listeners: [{ name: 'api', port: 45_000 }],
+    });
+  });
+
+  it('refuses a connected TCP wrap sent as a listener', async () => {
+    const connected = new TCP();
+    connected.connected = true;
+    const { manager } = setup((generation) =>
+      generation === 1 ? { boundHandle: () => connected } : {},
+    );
+    void manager.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connected.closed).toBe(true);
+    expect(manager.heldListenerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(manager.status()).toMatchObject({
+      state: 'serving',
+      active: { generation: 2 },
     });
   });
 

@@ -295,8 +295,10 @@ export type ControlServerMessage =
  * wrap), never the `net.Server` itself: sending the server makes Node rebuild
  * a listening server in the supervisor, which would accept connections and
  * never answer them. The supervisor refuses anything but a raw handle, closes
- * it, and fails the generation. No other message may carry a handle; one that
- * does is closed.
+ * it, and fails the generation. A connected TCP wrap is refused too (its
+ * `getpeername` succeeds, a listening one's fails). A connected Pipe wrap
+ * cannot be told apart from a listening one, so that case is not checked.
+ * No other message may carry a handle; one that does is closed.
  */
 export interface ListenerBoundMessage {
   type: 'listener.bound';

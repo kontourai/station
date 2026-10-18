@@ -133,12 +133,35 @@ product decisions.
   by default, below service managers' stop timeouts; the long voice cap
   applies only to handoffs.
 
+  One supervisor runs per home and instance. It takes an exclusive lock file
+  (`<home>/run/supervisor-<instance>.lock`, holding its pid and process start
+  time) before it touches the token, the generation record, or the socket.
+  A different `--control` socket does not change the lock. A live owner
+  makes a second supervisor refuse to start; a dead owner's lock is taken
+  over.
+
   A core must exit when its IPC channel disconnects, which is how it learns
-  the supervisor has died. As a fallback, the supervisor records each
-  generation's pid and process start time in its run directory. A new
-  supervisor terminates a recorded generation that is still the same
-  process, so an orphan cannot keep holding the ports, and leaves a pid
-  whose start time differs alone, because that pid has been reused. This absorbs the archive launcher's pending, trial,
+  the supervisor has died. What backs that up differs by platform:
+  - **POSIX.** Each generation leads its own process group. The supervisor
+    records each generation's pid and process start time in its run
+    directory (on Linux the start time includes the boot id). The next
+    supervisor, holding the lock, sends SIGTERM to a recorded generation's
+    group that is still the same process, waits briefly, then sends SIGKILL,
+    and reports it reaped only once the group is gone. If it survives, the
+    supervisor refuses to start rather than fail on a held port. A pid whose
+    start time differs has been reused and is left alone; one whose start
+    time cannot be read is left alone and kept on record. This covers the
+    generation and processes in its group; a process that left the group
+    is not covered.
+  - **Windows.** Node starts non-detached children inside a job object that
+    is killed when the parent exits (libuv's `src/win/process.c`), so a core
+    dies with its supervisor even if it ignores disconnect. That is verified
+    on a Windows host with `taskkill /F` on the supervisor. The job does not
+    include the core's own children, and when the supervisor already runs
+    inside a job that forbids breakaway the assignment silently fails; both
+    are gaps. A recorded generation that escaped anyway, for example from
+    an older build, is reaped with `taskkill /T /F`. Reading a process start
+    time there takes one PowerShell call, about 145 ms. This absorbs the archive launcher's pending, trial,
   commit, rollback transaction and the Desktop and `service run` restart
   loops.
 - **Workloads.** A workload is a process whose lifetime the supervisor owns,

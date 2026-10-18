@@ -291,7 +291,7 @@ describe('supervisor control protocol (real processes)', () => {
     const exit = await second.exited;
     expect(exit.code).toBe(1);
     expect(second.output()).toContain(
-      'another supervisor is already listening',
+      `another supervisor (pid ${first.child.pid}) holds instance test`,
     );
     // The loser never replaced the running supervisor's token.
     expect(readFileSync(first.endpoint.tokenPath, 'utf8')).toBe(token);
