@@ -18,12 +18,29 @@ for (const harness of [memoryKernelHarness, createSqliteKernelHarness()]) {
         const read: Promise<KernelResult<TurnDedupReadCommand>> =
           crash.storage.execute({ type: 'turnDedup.read', key: 'k' }, context);
         expect(await read).toEqual({ kind: 'absent' });
-        await expect(crash.storage.execute({
-          type: 'turnDedup.claim', key: 'k', now: 1, tracking: 'tracked',
-          owner: { id: 'owner', pid: 123, identityKind: 'exact', birth: 'birth' },
-        }, context)).rejects.toThrow('after-decision');
-        expect(await crash.storage.execute({ type: 'turnDedup.read', key: 'k' }, context))
-          .toEqual({ kind: 'absent' });
+        await expect(
+          crash.storage.execute(
+            {
+              type: 'turnDedup.claim',
+              key: 'k',
+              now: 1,
+              tracking: 'tracked',
+              owner: {
+                id: 'owner',
+                pid: 123,
+                identityKind: 'exact',
+                birth: 'birth',
+              },
+            },
+            context,
+          ),
+        ).rejects.toThrow('after-decision');
+        expect(
+          await crash.storage.execute(
+            { type: 'turnDedup.read', key: 'k' },
+            context,
+          ),
+        ).toEqual({ kind: 'absent' });
       } finally {
         await crash.dispose();
         await location.dispose();
@@ -36,18 +53,31 @@ for (const harness of [memoryKernelHarness, createSqliteKernelHarness()]) {
       const context = { liveness: () => 'unknown' as const };
       try {
         const held = crash.holdNextCommit();
-        const pending = crash.storage.execute({
-          type: 'requestKeys.claim', id: { callerSessionId: 's', tool: 't', key: 'k' },
-          digest: 'original', now: 1,
-        }, context);
-        const rejection = expect(pending).rejects.toBeInstanceOf(KernelCrashError);
+        const pending = crash.storage.execute(
+          {
+            type: 'requestKeys.claim',
+            id: { callerSessionId: 's', tool: 't', key: 'k' },
+            digest: 'original',
+            now: 1,
+          },
+          context,
+        );
+        const rejection =
+          expect(pending).rejects.toBeInstanceOf(KernelCrashError);
         expect((await held.entered).type).toBe('requestKeys.claim');
         await crash.reopen();
         await rejection;
-        expect(await crash.storage.execute({
-          type: 'requestKeys.claim', id: { callerSessionId: 's', tool: 't', key: 'k' },
-          digest: 'new', now: 2,
-        }, context)).toEqual({ kind: 'claimed' });
+        expect(
+          await crash.storage.execute(
+            {
+              type: 'requestKeys.claim',
+              id: { callerSessionId: 's', tool: 't', key: 'k' },
+              digest: 'new',
+              now: 2,
+            },
+            context,
+          ),
+        ).toEqual({ kind: 'claimed' });
       } finally {
         await crash.dispose();
         await location.dispose();

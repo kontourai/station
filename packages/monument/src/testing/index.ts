@@ -15,11 +15,21 @@ export {
   runKernelConformance,
 } from './conformance.js';
 export {
+  type AtomicCase,
+  type AtomicCommand,
+  type AtomicCrashPointStore,
+  type AtomicHeldCommit,
+  type AtomicLocation,
+  type AtomicParticipant,
+  type AtomicPort,
+  type AtomicProtocol,
+  type AtomicResult,
   type CrashPointStore,
   type HeldCommit,
   KernelCrashError,
   type KernelStorageHarness,
   type KernelStorageLocation,
+  openAtomicCrashPointStore,
   openCrashPointStore,
 } from './crash-point-store.js';
 export {

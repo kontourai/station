@@ -79,3 +79,19 @@ restart, cancellation, and stale-provider outcomes before calling a start or
 continuation successful. Use the [module map](../../architecture/module-map.md)
 for focused evidence. Real-engine compatibility and device delivery require
 their own observations; fixture tests do not establish either.
+
+## Experimental model durability package
+
+[`@kontourai/agent-runtime`](../../../packages/agent-runtime/README.md) is a
+private experimental workspace consumer of public Monument contracts. Its
+model-only journal and real SQLite BLOB/projection adapters retain effective
+framework entry/request bytes, fence proven-dead recovery and withhold native
+success/tool-enabling output until completion commits. Its helpers construct
+real VoltAgent and Strands VercelModel consumers with scripted-transport
+conformance owners in the package. Actual tool bodies refuse and block the run.
+
+Station's existing framework builder, `/chat`, FileMemory/history, approval
+registry, boot continuation and terminal writers have not adopted this package.
+Those current paths and capability disclosures retain their existing owners.
+Package fixtures do not establish Station restart recovery, durable tools or
+approvals, native Bedrock/stateful support, live provider fidelity or a release.

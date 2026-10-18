@@ -938,6 +938,23 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
 
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
+    pattern: 'packages/agent-runtime/**',
+    tests: [
+      'packages/agent-runtime/src/__tests__/frameworks.test.ts',
+      'packages/agent-runtime/src/__tests__/journal.test.ts',
+      'packages/agent-runtime/src/__tests__/stream.test.ts',
+      'packages/agent-runtime/src/__tests__/bodies.test.ts',
+      'packages/agent-runtime/src/__tests__/body-process.test.ts',
+    ],
+    reason:
+      'model runtime protocol, immutable body and actual framework consumers',
+  },
+  {
+    pattern: 'scripts/agent-runtime-import-boundary-gate.mjs',
+    tests: ['scripts/__tests__/agent-runtime-import-boundary-gate.test.ts'],
+    reason: 'experimental package import isolation',
+  },
+  {
     pattern: 'src-desktop/Cargo.toml',
     tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
     reason: 'embedded WebDriver dependency boundary',
