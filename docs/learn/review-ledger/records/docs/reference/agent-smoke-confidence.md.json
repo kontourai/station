@@ -82,7 +82,27 @@
 
     "src-server/services/orchestration/orchestration-session-state.ts",
 
-    "packages/contracts/src/provider.ts"
+    "packages/contracts/src/provider.ts",
+
+    "src-server/routes/agents/tools.ts",
+
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/agents/agents.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/agents/agent-service.ts",
+
+    "src-server/routes/schemas/schema-definitions/content.ts",
+
+    "src-server/routes/schemas/schema-definitions/runtime.ts"
   ],
 
   "checks": [
