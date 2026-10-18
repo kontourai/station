@@ -762,6 +762,7 @@ export class LiteRepository {
     }
   }
   async publicAggregates(cursor?: string) {
+    parseCursor(cursor);
     const finalizedBeforeDay = await this.finalize();
     return {
       ...(await this.aggregates('kontour', undefined, cursor)),
@@ -885,6 +886,8 @@ function parseCursor(cursor?: string): [string, string, string] | undefined {
       !v.every((x) => typeof x === 'string') ||
       !/^\d{4}-\d{2}-\d{2}$/.test(v[0]) ||
       !Number.isFinite(Date.parse(v[0])) ||
+      v[0].startsWith('0000') ||
+      new Date(v[0]).toISOString().slice(0, 10) !== v[0] ||
       new Date(v[0]).getUTCDay() !== 1 ||
       !PUBLIC_FIELDS.includes(v[1]) ||
       v[2].length > 128
