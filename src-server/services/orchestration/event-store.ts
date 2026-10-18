@@ -6570,11 +6570,11 @@ export class EventStore {
             .prepare(
               `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
        FROM orchestration_events WHERE thread_id = ? AND method = 'runtime.error'
-       AND (json_extract(payload, '$.invocationId') = ? OR
+       AND ((turn_id = ? AND json_extract(payload, '$.invocationId') = ?) OR
          (turn_id IS NULL AND json_extract(payload, '$.invocationId') IS NULL))
        ORDER BY sequence DESC LIMIT 1`,
             )
-            .get(threadId, invocationId);
+            .get(threadId, latestTurn?.turnId ?? null, invocationId);
     const event =
       invocationId === undefined
         ? this.latestEventByMethod(threadId, 'runtime.error', bounded)
@@ -6582,7 +6582,7 @@ export class EventStore {
           ? this.mapEventRow(row)
           : undefined;
     if (!event) return undefined;
-    if (!event.turnId) {
+    if (!event.turnId && event.payload.invocationId === undefined) {
       // Session-scoped (archive#3485): retained until a strictly later
       // PROVEN completion shows the session recovered — see the docblock
       // for the allowlist decision and what deliberately does not count.

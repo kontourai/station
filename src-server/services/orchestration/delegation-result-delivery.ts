@@ -1279,6 +1279,80 @@ function storedTurnOutput(
   };
 }
 
+type ResultSettlementIdentity =
+  | { threadId: string; kind: 'invocation' | 'native'; value: string }
+  | { threadId: string; kind: 'sequence'; value: number };
+const RESULT_SETTLEMENT_CODEC = 'station.delegation-result/2';
+function settlementKey(identity: ResultSettlementIdentity): string {
+  return JSON.stringify([
+    RESULT_SETTLEMENT_CODEC,
+    identity.threadId,
+    identity.kind,
+    identity.value,
+  ]);
+}
+function readSettlementIdentity(
+  row: DelegationResultRow,
+): ResultSettlementIdentity | undefined {
+  if (row.transitionKey.startsWith('[')) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(row.transitionKey);
+    } catch {
+      return undefined;
+    }
+    if (
+      !Array.isArray(decoded) ||
+      decoded.length !== 4 ||
+      decoded[0] !== RESULT_SETTLEMENT_CODEC ||
+      decoded[1] !== row.childSessionId ||
+      JSON.stringify(decoded) !== row.transitionKey
+    )
+      return undefined;
+    const [, threadId, kind, value] = decoded;
+    if (
+      (kind === 'invocation' || kind === 'native') &&
+      typeof value === 'string' &&
+      value !== '' &&
+      (kind !== 'native' || row.childTurnId === value)
+    )
+      return { threadId, kind, value };
+    if (
+      kind === 'sequence' &&
+      Number.isSafeInteger(value) &&
+      value > 0 &&
+      row.childTurnId === undefined
+    )
+      return { threadId, kind, value };
+    return undefined;
+  }
+  const prefix = `settled:${row.childSessionId}:`;
+  if (!row.transitionKey.startsWith(prefix)) return undefined;
+  const value = row.transitionKey.slice(prefix.length);
+  if (value === row.childTurnId) {
+    // Old native and invocation encodings overlap; absence of a witness cannot disambiguate them.
+    return value.startsWith('invocation-')
+      ? undefined
+      : { threadId: row.childSessionId, kind: 'native', value };
+  }
+  if (value.startsWith('invocation-') && value.length > 'invocation-'.length)
+    return {
+      threadId: row.childSessionId,
+      kind: 'invocation',
+      value: value.slice('invocation-'.length),
+    };
+  if (row.childTurnId === undefined && /^sequence-[1-9][0-9]*$/.test(value)) {
+    const sequence = Number(value.slice('sequence-'.length));
+    if (Number.isSafeInteger(sequence))
+      return {
+        threadId: row.childSessionId,
+        kind: 'sequence',
+        value: sequence,
+      };
+  }
+  return undefined;
+}
+
 function deliveryIdFor(childConversationId: string, transitionKey: string) {
   return `dr-${createHash('sha256').update(`${childConversationId}\u0000${transitionKey}`).digest('hex').slice(0, 40)}`;
 }
@@ -1540,20 +1614,26 @@ export class DelegationResultDelivery {
         )?.kind !== 'found')
     )
       return;
-    const transitionKey = `settled:${thread}:${settled.invocationId ? `invocation-${settled.invocationId}` : (settled.turnId ?? `sequence-${settled.sequence}`)}`;
+    const identity: ResultSettlementIdentity =
+      settled.invocationId !== undefined
+        ? { threadId: thread, kind: 'invocation', value: settled.invocationId }
+        : settled.turnId !== undefined
+          ? { threadId: thread, kind: 'native', value: settled.turnId }
+          : { threadId: thread, kind: 'sequence', value: settled.sequence };
+    const transitionKey = settlementKey(identity);
     if (this.ports.store.has(childConversationId, transitionKey)) return;
-    if (
-      this.ports.store
-        .listForChild(childConversationId)
-        .some(
-          (row) =>
-            (row.state === 'pending' || row.state === 'claimed') &&
-            row.childSessionId === thread &&
-            row.childTurnId === settled.turnId &&
-            !this.canDeliverRow(row),
-        )
-    )
-      return;
+    for (const row of this.ports.store.listForChild(childConversationId)) {
+      const retained = readSettlementIdentity(row);
+      if (retained && settlementKey(retained) === transitionKey) return;
+      if (
+        row.childSessionId === thread &&
+        row.childTurnId === settled.turnId &&
+        (retained === undefined ||
+          ((row.state === 'pending' || row.state === 'claimed') &&
+            !this.canDeliverRow(row)))
+      )
+        return;
+    }
     const output = settled.turnId
       ? storedTurnOutput(
           this.ports,
@@ -1613,31 +1693,16 @@ export class DelegationResultDelivery {
   }
 
   private canDeliverRow(row: DelegationResultRow): boolean {
-    const prefix = `settled:${row.childSessionId}:`;
-    const identity = row.transitionKey.startsWith(prefix)
-      ? row.transitionKey.slice(prefix.length)
-      : undefined;
-    const legacy =
-      row.childTurnId !== undefined
-        ? identity === row.childTurnId
-        : identity !== undefined && /^sequence-[1-9][0-9]*$/.test(identity);
-    if (!legacy) {
-      if (
-        !identity?.startsWith('invocation-') ||
-        identity.length === 'invocation-'.length
-      )
-        return false;
-      const invocationId = identity.slice('invocation-'.length);
-      if (
-        this.ports.readInvocationTerminal?.(
-          row.childSessionId,
-          invocationId,
-          row.childTurnId,
-        )?.kind !== 'found'
-      )
-        return false;
-    }
-    return true;
+    const identity = readSettlementIdentity(row);
+    if (!identity) return false;
+    return (
+      identity.kind !== 'invocation' ||
+      this.ports.readInvocationTerminal?.(
+        row.childSessionId,
+        identity.value,
+        row.childTurnId,
+      )?.kind === 'found'
+    );
   }
 
   private async attempt(row: DelegationResultRow): Promise<void> {

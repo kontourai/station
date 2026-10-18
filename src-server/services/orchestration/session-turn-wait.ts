@@ -1,6 +1,10 @@
 import type { InvocationTerminalRead } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { advanceOpenTurnId } from './session-lifecycle-service.js';
+import {
+  advanceOpenTurnId,
+  nextTurnIdentityAnchor,
+  type TurnIdentityAnchor,
+} from './session-lifecycle-service.js';
 
 /**
  * #3160: the wait behind `wait_session`.
@@ -92,10 +96,16 @@ export function evaluateSessionWait(
   );
   let open: string | undefined;
   let invocationId: string | undefined;
+  let anchor: TurnIdentityAnchor | undefined;
   let settled: SessionSettledTurn | undefined;
   for (const { sequence, event } of events) {
     const before = open;
-    open = advanceOpenTurnId(open, event, invocationId);
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
+    if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
     if (
       before !== undefined &&
       invocationId !== undefined &&
@@ -124,8 +134,10 @@ export function evaluateSessionWait(
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };
     }
-    if (event.method === 'turn.started') invocationId = event.invocationId;
+    if (event.method === 'turn.started' && !retainedStart)
+      invocationId = event.invocationId;
     else if (open === undefined) invocationId = undefined;
+    anchor = nextAnchor;
   }
   const busy = open !== undefined || ports.coordinatorBusy(threadId);
   const view: SessionWaitState = {

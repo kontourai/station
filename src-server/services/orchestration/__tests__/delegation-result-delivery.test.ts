@@ -591,25 +591,34 @@ describe('delegation result schema migration (#3158)', () => {
     for (const store of stores.splice(0)) store.close();
   });
 
-  test.each([
+  test.each(
     [
-      'f352640350',
-      F352_SCHEMA,
-      `INSERT INTO delegation_result_owners
+      [
+        'f352640350',
+        F352_SCHEMA,
+        `INSERT INTO delegation_result_owners
        (child_conversation_id, task_id, parent_conversation_id, owner_user_id, armed_at)
        VALUES ('child', 'child', 'parent', 'human:local:owner', ${Date.now()})`,
-    ],
-    [
-      'bbd41adcba',
-      BBD41_SCHEMA,
-      `INSERT INTO delegation_result_owners
+      ],
+      [
+        'bbd41adcba',
+        BBD41_SCHEMA,
+        `INSERT INTO delegation_result_owners
        (child_conversation_id, task_id, parent_conversation_id, owner_user_id,
         owner_attribution, armed_at, last_activity_at)
        VALUES ('child', 'child', 'parent', 'human:local:owner', 'verified-bound', ${Date.now()}, ${Date.now()})`,
-    ],
-  ])(
-    'a database with the %s schema is migrated and still delivers',
-    async (_name, schema, owner) => {
+      ],
+    ].flatMap((row) =>
+      ['turn-1', 'invocation-legacy-native'].map((native) => ({
+        name: row[0],
+        schema: row[1],
+        owner: row[2],
+        native,
+      })),
+    ),
+  )(
+    'a database with $name schema is migrated and still delivers native $native',
+    async ({ name: _name, schema, owner, native }) => {
       const path = join(
         makeTempDir('delegation-migration-'),
         'orchestration.sqlite',
@@ -679,8 +688,8 @@ describe('delegation result schema migration (#3158)', () => {
         logger: { warn: vi.fn() },
         retryDelaysMs: [],
       });
-      append('turn.started', { turnId: 'turn-1' });
-      append('turn.completed', { turnId: 'turn-1', outputText: 'done' });
+      append('turn.started', { turnId: native });
+      append('turn.completed', { turnId: native, outputText: 'done' });
       // First attempt is unconfirmed (exercises attempts and unconfirmed),
       // the startup re-drive lands under the same id.
       await delivery.reconcile();
@@ -693,6 +702,9 @@ describe('delegation result schema migration (#3158)', () => {
       delivery.stop();
       expect(starts).toEqual([starts[0], starts[0]]);
       expect(store.listForChild('child')[0]!.state).toBe('delivered');
+      expect(JSON.parse(store.listForChild('child')[0]!.transitionKey)).toEqual(
+        ['station.delegation-result/2', 'child', 'native', native],
+      );
     },
   );
 });
@@ -1556,8 +1568,8 @@ test.each([
       expect(starts[0]).not.toContain('OLD A OUTPUT');
       await delivery.reconcile();
       expect(starts).toHaveLength(1);
-      expect(store.listForChild('child')[0]?.transitionKey).toContain(
-        `invocation-${invocationId}`,
+      expect(JSON.parse(store.listForChild('child')[0]!.transitionKey)).toEqual(
+        ['station.delegation-result/2', 'child', 'invocation', invocationId],
       );
     } finally {
       delivery.stop();

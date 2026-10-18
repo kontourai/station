@@ -19,6 +19,8 @@ import type {
 import {
   activeTurnIdForEvents,
   advanceOpenTurnId,
+  nextTurnIdentityAnchor,
+  type TurnIdentityAnchor,
   turnIdentityAnchorForEvents,
 } from './session-lifecycle-service.js';
 
@@ -86,6 +88,7 @@ type ActivityStore = Pick<
 >;
 
 interface ThreadActivity {
+  identity?: TurnIdentityAnchor;
   /** #2324: `trigger` comes from the turn's first `turn.started`. */
   openTurn?: {
     turnId: string;
@@ -509,6 +512,7 @@ export class ConversationTurnActivityProjection {
         })
       : undefined;
     const state: ThreadActivity = {
+      identity: turnIdentityAnchorForEvents(events.map((row) => row.payload)),
       runningTools: new Map(),
       asOfSequence: seed.head?.globalSequence ?? 0,
       ...(seed.head ? { lastActivityAt: seed.head.createdAt } : {}),
@@ -578,14 +582,19 @@ export class ConversationTurnActivityProjection {
     // Unseeded: the seed will read this row durably when first needed.
     if (!state || globalSequence <= state.asOfSequence) return;
     const previous = state.openTurn?.turnId;
-    const next = advanceOpenTurnId(
-      previous,
-      event,
-      state.openTurn?.invocationId,
-    );
+    const anchor = nextTurnIdentityAnchor(state.identity, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof state.identity === 'object' &&
+      anchor === state.identity;
+    state.identity = anchor;
+    const next = retainedStart
+      ? previous
+      : advanceOpenTurnId(previous, event, state.openTurn?.invocationId);
     if (
       next !== previous ||
       (event.method === 'turn.started' &&
+        !retainedStart &&
         event.invocationId !== state.openTurn?.invocationId)
     ) {
       // A new turn or a closed one: calls started in the previous turn are
