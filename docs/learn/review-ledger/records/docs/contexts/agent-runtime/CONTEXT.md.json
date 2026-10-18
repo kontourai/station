@@ -20,7 +20,31 @@
 
     "src-server/services/orchestration/orchestration-service.ts",
 
-    "src-server/services/orchestration/session-command-module.ts"
+    "src-server/services/orchestration/session-command-module.ts",
+
+    "packages/agent-runtime/README.md",
+
+    "packages/agent-runtime/CONTEXT.md",
+
+    "packages/agent-runtime/src/types.ts",
+
+    "packages/agent-runtime/src/coordinator.ts",
+
+    "packages/agent-runtime/src/sqlite.ts",
+
+    "packages/agent-runtime/src/outbox.ts",
+
+    "packages/agent-runtime/src/retention.ts",
+
+    "packages/agent-runtime/src/voltagent.ts",
+
+    "packages/agent-runtime/src/strands.ts",
+
+    "packages/agent-runtime/src/__tests__/frameworks.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts"
   ],
 
   "checks": [

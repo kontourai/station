@@ -297,6 +297,17 @@ lets a test do four things:
 - fail the next commit inside the real transaction;
 - reopen the location the way a restarted process would.
 
+The testing entry also exports generic `AtomicProtocol`, `AtomicPort`,
+`AtomicParticipant` and `openAtomicCrashPointStore` contracts for other command
+protocols. The experimental model runtime uses them without changing existing
+kernel command results or the legacy crash-store names, forwarding port,
+held-call incarnation, read skipping and transaction rollback behavior.
+Its optional synchronous `maintenance` participant stage joins actual internal
+compaction writes before COMMIT when the command returns refused. In the model
+runtime composition, normal `commit` still excludes `Refused`; kernel production
+participants never invoke `maintenance`. These testing contracts do not qualify a packed release or
+Station adoption of the model runtime.
+
 ## Licence
 
 Apache-2.0

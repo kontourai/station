@@ -7,14 +7,17 @@ This package holds the rules that must still give one answer after a crash.
 It is a Tier 1 package under
 [ADR 0005](../../docs/adr/0005-require-a-second-consumer-before-extraction.md).
 It is built in Station's workspace and publishable on its own. Station is its
-only consumer. Its versioning is experimental until a second consumer exists.
+only product consumer. Its versioning is experimental until a second consumer exists.
 
 ## Two layers
 
-The kernel is the lower layer. An agent runtime (#3573), which holds durable
-model and tool steps for in-process agents, will sit above it later. Neither
-layer depends on a model loop, so a host that only supervises external engines
-takes no model dependency.
+The kernel is the lower layer. The private experimental
+[`@kontourai/agent-runtime`](../agent-runtime/README.md) package now consumes its
+public contracts for model-only Cut 0/1 of #3573. Durable tools, approvals and
+Station chat/boot adoption remain later work. This Station-owned workspace
+consumer does not qualify a second independent product or a Tier 2 extraction.
+The kernel takes no model dependency; the upper package binds the existing
+native framework loops.
 
 ## What the kernel owns
 

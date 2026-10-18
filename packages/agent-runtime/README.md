@@ -13,7 +13,8 @@ framework dependencies are exact peers. The package imports no Station code.
 
 The host supplies authorization/current implementation and writer-generation
 closures, real owner liveness, and the already-authorized source cutoff.
-`start` captures effective entry bytes before creating a frozen native Agent.
+`start` captures effective entry bytes before constructing a guarded native
+consumer from that retained input.
 `restore` requires the full observed fence and proven-dead previous owner;
 it returns the retained entry without consulting a new composer. Construct a
 fresh consumer from that entry, use `control.run` around the native call and
@@ -63,9 +64,10 @@ per body/request/response, 16 MiB committed partials/attempt, 7-day settled
 replay and 30-day generation protection. Fixed bounds may be reduced at open.
 Settled command replay compacts only on an authorized write to that exact
 generation after all required outbox dispositions are acknowledged and the real
-SQLite sink has applied them. At seven days from settlement, bulky run and
-receipt answers become a tombstone; at thirty days from the same settlement,
-it becomes a minimal irreversible expired-generation marker. Old operation
+SQLite sink has applied them. On an eligible authorized write at least seven
+days after settlement, bulky run and receipt answers become a tombstone. At
+thirty days from the same settlement, an eligible write reduces it to a minimal
+irreversible expired-generation marker. Old operation
 identities/digests keep conflict protection and never regain effect grants.
 Raw audit, outbox and immutable BLOB rows remain retained; these replay windows
 do not bound their disk usage. Reads never perform maintenance. There is no
