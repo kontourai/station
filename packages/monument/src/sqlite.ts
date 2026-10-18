@@ -552,7 +552,8 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               ...tables.turnBoundary,
               table: identifier(tables.turnBoundary.table),
               intentColumns: resolveIntentColumns(tables.turnBoundary),
-              ...(Object.hasOwn(tables.turnBoundary, 'invocationTerminals')
+              ...(Object.hasOwn(tables.turnBoundary, 'invocationTerminals') &&
+              tables.turnBoundary.invocationTerminals
                 ? {
                     invocationTerminals: Object.freeze({
                       ...tables.turnBoundary.invocationTerminals,
