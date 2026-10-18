@@ -48,6 +48,13 @@ source/schema check. A compatible probe does not acknowledge disclosure,
 create an installation identity or establish an accepted observation. These
 parsers remain Node-only; the browser status SDK uses its own response boundary.
 
+`parseStationDailyPing` validates the bounded, identifier-free Lite catalog.
+`mapRuntimeChannelToTelemetryChannel` is the shared serialization mapping:
+runtime `beta` becomes `preview`, permitted labels are preserved, and unknown
+labels return `undefined`. Lite callers use their documented `source-checkout`
+fallback; Full metadata may omit an unknown channel. The mapper does not grant
+consent or change either tier's payload identity rules.
+
 ## Native relay link codec
 
 `@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
