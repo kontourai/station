@@ -1,0 +1,7 @@
+{
+  "revision": "f9aa8968bfde26a32879e2e2ee3918967974cfaa",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"3827 test-only follow-up: the combined-size max+1 case now observes the real staging prepare seam and asserts it was never called, in addition to no provider dispatch. Reviewed the two-line assertion delta; CLI/server/SDK implementation and public behavior are byte-identical to the previously qualified 98907d18dbb tree.","inputs":["docs/reference/cli.md","src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts"]}
+  ]
+}
