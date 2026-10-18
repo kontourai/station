@@ -436,12 +436,15 @@ describe('engine delivery probes', () => {
     const { result } = await exercise();
     const row = result.rows.find((row) => row.scenario === 'delivery');
     if (!row?.delivery) throw new Error('missing delivery row');
+    expect(renderMatrix(result)).toContain(
+      '| claude | toolServers | session | pass |',
+    );
     row.turns = [];
     expect(renderMatrix(result)).toContain(
-      '| claude | skills | session | unverified |',
+      '| claude | toolServers | session | unverified |',
     );
     expect(renderMatrix(result)).not.toContain(
-      '| claude | skills | session | pass |',
+      '| claude | toolServers | session | pass |',
     );
   });
 
