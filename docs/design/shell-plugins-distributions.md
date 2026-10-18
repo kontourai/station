@@ -553,7 +553,7 @@ the install prompt shows them. It cannot pre-grant:
 | Defaults | Region defaults | exists in code only | [placement defaults](placement.md#defaults-2156) |
 | Defaults | Notification and email templates | none exist (push payloads are composed in code; no email) | [notification-delivery.md](notification-delivery.md) |
 | Policy | Locale default | exists (en-US plus a pseudo-locale) | [i18n](../../src-ui/src/i18n/LocaleContext.tsx) |
-| Policy | Telemetry default | exists (`AppConfig.telemetryEnabled`) | [usage-telemetry-service.ts](../../src-server/services/usage-telemetry-service.ts) |
+| Policy | Telemetry default | tier foundation exists (`AppConfig.telemetryTier`); manifest policy consumption remains designed | [usage-telemetry-service.ts](../../src-server/services/usage-telemetry-service.ts) |
 | Policy | Update channel | build-time (ADR 0020); a manifest may only recommend | [ADR 0020](../adr/0020-distribution-two-trains-channels-as-pointers.md) |
 | Policy | Legal links (terms, privacy) | new | — |
 

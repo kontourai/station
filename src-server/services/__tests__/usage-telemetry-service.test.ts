@@ -15,14 +15,17 @@ import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
 } from '@kontourai/station-contracts/product-telemetry';
-import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
+import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+  parseProductTelemetryBatch,
+} from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import { FileSecretBindingAdministration } from '../secrets/secret-binding-administration.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   renderUsageTelemetryInventory,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '../usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
@@ -78,6 +81,7 @@ function configuredApp(overrides: Partial<AppConfig> = {}): AppConfig {
     defaultModel: 'configured-model',
     invokeModel: 'configured-model',
     structureModel: 'configured-model',
+    telemetryEnabled: true,
     ...overrides,
   };
 }
@@ -118,11 +122,61 @@ async function service(
     options.env?.STATION_PRODUCT_TELEMETRY_ENDPOINT ||
     options.env?.STATION_TELEMETRY_ENDPOINT
   )
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
   return subject;
 }
 
 describe('UsageTelemetryService', () => {
+  test.each([
+    { tier: undefined, dnt: undefined, sends: false },
+    { tier: 'lite', dnt: undefined, sends: false },
+    { tier: 'off', dnt: undefined, sends: false },
+    { tier: 'full', dnt: '1', sends: false },
+    { tier: 'full', dnt: undefined, sends: true },
+  ] as const)(
+    'operator send gate: $tier, DNT=$dnt, sends=$sends',
+    async ({ tier, dnt, sends }) => {
+      const root = await home();
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const subject = new UsageTelemetryService({
+        homeDir: root,
+        appConfig: configuredApp({
+          telemetryEnabled: undefined,
+          telemetryTier: tier ? { operator: tier } : undefined,
+        }),
+        version: '1.2.3',
+        logger: logger(),
+        fetch,
+        env: {
+          STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+          DO_NOT_TRACK: dnt,
+        },
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      if (dnt) {
+        await expect(
+          subject.acknowledgeDisclosure(
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+          ),
+        ).rejects.toThrow('DO_NOT_TRACK');
+      } else {
+        await subject.acknowledgeDisclosure(
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        );
+      }
+      await subject.stationStarted();
+      await subject.flush();
+      expect(fetch).toHaveBeenCalledTimes(sends ? 1 : 0);
+      if (!sends)
+        await expect(
+          access(join(root, 'config', 'usage-telemetry-id')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+      await subject.shutdown();
+    },
+  );
+
   test('saved exact-destination authority supplies the product key and revocation during delivery retains the batch without environment fallback', async () => {
     const root = await home();
     const destination = 'https://saved-receiver.test/v1/product/events';
@@ -236,7 +290,14 @@ describe('UsageTelemetryService', () => {
     }
   });
   test.each([
-    ['canonical on wins', 'on', 'off', undefined, true, 'env'],
+    [
+      'canonical on supplies Lite, never Full',
+      'on',
+      'off',
+      undefined,
+      false,
+      'env',
+    ],
     ['canonical off wins', 'off', 'on', undefined, false, 'env'],
     ['empty canonical uses alias', ' ', 'off', undefined, false, 'env'],
     [
@@ -248,11 +309,11 @@ describe('UsageTelemetryService', () => {
       'env',
     ],
     [
-      'invalid values use default',
+      'invalid values use Lite default',
       'invalid',
       'invalid',
       undefined,
-      true,
+      false,
       'default',
     ],
     ['saved off wins', 'on', 'on', false, false, 'config'],
@@ -504,14 +565,14 @@ describe('UsageTelemetryService', () => {
       });
       expect(JSON.parse(String(request?.body))).toEqual({
         protocol: 'station-product-probe/v1',
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
       });
       release(
         Response.json({
           probe: {
             protocol: 'station-product-probe/v1',
             sourceId: '22222222-2222-4333-8444-555555555555',
-            inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+            inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             checkedAt: '2026-10-10T12:00:00.000Z',
             storage: 'postgres-schema-v1',
           },
@@ -525,7 +586,7 @@ describe('UsageTelemetryService', () => {
         });
       await subject.stationStarted();
       expect(await subject.deliveryStatus()).toMatchObject({
-        phase: 'awaiting-disclosure',
+        phase: 'disabled',
         disclosureAcknowledged: false,
         queued: 0,
         counts: { buffered: 0, acknowledged: 0, attempts: 0 },
@@ -727,7 +788,7 @@ describe('UsageTelemetryService', () => {
       });
       const disclosure = await subject.disclosure();
       expect(disclosure.endpointConfigured).toBe(false);
-      expect(disclosure.telemetryEnabled).toBe(true);
+      expect(disclosure.telemetryEnabled).toBe(false);
     });
 
     test('a configured endpoint is reported, blank and whitespace are not', async () => {
@@ -798,7 +859,7 @@ describe('UsageTelemetryService', () => {
 
       subject.reconfigure({ telemetryEnabled: true } as any);
       const after = await subject.disclosure();
-      expect(after.telemetryEnabled).toBe(true);
+      expect(after.telemetryEnabled).toBe(false);
       expect(
         after.enabledSource,
         'the reload moved the value but left the source at boot',
@@ -811,13 +872,13 @@ describe('UsageTelemetryService', () => {
       // would offer to turn OFF a host the environment had already turned
       // off, and name a state that was not the case.
       const cases = [
-        [{}, {}, true],
+        [{}, {}, false],
         [{}, { STATION_TELEMETRY_ENABLED: 'false' }, false],
         [{ telemetryEnabled: false }, {}, false],
         [
           { telemetryEnabled: true },
           { STATION_TELEMETRY_ENABLED: 'false' },
-          true,
+          false,
         ],
       ] as const;
       for (const [appConfig, env, expected] of cases) {
@@ -841,7 +902,7 @@ describe('UsageTelemetryService', () => {
     const setInterval = vi.fn();
     const subject = new UsageTelemetryService({
       homeDir: await home(),
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -867,14 +928,16 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: await home(),
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -882,36 +945,61 @@ describe('UsageTelemetryService', () => {
       'acknowledged disclosure did not permit telemetry emission',
     ).toHaveBeenCalledTimes(1);
   });
-  test('DISCLOSURE REVISION DEFECT: an old inventory receipt stops emission until re-acknowledged', async () => {
-    const root = await home();
-    await mkdir(join(root, 'config'));
-    await writeFile(
-      join(root, 'config', 'usage-telemetry-disclosure.json'),
-      JSON.stringify({
-        acknowledgedAt: new Date().toISOString(),
-        // Frozen event-only inventory revision from main 558d3a91; it never disclosed envelope metadata.
-        inventoryRevision:
-          'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
-      }),
-    );
-    const fetch = vi.fn();
-    const subject = new UsageTelemetryService({
-      homeDir: root,
-      appConfig: {} as any,
-      version: '1.2.3',
-      logger: logger(),
-      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
-      fetch,
-      setInterval: vi.fn() as any,
-    });
-    await subject.stationStarted();
-    expect(
-      fetch,
-      'stale disclosure receipt permitted telemetry emission',
-    ).not.toHaveBeenCalled();
-    expect((await subject.disclosure()).acknowledged).toBe(false);
-    expect(subject.bufferedCount).toBe(0);
-  });
+  test.each([
+    [
+      'event-only inventory',
+      'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
+    ],
+    // Frozen revision at reviewed head 0134b835: the lede previously overstated anonymity.
+    [
+      'before pseudonymous wording reset',
+      'b271907cca72f7553c4570a1fed28e0d00c9d085f14712be5a2a29c2b3565e08',
+    ],
+  ])(
+    'DISCLOSURE REVISION DEFECT: %s receipt stops emission until re-acknowledged',
+    async (_label, previousRevision) => {
+      const root = await home();
+      await mkdir(join(root, 'config'));
+      await writeFile(
+        join(root, 'config', 'usage-telemetry-disclosure.json'),
+        JSON.stringify({
+          acknowledgedAt: new Date().toISOString(),
+          inventoryRevision: previousRevision,
+        }),
+      );
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const subject = new UsageTelemetryService({
+        homeDir: root,
+        appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+        version: '1.2.3',
+        logger: logger(),
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+        setInterval: vi.fn() as any,
+      });
+      await subject.stationStarted();
+      expect(
+        fetch,
+        'stale disclosure receipt permitted telemetry emission',
+      ).not.toHaveBeenCalled();
+      expect((await subject.disclosure()).acknowledged).toBe(false);
+      expect(subject.bufferedCount).toBe(0);
+      expect(
+        (await subject.telemetryStatus()).publishers.operator,
+      ).toMatchObject({
+        tier: 'lite',
+        reason: 'disclosure',
+        userChoice: 'full',
+      });
+      await subject.acknowledgeDisclosure(
+        FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+      );
+      await subject.stationStarted();
+      await subject.shutdown();
+      expect((await subject.disclosure()).acknowledged).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
   test('RESTART DISCLOSURE DEFECT: bootstrap receipt load activates an existing valid receipt without an HTTP request', async () => {
     const root = await home();
     await mkdir(join(root, 'config'));
@@ -919,12 +1007,12 @@ describe('UsageTelemetryService', () => {
       join(root, 'config', 'usage-telemetry-disclosure.json'),
       JSON.stringify({
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       }),
     );
     const subject = new UsageTelemetryService({
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -958,7 +1046,7 @@ describe('UsageTelemetryService', () => {
       const log = logger();
       const subject = new UsageTelemetryService({
         homeDir: root,
-        appConfig: {} as any,
+        appConfig: { telemetryTier: { operator: 'full' } } as any,
         version: '1.2.3',
         logger: log,
         env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -994,6 +1082,7 @@ describe('UsageTelemetryService', () => {
   test('ENV OFF SWITCH DEFECT: STATION_TELEMETRY_ENABLED=off attempts no request', async () => {
     const fetch = vi.fn();
     const subject = await service({
+      appConfig: configuredApp({ telemetryEnabled: undefined }),
       env: {
         STATION_TELEMETRY_ENABLED: 'off',
         STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
@@ -1375,7 +1464,7 @@ describe('UsageTelemetryService', () => {
     await writeFile(fileHome, 'x');
     const subject = new UsageTelemetryService({
       homeDir: fileHome,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1441,7 +1530,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const opts = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1449,7 +1538,7 @@ describe('UsageTelemetryService', () => {
       setInterval: vi.fn() as any,
     };
     const first = new UsageTelemetryService(opts);
-    await first.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await first.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await first.stationStarted();
     await first.shutdown();
     const raw = (
@@ -1603,7 +1692,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1631,14 +1720,16 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const subject = new UsageTelemetryService({
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -1661,7 +1752,7 @@ describe('UsageTelemetryService', () => {
     const fetch = vi.fn().mockImplementation(acceptProductBatch);
     const options = {
       homeDir: root,
-      appConfig: {} as any,
+      appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
       env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
@@ -1672,7 +1763,7 @@ describe('UsageTelemetryService', () => {
       new UsageTelemetryService(options),
       new UsageTelemetryService(options),
     ];
-    await one.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await one.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await Promise.all([one.stationStarted(), two.stationStarted()]);
     await Promise.all([one.shutdown(), two.shutdown()]);
     const persisted = (
@@ -1727,7 +1818,11 @@ describe('UsageTelemetryService', () => {
     expect(
       sent,
       'telemetry hashed its own candidate instead of the identity that persisted',
-    ).toBe(createHash('sha256').update(winner).digest('hex'));
+    ).toBe(
+      createHash('sha256')
+        .update(winner + new Date().toISOString().slice(0, 7))
+        .digest('hex'),
+    );
   });
   test('DOCUMENT INVENTORY DEFECT: published docs are rendered from the registry', async () => {
     const docs = await readFile(
@@ -1739,4 +1834,51 @@ describe('UsageTelemetryService', () => {
       'published telemetry inventory drifted from registry',
     ).toContain(renderUsageTelemetryInventory());
   });
+});
+
+test('Full saved under DNT remains pending after DNT removal and sends only after confirmation', async () => {
+  const root = await home();
+  const env = {
+    DO_NOT_TRACK: '1',
+    STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+  };
+  const fetch = vi.fn().mockImplementation(acceptProductBatch);
+  const subject = new UsageTelemetryService({
+    homeDir: root,
+    appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+    version: '1.2.3',
+    logger: logger(),
+    env,
+    fetch,
+    setInterval: vi.fn() as typeof setInterval,
+  });
+  try {
+    await expect(
+      subject.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION),
+    ).rejects.toThrow('DO_NOT_TRACK');
+    await expect(
+      access(join(root, 'config', 'usage-telemetry-disclosure.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    env.DO_NOT_TRACK = '';
+    expect(await subject.disclosure()).toMatchObject({
+      acknowledged: false,
+      publishers: {
+        operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+      },
+    });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    await subject.shutdown();
+  }
 });
