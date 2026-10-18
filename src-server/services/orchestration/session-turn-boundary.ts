@@ -361,6 +361,7 @@ export interface SessionTurnBoundaryAuthority {
   hasPossibleEffect(
     threadId: string,
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
+  retryPendingTransitions(): void;
   readInvocationTerminal(
     threadId: string,
     invocationId: string,
@@ -1101,6 +1102,7 @@ export function createSessionTurnBoundaryAuthority(options: {
         return { kind: 'unavailable' };
       }
     },
+    retryPendingTransitions,
     readInvocationTerminal(threadId, invocationId, providerTurnId) {
       try {
         return (

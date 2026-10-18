@@ -15109,7 +15109,16 @@ describe('OrchestrationService', () => {
       // Each projection query runs once for the whole population. Method
       // bounds and latest-any use indexed seeks rather than window ranking.
       expect(countOfShapeContaining('methods(method) AS (VALUES')).toBe(1);
-      expect(countOfShapeContaining('WITH start_identity_threads(thread_id) AS (VALUES')).toBe(1);
+      expect(
+        countOfShapeContaining(
+          'WITH start_identity_threads(thread_id) AS (VALUES',
+        ),
+      ).toBe(1);
+      expect(
+        countOfShapeContaining(
+          "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = ?",
+        ),
+      ).toBe(1);
       expect(
         [...shapeCounts.entries()]
           .filter(
@@ -25622,37 +25631,138 @@ describe('OrchestrationService', () => {
   // `interruptUserTurnCooperatively` re-derived "no active turn" from the
   // same fold `hasActiveTurn` intentionally under-reports through and
   // early-returned WITHOUT ever calling `adapter.interruptTurn`.
-  test.each(['ordinary', 'explicit', 'completed', 'deferred', 'provider', 'structured'] as const)(
-    'actual Stop conserves structured B for $0 after raw starts', async (kind) => {
+  test.each([
+    'ordinary',
+    'explicit',
+    'completed',
+    'deferred',
+    'provider',
+    'structured',
+  ] as const)(
+    'actual Stop conserves structured B for $0 after raw starts',
+    async (kind) => {
       const adapter = kind === 'deferred' ? new FakeAdapter('codex') : claude;
-      const stopping = kind === 'deferred' ? new OrchestrationService({ adapterRegistry: createRegistry([bedrock, claude, adapter]), eventBus, eventStore, logger: { debug: vi.fn(), warn: vi.fn() } }) : service;
+      const stopping =
+        kind === 'deferred'
+          ? new OrchestrationService({
+              adapterRegistry: createRegistry([bedrock, claude, adapter]),
+              eventBus,
+              eventStore,
+              logger: { debug: vi.fn(), warn: vi.fn() },
+            })
+          : service;
       const threadId = `stop-structured-${kind}`;
-      await stopping.dispatch({ type: 'startSession', input: { threadId, provider: adapter.provider } });
+      await stopping.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: adapter.provider },
+      });
       let invocationId: string | undefined;
       adapter.sendTurn.mockImplementationOnce(async (input) => {
         invocationId = input.invocationId;
-        adapter.events.push({ method: 'turn.started', eventId: `${threadId}:B-start`, provider: adapter.provider, threadId, turnId: 'N', invocationId: input.invocationId, prompt: 'B', createdAt: new Date().toISOString() });
+        adapter.events.push({
+          method: 'turn.started',
+          eventId: `${threadId}:B-start`,
+          provider: adapter.provider,
+          threadId,
+          turnId: 'N',
+          invocationId: input.invocationId,
+          prompt: 'B',
+          createdAt: new Date().toISOString(),
+        });
         return { threadId, turnId: 'N' };
       });
-      await stopping.dispatch({ type: 'sendTurn', input: { threadId, input: 'B' } });
+      await stopping.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'B' },
+      });
       expect(invocationId).toBeTypeOf('string');
-      await waitFor(() => eventStore.listEvents(threadId), (rows) => rows.some((row) => row.id === `${threadId}:B-start`));
-      const append = (event: CanonicalRuntimeEvent) => adapter.events.push(event);
-      const base = { provider: adapter.provider, threadId, createdAt: new Date().toISOString() };
-      if (kind === 'completed') append({ ...base, method: 'turn.completed', eventId: `${threadId}:done`, turnId: 'N', invocationId });
-      if (kind === 'deferred') append({ ...base, provider: 'codex', method: 'runtime.error', eventId: `${threadId}:deferred`, turnId: 'N', invocationId, severity: 'error', retriable: true, message: 'retry pending' });
-      append({ ...base, method: 'turn.started', eventId: `${threadId}:raw`, turnId: kind === 'completed' ? 'N' : 'M', prompt: 'raw observation' });
-      if (kind === 'provider' || kind === 'structured') append({ ...base, method: 'turn.started', eventId: `${threadId}:new`, turnId: 'new', ...(kind === 'provider' ? { metadata: { trigger: 'provider' } } : { invocationId: 'C' }), prompt: 'new owner' });
-      await waitFor(() => eventStore.listEvents(threadId), (rows) => rows.some((row) => row.id === `${threadId}:${kind === 'provider' || kind === 'structured' ? 'new' : 'raw'}`));
-      expect(eventStore.listEvents(threadId).find((row) => row.id === `${threadId}:raw`)?.payload.invocationId).toBeUndefined();
+      await waitFor(
+        () => eventStore.listEvents(threadId),
+        (rows) => rows.some((row) => row.id === `${threadId}:B-start`),
+      );
+      const append = (event: CanonicalRuntimeEvent) =>
+        adapter.events.push(event);
+      const base = {
+        provider: adapter.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+      };
+      if (kind === 'completed')
+        append({
+          ...base,
+          method: 'turn.completed',
+          eventId: `${threadId}:done`,
+          turnId: 'N',
+          invocationId,
+        });
+      if (kind === 'deferred')
+        append({
+          ...base,
+          provider: 'codex',
+          method: 'runtime.error',
+          eventId: `${threadId}:deferred`,
+          turnId: 'N',
+          invocationId,
+          severity: 'error',
+          retriable: true,
+          message: 'retry pending',
+        });
+      append({
+        ...base,
+        method: 'turn.started',
+        eventId: `${threadId}:raw`,
+        turnId: kind === 'completed' ? 'N' : 'M',
+        prompt: 'raw observation',
+      });
+      if (kind === 'provider' || kind === 'structured')
+        append({
+          ...base,
+          method: 'turn.started',
+          eventId: `${threadId}:new`,
+          turnId: 'new',
+          ...(kind === 'provider'
+            ? { metadata: { trigger: 'provider' } }
+            : { invocationId: 'C' }),
+          prompt: 'new owner',
+        });
+      await waitFor(
+        () => eventStore.listEvents(threadId),
+        (rows) =>
+          rows.some(
+            (row) =>
+              row.id ===
+              `${threadId}:${kind === 'provider' || kind === 'structured' ? 'new' : 'raw'}`,
+          ),
+      );
+      expect(
+        eventStore
+          .listEvents(threadId)
+          .find((row) => row.id === `${threadId}:raw`)?.payload.invocationId,
+      ).toBeUndefined();
       adapter.interruptTurn.mockClear();
       const target = kind === 'provider' || kind === 'structured' ? 'new' : 'N';
-      adapter.interruptTurn.mockImplementationOnce(async (_thread, turnId) => ({ outcome: 'cancelled', turnId: turnId ?? '' }));
-      const answer = await stopping.dispatch({ type: 'interruptTurn', threadId, ...(kind === 'explicit' ? { turnId: 'N' } : {}) });
-      if (kind === 'completed') { expect(answer).toMatchObject({ outcome: 'no-active-turn' }); expect(adapter.interruptTurn).not.toHaveBeenCalled(); }
-      else { expect(answer).toMatchObject({ turnId: target }); expect(adapter.interruptTurn).toHaveBeenCalledTimes(1); expect(adapter.interruptTurn).toHaveBeenCalledWith(threadId, target); }
+      adapter.interruptTurn.mockImplementationOnce(async (_thread, turnId) => ({
+        outcome: 'cancelled',
+        turnId: turnId ?? '',
+      }));
+      const answer = await stopping.dispatch({
+        type: 'interruptTurn',
+        threadId,
+        ...(kind === 'explicit' ? { turnId: 'N' } : {}),
+      });
+      if (kind === 'completed') {
+        expect(answer).toMatchObject({ outcome: 'no-active-turn' });
+        expect(adapter.interruptTurn).not.toHaveBeenCalled();
+      } else {
+        expect(answer).toMatchObject({ turnId: target });
+        expect(adapter.interruptTurn).toHaveBeenCalledTimes(1);
+        expect(adapter.interruptTurn).toHaveBeenCalledWith(threadId, target);
+      }
       expect(adapter.sendTurn).toHaveBeenCalledTimes(1);
-      if (kind === 'deferred') { adapter.events.close(); await stopping.shutdown(); }
+      if (kind === 'deferred') {
+        adapter.events.close();
+        await stopping.shutdown();
+      }
     },
   );
 

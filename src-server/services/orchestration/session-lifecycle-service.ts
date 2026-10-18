@@ -603,7 +603,13 @@ export function interruptibleTurnIdForEvents(
   let activeTurnId: string | undefined;
   let anchor: TurnIdentityAnchor | undefined;
   for (const event of events) {
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
     if (
+      !retainedStart &&
       !(
         typeof anchor === 'object' &&
         ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
@@ -616,7 +622,7 @@ export function interruptibleTurnIdForEvents(
       activeTurnId = nextActiveTurnId(activeTurnId, event, {
         preserveDeferredRetry: true,
       });
-    anchor = nextTurnIdentityAnchor(anchor, event);
+    anchor = nextAnchor;
   }
   return activeTurnId;
 }

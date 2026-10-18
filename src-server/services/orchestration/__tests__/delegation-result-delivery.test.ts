@@ -1503,6 +1503,9 @@ test.each([
       const done: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent =
         {
           ...base,
+          ...(order.startsWith('compat-earliestnative')
+            ? { createdAt: '1900-01-01T00:00:00Z' }
+            : {}),
           eventId: 'B-done',
           method: 'turn.completed',
           turnId: native,

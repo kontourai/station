@@ -1280,7 +1280,12 @@ function storedTurnOutput(
 }
 
 type ResultSettlementIdentity =
-  | { threadId: string; kind: 'invocation' | 'native'; value: string }
+  | {
+      threadId: string;
+      kind: 'invocation' | 'native';
+      value: string;
+      nativeOnlyLegacy?: true;
+    }
   | { threadId: string; kind: 'sequence'; value: number };
 const RESULT_SETTLEMENT_CODEC = 'station.delegation-result/2';
 function settlementKey(identity: ResultSettlementIdentity): string {
@@ -1336,7 +1341,12 @@ function readSettlementIdentity(
     // Old native and invocation encodings overlap; absence of a witness cannot disambiguate them.
     return value.startsWith('invocation-')
       ? undefined
-      : { threadId: row.childSessionId, kind: 'native', value };
+      : {
+          threadId: row.childSessionId,
+          kind: 'native',
+          value,
+          nativeOnlyLegacy: true,
+        };
   }
   if (value.startsWith('invocation-') && value.length > 'invocation-'.length)
     return {
@@ -1632,6 +1642,7 @@ export class DelegationResultDelivery {
         row.childSessionId === thread &&
         row.childTurnId === settled.turnId &&
         (retained === undefined ||
+          (retained.kind === 'native' && retained.nativeOnlyLegacy === true) ||
           ((row.state === 'pending' || row.state === 'claimed') &&
             !this.canDeliverRow(row)))
       )
@@ -1698,6 +1709,22 @@ export class DelegationResultDelivery {
   private canDeliverRow(row: DelegationResultRow): boolean {
     const identity = readSettlementIdentity(row);
     if (!identity) return false;
+    if (identity.kind === 'native' && identity.nativeOnlyLegacy) {
+      try {
+        if (
+          this.ports
+            .foldEvents(row.childSessionId)
+            .some(
+              ({ event }) =>
+                event.turnId === row.childTurnId &&
+                event.invocationId !== undefined,
+            )
+        )
+          return false;
+      } catch {
+        return false;
+      }
+    }
     return (
       identity.kind !== 'invocation' ||
       this.ports.readInvocationTerminal?.(

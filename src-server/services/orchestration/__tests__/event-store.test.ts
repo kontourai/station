@@ -5749,15 +5749,26 @@ describe('EventStore', () => {
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
-    const payloadQueries = prepare.mock.calls
-      .map(([sql]) => String(sql))
-      .filter((sql) =>
-        sql.includes('SELECT payload FROM orchestration_events'),
-      );
+    const allQueries = prepare.mock.calls.map(([sql]) => String(sql));
+    const payloadQueries = allQueries.filter((sql) =>
+      sql.includes('SELECT payload FROM orchestration_events'),
+    );
     prepare.mockRestore();
 
     // The bounded project-label upgrade adds its latest metadata lookup and
     // one no-op legacy-label probe. Every projection read remains capped.
+    console.info(
+      '[high-volume-payload-queries]',
+      JSON.stringify(payloadQueries),
+    );
+    expect(
+      allQueries.filter(
+        (sql) =>
+          sql.includes(
+            "('turn.completed','turn.aborted','runtime.error','session.exited')",
+          ) && /SELECT (event\.)?payload FROM orchestration_events/.test(sql),
+      ),
+    ).toEqual([]);
     expect(payloadQueries).toHaveLength(5);
     expect(payloadQueries.every((sql) => sql.includes('LIMIT'))).toBe(true);
     expect(payloadQueries.join('\n')).not.toContain("'turn.completed'");
@@ -6817,6 +6828,34 @@ describe('EventStore', () => {
         database.exec('ROLLBACK');
         throw cause;
       }
+      database.exec('DROP INDEX idx_events_positive_turn_start');
+      store.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      let indexBuildMs = 0;
+      const observedBuild = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const before = performance.now();
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            indexBuildMs = performance.now() - before;
+          return result;
+        });
+      try {
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+      } finally {
+        observedBuild.mockRestore();
+      }
+      console.info(
+        '[positive-start-existing-data-build]',
+        JSON.stringify({ legacyStarts: size, rawSuffix: size, indexBuildMs }),
+      );
       const started = performance.now();
       const direct = capturePreparedStatements(store, () => {
         expect(
@@ -6856,10 +6895,223 @@ describe('EventStore', () => {
           plans,
         }),
       );
+      if (process.env.STATION_POSITIVE_START_EVIDENCE_PATH)
+        writeFileSync(
+          process.env.STATION_POSITIVE_START_EVIDENCE_PATH,
+          JSON.stringify(
+            {
+              startsPerThread: size,
+              indexBuildMs,
+              singleMs,
+              batchMs: performance.now() - batchStarted,
+              statements: selected,
+              plans,
+            },
+            null,
+            2,
+          ),
+        );
       for (const plan of plans) {
         expect(plan).toContain('idx_events_positive_turn_start');
         expect(plan).not.toContain('USE TEMP B-TREE');
       }
+    });
+
+    test.each(['absent', 'wrong'] as const)(
+      'a required positive-start index that is %s refuses instead of scanning',
+      (mode) => {
+        store.appendEvent({
+          eventId: 'required-index-B',
+          provider: 'claude',
+          threadId: 'required-index',
+          turnId: 'N',
+          invocationId: 'B',
+          method: 'turn.started',
+          prompt: 'B',
+          createdAt: '2030-01-01T00:00:00Z',
+        });
+        store['db'].exec('DROP INDEX idx_events_positive_turn_start');
+        if (mode === 'wrong')
+          store['db'].exec(
+            'CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id,sequence DESC)',
+          );
+        expect(() =>
+          store.listSessionProjectionEvents('required-index'),
+        ).toThrow('positive-start index');
+        expect(() =>
+          store.listSessionProjectionEventsForThreads(['required-index']),
+        ).toThrow('positive-start index');
+      },
+    );
+
+    test.each(['legacy-corrupt', 'suffix-corrupt', 'older-corrupt'] as const)(
+      'indexed canonical malformed-start blocker preserves %s semantics',
+      (mode) => {
+        const db = store['db'];
+        const raw = (id: string, sequence: number, payload: string) =>
+          db
+            .prepare(
+              'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?,?)',
+            )
+            .run(
+              id,
+              'claude',
+              'corrupt-index',
+              'N',
+              'turn.started',
+              payload,
+              '2030-01-01T00:00:00Z',
+              sequence,
+              sequence,
+            );
+        if (mode !== 'legacy-corrupt')
+          raw(
+            'valid-index-B',
+            mode === 'older-corrupt' ? 3 : 1,
+            JSON.stringify({
+              eventId: 'valid-index-B',
+              provider: 'claude',
+              threadId: 'corrupt-index',
+              turnId: 'N',
+              invocationId: 'B',
+              method: 'turn.started',
+              prompt: 'B',
+              createdAt: '2030-01-01T00:00:00Z',
+            }),
+          );
+        const captured =
+          mode === 'older-corrupt'
+            ? capturePreparedStatements(store, () => {
+                store.listSessionProjectionEvents('corrupt-index');
+                store.listSessionProjectionEventsForThreads(['corrupt-index']);
+              }).filter(({ sql }) =>
+                sql.includes('INDEXED BY idx_events_positive_turn_start'),
+              )
+            : [];
+        raw('malformed-index-start', 2, '{invalid');
+        raw(
+          'raw-index-suffix',
+          4,
+          JSON.stringify({
+            eventId: 'raw-index-suffix',
+            provider: 'claude',
+            threadId: 'corrupt-index',
+            turnId: 'N',
+            method: 'turn.started',
+            prompt: 'raw',
+            createdAt: '2030-01-01T00:00:00Z',
+          }),
+        );
+        if (mode === 'older-corrupt') {
+          expect(captured).toHaveLength(2);
+          for (const statement of captured) {
+            const rows = db
+              .prepare(statement.sql)
+              .all(...statement.values) as Array<{
+              id: string;
+              payload: string;
+            }>;
+            expect(rows).toHaveLength(1);
+            expect(rows[0]?.id).toBe('valid-index-B');
+            expect(() => JSON.parse(rows[0]!.payload)).not.toThrow();
+          }
+        }
+        for (const read of [
+          () => store.listSessionProjectionEvents('corrupt-index'),
+          () => store.listSessionProjectionEventsForThreads(['corrupt-index']),
+        ]) {
+          expect(read).toThrow();
+        }
+      },
+    );
+
+    test('positive-start migration builds retained history atomically and is idempotent on reopen', () => {
+      const path = join(dir, 'index-migration.sqlite');
+      const first = new EventStore(path);
+      first.appendEvent({
+        eventId: 'migration-B',
+        provider: 'claude',
+        threadId: 'migration-B',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt: '2030-01-01T00:00:00Z',
+      });
+      first['db'].exec('DROP INDEX idx_events_positive_turn_start');
+      const before = first['db']
+        .prepare('SELECT * FROM orchestration_events')
+        .all();
+      first.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      const fault = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            throw new Error('after actual index build');
+          return result;
+        });
+      try {
+        expect(() => new EventStore(path)).toThrow('after actual index build');
+      } finally {
+        fault.mockRestore();
+      }
+      const inspect = new DatabaseSync(path);
+      expect(
+        inspect
+          .prepare(
+            "SELECT 1 FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toBeUndefined();
+      expect(
+        inspect.prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      inspect.close();
+      const started = performance.now();
+      const migrated = new EventStore(path);
+      const schema = migrated['db']
+        .prepare(
+          "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+        )
+        .get();
+      expect(
+        migrated
+          .listSessionProjectionEvents('migration-B')
+          .some((row) => row.id === 'migration-B'),
+      ).toBe(true);
+      expect(
+        migrated['db'].prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      console.info(
+        '[positive-start-index-build]',
+        JSON.stringify({
+          elapsedMs: performance.now() - started,
+          retainedEvents: before.length,
+          schema,
+        }),
+      );
+      migrated.close();
+      const reopened = new EventStore(path);
+      expect(
+        reopened['db']
+          .prepare(
+            "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toEqual(schema);
+      reopened['db'].exec(
+        'DROP INDEX idx_events_positive_turn_start; CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id)',
+      );
+      reopened.close();
+      expect(() => new EventStore(path)).toThrow('positive-start index');
     });
 
     test('the latest-any slot seeks once per requested thread instead of ranking history', () => {

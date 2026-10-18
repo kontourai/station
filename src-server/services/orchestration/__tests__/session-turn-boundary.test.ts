@@ -1687,3 +1687,147 @@ test('embedded memory preserves invocation identity and exact early settlement w
     });
   }
 });
+
+test('no-target cleanup retries genuine pending acceptance from retained witness without collecting unrelated terminal payloads', () => {
+  const store = new EventStore(':memory:');
+  const b = begunIntent(store, 'witness-preflight', 'B');
+  const db = store['db'];
+  const original = db.exec.bind(db);
+  let phase = 'commit-loss';
+  let retryFailed = false;
+  const injected = vi.spyOn(db, 'exec').mockImplementation((sql) => {
+    if (
+      phase === 'retry-loss' &&
+      !retryFailed &&
+      sql === 'SAVEPOINT monument_command'
+    ) {
+      retryFailed = true;
+      throw new Error('transient acceptance retry unavailable');
+    }
+    const result = original(sql);
+    if (phase === 'commit-loss' && sql === 'COMMIT') {
+      phase = 'idle';
+      throw new Error('after actual acceptance COMMIT');
+    }
+    return result;
+  });
+  try {
+    expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'unavailable',
+    });
+    phase = 'retry-loss';
+    store.appendEvent(b.event('witness-preflight-done'));
+    expect(retryFailed).toBe(true);
+    expect(
+      db.prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual([]);
+    const witness = db
+      .prepare('SELECT terminal_retirement FROM orchestration_prepared_turns')
+      .get() as { terminal_retirement: string };
+    expect(
+      JSON.parse(witness.terminal_retirement).terminal.terminalEventId,
+    ).toBe('witness-preflight-done');
+    phase = 'idle';
+    injected.mockRestore();
+    const reads = vi.spyOn(db, 'prepare');
+    const next = b.authority.reserve!(
+      'witness-preflight',
+      '2030-01-01T00:00:04Z',
+    );
+    const sql = reads.mock.calls.map(([statement]) => String(statement));
+    reads.mockRestore();
+    expect(next.kind).toBe('owner');
+    expect(
+      sql.some((query) =>
+        query.includes(
+          'SELECT * FROM orchestration_prepared_turns WHERE thread_id = ? AND boundary_id = ?',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      sql.some((query) =>
+        query.includes(
+          'SELECT event.payload FROM orchestration_events AS event',
+        ),
+      ),
+    ).toBe(false);
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+  } finally {
+    injected.mockRestore();
+    store.close();
+  }
+});
+
+test('prepared captured target cleanup keeps true session sequence disposal without an ordinary witness', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    const owned = authority.reserve!(
+      'prepared-session-scope',
+      '2030-01-01T00:00:00Z',
+    );
+    if (owned.kind !== 'owner') throw new Error('actual reserved prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 'prepared-session-scope', input: 'pending' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    expect(
+      owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+    ).toEqual({ kind: 'applied' });
+    const event = {
+      eventId: 'prepared-session-exit',
+      threadId: 'prepared-session-scope',
+      provider: 'claude',
+      method: 'session.exited',
+      sessionId: 'prepared-session-scope',
+      exitCode: 0,
+      createdAt: '1900-01-01T00:00:00Z',
+    };
+    store['db']
+      .prepare(
+        'INSERT INTO orchestration_events(id,provider,thread_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        event.eventId,
+        event.provider,
+        event.threadId,
+        event.method,
+        JSON.stringify(event),
+        event.createdAt,
+        1,
+        1,
+      );
+    const reads = vi.spyOn(store['db'], 'prepare');
+    const provider = authority.prepareProviderTurn(
+      event.threadId,
+      'provider:new',
+      '2030-01-01T00:00:02Z',
+    );
+    expect(provider.record()).toEqual({ kind: 'applied' });
+    const statements = reads.mock.calls.map(([sql]) => String(sql));
+    reads.mockRestore();
+    expect(
+      statements.filter((sql) =>
+        sql.includes('SELECT event.payload FROM orchestration_events AS event'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      store['db']
+        .prepare(
+          'SELECT * FROM orchestration_turn_boundaries WHERE invocation_id=?',
+        )
+        .all(capture.intent.invocationId),
+    ).toEqual([]);
+    expect(
+      store['db']
+        .prepare(
+          'SELECT terminal_retirement FROM orchestration_prepared_turns WHERE invocation_id=?',
+        )
+        .get(capture.intent.invocationId),
+    ).toEqual({ terminal_retirement: null });
+  } finally {
+    store.close();
+  }
+});

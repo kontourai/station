@@ -108,6 +108,12 @@ import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-tur
 import { ensurePreparedTurnIntents } from '../../domain/migrations/017-prepared-turn-intents.js';
 import { ensureInvocationTerminalRetirement } from '../../domain/migrations/018-invocation-terminal-retirement.js';
 import {
+  assertPositiveTurnStartIndex,
+  ensurePositiveTurnStartIndex,
+  POSITIVE_TURN_START_INDEX,
+  POSITIVE_TURN_START_SQL,
+} from '../../domain/migrations/019-positive-turn-start-index.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -395,6 +401,9 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                    )
                  )
             )`;
+const CANONICAL_TERMINAL_TARGET = `state NOT IN ('lifecycle','settled') AND purpose != 'task-dispatch'
+  AND prepared_settlement IS NULL
+  AND (invocation_id IS NOT NULL OR input_digest IS NOT NULL OR intent_digest IS NOT NULL OR body_ref IS NOT NULL OR dedup_key IS NOT NULL)`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
@@ -1307,9 +1316,6 @@ function pairKey(
 ): string {
   return JSON.stringify([threadId, turnId, invocationId ?? null]);
 }
-
-const POSITIVE_TURN_START_SQL = `(turn_id IS NOT NULL AND typeof(json_extract(payload, '$.invocationId')) = 'text' AND length(json_extract(payload, '$.invocationId')) > 0)
-  OR json_extract(payload, '$.metadata.trigger') = 'provider'`;
 
 const SESSION_STATE_FACT_METHODS = [
   'request.opened',
@@ -2267,6 +2273,7 @@ export class EventStore {
       ensureOrchestrationRecoverySettlementColumns(this.db);
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
+      ensurePositiveTurnStartIndex(this.db);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -6486,10 +6493,11 @@ export class EventStore {
     threadId: string,
     bounded: boolean,
   ): PersistedRuntimeEvent | undefined {
+    assertPositiveTurnStartIndex(this.db);
     const row = this.db
       .prepare(
         `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
-       FROM orchestration_events WHERE thread_id = ? AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL})
+       FROM orchestration_events INDEXED BY ${POSITIVE_TURN_START_INDEX} WHERE thread_id = ? AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL})
        ORDER BY sequence DESC LIMIT 1`,
       )
       .get(threadId);
@@ -6499,6 +6507,7 @@ export class EventStore {
   private fetchPositiveTurnStarted(
     threadIds: readonly string[],
   ): Map<string, PersistedRuntimeEvent> {
+    assertPositiveTurnStartIndex(this.db);
     const result = new Map<string, PersistedRuntimeEvent>();
     for (const chunk of this.chunkArray(
       threadIds,
@@ -6509,7 +6518,7 @@ export class EventStore {
           `WITH start_identity_threads(thread_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
          SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.sequence, event.global_sequence
          FROM start_identity_threads JOIN orchestration_events AS event ON event.rowid = (
-           SELECT rowid FROM orchestration_events WHERE thread_id = start_identity_threads.thread_id
+           SELECT rowid FROM orchestration_events INDEXED BY ${POSITIVE_TURN_START_INDEX} WHERE thread_id = start_identity_threads.thread_id
              AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL}) ORDER BY sequence DESC LIMIT 1
          )`,
         )
@@ -11803,11 +11812,25 @@ export class EventStore {
   }
 
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
-    // The kernel captures full custody before every ordinary invocation deletion.
-    const events = this.db
-      .prepare(`SELECT payload FROM orchestration_events
-      WHERE (? IS NULL OR thread_id = ?) AND method IN ('turn.completed','turn.aborted','runtime.error','session.exited')`)
-      .all(threadId ?? null, threadId ?? null) as Array<{ payload: string }>;
+    // Retry the original private acceptance even when its boundary was already retired.
+    this.sessionTurnBoundaries.retryPendingTransitions();
+    const applicable = this.db
+      .prepare(
+        `SELECT 1 FROM orchestration_turn_boundaries WHERE (? IS NULL OR thread_id = ?) AND ${CANONICAL_TERMINAL_TARGET} LIMIT 1`,
+      )
+      .get(threadId ?? null, threadId ?? null);
+    const events = applicable
+      ? (this.db
+          .prepare(
+            `SELECT event.payload FROM orchestration_events AS event
+       WHERE (? IS NULL OR event.thread_id = ?) AND event.method IN ('turn.completed','turn.aborted','runtime.error','session.exited')
+         AND EXISTS (SELECT 1 FROM orchestration_turn_boundaries AS target
+           WHERE target.thread_id = event.thread_id AND ${CANONICAL_TERMINAL_TARGET})`,
+          )
+          .all(threadId ?? null, threadId ?? null) as Array<{
+          payload: string;
+        }>)
+      : [];
     for (const row of events) {
       const event = JSON.parse(row.payload) as CanonicalRuntimeEvent;
       if (
