@@ -218,7 +218,15 @@ describe('instance lock (real processes)', () => {
       for (const socket of flood) socket.destroy();
       process.kill(holder, 'SIGCONT');
       // Only the original holder answers on the path, with its original core.
-      const after = await first.status();
+      // The continued holder drains its backlog first; poll within a deadline.
+      let after = await first.status().catch(() => null);
+      await vi.waitFor(
+        async () => {
+          after = await first.status();
+        },
+        { timeout: 10_000, interval: 100 },
+      );
+      if (!after) throw new Error('no status from the continued holder');
       expect(after.supervisor.pid).toBe(holder);
       expect(after.active?.pid).toBe(before.active?.pid);
       expect(epochs(home)).toEqual(['1']);
