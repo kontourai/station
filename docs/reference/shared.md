@@ -44,6 +44,13 @@ The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
 
+`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
+returns undefined for unmapped labels. Full omits that field; Lite supplies
+`unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
+release list by default; the sender selects `semver` to validate version format
+without claiming catalog membership. Source/fork versions can reuse a release
+version; channel `unknown` or `source-checkout` is their only distinction here.
+
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a
 sender can remove that batch. `parseProductTelemetryProbeRequest` and
