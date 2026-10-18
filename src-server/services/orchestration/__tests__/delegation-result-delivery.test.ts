@@ -32,6 +32,12 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { captureTurnIntent } from '../prepared-turn-intent.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
+import {
+  evaluateSessionWait,
+  SessionTurnWaiter,
+  type SessionTurnWaitPorts,
+} from '../session-turn-wait.js';
+import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const makeTempDir = trackTempDirs();
@@ -1687,6 +1693,350 @@ test.each([
       );
     } finally {
       delivery.stop();
+      eventStore.close();
+    }
+  },
+);
+
+test.each([
+  'weak',
+  'queued',
+  'inputless',
+  'inputless-stale-local',
+  'scoped-terminal',
+  'older-exact',
+] as const)(
+  'real service never-tagged producer uses actual custody for %s wait/result effects',
+  async (mode) => {
+    const eventStore = new EventStore(':memory:');
+    const eventBus = new EventBus();
+    class WeakAdapter extends GateTestAdapter {
+      readonly sent: Parameters<GateTestAdapter['sendTurn']>[0][] = [];
+      override async hasSession() {
+        return true;
+      }
+      override async startSession(
+        input: Parameters<GateTestAdapter['startSession']>[0],
+      ) {
+        const session = await super.startSession(input);
+        this.events.push({
+          eventId: `session:${input.threadId}`,
+          provider: 'claude',
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          method: 'session.started',
+          createdAt: session.createdAt,
+          metadata: input.metadata,
+        });
+        return session;
+      }
+      override async sendTurn(
+        input: Parameters<GateTestAdapter['sendTurn']>[0],
+      ) {
+        this.sent.push(input);
+        if (input.threadId === 'child')
+          this.events.push({
+            eventId: `raw-start:${this.sent.length}`,
+            provider: 'claude',
+            threadId: 'child',
+            turnId: 'N',
+            method: 'turn.started',
+            prompt: input.input,
+            createdAt: new Date().toISOString(),
+          });
+        return {
+          threadId: input.threadId,
+          turnId: input.threadId === 'child' ? 'N' : 'parent-N',
+        };
+      }
+    }
+    const adapter = new WeakAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug() {}, warn() {} },
+    });
+    service.initialize();
+    let parentBusy = mode === 'queued' || mode === 'older-exact';
+    const starts: string[] = [];
+    const steers: string[] = [];
+    const ports: DelegationResultDeliveryPorts = {
+      store: eventStore.delegationResultStore(),
+      foldEvents: (thread) =>
+        eventStore
+          .listEventsByMethods(thread, ACTIVE_TURN_FOLD_METHODS)
+          .map((row) => ({ sequence: row.sequence, event: row.payload })),
+      headSequence: (thread) =>
+        eventStore.readSessionInventoryHighWater(thread),
+      turnEvents: (thread, native, methods, limit, invocation) =>
+        eventStore.listTurnEventsByMethods(
+          thread,
+          native,
+          methods,
+          limit,
+          invocation,
+        ),
+      conversationOf: (thread) => thread,
+      currentSessionId: (id) => id,
+      coordinatorBusy: (thread) =>
+        thread === 'parent'
+          ? parentBusy
+          : mode === 'inputless-stale-local' || service.hasActiveTurn(thread),
+      readInvocationTerminal: (thread, invocation, native) =>
+        eventStore.readInvocationTerminal(thread, invocation, native),
+      sessionOwnerId: (thread) => service.sessionRecordedOwnerId(thread),
+      start: async ({ text, clientTurnId }) => {
+        starts.push(text);
+        const result = await service.dispatch(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'parent', input: text, clientTurnId },
+          },
+          { userId: 'owner' },
+        );
+        return {
+          outcome: 'started',
+          conversationId: 'parent',
+          sessionId: 'parent',
+          turnId: (result as { turnId: string }).turnId,
+        };
+      },
+      steer: async ({ text }) => {
+        steers.push(text);
+        return { outcome: 'unsupported-engine' };
+      },
+      subscribe: () => () => {},
+      logger: { warn() {} },
+      retryDelaysMs: [],
+    };
+    const delivery = new DelegationResultDelivery(ports);
+    const waitPorts: SessionTurnWaitPorts = {
+      ...ports,
+      subscribe: (_thread, listener) =>
+        eventStore.observeCommits({
+          eventCommitted() {
+            listener();
+          },
+        }),
+    };
+    const controller = new AbortController();
+    let waiting: Promise<unknown> | undefined;
+    const emit = async (
+      event: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent,
+    ) => {
+      adapter.events.push(event);
+      await vi.waitFor(() =>
+        expect(eventStore.hasEventId(event.eventId)).toBe(true),
+      );
+    };
+    const base = {
+      provider: 'claude',
+      threadId: 'child',
+      turnId: 'N',
+      createdAt: '2030-01-01T00:00:00Z',
+    };
+    try {
+      for (const threadId of ['child', 'parent'])
+        await service.dispatch(
+          { type: 'startSession', input: { threadId, provider: 'claude' } },
+          { userId: 'owner' },
+        );
+      await vi.waitFor(() =>
+        expect(service.sessionRecordedOwnerId('parent')).toBe('owner'),
+      );
+      ports.store.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'owner', attribution: 'verified-bound' },
+      });
+      let cursor = eventStore.readSessionInventoryHighWater('child');
+      if (mode === 'queued' || mode.startsWith('inputless')) {
+        await emit({
+          ...base,
+          eventId: 'legacy-start',
+          method: 'turn.started',
+          prompt: 'inputless',
+          metadata: { trigger: 'provider' },
+        });
+        await emit({
+          ...base,
+          eventId: 'legacy-done',
+          method: 'turn.completed',
+          outputText: 'GENUINE LEGACY',
+          metadata: { trigger: 'provider' },
+        });
+        expect(
+          eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect('child'),
+        ).toEqual({ kind: 'available', active: false });
+        if (mode === 'queued') {
+          await delivery.reconcile();
+          expect(starts).toEqual([]);
+          expect(ports.store.listForChild('child')[0]?.state).toBe('pending');
+          cursor = eventStore.readSessionInventoryHighWater('child');
+        }
+      }
+      if (mode === 'older-exact') {
+        await service.dispatch(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'child', input: 'A', clientTurnId: 'A' },
+          },
+          { userId: 'owner' },
+        );
+        const invocationA = adapter.sent.find(
+          (input) => input.input === 'A',
+        )?.invocationId;
+        expect(invocationA).toBeTypeOf('string');
+        await emit({
+          ...base,
+          eventId: 'owned-A-done',
+          method: 'turn.completed',
+          invocationId: invocationA,
+          outputText: 'EXACT OLDER A',
+        });
+        await delivery.reconcile();
+        expect(ports.store.listForChild('child')).toHaveLength(1);
+        expect(starts).toEqual([]);
+      }
+      if (!mode.startsWith('inputless')) {
+        await service.dispatch(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'child', input: 'B', clientTurnId: 'B' },
+          },
+          { userId: 'owner' },
+        );
+        await vi.waitFor(() =>
+          expect(
+            eventStore
+              .listEvents('child')
+              .some(
+                (row) =>
+                  row.method === 'turn.started' &&
+                  row.payload.method === 'turn.started' &&
+                  row.payload.prompt === 'B',
+              ),
+          ).toBe(true),
+        );
+        const invocationB = adapter.sent.find(
+          (input) => input.input === 'B',
+        )?.invocationId;
+        expect(invocationB).toBeTypeOf('string');
+        expect(service.hasActiveTurn('child')).toBe(true);
+        const before = {
+          boundary: eventStore['db']
+            .prepare(
+              "SELECT * FROM orchestration_turn_boundaries WHERE thread_id='child'",
+            )
+            .all(),
+          audit: eventStore['db']
+            .prepare(
+              "SELECT * FROM orchestration_prepared_turns WHERE thread_id='child'",
+            )
+            .all(),
+          dedup: eventStore['db']
+            .prepare('SELECT * FROM orchestration_turn_dedup WHERE dedup_key=?')
+            .all(turnDedupKey('child', 'B')),
+        };
+        let outcome: unknown;
+        waiting = new SessionTurnWaiter(waitPorts)
+          .wait({
+            callerSessionId: 'caller',
+            threadId: 'child',
+            until: 'turn-settled',
+            afterEventCursor: cursor,
+            timeoutMs: 10000,
+            signal: controller.signal,
+          })
+          .then((value) => {
+            outcome = value;
+            return value;
+          });
+        await emit({
+          ...base,
+          eventId: 'B-terminal',
+          method: 'turn.completed',
+          ...(mode === 'scoped-terminal' ? { invocationId: invocationB } : {}),
+          outputText: mode === 'scoped-terminal' ? 'EXACT B' : 'UNPROVEN B',
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (mode === 'weak' || mode === 'queued') {
+          expect(service.hasActiveTurn('child')).toBe(true);
+          expect(
+            eventStore
+              .listEvents('child')
+              .filter(
+                (row) =>
+                  row.method === 'turn.started' ||
+                  row.method === 'turn.completed',
+              )
+              .every((row) => row.payload.invocationId === undefined),
+          ).toBe(true);
+          expect(outcome).toBeUndefined();
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
+              .satisfied,
+          ).toBe(false);
+          const pending = ports.store.listForChild('child');
+          parentBusy = false;
+          await delivery.reconcile();
+          expect(starts).toEqual([]);
+          expect(steers).toEqual([]);
+          expect(ports.store.listForChild('child')).toEqual(pending);
+          expect(
+            eventStore['db']
+              .prepare(
+                "SELECT * FROM orchestration_turn_boundaries WHERE thread_id='child'",
+              )
+              .all(),
+          ).toEqual(before.boundary);
+          expect(
+            eventStore['db']
+              .prepare(
+                "SELECT * FROM orchestration_prepared_turns WHERE thread_id='child'",
+              )
+              .all(),
+          ).toEqual(before.audit);
+          expect(
+            eventStore['db']
+              .prepare(
+                'SELECT * FROM orchestration_turn_dedup WHERE dedup_key=?',
+              )
+              .all(turnDedupKey('child', 'B')),
+          ).toEqual(before.dedup);
+        } else {
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
+              .satisfied,
+          ).toBe(true);
+          parentBusy = false;
+          await delivery.reconcile();
+          expect(starts).toHaveLength(1);
+          expect(starts[0]).toContain(
+            mode === 'older-exact' ? 'EXACT OLDER A' : 'EXACT B',
+          );
+          expect(starts[0]).not.toContain('UNPROVEN B');
+        }
+      } else {
+        expect(
+          evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
+            .satisfied,
+        ).toBe(true);
+        await delivery.reconcile();
+        expect(starts).toHaveLength(1);
+        expect(starts[0]).toContain('GENUINE LEGACY');
+      }
+      expect(
+        adapter.sent.filter((input) => input.threadId === 'parent'),
+      ).toHaveLength(mode === 'weak' || mode === 'queued' ? 0 : 1);
+    } finally {
+      controller.abort();
+      await waiting;
+      delivery.stop();
+      adapter.events.close();
+      await service.shutdown();
       eventStore.close();
     }
   },
