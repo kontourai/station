@@ -111,7 +111,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 | Field | Server observation or conservative value |
 | --- | --- |
 | version | `custom`: no authoritative public-release version catalog is wired to this sender. |
-| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization only, runtime `beta` maps to the Lite schema's `preview`; missing or unrecognized channels use `source-checkout`. |
+| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; its omitted unknown result falls back to `source-checkout`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | engines_used_today | Existing engine-turn terminal observations. |
 | paired_devices_bucket | The pairing service's current device store. |

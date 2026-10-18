@@ -7,9 +7,9 @@ import type {
   UsageTelemetryEvent,
   UsageTelemetryProperties,
 } from '@kontourai/station-contracts/product-telemetry';
-import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemetry';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  mapRuntimeChannelToTelemetryChannel,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
@@ -92,12 +92,9 @@ export class TelemetryPublisherService {
     this.reconfigure();
   }
   private seed(now: Date, prior?: TelemetryDailyState): TelemetryDailyState {
-    const runtimeChannel = this.options.channel;
     const channel =
-      runtimeChannel === 'beta'
-        ? 'preview'
-        : (TELEMETRY_CHANNELS.find((value) => value === runtimeChannel) ??
-          'source-checkout');
+      mapRuntimeChannelToTelemetryChannel(this.options.channel) ??
+      'source-checkout';
     const day = now.toISOString().slice(0, 10);
     const week = utcWeek(now);
     const month = day.slice(0, 7);
