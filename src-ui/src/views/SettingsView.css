@@ -1097,6 +1097,13 @@
 }
 
 /* ── Mobile touch targets ── */
+.settings__section .page-row__aside {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+  max-width: 50%;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .settings__section .page-row {
     flex-direction: column;
@@ -1343,12 +1350,6 @@
 }
 .settings__section .page-row:last-child {
   padding-bottom: 0;
-}
-.settings__section .page-row__aside {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--k-space-2);
-  max-width: 50%;
 }
 .settings__section .page-row__control {
   min-width: 0;
