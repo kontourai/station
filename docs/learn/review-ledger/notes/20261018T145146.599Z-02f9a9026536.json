@@ -1,0 +1,7 @@
+{
+  "revision": "7766cb17f21acff4c4f4036f36a41b59eb73e3ab",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"PR #3820 round 1 at 7766cb17f21: Re-reviewed the gallery-only framing delta after visual inspection of the eight successful controlled scenes at 23736683a08. Outbox controls stayed in their rows at desktop and 390px; the extra mobile Settings-feedback scene cropped choices, so the fixture now scrolls the section into view and checks Cancel in the viewport. Runtime consent, cancellation, saved-tier comparison, partial saves and scope are unchanged from the 284-test proof and four qualified fault injections. Final-head recapture remains pending; no native, hosted or live receiver proof is asserted.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}
