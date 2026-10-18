@@ -11,18 +11,18 @@ function modelVendor(model) {
 }
 
 function modelIdentity(value) {
-  // OpenRouter still names the model's vendor; Bedrock adds a regional profile.
-  const unwrapped = value
-    .replace(/^openrouter\//, '')
-    .replace(
-      /^(?:us|eu|apac|global|jp|au|us-gov)\.(?=(?:anthropic|openai|google|meta|mistral|amazon)[/.])/,
-      '',
+  const qualified = value.replace(/^openrouter\//, '');
+  const region =
+    /^(?:us|eu|apac|global|jp|au|us-gov)\.(?=[a-z][a-z0-9-]*[/.])/.exec(
+      qualified,
     );
-  const prefix = /^(anthropic|openai|google|meta|mistral|amazon)[/.]/.exec(
-    unwrapped,
-  );
+  const unwrapped = region ? qualified.slice(region[0].length) : qualified;
+  // Known bare model names may contain dots; those are not vendor separators.
+  const prefix = modelVendor(unwrapped)
+    ? null
+    : /^([a-z][a-z0-9-]*)[/.]/.exec(unwrapped);
   const model = prefix ? unwrapped.slice(prefix[0].length) : unwrapped;
-  return { model, vendor: prefix?.[1] };
+  return { model, vendor: prefix?.[1], valid: !region || Boolean(prefix) };
 }
 
 function modelSnapshot(model) {
@@ -37,6 +37,7 @@ export function checkServedModel(requested, reported) {
   if (!requested || !reported) return 'unverified';
   const a = modelIdentity(requested);
   const b = modelIdentity(reported);
+  if (!a.valid || !b.valid) return 'fail';
   const familyVendor = modelVendor(a.model);
   const requestedVendor = familyVendor ?? a.vendor;
   if (

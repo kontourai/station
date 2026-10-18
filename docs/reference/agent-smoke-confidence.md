@@ -164,7 +164,7 @@ the comparison target. A Claude SDK alias such as `sonnet` or `default` without
 resolution is recorded as **alias without resolution**, never a substitution.
 Vendor prefixes must agree with the requested model's vendor: known families
 supply that identity, while an explicitly vendor-qualified request also covers
-new families. A bare unknown family cannot establish a reported prefix's vendor
+new families and vendor namespaces without a fixed registry. A bare unknown family cannot establish a reported prefix's vendor
 and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
 forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
 matching vendor, including `us.meta.*`, and Vertex's
