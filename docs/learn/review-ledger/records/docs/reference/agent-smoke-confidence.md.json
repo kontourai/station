@@ -60,7 +60,15 @@
 
     "scripts/fixtures/delivery-probe-mcp.mjs",
 
-    "scripts/__tests__/engine-delivery-probes.test.ts"
+    "scripts/__tests__/engine-delivery-probes.test.ts",
+
+    "src-server/providers/adapter-shape.ts",
+
+    "src-server/services/orchestration/model-launch-planning.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"
   ],
 
   "checks": [

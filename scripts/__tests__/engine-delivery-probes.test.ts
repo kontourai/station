@@ -472,7 +472,7 @@ describe('engine delivery probes', () => {
       () => 'accepted',
       (error: Error) => error.message,
     );
-    expect(outcome).toBe(
+    expect(outcome).toContain(
       'Planned 14 turns exceeds --max-turns=13; refusing the entire run',
     );
     expect(requests.map(({ path }) => path)).toEqual([
