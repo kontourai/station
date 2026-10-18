@@ -388,7 +388,9 @@ export class ConfigLoader {
   }
 
   async mutateAppConfig(
-    mutate: (current: Readonly<AppConfig>) => Partial<AppConfig>,
+    mutate: (
+      current: Readonly<AppConfig>,
+    ) => Partial<AppConfig> | Promise<Partial<AppConfig>>,
   ): Promise<AppConfig> {
     if (this.enforceHomeSchema) await this.ensureHomeSchema();
     return this.serializeAppMutation(() =>
@@ -415,7 +417,7 @@ export class ConfigLoader {
           ) {
             throw new AppConfigConflictError();
           }
-          const updates = mutate(structuredClone(existing));
+          const updates = await mutate(structuredClone(existing));
           // An explicit null/undefined in `updates` clears non-nullable
           // fields instead of assigning a value AJV would reject.
           const updated = mergeAppConfigUpdate(existing, updates);

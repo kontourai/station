@@ -66,6 +66,7 @@ export const TELEMETRY_CHANNELS = [
   'nightly',
   'dev',
   'source-checkout',
+  'unknown',
 ] as const;
 export const TELEMETRY_SETUP_STEPS = [
   'none',
@@ -148,7 +149,7 @@ export const STATION_DAILY_FIELDS = {
   paired_devices_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
   engines_used_today: { domain: TELEMETRY_ENGINES, arrayMax: 8 },
   distribution: {
-    domain: 'public-registry-id-or-none-or-custom',
+    domain: 'public-registry-id-or-none-or-custom-or-unknown',
     maxLength: 128,
   },
   public_plugins_enabled: {
@@ -159,7 +160,7 @@ export const STATION_DAILY_FIELDS = {
   private_plugins_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
   branding_overridden: { domain: 'boolean' },
   home_replaced: { domain: 'boolean' },
-  layouts_customized: { domain: 'boolean' },
+  layouts_customized: { domain: 'boolean-or-unknown' },
   setup_abandoned_step: { domain: TELEMETRY_SETUP_STEPS },
   engine_connect_failures: { domain: 'engine-count-buckets', arrayMax: 8 },
   safe_mode_entered: { domain: 'count', max: 65535 },
@@ -168,16 +169,18 @@ export const STATION_DAILY_FIELDS = {
 
 type DailyDomain<D> = D extends readonly string[]
   ? D[number]
-  : D extends 'boolean'
-    ? boolean
-    : D extends 'count'
-      ? number
-      : D extends 'engine-count-buckets'
-        ? {
-            engine: (typeof TELEMETRY_ENGINES)[number];
-            bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
-          }
-        : string;
+  : D extends 'boolean-or-unknown'
+    ? boolean | 'unknown'
+    : D extends 'boolean'
+      ? boolean
+      : D extends 'count'
+        ? number
+        : D extends 'engine-count-buckets'
+          ? {
+              engine: (typeof TELEMETRY_ENGINES)[number];
+              bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
+            }
+          : string;
 type DailyField<F extends { domain: unknown }> = F extends { arrayMax: number }
   ? DailyDomain<F['domain']>[]
   : DailyDomain<F['domain']>;
@@ -211,7 +214,11 @@ export interface TelemetryOutboxEntry {
     | 'overflow'
     | 'expired'
     | 'transport';
-  payload: StationDailyPing | ProductTelemetryBatch | TelemetryFeedback;
+  payload:
+    | StationDailyPing
+    | ProductTelemetryBatch
+    | TelemetryFeedback
+    | { event: 'telemetry_dropped'; count: number };
 }
 
 /** The single public inventory for Station product usage telemetry. */
@@ -397,7 +404,7 @@ export const PRODUCT_TELEMETRY_ENVELOPE = {
     inventory_revision:
       'SHA-256 of the disclosed envelope and event inventory.',
     distinct_id:
-      'SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly and is not a person identity.',
+      'SHA-256 of a separate random installation UUID concatenated with the publisher ID and UTC YYYY-MM; rotates monthly and is not a person identity.',
     events: 'One through twenty inventory observations.',
   },
   observation: {

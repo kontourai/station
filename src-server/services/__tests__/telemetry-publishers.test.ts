@@ -16,10 +16,14 @@ import {
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../domain/config-loader.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
+import { createConfigRoutes } from '../../routes/system/config.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { createLogger } from '../../utils/logger.js';
+import { TelemetryLocalState } from '../telemetry-local-state.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
 const build = vi.hoisted(() => ({
@@ -128,7 +132,6 @@ async function service(
     env,
     logger,
     fetch: fetchOverride,
-    headless: env.STATION_STDOUT_HANDSHAKE !== '1' && !env.STATION_UI_PORT,
   });
   services.push(live);
   return { live, home, config: configValue };
@@ -157,14 +160,23 @@ test('persists one daily attempt across simultaneous flushes and a real service 
     version: 'custom',
   });
   await live.track('engine_turn', { engine: 'codex', outcome: 'completed' });
+  await live.track('engine_connect_failed', { engine: 'codex' });
+  await live.track('safe_mode_entered', { reason: 'user' });
+  await Promise.all([flush(live), flush(live)]);
+  expect(daily(sink.payloads)).toEqual([]);
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await Promise.all([flush(live), flush(live)]);
   const reopened = await service(sink.endpoint, {}, {}, home);
   await reopened.live.stationStarted();
   await flush(reopened.live);
   expect(daily(sink.payloads)).toHaveLength(1);
-  const ping = parseStationDailyPing(daily(sink.payloads)[0]);
+  const ping = parseStationDailyPing(daily(sink.payloads)[0], [], ['1.2.3']);
   expect(ping.surfaces_today).toEqual(['web']);
   expect(ping.engines_used_today).toEqual(['codex']);
+  expect(ping.engine_connect_failures).toEqual([
+    { engine: 'codex', bucket: '1' },
+  ]);
+  expect(ping.safe_mode_entered).toBe(1);
   expect(ping.first_active_this_week).toBe(true);
   expect(ping.first_active_this_month).toBe(true);
   expect(Object.keys(ping)).not.toContain('distinct_id');
@@ -175,13 +187,11 @@ test('persists one daily attempt across simultaneous flushes and a real service 
     await readFile(join(home, 'config', 'telemetry-daily.json'), 'utf8'),
   );
   expect(persisted.firstRun).toBe('2026-10-12');
-  expect(persisted.lastActiveDay).toBe('2026-10-12');
+  expect(persisted.lastActiveDay).toBe('2026-10-13');
   expect(
     (await stat(join(home, 'config', 'telemetry-daily.json'))).size,
   ).toBeLessThan(16 * 1024);
-  vi.setSystemTime('2026-10-13T10:00:00Z');
-  await flush(reopened.live);
-  vi.setSystemTime('2026-10-12T10:00:00Z');
+  vi.setSystemTime('2026-10-14T10:00:00Z');
   await flush(reopened.live);
   expect(daily(sink.payloads)).toHaveLength(2);
 });
@@ -207,16 +217,23 @@ test('catches up only the latest observed unsent day, preserves weekly and month
     outcome: 'completed',
   });
   await flush(next.live);
+  expect(daily(sink.payloads)).toHaveLength(1);
+  vi.setSystemTime('2026-11-03T10:00:00Z');
+  await flush(next.live);
   expect(daily(sink.payloads)).toHaveLength(2);
-  expect(daily(sink.payloads)[1].engines_used_today).not.toContain('claude');
+  expect(daily(sink.payloads)[1]).toMatchObject({
+    engines_used_today: ['ollama'],
+    first_active_this_week: true,
+    first_active_this_month: true,
+  });
 });
 
 test.each([
-  [undefined, undefined, 'source-checkout'],
+  [undefined, undefined, 'unknown'],
   ['beta', 'nightly', 'preview'],
   ['stable', 'dev', 'stable'],
   [undefined, 'nightly', 'nightly'],
-  ['private-build-label', undefined, 'source-checkout'],
+  ['private-build-label', undefined, 'unknown'],
 ] as const)(
   'daily channel serializes captured build stamp %s and environment fallback %s as %s',
   async (channel, fallback, expected) => {
@@ -228,6 +245,7 @@ test.each([
       { STATION_CHANNEL: fallback },
     );
     await live.stationStarted();
+    vi.setSystemTime('2026-10-13T10:00:00Z');
     await flush(live);
     expect(daily(sink.payloads)[0].channel).toBe(expected);
   },
@@ -242,6 +260,7 @@ test('keeps author inert with an empty build constant even when runtime environm
     { STATION_AUTHOR_TELEMETRY_ENDPOINT: forbiddenAuthor.endpoint },
   );
   await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await flush(live);
   expect(daily(operator.payloads)).toHaveLength(1);
   expect(forbiddenAuthor.payloads).toEqual([]);
@@ -265,6 +284,7 @@ test('independent sinks honor their own tier and never share operator credential
     },
   );
   await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await flush(live);
   expect(daily(author.payloads)).toHaveLength(1);
   expect(daily(operator.payloads)).toHaveLength(1);
@@ -277,7 +297,7 @@ test('independent sinks honor their own tier and never share operator credential
     ...config,
     telemetryTier: { kontour: 'off', operator: 'lite' },
   });
-  vi.setSystemTime('2026-10-13T10:00:00Z');
+  vi.setSystemTime('2026-10-14T10:00:00Z');
   await flush(live);
   expect(daily(author.payloads)).toHaveLength(1);
   expect(daily(operator.payloads)).toHaveLength(2);
@@ -285,7 +305,7 @@ test('independent sinks honor their own tier and never share operator credential
     ...config,
     telemetryTier: { kontour: 'lite', operator: 'off' },
   });
-  vi.setSystemTime('2026-10-14T10:00:00Z');
+  vi.setSystemTime('2026-10-15T10:00:00Z');
   await flush(live);
   expect(daily(author.payloads)).toHaveLength(2);
   expect(daily(operator.payloads)).toHaveLength(2);
@@ -303,6 +323,7 @@ test.each(['kontour', 'operator'] as const)(
     build.endpoint = author.endpoint;
     const { live, config } = await service(operator.endpoint);
     await live.stationStarted();
+    vi.setSystemTime('2026-10-13T10:00:00Z');
     const flushing = flush(live);
     try {
       await (retained === 'kontour' ? author.entered : operator.entered);
@@ -417,10 +438,14 @@ test('author Full consent is separate, destination-bound, and does not inherit o
   await live.flush();
   expect(author.headers).toEqual([undefined]);
   expect(operator.headers).toEqual(['operator-only']);
+  expect((author.payloads[0] as ProductTelemetryBatch).distinct_id).not.toBe(
+    (operator.payloads[0] as ProductTelemetryBatch).distinct_id,
+  );
   expect(author.payloads).toHaveLength(1);
   expect((author.payloads[0] as ProductTelemetryBatch).distinct_id).toMatch(
     /^[a-f0-9]{64}$/,
   );
+  await live.recordTierLowering('operator');
   await live.submitFeedback({
     publisher: 'operator',
     action: 'tier-lowered',
@@ -495,6 +520,7 @@ test('shutdown aborts a pending daily request and records its dropped outcome be
   const sink = await receiver(hold);
   const { live } = await service(sink.endpoint);
   await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   const flushing = live.flushDaily();
   try {
     await sink.entered;
@@ -535,6 +561,7 @@ test('shared shutdown abort reaches Full while the daily ledger publication is c
   );
   await live.acknowledgeDisclosure((await live.disclosure()).inventoryRevision);
   await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   const releaseLedger = await acquireFileMutationLockAsync(
     join(home, 'config', 'telemetry-outbox.json.mutation'),
   );
@@ -611,13 +638,14 @@ test('notice is recorded once per inventory and desktop/web must record the show
     { STATION_STDOUT_HANDSHAKE: '1' },
   );
   await ui.live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await flush(ui.live);
   expect(sink.payloads).toEqual([]);
   expect(
     (await ui.live.outbox('operator')).some((row) => row.reason === 'notice'),
   ).toBe(true);
   await ui.live.recordLiteNotice('operator', LITE_TELEMETRY_INVENTORY_REVISION);
-  vi.setSystemTime('2026-10-13T10:00:00Z');
+  vi.setSystemTime('2026-10-14T10:00:00Z');
   await flush(ui.live);
   expect(daily(sink.payloads)).toHaveLength(1);
 });
@@ -627,6 +655,7 @@ test('feedback route rejects free text, targets one publisher, skips silently, a
   const author = await receiver();
   build.endpoint = author.endpoint;
   const { live } = await service(operator.endpoint);
+  await live.recordTierLowering('operator');
   const app = createUsageTelemetryDisclosureRoutes(live);
   const submit = (body: unknown) =>
     app.request('/feedback', {
@@ -707,6 +736,7 @@ test('outbox evicts oldest entries at both the 30-day and actual serialized 5 Mi
   const sink = await receiver();
   const { live, home } = await service(sink.endpoint);
   await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await flush(live);
   const outboxPath = join(home, 'config', 'telemetry-outbox.json');
   const produced: TelemetryOutboxEntry[] = JSON.parse(
@@ -735,13 +765,9 @@ test('outbox evicts oldest entries at both the 30-day and actual serialized 5 Mi
       ).toISOString(),
     });
   await writeFile(outboxPath, JSON.stringify(rows, null, 2));
-  // Appending multiple legitimate feedback payloads crosses the size bound.
+  // Separate user changes can each carry their own reason.
   for (let index = 0; index < 12; index++)
-    await live.submitFeedback({
-      publisher: 'operator',
-      action: 'tier-lowered',
-      reason: 'privacy',
-    });
+    await live.recordTierLowering('operator', 'privacy');
   expect((await stat(outboxPath)).size).toBeLessThanOrEqual(
     TELEMETRY_OUTBOX_LIMITS.maxBytes,
   );
@@ -828,10 +854,255 @@ test('an internal agent cannot attest notice, send feedback, or acknowledge eith
     false,
   );
   agent = false;
+  await live.recordTierLowering('operator');
   for (const [path, body] of actions)
     expect((await submit(path, body)).status).toBe(200);
+  vi.setSystemTime('2026-10-13T10:00:00Z');
   await live.flushDaily();
   expect(sink.payloads).toHaveLength(2);
   expect(daily(sink.payloads)).toHaveLength(1);
   expect(author.payloads).toEqual([]);
+});
+
+test.each([
+  ['CLI start', { STATION_UI_PORT: '43180' }],
+  ['service run', { STATION_UI_PORT: '43180', STATION_SERVICE_MANAGED: '1' }],
+  ['Docker service', { STATION_UI_PORT: '3000', CI: '1' }],
+  ['web server', {}],
+] as const)(
+  '%s logs a first-start notice and sends without a UI caller',
+  async (_mode, env) => {
+    const sink = await receiver();
+    const { live, home } = await service(sink.endpoint, {}, env);
+    await live.stationStarted();
+    vi.setSystemTime('2026-10-13T10:00:00Z');
+    await live.flushDaily();
+    expect(daily(sink.payloads)).toHaveLength(1);
+    expect(daily(sink.payloads)[0]).toMatchObject({
+      version: '1.2.3',
+      distribution: 'unknown',
+      layouts_customized: 'unknown',
+    });
+    const state = JSON.parse(
+      await readFile(join(home, 'config', 'telemetry-daily.json'), 'utf8'),
+    );
+    expect(state.notices.operator.inventoryRevision).toBe(
+      LITE_TELEMETRY_INVENTORY_REVISION,
+    );
+  },
+);
+
+test('a desktop restart with an existing notice arms the daily timer', async () => {
+  const sink = await receiver();
+  const { live, home } = await service(
+    sink.endpoint,
+    {},
+    { STATION_STDOUT_HANDSHAKE: '1' },
+  );
+  await live.stationStarted();
+  await live.recordLiteNotice('operator', LITE_TELEMETRY_INVENTORY_REVISION);
+  await live.shutdown();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  let tick: (() => void) | undefined;
+  const restarted = new UsageTelemetryService({
+    homeDir: home,
+    appConfig: {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      productTelemetryEndpoint: sink.endpoint,
+    },
+    version: '1.2.3',
+    env: { STATION_STDOUT_HANDSHAKE: '1' },
+    logger: { warn: vi.fn() },
+    setInterval: ((callback: () => void) => {
+      tick = callback;
+      return { unref() {} };
+    }) as unknown as typeof setInterval,
+    clearInterval: vi.fn(),
+  });
+  services.push(restarted);
+  await restarted.stationStarted();
+  expect(tick).toBeTypeOf('function');
+  tick!();
+  await vi.waitFor(() => expect(daily(sink.payloads)).toHaveLength(1));
+});
+
+test('a late HTTP 2xx is recorded as sent after its publisher changes tier', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const sink = await receiver();
+  const delayed: typeof fetch = async (input, init) => {
+    const response = await globalThis.fetch(input, init);
+    entered();
+    await hold;
+    return response;
+  };
+  const { live, config } = await service(
+    sink.endpoint,
+    {},
+    {},
+    undefined,
+    undefined,
+    delayed,
+  );
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  const flushing = live.flushDaily();
+  await pending;
+  live.reconfigure({ ...config, telemetryTier: { operator: 'off' } });
+  release();
+  await flushing;
+  expect(
+    (await live.outbox('operator')).find((row) => row.tier === 'lite'),
+  ).toMatchObject({ outcome: 'sent', reason: 'acknowledged' });
+});
+
+test('a forward then backward clock correction does not leave future daily reservations', async () => {
+  const sink = await receiver();
+  const { live } = await service(sink.endpoint);
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await live.flushDaily();
+  vi.setSystemTime('2027-10-12T10:00:00Z');
+  await live.track('engine_turn', { engine: 'claude', outcome: 'completed' });
+  vi.setSystemTime('2027-10-13T10:00:00Z');
+  await live.flushDaily();
+  vi.setSystemTime('2026-10-14T10:00:00Z');
+  await live.track('engine_turn', { engine: 'codex', outcome: 'completed' });
+  vi.setSystemTime('2026-10-15T10:00:00Z');
+  await live.flushDaily();
+  expect(daily(sink.payloads)).toHaveLength(3);
+  expect(daily(sink.payloads)[2].engines_used_today).toEqual(['codex']);
+});
+
+test('outbox enforces 30-day age retention independently of the byte bound', async () => {
+  const home = makeTempDir('station-outbox-age-');
+  const local = new TelemetryLocalState(home);
+  const row: TelemetryOutboxEntry = {
+    publisher: 'operator',
+    tier: 'lite',
+    recordedAt: '2026-10-12T10:00:00.000Z',
+    outcome: 'sent',
+    reason: 'acknowledged',
+    payload: {
+      publisher: 'operator',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    },
+  };
+  await local.record(row);
+  const path = join(home, 'config', 'telemetry-outbox.json');
+  await writeFile(
+    path,
+    JSON.stringify([{ ...row, recordedAt: '2026-09-11T10:00:00.000Z' }, row]),
+  );
+  expect((await stat(path)).size).toBeLessThan(2048);
+  expect(await local.outbox()).toEqual([row]);
+});
+
+test('dropped Full observations are coalesced before disk publication and by day/reason', async () => {
+  const { live, home } = await service('');
+  await live.stationStarted();
+  for (let index = 0; index < 200; index++)
+    await live.track('plugin_installed', { plugin: 'custom' });
+  const path = join(home, 'config', 'telemetry-outbox.json');
+  await expect(access(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  const first = await live.outbox('operator');
+  expect(first).toHaveLength(1);
+  expect(first[0].payload).toEqual({ event: 'telemetry_dropped', count: 201 });
+  await live.track('plugin_removed', { plugin: 'custom' });
+  expect((await live.outbox('operator'))[0].payload).toEqual({
+    event: 'telemetry_dropped',
+    count: 202,
+  });
+});
+
+test('tier-change reason sends once before applying Off; standalone feedback requires a recent lowering and is bounded', async () => {
+  const sink = await receiver();
+  const { live, home, config } = await service(sink.endpoint);
+  const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
+  await loader.loadAppConfig();
+  await loader.updateAppConfig(config);
+  const logger = createLogger({ name: 'tier-feedback', level: 'error' });
+  const tiersAtSend: string[] = [];
+  const routes = createConfigRoutes(
+    loader,
+    logger,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    (updated) => live.reconfigure(updated),
+    async (publisher, reason) => {
+      tiersAtSend.push(
+        (await loader.loadAppConfig()).telemetryTier?.[publisher] ?? 'lite',
+      );
+      await live.recordTierLowering(publisher, reason);
+    },
+  );
+  const app = withOperatorPrincipal(routes);
+  const feedback = createUsageTelemetryDisclosureRoutes(live);
+  const put = (tier: string, reason?: string) =>
+    app.request('/app', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        telemetryTier: { operator: tier },
+        ...(reason ? { telemetryFeedbackReason: reason } : {}),
+      }),
+    });
+  const submit = (publisher = 'operator') =>
+    feedback.request('/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        publisher,
+        action: 'tier-lowered',
+        reason: 'privacy',
+      }),
+    });
+  try {
+    expect((await submit()).status).toBe(409);
+    expect((await put('off', 'private free text')).status).toBe(400);
+    expect((await put('off', 'privacy')).status).toBe(200);
+    expect(tiersAtSend).toEqual(['lite']);
+    expect(sink.payloads).toEqual([
+      { publisher: 'operator', action: 'tier-lowered', reason: 'privacy' },
+    ]);
+    expect((await live.telemetryStatus()).publishers.operator.tier).toBe('off');
+    expect((await put('off', 'privacy')).status).toBe(200);
+    expect((await submit()).status).toBe(409);
+    expect(sink.payloads).toHaveLength(1);
+    expect((await put('lite')).status).toBe(200);
+    expect((await put('off')).status).toBe(200);
+    expect((await submit()).status).toBe(200);
+    expect((await submit()).status).toBe(409);
+    expect((await submit('kontour')).status).toBe(409);
+    expect((await put('lite')).status).toBe(200);
+    expect((await put('off')).status).toBe(200);
+    expect((await submit()).status).toBe(409);
+    vi.setSystemTime('2026-10-13T10:00:00Z');
+    expect((await put('lite')).status).toBe(200);
+    expect((await put('off')).status).toBe(200);
+    vi.setSystemTime('2026-10-13T10:11:00Z');
+    expect((await submit()).status).toBe(409);
+    expect(sink.payloads).toHaveLength(2);
+    expect((await put('lite')).status).toBe(200);
+    await writeFile(join(home, 'config', 'telemetry-daily.json'), '{broken');
+    expect((await put('off', 'privacy')).status).toBe(200);
+    expect((await loader.loadAppConfig()).telemetryTier?.operator).toBe('off');
+  } finally {
+    loader.dispose();
+  }
 });

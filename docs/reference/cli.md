@@ -719,7 +719,9 @@ Operator environment-limited status also explains that restoring Full delivery r
 explicit config choice (`station telemetry set operator full`) and acknowledgement
 in Settings; a legacy environment true plus a receipt no longer enables Full.
 The outbox command prints the local 30-day/5-MiB payload ledger, optionally
-filtered by publisher. These commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
+filtered by publisher. Non-desktop `station start` and `service run` print newly
+recorded Lite notices in the terminal after readiness; unattended starts retain
+the first-start notice in their logs. These commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
 
 ### `config`
 

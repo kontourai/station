@@ -65,6 +65,10 @@ import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  liteTelemetryNoticeText,
+} from '@kontourai/station-shared/product-telemetry';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import {
@@ -4565,6 +4569,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         poll: process.env.STATION_DEV_WATCH_POLL === '1',
       })
     : undefined;
+  const telemetryNoticeStartedAt = Date.now();
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
@@ -4786,6 +4791,24 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { childAlive: childAliveProbe(uiProc.pid), signal },
         ),
     ]);
+    try {
+      const state = JSON.parse(
+        readFileSync(
+          join(projectHome, 'config', 'telemetry-daily.json'),
+          'utf8',
+        ),
+      );
+      for (const publisher of ['kontour', 'operator'] as const) {
+        const notice = state.notices?.[publisher];
+        if (
+          notice?.inventoryRevision === LITE_TELEMETRY_INVENTORY_REVISION &&
+          Date.parse(notice.shownAt) >= telemetryNoticeStartedAt
+        )
+          console.error(liteTelemetryNoticeText(publisher));
+      }
+    } catch {
+      // The server owns notice persistence; an unavailable receipt never grants permission to send.
+    }
     const activeApiBase = activeLocalApiBase(host, serverPort);
     if (activeApiBase) {
       publishActiveLocalStation(

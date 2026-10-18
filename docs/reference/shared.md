@@ -52,8 +52,8 @@ parsers remain Node-only; the browser status SDK uses its own response boundary.
 `parseStationDailyPing` validates the bounded, identifier-free Lite catalog.
 `mapRuntimeChannelToTelemetryChannel` is the shared serialization mapping:
 runtime `beta` becomes `preview`, permitted labels are preserved, and unknown
-labels return `undefined`. Lite callers use their documented `source-checkout`
-fallback; Full metadata may omit an unknown channel. The mapper does not grant
+labels return `unknown`. Lite sends that explicit value; Full metadata may
+omit an unknown channel. The mapper does not grant
 consent or change either tier's payload identity rules.
 
 ## Native relay link codec

@@ -20,6 +20,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
@@ -200,6 +201,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       }),
     );
     await result.kitLifecycleReady;
+    assertRuntimeHttpRouteCoverage(app.routes);
 
     const beforeReady = await app.request(
       '/api/usage-telemetry/disclosure',

@@ -270,27 +270,24 @@ describe('Lite ping privacy boundary', () => {
     ).toBe(false);
     expect(hasCurrentLiteTelemetryNotice(undefined)).toBe(false);
   });
-  test('rotates the Full id on UTC month boundaries, with no account input', () => {
-    expect(
-      monthlyTelemetryId('install-secret', new Date('2026-10-01T00:00:00Z')),
-    ).toBe('fb5b90f9ab599f47181c003f4fa2801263b4ed1820fa7011f32daf5f59d7431f');
-    expect(
-      monthlyTelemetryId('install-secret', new Date('2026-10-31T23:59:59Z')),
-    ).toBe(
-      monthlyTelemetryId(
-        'install-secret',
-        new Date('2026-11-01T01:00:00+02:00'),
-      ),
+  test('Full ids separate publishers, stay stable within UTC month and rotate next month', () => {
+    const october = new Date('2026-10-01T00:00:00Z');
+    const lastOctober = new Date('2026-11-01T01:00:00+02:00');
+    const november = new Date('2026-11-01T00:00:00Z');
+    expect(monthlyTelemetryId('install-secret', october, 'operator')).toBe(
+      '5a72ebd385fe9930e9a0b297ebb7f3893c18847812163dbb163c0cc831c5aed7',
     );
-    expect(
-      monthlyTelemetryId('install-secret', new Date('2026-11-01T00:00:00Z')),
-    ).not.toBe(
-      monthlyTelemetryId('install-secret', new Date('2026-10-31T23:59:59Z')),
+    expect(monthlyTelemetryId('install-secret', october, 'operator')).toBe(
+      monthlyTelemetryId('install-secret', lastOctober, 'operator'),
     );
-    expect(
-      monthlyTelemetryId('another-secret', new Date('2026-10-01T00:00:00Z')),
-    ).not.toBe(
-      monthlyTelemetryId('install-secret', new Date('2026-10-01T00:00:00Z')),
+    expect(monthlyTelemetryId('install-secret', october, 'operator')).not.toBe(
+      monthlyTelemetryId('install-secret', october, 'kontour'),
+    );
+    expect(monthlyTelemetryId('install-secret', october, 'operator')).not.toBe(
+      monthlyTelemetryId('install-secret', november, 'operator'),
+    );
+    expect(monthlyTelemetryId('install-secret', october, 'operator')).not.toBe(
+      monthlyTelemetryId('another-secret', october, 'operator'),
     );
   });
 });

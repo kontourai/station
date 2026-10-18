@@ -178,6 +178,12 @@ connection and account. They do not assert current provider availability.
 
 ---
 
+`PUT /config/app` also accepts request-only `telemetryFeedbackReason` with a
+`telemetryTier` change. A fixed-enum reason is sent once to each publisher whose
+tier actually decreases, before applying its new choice (including Off). DNT
+suppresses feedback; feedback failure does not block lowering. This metadata is
+not persisted as a setting. See [Usage telemetry](usage-telemetry.md#local-ledger-and-feedback).
+
 ## Logging
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.

@@ -187,3 +187,17 @@ Known residual: operator and `access:manage` callers can submit full tier maps
 without compare-and-swap. Serialized per-publisher merging preserves omitted
 publishers, but a stale full-map write can replace another caller's intervening
 choice. This foundation does not add conflict detection for those callers.
+
+
+The Lite sender reports only yesterday's completed UTC snapshot, with no backlog.
+Non-desktop starts use a first-start log notice even when a UI port is configured;
+the CLI mirrors new notices to its launching terminal. Desktop starts retain the
+UI notice gate. Unknown channel, distribution and layout-customization facts are
+explicit `unknown` values, and the changed Lite inventory invalidates old notices.
+
+Full IDs now hash `install_secret || publisherId || YYYY-MM`, separating Kontour
+and operator within the month. This disclosed envelope change also resets Full
+receipts independently of wording revision 2. Tier-change requests can include an
+optional fixed-enum reason, sent once before the lower choice is applied,
+including Off. Standalone feedback requires a lowering within 10 minutes and is
+limited to one per publisher per UTC day. DNT permits neither path.

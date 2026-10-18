@@ -112,6 +112,7 @@ async function service(
     version: '1.2.3',
     logger: logger(),
     ...options,
+    env: { STATION_STDOUT_HANDSHAKE: '1', ...options.env },
   });
   // Existing transport tests exercise post-disclosure behavior; receipt-gate
   // tests below deliberately construct a service without this acknowledgement.
@@ -891,7 +892,10 @@ describe('UsageTelemetryService', () => {
       appConfig: { telemetryTier: { operator: 'full' } } as any,
       version: '1.2.3',
       logger: logger(),
-      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+      env: {
+        STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
+        STATION_STDOUT_HANDSHAKE: '1',
+      },
       fetch,
       setInterval: setInterval as any,
     });
@@ -1800,7 +1804,7 @@ describe('UsageTelemetryService', () => {
       'telemetry hashed its own candidate instead of the identity that persisted',
     ).toBe(
       createHash('sha256')
-        .update(winner + new Date().toISOString().slice(0, 7))
+        .update(`${winner}operator${new Date().toISOString().slice(0, 7)}`)
         .digest('hex'),
     );
   });

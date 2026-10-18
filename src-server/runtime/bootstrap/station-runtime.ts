@@ -3212,9 +3212,6 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
-        headless:
-          process.env.STATION_STDOUT_HANDSHAKE !== '1' &&
-          !process.env.STATION_UI_PORT,
         dailyFacts: async () => {
           const homeDir = this.configLoader.getProjectHomeDir();
           const pluginsDir = `${homeDir}/plugins`;
@@ -3253,7 +3250,7 @@ export class StationRuntime {
             branding_overridden:
               name !== 'Station' || !!logo || !!theme || !!welcome,
             // A saved layout may be a default copy, not evidence of customization.
-            layouts_customized: false,
+            layouts_customized: 'unknown',
           };
         },
       });

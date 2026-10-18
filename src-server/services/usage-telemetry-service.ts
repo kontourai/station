@@ -75,7 +75,6 @@ interface UsageTelemetryServiceOptions {
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
   telemetrySecretResolver?: TelemetrySecretResolver;
-  headless?: boolean;
   dailyFacts?: ConstructorParameters<
     typeof TelemetryPublisherService
   >[0]['facts'];
@@ -111,6 +110,7 @@ export class UsageTelemetryService {
   private timer: ReturnType<typeof setInterval> | undefined;
   private flushing: Promise<void> | undefined;
   private dailyFlushing: Promise<void> | undefined;
+  private readonly dropped = new Map<string, TelemetryOutboxEntry>();
   private requestAbort: AbortController | undefined;
   private acceptingTracks = true;
   private started = false;
@@ -248,10 +248,18 @@ export class UsageTelemetryService {
     );
   }
   async outbox(publisher?: 'kontour' | 'operator') {
+    await this.flushDropped();
+    await this.author?.flushDropped();
     return this.publishers.local.outbox(publisher);
   }
-  async submitFeedback(payload: TelemetryFeedback): Promise<void> {
-    await this.publishers.feedback(payload);
+  async submitFeedback(payload: TelemetryFeedback): Promise<boolean> {
+    return this.publishers.feedback(payload);
+  }
+  async recordTierLowering(
+    publisher: 'kontour' | 'operator',
+    reason?: TelemetryFeedback['reason'],
+  ): Promise<void> {
+    await this.publishers.tierLowered(publisher, reason);
   }
   async recordLiteNotice(
     publisher: 'kontour' | 'operator',
@@ -657,7 +665,7 @@ export class UsageTelemetryService {
       this.buffer.length = 0;
       this.requestAbort?.abort();
     }
-    if (this.started && this.options.headless) this.ensureTimer();
+    if (this.started) this.ensureTimer();
   }
   private async requestCredential(
     signal: AbortSignal,
@@ -719,7 +727,12 @@ export class UsageTelemetryService {
   ): Promise<void> {
     if (!this.hasCurrentDisclosureReceipt) await this.loadDisclosureReceipt();
     try {
-      assertUsageTelemetryInventoryContract(event, properties);
+      assertUsageTelemetryInventoryContract(
+        event,
+        properties,
+        [],
+        [this.build.version],
+      );
       assertUsageTelemetryInventoryContract('station_started', {
         version: this.build.version,
         platform: this.build.platform,
@@ -788,8 +801,10 @@ export class UsageTelemetryService {
     if (this.publisher === 'operator' && !this.started) {
       this.started = true;
       try {
-        await this.publishers.notice(this.options.headless === true);
-        if (this.options.headless) this.ensureTimer();
+        await this.publishers.notice(
+          (this.options.env ?? process.env).STATION_STDOUT_HANDSHAKE !== '1',
+        );
+        this.ensureTimer();
       } catch (error) {
         this.warn(
           'Usage telemetry notice unavailable; Lite remains gated.',
@@ -816,7 +831,8 @@ export class UsageTelemetryService {
     if (
       this.timer ||
       !this.acceptingTracks ||
-      (this.publisher === 'kontour' && !this.active)
+      (!this.active &&
+        (this.publisher === 'kontour' || !this.publishers.canSendDaily()))
     )
       return;
     this.timer = this.setIntervalImpl(() => {
@@ -851,6 +867,25 @@ export class UsageTelemetryService {
     distinctId = '',
   ): Promise<void> {
     if (!events.length) return;
+    if (outcome === 'dropped') {
+      const recordedAt = new Date().toISOString();
+      const key = `${recordedAt.slice(0, 10)}:${reason}`;
+      const prior = this.dropped.get(key);
+      this.dropped.set(key, {
+        publisher: this.publisher,
+        tier: 'full',
+        recordedAt,
+        outcome,
+        reason,
+        payload: {
+          event: 'telemetry_dropped',
+          count:
+            (prior && 'count' in prior.payload ? prior.payload.count : 0) +
+            events.length,
+        },
+      });
+      return;
+    }
     await this.publishers.local.record({
       publisher: this.publisher,
       tier: 'full',
@@ -864,6 +899,24 @@ export class UsageTelemetryService {
         events: [...events],
       },
     });
+  }
+  private async flushDropped(): Promise<void> {
+    const pending = [...this.dropped];
+    this.dropped.clear();
+    for (let index = 0; index < pending.length; index++) {
+      try {
+        await this.publishers.local.record(pending[index][1]);
+      } catch (error) {
+        for (const [key, entry] of pending.slice(index)) {
+          const newer = this.dropped.get(key);
+          if ('count' in entry.payload && newer && 'count' in newer.payload)
+            entry.payload.count += newer.payload.count;
+          this.dropped.set(key, entry);
+        }
+        this.warn('Usage telemetry ledger failed.', error);
+        return;
+      }
+    }
   }
   private recordDropped(
     events: BufferedEvent[],
@@ -881,7 +934,7 @@ export class UsageTelemetryService {
       this.options.homeDir,
       'usage-telemetry-id',
       'Usage telemetry identity did not persist as a UUID.',
-      new Date(),
+      { month: new Date(), publisherId: this.publisher },
     );
   }
   private async awaitFlushWithinDeadline(
@@ -1013,6 +1066,8 @@ export class UsageTelemetryService {
   async flush(): Promise<void> {
     if (!this.acceptingTracks) return this.flushing;
     await Promise.all([
+      this.flushDropped(),
+      this.author?.flushDropped(),
       this.flushWithDeadline(),
       this.author?.flushWithDeadline(),
     ]);
@@ -1077,6 +1132,9 @@ export class UsageTelemetryService {
     } catch (error) {
       this.warn('Usage telemetry shutdown failed.', error);
     } finally {
+      await this.flushDropped().catch((error) =>
+        this.warn('Usage telemetry ledger failed.', error),
+      );
       signal?.removeEventListener('abort', abortRequest);
     }
   }

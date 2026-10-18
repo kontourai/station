@@ -27,9 +27,9 @@ import {
 /** Runtime builds call the preview release ring beta; telemetry uses preview. */
 export function mapRuntimeChannelToTelemetryChannel(
   channel: string | undefined,
-): ProductTelemetryBuild['channel'] {
+): (typeof TELEMETRY_CHANNELS)[number] {
   const label = channel === 'beta' ? 'preview' : channel;
-  return TELEMETRY_CHANNELS.find((allowed) => allowed === label);
+  return TELEMETRY_CHANNELS.find((allowed) => allowed === label) ?? 'unknown';
 }
 
 export function renderUsageTelemetryInventory(): string {
@@ -362,6 +362,12 @@ export const LITE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
   .update(renderLiteTelemetryInventory())
   .digest('hex');
 
+export function liteTelemetryNoticeText(
+  publisher: 'kontour' | 'operator',
+): string {
+  return `Station telemetry (${publisher}): Lite sends one identifier-free daily aggregate when a destination is configured. Turn off with station telemetry set ${publisher} off; DO_NOT_TRACK also forces Off. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.`;
+}
+
 /** A sender must show the new notice whenever this revision changes. */
 export function hasCurrentLiteTelemetryNotice(
   receipt: { inventoryRevision: string } | undefined,
@@ -369,9 +375,13 @@ export function hasCurrentLiteTelemetryNotice(
   return receipt?.inventoryRevision === LITE_TELEMETRY_INVENTORY_REVISION;
 }
 
-export function monthlyTelemetryId(installSecret: string, date: Date): string {
+export function monthlyTelemetryId(
+  installSecret: string,
+  date: Date,
+  publisherId: string,
+): string {
   return createHash('sha256')
-    .update(installSecret + date.toISOString().slice(0, 7))
+    .update(installSecret + publisherId + date.toISOString().slice(0, 7))
     .digest('hex');
 }
 
@@ -395,6 +405,8 @@ export function parseStationDailyPing(
     if (Array.isArray(domain))
       return typeof item === 'string' && domain.includes(item);
     if (domain === 'boolean') return typeof item === 'boolean';
+    if (domain === 'boolean-or-unknown')
+      return typeof item === 'boolean' || item === 'unknown';
     if (domain === 'count')
       return (
         typeof item === 'number' &&
@@ -417,8 +429,8 @@ export function parseStationDailyPing(
     if (domain === 'public-release-version-or-custom')
       return item === 'custom' || publicReleaseVersions.includes(item);
     return (
-      (domain === 'public-registry-id-or-none-or-custom' &&
-        ['none', 'custom'].includes(item)) ||
+      (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&
+        ['none', 'custom', 'unknown'].includes(item)) ||
       publicRegistryIds.includes(item)
     );
   };

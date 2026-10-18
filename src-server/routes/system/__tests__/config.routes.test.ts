@@ -50,7 +50,7 @@ function createMockConfigLoader(
     mutateAppConfig: vi
       .fn()
       .mockImplementation(async (mutate: any) =>
-        loader.updateAppConfig(mutate({ ...config })),
+        loader.updateAppConfig(await mutate({ ...config })),
       ),
   };
 }
@@ -1730,7 +1730,7 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       contribution: stale,
     });
     loader.mutateAppConfig.mockImplementation(async (mutate: any) => {
-      mutate({
+      await mutate({
         defaultModel: 'claude-3',
         region: 'us-east-1',
         contribution: winner,

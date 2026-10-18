@@ -9,6 +9,7 @@ import type {
 } from '@kontourai/station-contracts/product-telemetry';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  liteTelemetryNoticeText,
   mapRuntimeChannelToTelemetryChannel,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
@@ -73,6 +74,7 @@ export class TelemetryPublisherService {
   };
   private readonly requests = new Map<AbortController, Publisher>();
   private stopped = false;
+  private readonly shownNotices = new Set<Publisher>();
   constructor(private readonly options: PublisherOptions) {
     this.local = new TelemetryLocalState(options.homeDir);
   }
@@ -84,17 +86,23 @@ export class TelemetryPublisherService {
   reconfigure(publisher?: Publisher): void {
     for (const name of PUBLISHERS)
       if (!publisher || publisher === name) this.epochs[name]++;
-    for (const [request, name] of this.requests)
-      if (!publisher || publisher === name) request.abort();
+    // Already dispatched bodies cannot be withdrawn; retain their bounded delivery result.
   }
   stop(): void {
     this.stopped = true;
     this.reconfigure();
+    for (const request of this.requests.keys()) request.abort();
+  }
+  canSendDaily(): boolean {
+    return PUBLISHERS.some(
+      (publisher) =>
+        this.shownNotices.has(publisher) &&
+        !!this.endpoint(publisher) &&
+        this.options.configuration().publishers[publisher].tier !== 'off',
+    );
   }
   private seed(now: Date, prior?: TelemetryDailyState): TelemetryDailyState {
-    const channel =
-      mapRuntimeChannelToTelemetryChannel(this.options.channel) ??
-      'source-checkout';
+    const channel = mapRuntimeChannelToTelemetryChannel(this.options.channel);
     const day = now.toISOString().slice(0, 10);
     const week = utcWeek(now);
     const month = day.slice(0, 7);
@@ -106,13 +114,17 @@ export class TelemetryPublisherService {
       day,
       attempted: prior?.attempted ?? {},
       reported: prior?.reported ?? {},
-      ...(prior ? { previous: { day: prior.day, ping: prior.ping } } : {}),
+      ...(prior && prior.day < day
+        ? { previous: { day: prior.day, ping: prior.ping } }
+        : {}),
+      lowerings: prior?.lowerings ?? {},
+      feedbackDays: prior?.feedbackDays ?? {},
       engineFailures: {},
       notices: prior?.notices ?? {},
       ping: {
         event: 'station_daily',
         event_id: randomUUID(),
-        version: 'custom',
+        version: this.options.build.version,
         channel,
         platform: process.platform,
         arch: process.arch,
@@ -122,12 +134,12 @@ export class TelemetryPublisherService {
         first_active_this_month: prior?.lastActiveMonth !== month,
         install_age_bucket: age(prior?.firstRun ?? day, day),
         paired_devices_bucket: '0',
-        distribution: 'none',
+        distribution: 'unknown',
         public_plugins_enabled: [],
         private_plugins_bucket: '0',
         branding_overridden: false,
         home_replaced: false,
-        layouts_customized: false,
+        layouts_customized: 'unknown',
         setup_abandoned_step: 'none',
         engine_connect_failures: [],
         safe_mode_entered: 0,
@@ -154,18 +166,19 @@ export class TelemetryPublisherService {
     await this.update((ping) => {
       if (facts) Object.assign(ping, facts);
     });
-    if (!headless) return;
     await this.local.daily((state) => {
       if (!state) throw new Error('Telemetry daily state is unavailable');
       for (const publisher of PUBLISHERS) {
         if (
           state.notices[publisher]?.inventoryRevision ===
           LITE_TELEMETRY_INVENTORY_REVISION
-        )
+        ) {
+          this.shownNotices.add(publisher);
           continue;
-        writeUserNotice(
-          `Station telemetry (${publisher}): Lite sends one identifier-free daily aggregate when a destination is configured. Turn off with station telemetry set ${publisher} off; DO_NOT_TRACK also forces Off. Inspect station telemetry outbox and docs/reference/usage-telemetry.md.`,
-        );
+        }
+        if (!headless) continue;
+        writeUserNotice(liteTelemetryNoticeText(publisher));
+        this.shownNotices.add(publisher);
         state.notices[publisher] = {
           publisher,
           inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
@@ -191,6 +204,7 @@ export class TelemetryPublisherService {
       };
       return state;
     });
+    this.shownNotices.add(publisher);
   }
   async observe<E extends UsageTelemetryEvent>(
     event: E,
@@ -276,20 +290,35 @@ export class TelemetryPublisherService {
           : prior;
       if (facts) Object.assign(state.ping, facts);
       for (const publisher of PUBLISHERS) {
-        if ((state.attempted[publisher] ?? '') >= today) continue;
-        // Reserve before I/O: crash, timeout and concurrent processes cannot duplicate a daily attempt.
+        // Only yesterday is eligible, including after a long offline gap.
+        const yesterday = new Date(now.getTime() - 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        const snapshot = state.previous;
+        if (!snapshot || snapshot.day !== yesterday) continue;
+        // A backward clock correction must not retain a reservation in the future.
+        if ((state.attempted[publisher] ?? '') > today) {
+          delete state.attempted[publisher];
+          delete state.reported[publisher];
+        }
+        if (
+          state.attempted[publisher] === today ||
+          state.reported[publisher] === snapshot.day
+        )
+          continue;
+        // Reserve before I/O: concurrent processes cannot duplicate an attempt.
         state.attempted[publisher] = today;
-        const snapshot =
-          state.previous && state.reported[publisher] !== state.previous.day
-            ? state.previous
-            : { day: state.day, ping: state.ping };
         state.reported[publisher] = snapshot.day;
         jobs.push({
           publisher,
-          payload: parseStationDailyPing({
-            ...snapshot.ping,
-            event_id: randomUUID(),
-          }),
+          payload: parseStationDailyPing(
+            {
+              ...snapshot.ping,
+              event_id: randomUUID(),
+            },
+            [],
+            [snapshot.ping.version],
+          ),
           notice:
             state.notices[publisher]?.inventoryRevision ===
             LITE_TELEMETRY_INVENTORY_REVISION,
@@ -303,11 +332,62 @@ export class TelemetryPublisherService {
       ),
     );
   }
-  async feedback(payload: TelemetryFeedback): Promise<void> {
-    if (payload.reason === 'skip') return;
+  async tierLowered(
+    publisher: Publisher,
+    reason?: TelemetryFeedback['reason'],
+  ): Promise<void> {
+    if (this.options.configuration().publishers[publisher].reason === 'DNT')
+      return;
+    await this.update();
+    await this.local.daily((state) => {
+      if (!state) throw new Error('Telemetry daily state is unavailable');
+      state.lowerings ??= {};
+      state.lowerings[publisher] = {
+        at: new Date().toISOString(),
+        feedbackSent: reason !== undefined && reason !== 'skip',
+      };
+      return state;
+    });
+    if (reason && reason !== 'skip')
+      await this.send(
+        publisher,
+        { publisher, action: 'tier-lowered', reason },
+        true,
+      );
+  }
+  async feedback(payload: TelemetryFeedback): Promise<boolean> {
+    if (payload.reason === 'skip') return true;
     if (payload.publisher !== 'kontour' && payload.publisher !== 'operator')
-      throw new Error('Telemetry publisher is not registered');
-    await this.send(payload.publisher, payload, true);
+      return false;
+    const publisher = payload.publisher;
+    if (
+      payload.action !== 'tier-lowered' ||
+      this.options.configuration().publishers[publisher].reason === 'DNT'
+    )
+      return false;
+    let allowed = false;
+    await this.update();
+    await this.local.daily((state) => {
+      if (!state) throw new Error('Telemetry daily state is unavailable');
+      const lowering = state.lowerings?.[publisher];
+      const elapsed = lowering ? Date.now() - Date.parse(lowering.at) : -1;
+      const today = new Date().toISOString().slice(0, 10);
+      state.feedbackDays ??= {};
+      if (
+        lowering &&
+        !lowering.feedbackSent &&
+        elapsed >= 0 &&
+        elapsed <= 10 * 60_000 &&
+        state.feedbackDays[publisher] !== today
+      ) {
+        lowering.feedbackSent = true;
+        state.feedbackDays[publisher] = today;
+        allowed = true;
+      }
+      return state;
+    });
+    if (allowed) await this.send(publisher, payload, true);
+    return allowed;
   }
   private async send(
     publisher: Publisher,
@@ -319,7 +399,8 @@ export class TelemetryPublisherService {
     const endpoint = this.endpoint(publisher);
     const epoch = this.epochs[publisher];
     let reason: TelemetryOutboxEntry['reason'] =
-      resolution.tier === 'off'
+      resolution.tier === 'off' &&
+      (!('action' in payload) || resolution.reason === 'DNT')
         ? resolution.reason === 'DNT'
           ? 'DNT'
           : 'off'
@@ -349,18 +430,11 @@ export class TelemetryPublisherService {
           }),
           controller.signal,
         );
-        await abortableTelemetryOperation(
-          Promise.resolve(response.body?.cancel()),
-          controller.signal,
-        );
-        if (
-          response.ok &&
-          epoch === this.epochs[publisher] &&
-          !controller.signal.aborted
-        ) {
+        if (response.ok) {
           outcome = 'sent';
           reason = 'acknowledged';
         }
+        await response.body?.cancel();
       } catch {
         /* Transport failures are recorded without endpoint or error text. */
       } finally {

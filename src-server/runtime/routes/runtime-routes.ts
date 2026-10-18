@@ -2,6 +2,7 @@ import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -6619,6 +6620,11 @@ export function configureRuntimeRoutes(
         context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
       },
+      async (publisher, reason) => {
+        await context
+          .getUsageTelemetry?.()
+          ?.recordTierLowering(publisher, reason);
+      },
     ),
   );
   context.app.route(
@@ -7149,7 +7155,7 @@ export function configureRuntimeRoutes(
             ?.track('client_connected', {
               surface: reported,
               device_class: reported === 'desktop' ? 'desktop' : 'other',
-              version: 'custom',
+              version: packageJson.version,
             })
             .catch((error) =>
               context.logger.warn('Connection telemetry observation failed', {

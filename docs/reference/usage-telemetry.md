@@ -48,15 +48,18 @@ The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
 build destination; the UI lane presents that disclosure.
 
-A headless server prints a one-time Lite notice per publisher and inventory
-revision through the [logger module's unfiltered stderr notice path](../../src-server/utils/logger.ts) and
-records it before sending. Diagnostic log levels and `STATION_STDOUT_LOGS=0`
-cannot suppress that notice. Desktop
-sidecars (`STATION_STDOUT_HANDSHAKE=1`) and managed web starts (`STATION_UI_PORT`)
-defer to the UI. Until that UI records the shown notice revision with
-`POST /api/usage-telemetry/lite-notices`, daily payloads are suppressed with reason
-`notice`. A changed inventory requires showing the notice again. The body is
-`{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
+Every non-desktop server, including `station start`, `service run`, Docker and
+web servers with a UI port, prints a one-time Lite notice per publisher and
+inventory revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts)
+and records it before sending. The launching CLI also prints newly recorded
+notices in the terminal after readiness. Unattended services retain the notice
+in their logs. This first-start log notice is the fallback while the web notice
+UI is not wired; a UI port does not imply that a person saw a notice.
+Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the UI. Until it records
+the shown revision with `POST /api/usage-telemetry/lite-notices`, daily payloads
+are suppressed with reason `notice`. A current receipt survives restart and the
+daily timer starts even without a new UI call. An inventory change requires a new
+notice. The body is `{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
 with a current receipt migrates to operator Full; without it, operator Lite.
@@ -105,7 +108,7 @@ ever falls back to the other destination's key.
 
 Full telemetry is pseudonymous, not anonymous. Its installation hash rotates
 monthly and is never linked to an account by Station. The Full payload carries
-SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
+SHA-256 of a random UUID concatenated with the publisher ID and UTC `YYYY-MM`. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
 ## Daily aggregates and observation limits
@@ -115,9 +118,11 @@ in `STATION_HOME/config/telemetry-daily.json`, before network I/O. It checks on
 the service flush interval. Reopening the service or concurrent flushes reuse
 that reservation. A failed or suppressed attempt is recorded and is not retried
 that day. This deliberately favors avoiding duplicate counts over delivery.
-After a missed flush, the next start retains only the latest observed unsent
-day; it never sends a backlog. A ping is a snapshot at flush time, so observations
-later that day cannot revise a ping already sent. Weekly and monthly flags use
+Only the completed previous UTC day's snapshot is eligible: observations on
+day 1 are sent on day 2, never during day 1. After a gap, only yesterday can be
+sent; older observed days are discarded instead of replaying a backlog. A
+backward clock correction resets future reservations so they cannot prevent
+current-day sending. Weekly and monthly flags use
 UTC Monday weeks and calendar months, with first-run and last-active dates kept
 only locally. Those flags are estimates under delivery loss and state resets.
 The atomic local state is capped at 16 KiB and stores bounded daily sets, counters,
@@ -127,17 +132,17 @@ The contract validator checks every outgoing daily field. Current sources are:
 
 | Field | Server observation or conservative value |
 | --- | --- |
-| version | `custom`: no authoritative public-release version catalog is wired to this sender. |
-| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; its omitted unknown result falls back to `source-checkout`. |
+| version | The running package version; the producer validates it against its own build version. Receivers must admit that public release version in their catalog. |
+| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
 | engines_used_today | Existing engine-turn terminal observations. |
 | paired_devices_bucket | The pairing service's current device store. |
-| distribution/public_plugins_enabled | `none` / empty set: no authoritative public telemetry catalog or distribution manifest consumer exists. Layout-source profiles are not distribution identities. |
+| distribution/public_plugins_enabled | `unknown` / empty set: no authoritative public telemetry catalog or distribution manifest consumer exists. Layout-source profiles are not distribution identities. |
 | private_plugins_bucket | Valid installed plugin manifests; unverified-public packages are counted conservatively as private. No names leave the machine. |
 | branding_overridden | Resolved branding name/logo/theme/welcome differs from built-in empty/default branding. |
 | home_replaced | A currently valid granted workspace Home role. |
-| layouts_customized | `false`: no reliable persisted customization marker; saved default layout copies are not evidence of customization. |
+| layouts_customized | `unknown`: no reliable persisted customization marker; saved default layout copies are not evidence of customization. |
 | setup_abandoned_step | `none`: no server-owned setup-abandonment producer. |
 | engine_connect_failures | Empty until a classified engine-connect-failure observation is available; a failed turn is not invented as a connection failure. |
 | safe_mode_entered/plugin_disabled_after_crash | Zero: no safe-mode or crash-disable lifecycle producer exists today. |
@@ -159,25 +164,38 @@ producers remain unwired rather than guessed from unrelated events.
 publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
 is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
 5 MiB of actual serialized bytes, oldest first. Reads also enforce retention.
-It is an audit log, not a retry spool. Suppressed Full records have an empty
-`distinct_id` so inspecting suppressed traffic never creates an installation
-secret. Full retry failures can appear as dropped attempts followed by a sent
-record with the same event IDs. A Lite/feedback `sent` record means HTTP 2xx;
-only Full's commit receipt proves the receiver acknowledged event storage.
+It is an audit log, not a retry spool. Dropped Full observations are coalesced
+in memory, then published at the flush interval, on outbox reads, and at shutdown
+as `telemetry_dropped` counts per publisher, reason and UTC day. A process crash
+before that publication can lose pending dropped counts. Suppressed traffic
+never creates an installation secret. Sent Full payloads retain their exact
+batch and event IDs. A Lite/feedback `sent` record means HTTP 2xx, including a
+response received after a tier change; only Full's commit receipt proves the
+receiver acknowledged event storage.
 
 Agent principals cannot submit user feedback or attest that a Lite notice was
 shown. Both writes require the existing `access:manage` authority.
 
+`PUT /config/app` may carry `telemetryFeedbackReason` alongside a `telemetryTier`
+change. Reasons are `privacy`, `too-much-data`, `performance`, `not-useful`,
+`unexpected`, `other`, or `skip`. Inside the serialized config mutation, each
+publisher whose tier actually decreases records a lowering and sends its
+optional reason before the new choice is persisted and applied, including Off.
+Feedback persistence or transport failure never prevents applying the lower tier.
+An unchanged or raised choice sends no reason. A repeated request cannot replay
+the reason. DNT suppresses the signal and does not record a feedback window.
+
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
-`operator`), action (`tier-lowered` or `plugin-uninstalled`) and reason (`privacy`,
-`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`, `skip`). It
-rejects extra fields, IDs and free text. The explicit action targets only that
-publisher. Skip creates no signal. Off and DNT still suppress feedback; lowering
-to Off does not silently bypass the publisher's Off choice. Feedback is recorded
-in the same ledger, without an installation ID. This endpoint records a submitted
-reason; it does not prove the preceding UI action happened. Feedback and shown
-notice writes require the existing `access:manage` authority; ledger reads use
-`orchestration:read`, under the normal authenticated usage-telemetry route family.
+`operator`), action and a fixed-enum reason. Non-skip reasons require action
+`tier-lowered`, a server-recorded lowering within the last 10 minutes, no prior
+reason for that change, and no standalone feedback for that publisher that UTC
+day. Otherwise it returns 409. It can send the explicitly requested reason
+while the resulting tier is Off; DNT always refuses it. Plugin uninstall feedback
+is unavailable until a publisher-specific uninstall action records authority.
+Skip sends nothing. IDs, extra fields and free text are rejected. Feedback and
+shown-notice writes require `access:manage`; agents cannot send them. Ledger
+reads require `orchestration:read`, under the authenticated usage-telemetry route
+family. Feedback contains no installation ID.
 
 ## Delivery status and connection checks
 
@@ -252,7 +270,8 @@ standard headers. Product disclosure remains independent.
 ## What `distinct_id` is, and when it is not stable
 
 `distinct_id` is SHA-256 of the random UUID at
-`STATION_HOME/config/usage-telemetry-id` concatenated with UTC `YYYY-MM`.
+`STATION_HOME/config/usage-telemetry-id` concatenated with the publisher ID and UTC `YYYY-MM`.
+Kontour and operator therefore receive distinct IDs even in the same month.
 It changes at a UTC month boundary, is never derived from accounts, and is
 accessed only after Full admission. The raw UUID never leaves the process.
 The persisted identifier helper reads back the destination after creation or
@@ -329,7 +348,7 @@ The contracts/product-telemetry inventory declares event and envelope fields; sh
 | --- | --- |
 | `schema_version` | Protocol version 1. |
 | `inventory_revision` | SHA-256 of the disclosed envelope and event inventory. |
-| `distinct_id` | SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly and is not a person identity. |
+| `distinct_id` | SHA-256 of a separate random installation UUID concatenated with the publisher ID and UTC YYYY-MM; rotates monthly and is not a person identity. |
 | `events` | One through twenty inventory observations. |
 
 ### observation fields
@@ -465,7 +484,7 @@ A public or custom plugin was disabled after a crash.
 - `event`: {"domain":["station_daily"]}
 - `event_id`: {"domain":"uuid-v4"}
 - `version`: {"domain":"public-release-version-or-custom","maxLength":64}
-- `channel`: {"domain":["stable","preview","nightly","dev","source-checkout"]}
+- `channel`: {"domain":["stable","preview","nightly","dev","source-checkout","unknown"]}
 - `platform`: {"domain":["aix","android","cygwin","darwin","freebsd","haiku","linux","netbsd","openbsd","sunos","win32"]}
 - `arch`: {"domain":["arm","arm64","ia32","loong64","mips","mipsel","ppc","ppc64","riscv64","s390","s390x","x64"]}
 - `surfaces_today`: {"domain":["desktop","web","ios","android","cli"],"arrayMax":5}
@@ -474,12 +493,12 @@ A public or custom plugin was disabled after a crash.
 - `install_age_bucket`: {"domain":["0d","1-7d","8-30d","31-90d","91d+"]}
 - `paired_devices_bucket`: {"domain":["0","1","2-3","4+"]}
 - `engines_used_today`: {"domain":["station","acp","bedrock","claude","codex","muse","ollama","other"],"arrayMax":8}
-- `distribution`: {"domain":"public-registry-id-or-none-or-custom","maxLength":128}
+- `distribution`: {"domain":"public-registry-id-or-none-or-custom-or-unknown","maxLength":128}
 - `public_plugins_enabled`: {"domain":"public-registry-id","arrayMax":20,"maxLength":128}
 - `private_plugins_bucket`: {"domain":["0","1","2-3","4+"]}
 - `branding_overridden`: {"domain":"boolean"}
 - `home_replaced`: {"domain":"boolean"}
-- `layouts_customized`: {"domain":"boolean"}
+- `layouts_customized`: {"domain":"boolean-or-unknown"}
 - `setup_abandoned_step`: {"domain":["none","welcome","connection","engine","project","pairing","finish"]}
 - `engine_connect_failures`: {"domain":"engine-count-buckets","arrayMax":8}
 - `safe_mode_entered`: {"domain":"count","max":65535}

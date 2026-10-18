@@ -29,7 +29,7 @@ export function createUsageTelemetryDisclosureRoutes(
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
   for (const path of ['/feedback', '/lite-notices']) {
-    app.use(path, async (c, next) => {
+    app.on('POST', path, async (c, next) => {
       if (requestMayBeAnAgent(c.req.raw))
         return c.json(
           { success: false, error: { code: 'telemetry_user_action_required' } },
@@ -38,8 +38,8 @@ export function createUsageTelemetryDisclosureRoutes(
       await next();
     });
   }
-  app.use('/feedback', bodyLimit({ maxSize: 1024 }));
-  app.use('/lite-notices', bodyLimit({ maxSize: 1024 }));
+  app.on('POST', '/feedback', bodyLimit({ maxSize: 1024 }));
+  app.on('POST', '/lite-notices', bodyLimit({ maxSize: 1024 }));
   app.get('/outbox', async (c) => {
     const publisher = c.req.query('publisher');
     if (
@@ -85,7 +85,11 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_not_ready' } },
         503,
       );
-    await service.submitFeedback(body as TelemetryFeedback);
+    if (!(await service.submitFeedback(body as TelemetryFeedback)))
+      return c.json(
+        { success: false, error: { code: 'telemetry_feedback_not_available' } },
+        409,
+      );
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: true });
   });

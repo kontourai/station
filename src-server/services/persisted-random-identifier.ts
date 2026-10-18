@@ -36,7 +36,7 @@ export async function persistedRandomIdentifierHash(
   homeDir: string,
   filename: string,
   failureMessage = 'Persisted random identifier did not persist as a UUID.',
-  month?: Date,
+  rotation?: { month: Date; publisherId: string },
 ): Promise<string> {
   const configDir = join(homeDir, 'config');
   const path = join(configDir, filename);
@@ -86,7 +86,7 @@ export async function persistedRandomIdentifierHash(
 
   if (!identifier) throw new Error(failureMessage);
   await chmod(path, 0o600);
-  return month
-    ? monthlyTelemetryId(identifier, month)
+  return rotation
+    ? monthlyTelemetryId(identifier, rotation.month, rotation.publisherId)
     : createHash('sha256').update(identifier).digest('hex');
 }
