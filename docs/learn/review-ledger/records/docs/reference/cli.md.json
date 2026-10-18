@@ -214,7 +214,13 @@
 
     "packages/cli/src/__tests__/core-http.test.ts",
 
-    "packages/cli/src/commands/telemetry.ts"
+    "packages/cli/src/commands/telemetry.ts",
+
+    "packages/cli/src/commands/delegate-attachments.ts",
+
+    "src-server/services/orchestration/delegation-files.ts",
+
+    "src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts"
   ],
 
   "checks": [

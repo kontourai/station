@@ -654,7 +654,13 @@
 
     "src-ui/src/views/project-page/MemberProjectPage.tsx",
 
-    "packages/sdk/src/__tests__/client-execution.test.ts"
+    "packages/sdk/src/__tests__/client-execution.test.ts",
+
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/contracts/src/attachment-staging.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts"
   ],
 
   "checks": [
