@@ -1,5 +1,4 @@
 import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.json';
-import { render } from './renderWithQueryClient';
 /**
  * @vitest-environment jsdom
  *
@@ -12,7 +11,7 @@ import { render } from './renderWithQueryClient';
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();

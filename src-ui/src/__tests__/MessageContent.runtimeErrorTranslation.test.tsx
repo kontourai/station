@@ -13,10 +13,10 @@
  * keeps its verbatim engine prose — the same honesty rule the live
  * `turnHandlers.ts` path applies.
  */
-import { cleanup, waitFor } from '@testing-library/react';
+import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
+
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
-import { render } from './renderWithQueryClient';
 
 afterEach(cleanup);
 

@@ -2,12 +2,12 @@
 import {
   cleanup,
   fireEvent,
+  render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { render } from '../../../__tests__/renderWithQueryClient';
 import type { PendingApprovalRequest } from '../../../hooks/orchestration/pendingRequestRows';
 import { REVEAL_APPROVAL_EVENT } from '../../status/approvalReveal';
 import { ApprovalSheetProvider } from '../ApprovalSheetProvider';

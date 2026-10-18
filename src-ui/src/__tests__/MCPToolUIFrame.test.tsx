@@ -15,13 +15,7 @@ import {
   toWorkspacePaneStateKey,
 } from '@kontourai/station-contracts/workspace-pane';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
@@ -40,6 +34,7 @@ import {
   sessionInventoryV2OpenLinkCapability,
 } from '../components/mcp-ui/MCPToolUIFrame';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { render } from './renderWithQueryClient';
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},

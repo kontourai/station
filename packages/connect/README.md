@@ -29,6 +29,10 @@ The [root barrel](./src/index.ts) exports `ConnectionStore`,
 composes these with its profile, credential and native transport owners; this
 package does not make a reachable server trusted or authorize a Project.
 
+`useConnections()` requires the provider. `useOptionalConnections()` returns
+`undefined` outside it so local surfaces can explicitly omit connected features
+without creating a connection or issuing a request.
+
 `ConnectionStore` defaults public saved-connection data to localStorage and
 browser credentials to sessionStorage. An explicit `storage` adapter is also
 the credential fallback unless `credentialStorage` is supplied, so custom

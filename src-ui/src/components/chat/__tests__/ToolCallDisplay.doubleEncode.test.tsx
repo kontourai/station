@@ -27,9 +27,8 @@
  * unchanged, and an ACP-connected engine's `resolveToolArguments` can hand
  * back a raw, unstringified string).
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
-import { render } from '../../../__tests__/renderWithQueryClient';
 import { ToolCallDisplay } from '../ToolCallDisplay';
 
 afterEach(cleanup);

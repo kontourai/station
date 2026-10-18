@@ -4,12 +4,12 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import {
   act,
   fireEvent,
+  render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render } from './renderWithQueryClient';
 
 /**
  * The session detail's conversation reads the chat dock's source: a durable

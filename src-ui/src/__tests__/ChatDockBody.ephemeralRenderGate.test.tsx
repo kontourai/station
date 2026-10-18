@@ -37,7 +37,8 @@ vi.mock('../components/chat/ChatMessageList', async (importOriginal) => {
 });
 
 // --- Same mocks ChatMessageList.test.tsx already uses for its own render path ---
-vi.mock('@kontourai/station-connect', () => ({
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   useConnections: () => ({
     activeConnection: { id: 'test', name: 'Test Station' },
     captureCredentialEvidence: () => undefined,

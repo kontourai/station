@@ -12,9 +12,7 @@
  * regression back to the suspending path shows its pending rows here and
  * FAILS, where a mounted render of the same regression never settled.
  */
-
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render as renderRaw } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -23,17 +21,6 @@ import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { preloadToolCallBatch } from '../components/chat/ToolCallBatchBoundary';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 import type { ChatContentPart } from '../contexts/active-chats-state';
-
-vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
-}));
-function render(element: ReactElement) {
-  return renderRaw(
-    <QueryClientProvider client={new QueryClient()}>
-      {element}
-    </QueryClientProvider>,
-  );
-}
 
 const call = (id: string, command: string) => ({
   type: 'tool-invocation',
@@ -62,11 +49,7 @@ function shape(container: HTMLElement) {
 /** The first frame of `element`, as DOM. */
 function firstFrame(element: ReactElement): HTMLElement {
   const container = document.createElement('div');
-  container.innerHTML = renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
-      {element}
-    </QueryClientProvider>,
-  );
+  container.innerHTML = renderToStaticMarkup(element);
   return container;
 }
 

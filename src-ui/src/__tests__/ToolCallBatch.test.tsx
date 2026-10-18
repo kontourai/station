@@ -1,10 +1,9 @@
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
-import { render } from './renderWithQueryClient';
 /**
  * @vitest-environment jsdom
  */
 
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';

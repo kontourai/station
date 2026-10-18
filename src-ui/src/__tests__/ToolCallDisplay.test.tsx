@@ -1,9 +1,8 @@
-import { render } from './renderWithQueryClient';
 /**
  * @vitest-environment jsdom
  */
 
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 import {

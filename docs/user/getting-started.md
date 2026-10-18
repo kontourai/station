@@ -72,7 +72,8 @@ The Codex adapter preserves complete MCP results with canonical server/tool
 identity. Claude-provider MCP calls cannot mount: their output is summarized to
 text and their flattened names lack unambiguous server identity. ACP and managed
 engines have not been qualified. Ordinary calls keep their rows and batching.
-Unknown or disconnected integrations add no app card. Result UI metadata alone
+Sample and offline views outside the connected workspace keep ordinary rows
+without app lookup. Unknown or disconnected integrations add no app card. Result UI metadata alone
 cannot mount an app or authorize a resource read.
 
 The preview follows your theme and labels interactions as unavailable. App tool

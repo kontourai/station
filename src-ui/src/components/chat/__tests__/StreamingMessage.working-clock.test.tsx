@@ -8,9 +8,8 @@
  * show once there is no open turn and nothing else (a status label, an
  * explicit elapsed reading, or an unanswered/no-progress state) justifies it.
  */
-import { screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
-import { render } from '../../../__tests__/renderWithQueryClient';
 import type { ChatContentPart } from '../../../contexts/active-chats-state';
 import { StreamingMessageView } from '../StreamingMessage';
 

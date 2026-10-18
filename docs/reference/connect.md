@@ -795,6 +795,14 @@ import { ConnectionsProvider } from '@kontourai/station-connect';
 
 ---
 
+### `useOptionalConnections()`
+
+Returns the connections context when a `ConnectionsProvider` is mounted, or
+`undefined` outside it. Use this for optional connected capabilities in local
+surfaces, such as transcript app discovery in the first-run sample. An absent
+context does not authorize requests or create a default connection. Features
+that require a connection continue to use `useConnections()`.
+
 ### `useConnections()`
 
 Returns the full connections context. Must be called inside `ConnectionsProvider`.

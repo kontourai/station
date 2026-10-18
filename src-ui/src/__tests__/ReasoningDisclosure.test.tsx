@@ -1,14 +1,19 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import {
   __resetReasoningDisclosureIntents,
   ReasoningSection,
 } from '../components/chat/ReasoningSection';
-import { render } from './renderWithQueryClient';
 
 /**
  * station#55: reasoning is a collapsed-by-default disclosure, subordinate to

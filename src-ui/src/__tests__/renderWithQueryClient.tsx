@@ -24,7 +24,7 @@ function createQueryTestBoundary(CallerWrapper?: RenderOptions['wrapper']) {
   });
   return function QueryBoundary({ children }: PropsWithChildren) {
     return (
-      <ConnectionsProvider store={store}>
+      <ConnectionsProvider store={store} defaultUrl="http://localhost:3141">
         <QueryClientProvider client={client}>
           {CallerWrapper ? <CallerWrapper>{children}</CallerWrapper> : children}
         </QueryClientProvider>

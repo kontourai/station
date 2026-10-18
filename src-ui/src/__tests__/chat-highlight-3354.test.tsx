@@ -9,7 +9,7 @@
  *   3. a persisted message keeps its highlighting (regression: text parts
  *      previously rendered plain once the turn settled).
  */
-import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -19,7 +19,6 @@ import {
   test,
   vi,
 } from 'vitest';
-import { render } from './renderWithQueryClient';
 
 // CodeBlockFrame measures itself with ResizeObserver (#1853); jsdom has no
 // implementation, so stub it like DiffPanel.test.tsx does.
