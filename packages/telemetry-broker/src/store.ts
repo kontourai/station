@@ -180,7 +180,7 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length > 3 ||
+          rows.length > 4 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
