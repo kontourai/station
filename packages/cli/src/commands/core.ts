@@ -1166,12 +1166,13 @@ async function runChat(
 ): Promise<void> {
   rejectRetiredExecutionSelectors(parsed);
   const selectedAgent = agentId(requirePositional(parsed, agentIndex, 'agent'));
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200) {
+    throw new Error('--client-turn-id must be at most 200 characters.');
+  }
   const content = await loadTextInput(parsed, agentIndex + 1);
   const sessionFlag = optionalValueFlag(parsed, 'session');
-  const conversationFlag =
-    typeof parsed.flags.conversation === 'string'
-      ? parsed.flags.conversation
-      : undefined;
+  const conversationFlag = optionalValueFlag(parsed, 'conversation');
   if (sessionFlag && conversationFlag && sessionFlag !== conversationFlag) {
     throw new Error(
       '--session and --conversation must identify the same session.',
@@ -1239,6 +1240,7 @@ async function runChat(
     {
       message: content,
       conversationId: sessionFlag ?? conversationFlag,
+      clientTurnId,
       jsonMode: parsed.flags.json === true,
       onRequest,
     },

@@ -9,6 +9,7 @@ import {
   type ProductTelemetryBuild,
   type ProductTelemetryCommitReceipt,
   type ProductTelemetryObservation,
+  STATION_DAILY_FIELDS,
 } from '@kontourai/station-contracts/product-telemetry';
 import type {
   ProductTelemetryDeliveryStatus,
@@ -16,13 +17,17 @@ import type {
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
 } from '@kontourai/station-shared/product-telemetry';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 import {
+  type ResolvedTelemetryConfiguration,
   resolveProductTelemetryEnabled,
   resolveProductTelemetryEnvironment,
+  resolveTelemetryConfiguration,
 } from '../domain/telemetry-configuration.js';
 import {
   type BuildProvenanceSnapshot,
@@ -41,8 +46,8 @@ import {
 } from './telemetry-response.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   USAGE_TELEMETRY_EVENTS,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
   type UsageTelemetryProperties,
 } from './usage-telemetry-inventory.js';
@@ -86,7 +91,14 @@ export class UsageTelemetryService {
   private keyRef: string | undefined;
   private savedDestination = false;
   private readonly apiKey: string | undefined;
-  private enabled: boolean;
+  private appConfig: AppConfig;
+  private get enabled(): boolean {
+    return resolveProductTelemetryEnabled(
+      this.appConfig,
+      this.options.env ?? process.env,
+      this.hasCurrentDisclosureReceipt,
+    ).enabled;
+  }
   private enabledSource: UsageTelemetryEnabledSource;
   private readonly fetchImpl: typeof fetch;
   private readonly setIntervalImpl: typeof setInterval;
@@ -147,7 +159,7 @@ export class UsageTelemetryService {
     };
     const resolved = resolveProductTelemetryEnabled(options.appConfig, env);
     const destinations = resolveProductTelemetryEnvironment(env);
-    this.enabled = resolved.enabled;
+    this.appConfig = options.appConfig;
     this.enabledSource = resolved.source;
     this.endpoint =
       options.appConfig.productTelemetryEndpoint?.trim() ||
@@ -192,7 +204,7 @@ export class UsageTelemetryService {
           typeof (receipt as { acknowledgedAt?: unknown }).acknowledgedAt ===
             'string' &&
           (receipt as { inventoryRevision?: unknown }).inventoryRevision ===
-            USAGE_TELEMETRY_INVENTORY_REVISION,
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       );
       if (!isCurrentReceipt)
         this.warn('Usage telemetry disclosure receipt is invalid.');
@@ -205,7 +217,16 @@ export class UsageTelemetryService {
     return this.hasCurrentDisclosureReceipt;
   }
   async acknowledgeDisclosure(inventoryRevision: string): Promise<void> {
-    if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
+    if (
+      resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+      ).publishers.operator.reason === 'DNT'
+    )
+      throw new Error(
+        'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+      );
+    if (inventoryRevision !== FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION)
       throw new Error(
         'Usage telemetry disclosure changed; review the current inventory.',
       );
@@ -220,7 +241,7 @@ export class UsageTelemetryService {
       this.disclosurePath,
       {
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       },
       { indent: null, trailingNewline: true },
     );
@@ -240,6 +261,25 @@ export class UsageTelemetryService {
   get endpointConfigured(): boolean {
     return this.endpoint !== undefined;
   }
+  async telemetryStatus(): Promise<
+    ResolvedTelemetryConfiguration & {
+      liteInventoryRevision: string;
+      liteInventory: typeof STATION_DAILY_FIELDS;
+      fullInventoryRevision: string;
+    }
+  > {
+    await this.loadDisclosureReceipt();
+    return {
+      ...resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+        { operator: this.hasCurrentDisclosureReceipt },
+      ),
+      liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      liteInventory: STATION_DAILY_FIELDS,
+      fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    };
+  }
   async disclosure(): Promise<{
     acknowledged: boolean;
     inventoryRevision: string;
@@ -249,10 +289,17 @@ export class UsageTelemetryService {
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
+    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
+    await this.loadDisclosureReceipt();
+    const resolved = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    );
     return {
       acknowledged: await this.loadDisclosureReceipt(),
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
       acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
@@ -265,12 +312,8 @@ export class UsageTelemetryService {
         )
         .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
-      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
-      // canonical/legacy product environment fallbacks and the default. A client that
-      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
-      // the environment has switched off, and offer to turn off something
-      // that is already off.
-      telemetryEnabled: this.enabled,
+      telemetryEnabled: resolved.publishers.operator.tier === 'full',
+      publishers: resolved.publishers,
       enabledSource: this.enabledSource,
     };
   }
@@ -279,12 +322,17 @@ export class UsageTelemetryService {
   }
   async deliveryStatus(): Promise<ProductTelemetryDeliveryStatus> {
     await this.loadDisclosureReceipt();
+    const operator = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    ).publishers.operator;
     const phase = !this.endpoint
       ? 'unconfigured'
-      : !this.enabled
-        ? 'disabled'
-        : !this.hasCurrentDisclosureReceipt
-          ? 'awaiting-disclosure'
+      : operator.reason === 'disclosure'
+        ? 'awaiting-disclosure'
+        : operator.tier !== 'full'
+          ? 'disabled'
           : this.latestDelivery === 'acknowledged'
             ? 'acknowledged'
             : this.latestDelivery === 'failed'
@@ -375,7 +423,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               protocol: 'station-product-probe/v1',
-              inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             }),
             signal: controller.signal,
           }),
@@ -429,7 +477,11 @@ export class UsageTelemetryService {
     // Both halves, together: `options.appConfig` is the snapshot this service
     // was CONSTRUCTED with and is never updated, so a source derived from it
     // later would report where the value came from at boot rather than now.
-    const resolved = resolveProductTelemetryEnabled(appConfig, env);
+    const resolved = resolveProductTelemetryEnabled(
+      appConfig,
+      env,
+      this.hasCurrentDisclosureReceipt,
+    );
     const destinations = resolveProductTelemetryEnvironment(env);
     const endpoint =
       appConfig.productTelemetryEndpoint?.trim() || destinations.endpoint.value;
@@ -461,7 +513,7 @@ export class UsageTelemetryService {
     this.endpoint = endpoint;
     this.keyRef = keyRef;
     this.savedDestination = savedDestination;
-    this.enabled = resolved.enabled;
+    this.appConfig = appConfig;
     this.enabledSource = resolved.source;
     if (!this.active) {
       // Disabling withdraws consent for data still in memory, so discard it rather than flushing it.
@@ -616,6 +668,7 @@ export class UsageTelemetryService {
       this.options.homeDir,
       'usage-telemetry-id',
       'Usage telemetry identity did not persist as a UUID.',
+      new Date(),
     );
   }
   private async awaitFlushWithinDeadline(
@@ -675,7 +728,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               schema_version: 1,
-              inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
               distinct_id: distinctId,
               events: batch,
             } satisfies ProductTelemetryBatch),

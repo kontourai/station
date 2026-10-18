@@ -101,6 +101,7 @@ import {
   runServiceCommand,
 } from './commands/service.js';
 import { runServiceMenu } from './commands/service-menu.js';
+import { getChatOperationFailure } from './commands/session-client.js';
 import { runSetupCommand } from './commands/setup-command.js';
 import { runSetupImportCommand } from './commands/setup-import.js';
 import {
@@ -108,6 +109,7 @@ import {
   runSurfaceCommand,
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
+import { runTelemetryCommand } from './commands/telemetry.js';
 import { runTriageCommand } from './commands/triage.js';
 import { versionText } from './commands/version.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
@@ -465,6 +467,7 @@ const INDIVIDUAL_COMMANDS = [
   'link',
   'shortcut',
   'config',
+  'telemetry',
   'checkpoints',
   'environment',
   'export',
@@ -1260,6 +1263,8 @@ function buildProgram(
     }
   });
 
+  register('telemetry', runTelemetryCommand);
+
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading
     // `sub`/`key`/`value` so `station config --offline` (bare, offline) still
@@ -1567,6 +1572,22 @@ export function describeCliError(error: unknown): string {
   const refusal = explainFullAccessRefusal(error, getResolvedApiBase());
   if (refusal) return refusal;
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
+}
+
+export function reportCliError(error: unknown): void {
+  const operation = getChatOperationFailure(error);
+  if (operation?.jsonMode) {
+    console.error(
+      JSON.stringify({
+        success: false,
+        error: describeCliError(error),
+        clientTurnId: operation.clientTurnId,
+        conversationId: operation.conversationId,
+      }),
+    );
+    return;
+  }
+  console.error('Error:', describeCliError(error));
 }
 
 // `scripts/station-cli.ts` is the only supported source entry: it establishes

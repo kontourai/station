@@ -1,0 +1,55 @@
+{
+  "revision": "c9565a36d22ffc26b0ccc3fd8276d93a230fa699",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. Checked the README's release-set claims: the new package is private, changesets:check passes with it in the workspace (privatePackages version/tag false), and the root-app exclusion is unchanged. No prose change.","inputs":[".changeset/README.md","pnpm-workspace.yaml"]},
+
+    {"path":".veritas/README.md","note":"scripts/typecheck-aggregate.mjs delta adds only the typecheck:supervisor lane. Searched the README for typecheck lane enumerations; it describes hosted fast-checks aggregation generically and lists no lanes. No prose change.","inputs":[".veritas/README.md","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"README.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The README's container claims (service run supervisor in the image, Dockerfile and compose) do not depend on the dependencies-stage COPY list. The container still runs service run; the new supervisor is not in the image entrypoint. No prose change.","inputs":["README.md","Dockerfile"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The recipe references the existing Dockerfile behaviour (service run, readiness wait), not its COPY list. No prose change.","inputs":["deploy/gcp-dev/README.md","Dockerfile"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The template references a digest-pinned image and existing Dockerfile readiness behaviour, not the COPY list. No prose change.","inputs":["deploy/public-ingress/README.md","Dockerfile"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The telemetry-runtime target and its build stage are unchanged. No prose change.","inputs":["deployment/telemetry/README.md","Dockerfile"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member; package.json#/scripts delta adds only typecheck:supervisor. Added a paragraph for packages/supervisor: checked that it is in both workspace lists (package.json workspaces and pnpm-workspace.yaml), private, dependency-free, has an empty lock importer (pnpm-lock.yaml importers.packages/supervisor is {}), and is linked by no other importer; lockfile-sync:gate passes. Its bundle claim checked against esbuild.config.mjs and packages/supervisor/build-options.mjs.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts","pnpm-workspace.yaml"]},
+
+    {"path":"docs/design/private-cloud-environment.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The design refers to the runtime image and container smoke owners, which this delta does not change. No prose change.","inputs":["docs/design/private-cloud-environment.md","Dockerfile"]},
+
+    {"path":"docs/guides/code-quality.md","note":"scripts/typecheck-aggregate.mjs delta adds only the typecheck:supervisor lane; package.json#/scripts delta adds only typecheck:supervisor. The guide says all typecheck lanes belong to required fast-checks via run-ci-fast without enumerating lanes; the new lane joins the aggregate list. No prose change.","inputs":["docs/guides/code-quality.md","package.json#/scripts","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. The guide makes no workspace-membership claim. No prose change.","inputs":["docs/guides/delegation-attempt-claims.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member; package.json#/scripts delta adds only typecheck:supervisor. Workspace-membership and importer-closure claims stay true: the new importer has no dependencies, so it adds no advisory or lifecycle surface. No prose change.","inputs":["docs/guides/dependency-security.md","package.json#/scripts","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/deployment.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. Container deployment claims cover service run, ports and the build/runtime stages, none of which change. No prose change.","inputs":["docs/guides/deployment.md","Dockerfile"]},
+
+    {"path":"docs/guides/development.md","note":"package.json#/scripts delta adds only typecheck:supervisor; scripts/typecheck-aggregate.mjs delta adds only the typecheck:supervisor lane. Added the @kontourai/station-supervisor package row; checked private:true, the dist-server/station-supervisor.js bundle wiring in esbuild.config.mjs, zero runtime dependencies in packages/supervisor/package.json, the /protocol subpath export, and that no launch mode runs it (no caller outside packages/supervisor). The typecheck:<affected-lane> guidance still holds.","inputs":["docs/guides/development.md","package.json#/scripts","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. The guide's workspace mentions are about workspace packages as transfer content, unrelated to repository workspace membership. No prose change.","inputs":["docs/guides/home-transfer-controller.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. The guide makes no workspace-membership claim. No prose change.","inputs":["docs/guides/private-runner-partition.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. The guide makes no workspace-membership claim. No prose change.","inputs":["docs/guides/product-law-authoring.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json#/scripts delta adds only typecheck:supervisor. The guide names graph scripts only; the new typecheck script does not affect them. No prose change.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. Added the process supervisor to the packages/ row after checking packages/supervisor exists as a workspace member.","inputs":["docs/guides/repository-layout.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Dockerfile delta adds only a COPY of packages/supervisor/package.json in the dependencies stage. The broker guide's claims do not depend on the dependencies-stage COPY list. No prose change.","inputs":["docs/guides/self-hosted-broker.md","Dockerfile"]},
+
+    {"path":"docs/guides/testing.md","note":"scripts/typecheck-aggregate.mjs delta adds only the typecheck:supervisor lane; scripts/vitest-resource-manifest.mjs delta adds only five packages/supervisor test files to the process-heavy list; package.json#/scripts delta adds only typecheck:supervisor. The guide describes process-heavy scheduling and typecheck slots generically and enumerates neither lanes nor manifest entries; the new tests are classified as process-heavy as scripts/AGENTS.md requires. No prose change.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/typecheck-aggregate.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. The guide makes no workspace-membership claim. No prose change.","inputs":["docs/guides/work-board-security.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"pnpm-workspace.yaml delta adds only the packages/supervisor member. 'Workspace packages' here are exported Project packages, not repository workspace members. No prose change.","inputs":["docs/guides/workspace-packages.md","pnpm-workspace.yaml"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json#/scripts delta adds only typecheck:supervisor. Receipt claims about dist-server/ preservation hold; the supervisor bundle is one more file in dist-server. No prose change.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs delta adds only five packages/supervisor test files to the process-heavy list. The instruction that new child-process tests must be classified in the manifest is what this change follows. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"docs/guides/development.md delta adds only the supervisor package row. src-server/AGENTS.md routes to that guide for lifecycle and security conventions, which are unchanged. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

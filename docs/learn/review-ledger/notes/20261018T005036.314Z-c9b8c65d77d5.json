@@ -1,0 +1,7 @@
+{
+  "revision": "a5e3e8278451c52300461977a84c60773cc17d34",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 3 direct merge control: Strengthened the kontour-only PUT regression with the existing authenticated operator fixture and asserted the persisted map before the response body. Under a mutation that drops existing publisher entries, this request passes authorization and loses stored operator Off; the direct filesystem assertion fails. Exact ConfigLoader bytes were restored and all 87 route tests passed. This isolates per-publisher storage merging, without claiming outer authentication coverage. Runtime disclosure copy and all production source are unchanged.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "c17d25a18499790ed036c7106ead3934e36b18f2",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Dependency changed only by an added 'Choosing the compiler' subsection in docs/guides/testing.md. No heading was renamed or removed and every testing.md anchor this file links still resolves; this file's claims are unaffected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
