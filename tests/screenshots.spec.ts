@@ -1899,8 +1899,9 @@ function telemetryConsentScreens(): Screen[] {
             });
             await tier.selectOption('off');
             const heading = page.getByRole('heading', {
-              name: 'Why lower Operator telemetry? (optional)',
+              name: 'Lowering Operator telemetry to Off — why? (optional)',
             });
+            await expect(tier).toHaveValue('off');
             await expect(heading).toBeFocused();
             const tierBox = await tier.boundingBox();
             const promptBox = await heading.boundingBox();

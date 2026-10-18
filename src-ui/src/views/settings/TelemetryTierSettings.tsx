@@ -36,7 +36,6 @@ export function TelemetryTierSettings({
   const [pending, setPending] = useState<{
     publisher: TelemetryPublisherId;
     tier: TelemetryTier;
-    previous: string;
     trigger: HTMLSelectElement;
   }>();
   const choices: TelemetryTierChoices | undefined = config.telemetryTier;
@@ -87,7 +86,9 @@ export function TelemetryTierSettings({
                 <select
                   className="editor-input"
                   aria-label={label}
-                  value={choice}
+                  value={
+                    pending?.publisher === publisher ? pending.tier : choice
+                  }
                   onChange={(event) => {
                     const tier = event.target.value as TelemetryTier;
                     const previous =
@@ -103,7 +104,6 @@ export function TelemetryTierSettings({
                       setPending({
                         publisher,
                         tier,
-                        previous: choice,
                         trigger: event.currentTarget,
                       });
                     else change(publisher, tier, 'skip');
@@ -130,8 +130,8 @@ export function TelemetryTierSettings({
             {pending?.publisher === publisher && status?.reason !== 'DNT' && (
               <TelemetryFeedbackPrompt
                 deferred
+                targetTier={pending.tier}
                 onCancel={() => {
-                  pending.trigger.value = pending.previous;
                   pending.trigger.focus();
                   setPending(undefined);
                 }}
@@ -150,7 +150,7 @@ export function TelemetryTierSettings({
               </p>
             )}
             {showOutbox && (
-              <details className="telemetry-outbox">
+              <details className="telemetry-outbox-disclosure">
                 <summary>
                   What was sent to {telemetryPublisherLabel(publisher)}
                 </summary>

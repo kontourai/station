@@ -1,6 +1,7 @@
 import {
   TELEMETRY_FEEDBACK_REASONS,
   type TelemetryFeedbackReason,
+  type TelemetryTier,
 } from '@kontourai/station-contracts/product-telemetry';
 import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
@@ -19,11 +20,13 @@ const LABELS: Record<TelemetryFeedbackReason, string> = {
 /** Inline so disclosure dialogs keep their single focus trap and escape route. */
 export function TelemetryFeedbackPrompt({
   publisher,
+  targetTier,
   onChoose,
   onCancel,
   deferred = false,
 }: {
   publisher: string;
+  targetTier?: TelemetryTier;
   onChoose: (reason: TelemetryFeedbackReason) => void;
   deferred?: boolean;
   onCancel?: () => void;
@@ -45,7 +48,9 @@ export function TelemetryFeedbackPrompt({
       }}
     >
       <h3 id={id} tabIndex={-1} ref={heading}>
-        Why lower {publisher} telemetry? (optional)
+        {targetTier
+          ? `Lowering ${publisher} telemetry to ${targetTier[0].toUpperCase()}${targetTier.slice(1)} — why? (optional)`
+          : `Why lower ${publisher} telemetry? (optional)`}
       </h3>
       <p>
         Share one identifier-free reason with this publisher only.

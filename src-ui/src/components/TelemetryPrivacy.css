@@ -42,6 +42,7 @@
   padding-block: var(--k-space-4);
 }
 .telemetry-feedback button,
+.telemetry-outbox-disclosure > summary,
 .telemetry-outbox summary,
 .telemetry-lite-notice summary {
   min-height: 44px;
@@ -65,12 +66,14 @@
   padding: var(--k-space-3);
   background: var(--k-bg);
 }
+.telemetry-outbox-disclosure > summary,
 .telemetry-outbox summary,
 .telemetry-lite-notice summary {
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
   cursor: pointer;
 }
+.telemetry-outbox-disclosure > summary:focus-visible,
 .telemetry-outbox summary:focus-visible,
 .telemetry-lite-notice summary:focus-visible {
   outline: 2px solid var(--k-focus);
@@ -85,11 +88,6 @@
   flex-shrink: 0;
 }
 
-.telemetry-outbox h3 {
-  margin: 0;
-  font-size: var(--k-text-md);
-  font-weight: 500;
-}
 .telemetry-outbox p,
 .telemetry-outbox li,
 .telemetry-lite-notice p,

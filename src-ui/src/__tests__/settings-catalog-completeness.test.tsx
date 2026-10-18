@@ -2262,7 +2262,10 @@ describe('settings catalog completeness', () => {
         screen.getByRole('combobox', { name: 'Operator telemetry' }),
         { target: { value: 'off' } },
       );
-      if (dnt) expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+      if (dnt)
+        expect(
+          screen.queryByText(/(?:Why lower|Lowering) Operator/),
+        ).toBeNull();
       else {
         expect(updateConfig).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
@@ -2353,7 +2356,7 @@ describe('settings catalog completeness', () => {
     const select = screen.getByRole('combobox', { name: 'Operator telemetry' });
     fireEvent.change(select, { target: { value: 'full' } });
     fireEvent.change(select, { target: { value: 'lite' } });
-    expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+    expect(screen.queryByText(/(?:Why lower|Lowering) Operator/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(updateConfig).toHaveBeenCalledWith({
@@ -2377,12 +2380,13 @@ describe('settings catalog completeness', () => {
         name: 'Operator telemetry',
       }) as HTMLSelectElement;
       fireEvent.change(select, { target: { value: 'off' } });
+      expect(select.value).toBe('off');
       const heading = screen.getByRole('heading', {
-        name: /Why lower Operator/,
+        name: 'Lowering Operator telemetry to Off — why? (optional)',
       });
       if (method === 'Escape') fireEvent.keyDown(heading, { key: 'Escape' });
       else fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
-      expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+      expect(screen.queryByText(/(?:Why lower|Lowering) Operator/)).toBeNull();
       expect(select.value).toBe('full');
       expect(document.activeElement).toBe(select);
       expect(screen.queryByText('Unsaved changes')).toBeNull();

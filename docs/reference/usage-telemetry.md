@@ -227,7 +227,7 @@ Feedback persistence or transport failure never prevents applying the lower tier
 An unchanged or raised choice sends no reason. A repeated request cannot replay
 the reason. DNT suppresses the signal and does not record a feedback window.
 Settings offers the fixed reasons and Skip when lowering a publisher's choice;
-the comparison uses the saved tier, so editing an unsaved raise back down is not a lowering. The reason is staged until Save. Cancel or Escape closes the Settings prompt, restores the prior draft tier and focus, and sends nothing. Each edited publisher is written independently,
+the comparison uses the saved tier, so editing an unsaved raise back down is not a lowering. The pending tier stays visible in the selector and is named in the reason prompt. The reason is staged until Save. Cancel or Escape closes the Settings prompt, restores the prior draft tier and focus, and sends nothing. Each edited publisher is written independently,
 with its optional reason in that same config request, preserving omitted
 publishers. Successful writes are marked saved even if a later write fails; the error identifies a partial save and retry includes only unsaved changes. The Full disclosure dialog offers the same optional prompt before
 its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is

@@ -55,7 +55,6 @@ export function TelemetryOutbox({
       className="telemetry-outbox"
       aria-label={`What was sent to ${telemetryPublisherLabel(publisher)}`}
     >
-      <h3>What was sent — {telemetryPublisherLabel(publisher)}</h3>
       <p>
         Latest {LIMIT} records per publisher. Local history retains at most 30
         days and 5 MiB across publishers; oldest records are evicted. Suppressed
