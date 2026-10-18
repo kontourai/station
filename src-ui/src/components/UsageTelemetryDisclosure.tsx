@@ -401,6 +401,7 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
       ).then(responseData),
     onSuccess: (data) => {
       queryClient.setQueryData(['usage-telemetry-disclosure', apiBase], data);
+      void queryClient.invalidateQueries({ queryKey: ['telemetry-status'] });
       onAcknowledged?.();
     },
     onError: () =>
@@ -750,6 +751,7 @@ function useUsageTelemetryDecision(
         recoveryDisclosureKey(target.apiBase, target.identityKey),
         ackData,
       );
+      void queryClient.invalidateQueries({ queryKey: ['telemetry-status'] });
       onDecided?.();
     },
     onError: (_error, target) =>
@@ -849,6 +851,12 @@ function useUsageTelemetryDecision(
             queryClient.invalidateQueries({
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
+            void queryClient.invalidateQueries({
+              queryKey: ['telemetry-status'],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ['telemetry-outbox'],
+            });
             if (operator?.reason === 'DNT') {
               recordDntDecision(target.apiBase, data.inventoryRevision);
               onDecided?.();
@@ -895,6 +903,12 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
+          void queryClient.invalidateQueries({
+            queryKey: ['telemetry-status'],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ['telemetry-outbox'],
+          });
           if (operator?.reason === 'DNT') {
             recordDntDecision(apiBase, data.inventoryRevision);
             queryClient.invalidateQueries({

@@ -297,8 +297,18 @@ async function publisherFixture(doNotTrack?: string) {
   return { home, loader, service, client, sent, tiersAtSend };
 }
 
+import { useTelemetryStatus } from '../../hooks/useTelemetryStatus';
 import { TelemetryOutbox } from '../../views/settings/TelemetryOutbox';
 import { TelemetryLiteNotice } from '../TelemetryLiteNotice';
+
+function EffectiveTierProbe() {
+  const query = useTelemetryStatus();
+  return (
+    <output aria-label="Effective operator tier">
+      {query.data?.publishers.operator?.tier ?? 'pending'}
+    </output>
+  );
+}
 
 test.each([undefined, '1'])(
   'the real lowering dialog sends an optional reason in the config write before Off; DNT=%s',
@@ -309,9 +319,15 @@ test.each([undefined, '1'])(
     const view = render(
       <QueryClientProvider client={client}>
         <UsageTelemetryDisclosureStep onAdvance={advance} />
+        <EffectiveTierProbe />
       </QueryClientProvider>,
     );
     try {
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Effective operator tier').textContent,
+        ).toBe(dnt ? 'off' : 'lite'),
+      );
       if (dnt) {
         fireEvent.click(await screen.findByRole('radio', { name: 'Off' }));
         fireEvent.click(
@@ -330,6 +346,11 @@ test.each([undefined, '1'])(
         fireEvent.click(await screen.findByRole('button', { name: 'Privacy' }));
       }
       await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Effective operator tier').textContent,
+        ).toBe('off'),
+      );
       expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('off');
       expect(sent).toEqual(
         dnt

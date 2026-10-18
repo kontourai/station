@@ -106,6 +106,10 @@ Sent entries have a collapsible JSON viewer. Unsent entries expose only their
 reason and observation count, with Off/DNT/disclosure/notice/unconfigured
 classified as suppressed and transport/overflow/expired as dropped. There is no
 payload viewer for either unsent category. Refresh reads the current ledger.
+Opening status/outbox views refetches their current data. Tier writes refresh
+both views, including after a partial Settings failure; Full acknowledgement
+refreshes effective status again, so a cached Lite label does not outlive Off
+or a newly admitted Full choice.
 
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. For author Full, read `GET /api/usage-telemetry/disclosure?publisher=kontour` and
 include `publisher:kontour` and its exact `destination` in the acknowledgement POST.

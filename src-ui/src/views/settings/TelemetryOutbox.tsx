@@ -36,6 +36,7 @@ export function TelemetryOutbox({
       return (await response.json()).data;
     },
     staleTime: 0,
+    refetchOnMount: 'always',
   });
   const entries = query.data
     ?.filter((entry) => entry.publisher === publisher)

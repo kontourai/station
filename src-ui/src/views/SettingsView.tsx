@@ -699,22 +699,29 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       Object.keys(plainChanges).length > 0
         ? (async () => {
             const { telemetryTier, ...other } = plainChanges;
-            for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
-              const publisher = id as TelemetryPublisherId;
-              const reason =
-                dntAtSave?.[publisher]?.reason === 'DNT'
-                  ? undefined
-                  : feedbackAtSave[publisher];
-              // A reason is explicit action metadata, never a stored setting.
-              const write = {
-                telemetryTier: { [publisher]: tier },
-                ...(reason && reason !== 'skip'
-                  ? { telemetryFeedbackReason: reason }
-                  : {}),
-              };
-              await updateConfig(write);
+            try {
+              for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
+                const publisher = id as TelemetryPublisherId;
+                const reason =
+                  dntAtSave?.[publisher]?.reason === 'DNT'
+                    ? undefined
+                    : feedbackAtSave[publisher];
+                // A reason is explicit action metadata, never a stored setting.
+                const write = {
+                  telemetryTier: { [publisher]: tier },
+                  ...(reason && reason !== 'skip'
+                    ? { telemetryFeedbackReason: reason }
+                    : {}),
+                };
+                await updateConfig(write);
+              }
+              if (Object.keys(other).length) await updateConfig(other);
+            } finally {
+              if (telemetryTier) {
+                void invalidate(['telemetry-status']);
+                void invalidate(['telemetry-outbox']);
+              }
             }
-            if (Object.keys(other).length) await updateConfig(other);
           })()
         : undefined;
     const logLevelWrite =

@@ -56,5 +56,6 @@ export function useTelemetryStatus(enabled = true) {
       return (await response.json()).data;
     },
     staleTime: 0,
+    refetchOnMount: 'always',
   });
 }

@@ -124,7 +124,11 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
       if (!response.ok)
         throw new Error('The notice receipt could not be saved.');
     },
-    onSuccess: (_result, target) => {
+    onSuccess: async (_result, target) => {
+      await client.cancelQueries({
+        queryKey: ['telemetry-status', target.apiBase, target.identityKey],
+        exact: true,
+      });
       client.setQueryData<TelemetryStatus>(
         ['telemetry-status', target.apiBase, target.identityKey],
         (current) => {
