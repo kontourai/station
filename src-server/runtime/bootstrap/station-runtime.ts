@@ -1482,6 +1482,9 @@ export class StationRuntime {
       this.agentService = services.agentService;
       this.skillService = services.skillService;
       this.mcpService = services.mcpService;
+      this.orchestrationEventStore.setMcpAppResourceResolver((ref) =>
+        this.mcpService.getOpenMCPAppResourceUri(ref),
+      );
       this.secretBindingAdministration = services.secretBindingAdministration;
       this.secretBindingIntegrationAdministration =
         services.secretBindingIntegrationAdministration;

@@ -59,6 +59,7 @@ import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
+import { SkeletonBlock } from '../state';
 import './MCPToolUIFrame.css';
 import { isDistinctFrameOrigin } from './frameOrigin';
 
@@ -175,6 +176,8 @@ export function sessionInventoryV2OpenLinkCapability(
 
 export interface MCPToolUIFrameProps {
   component: MCPToolUILayoutComponentRef;
+  /** Transcript-only display: no replay, resource forwarding, or app actions. */
+  transcriptResult?: { result: CallToolResult };
   fallbackComponent?: FallbackComponent;
   fallbackComponentName?: string;
   /**
@@ -276,6 +279,7 @@ const STATUS_COPY: Record<
 
 export function MCPToolUIFrame({
   component,
+  transcriptResult,
   fallbackComponent,
   fallbackComponentName,
   onResolutionStatus,
@@ -305,7 +309,11 @@ export function MCPToolUIFrame({
   const resolution = useQuery<MCPToolUIResolution>({
     queryKey: ['mcp-tool-ui', component.ref, resolutionIdentity, baseUrl],
     queryFn: () =>
-      fetchMCPToolUIResolution(baseUrl, refParts as MCPToolRefParts),
+      fetchMCPToolUIResolution(
+        baseUrl,
+        refParts as MCPToolRefParts,
+        !!transcriptResult,
+      ),
     enabled: !!refParts && !nativeIframeBlocked,
     retry: false,
   });
@@ -314,7 +322,8 @@ export function MCPToolUIFrame({
     hostEnabled &&
     !!refParts &&
     resolution.data?.status === 'missing_resource' &&
-    component.approvalPolicy === 'read-only';
+    component.approvalPolicy === 'read-only' &&
+    !transcriptResult;
 
   useEffect(() => {
     const status = resolution.data?.status;
@@ -334,6 +343,14 @@ export function MCPToolUIFrame({
     resolution.data?.status,
     shouldTryEmbeddedPresentation,
   ]);
+
+  if (
+    transcriptResult &&
+    (resolution.isError ||
+      (resolution.data?.status !== 'success' &&
+        resolution.data?.status !== 'render_revoked'))
+  )
+    return null;
 
   if (nativeIframeBlocked) {
     return (
@@ -361,6 +378,7 @@ export function MCPToolUIFrame({
   }
 
   if (resolution.isLoading) {
+    if (transcriptResult) return null;
     return <MCPToolUIStatus status="loading" ref={component.ref} />;
   }
 
@@ -390,6 +408,7 @@ export function MCPToolUIFrame({
     return (
       <MCPToolUISandbox
         component={component}
+        transcriptResult={transcriptResult}
         refParts={refParts as MCPToolRefParts}
         baseUrl={baseUrl}
         mode="embedded"
@@ -427,6 +446,7 @@ export function MCPToolUIFrame({
     return (
       <MCPToolUISandbox
         component={component}
+        transcriptResult={transcriptResult}
         refParts={refParts as MCPToolRefParts}
         baseUrl={baseUrl}
         resourceUri={data.resourceUri ?? data.url}
@@ -569,6 +589,7 @@ function mcpUiToolCallDecision(
 
 function MCPToolUISandbox({
   component,
+  transcriptResult,
   refParts,
   baseUrl,
   resourceUri,
@@ -588,6 +609,7 @@ function MCPToolUISandbox({
   openExternalLink,
 }: {
   component: MCPToolUILayoutComponentRef;
+  transcriptResult?: MCPToolUIFrameProps['transcriptResult'];
   refParts: MCPToolRefParts;
   baseUrl: string;
   resourceUri?: string;
@@ -608,6 +630,7 @@ function MCPToolUISandbox({
   requestAuthority?: ReturnType<typeof useHostRequestAuthorityScope>;
   openExternalLink: NonNullable<MCPToolUIFrameProps['openExternalLink']>;
 }) {
+  const isTranscript = !!transcriptResult;
   const { theme } = useDeviceSettings();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
@@ -622,6 +645,8 @@ function MCPToolUISandbox({
   const hostAvailableDisplayModesRef = useRef(hostAvailableDisplayModes);
   const requestDisplayModeRef = useRef(onRequestDisplayMode);
   const displayModeDecisionRef = useRef(onDisplayModeDecision);
+  const transcriptResultRef = useRef(transcriptResult);
+  transcriptResultRef.current = transcriptResult;
   const themeRef = useRef(theme);
   paneIdentityRef.current = paneIdentity;
   currentDisplayModeRef.current = currentDisplayMode ?? 'inline';
@@ -657,7 +682,8 @@ function MCPToolUISandbox({
       resolutionIdentity,
       baseUrl,
     ],
-    queryFn: () => fetchMCPToolUIResource(baseUrl, refParts, mode),
+    queryFn: () =>
+      fetchMCPToolUIResource(baseUrl, refParts, mode, isTranscript),
     enabled: true,
     retry: false,
   });
@@ -828,15 +854,17 @@ function MCPToolUISandbox({
           null,
           { name: 'Station', version: '1.0.0' },
           {
-            ...(sessionInventoryV2OpenLinks && resultAuthority
+            ...(!isTranscript && sessionInventoryV2OpenLinks && resultAuthority
               ? { openLinks: {} }
               : {}),
             logging: {},
-            serverResources: {},
+            ...(!isTranscript ? { serverResources: {} } : {}),
             // Only advertise tool-call proxying when the policy permits it, so a
             // well-behaved read-only View hides its tool affordances. Calls are
             // also enforced in the handler below regardless.
-            ...(!readOnly || basisReadSession ? { serverTools: {} } : {}),
+            ...(!isTranscript && (!readOnly || basisReadSession)
+              ? { serverTools: {} }
+              : {}),
             sandbox: {
               csp: effectiveCsp,
               permissions: appsPermissions,
@@ -866,6 +894,15 @@ function MCPToolUISandbox({
         };
         bridge.oninitialized = () => {
           lifecycle = 'active';
+          if (transcriptResultRef.current) {
+            if (initialResultSent) return;
+            initialResultSent = true;
+            bridge?.sendToolInput({
+              arguments: capturedInitialArguments ?? {},
+            });
+            bridge?.sendToolResult(transcriptResultRef.current.result);
+            return;
+          }
           if (!capturedInitialArguments || initialResultSent) return;
           initialResultSent = true;
           bridge?.sendToolInput({ arguments: capturedInitialArguments });
@@ -979,7 +1016,7 @@ function MCPToolUISandbox({
           });
           return { mode: currentDisplayModeRef.current };
         };
-        if (sessionInventoryV2OpenLinks && resultAuthority) {
+        if (!isTranscript && sessionInventoryV2OpenLinks && resultAuthority) {
           bridge.onopenlink = async ({ url }) => {
             // Active lifecycle + unchanged pane identity are the host's
             // current principal/occurrence witness. No stale/replaced frame
@@ -1016,6 +1053,10 @@ function MCPToolUISandbox({
         };
         // Resource reads are side-effect-free → always proxied (even read-only).
         bridge.onreadresource = async (params: { uri: string }) => {
+          if (transcriptResultRef.current)
+            throw new Error(
+              'App interactions are unavailable in transcript previews.',
+            );
           const content = await proxyResourceRead(
             baseUrl,
             serverId,
@@ -1040,6 +1081,10 @@ function MCPToolUISandbox({
           name: string;
           arguments?: Record<string, unknown>;
         }) => {
+          if (transcriptResultRef.current)
+            throw new Error(
+              'App interactions are unavailable in transcript previews.',
+            );
           const basisCall = isBasisContinuationCall(
             basisReadSession,
             serverId,
@@ -1161,6 +1206,7 @@ function MCPToolUISandbox({
       }
     };
   }, [
+    isTranscript,
     frameContentReady,
     baseUrl,
     readOnly,
@@ -1195,9 +1241,24 @@ function MCPToolUISandbox({
     hostDisplayModeCapabilityKey,
   ]);
 
+  const availability = isTranscript ? (
+    <p className="mcp-tool-ui-frame__availability" role="status">
+      App preview · Interactions are unavailable in the transcript.
+    </p>
+  ) : null;
+
   // Loading/error states apply only to mode 1, where we fetch and inline the
   // resource HTML. Mode 2's dedicated origin renders (or 404s) on its own.
   if (resource.isLoading) {
+    if (isTranscript)
+      return (
+        <section className="mcp-tool-ui-frame mcp-tool-ui-frame--transcript">
+          {availability}
+          <div className="mcp-tool-ui-frame__pending" style={{ height }}>
+            <SkeletonBlock label="Loading MCP UI" />
+          </div>
+        </section>
+      );
     return <MCPToolUIStatus status="loading" ref={component.ref} />;
   }
   if (resource.isError || typeof resource.data?.text !== 'string') {
@@ -1221,12 +1282,13 @@ function MCPToolUISandbox({
 
   return (
     <section
-      className="mcp-tool-ui-frame mcp-tool-ui-frame--live"
+      className={`mcp-tool-ui-frame mcp-tool-ui-frame--live${isTranscript ? ' mcp-tool-ui-frame--transcript' : ''}`}
       data-pane-descriptor-id={paneIdentity?.descriptorId}
       data-pane-instance-id={paneIdentity?.instanceId}
       data-pane-state-key={paneIdentity?.stateKey}
       data-display-mode={currentDisplayMode}
     >
+      {availability}
       <iframe
         ref={iframeRef}
         className="mcp-tool-ui-frame__iframe"
@@ -1572,9 +1634,13 @@ function errorMessage(error: unknown): string {
 async function fetchMCPToolUIResolution(
   apiBase: string,
   refParts: MCPToolRefParts,
+  transcript = false,
 ): Promise<MCPToolUIResolution> {
   const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}`,
+    transcript
+      ? { headers: { 'x-station-mcp-transcript': 'preview' } }
+      : undefined,
   );
   const { data } = await readMCPEnvelope<MCPToolUIResolution>(
     response,
@@ -1587,12 +1653,16 @@ async function fetchMCPToolUIResource(
   apiBase: string,
   refParts: MCPToolRefParts,
   mode: 'declared' | 'embedded' = 'declared',
+  transcript = false,
 ): Promise<MCPToolUIResourceContent> {
   // 'declared' reads the SEP-1865 resource (resources/read); 'embedded' calls
   // the tool and extracts its mcp-ui.dev embedded UI resource.
   const path = mode === 'embedded' ? 'embedded' : 'resource';
   const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}/${path}`,
+    transcript
+      ? { headers: { 'x-station-mcp-transcript': 'preview' } }
+      : undefined,
   );
   const { data } = await readMCPEnvelope<MCPToolUIResourceContent>(
     response,

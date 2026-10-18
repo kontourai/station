@@ -672,6 +672,20 @@ includes up to 200 `probe.tools` entries with raw `name`, optional `description`
 can return this metadata without persisting it to a local integration definition.
 Discovery metadata is a browsing snapshot, not execution authority.
 
+### Discover transcript App tools
+
+`GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`
+with raw tool names whose definitions declare valid `ui://` resources. It reads
+only already-open, usable Station connections, excluding disabled tools. Unknown
+or disconnected servers return an empty list; this endpoint never starts one.
+The browser shares this inert membership snapshot per server for five minutes.
+
+Transcript resolver/resource requests use `x-station-mcp-transcript: preview` to
+require an already-open connection throughout discovery and resource loading.
+They do not use compatibility catalogs or open transient connections. Resource
+reads still re-resolve the current tool declaration and render policy; membership
+is never execution or resource-read authority.
+
 ### Create Integration
 
 `POST /integrations` accepts the integration definition schema and returns

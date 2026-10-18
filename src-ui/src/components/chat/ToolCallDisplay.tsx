@@ -35,6 +35,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import {
   boundedToolResultText,
@@ -42,11 +43,13 @@ import {
   fullToolResultText,
 } from './bounded-tool-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import {
   RequestSheet,
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
   classifyToolCall,
@@ -55,6 +58,9 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+
+const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+
 import './ToolCallDetails.css';
 
 /**
@@ -161,7 +167,8 @@ function ToolCallDisplayComponent({
   toolCall,
   onApprove,
   showDetails = true,
-}: ToolCallDisplayProps) {
+  appTools,
+}: ToolCallDisplayProps & { appTools: ReadonlySet<string> }) {
   // `null` until the user toggles the row: until then it follows
   // `openByDefault` below, so a pending multi-line command opens and the row
   // closes again once the request settles. A toggle on a pending request is
@@ -182,6 +189,9 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
+  const candidateRef = transcriptMcpToolRef(toolCall);
+  const appToolRef =
+    candidateRef && appTools.has(candidateRef) ? candidateRef : undefined;
   const display = toolDisplayView(toolCall);
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
@@ -372,6 +382,19 @@ function ToolCallDisplayComponent({
           unresolved={unresolved}
           approvalStatus={approvalStatus}
           lastProgress={running ? undefined : progressMessage}
+        />
+      )}
+      {appToolRef && (
+        <LazyBoundary
+          key={id}
+          load={loadTranscriptMCPApp}
+          pending={null}
+          componentProps={{
+            toolRef: appToolRef,
+            toolCallId: id,
+            args,
+            result: toolCall.output ?? toolCall.result,
+          }}
         />
       )}
       {awaitingApproval && onApprove && (
@@ -1097,4 +1120,14 @@ function rememberToggle(key: string, expanded: boolean): void {
   }
 }
 
-export const ToolCallDisplay = memo(ToolCallDisplayComponent);
+export const ToolCallDisplay = memo(function ToolCallDisplay(
+  props: ToolCallDisplayProps,
+) {
+  return (
+    <TranscriptAppTools calls={[props.toolCall]}>
+      {(appTools) => (
+        <ToolCallDisplayComponent {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
+  );
+});

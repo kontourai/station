@@ -322,6 +322,75 @@ All App requests cross the same server-side authorization boundary as other
 Station actions. The host bridge does not expose its configured provider
 credentials or direct MCP transport to the App.
 
+## Transcript previews
+
+[ToolCallDisplay](../../src-ui/src/components/chat/ToolCallDisplay.tsx) mounts
+[TranscriptMCPApp](../../src-ui/src/components/chat/TranscriptMCPApp.tsx) beside a
+completed, non-error MCP result with a stable tool-call ID. The
+[reference reader](../../src-ui/src/components/chat/mcp-app-tool-ref.ts) accepts
+canonical `server/tool` or explicit `server`/`originalName` identity, without
+guessing from flattened underscores.
+It requires an untruncated successful MCP result envelope with a `content` array.
+That is only a cheap candidate filter: membership in the already-open server's
+UI-tool catalog is mandatory. The browser caches one `GET
+/integrations/:serverId/ui-tools` request per server for five minutes, shared by
+rows and batching. The endpoint reads tool-definition `_meta.ui.resourceUri`
+(or its legacy flat spelling); a result pointer alone grants nothing. Unknown,
+disconnected or unusable connections return no UI tools without starting a
+process. Candidates remain in ordinary batches until membership is confirmed.
+
+The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
+This is a source path, not real-provider qualification. Claude-provider MCP calls
+cannot mount: `summarizeClaudeToolResult` stringifies output and their raw
+`mcp__` names lack canonical server identity. ACP and managed-engine result
+preservation remain unqualified. Explicit provider `server`/`originalName` is
+accepted; ambiguous underscore names are never split.
+
+At ingress, EventStore discards incoming `mcpAppResourceUri` claims and stamps
+that optional field only for successful content envelopes whose tool definition
+is in the already-open catalog. A stamped event may retain its full envelope
+within the existing 24 KiB bound. Ordinary results, including forged result UI
+pointers, keep 84-character previews without waiting for catalog requests.
+Older readers ignore the additive field. Pre-stamp history reduced to text stays
+ordinary. Larger or provider-truncated results remain ordinary rows.
+
+The frame sends recorded input/result notifications without invoking
+`/initial-result` or the embedded-result fallback. Definition-only tools work;
+result metadata is not required. Resolution and resource requests carry
+`x-station-mcp-transcript: preview`, restricting catalog/read operations to
+already-open connections, with no compatibility-catalog fallback. A disconnect
+between membership and resource fetch cannot launch a replacement server.
+Unknown or unavailable resolution adds no card. Rendering revocation deliberately
+shows an operator-policy card for a catalog-confirmed App. Unresolved native
+occurrences remain quiet; existing native refusal for pane frames is unchanged.
+Resource fetching always re-resolves the current declaration and render grant;
+no URI supplied by a result is fetched or compared as authority.
+
+Transcript previews advertise no server-tool, server-resource, or open-link
+capabilities and refuse unsolicited requests at the handler boundary. They have
+no message or model-context handler. The visible unavailable label applies even
+while an engine is running: this slice has no owning-session interaction lease.
+Transcript chrome has intrinsic height and a non-shrinking status line above
+the frame. Once resolution succeeds, resource loading reserves the initial frame
+height; Apps size notifications replace it within the existing 160–2,000 pixel
+bounds. A static App that reports no height retains the 360 pixel default. The
+demo uses the official SDK resize observer. This changes no resource-read timing.
+It retains the existing theme and sandbox posture and native-shell refusal.
+See the [decision](../decisions/mcp-app-transcript-previews.md).
+
+Remaining slices are authenticated occurrence/resource binding (including
+integration-generation changes), owning-session
+liveness, per-message approval with canonical dispatch, latest bounded
+per-app context notes delivered on the next user message, general link
+confirmation, fullscreen attention return, and navigation-away termination.
+No stored result proves that today's integration serves identical historical
+HTML. This slice retains current-catalog resource semantics.
+
+#3136 owns authored visual skill linkage and guided-session behavior, which this
+slice does not add. #3284 owns prompts/resources/elicitation/sampling, which
+rendering does not qualify. #3274 owns the standards compatibility matrix;
+this preview must not be advertised as complete MCP Apps interaction support.
+
 ## Threat controls
 
 | Threat | Control |

@@ -898,6 +898,7 @@ describe('Tool Routes', () => {
     expect(svc.readMCPUIResource).toHaveBeenCalledWith(
       'mcp-1',
       'ui://mcp-1/render.html',
+      false,
     );
   });
 

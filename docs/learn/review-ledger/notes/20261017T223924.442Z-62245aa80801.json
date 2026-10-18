@@ -1,0 +1,9 @@
+{
+  "revision": "0d05f90afa0f7dee53bae29d9fba19446e7ed95f",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Scoped review of the new Shared export against the documented boundary conventions: mcp-app-result is a browser-safe, side-effect-free presentation reader imported by the UI and EventStore through its explicit subpath. It grants no URI read or session action authority. Existing exports and dependencies are unchanged; route validation, remote-query ownership, and runtime/service separation claims need no prose change.","inputs":["docs/patterns/backend.md","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Scoped review of the new Shared export against the documented boundary conventions: mcp-app-result is a browser-safe, side-effect-free presentation reader imported by the UI and EventStore through its explicit subpath. It grants no URI read or session action authority. Existing exports and dependencies are unchanged; route validation, remote-query ownership, and runtime/service separation claims need no prose change.","inputs":["docs/patterns/frontend.md","packages/shared/package.json#/exports"]}
+  ]
+}

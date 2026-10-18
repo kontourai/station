@@ -10,3 +10,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |
