@@ -1,0 +1,425 @@
+/**
+ * Control channel v1: authenticated NDJSON over a local socket or named pipe.
+ */
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from 'node:fs';
+import {
+  createConnection,
+  createServer,
+  type Server,
+  type Socket,
+} from 'node:net';
+import { dirname } from 'node:path';
+import type {
+  HandoffOptions,
+  HandoffOutcomeResult,
+} from './generation-manager.ts';
+import {
+  encodeLine,
+  isRecord,
+  LineTooLongError,
+  NdjsonDecoder,
+} from './ndjson.ts';
+import {
+  CONTROL_HELLO_TIMEOUT_MS,
+  CONTROL_MAX_CONNECTIONS,
+  CONTROL_MAX_LINE_BYTES,
+  CONTROL_MAX_SUBSCRIBER_BACKLOG_BYTES,
+  type ControlEndpoint,
+  type ControlServerMessage,
+  type ErrorCode,
+  type HandoffPhase,
+  type RefusedReason,
+  SUPERVISOR_CAPABILITIES,
+  SUPERVISOR_PROTOCOL,
+  type SupervisorCapability,
+  type SupervisorEvent,
+  type SupervisorStatus,
+} from './protocol.ts';
+
+/** Upper bound for any client-supplied duration. */
+export const MAX_REQUEST_DURATION_MS = 60 * 60_000;
+const MAX_ID_LENGTH = 128;
+
+export interface ControlHandlers {
+  status(): SupervisorStatus;
+  handoff(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void,
+  ): Promise<HandoffOutcomeResult>;
+  stop(drainDeadlineMs?: number): void;
+  subscribe(listener: (event: SupervisorEvent) => void): () => void;
+}
+
+export interface ControlServerOptions {
+  endpoint: ControlEndpoint;
+  instance: string;
+  version: string;
+  handlers: ControlHandlers;
+  platform?: NodeJS.Platform;
+  log?: (message: string) => void;
+}
+
+function ensurePrivateDir(dir: string, platform: NodeJS.Platform): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform === 'win32') return;
+  const stat = lstatSync(dir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(
+      `refusing supervisor directory that is not a real directory: ${dir}`,
+    );
+  }
+  const uid = process.getuid?.();
+  if (uid !== undefined && stat.uid !== uid) {
+    throw new Error(
+      `refusing supervisor directory owned by another user: ${dir}`,
+    );
+  }
+  if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+}
+
+/** Writes the token atomically with mode 0600 and returns it. */
+function writeToken(tokenPath: string): string {
+  const token = randomBytes(32).toString('hex');
+  const temp = `${tokenPath}.${process.pid}.tmp`;
+  const fd = openSync(temp, 'w', 0o600);
+  try {
+    writeSync(fd, token);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  if (process.platform !== 'win32') chmodSync(temp, 0o600);
+  renameSync(temp, tokenPath);
+  return token;
+}
+
+function probeSocket(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection(path);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('error', () => resolve(false));
+  });
+}
+
+function tokensMatch(expected: string, offered: unknown): boolean {
+  if (typeof offered !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(offered);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function optionalDuration(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    value > MAX_REQUEST_DURATION_MS
+  ) {
+    return null;
+  }
+  return value;
+}
+
+export class ControlServer {
+  private server: Server | null = null;
+  private token = '';
+  private readonly sockets = new Set<Socket>();
+  private readonly platform: NodeJS.Platform;
+  private readonly log: (message: string) => void;
+
+  private readonly options: ControlServerOptions;
+
+  constructor(options: ControlServerOptions) {
+    this.options = options;
+    this.platform = options.platform ?? process.platform;
+    this.log = options.log ?? (() => {});
+  }
+
+  async listen(): Promise<void> {
+    const { endpoint } = this.options;
+    ensurePrivateDir(dirname(endpoint.tokenPath), this.platform);
+    if (this.platform !== 'win32') {
+      ensurePrivateDir(dirname(endpoint.path), this.platform);
+      let existing: ReturnType<typeof lstatSync> | null = null;
+      try {
+        existing = lstatSync(endpoint.path);
+      } catch {
+        existing = null;
+      }
+      if (existing) {
+        if (!existing.isSocket()) {
+          throw new Error(
+            `refusing to replace non-socket file at ${endpoint.path}`,
+          );
+        }
+        if (await probeSocket(endpoint.path)) {
+          throw new Error(
+            `another supervisor is already listening at ${endpoint.path}`,
+          );
+        }
+        unlinkSync(endpoint.path);
+      }
+    }
+    this.token = writeToken(endpoint.tokenPath);
+    const server = createServer((socket) => this.accept(socket));
+    server.maxConnections = CONTROL_MAX_CONNECTIONS;
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(endpoint.path, () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
+    if (this.platform !== 'win32') chmodSync(endpoint.path, 0o600);
+    server.on('error', (error) =>
+      this.log(`control server error: ${String(error)}`),
+    );
+    this.server = server;
+  }
+
+  async close(): Promise<void> {
+    for (const socket of this.sockets) socket.destroy();
+    const server = this.server;
+    this.server = null;
+    if (server)
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    const { endpoint } = this.options;
+    for (const path of [
+      endpoint.tokenPath,
+      this.platform === 'win32' ? null : endpoint.path,
+    ]) {
+      if (!path) continue;
+      try {
+        unlinkSync(path);
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+
+  private accept(socket: Socket): void {
+    this.sockets.add(socket);
+    socket.on('close', () => this.sockets.delete(socket));
+    socket.on('error', () => socket.destroy());
+    const decoder = new NdjsonDecoder(CONTROL_MAX_LINE_BYTES);
+    const send = (message: ControlServerMessage) => {
+      if (!socket.destroyed) socket.write(encodeLine(message));
+    };
+    let capabilities: SupervisorCapability[] | null = null;
+    const unsubscribers: Array<() => void> = [];
+    socket.on('close', () => {
+      for (const unsubscribe of unsubscribers) unsubscribe();
+    });
+    const helloTimer = setTimeout(
+      () => socket.destroy(),
+      CONTROL_HELLO_TIMEOUT_MS,
+    );
+    helloTimer.unref();
+
+    const refuse = (reason: RefusedReason) => {
+      send({ type: 'refused', reason, protocol: { ...SUPERVISOR_PROTOCOL } });
+      socket.end();
+    };
+    const error = (code: ErrorCode, message: string, id?: string) => {
+      send(
+        id === undefined
+          ? { type: 'error', code, message }
+          : { type: 'error', id, code, message },
+      );
+    };
+
+    const onLine = (line: string) => {
+      let message: unknown;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        if (capabilities === null) refuse('bad-hello');
+        else error('bad-request', 'line is not JSON');
+        return;
+      }
+      if (capabilities === null) {
+        clearTimeout(helloTimer);
+        capabilities = this.handshake(message, refuse, send);
+        return;
+      }
+      this.dispatch(message, capabilities, send, error, unsubscribers, socket);
+    };
+
+    socket.on('data', (chunk: Buffer) => {
+      let lines: string[];
+      try {
+        lines = decoder.push(chunk);
+      } catch (cause) {
+        if (cause instanceof LineTooLongError) {
+          error('line-too-long', cause.message);
+          socket.end();
+          return;
+        }
+        throw cause;
+      }
+      for (const line of lines) {
+        if (socket.destroyed || socket.writableEnded) return;
+        if (line.trim().length > 0) onLine(line);
+      }
+    });
+  }
+
+  private handshake(
+    message: unknown,
+    refuse: (reason: RefusedReason) => void,
+    send: (message: ControlServerMessage) => void,
+  ): SupervisorCapability[] | null {
+    if (
+      !isRecord(message) ||
+      message.type !== 'hello' ||
+      !isRecord(message.protocol)
+    ) {
+      refuse('bad-hello');
+      return null;
+    }
+    // Version first, so a client of another major learns why before anything else.
+    if (message.protocol.major !== SUPERVISOR_PROTOCOL.major) {
+      refuse('protocol-major');
+      return null;
+    }
+    if (!tokensMatch(this.token, message.token)) {
+      refuse('auth');
+      return null;
+    }
+    const requested = Array.isArray(message.capabilities)
+      ? message.capabilities
+      : [];
+    const negotiated = SUPERVISOR_CAPABILITIES.filter((capability) =>
+      requested.includes(capability),
+    );
+    send({
+      type: 'welcome',
+      protocol: { ...SUPERVISOR_PROTOCOL },
+      supervisor: {
+        pid: process.pid,
+        version: this.options.version,
+        instance: this.options.instance,
+      },
+      capabilities: negotiated,
+    });
+    return negotiated;
+  }
+
+  private dispatch(
+    message: unknown,
+    capabilities: SupervisorCapability[],
+    send: (message: ControlServerMessage) => void,
+    error: (code: ErrorCode, message: string, id?: string) => void,
+    unsubscribers: Array<() => void>,
+    socket: Socket,
+  ): void {
+    if (!isRecord(message) || typeof message.type !== 'string') {
+      error('bad-request', 'message has no type');
+      return;
+    }
+    const id = message.id;
+    if (
+      typeof id !== 'string' ||
+      id.length === 0 ||
+      id.length > MAX_ID_LENGTH
+    ) {
+      error(
+        'bad-request',
+        'request id must be a non-empty string of at most 128 characters',
+      );
+      return;
+    }
+    const { handlers } = this.options;
+    switch (message.type) {
+      case 'status':
+        send({ type: 'status.result', id, status: handlers.status() });
+        return;
+      case 'handoff': {
+        const readinessTimeoutMs = optionalDuration(message.readinessTimeoutMs);
+        const drainDeadlineMs = optionalDuration(message.drainDeadlineMs);
+        if (readinessTimeoutMs === null || drainDeadlineMs === null) {
+          error(
+            'bad-request',
+            `durations must be integers in 1..${MAX_REQUEST_DURATION_MS}`,
+            id,
+          );
+          return;
+        }
+        if (message.entry !== undefined && typeof message.entry !== 'string') {
+          error('bad-request', 'entry must be a string', id);
+          return;
+        }
+        const request: HandoffOptions = {};
+        if (typeof message.entry === 'string') request.entry = message.entry;
+        if (readinessTimeoutMs !== undefined)
+          request.readinessTimeoutMs = readinessTimeoutMs;
+        if (drainDeadlineMs !== undefined)
+          request.drainDeadlineMs = drainDeadlineMs;
+        void handlers
+          .handoff(request, (phase, generation) =>
+            send({ type: 'handoff.progress', id, phase, generation }),
+          )
+          .then(
+            (result) => send({ type: 'handoff.result', id, ...result }),
+            (cause: unknown) =>
+              send({
+                type: 'handoff.result',
+                id,
+                outcome: 'refused',
+                reason: String(cause),
+              }),
+          );
+        return;
+      }
+      case 'stop': {
+        const drainDeadlineMs = optionalDuration(message.drainDeadlineMs);
+        if (drainDeadlineMs === null) {
+          error(
+            'bad-request',
+            `drainDeadlineMs must be an integer in 1..${MAX_REQUEST_DURATION_MS}`,
+            id,
+          );
+          return;
+        }
+        send({ type: 'stop.result', id, accepted: true });
+        handlers.stop(drainDeadlineMs);
+        return;
+      }
+      case 'subscribe': {
+        if (!capabilities.includes('events')) {
+          error('unsupported', 'subscribe requires the events capability', id);
+          return;
+        }
+        send({ type: 'subscribe.result', id });
+        unsubscribers.push(
+          handlers.subscribe((event) => {
+            if (socket.writableLength > CONTROL_MAX_SUBSCRIBER_BACKLOG_BYTES) {
+              this.log('dropping a control subscriber that stopped reading');
+              socket.destroy();
+              return;
+            }
+            send({ type: 'event', event });
+          }),
+        );
+        return;
+      }
+      default:
+        error('unsupported', `unknown request type: ${message.type}`, id);
+    }
+  }
+}

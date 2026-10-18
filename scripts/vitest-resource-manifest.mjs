@@ -1418,6 +1418,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // geometry, a squatted locator global, a covered button, 300,000
   // elements, a page spinning forever). Explicit skip without a browser.
   'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
+  // Process supervisor: real supervisor children fork fixture core
+  // generations, hand a held listening socket between them, and hammer it
+  // with keep-alive HTTP and SSE clients on an ephemeral port.
+  'packages/supervisor/src/__tests__/handoff.test.ts',
+  'packages/supervisor/src/__tests__/rollback.test.ts',
+  'packages/supervisor/src/__tests__/crash-restart.test.ts',
+  // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
+  'packages/supervisor/src/__tests__/protocol.test.ts',
+  // Forks two children that pass a raw listening handle through this worker.
+  'packages/supervisor/src/__tests__/handle-guard.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

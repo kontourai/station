@@ -1,5 +1,9 @@
 import { createRequire } from 'node:module';
 import * as esbuild from 'esbuild';
+import {
+  SUPERVISOR_BUNDLE_NAME,
+  supervisorBuildOptions,
+} from './packages/supervisor/build-options.mjs';
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
@@ -64,6 +68,12 @@ await Promise.all([
     entryPoints: ['./src-server/index.ts'],
     outfile: `${serverDir}/command-station.js`,
   }),
+  // The process supervisor holds listeners and hands them between core
+  // generations. It is self-contained (Node built-ins only) and does not share
+  // the server banner or externals: it must run with no node_modules beside it.
+  esbuild.build(
+    supervisorBuildOptions(`${serverDir}/${SUPERVISOR_BUNDLE_NAME}`),
+  ),
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/tools/station-control-server.ts'],

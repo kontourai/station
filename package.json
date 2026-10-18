@@ -20,6 +20,7 @@
     "packages/connect",
     "packages/telemetry-broker",
     "packages/monument",
+    "packages/supervisor",
     "examples/builder-delivery-viewer",
     "examples/fieldwork-review"
   ],
@@ -150,6 +151,7 @@
     "typecheck:connect": "node scripts/tsc-slot.mjs -p packages/connect/tsconfig.tests.json --noEmit",
     "typecheck:telemetry-broker": "node scripts/tsc-slot.mjs -p packages/telemetry-broker/tsconfig.json --noEmit",
     "typecheck:monument": "node scripts/tsc-slot.mjs -p packages/monument/tsconfig.json --noEmit",
+    "typecheck:supervisor": "node scripts/tsc-slot.mjs -p packages/supervisor/tsconfig.json --noEmit",
     "build:telemetry-broker": "node packages/telemetry-broker/build.mjs",
     "qualify:telemetry-broker": "node packages/telemetry-broker/qualify.mjs",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
