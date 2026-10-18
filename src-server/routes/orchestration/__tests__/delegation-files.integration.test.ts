@@ -276,6 +276,7 @@ describe('CLI delegation files through staging, route and real orchestration', (
   });
 
   test('refuses combined size max+1 without uploading or dispatching', async () => {
+    const prepare = vi.spyOn(staging, 'prepare');
     const paths: string[] = [];
     for (let i = 0; i < 4; i++) {
       const path = join(root, `large-${i}.txt`);
@@ -286,6 +287,7 @@ describe('CLI delegation files through staging, route and real orchestration', (
       paths.push(path);
     }
     await expect(run(paths)).rejects.toThrow('combined limit');
+    expect(prepare).not.toHaveBeenCalled();
     expect(turns).toHaveLength(0);
   });
   const stage = (name = 'revision.txt') => {
