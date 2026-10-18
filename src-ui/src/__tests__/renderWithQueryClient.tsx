@@ -10,7 +10,7 @@ import {
 import type { PropsWithChildren, ReactElement } from 'react';
 
 /** The app's remote-data prerequisites, isolated per test render. */
-export function createQueryTestBoundary(
+function createQueryTestBoundary(
   CallerWrapper?: RenderOptions['wrapper'],
 ) {
   const client = new QueryClient({
