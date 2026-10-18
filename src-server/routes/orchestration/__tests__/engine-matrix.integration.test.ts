@@ -730,7 +730,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
                 scenario.prepare({
                   ...ctx,
                   setupApi: (path: string, body?: unknown, method?: string) =>
-                    path === '/integrations'
+                    path.endsWith('/reconnect')
                       ? ctx.api(path, body, method)
                       : ctx.setupApi(path, body, method),
                 }),
