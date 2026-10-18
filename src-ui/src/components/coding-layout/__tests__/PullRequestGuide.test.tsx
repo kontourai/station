@@ -99,6 +99,15 @@ test('renders excerpts and decisions, navigates stops, and sends rewrite through
   mount();
   await screen.findByRole('heading', { name: 'The new contract' });
   expect(screen.getByText(/1\s+const visible = true;/)).toBeTruthy();
+  const excerpt = screen.getByRole('region', {
+    name: 'Code excerpt from a.ts',
+  });
+  expect(excerpt.tabIndex).toBe(0);
+  excerpt.focus();
+  expect(document.activeElement).toBe(excerpt);
+  expect(
+    screen.getByText('Scroll horizontally to read longer lines.'),
+  ).toBeTruthy();
   expect(screen.getByText('Judge compatibility.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(
@@ -151,6 +160,22 @@ test('running guide polls cheap status at fifteen seconds and reads the snapshot
       await vi.advanceTimersByTimeAsync(15_001);
     });
     expect(remote.read).toHaveBeenCalledTimes(2);
+    const second = {
+      ...writing,
+      run: { ...writing.run!, startedAt: '2026-10-17T00:01:00Z' },
+    };
+    remote.write.mockResolvedValue(second);
+    remote.read.mockResolvedValue(second);
+    remote.status.mockResolvedValue({ enabled: true, run: second.run });
+    fireEvent.click(screen.getByRole('button', { name: 'Rewrite guide' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(remote.read).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(remote.read).toHaveBeenCalledTimes(3);
   } finally {
     view.unmount();
     vi.useRealTimers();

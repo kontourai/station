@@ -42,3 +42,12 @@
 .pull-request-guide article > :is(h3, h4, p, ul) {
   margin-block: var(--k-space-3);
 }
+
+.pull-request-guide__scroll-hint {
+  color: var(--k-text-muted);
+  margin-block-start: var(--k-space-2);
+}
+.pull-request-guide__excerpt pre:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: var(--k-space-1);
+}

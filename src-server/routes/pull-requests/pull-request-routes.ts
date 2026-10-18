@@ -306,7 +306,10 @@ export function createPullRequestRoutes(
         options.guides.assertCapacity(identity);
       } catch (error) {
         return c.json(
-          { success: false, error: reviewGuideFailureDetail(error) },
+          {
+            success: false,
+            error: reviewGuideFailureDetail(error, 'request'),
+          },
           409,
         );
       }
@@ -345,7 +348,13 @@ export function createPullRequestRoutes(
       return c.json({ success: true, data: { enabled: true, ...result } });
     } catch (error) {
       return c.json(
-        { success: false, error: reviewGuideFailureDetail(error) },
+        {
+          success: false,
+          error: reviewGuideFailureDetail(
+            error,
+            c.req.method === 'GET' ? 'read' : 'request',
+          ),
+        },
         409,
       );
     }

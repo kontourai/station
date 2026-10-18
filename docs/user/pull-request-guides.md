@@ -17,6 +17,7 @@ progress or a failure, and move through the stops with **Previous** and **Next**
 Use **Rewrite guide** to try again or incorporate a new revision or preference.
 Ordinary requests reuse a guide for the current head; Rewrite explicitly forces
 regeneration. A request for a newer head is refused while an older head is running.
+Code excerpts can receive keyboard focus; scroll horizontally to read long lines.
 The Guide tab is read-only: return to **Review** to comment or approve.
 
 A push makes the saved guide stale. On the next guide read, Station compares
@@ -57,5 +58,6 @@ actions, or a finish-review workflow. Questions are reading prompts only.
 While a guide is running, the Guide tab polls process-local status every 15 seconds
 without rereading the forge snapshot. It reads the full guide once the run settles.
 Failures distinguish invalid model output, missing commits, oversized changes,
-Git timeouts, storage limits, and changed access. The preparation and model request
+Git timeouts, storage limits, and changed access. Saved-guide read failures and
+disabled-guide requests have separate messages from model failures. The preparation and model request
 share a three-minute time budget.

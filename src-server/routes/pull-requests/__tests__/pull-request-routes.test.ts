@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
@@ -735,7 +737,7 @@ describe('what each route asks of the checkout (#2474, #2475)', () => {
   });
 });
 
-test('guide route resolves the forge head, strips obsolete anchors and refuses unauthenticated generation', async () => {
+test('guide route resolves the forge head, strips obsolete anchors, classifies read failures and refuses unauthenticated generation', async () => {
   const home = makeTempDir('station-guide-route-');
   try {
     const store = new PullRequestReviewGuideStore(home);
@@ -798,10 +800,11 @@ test('guide route resolves the forge head, strips obsolete anchors and refuses u
       effectiveMergeMethods: [],
       mergeMethodsSource: 'provider-default',
     });
+    let enabled = true;
     const generate = vi.fn();
     const guides = new PullRequestReviewGuideService(
       store,
-      () => ({ enabled: true, model: 'model', instructions: '' }),
+      () => ({ enabled, model: 'model', instructions: '' }),
       generate,
       () => {},
     );
@@ -825,6 +828,34 @@ test('guide route resolves the forge head, strips obsolete anchors and refuses u
       (await routes.request('/github/github.com/other/r/17/guide?project=p'))
         .status,
     ).toBe(404);
+    writeFileSync(
+      join(home, 'pull-request-guides', store.key(identity), 'latest.json'),
+      '{broken',
+    );
+    const corrupt = await routes.request(url);
+    expect(corrupt.status).toBe(409);
+    expect(await corrupt.json()).toEqual({
+      success: false,
+      error:
+        'The saved guide could not be read. Check server storage or rewrite the guide.',
+    });
+    vi.spyOn(provider, 'getReviewSnapshot').mockImplementation(async () => {
+      enabled = false;
+      return {
+        available: true,
+        data: snapshot,
+        effectiveCapabilities: caps,
+        effectiveMergeMethods: [],
+        mergeMethodsSource: 'provider-default',
+      };
+    });
+    const disabled = await routes.request(url);
+    expect(disabled.status).toBe(409);
+    expect(await disabled.json()).toEqual({
+      success: false,
+      error:
+        'Enable review guides and configure a review guide or structure model.',
+    });
     expect(generate).not.toHaveBeenCalled();
   } finally {
     vi.restoreAllMocks();

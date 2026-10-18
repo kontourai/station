@@ -65,8 +65,7 @@ export class PullRequestReviewGuideService {
     currentHeadSha: string,
     patch?: string,
   ) {
-    if (!this.enabled())
-      throw Error('Review guides are disabled on this server.');
+    if (!this.enabled()) throw new ReviewGuideError('disabled');
     const result = guideResult(
       this.store.read(identity, currentHeadSha) ?? this.store.latest(identity),
       currentHeadSha,

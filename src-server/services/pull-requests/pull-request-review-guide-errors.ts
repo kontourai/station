@@ -18,6 +18,9 @@ const DETAILS = {
   'stored-too-large':
     'The serialized guide exceeds the storage limit. Use a shorter guide.',
   timeout: 'Guide generation exceeded its time budget.',
+  read: 'The saved guide could not be read. Check server storage or rewrite the guide.',
+  request:
+    'The guide request could not be completed. Check server configuration and retry.',
   model:
     'The guide model could not complete the request. Check model access and retry.',
 } as const;
@@ -29,6 +32,9 @@ export class ReviewGuideError extends Error {
   }
 }
 /** Only fixed, reviewed copy crosses the route/model error boundary. */
-export function reviewGuideFailureDetail(error: unknown): string {
-  return error instanceof ReviewGuideError ? error.detail : DETAILS.model;
+export function reviewGuideFailureDetail(
+  error: unknown,
+  fallback: 'model' | 'read' | 'request' = 'model',
+): string {
+  return error instanceof ReviewGuideError ? error.detail : DETAILS[fallback];
 }

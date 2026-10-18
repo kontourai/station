@@ -35,7 +35,12 @@ export function PullRequestGuide({
   });
   const running = query.data?.enabled && query.data.run?.state === 'Running';
   const status = useQuery({
-    queryKey: ['pull-request-guide-status', scope?.authorityKey, target],
+    queryKey: [
+      'pull-request-guide-status',
+      scope?.authorityKey,
+      target,
+      query.data?.enabled ? query.data.run?.startedAt : undefined,
+    ],
     queryFn: ({ signal }) =>
       getPullRequestGuideStatus(scope!.apiBase, target, {
         signal,
@@ -171,7 +176,11 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
                 {excerpt.side === 'new' ? 'New' : 'Old'} lines {excerpt.start}–
                 {excerpt.end} · {excerpt.caption}
               </p>
-              <pre>
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label={`Code excerpt from ${excerpt.path}`}
+              >
                 <code>
                   {result.excerptContents
                     .find(
@@ -186,6 +195,9 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
                     .join('\n') ?? 'Excerpt unavailable in the current diff.'}
                 </code>
               </pre>
+              <p className="pull-request-guide__scroll-hint">
+                Scroll horizontally to read longer lines.
+              </p>
             </div>
           ))}
         {stop.files.length > 0 && (

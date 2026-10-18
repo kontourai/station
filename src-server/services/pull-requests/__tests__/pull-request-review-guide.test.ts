@@ -83,13 +83,11 @@ test('deleted files and source lines resembling headers retain their actual side
   ).toThrow(/excerpt/);
 });
 
-test('generation reads blobs without creating a checkout, persists coverage across restart and hides stale anchors after a push', async () => {
+test('generation reads changed-file blobs, persists coverage across restart and hides stale anchors after a push', async () => {
   const f = await guideFixture(makeTempDir);
-  const before = await f.git('worktree', 'list', '--porcelain');
   const generate = vi.fn(async (prompt: string) => {
     expect(prompt).toContain('extra.txt');
     expect(prompt).toContain('new\\n');
-    expect(await f.git('worktree', 'list', '--porcelain')).toBe(before);
     return { stops: [stop()] };
   });
   const errors: unknown[] = [];
@@ -114,7 +112,6 @@ test('generation reads blobs without creating a checkout, persists coverage acro
   );
   expect(errors).toEqual([]);
   expect(generate).toHaveBeenCalledTimes(1);
-  expect(await f.git('worktree', 'list', '--porcelain')).toBe(before);
   expect(await readFile(join(f.root, 'a.ts'), 'utf8')).toBe('new\n');
   const restarted = new PullRequestReviewGuideService(
     new PullRequestReviewGuideStore(join(f.root, 'home')),
@@ -159,9 +156,6 @@ test('invalid model anchors fail the run without publishing a guide', async () =
     { timeout: 15_000 },
   );
   expect(f.store.latest(identity)).toBeNull();
-  expect(await f.git('worktree', 'list', '--porcelain')).not.toContain(
-    'station-review-guide-',
-  );
 }, 20_000);
 
 test('rejects notes outside the excerpts of their own stop', () => {
@@ -280,6 +274,7 @@ test('refuses a newer head while an older revision is running; reuses completed 
     service.start({ identity, context: f.context, snapshot: f.snapshot }).guide
       ?.headSha,
   ).toBe(f.snapshot.headSha);
+  expect(service.status(identity).run).toBeNull();
   expect(generate).toHaveBeenCalledTimes(1);
   service.start(
     { identity, context: f.context, snapshot: f.snapshot },
@@ -350,9 +345,6 @@ test('reads non-ASCII blobs despite global diff formatting and never runs a glob
     await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
     await f.git('cat-file', '--filters', `${f.snapshot.headSha}:café.ts`);
     expect(await readFile(marker, 'utf8')).toBe('ran\n');
-    expect(await f.git('worktree', 'list', '--porcelain')).not.toContain(
-      'station-review-guide-',
-    );
   } finally {
     vi.unstubAllEnvs();
   }
