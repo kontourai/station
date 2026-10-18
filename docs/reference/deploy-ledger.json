@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-10-18T11:55:55Z",
+    "channel": "nightly-npm",
+    "version": "0.8.0-nightly.2482.39124399487",
+    "sha": "b28c84df811e27f9de6d28e7cd40cd541d89f68e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39124399487",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.8.0-nightly.2482.39124399487 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "64d458b2e90d12156dd654ce7184f7e38f3a7d61",
+      "groups": {
+        "feat": [
+          "[#3795](https://github.com/kontourai/station/pull/3795) feat(cli): retain stable turn keys across explicit retries",
+          "[#3811](https://github.com/kontourai/station/pull/3811) feat(supervisor): add the Station process supervisor package",
+          "[#3804](https://github.com/kontourai/station/pull/3804) feat(confinement): confine full-access Claude sessions with macOS Seatbelt (#2494 slice 2)",
+          "[#3735](https://github.com/kontourai/station/pull/3735) feat(policy): embed Cedar behind a fail-closed server evaluator",
+          "[#3706](https://github.com/kontourai/station/pull/3706) feat(orchestration): index event-derived parent naming",
+          "[#3786](https://github.com/kontourai/station/pull/3786) feat(telemetry): tiered consent foundation and ADR"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-18T06:50:13Z",
     "channel": "nightly-npm",
     "version": "0.8.0-nightly.2482.39104631066",

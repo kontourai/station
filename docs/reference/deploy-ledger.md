@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-18T11:55:55Z | nightly-npm | 0.8.0-nightly.2482.39124399487 | `b28c84d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T06:50:13Z | nightly-npm | 0.8.0-nightly.2482.39104631066 | `64d458b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39104631066) |
 | 2026-10-17T22:09:45Z | nightly-npm | 0.7.0-nightly.2481.39073016966 | `b1970f2` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39073016966) |
 | 2026-10-17T20:59:11Z | nightly-desktop | 0.1.11-nightly.2481.2 | `597e0e6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
@@ -297,6 +298,26 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-18T11:55:55Z · nightly-npm · 0.8.0-nightly.2482.39124399487
+
+- Ship SHA: `b28c84df811e27f9de6d28e7cd40cd541d89f68e`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.8.0-nightly.2482.39124399487 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `64d458b` ([full sha](https://github.com/kontourai/station/commit/64d458b2e90d12156dd654ce7184f7e38f3a7d61)):
+
+**Features**
+
+- [#3795](https://github.com/kontourai/station/pull/3795) feat(cli): retain stable turn keys across explicit retries
+- [#3811](https://github.com/kontourai/station/pull/3811) feat(supervisor): add the Station process supervisor package
+- [#3804](https://github.com/kontourai/station/pull/3804) feat(confinement): confine full-access Claude sessions with macOS Seatbelt (#2494 slice 2)
+- [#3735](https://github.com/kontourai/station/pull/3735) feat(policy): embed Cedar behind a fail-closed server evaluator
+- [#3706](https://github.com/kontourai/station/pull/3706) feat(orchestration): index event-derived parent naming
+- [#3786](https://github.com/kontourai/station/pull/3786) feat(telemetry): tiered consent foundation and ADR
 
 ## 2026-10-18T06:50:13Z · nightly-npm · 0.8.0-nightly.2482.39104631066
 
