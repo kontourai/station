@@ -336,6 +336,66 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
   );
 
   registry.tool(
+    'browser_hover',
+    'Move the pointer onto an element or viewport point. Refused while a person holds control.',
+    { browserSessionId: sessionId, ...targetShape },
+    async (args) =>
+      callBrowser('hover', {
+        browserSessionId: args.browserSessionId,
+        target: targetOf(args),
+      }),
+  );
+
+  registry.tool(
+    'browser_drag',
+    'Drag with the left pointer from source to target (refs, locators or CSS-pixel points). Both ends must fit in the viewport. Does not transfer files.',
+    {
+      browserSessionId: sessionId,
+      source: z.object(targetShape),
+      target: z.object(targetShape),
+    },
+    async (args) =>
+      callBrowser('drag', {
+        browserSessionId: args.browserSessionId,
+        source: targetOf(args.source),
+        target: targetOf(args.target),
+      }),
+  );
+
+  registry.tool(
+    'browser_select',
+    'Select one enabled option in a native <select> by exact value or label; fires input and change. Supply exactly one value or label. Does not require page evaluation permission.',
+    {
+      browserSessionId: sessionId,
+      ref: targetShape.ref,
+      locator: targetShape.locator,
+      value: z.string().max(8192).optional(),
+      label: z.string().max(8192).optional(),
+    },
+    async (args) =>
+      callBrowser('select', {
+        browserSessionId: args.browserSessionId,
+        target: targetOf(args),
+        ...(args.value !== undefined ? { value: args.value } : {}),
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      }),
+  );
+
+  registry.tool(
+    'browser_color_scheme',
+    'Emulate prefers-color-scheme for this page: light, dark, or system (clear the override). Cleared on human takeover or when the browser session is reopened.',
+    {
+      browserSessionId: sessionId,
+      scheme: z.enum(['light', 'dark', 'system']),
+    },
+    async (args) =>
+      callBrowser('color-scheme', {
+        browserSessionId: args.browserSessionId,
+        scheme: args.scheme,
+      }),
+  );
+
+  registry.tool(
     'browser_type',
     'Type text into a text field (ref or locator; default: the focused field), refused if the page moves focus away first. Optionally clear it first and press Enter after.',
     {
