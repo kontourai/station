@@ -1,5 +1,8 @@
 /** @vitest-environment jsdom */
-import type { TelemetryTierResolution } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  TelemetryTier,
+  TelemetryTierResolution,
+} from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -291,7 +294,10 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<'kontour' | 'operator', TelemetryTierResolution>;
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
 ) {
   return new Response(
@@ -325,7 +331,10 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<'kontour' | 'operator', TelemetryTierResolution>;
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -610,7 +619,10 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<'kontour' | 'operator', TelemetryTierResolution>;
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
