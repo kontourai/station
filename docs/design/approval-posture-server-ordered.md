@@ -736,17 +736,20 @@ writable and readable grants, network policy) and returns a confined spawn
 plus a pending posture, which it settles from what the started process
 reports. An `engine-native` provider leaves the spawn unchanged because the
 engine applies it from protocol settings. A `spawn-wrapper` provider rewrites
-the spawn. No start path applies a spawn wrapper yet, so a required start is
-refused rather than resolved to one and silently left unconfined. Neither
-`confine()` nor `pending.observe` is called in production yet: the Codex
-adapter calls the same derivation (`observeCodexSandboxPosture`) directly.
-Slice 2 routes starts through the interface.
+the spawn, and resolves only for the engines it names: their adapter is the
+start path that applies it. A spawn wrapper naming no engine is refused rather
+than resolved and silently left unconfined. Station's Seatbelt profile (below)
+is the first production caller of `confine()` and `pending.observe`; the Codex
+adapter still calls its own derivation (`observeCodexSandboxPosture`)
+directly.
 
 **The required level (owner decisions of 2026-09-24 and 2026-10-18).** A
 `workspace` start whose engine actually runs at `never` requires
 `os-profile`. "Actually" means the mode after `ApprovalPosture.resolve`.
-Claude and ACP have no mechanism yet, so their `workspace` `never` is still
-applied as `auto` and requires nothing. Every other start requires `host`.
+Codex and Claude keep `never` there; ACP has no mechanism, so its `workspace`
+`never` is still applied as `auto` and requires nothing (its file and
+terminal requests run inside Station's own process, so wrapping the engine
+could not confine them). Every other start requires `host`.
 The record's `policyBasis` is `operator-policy` for a `host` start and
 `workspace-floor` for every other start. For Codex the requirement also
 follows the approval policy Codex reports in its thread response: a
@@ -826,8 +829,127 @@ way `preparation` is added there. It is absent on the foreground chat handle,
 on a delegation whose record was not stored or readable when the handle
 returned, and for a start that recorded nothing.
 
-Not in this slice: the Seatbelt provider, process wrapping, the foreground
-chat handle's receipt, and any change to Claude or ACP behaviour.
+**Station's Seatbelt profile for Claude** (#2494 slice 2,
+[seatbelt.ts](../../src-server/security/confinement/seatbelt.ts),
+[claude-seatbelt.ts](../../src-server/providers/adapters/claude-seatbelt.ts)).
+A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
+
+- **Where it applies.** A `workspace` Claude start at `never` requires it.
+  `ApprovalPosture` passes that `never` through at a start; the start resolves
+  the Seatbelt plan, or refuses where it cannot exist. On Linux, Windows, or a
+  macOS without a working `/usr/bin/sandbox-exec`, the start is refused
+  (`confinement_mechanism_unavailable`), naming the mechanism. Availability
+  runs the production profile around `/usr/bin/true` once per process.
+  `workspace` Claude starts at other modes and `host` starts are unchanged.
+- **The spawn.** The adapter's engine spawn
+  ([claude-code-spawn.ts](../../src-server/providers/adapters/claude-code-spawn.ts))
+  passes each launch to the provider's `confine`, and spawns exactly what it
+  returns: `sandbox-exec -p <profile> <claude> …`. The configuration and temp
+  directories are Station-owned, and `CLAUDE_SECURESTORAGE_CONFIG_DIR` is
+  dropped. The engine spawns at Auto (`acceptEdits`), with the
+  `allowDangerouslySkipPermissions` grant the SDK only takes at spawn.
+- **The posture.** It comes from the provider's `pending.observe` after the
+  engine answers its `initialize` handshake. It is `confined` only when the
+  spawn seam recorded `sandbox-exec` with exactly this profile and command,
+  the handshake was answered over that process's stdout (`sandbox-exec` execs
+  the engine only after the profile applied), and the grants are in bounds.
+  Only then does the adapter call `setPermissionMode('bypassPermissions')`
+  and publish `session.started`. Anything else (no answer within 60 seconds,
+  the engine exited, a different spawn, grants out of bounds) is
+  `configured-but-failed`: the engine is stopped and the start is refused
+  (`confinement_not_observed`). It never falls back to an unconfined spawn.
+- **Turns.** `ApprovalPosture` keeps `never` on a Claude turn only when the
+  thread's latest `session.started` record is an observed `confined`
+  posture. The adapter refuses full access on a turn to an engine spawned
+  without the grant, as before.
+- **Profile shape.** On macOS 26 a profile that allows reads only from system
+  paths aborts even `/usr/bin/true`, so reads are broad and writes narrow:
+  `(deny default)`, then process, file-read, Mach, sysctl, IPC and network
+  allowed. Signals reach only processes in the same sandbox. Then:
+  - Reads are denied for the operator's secret stores: `~/.ssh`, `~/.aws`,
+    `~/.gnupg`, `~/.kube`, `~/.azure`, `~/.config/gh`, `~/.config/gcloud`,
+    `~/Library/Keychains`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`,
+    `~/.pypirc` and `~/.docker/config.json`. Also denied: `~/.claude.json`,
+    `~/.claude/.credentials.json`, `~/.codex/auth.json`, and Station's root
+    and runtime home. Station's `installs` stay readable.
+  - Writes are allowed to the workspace, a per-session Station temp directory
+    (`<home>/tmp/confined-sessions/session-*`, also the engine's `TMPDIR`),
+    and the Station-owned Claude configuration directory.
+  - For a linked worktree, writes are also allowed to its own git directory,
+    the shared `objects`, and exactly its branch's
+    `refs/heads/<branch>`, `.lock` and `logs/refs/heads/<branch>`. The git
+    layout is read from git's own pointer files (`locateGitDirectories`),
+    never by running git.
+  - Writes are then denied to the shared `hooks`, `config` and `info`, the
+    worktree's `.git` pointer file, and its `config.worktree`. A checkout
+    whose `.git` is inside the workspace keeps `hooks`, `config` and `info`
+    read-only too.
+  - Every path is symlink-resolved before it enters the profile (`/tmp` is
+    `/private/tmp`). A path SBPL cannot spell (a quote, a backslash, a
+    control character) is refused.
+- **Breadth.** The record carries the kinds of the write grants
+  (`writeGrants`). A required start whose grants reach past the workspace,
+  that git subset, the session's Station temp directory and a directory
+  directly under Station's `app-homes`, or that lacks a deny its git layout
+  needs, is `configured-but-failed`. It is refused before anything is
+  spawned.
+- **Credentials (owner decision of 2026-10-18).** The confined engine never
+  reads the operator's Keychain, and never writes the operator's `~/.claude`.
+  It authenticates only with a credential that needs no operator state: a
+  non-empty `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` or
+  `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in its environment,
+  or an OAuth credential file in its Station-owned configuration directory.
+  That directory is the selected credential profile's or app home's
+  directory, when that is one of Station's app homes, else
+  `<home>/app-homes/claude-confined`. A connection's `configHome` is never
+  used. The operator's own login is never copied. Claude rotates its refresh
+  token on every refresh, so two holders of one login invalidate each other.
+- **Falling back to Auto.** A start whose plan names Seatbelt runs at Auto,
+  with nothing engaged, when a check finds one of these, in order:
+  - `config-root-pinned`: a source-affinity resume or an adoption, which pin
+    the operator's global configuration root (archive#896 decision 2). The
+    combination is kept on the downgrade rather than refused.
+  - `workspace-too-broad`: the workspace is or contains the home folder or
+    Station's data, or sits in a hidden folder or `~/Library`.
+  - `confined-credential-unavailable`: no credential, as above.
+  - `resume-bound-elsewhere`: a resume recorded under another configuration
+    home.
+
+  The record is `host` / `no-mechanism`, not required, with `fallback` naming
+  the reason. A `runtime.warning` (`confined_full_access_unavailable`) says
+  why and, for a missing credential, names the setup step. Readiness reports
+  the same credential check on macOS as the optional
+  `claude-confined-credential` prerequisite, without attempting a login. It
+  checks Station's default confined home; a selected credential profile is
+  not modelled.
+- **What a confined session does not load.** Its `CLAUDE_CONFIG_DIR` is
+  Station's, so the operator's own `CLAUDE.md`, settings, hooks, plugins and
+  MCP configuration do not apply. The workspace's project settings still do.
+- **Residuals.**
+  - `os-profile` does not hide arbitrary operator files: reads are broad,
+    and `container` (#2496) is the level that hides them.
+  - Mach services are broadly allowed. Apple Events to unconfined
+    applications are not blocked (they need the operator's Automation
+    consent), nor attacks on the operator's other processes through Mach
+    services; neither was probed. `launchctl submit` was probed and launchd
+    refuses it from inside the sandbox.
+  - A writable project `.claude/settings.json` in the workspace can add hooks
+    (#3800). They run inside the sandbox, so they do not widen it.
+  - The macOS `xcrun` git shim cannot write its cache in the per-user system
+    temp folder, and a background `pack-refs` cannot write the shared
+    `packed-refs`. Git prints warnings and carries on.
+  - The engine's own children (MCP servers, tools) inherit the sandbox. The
+    model-catalog probe and Station's in-process MCP servers are not wrapped.
+  - The profile does not restrict the network; a spec asking for less is
+    refused.
+- **Enrolment.** The existing credential-profile enrolment runs
+  `claude auth login` unconfined, so on macOS it writes the Keychain, which a
+  confined session cannot read. Writing an enrolled credential as a file
+  needs that login run with the Keychain hidden. That is not built:
+  environment credentials are the supported route.
+
+Not in this slice: the foreground chat handle's receipt, ACP, and Linux or
+Windows mechanisms.
 
 ## 5. Migration of persisted chats
 

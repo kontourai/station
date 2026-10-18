@@ -781,6 +781,19 @@ unknown; it cannot borrow another namespace's login. These checks establish
 credential presence, rather than token validity. Readiness does not apply the
 app-home opt-in or a selected credential profile.
 
+On macOS, a Claude session that a Project member, a shared Agent or delegated
+work starts at full access runs inside Station's Seatbelt profile. Such a
+session cannot use your Keychain login, and Station never copies it there.
+Give it a credential of its own: set `ANTHROPIC_API_KEY`, or a
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, in the Claude
+connection's `env`. Without one, such a session runs at Auto, and says so. The
+optional **Confined Claude credential** readiness entry reports whether one is
+present. A confined session uses a Station-owned Claude configuration
+directory, so your own `CLAUDE.md`, settings, hooks, plugins and MCP
+configuration do not apply to it. On Linux and Windows such a session is
+refused, because no confinement exists for it there. See
+[confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
