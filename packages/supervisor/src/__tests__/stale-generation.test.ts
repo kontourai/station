@@ -54,8 +54,10 @@ describe('stale generations (real processes)', () => {
     });
     await vi.waitFor(
       async () => {
-        const status = await second.status();
-        expect(status.state).toBe('serving');
+        const status = await second.status().catch((error: unknown) => {
+          throw new Error(`${String(error)}\n${second.output()}`);
+        });
+        expect(status.state, second.output()).toBe('serving');
       },
       { timeout: 30_000, interval: 100 },
     );
