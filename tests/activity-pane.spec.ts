@@ -30,12 +30,20 @@
  * context's own `regionArrangement` device setting (localStorage).
  */
 
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
   LIVE_ACTIVITY_SCHEMA_VERSION,
   parseLiveActivityProjection,
 } from '@kontourai/station-contracts/live-activity';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect, test } from '@playwright/test';
-import { test as fixtureTest } from './helpers/fixture-audit';
+import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
+import {
+  test as fixtureTest,
+  rejectUnexpectedFixtureRequest,
+} from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -625,4 +633,99 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
       });
     },
   );
+});
+
+fixtureTest.describe('Earlier history paging', () => {
+  for (const mobile of [false, true]) {
+    fixtureTest(
+      `${mobile ? 'phone switcher' : 'Activity'} bounds history and keeps paging reachable`,
+      async ({ page }, testInfo) => {
+        await page.setViewportSize(
+          mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+        );
+        await seedMobileTaskSwitcher(page);
+        await page.route('**/api/me/preferences', (route) => {
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          return route.fulfill({
+            json: {
+              success: true,
+              data: {
+                schemaVersion: 1,
+                values: {},
+                revision: 'history-fixture',
+              } satisfies AccountPreferencesView,
+            },
+          });
+        });
+        const summaries: OrchestrationSessionSummary[] = Array.from(
+          { length: 45 },
+          (_, index) => ({
+            threadId: `history-${index}`,
+            conversationId: `history-${index}`,
+            provider: 'codex',
+            status: 'closed',
+            lifecycleState: 'completed',
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            displayTitle: `Historical work ${index}`,
+            isLoaded: false,
+            isPersisted: true,
+            eventCount: 2,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: new Date(
+              Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+            ).toISOString(),
+          }),
+        );
+        await page.route('**/api/orchestration/sessions/read-model', (route) =>
+          route.fulfill({ json: { success: true, data: summaries } }),
+        );
+        await page.goto(mobile ? '/?dock=open' : '/?surface=activity');
+        if (mobile)
+          await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const root = mobile
+          ? page.getByRole('dialog', { name: 'Chats and tasks' })
+          : surfaceDockShell(page, 'Activity');
+        const rows = root.locator(
+          mobile
+            ? '.chat-dock-inbox__group[aria-labelledby$="-earlier"] .chat-dock-inbox__row'
+            : '.split-pane__item',
+        );
+        await expect(rows.first()).toBeVisible();
+        await expect(page.locator('.station-startup-frame')).toBeHidden();
+        await page.evaluate(() => document.fonts.ready);
+        const captureName = mobile ? 'phone-switcher.png' : 'activity.png';
+        await page.screenshot({
+          path: testInfo.outputPath(captureName),
+          animations: 'disabled',
+        });
+        if (process.env.STATION_E2E_GALLERY_DIR) {
+          mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
+          copyFileSync(
+            testInfo.outputPath(captureName),
+            resolve(process.env.STATION_E2E_GALLERY_DIR, captureName),
+          );
+        }
+        await expect(rows).toHaveCount(20);
+        const more = root.getByRole('button', {
+          name: mobile
+            ? 'Show more earlier chats and tasks'
+            : 'Show more earlier activity',
+        });
+        await more.scrollIntoViewIfNeeded();
+        const box = await more.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        await more.press('Enter');
+        await expect(rows).toHaveCount(40);
+        await expect(more).toBeFocused();
+        await more.press('Enter');
+        await expect(rows).toHaveCount(45);
+        await expect(more).toHaveCount(0);
+        await expect(
+          rows.nth(40).locator(mobile ? '.inbox-row__open' : 'xpath=.'),
+        ).toBeFocused();
+      },
+    );
+  }
 });
