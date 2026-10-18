@@ -1843,12 +1843,24 @@ test.each([
     try {
       for (const threadId of ['child', 'parent'])
         await service.dispatch(
-          { type: 'startSession', input: { threadId, provider: 'claude' } },
+          {
+            type: 'startSession',
+            input: {
+              threadId,
+              provider: 'claude',
+              metadata: { userId: 'owner' },
+            },
+          },
           { userId: 'owner' },
         );
       await vi.waitFor(() =>
-        expect(service.sessionRecordedOwnerId('parent')).toBe('owner'),
+        expect(
+          eventStore
+            .listEvents('parent')
+            .find((row) => row.id === 'session:parent')?.payload,
+        ).toMatchObject({ metadata: { userId: 'owner' } }),
       );
+      expect(service.sessionRecordedOwnerId('parent')).toBe('owner');
       ports.store.arm({
         childConversationId: 'child',
         taskId: 'child',
