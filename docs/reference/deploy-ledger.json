@@ -1,5 +1,52 @@
 [
   {
+    "timestampUtc": "2026-10-18T06:50:13Z",
+    "channel": "nightly-npm",
+    "version": "0.8.0-nightly.2482.39104631066",
+    "sha": "64d458b2e90d12156dd654ce7184f7e38f3a7d61",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39104631066",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.8.0-nightly.2482.39104631066 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b1970f240db2edb2cf692253561ed18239214080",
+      "groups": {
+        "feat": [
+          "[#3803](https://github.com/kontourai/station/pull/3803) feat(confinement): provider contract and Codex sandbox record (#2494 slice 1)",
+          "[#3779](https://github.com/kontourai/station/pull/3779) feat(browser): add leased pointer, select and media tools",
+          "[#3782](https://github.com/kontourai/station/pull/3782) feat(devices): add bound agent tools under the shared control lease"
+        ],
+        "fix": [
+          "[#3802](https://github.com/kontourai/station/pull/3802) fix(ci): align terminal guardrail proof with async subprocess probe",
+          "[#3781](https://github.com/kontourai/station/pull/3781) fix(terminal): scope websocket events and commands to owning session",
+          "[#3787](https://github.com/kontourai/station/pull/3787) fix(ui): prevent scroll and layout jumps",
+          "[#3743](https://github.com/kontourai/station/pull/3743) fix(chat): distinguish Codex approval policy from inherited reviewer",
+          "[#3774](https://github.com/kontourai/station/pull/3774) fix(ci): validate health evidence at observation time",
+          "[#3700](https://github.com/kontourai/station/pull/3700) fix(release): deliver reviewed package versions and consumed declaration"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3784](https://github.com/kontourai/station/pull/3784) docs(design): propose process supervisor and integrated terminal redesign"
+        ],
+        "other": [
+          "[#3736](https://github.com/kontourai/station/pull/3736) build(deps): consolidate all nine open Dependabot updates",
+          "[#3796](https://github.com/kontourai/station/pull/3796) perf(typecheck): select tsc, tsc-ts or Bun with a switchable default",
+          "[#3794](https://github.com/kontourai/station/pull/3794) chore(security): renew four advisory exceptions through 2026-10-25 (#3150)",
+          "[#3793](https://github.com/kontourai/station/pull/3793) test(ui): align tests with #3787 scroll and render changes",
+          "[#3772](https://github.com/kontourai/station/pull/3772) perf(terminal): bound replay history and yield subprocess probes",
+          "[#3777](https://github.com/kontourai/station/pull/3777) perf(activity): bound history lists and visible conflict queries"
+        ]
+      },
+      "note": null,
+      "commitCount": 16
+    }
+  },
+  {
     "timestampUtc": "2026-10-17T22:09:45Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2481.39073016966",
