@@ -660,7 +660,9 @@
 
     "packages/contracts/src/attachment-staging.ts",
 
-    "src-server/routes/orchestration/attachment-staging.ts"
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

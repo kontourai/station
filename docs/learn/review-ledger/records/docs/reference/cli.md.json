@@ -220,7 +220,13 @@
 
     "src-server/services/orchestration/delegation-files.ts",
 
-    "src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts"
+    "src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts",
+
+    "packages/shared/src/delegation-files.ts",
+
+    "src-server/routes/schemas/schema-validation.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-files.test.ts"
   ],
 
   "checks": [

@@ -130,7 +130,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [
