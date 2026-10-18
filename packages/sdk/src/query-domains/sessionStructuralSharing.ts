@@ -1,5 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { replaceEqualDeep } from '@tanstack/react-query';
+import { typedStructuralSharing } from '../query-core';
 
 function withoutObservationTimes(session: OrchestrationSessionSummary) {
   const children = session.childWork?.children;
@@ -19,13 +20,9 @@ function withoutObservationTimes(session: OrchestrationSessionSummary) {
   };
 }
 
-export function shareSessionReadModel(
-  previous: unknown,
-  next: unknown,
-): unknown {
-  // TanStack's sharing callback erases the owning query's data type.
-  const previousRows = previous as OrchestrationSessionSummary[] | undefined;
-  const nextRows = next as OrchestrationSessionSummary[];
+export const shareSessionReadModel = typedStructuralSharing<
+  OrchestrationSessionSummary[]
+>((previousRows, nextRows) => {
   if (!previousRows) return nextRows;
   const byThreadId = new Map(previousRows.map((row) => [row.threadId, row]));
   const shared = nextRows.map((row) => {
@@ -43,4 +40,4 @@ export function shareSessionReadModel(
   return replaceEqualDeep(previousRows, shared) === previousRows
     ? previousRows
     : shared;
-}
+});

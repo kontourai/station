@@ -127,6 +127,16 @@ export async function resolveApiBase(apiBase?: string): Promise<string> {
   return apiBase || (await _getApiBase());
 }
 
+export function typedStructuralSharing<T>(
+  share: (previous: T | undefined, next: T) => T,
+): Exclude<UseQueryOptions<T>['structuralSharing'], boolean | undefined> {
+  // TanStack erases callback data types; the owning query supplies T.
+  return share as Exclude<
+    UseQueryOptions<T>['structuralSharing'],
+    boolean | undefined
+  >;
+}
+
 export function useApiQuery<T = any>(
   queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,

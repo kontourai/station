@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
@@ -141,16 +141,20 @@ describe('cold-launch presentation in the browser', () => {
         });
       if (path.endsWith('.css'))
         return route.fulfill({ contentType: 'text/css', body: css });
-      if (path.endsWith('.woff2'))
+      if (path.endsWith('.woff2')) {
+        const applicationFont = resolve(ROOT, 'src-ui/public', path.slice(1));
         return route.fulfill({
           body: readFileSync(
-            resolve(
-              ROOT,
-              'node_modules/@kontourai/ui/tokens/fonts',
-              basename(path),
-            ),
+            existsSync(applicationFont)
+              ? applicationFont
+              : resolve(
+                  ROOT,
+                  'node_modules/@kontourai/ui/tokens/fonts',
+                  basename(path),
+                ),
           ),
         });
+      }
       if (path === '/startup-theme.js' || path.startsWith('/favicon'))
         return route.fulfill({
           body: readFileSync(resolve(ROOT, 'src-ui/public', path.slice(1))),
