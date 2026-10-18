@@ -376,7 +376,13 @@ model scenarios still run per model. The CLI loads trusted TypeScript extensions
 through the installed `tsx` loader. No live model execution is part of the
 fixture tests or a default smoke run.
 
-All probe preparation, reads and cleanup use `ctx.setupApi`; no setup operation reserves billable budget. A one-model run plans four built-in sends plus two delivery sends, with `reservedBillableRequests === sentTurns === 6`. Sending setup through `ctx.api` instead consumes a reservation and fails this bound.
+All probe resource preparation, reads and cleanup use `ctx.setupApi`; no setup
+operation reserves billable budget. The native one-model fixture run plans four
+built-in sends plus two delivery sends, with
+`reservedBillableRequests === sentTurns === 6`. Sending the reconnect operation
+through `ctx.api` instead consumes a reservation and leaves only five sends.
+The runner's existing session stop remains a non-billable `ctx.command` control;
+commands are intentionally outside the setup allowlist.
 
 The probe creates a unique integration through `/integrations`, handshakes it
 through `/integrations/:id/reconnect`, and checks Station's discovered tool list
