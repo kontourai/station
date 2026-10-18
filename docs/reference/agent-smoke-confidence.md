@@ -418,8 +418,15 @@ attempt is not a breach. Positive selection proof requires an engine-reported
 tool list containing this server's `ping` and omitting `blocked`; without it,
 non-use remains unverified. Claude's init `tools` shape comes from line 1 of the
 [CLI capture](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl);
-the mapper retains it as `session.configured.metadata.engineToolNames`. Other
-engines without this receipt remain unverified. Unknown IDs fail before
+the mapper retains only the current probe server's names as
+`session.configured.metadata.engineToolNames`. This diagnostic projection is
+opted in only by a resolved `delivery-<32 hex UUID>` Agent with the matching
+`probe<UUID>` MCP server. Ordinary sessions retain neither tool names nor an
+inventory flag. The list is capped at 32 names, 128 UTF-8 bytes per name and
+2,048 bytes of JSON; skipped entries set `engineToolNamesTruncated: true`.
+A truncated inventory cannot prove absence, so its policy cell is unverified
+(a recorded successful blocked call still fails). Other engines without this
+receipt remain unverified. Unknown IDs fail before
 sending. This tests MCP selection, not a native-tool disable or the entire
 pre-tool approval chain. ACP has no MCP per-tool selection channel, and its
 policy probe is unsupported; it receives an unrestricted fixture for the MCP
@@ -550,7 +557,8 @@ real mutation schemas and exact route/method patterns instead of accepting any
 `/integrations/*` operation.
 
 The [full matrix integration harness](../../src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts)
-now also mounts these CRUD routes and runs the entire bundled delivery scenario
+now also mounts these CRUD routes and the real enriched-Agent catalog/detail
+routes (via `AgentService`) and runs the entire bundled delivery scenario
 against real foreground routes, OrchestrationService, EventBus and SQLite. A fake
 Station adapter loads the API-created Agent from the real store, executes the
 bundled script, declares its actual file through the native output owner, and

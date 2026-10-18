@@ -19,7 +19,7 @@ type Event = {
   arguments?: unknown;
   status?: string;
   output?: unknown;
-  metadata?: { engineToolNames?: string[] };
+  metadata?: { engineToolNames?: string[]; engineToolNamesTruncated?: boolean };
 };
 type Evidence = {
   declared: string;
@@ -208,6 +208,7 @@ export function checkDisabledTool(
   events: Event[],
   serverId: string,
   reportedTools?: string[],
+  truncated = false,
 ): Verdict {
   const id = disabledId(engine);
   if (!id) return 'unverified';
@@ -221,6 +222,7 @@ export function checkDisabledTool(
     )
   )
     return 'fail';
+  if (truncated) return 'unverified';
   if (
     !reportedTools?.some((name) => toolNames(serverId, 'ping').includes(name))
   )
@@ -518,13 +520,14 @@ export const scenarios = [
         undefined,
         ({ events, sessionEvents, identityChecks, turnId }) => {
           const calls = [...allEvents, ...events];
-          const reportedTools = sessionEvents
+          const inventoryReceipt = sessionEvents
             .filter(
               (event) =>
                 event.method === 'session.configured' &&
                 event.metadata?.engineToolNames,
             )
-            .at(-1)?.metadata?.engineToolNames;
+            .at(-1)?.metadata;
+          const reportedTools = inventoryReceipt?.engineToolNames;
           const checks: Record<string, Verdict> = {
             deliveryIdentity: identityVerdict(identityChecks),
             toolServerUsed: completions(
@@ -545,6 +548,7 @@ export const scenarios = [
                   calls,
                   state.serverId,
                   reportedTools,
+                  inventoryReceipt?.engineToolNamesTruncated === true,
                 )
               : 'unverified',
           };

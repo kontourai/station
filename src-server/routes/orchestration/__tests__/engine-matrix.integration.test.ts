@@ -64,6 +64,10 @@ import {
 import { isRecord } from '../../../utils/is-record.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createAgentRoutes } from '../../agents/agents.js';
+import {
+  agentCatalogReadSeam,
+  createEnrichedAgentRoutes,
+} from '../../agents/enriched-agents.js';
 import { createSkillRoutes } from '../../agents/skills.js';
 import { createToolRoutes } from '../../agents/tools.js';
 import {
@@ -390,6 +394,13 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       new Map(),
       logger,
     );
+    await agents.createAgent({
+      name: 'Matrix',
+      slug: 'matrix',
+      prompt: 'Follow the supplied diagnostic prompt.',
+      execution: { agentConnectionId: engineConnectionId('matrix-engine') },
+    });
+    const activeAgents = new Map<string, unknown>([['matrix', {}]]);
     requests.length = 0;
     connections = [connection];
     adapter = new MatrixAdapter(root);
@@ -404,16 +415,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       logger: { debug: vi.fn(), warn: vi.fn() },
       resolveSessionAgent: createSessionAgentResolver({
         logger,
-        loadAgentSpec: async (slug) =>
-          slug === 'matrix'
-            ? {
-                name: 'Matrix',
-                prompt: 'Follow the supplied diagnostic prompt.',
-                execution: {
-                  agentConnectionId: engineConnectionId('matrix-engine'),
-                },
-              }
-            : await loader.loadAgent(slug),
+        loadAgentSpec: (slug) => agents.getAgent(slug),
         resolveToolServer: async (id) => loader.loadIntegration(id),
         resolveSkillDir: async (id) => (await skills.getSkill(id)).path,
       }),
@@ -457,25 +459,17 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     app.get('/.well-known/station/v1', (c) =>
       c.json({ environmentId: 'matrix-host' }),
     );
-    const agent = {
-      slug: 'matrix',
-      name: 'Matrix',
-      available: true,
-      executionDefault: true,
-      execution: { agentConnectionId: 'matrix-engine' },
-    };
-    app.get('/api/agents', (c) => c.json({ success: true, data: [agent] }));
-    app.get('/api/agents/:slug', async (c) =>
-      c.json({
-        success: true,
-        data:
-          c.req.param('slug') === 'matrix'
-            ? agent
-            : {
-                slug: c.req.param('slug'),
-                ...(await loader.loadAgent(c.req.param('slug'))),
-                available: true,
-              },
+    app.route(
+      '/api/agents',
+      createEnrichedAgentRoutes({
+        ...agentCatalogReadSeam(agents),
+        agentMetadataMap: new Map(),
+        activeAgents,
+        getDefaultAgentIds: async () => new Set(['matrix']),
+        defaultModel: 'matrix-1',
+        defaultTools: { mcpServers: [], autoApprove: [] },
+        getRuntimeConnections: async () => [],
+        logger,
       }),
     );
     app.route(
@@ -491,7 +485,14 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       createAgentRoutes(
         agents,
         skills,
-        async (operation) => operation(() => undefined),
+        async (operation) => {
+          const result = await operation(() => undefined);
+          // Fake runtime activation; the catalog/detail payloads come from the real route.
+          activeAgents.clear();
+          for (const agent of await agents.listAgents())
+            activeAgents.set(agent.slug, {});
+          return result;
+        },
         () => ({ getAgents: () => [] }),
       ),
     );

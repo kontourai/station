@@ -102,6 +102,18 @@ async function skillCaptureEvents(
       message.type === 'system' &&
       message.subtype === 'init' &&
       serverId &&
+      fault === 'truncated-tool-list'
+    )
+      message.tools.push(
+        ...Array.from(
+          { length: 40 },
+          (_, index) => `mcp__${serverId}__extra${index}`,
+        ),
+      );
+    if (
+      message.type === 'system' &&
+      message.subtype === 'init' &&
+      serverId &&
       fault === 'advertised-blocked'
     )
       message.tools.push(`mcp__${serverId}__blocked`);
@@ -167,6 +179,7 @@ async function skillCaptureEvents(
       updatedAt: '2026-10-18T00:00:00Z',
     },
     lastSessionState: 'running',
+    deliveryProbeServerId: serverId,
   };
   recordClaudeTurnDispatched(record, 'fixture-turn');
   const events: CanonicalRuntimeEvent[] = [];
@@ -196,6 +209,8 @@ type Fault =
   | 'ping-wrong-output'
   | 'blocked-rejected'
   | 'no-tool-list'
+  | 'truncated-tool-list'
+  | 'inspection-turn'
   | 'refused-create'
   | 'nonce'
   | 'read-only'
@@ -281,6 +296,14 @@ async function exercise(
           },
         ],
       };
+    if ((path === '/agents' || path === '/api/skills') && method === 'GET')
+      return {
+        data: [...created]
+          .filter((id) => id.startsWith(`${path}/`))
+          .map((id) => ({
+            [path === '/agents' ? 'slug' : 'name']: id.split('/').at(-1),
+          })),
+      };
     if (path === '/api/agents')
       return {
         data: [
@@ -328,14 +351,18 @@ async function exercise(
       };
     if (path === '/integrations' && method === 'GET')
       return {
-        data: [
-          {
-            id: serverId,
-            tools: inventory
-              .filter((name) => fault !== 'unknown-id' || name !== 'blocked')
-              .map((toolName) => ({ toolName })),
-          },
-        ],
+        data: !created.has(`/integrations/${serverId}`)
+          ? []
+          : [
+              {
+                id: serverId,
+                tools: inventory
+                  .filter(
+                    (name) => fault !== 'unknown-id' || name !== 'blocked',
+                  )
+                  .map((toolName) => ({ toolName })),
+              },
+            ],
       };
     if (
       /^\/integrations\/[^/]+\/tools\/apply$/.test(path) &&
@@ -537,7 +564,10 @@ async function exercise(
       const [turnId, turn] = match;
       return {
         data: {
-          item: { ref: { sessionId, eventId }, turnId },
+          item: {
+            ref: { sessionId, eventId },
+            turnId: fault === 'inspection-turn' ? 'another-turn' : turnId,
+          },
           kind: 'text',
           text: turn.artifactContent,
         },
@@ -751,7 +781,12 @@ describe('engine delivery probes', () => {
         ?.disabledTool.probe,
     ).toBe('pass');
   });
-  it.each(['blocked-rejected', 'no-tool-list', 'advertised-blocked'] as const)(
+  it.each([
+    'blocked-rejected',
+    'no-tool-list',
+    'advertised-blocked',
+    'truncated-tool-list',
+  ] as const)(
     'does not confuse attempted blocking with a breach: %s',
     async (fault) => {
       const { result } = await exercise(fault);
@@ -759,12 +794,47 @@ describe('engine delivery probes', () => {
         result.rows.find((row) => row.scenario === 'delivery')?.turns.at(-1)
           ?.checks?.disabledTool,
       ).toBe(
-        fault === 'no-tool-list' || fault === 'advertised-blocked'
+        fault === 'no-tool-list' ||
+          fault === 'advertised-blocked' ||
+          fault === 'truncated-tool-list'
           ? 'unverified'
           : 'pass',
       );
     },
   );
+  it('refuses an inspected artifact from a different turn', async () => {
+    const { result } = await exercise('inspection-turn');
+    const row = result.rows.find((row) => row.scenario === 'delivery');
+    expect(row?.turns[0].checks?.artifactContent).toBe('unverified');
+    expect(row?.delivery?.script.probe).not.toBe('pass');
+  });
+
+  it.each([undefined, 'send'] as const)(
+    'restores signal listener counts after a run (failure=%s)',
+    async (fault) => {
+      const signals = ['SIGINT', 'SIGTERM'] as const;
+      const before = signals.map((signal) => process.listeners(signal));
+      try {
+        const { result } = await exercise(fault);
+        expect(
+          result.rows.find((row) => row.scenario === 'delivery'),
+        ).toHaveProperty('status', fault ? 'fail' : 'unverified');
+        signals.forEach((signal, index) =>
+          expect(process.listenerCount(signal), signal).toBe(
+            before[index].length,
+          ),
+        );
+      } finally {
+        // A failed leak assertion must not contaminate the other lifecycle cases.
+        signals.forEach((signal, index) => {
+          for (const listener of process.listeners(signal))
+            if (!before[index].includes(listener))
+              process.off(signal, listener);
+        });
+      }
+    },
+  );
+
   it('reports cleanup of a refused create as unconfirmed instead of pretending DELETE succeeded', async () => {
     const { result } = await exercise('refused-create');
     expect(result.rows).toContainEqual(

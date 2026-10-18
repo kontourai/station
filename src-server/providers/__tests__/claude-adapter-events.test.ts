@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type {
   PermissionUpdate,
   SDKMessage,
@@ -8,10 +10,13 @@ import {
   type ChildWorkItem,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
+import { NATIVE_RESUME_IDENTITY_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
+import { EventStore } from '../../services/orchestration/event-store.js';
 import type { SessionAnswerabilityObservation } from '../../services/orchestration/open-requests.js';
 import { buildAgentRunSummary } from '../../services/orchestration/orchestration-session-state.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
@@ -85,6 +90,86 @@ function withClaudeTurns<T extends ClaudeMessageState>(
 }
 
 describe('claude-adapter-events', () => {
+  const temp = trackTempDirs();
+  test.each([
+    { kind: 'count', probe: true },
+    { kind: 'name length', probe: true },
+    { kind: 'bytes', probe: true },
+    { kind: 'ordinary session', probe: false },
+  ])(
+    'persists init configuration with bounded probe inventory ($kind)',
+    ({ kind, probe }) => {
+      const serverId = `probe${'a'.repeat(32)}`;
+      const init: Extract<SDKMessage, { type: 'system'; subtype: 'init' }> =
+        JSON.parse(
+          readFileSync(
+            new URL(
+              './fixtures/claude-2.1.296-skill-invocation-local.jsonl',
+              import.meta.url,
+            ),
+            'utf8',
+          ).split('\n')[0],
+        );
+      init.tools = Array.from(
+        { length: kind === 'bytes' ? 32 : 1200 },
+        (_, index) =>
+          `mcp__${serverId}__${kind === 'name length' ? 'x'.repeat(200) : kind === 'bytes' ? 'x'.repeat(60) : 'tool'}${index}`,
+      );
+      init.model = 'claude-sonnet-4-6';
+      init.permissionMode = 'auto';
+      const record = makeRecord({
+        attemptedResumeCursor: init.session_id,
+        ...(probe ? { deliveryProbeServerId: serverId } : {}),
+      });
+      const store = new EventStore(
+        join(temp('claude-probe-inventory-'), 'events.sqlite'),
+      );
+      try {
+        expect(() =>
+          mapClaudeSdkMessage({
+            provider: 'claude',
+            record,
+            message: init,
+            publish: (event) => store.appendEvent(event),
+          }),
+        ).not.toThrow();
+        const configured = store
+          .listEvents(record.session.threadId)
+          .map((event) => event.payload)
+          .find((event) => event.method === 'session.configured');
+        expect(configured).toMatchObject({
+          model: 'claude-sonnet-4-6',
+          metadata: {
+            permissionMode: 'auto',
+            approvalMode: 'auto',
+            [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched',
+          },
+        });
+        if (probe) {
+          expect(configured?.metadata?.engineToolNamesTruncated).toBe(true);
+          const names = configured?.metadata?.engineToolNames;
+          expect(Array.isArray(names)).toBe(true);
+          if (!Array.isArray(names)) throw new Error('No tool inventory');
+          expect(names.length).toBeLessThanOrEqual(32);
+          expect(
+            Buffer.byteLength(JSON.stringify(names), 'utf8'),
+          ).toBeLessThanOrEqual(2048);
+          for (const name of names)
+            expect(Buffer.byteLength(String(name), 'utf8')).toBeLessThanOrEqual(
+              128,
+            );
+        } else {
+          expect(configured?.metadata).not.toHaveProperty('engineToolNames');
+          expect(configured?.metadata).not.toHaveProperty(
+            'engineToolNamesTruncated',
+          );
+        }
+      } finally {
+        store.close();
+      }
+    },
+  );
+
   test('captures the SDK init cursor and configuration on the Station child', () => {
     const publish = vi.fn();
     const record = {

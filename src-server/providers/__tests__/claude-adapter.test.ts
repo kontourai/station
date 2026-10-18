@@ -7420,6 +7420,53 @@ describe('ClaudeAdapter', () => {
     expect(options).not.toHaveProperty('permissionMode');
   });
 
+  test.each(['probe', 'ordinary', 'mismatched server'] as const)(
+    'only records probe-server tools for a resolved delivery Agent (%s)',
+    async (kind) => {
+      const suffix = 'a'.repeat(32);
+      const serverId = `probe${suffix}`;
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'claude-session',
+            cwd: '/tmp',
+            model: 'claude-sonnet-4-6',
+            permissionMode: 'auto',
+            uuid: 'probe-init',
+            tools: [`mcp__${serverId}__ping`, 'mcp__private__secret'],
+          },
+        ]),
+      );
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: `probe-inventory-${kind}`,
+        agent: {
+          slug: kind === 'ordinary' ? 'ordinary-agent' : `delivery-${suffix}`,
+          toolServers: [
+            {
+              id: kind === 'mismatched server' ? 'another-server' : serverId,
+              command: 'node',
+              args: ['fixture.mjs'],
+            },
+          ],
+        },
+      });
+      await iterator.next();
+      await iterator.next();
+      const init = (await iterator.next()).value;
+      if (kind === 'probe')
+        expect(init?.metadata?.engineToolNames).toEqual([
+          `mcp__${serverId}__ping`,
+        ]);
+      else expect(init?.metadata).not.toHaveProperty('engineToolNames');
+      expect(JSON.stringify(init)).not.toContain('mcp__private__secret');
+    },
+  );
+
   test('init permissionMode auto is reported as the applied approval mode (station#1950)', async () => {
     mockQuery.mockReturnValue(
       createMockQuery([
