@@ -7666,7 +7666,7 @@ export class OrchestrationService {
                                     internal?.receiverExecutionAdmission ||
                                     internal?.foregroundInvocationAdmission ||
                                     internal?.nativeMemoryReadAuthority ||
-                                    command.input.expectedInputRequest,
+                                    submittedInput.expectedInputRequest,
                                 ),
                               });
                               const prepared = boundary.prepareIntent(
@@ -7907,9 +7907,7 @@ export class OrchestrationService {
                             );
                             if (settled.kind !== 'applied')
                               throw new SessionTurnStartIndeterminateError();
-                            throw new TurnIdempotencySettledError(
-                              'definitively-refused',
-                            );
+                            throw error;
                           }
                           // The adapter refused the turn BEFORE its first
                           // provider-visible effect, so no engine was invoked
