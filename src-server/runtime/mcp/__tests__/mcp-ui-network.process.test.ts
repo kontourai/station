@@ -35,6 +35,15 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${address.port}/parent`);
       const attack = `<script>(()=>{const results=[];const attempt=(realm,label)=>{try{const PC=realm.RTCPeerConnection||realm.webkitRTCPeerConnection;const pc=new PC({iceServers:[{urls:'stun:127.0.0.1:${port}'}]});pc.createDataChannel('probe');pc.createOffer().then(o=>pc.setLocalDescription(o));results.push(label+' OPEN')}catch{results.push(label+' blocked')}};attempt(window,'direct');try{Object.defineProperty(window,'RTCPeerConnection',{value:parent.RTCPeerConnection})}catch{};const child=document.createElement('iframe');child.src='about:blank';document.body.append(child);try{attempt(child.contentWindow,'child')}catch{results.push('child blocked')}try{attempt(window[0],'indexed child')}catch{results.push('indexed child blocked')}document.body.dataset.rtcResults=JSON.stringify(results); })()</script>`;
+      await page.evaluate(() => {
+        document.body.dataset.links = '0';
+        addEventListener('message', (event) => {
+          if (event.data?.type === 'html-reply-link')
+            document.body.dataset.links = String(
+              Number(document.body.dataset.links) + 1,
+            );
+        });
+      });
       for (const path of ['/html-reply/frame', '/mcp-ui/proxy']) {
         await page.evaluate(
           ({ origin, path, html }) => {
@@ -54,7 +63,11 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
               );
             document.body.append(frame);
           },
-          { origin: `http://127.0.0.1:${address.port}`, path, html: attack },
+          {
+            origin: `http://127.0.0.1:${address.port}`,
+            path,
+            html: `${attack}<a href="https://example.com/">Continue</a><script>for(let i=0;i<6;i++)parent.postMessage({type:'html-reply-link',url:'https://example.com/'},'*')</script>`,
+          },
         );
         await expect
           .poll(
@@ -83,6 +96,15 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         expect(await inner.evaluate(() => typeof RTCPeerConnection)).toBe(
           'undefined',
         );
+        if (path.startsWith('/html')) {
+          expect(await page.evaluate(() => document.body.dataset.links)).toBe(
+            '0',
+          );
+          await inner.getByRole('link', { name: 'Continue' }).click();
+          await expect
+            .poll(() => page.evaluate(() => document.body.dataset.links))
+            .toBe('1');
+        }
       }
       const inner = page
         .frames()
