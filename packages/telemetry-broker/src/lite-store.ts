@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type {
   StationDailyPing,
   TelemetryPublisherId,
@@ -7,6 +7,7 @@ import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemet
 import { parseStationDailyPing } from '@kontourai/station-shared/product-telemetry';
 import type { QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
+import { noisyCount } from './noisy-count.js';
 
 interface LiteSqlClient {
   query<Row extends QueryResultRow = QueryResultRow>(
@@ -56,10 +57,24 @@ ALTER TABLE station_telemetry.lite_pings ADD COLUMN contributions jsonb;
 const SUPPRESSION_DIGEST = createHash('sha256')
   .update(SUPPRESSION_SCHEMA)
   .digest('hex');
+const NOISE_SCHEMA = `
+DROP TABLE station_telemetry.lite_clients;
+ALTER TABLE station_telemetry.lite_marginals DROP COLUMN publishable;
+CREATE TABLE station_telemetry.lite_finalization (
+ day date NOT NULL, publisher text NOT NULL, dimension text NOT NULL,
+ PRIMARY KEY(day,publisher,dimension));
+INSERT INTO station_telemetry.lite_finalization
+ SELECT DISTINCT day,publisher,dimension FROM station_telemetry.lite_marginals WHERE NOT finalized;
+CREATE TABLE station_telemetry.lite_noise_key (
+ singleton boolean PRIMARY KEY CHECK(singleton), secret bytea NOT NULL CHECK(octet_length(secret)=32));
+REVOKE ALL ON station_telemetry.lite_noise_key FROM PUBLIC;
+`;
+const NOISE_DIGEST = createHash('sha256').update(NOISE_SCHEMA).digest('hex');
 const tables = [
   'lite_capacity',
-  'lite_clients',
+  'lite_finalization',
   'lite_marginals',
+  'lite_noise_key',
   'lite_pings',
   'lite_sources',
   'publisher_keys',
@@ -101,11 +116,26 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (suppression.rows[0].digest !== SUPPRESSION_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const noise = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=5',
+  );
+  if (!noise.rows.length) {
+    await client.query(NOISE_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.lite_noise_key VALUES(true,$1)',
+      [randomBytes(32)],
+    );
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(5,$1)',
+      [NOISE_DIGEST],
+    );
+  } else if (noise.rows[0].digest !== NOISE_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   await client.query(
-    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_clients,station_telemetry.lite_capacity IN ACCESS SHARE MODE',
+    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_finalization,station_telemetry.lite_noise_key,station_telemetry.lite_capacity IN ACCESS SHARE MODE',
   );
   const { rows } = await client.query<{
     name: string;
@@ -121,8 +151,9 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   );
   const expected = [
     'lite_capacity|singleton:boolean:true,pings:bigint:true',
-    'lite_clients|day:date:true,publisher:text:true,dimension:text:true,value:text:true,client_hash:bytea:true',
-    'lite_marginals|day:date:true,publisher:text:true,dimension:text:true,value:text:true,pings:bigint:true,clients:bigint:true,finalized:boolean:true,publishable:boolean:true',
+    'lite_finalization|day:date:true,publisher:text:true,dimension:text:true',
+    'lite_marginals|day:date:true,publisher:text:true,dimension:text:true,value:text:true,pings:bigint:true,clients:bigint:true,finalized:boolean:true',
+    'lite_noise_key|singleton:boolean:true,secret:bytea:true',
     'lite_pings|source_id:text:true,event_id:uuid:true,received_at:timestamp with time zone:true,ping:jsonb:true,client_hash:bytea:false,contributions:jsonb:false',
     'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true',
     'publisher_keys|publisher:text:true,credential_hash:bytea:true',
@@ -151,11 +182,13 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_capacity|CHECK ((pings >= 0))',
         'lite_capacity|CHECK (singleton)',
         'lite_capacity|PRIMARY KEY (singleton)',
-        'lite_clients|CHECK ((octet_length(client_hash) = 32))',
-        'lite_clients|PRIMARY KEY (day, publisher, dimension, value, client_hash)',
+        'lite_finalization|PRIMARY KEY (day, publisher, dimension)',
         'lite_marginals|CHECK ((clients > 0))',
         'lite_marginals|CHECK ((pings > 0))',
         'lite_marginals|PRIMARY KEY (day, publisher, dimension, value)',
+        'lite_noise_key|CHECK ((octet_length(secret) = 32))',
+        'lite_noise_key|CHECK (singleton)',
+        'lite_noise_key|PRIMARY KEY (singleton)',
         'lite_pings|CHECK (((client_hash IS NULL) OR (octet_length(client_hash) = 32)))',
         'lite_pings|FOREIGN KEY (source_id) REFERENCES station_telemetry.lite_sources(id)',
         'lite_pings|PRIMARY KEY (source_id, event_id)',
@@ -177,7 +210,6 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     JSON.stringify(defaults.rows.map((r) => r.definition)) !==
     JSON.stringify([
       'lite_marginals|finalized|false',
-      'lite_marginals|publishable|false',
       'lite_pings|received_at|clock_timestamp()',
       'lite_sources|enabled|true',
     ])
@@ -197,6 +229,16 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'SELECT digest FROM station_telemetry.migrations WHERE version=4',
   );
   if (suppressionMarker.rows[0]?.digest !== SUPPRESSION_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const noiseMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=5',
+  );
+  if (noiseMarker.rows[0]?.digest !== NOISE_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const secret = await client.query(
+    'SELECT octet_length(secret) AS length FROM station_telemetry.lite_noise_key WHERE singleton',
+  );
+  if (secret.rows.length !== 1 || secret.rows[0].length !== 32)
     throw new BrokerError('schema_incompatible');
   const index = await client.query(
     "SELECT indisvalid AND indisready AS valid,pg_get_indexdef(indexrelid) AS definition FROM pg_index WHERE indexrelid=to_regclass('station_telemetry.lite_received') AND indrelid='station_telemetry.lite_pings'::regclass",
@@ -239,6 +281,29 @@ type Transaction = <T>(
 ) => Promise<T>;
 
 export class LiteRepository {
+  private publisherCredentials = new Map<string, string>();
+  private credentialRevision = 0;
+  private credentialsUntil = Date.now() + 60_000;
+
+  async refreshCredentials(client: LiteSqlClient): Promise<void> {
+    const revision = this.credentialRevision;
+    const { rows } = await client.query<{ publisher: string; digest: string }>(
+      "SELECT publisher,encode(credential_hash,'hex') AS digest FROM station_telemetry.publisher_keys",
+    );
+    if (revision !== this.credentialRevision) return;
+    this.publisherCredentials = new Map(
+      rows.map((row) => [row.publisher, row.digest]),
+    );
+    this.credentialsUntil = Date.now() + 60_000;
+  }
+  hasCredential(publisher: string, key: string): boolean {
+    return (
+      Date.now() < this.credentialsUntil &&
+      /^stq_[A-Za-z0-9_-]{43}$/.test(key) &&
+      this.publisherCredentials.get(publisher) === hash(key).toString('hex')
+    );
+  }
+
   constructor(
     private readonly transaction: Transaction,
     private readonly maxPings: number,
@@ -323,6 +388,9 @@ export class LiteRepository {
         [publisher, Buffer.from(credentialHash, 'hex')],
       );
     });
+    this.credentialRevision++;
+    this.publisherCredentials.set(publisher, credentialHash);
+    await this.transaction((client) => this.refreshCredentials(client));
   }
   async revokePublisherKey(publisher: string): Promise<void> {
     await this.transaction(async (client) => {
@@ -331,6 +399,9 @@ export class LiteRepository {
         [publisher],
       );
     });
+    this.credentialRevision++;
+    this.publisherCredentials.delete(publisher);
+    await this.transaction((client) => this.refreshCredentials(client));
   }
   private async admission(client: LiteSqlClient): Promise<void> {
     await client.query(
@@ -398,6 +469,10 @@ export class LiteRepository {
       );
       if (Number(count.rows[0].pings) >= this.maxPings)
         throw new BrokerError('storage_limit');
+      await client.query(
+        "SELECT pg_advisory_xact_lock_shared(hashtext('station.lite.day'),hashtext($1))",
+        [clientKey.day],
+      );
       // Assign arrival day after admission. A midnight waiter must retry with the new salt.
       const inserted = await client.query<{ day: string }>(
         "INSERT INTO station_telemetry.lite_pings(source_id,event_id,ping) VALUES($1,$2,$3) RETURNING to_char(received_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
@@ -424,96 +499,112 @@ export class LiteRepository {
         ],
       );
 
-      for (const [dimension, value] of marginals(ping)) {
-        const contributor = await client.query(
-          'INSERT INTO station_telemetry.lite_clients VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-          [
-            day,
-            config.publisher,
-            dimension,
-            value,
-            Buffer.from(clientKey.hash, 'hex'),
-          ],
-        );
-        await client.query(
-          `INSERT INTO station_telemetry.lite_marginals(day,publisher,dimension,value,pings,clients) VALUES($1,$2,$3,$4,1,1)
-           ON CONFLICT(day,publisher,dimension,value) DO UPDATE SET pings=lite_marginals.pings+1,clients=lite_marginals.clients+$5`,
-          [day, config.publisher, dimension, value, contributor.rowCount],
-        );
-      }
+      await client.query(
+        `INSERT INTO station_telemetry.lite_finalization(day,publisher,dimension)
+         SELECT $1::date,$2,key FROM jsonb_object_keys($3::jsonb) key ON CONFLICT DO NOTHING`,
+        [day, config.publisher, JSON.stringify(contributions)],
+      );
       return { inserted: 1 };
     });
   }
-  async finalize(client: LiteSqlClient): Promise<string> {
-    // The same admission lock as ingest fences midnight and concurrent finalizers.
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
-    );
-    const cutoff = await client.query<{ day: string }>(
-      "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
-    );
-    const groups = await client.query<{
-      day: string;
-      publisher: string;
-      dimension: string;
-    }>(
-      "SELECT DISTINCT to_char(day,'YYYY-MM-DD') AS day,publisher,dimension FROM station_telemetry.lite_marginals WHERE NOT finalized AND day < $1::date ORDER BY day,publisher,dimension",
-      [cutoff.rows[0].day],
-    );
-    for (const { day, publisher, dimension } of groups.rows) {
-      const candidates = await client.query<{ value: string }>(
-        'SELECT value FROM station_telemetry.lite_marginals WHERE day=$1 AND publisher=$2 AND dimension=$3 AND clients>=10 ORDER BY pings DESC,value DESC',
-        [day, publisher, dimension],
+  private finalizing?: Promise<string>;
+  finalize(): Promise<string> {
+    if (this.finalizing) return this.finalizing;
+    const pending = this.finalizeClosedDays().finally(() => {
+      if (this.finalizing === pending) this.finalizing = undefined;
+    });
+    this.finalizing = pending;
+    return pending;
+  }
+  private async finalizeClosedDays(): Promise<string> {
+    const cutoff = await this.transaction(async (client) => {
+      const { rows } = await client.query<{ day: string }>(
+        "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
       );
-      const visible = candidates.rows.map((row) => row.value);
-      // For sets, a ping is in the complement only if none of its values publish.
-      while (visible.length) {
-        const remainder = await client.query<{
-          pings: string;
-          clients: string;
+      return rows[0].day;
+    });
+    // Each committed dimension is durable progress; retries skip completed work.
+    while (
+      await this.transaction(async (client) => {
+        const { rows } = await client.query<{
+          day: string;
+          publisher: string;
+          dimension: string;
         }>(
-          `
-          SELECT count(*)::text AS pings,count(DISTINCT p.client_hash)::text AS clients
-          FROM station_telemetry.lite_pings p JOIN station_telemetry.lite_sources s ON s.id=p.source_id
-          WHERE s.publisher=$2 AND p.received_at >= $1::date::timestamp AT TIME ZONE 'UTC'
-          AND p.received_at < ($1::date+1)::timestamp AT TIME ZONE 'UTC' AND p.client_hash IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(p.contributions->$3) v(value) WHERE v.value=ANY($4::text[]))`,
-          [day, publisher, dimension, visible],
+          "SELECT to_char(day,'YYYY-MM-DD') AS day,publisher,dimension FROM station_telemetry.lite_finalization WHERE day<$1::date ORDER BY day,publisher,dimension LIMIT 1",
+          [cutoff],
         );
-        if (
-          Number(remainder.rows[0].pings) === 0 ||
-          Number(remainder.rows[0].clients) >= 10
-        )
-          break;
-        visible.pop();
-      }
-      await client.query(
-        'UPDATE station_telemetry.lite_marginals SET publishable=(value=ANY($4::text[])) WHERE day=$1 AND publisher=$2 AND dimension=$3',
-        [day, publisher, dimension, visible],
-      );
+        const job = rows[0];
+        if (!job) return false;
+        const { day, publisher, dimension } = job;
+        // Wait only for transactions assigning this closed arrival day, never the ingest lock.
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtext('station.lite.day'),hashtext($1))",
+          [day],
+        );
+        const claimed = await client.query(
+          'SELECT 1 FROM station_telemetry.lite_finalization WHERE day=$1 AND publisher=$2 AND dimension=$3 FOR UPDATE',
+          [day, publisher, dimension],
+        );
+        if (!claimed.rows.length) return true;
+        await client.query("SET LOCAL work_mem='16MB'");
+        await client.query(
+          `INSERT INTO station_telemetry.lite_marginals(day,publisher,dimension,value,pings,clients,finalized)
+         SELECT $1::date,$2,$3,value,sum(pings),count(*),true FROM (
+           SELECT v.value,p.client_hash,count(*) AS pings
+           FROM station_telemetry.lite_pings p JOIN station_telemetry.lite_sources s ON s.id=p.source_id
+           CROSS JOIN LATERAL jsonb_array_elements_text(p.contributions->$3) v(value)
+           WHERE s.publisher=$2 AND p.received_at >= $1::date::timestamp AT TIME ZONE 'UTC'
+           AND p.received_at < ($1::date+1)::timestamp AT TIME ZONE 'UTC' AND p.client_hash IS NOT NULL
+           GROUP BY v.value,p.client_hash
+         ) contributors GROUP BY value ON CONFLICT(day,publisher,dimension,value)
+         DO UPDATE SET pings=excluded.pings,clients=excluded.clients,finalized=true`,
+          [day, publisher, dimension],
+        );
+        await client.query(
+          'DELETE FROM station_telemetry.lite_finalization WHERE day=$1 AND publisher=$2 AND dimension=$3',
+          [day, publisher, dimension],
+        );
+        return true;
+      })
+    ) {
+      /* independent bounded dimension transactions */
     }
-    await client.query(
-      'UPDATE station_telemetry.lite_marginals SET finalized=true WHERE NOT finalized AND day < $1::date',
-      [cutoff.rows[0].day],
+    // Erasure is separately resumable and cannot roll back already finalized dimensions.
+    while (
+      await this.transaction(async (client) => {
+        const result = await client.query(
+          `WITH batch AS (SELECT p.ctid FROM station_telemetry.lite_pings p
+         JOIN station_telemetry.lite_sources s ON s.id=p.source_id
+         WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND client_hash IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f
+          WHERE f.day=(p.received_at AT TIME ZONE 'UTC')::date AND f.publisher=s.publisher)
+         LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
+         UPDATE station_telemetry.lite_pings p SET client_hash=NULL,contributions=NULL FROM batch WHERE p.ctid=batch.ctid`,
+          [cutoff],
+        );
+        return result.rowCount !== 0;
+      })
+    ) {
+      /* bounded erasure batches */
+    }
+    const remaining = await this.transaction((client) =>
+      client.query(
+        'SELECT 1 FROM station_telemetry.lite_finalization WHERE day<$1::date LIMIT 1',
+        [cutoff],
+      ),
     );
-    await client.query(
-      "UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND client_hash IS NOT NULL",
-      [cutoff.rows[0].day],
-    );
-    await client.query(
-      'DELETE FROM station_telemetry.lite_clients WHERE day < $1::date',
-      [cutoff.rows[0].day],
-    );
-    return cutoff.rows[0].day;
+    if (remaining.rows.length) throw new BrokerError('storage_busy');
+    return cutoff;
   }
   async publicAggregates() {
-    const finalizedBeforeDay = await this.transaction((client) =>
-      this.finalize(client),
-    );
+    const finalizedBeforeDay = await this.finalize();
     return { ...(await this.aggregates('kontour')), finalizedBeforeDay };
   }
   async aggregates(publisher: string, key?: string) {
     if (key !== undefined && !/^stq_[A-Za-z0-9_-]{43}$/.test(key))
+      throw new BrokerError('source_unauthorized');
+    if (key !== undefined && !this.hasCredential(publisher, key))
       throw new BrokerError('source_unauthorized');
     return this.transaction(async (client) => {
       if (key !== undefined) {
@@ -532,11 +623,14 @@ export class LiteRepository {
       }>(
         `SELECT to_char(day,'YYYY-MM-DD') AS day,dimension,value,pings::text FROM station_telemetry.lite_marginals
         WHERE publisher=$1 AND day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-30
-        AND day < (statement_timestamp() AT TIME ZONE 'UTC')::date AND finalized AND publishable AND clients>=10
+        AND day < (statement_timestamp() AT TIME ZONE 'UTC')::date AND finalized AND clients>=10
         ORDER BY day,dimension,value LIMIT 10001`,
         [publisher],
       );
       if (rows.rows.length > 10000) throw new BrokerError('query_limit');
+      const secret = await client.query<{ secret: Buffer }>(
+        'SELECT secret FROM station_telemetry.lite_noise_key WHERE singleton',
+      );
       const days = new Map<
         string,
         { day: string; distributions: Record<string, Record<string, number>> }
@@ -548,7 +642,14 @@ export class LiteRepository {
           days.set(day, result);
         }
         result.distributions[dimension] ??= Object.create(null);
-        result.distributions[dimension][value] = Number(pings);
+        result.distributions[dimension][value] = noisyCount(
+          secret.rows[0].secret,
+          publisher,
+          day,
+          dimension,
+          value,
+          Number(pings),
+        );
       }
       return {
         scope: 'daily-per-dimension-marginals',

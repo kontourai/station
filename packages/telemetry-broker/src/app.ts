@@ -39,20 +39,33 @@ export function createProductBroker(
         /^\/v1\/product\/receipts\/[^/]+$/.test(c.req.path))
     ) {
       const key = c.req.header('x-api-key') ?? '';
-      let authenticated = false;
-      if (/^stp_[A-Za-z0-9_-]{43}$/.test(key)) {
-        try {
-          await store.authenticate(key);
-          authenticated = true;
-        } catch (error) {
-          if (
-            !(error instanceof BrokerError) ||
-            error.code !== 'source_unauthorized'
-          )
-            throw error;
-        }
-      }
-      if (!authenticated)
+      // Cache lookup only. Unknown keys enter pre-auth admission before any DB work.
+      if (!store.hasCredential(key))
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, async () => {
+        await store.authenticate(key);
+        await next();
+      });
+    }
+    const publisherMatch =
+      c.req.method === 'GET' &&
+      /^\/v1\/publishers\/([^/]+)\/aggregates$/.exec(c.req.path);
+    if (publisherMatch) {
+      const key =
+        /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
+          c.req.header('authorization') ?? '',
+        )?.[1] ?? '';
+      if (
+        !store.lite?.hasCredential(decodeURIComponent(publisherMatch[1]), key)
+      )
         return preAuthAdmission(c, async () => {
           c.res = c.json({ error: 'source_unauthorized' }, 401);
         });

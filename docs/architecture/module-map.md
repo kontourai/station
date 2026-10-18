@@ -4293,20 +4293,22 @@ The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
 IDs mapped to publisher/channel pairs, without installation credentials.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
-deduplicates raw pings and accumulates separate daily marginals per dimension.
-Both public Kontour reads and publisher-scoped reads require ten distinct daily
-network hashes per visible value. IPv4 uses an address; IPv6 contributors use a
-/48, separately from /64 rate limits. Secondary suppression removes more values
-until pings with no published value in a dimension are absent or backed by ten
-distinct contributors. Set histograms overlap and cannot be summed to a total.
-Numeric counters are bucketed before rollup. Finalization drops closed-day hashes
-and raw contribution associations; raw pings expire after 90 days. Migration 4
-discards older marginals that cannot prove the new policy. The first public read
-finalizes closed days before caching; cached reads take no ingest lock.
-Pre-auth traffic has a separate budget, while authenticated ingest consumes
-per-credential budgets only after authentication. Botnet padding,
-proxy/NAT sharing, restart effects and publication timing are explained in the
-[receiver guide](../../packages/telemetry-broker/README.md#lite-observations).
+deduplicates raw pings and records bounded contribution arrays and dimension
+jobs. Closed-day finalization uses grouped SQL in separately committed dimension
+transactions; retries resume pending jobs and later batches erase contributor
+associations. Retention commits independently. Both public and publisher values
+require ten distinct daily network keys (IPv4 or IPv6 /48), followed by fixed
+geometric noise with ε=1/57 per count and ε≤1 per added/removed ping on fixed
+release support. The hard k pre-filter itself reveals threshold crossings, so
+the complete response is not pure ε-DP. The persistent restricted HMAC key keeps
+public/publisher/restarted reads identical. Migration 5 replaces secondary
+suppression and client-value rows with jobs and the noise key. Counters are
+bucketed; set histograms overlap. Public reads never take the ingest advisory
+lock, and successful reads cache until UTC midnight. Cached credential digests
+route unknown keys into pre-auth refusal without storage; known product and
+publisher keys have per-credential post-auth budgets and storage rechecks.
+See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
+for composition, threshold, key rotation and low-volume accuracy limits.
 
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private

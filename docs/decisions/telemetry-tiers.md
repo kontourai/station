@@ -111,11 +111,45 @@ cannot keep a shared secret. Use a public per-channel source identifier, strict
 schema validation, bounded requests and in-memory rate limits keyed by a daily
 salted hash of IP. Never persist IPs or user agents, including proxy/access logs,
 error reporting, backups, and derived raw request records. Rotate and discard
-the salt and rate-limit state daily. A public aggregates API and static dashboard
-must suppress every bucket below k=10, including combinations and differencing
-queries. Plugin/distribution aggregate access uses scoped publisher keys.
-These are requirements for the receiver lane, not properties proved for the
-existing private broker by this foundation.
+the salt and rate-limit state daily. Public and publisher counts use the same
+true k=10 distinct-contributor pre-filter followed by deterministic per-coordinate
+two-sided geometric noise. The schema permits 16 scalar/bucket increments plus
+5 surfaces, 8 engines, 20 public plugins and 8 engine-failure buckets: sensitivity
+57 per added/removed ping. Per-count ε=1/57 composes to ε≤1 per ping per publisher
+per UTC arrival day for fixed release support (replacement adjacency costs ≤2).
+Counts are rounded, clamped nonnegative estimates; expected absolute noise is
+about 57 pings and 95% absolute error is at most 171 pings. Small values near k
+are often uninformative; 100k-scale values have roughly 0.171% 95% relative error.
+
+The hard true-count pre-filter itself is **not differential privacy**: adding a
+victim can change a value from absent to present. k−1 colluding keys plus the
+victim can pass the pre-filter; noise bounds what is learned from the released
+counts, not that threshold decision. Consequently the complete API has no pure
+ε=1 guarantee. Full support privacy needs a private threshold or fixed public
+domain. This preserves the orchestrator's requested k pre-filter while stating
+its remaining disclosure. Counts bound one ping's influence, not a person or
+installation; repeated pings, multi-day lifetime contributions and cross-publisher
+contributions compose with growing privacy loss. Prior exact publications remain
+exposed. Set histograms overlap and noisy differences do not give exact counts.
+Plugin/distribution aggregate access uses scoped publisher keys and an independent
+post-auth admission budget. Unknown keys never open database transactions.
+
+The receiver generates a persistent random 32-byte HMAC key on first migration
+and stores it in a database table with `PUBLIC` privileges revoked. Restrict
+service/database-owner and backup access. Domain-separated HMAC seeds include
+publisher, day, dimension and value; both views and repeated reads reuse the same
+noise, including across restarts. This is a finite-precision cryptographic
+implementation of the geometric mechanism. Back up the key with the schema.
+Losing/rotating it changes historical estimates, creates additional independent
+releases and enables averaging; preserve old keys or published estimates before
+any future rotation. Compromise reveals the noise. No rotation endpoint exists.
+
+The receiver computes closed-day marginals in resumable per-dimension SQL
+transactions, erases temporary contributor associations in bounded batches, and
+runs raw/Full retention independently. Public reads never take the ingest
+admission lock. These local receiver behaviors do not establish deployed privacy,
+proxy logging policy or an installed Station sender. See the
+[receiver contract and verification](../../packages/telemetry-broker/README.md#public-aggregates).
 
 ## Deferred privacy transport
 

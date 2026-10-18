@@ -256,27 +256,22 @@ rows: /64-era counts and erased associations cannot prove /48 counts or safe
 complements. Existing raw rows, capacity counts and UUID dedupe survive, but
 legacy rows do not become publishable. Older binaries refuse migration 4.
 
-Each first insertion atomically updates one row per (UTC arrival day, publisher,
-dimension, value). It increments pings and increments the contributor count only
-when that daily client hash has not already contributed to that value. The
-separate contributor table contains day-scoped HMACs, never raw addresses or a
-cross-day join key. Numeric counts use `0`, `1`, `2-5`, `6-20`, `21+` before
-rollup; contract fields already expressed as buckets retain those buckets. The
-raw ping temporarily carries its daily contributor hash and marginal-value sets
-so finalization can count distinct contributors to a suppressed remainder. Those
-associations are erased at finalization; there are no retained joint cells. The
-maintained capacity counter replaces a per-ingest raw-table count; raw deletion
-decrements it in the same transaction. Admission retains the
-one-million-lite-ping, 10,000-source/publisher-key and approximate 1 GiB limits.
+Each first insertion stores the daily contributor hash and bounded contribution
+arrays, plus a pending job per dimension. Numeric counters use `0`, `1`, `2-5`,
+`6-20`, `21+` before finalization; fields already expressed as buckets retain
+their buckets. There are no retained joint cells. The maintained capacity counter
+avoids a per-ingest raw-table count; raw deletion decrements it in the same
+transaction. Admission retains the one-million-lite-ping, 10,000-source/publisher-key
+and approximate 1 GiB limits.
 
-Retention runs at startup and hourly. Under the ingest admission lock it
-finalizes closed days, computes secondary suppression, and drops their
-contributor hashes and raw contribution associations in the same transaction.
-Only finalized, publishable marginals are exposed and retained indefinitely. The
-first public read of a new UTC day also runs finalization before filling the
-cache. Raw pings expire after 90 days, including UUID dedupe. Downtime or a
-failed sweep delays finalization and erasure; these are periodic operations, not
-database TTL guarantees.
+Retention and finalization run at startup and in independent hourly jobs.
+Finalization commits per dimension, then separately erases contributor hashes and
+contribution arrays in batches. Only finalized marginals meeting the k pre-filter
+are exposed, always with noise. The first public read also finalizes closed days
+before caching. Raw pings expire after 90 days, including UUID dedupe. Downtime
+or a failed sweep delays finalization and erasure; these are periodic operations,
+not database TTL guarantees. See [Public aggregates](#public-aggregates) for
+migration 5, privacy calibration, bounded jobs and key handling.
 
 Receipt-day pings approximate active installations. Daily first-active-week and
 first-active-month counts can be summed over a **complete calendar week or
@@ -303,49 +298,84 @@ surface/plugin/engine histograms can sum above the number of pings.
 ### Public aggregates
 
 `GET /v1/public/aggregates` publishes Kontour's per-dimension marginals over the
-last 30 closed UTC arrival days. Each (day, dimension, value) must have at least
-**ten distinct daily client hashes**. The metric is still received pings; k
-measures contributing network keys, not pings or verified installations. One
-victim ping plus nine attacker pings from one IP supplies at most two keys and
-stays suppressed. Controlling k−1 distinct contributor keys still lets an
-attacker pad a victim; this policy is not differential privacy or a Sybil
-defense. A common platform value can publish even when every observation differs
-in other fields, subject to secondary suppression below. Publisher reads use
-exactly the same rule.
+last 30 closed UTC arrival days. Both public and publisher views release a value
+only when at least **ten distinct daily contributor keys** supplied it. Keys use
+IPv4 addresses or IPv6 /48s; the metric counts untrusted pings, not people or
+verified installations. One victim plus nine pings from one IP supplies at most
+two keys. **k−1 colluding keys plus the victim can pass the pre-filter; noise
+bounds what is learned from the counts.** This is not Sybil resistance.
 
-For every dimension, the finalizer counts pings contributing to **no published
-value**. This remainder must be empty or backed by at least k distinct daily
-contributor keys. Otherwise it suppresses additional values, smallest ping count
-first (ties by value), until the condition holds or no values remain. No `other`
-bucket is emitted. Thus 10 linux plus 1 darwin does not publish linux:10 beside
-channel stable:11; likewise, a first-active true:20 total cannot expose a sub-k
-platform remainder beside linux:10. For single-valued dimensions, every visible
-sum omits either zero pings or a group backed by at least k contributors.
+Every released count is a **noisy estimate**. The receiver adds two-sided
+geometric (discrete Laplace) noise with per-count ε = **1/57**. The
+[shared schema](../contracts/src/product-telemetry.ts) bounds one ping to 16
+single-valued dimensions (including the two bucketed friction counters), plus
+at most 5 surface, 8 engine, 20 public-plugin, and 8 engine-failure values:
+16 + 5 + 8 + 20 + 8 = **57** count increments. Empty sets contribute one `none`
+sentinel within those bounds. Counters add one bucket count, never their numeric
+magnitude. For add/remove-one-ping adjacency, L1 sensitivity is at most 57;
+sequential composition gives ε ≤ 57 × (1/57) = **1 per ping, publisher, UTC day**
+for a fixed set of released coordinates. Replacement of a ping costs at most 2.
+Schema bounds determine calibration in code; raising a bound increases noise.
 
-Set dimensions use the same uncovered-ping remainder, including the `none`
-sentinel for empty sets. A ping with any published value is covered even if
-another of its values is suppressed. A ping can appear in several visible
-values, so summing a set histogram double-counts overlapping membership and
-cannot recover a population total. This rule does not hide all correlations or
-differences between overlapping groups.
+HMAC-SHA-256 keyed by a persistent secret seeds separate geometric variates for
+each (publisher, day, dimension, value). Public and authenticated reads share
+those coordinates and the secret. Uncached reads, restarts, and raw-row deletion
+therefore return the same estimate; repeated reads cannot average away the
+noise. The integer result is rounded and clamped at zero. This implements the
+geometric mechanism using a cryptographic pseudorandom function and finite
+52-bit uniforms, rather than an ideal infinite random source. The unclamped
+noise has mean absolute error about 57 pings and a 95th-percentile absolute
+error of 171 pings. At count 10 the estimate is often uninformative; at count
+100,000 that 95% error is about 0.171%. Never treat an estimate of zero as zero
+activity or derive exact intersections by subtracting these marginals.
 
-No joint cells, raw grand total, suppressed remainder, arbitrary range,
-dimension filter or cohort query is exposed. Query strings are rejected.
-First-active flags appear only as independent suppressed marginals. Different
-dimensions can represent different subsets: do not join them or infer a hidden
-population total. Marginal k suppression does not prevent reconstruction using
-outside knowledge, correlated dimensions, malicious submissions or multiple
-release policies. Missing values/days mean suppressed or unavailable data, never
-zero use.
+**The complete API is not pure ε-DP:** its true-count k pre-filter reveals
+presence/absence at the 9→10 boundary. The ε=1 bound describes noisy count values
+on fixed release support; it does not protect that support decision. A full DP
+release needs a separately reviewed private threshold or fixed public domain.
+The mechanism bounds a single ping, not an installation or a person's lifetime.
+Multiple pings, days and publishers compose; lifetime and cross-publisher privacy
+loss grow with contributions. k−1 colluding networks, outside knowledge,
+proxy/NAT sharing and same-day restart inflation still affect the pre-filter.
+Existing exact-count snapshots cannot be made private retroactively.
 
-The successful public response is cached per UTC day in process memory after
-closed-day finalization succeeds and its PostgreSQL cutoff agrees with the
-receiver day; later reads do not query storage or take the ingest advisory lock.
-Failures and clock-disagreement responses are not cached. Responses include
-`nosniff` and a cache lifetime ending at UTC midnight. Publisher credentials are
-checked on every read, so revocation is immediate. `/public/` serves a static
-dashboard with text-node rendering and a CSP permitting no third-party scripts,
-analytics or network requests.
+No joint cells, grand total, suppressed remainder, arbitrary range, dimension
+filter or cohort query is exposed. Query strings are rejected. Set histograms
+overlap; dimensions cannot be joined. Missing values/days mean suppressed or
+unavailable data. Calendar activity flags are estimates.
+
+Migration 5 creates a random 32-byte server secret on first migration/start in
+`station_telemetry.lite_noise_key`. The table grants no access to `PUBLIC`; use a
+dedicated database owner/service role and restrict database and backup access.
+Only the receiver and database administrators may read it. It never enters HTTP
+responses or logs. Back up the complete schema including this key: losing or
+changing it generates independent noise for already published coordinates and
+allows additional releases to be averaged. There is no rotation endpoint.
+Preserve the key for published days; a future rotation must retain old keys or
+persist their published estimates. Key compromise exposes the noise and removes
+its count protection.
+
+Migration 5 removes secondary suppression and `lite_clients`, drops
+`lite_marginals.publishable`, and creates `lite_finalization` jobs. Ingest stores
+bounded contribution arrays and one job per (day, publisher, dimension).
+Closed-day finalization computes all values of a dimension with one grouped SQL
+query and commits that dimension and job removal together. Interrupted passes
+resume pending jobs; completed dimensions remain committed. After all dimensions
+of a publisher/day finish, separate 2,000-row transactions erase raw contributor
+hashes and contribution associations. Retention deletes commits, Full events and
+90-day raw Lite pings in independent batches, separately scheduled from
+finalization. Failed finalization cannot roll those deletes back. Raw retention
+can expire data before a repeatedly failing finalizer recovers; missing aggregates
+are unavailable, not zero. Older binaries refuse migration 5.
+
+The first public read finalizes closed days before filling the UTC-day cache.
+Neither misses nor hits acquire the ingest admission advisory lock; finalizers
+fence only transactions assigning the specific closed day. Cache hits do no
+storage work. Failures and receiver/database cutoff disagreement are not cached.
+Responses include `nosniff` and a lifetime ending at UTC midnight. Publisher
+reads check database authority on every read, preserving immediate revocation.
+`/public/` serves a static dashboard with text-node rendering and a CSP allowing
+no third-party scripts, analytics or network requests.
 
 ### Publisher access
 
@@ -358,17 +388,21 @@ key; `DELETE /v1/operator/lite/publishers/:publisher` revokes it. These routes
 use the existing operator authorization boundary.
 
 `GET /v1/publishers/:publisher/aggregates` requires that publisher's Bearer
-`stq_` credential and returns only its own k-suppressed marginals for the last
+`stq_` credential and returns only its own k-filtered noisy marginals for the last
 30 closed days. Operator/source keys and a different publisher's key are refused.
-Publisher credentials never ingest. Missing or malformed publisher credentials
-are refused before any database transaction. Pre-authentication failures and
-unknown routes share a budget separate from authenticated product ingestion;
-404s, bad product keys and unauthenticated publisher reads cannot consume an
-authenticated credential's tokens. Product keys are checked against storage
-before their individual bounded admission budget is consumed; authentication
-queries themselves still use database resources. A bounded LRU retains up to
-10,000 credential budgets, so eviction or restart resets a credential's budget. Both query endpoints cap work at 10,000
-marginal values and refuse over-limit queries rather than truncating them.
+Publisher credentials never ingest. Missing, malformed or unknown credentials are rejected without opening a database
+transaction. An in-memory digest snapshot classifies known product and publisher
+keys before selecting a budget. Anonymous failures and unknown routes consume
+pre-auth admission before any database work. Known product keys and authenticated
+publisher reads each consume their own per-credential post-auth budget, so bad-key
+floods cannot occupy storage transactions or spend authenticated tokens. Actual
+product operations and publisher reads still recheck authority in their storage
+transaction. Snapshots load at startup, refresh after credential mutations and
+every 30 seconds; a snapshot older than 60 seconds fails closed. Out-of-process
+changes become visible within that TTL; storage authority still refuses revoked
+keys immediately. A bounded LRU retains up to 10,000 credential budgets; eviction
+or restart resets a budget. Both query endpoints cap work at 10,000 marginal
+values and refuse over-limit queries rather than truncating them.
 
 ### Verification
 
@@ -389,12 +423,16 @@ npm run test:focused -- packages/telemetry-broker/src/__tests__/broker.test.ts \
 
 The diagnostic creates a uniquely named database, removes it only on success,
 and retains failures for diagnosis. Focused broker tests use in-memory PostgreSQL (PGlite) and synthetic socket
-bindings to exercise SQL accumulation, k suppression, single-network padding,
+bindings to exercise SQL finalization, k filtering, stable noisy counts, single-network padding,
 count buckets and publisher isolation without an external database. PGlite is
 a development dependency, absent from the receiver bundle. The focused limiter test uses real HTTP
 with a storage refusal fixture and a controlled UTC clock; it does not claim
 database ingestion. Passive API tests use a local HTTP fixture, not production.
-Neither path qualifies a deployed receiver, public ingestion authenticity,
+The real-PostgreSQL harness also floods eight concurrent random bad keys during
+twenty valid ingests and loads 100,000 synthetic pings in one closed day. It
+blocks a final dimension to prove durable partial progress, independent retention,
+resumption and complete contributor-hash erasure, and prints timings and noise
+error without a hardware-dependent timing assertion. Neither path qualifies a deployed receiver, public ingestion authenticity,
 reverse-proxy logging, power-loss durability, backup/restore or a release.
 
 ## Passive distribution report

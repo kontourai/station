@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
 import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
+import { qualifyResilience } from './qualify-resilience.mjs';
 
 const digest = (key) => createHash('sha256').update(key).digest('hex');
 /** @returns {import('@kontourai/station-contracts/product-telemetry').StationDailyPing} */
@@ -285,11 +286,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     const closedDay = date.toISOString().slice(0, 10);
     // Fixture-only time travel: production always assigns the locked receiver day.
     await pool.query(
-      'UPDATE station_telemetry.lite_marginals SET day=$1 WHERE day=$2',
-      [closedDay, today],
-    );
-    await pool.query(
-      'UPDATE station_telemetry.lite_clients SET day=$1 WHERE day=$2',
+      'UPDATE station_telemetry.lite_finalization SET day=$1 WHERE day=$2',
       [closedDay, today],
     );
     await pool.query(
@@ -297,9 +294,13 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       [closedDay, today],
     );
     await store.retain();
+    await store.lite.finalize();
     assert.equal(
-      (await pool.query('SELECT * FROM station_telemetry.lite_clients'))
-        .rowCount,
+      (
+        await pool.query(
+          'SELECT * FROM station_telemetry.lite_finalization WHERE day < current_date',
+        )
+      ).rowCount,
       0,
       'finalization drops contributor hashes',
     );
@@ -308,16 +309,31 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     const day = publicRead.body.days.find((d) => d.day === closedDay);
     assert.equal(publicRead.body.minimumDistinctDailyClients, 10);
     assert.equal('representedPings' in day, false, 'no joint-derived total');
-    assert.deepEqual(
-      day.distributions.platform,
+    assert.equal(typeof day.distributions.platform.linux, 'number');
+    assert.equal(
+      day.distributions.platform.darwin,
       undefined,
-      'unsafe platform complement secondarily suppressed',
+      'sub-k network value omitted',
     );
-    assert.equal(day.distributions.home_replaced, undefined);
-    assert.equal(day.distributions.public_plugins_enabled, undefined);
-    assert.equal(day.distributions.engine_connect_failures['codex:2-3'], 29);
-    assert.deepEqual(day.distributions.safe_mode_entered, { 1: 29 });
-    assert.deepEqual(day.distributions.first_active_this_week, { true: 29 });
+    assert.equal(day.distributions.home_replaced.true, undefined);
+    assert.equal(
+      typeof day.distributions.public_plugins_enabled['public.plugin'],
+      'number',
+    );
+    assert.equal(
+      typeof day.distributions.engine_connect_failures['codex:2-3'],
+      'number',
+    );
+    assert.equal(typeof day.distributions.safe_mode_entered['1'], 'number');
+    assert.equal(
+      typeof day.distributions.first_active_this_week.true,
+      'number',
+    );
+    assert.deepEqual(
+      (await request('/v1/public/aggregates')).body,
+      publicRead.body,
+      'repeated publication is stable',
+    );
     assert.equal(JSON.stringify(publicRead.body).includes(publisher), false);
     assert.equal(
       (await request('/v1/public/aggregates?platform=linux')).status,
@@ -461,12 +477,21 @@ export async function qualifyLiteReceiver(
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
-    return await checkLiteReceiver(
+    const liteChecks = await checkLiteReceiver(
       store,
       pool,
       `http://127.0.0.1:${server.address().port}`,
       operatorKey,
     );
+    return [
+      ...liteChecks,
+      ...(await qualifyResilience(
+        createProductBroker,
+        store,
+        pool,
+        operatorKey,
+      )),
+    ];
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

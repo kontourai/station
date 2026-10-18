@@ -41,6 +41,7 @@ const commit: ProductCommit = {
   storedAt: '2026-10-10T12:00:02.000Z',
 };
 const store = {
+  hasCredential: vi.fn<ProductRepository['hasCredential']>(),
   authenticate: vi.fn<ProductRepository['authenticate']>(),
   ingest: vi.fn<ProductRepository['ingest']>(),
   probe: vi.fn<ProductRepository['probe']>(),
@@ -52,6 +53,9 @@ const store = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  store.hasCredential.mockImplementation(
+    (key) => key === sourceKey || key === `stp_${'c'.repeat(43)}`,
+  );
   store.ingest.mockResolvedValue(commit);
   store.ready.mockResolvedValue();
   store.probe.mockResolvedValue({
@@ -373,7 +377,7 @@ test('public cache shares pending reads, retries failures, and refreshes at UTC 
 });
 
 test.each([1, 10])(
-  'secondary suppression protects the complement with %i minority pings, including sets and publisher reads',
+  'noisy marginals keep k pre-filtering with %i minority pings, including sets and publisher reads',
   async (minorityPings) => {
     const db = new PGlite();
     const sqlClient = (
@@ -403,6 +407,10 @@ test.each([1, 10])(
       );
       await migrateLite(client);
       await migrateLite(client);
+      await client.query(
+        'UPDATE station_telemetry.lite_noise_key SET secret=$1',
+        [Buffer.alloc(32, 7)],
+      );
       await db.transaction((tx) => assertLiteSchema(sqlClient(tx)));
       await lite.createSource({
         id: 'kontour-stable',
@@ -487,7 +495,7 @@ test.each([1, 10])(
         ).toBe(202);
       // Time travel only the fixture database, then use the production finalizer.
       await db.exec(
-        `UPDATE station_telemetry.lite_marginals SET day=day-1,publishable=true; UPDATE station_telemetry.lite_clients SET day=day-1; UPDATE station_telemetry.lite_pings SET received_at=received_at-interval '1 day'`,
+        `UPDATE station_telemetry.lite_finalization SET day=day-1; UPDATE station_telemetry.lite_pings SET received_at=received_at-interval '1 day'`,
       );
       expect((await lite.aggregates('kontour')).days).toEqual([]);
       // First public read finalizes yesterday before caching; no hourly sweep has run.
@@ -498,23 +506,50 @@ test.each([1, 10])(
         'first public read includes yesterday before caching',
       ).toHaveLength(1);
       expect(
-        (await db.query('SELECT * FROM station_telemetry.lite_clients')).rows,
+        (await db.query('SELECT * FROM station_telemetry.lite_finalization'))
+          .rows,
       ).toHaveLength(0);
       expect((await lite.aggregates('publisher:ipv6')).days).toEqual([]);
       const result = await lite.aggregates('kontour');
       expect(result.days).toHaveLength(1);
-      expect(result.days[0].distributions.platform).toBeUndefined();
+      expect(result.days[0].distributions.platform).not.toHaveProperty(
+        'darwin',
+      );
+      expect(result.days[0].distributions.platform.linux).toEqual(
+        expect.any(Number),
+      );
       expect(
         result.days[0].distributions.public_plugins_enabled,
-      ).toBeUndefined();
-      expect(result.days[0].distributions.surfaces_today).toEqual({
-        cli: 10 + minorityPings,
-        web: 10,
+      ).not.toHaveProperty('none');
+      expect(Object.keys(result.days[0].distributions.surfaces_today)).toEqual([
+        'cli',
+        'web',
+      ]);
+      expect(result.days[0].distributions.safe_mode_entered).toEqual({
+        '21+': expect.any(Number),
       });
-      expect(result.days[0].distributions.safe_mode_entered).toBeUndefined();
       expect(result.days[0].distributions.first_active_this_week).toEqual({
-        true: 10 + minorityPings,
+        true: expect.any(Number),
       });
+      const trueCounts = await db.query<{
+        dimension: string;
+        value: string;
+        pings: number;
+      }>(
+        "SELECT dimension,value,pings FROM station_telemetry.lite_marginals WHERE publisher='kontour' AND clients>=10",
+      );
+      expect(
+        trueCounts.rows.some(
+          (row) =>
+            result.days[0].distributions[row.dimension][row.value] !==
+            Number(row.pings),
+        ),
+        'published counts include noise, rather than exposing the true fixture counts',
+      ).toBe(true);
+      expect(
+        (await lite.aggregates('kontour')).days,
+        'uncached repeat reads use identical noise',
+      ).toEqual(result.days);
       expect(result.days[0]).not.toHaveProperty('representedPings');
       expect(
         (await (await app.request('/v1/public/aggregates')).json()).days,
