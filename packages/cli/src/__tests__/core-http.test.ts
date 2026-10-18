@@ -748,9 +748,11 @@ describe('CLI core commands over HTTP', () => {
                   finishReason: 'stop',
                 });
             }
-            // Keep HTTP acceptance pending while the separate SSE connection
-            // delivers its early frames. The real endpoint can do this too.
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            // Overflow must reach the pre-acceptance buffer before the receipt
+            // binds a Session and starts discarding unrelated frames.
+            if (chatInputText === 'trigger child overflow')
+              await chatEventsClosed;
+            else await new Promise((resolve) => setTimeout(resolve, 20));
           } else if (chatInputText === 'trigger stream error') {
             pendingChatEventsResponse.write(
               `data: ${JSON.stringify({
@@ -924,6 +926,7 @@ describe('CLI core commands over HTTP', () => {
   });
 
   afterEach(async () => {
+    server.closeAllConnections();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {
