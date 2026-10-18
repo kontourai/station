@@ -149,7 +149,7 @@ it('R2.3 final guarded replay rejects a valid foreign tape header supplied after
   const output: string[] = [];
   const runtime = createModelRuntime({
     admission: f.host,
-    liveness: () => 'dead',
+    liveness: (owner) => (owner.id === nextOwner.id ? 'live' : 'dead'),
     storage: {
       async execute(command, context) {
         const answer = await f.storage.execute(command, context);

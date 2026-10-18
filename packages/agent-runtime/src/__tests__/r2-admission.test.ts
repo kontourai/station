@@ -136,7 +136,7 @@ for (const change of ['none', 'revoke', 'cancel', 'model'] as const)
     };
     const runtime = createModelRuntime({
       admission,
-      liveness: () => 'dead',
+      liveness: (owner) => (owner.id === nextOwner.id ? 'live' : 'dead'),
       storage: {
         async execute(command, context) {
           const answer = await f.storage.execute(command, context);
