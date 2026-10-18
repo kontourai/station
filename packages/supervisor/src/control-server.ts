@@ -23,6 +23,7 @@ import type {
   HandoffOptions,
   HandoffOutcomeResult,
 } from './generation-manager.ts';
+import { lockProof } from './instance-lock.ts';
 import {
   encodeLine,
   isRecord,
@@ -70,6 +71,8 @@ export interface ControlServerOptions {
   handlers: ControlHandlers;
   platform?: NodeJS.Platform;
   log?: (message: string) => void;
+  /** The instance lock's nonce, for answering unauthenticated `lock.probe` requests. */
+  lockNonce?: () => string | null;
   /** The uid directories must belong to. Tests replace it to exercise the foreign-owner refusal. */
   currentUid?: () => number | undefined;
 }
@@ -133,6 +136,8 @@ function optionalDuration(value: unknown): number | undefined | null {
 export class ControlServer {
   private server: Server | null = null;
   private token = '';
+  private bound = false;
+  private published = false;
   private readonly sockets = new Set<Socket>();
   private readonly platform: NodeJS.Platform;
   private readonly log: (message: string) => void;
@@ -196,11 +201,20 @@ export class ControlServer {
       });
     });
     if (this.platform !== 'win32') chmodSync(endpoint.path, 0o600);
-    writeToken(endpoint.tokenPath, this.token);
+    this.bound = true;
     server.on('error', (error) =>
       this.log(`control server error: ${String(error)}`),
     );
     this.server = server;
+  }
+
+  /**
+   * Writes the token file. Separate from listen() so a supervisor writes it
+   * only after confirming it still holds the instance lock.
+   */
+  publishToken(): void {
+    writeToken(this.options.endpoint.tokenPath, this.token);
+    this.published = true;
   }
 
   async close(): Promise<void> {
@@ -210,9 +224,10 @@ export class ControlServer {
     if (server)
       await new Promise<void>((resolve) => server.close(() => resolve()));
     const { endpoint } = this.options;
+    // Remove only what this process created: never another supervisor's token or socket.
     for (const path of [
-      endpoint.tokenPath,
-      this.platform === 'win32' ? null : endpoint.path,
+      this.published ? endpoint.tokenPath : null,
+      this.platform === 'win32' || !this.bound ? null : endpoint.path,
     ]) {
       if (!path) continue;
       try {
@@ -265,6 +280,10 @@ export class ControlServer {
       }
       if (capabilities === null) {
         clearTimeout(helloTimer);
+        if (isRecord(message) && message.type === 'lock.probe') {
+          this.answerLockProbe(message, refuse, send, socket);
+          return;
+        }
         capabilities = this.handshake(message, refuse, send);
         return;
       }
@@ -288,6 +307,30 @@ export class ControlServer {
         if (line.trim().length > 0) onLine(line);
       }
     });
+  }
+
+  /**
+   * Proves this supervisor holds the instance lock without revealing the
+   * nonce: the answer is HMAC(nonce, challenge). Unauthenticated by design.
+   */
+  private answerLockProbe(
+    message: Record<string, unknown>,
+    refuse: (reason: RefusedReason) => void,
+    send: (message: ControlServerMessage) => void,
+    socket: Socket,
+  ): void {
+    const nonce = this.options.lockNonce?.() ?? null;
+    const { challenge } = message;
+    if (
+      !nonce ||
+      typeof challenge !== 'string' ||
+      !/^[0-9a-f]{16,128}$/.test(challenge)
+    ) {
+      refuse('bad-hello');
+      return;
+    }
+    send({ type: 'lock.proof', proof: lockProof(nonce, challenge) });
+    closeAfterReply(socket);
   }
 
   private handshake(

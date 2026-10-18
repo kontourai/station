@@ -16,7 +16,14 @@ import {
   GenerationRegistry,
   reapStaleGenerations,
 } from './generation-registry.ts';
-import { acquireInstanceLock, type InstanceLock } from './instance-lock.ts';
+import {
+  acquireInstanceLock,
+  collectOlderEpochs,
+  type InstanceLock,
+  releaseInstanceLock,
+  SupervisorStartError,
+  stillHolds,
+} from './instance-lock.ts';
 import { ensurePrivateDir } from './private-dir.ts';
 import {
   type ControlEndpoint,
@@ -30,6 +37,8 @@ export const SUPERVISOR_VERSION: string = packageJson.version;
 export interface SupervisorOptions {
   /** The initial core entry; must already be inside `buildRoot`. */
   entry: string;
+  /** How long a lock whose holder has not bound its socket yet counts as live. */
+  lockPendingGraceMs?: number;
   /** Every entry a handoff names must be a .js/.mjs file inside this directory. */
   buildRoot: string;
   endpoint: ControlEndpoint;
@@ -135,11 +144,11 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     `supervisor-${options.instance}.generations.json`,
   );
   const registry = new GenerationRegistry(registryPath, log);
-  const lockPath = join(
-    dirname(options.endpoint.tokenPath),
-    `supervisor-${options.instance}.lock`,
-  );
+  const runDir = dirname(options.endpoint.tokenPath);
   let lock: InstanceLock | null = null;
+  const releaseLock = () => {
+    if (lock) releaseInstanceLock(lock);
+  };
   const subscribers = new Set<(event: SupervisorEvent) => void>();
   let shuttingDown = false;
 
@@ -148,7 +157,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       if (child.exitCode === null && child.signalCode === null)
         killTree(child, 'SIGKILL');
     }
-    lock?.release();
+    releaseLock();
   });
 
   const manager = new GenerationManager({
@@ -165,6 +174,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   });
 
   const control = new ControlServer({
+    lockNonce: () => lock?.nonce ?? null,
     endpoint: options.endpoint,
     instance: options.instance,
     version: SUPERVISOR_VERSION,
@@ -194,7 +204,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     log(`shutting down with exit code ${code}`);
     manager.closeListeners();
     await control.close();
-    lock?.release();
+    releaseLock();
     exit(code);
   }
 
@@ -203,7 +213,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     await shutdown(0);
   }
 
-  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  // SIGHUP too: closing the terminal must not leave a core and a held lock.
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
     process.on(signal, () => {
       log(`received ${signal}`);
       void stopAndExit();
@@ -215,8 +226,11 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   const onFatal = (error: unknown) => {
     const text =
       error instanceof Error ? (error.stack ?? error.message) : String(error);
-    if (fatal) {
-      log(`fatal again while draining: ${text}`);
+    if (fatal || shuttingDown) {
+      // Already on the way out: never hang, never exit as if all were well.
+      log(
+        `fatal ${fatal ? 'again while draining' : 'during shutdown'}: ${text}`,
+      );
       process.exit(1);
     }
     fatal = true;
@@ -230,25 +244,53 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   process.on('uncaughtException', onFatal);
   process.on('unhandledRejection', onFatal);
 
-  // The instance lock comes first: it is keyed by home and instance alone, so
-  // no other supervisor for this instance can be alive while we hold it, and
-  // only then is it safe to touch the token, the registry, or the socket.
-  ensurePrivateDir(dirname(lockPath), process.platform, () =>
-    process.getuid?.(),
+  // The instance lock comes first (see instance-lock.ts for why it is
+  // correct). It is keyed by home and instance alone, never by --control.
+  ensurePrivateDir(runDir, process.platform, () => process.getuid?.());
+  const testDelay = Number(
+    process.env.STATION_SUPERVISOR_TEST_LOCK_DELAY_MS ?? 0,
   );
-  lock = await acquireInstanceLock({
-    path: lockPath,
-    description: `instance ${options.instance} in ${dirname(dirname(options.endpoint.tokenPath))}`,
+  const held = await acquireInstanceLock({
+    runDir,
+    instance: options.instance,
+    control: options.endpoint.path,
+    description: `instance ${options.instance} in ${dirname(runDir)}`,
     log,
+    pendingGraceMs: options.lockPendingGraceMs,
+    testDelayMs: Number.isFinite(testDelay)
+      ? Math.min(Math.max(testDelay, 0), 2_000)
+      : 0,
   });
+  lock = held;
   try {
+    // Test-only: hold the window between winning the epoch and re-checking it.
+    const postAcquireDelay = Number(
+      process.env.STATION_SUPERVISOR_TEST_POST_ACQUIRE_DELAY_MS ?? 0,
+    );
+    if (Number.isFinite(postAcquireDelay) && postAcquireDelay > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(postAcquireDelay, 5_000)),
+      );
+    }
+    // Then the socket: only an epoch winner gets here, so only it may replace
+    // a stale socket file, and binding still refuses a live listener.
+    await control.listen();
+    // Still ours? A slow winner judged dead after the grace steps down here.
+    if (!stillHolds(held, runDir, options.instance)) {
+      throw new SupervisorStartError(
+        `instance lock epoch ${held.epoch} was superseded before start-up finished; refusing to start`,
+      );
+    }
+    collectOlderEpochs(held, runDir, options.instance);
+    log(`acquired instance lock epoch ${held.epoch}`);
+    control.publishToken();
     // Holding the lock, any generation still on record was orphaned by a
     // supervisor that died; reaping refuses to start if one survives.
     const { kept } = await reapStaleGenerations(registryPath, { log });
     registry.keep(kept);
-    await control.listen();
   } catch (error) {
-    lock.release();
+    await control.close();
+    releaseLock();
     throw error;
   }
   log(

@@ -32,6 +32,7 @@ const DURATION_FLAGS = {
   'restart-stable-ms': ['restart', 'stableAfterMs'],
   'restart-window-ms': ['restart', 'failureWindowMs'],
   'restart-max-failures': ['restart', 'maxFailures'],
+  'lock-pending-grace-ms': ['lock', 'pendingGraceMs'],
 } as const;
 
 const MAX_FLAG_VALUE = 24 * 60 * 60_000;
@@ -151,13 +152,13 @@ async function main(): Promise<void> {
 
   const handoff: Record<string, number> = {};
   const restart: Record<string, number> = {};
+  let lockPendingGraceMs: number | undefined;
   for (const [flag, [group, key]] of Object.entries(DURATION_FLAGS)) {
     const value = raw[flag];
     if (value === undefined) continue;
-    (group === 'handoff' ? handoff : restart)[key] = parsePositiveInteger(
-      flag,
-      value,
-    );
+    const parsed = parsePositiveInteger(flag, value);
+    if (group === 'lock') lockPendingGraceMs = parsed;
+    else (group === 'handoff' ? handoff : restart)[key] = parsed;
   }
 
   await runSupervisor({
@@ -167,6 +168,7 @@ async function main(): Promise<void> {
     instance: raw.instance,
     handoff,
     restart,
+    lockPendingGraceMs,
   });
 }
 

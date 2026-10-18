@@ -128,17 +128,36 @@ product decisions.
   serving. A crash during a handoff counts toward the same failure budget.
   After five failures within five minutes the supervisor gives up and exits
   nonzero, so its launcher's restart policy takes over. Stopping the
-  supervisor (SIGTERM or the `stop` request) drains the active generation
-  and exits zero. That drain, voice calls included, is capped at 30 seconds
+  supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
+  active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap
   applies only to handoffs.
 
-  One supervisor runs per home and instance. It takes an exclusive lock file
-  (`<home>/run/supervisor-<instance>.lock`, holding its pid and process start
-  time) before it touches the token, the generation record, or the socket.
-  A different `--control` socket does not change the lock. A live owner
-  makes a second supervisor refuse to start; a dead owner's lock is taken
-  over.
+  One supervisor runs per home and instance, enforced by lock epochs. The
+  argument is written out in
+  [`instance-lock.ts`](../../packages/supervisor/src/instance-lock.ts).
+  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, only ever
+    created with `wx` and never renamed, so each epoch n has exactly one
+    winner. The highest n is the current lock. Its content is the holder's
+    pid, a random nonce, its creation time, and its control endpoint, so a
+    different `--control` socket cannot hide a holder.
+  - The holder is live if its control endpoint answers an unauthenticated
+    `lock.probe` with HMAC(nonce, challenge); the nonce never crosses the
+    wire. An endpoint that accepts but does not answer, or fails for any
+    reason other than "nothing is listening", also counts as live. A
+    holder that cannot prove itself but whose pid exists and whose lock is
+    younger than 30 seconds is live-pending, which covers a winner that has
+    not bound its socket yet. Anything else is dead.
+  - A starter refuses while the holder is live or live-pending. If it is
+    dead, the starter creates the next epoch; if another starter created it
+    first, it starts over and finds that one live-pending.
+  - The winner binds its control socket, re-reads the highest epoch, and
+    steps down unless it is still its own. Only then does it publish the
+    token, reap, and serve. It collects older epoch files and, on a clean
+    exit, deletes its own epoch only while that file still holds its nonce.
+  - Nothing here depends on parsing process start times: an earlier design
+    compared `ps` output, which follows the time zone and locale, and let a
+    supervisor in another time zone take over a live holder.
 
   A core must exit when its IPC channel disconnects, which is how it learns
   the supervisor has died. What backs that up differs by platform:
@@ -150,9 +169,13 @@ product decisions.
     and reports it reaped only once the group is gone. If it survives, the
     supervisor refuses to start rather than fail on a held port. A pid whose
     start time differs has been reused and is left alone; one whose start
-    time cannot be read is left alone and kept on record. This covers the
-    generation and processes in its group; a process that left the group
-    is not covered.
+    time cannot be read is left alone and kept on record. `ps` runs with
+    `TZ=UTC` and `LC_ALL=C`, so the recorded value does not depend on the
+    environment. This covers the generation and processes in its group; a
+    process that left the group is not covered. If a generation's leader is
+    gone but its group still has members, the group cannot be verified (the
+    id may since belong to an unrelated group), so it is logged and left
+    alone: an accepted gap.
   - **Windows.** Node starts non-detached children inside a job object that
     is killed when the parent exits (libuv's `src/win/process.c`), so a core
     dies with its supervisor even if it ignores disconnect. That is verified

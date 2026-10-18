@@ -158,4 +158,60 @@ describe('generation registry', () => {
     );
     expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
   });
+
+  it.skipIf(process.platform === 'win32' || process.platform === 'linux')(
+    'reads the same start time whatever the time zone and locale',
+    async () => {
+      const child = sleeper();
+      await once(child, 'spawn');
+      const pid = child.pid as number;
+      const saved = {
+        TZ: process.env.TZ,
+        LANG: process.env.LANG,
+        LC_ALL: process.env.LC_ALL,
+      };
+      try {
+        Object.assign(process.env, {
+          TZ: 'Asia/Tokyo',
+          LANG: 'fr_FR.UTF-8',
+          LC_ALL: 'fr_FR.UTF-8',
+        });
+        const recorded = await processFingerprint(pid);
+        Object.assign(process.env, { TZ: 'UTC', LANG: 'C', LC_ALL: 'C' });
+        const checked = await processFingerprint(pid);
+        expect(recorded.status).toBe('ok');
+        expect(checked).toEqual(recorded);
+      } finally {
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    },
+  );
+
+  it('never kills a process group whose leader is gone, and says so', async () => {
+    const registry = join(
+      makeTempDir('sup-registry-group-'),
+      'generations.json',
+    );
+    writeFileSync(
+      registry,
+      JSON.stringify([{ pid: 4545, generation: 4, fingerprint: 'f' }]),
+    );
+    const signals: string[] = [];
+    const logs: string[] = [];
+    const result = await reapStaleGenerations(registry, {
+      log: (message) => logs.push(message),
+      fingerprint: async () => ({ status: 'gone' }),
+      groupExists: () => true,
+      signal: (_pid, signal) => signals.push(signal),
+      isRunning: () => true,
+    });
+    expect(signals).toEqual([]);
+    expect(result.reaped).toEqual([]);
+    expect(logs.join('\n')).toContain(
+      'process group 4545 of generation 4 still has members but its leader is gone; it cannot be verified, so it is not killed',
+    );
+  });
 });

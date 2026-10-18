@@ -46,8 +46,12 @@ reasoning, phases, and verification plan.
 
 - Phase 1 hands off one generation at a time. Overlapping generations wait
   for a home-writer lease.
-- One supervisor per home and instance, enforced by an exclusive lock file
-  taken before anything else, whatever control socket it is given.
+- One supervisor per home and instance, whatever control socket it is
+  given. Lock epochs are files created with `wx`, so each has one winner; a
+  holder counts as alive when its control endpoint proves the lock's nonce
+  (or, briefly, while its pid exists and its lock is new). The winner
+  re-checks that its epoch is still current after binding its socket and
+  before serving.
 - The supervisor makes no authorization, routing, or product decisions.
 - A handoff runs only a `.js` or `.mjs` entry whose real path is strictly
   inside the supervisor's build root (`--build-root`, by default the

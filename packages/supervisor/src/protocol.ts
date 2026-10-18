@@ -138,6 +138,21 @@ export interface SubscribeRequest {
   id: string;
 }
 
+/**
+ * Unauthenticated, sent instead of `hello`: asks the supervisor to prove it
+ * holds the instance lock. It answers `lock.proof` with HMAC-SHA256 keyed by
+ * the lock's nonce over `challenge` (hex, 16 to 128 characters), then closes.
+ */
+export interface LockProbeMessage {
+  type: 'lock.probe';
+  challenge: string;
+}
+
+export interface LockProofMessage {
+  type: 'lock.proof';
+  proof: string;
+}
+
 export type ControlRequest =
   | StatusRequest
   | HandoffRequest
@@ -276,6 +291,7 @@ export interface EventMessage {
 }
 
 export type ControlServerMessage =
+  | LockProofMessage
   | WelcomeMessage
   | RefusedMessage
   | ErrorMessage

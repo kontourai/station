@@ -44,10 +44,13 @@ interface FingerprintDeps {
 
 function run(file: string, args: string[]): Promise<RunResult> {
   return new Promise((resolve) => {
+    // `ps -o lstart` follows TZ and the locale; pin both so a value recorded
+    // under one environment matches the same process checked under another.
+    const env = { ...process.env, TZ: 'UTC', LC_ALL: 'C', LANG: 'C' };
     execFile(
       file,
       args,
-      { windowsHide: true, timeout: 10_000 },
+      { windowsHide: true, timeout: 10_000, env },
       (error, stdout) => {
         const code = error
           ? (error as NodeJS.ErrnoException & { killed?: boolean }).killed
@@ -213,6 +216,8 @@ export async function reapStaleGenerations(
     fingerprint?: (pid: number) => Promise<Fingerprint>;
     signal?: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
     isRunning?: (pid: number) => boolean;
+    /** Whether a process group with this id still has members (POSIX). */
+    groupExists?: (pgid: number) => boolean;
     graceMs?: number;
     waitMs?: number;
   },
@@ -221,6 +226,9 @@ export async function reapStaleGenerations(
     options.fingerprint ?? ((pid: number) => processFingerprint(pid));
   const signal = options.signal ?? signalGenerationTree;
   const isRunning = options.isRunning ?? treeRunning;
+  const groupExists =
+    options.groupExists ??
+    ((pgid: number) => process.platform !== 'win32' && exists(-pgid));
   let text: string;
   try {
     text = await readFileAsync(path, 'utf8');
@@ -232,7 +240,17 @@ export async function reapStaleGenerations(
   for (const record of parseRecords(text)) {
     if (record.pid === process.pid) continue;
     const current = await fingerprint(record.pid);
-    if (current.status === 'gone') continue;
+    if (current.status === 'gone') {
+      // The leader is gone. Its group may still have members, but with no
+      // leader there is nothing to fingerprint: the id may since belong to
+      // an unrelated group. Leave it, and say so (a documented gap).
+      if (groupExists(record.pid)) {
+        options.log(
+          `process group ${record.pid} of generation ${record.generation} still has members but its leader is gone; it cannot be verified, so it is not killed`,
+        );
+      }
+      continue;
+    }
     if (current.status === 'unknown') {
       options.log(
         `could not fingerprint pid ${record.pid} (${current.reason}); leaving it alone and keeping its record`,
