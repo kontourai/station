@@ -705,11 +705,18 @@ function FilePreviewSourceLines({
     preview.renderKind === 'source' ||
       (preview.renderKind === 'markdown' && !!preview.content),
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (revealLine === undefined) return;
     const target = document.getElementById(lineId(stateKey, revealLine));
-    if (typeof target?.scrollIntoView === 'function')
-      target.scrollIntoView({ block: 'center' });
+    const surface = target?.closest<HTMLElement>(
+      '[data-station-performance-surface="workspace-file-preview"]',
+    );
+    if (!target || !surface) return;
+    surface.scrollTop +=
+      target.getBoundingClientRect().top -
+      surface.getBoundingClientRect().top -
+      surface.clientTop -
+      (surface.clientHeight - target.getBoundingClientRect().height) / 2;
   }, [revealLine, stateKey]);
   const goTo = useContext(GoToLineContext);
   const { setAvailable } = goTo;
