@@ -54,7 +54,7 @@ _Avoid_: logging when the signal is intended for metrics
 
 Disclosed Full product observations are a separate optional path with their own
 inventory, destination, source credential and commit receipt. Identifier-free
-Lite daily aggregates use independent per-publisher sinks and a shown notice;
+built-in Lite daily aggregates use independent per-publisher sinks and a shown notice. Plugin publishers default Off and require opt-in; plugin-chosen counts can encode identifiers, so plugin Lite is not identifier-free;
 the bounded local ledger is diagnostic accounting, not a receiver commit receipt. They do not
 become a person's usage accounting; that uses canonical usage receipts.
 Current-process delivery health and content-free connection checks describe

@@ -18,7 +18,15 @@ export function instrument<T extends (...args: any[]) => Promise<any>>(
   name: string,
   fn: T,
 ): T {
-  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development')
+  const environment = 'env' in import.meta ? import.meta.env : undefined;
+  if (
+    (typeof process !== 'undefined' &&
+      process.env.NODE_ENV === 'development') ||
+    (environment &&
+      typeof environment === 'object' &&
+      'DEV' in environment &&
+      environment.DEV === true)
+  )
     console.warn(
       `[telemetry] instrument(${name}) is disabled; declare events and use useTelemetry().count().`,
     );

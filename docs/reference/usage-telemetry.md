@@ -35,7 +35,7 @@ translated into tier changes under the same authorization rules.
 
 ## Disclosure and activation
 
-Telemetry has per-publisher `off`, `lite`, and `full` tiers. Lite is the default;
+Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
 Off permits no product traffic to that publisher, and Full requires explicit choice
 and the current disclosure receipt. `DO_NOT_TRACK` with any value except empty or
 `0` forces Off for every publisher. Saved `telemetryTier` choices precede
