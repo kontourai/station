@@ -33,7 +33,7 @@ export interface Clock {
   clearTimeout(timer: unknown): void;
 }
 
-export const systemClock: Clock = {
+const systemClock: Clock = {
   now: () => Date.now(),
   setTimeout: (callback, ms) => setTimeout(callback, ms),
   clearTimeout: (timer) => clearTimeout(timer as NodeJS.Timeout),

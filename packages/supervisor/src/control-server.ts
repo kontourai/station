@@ -48,7 +48,7 @@ import {
 } from './protocol.ts';
 
 /** Upper bound for any client-supplied duration. */
-export const MAX_REQUEST_DURATION_MS = 60 * 60_000;
+const MAX_REQUEST_DURATION_MS = 60 * 60_000;
 const MAX_ID_LENGTH = 128;
 
 export interface ControlHandlers {

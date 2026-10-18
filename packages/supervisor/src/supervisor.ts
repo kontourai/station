@@ -33,7 +33,7 @@ export interface SupervisorOptions {
 }
 
 /** Forks core generations on the Node IPC channel; tracks them for exit cleanup. */
-export function createForkLauncher(options: {
+function createForkLauncher(options: {
   log: (message: string) => void;
   children: Set<ChildProcess>;
 }): GenerationLauncher {

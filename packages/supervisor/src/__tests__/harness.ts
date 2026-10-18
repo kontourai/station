@@ -18,9 +18,7 @@ import {
   type SupervisorStatus,
 } from '../protocol.ts';
 
-export const SUPERVISOR_MAIN = fileURLToPath(
-  new URL('../main.ts', import.meta.url),
-);
+const SUPERVISOR_MAIN = fileURLToPath(new URL('../main.ts', import.meta.url));
 export const FAKE_CORE = fileURLToPath(
   new URL('./__fixtures__/fake-core.mjs', import.meta.url),
 );
@@ -28,7 +26,7 @@ export const FAKE_CORE = fileURLToPath(
 /** Ports owned by the user's own Station instances. Tests must never touch them. */
 const RESERVED_PORTS = new Set([3000, 3141, 3142, 3143, 3144]);
 
-export async function freePort(): Promise<number> {
+async function freePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
