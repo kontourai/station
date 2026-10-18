@@ -19,7 +19,7 @@ import {
 } from '../protocol.ts';
 
 const SUPERVISOR_MAIN = fileURLToPath(new URL('../main.ts', import.meta.url));
-export const FAKE_CORE = fileURLToPath(
+const FAKE_CORE = fileURLToPath(
   new URL('./__fixtures__/fake-core.mjs', import.meta.url),
 );
 
