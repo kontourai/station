@@ -1604,7 +1604,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     seatbelt: SeatbeltStart,
     pending: ReturnType<ReturnType<typeof confinedClaudeSpawn>['pending']>,
   ) {
-    const threadId = record.session.threadId;
     let handshake: 'completed' | 'failed' = 'failed';
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
