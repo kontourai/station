@@ -10,10 +10,10 @@ import {
   describe,
   expect,
   type MockInstance,
-  onTestFinished,
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { describeApiError } from '../commands/core-api.js';
 import {
   getProfileCredentialStore,
@@ -134,6 +134,8 @@ const defaultAgents = (): AgentRecord[] => [
 ];
 
 describe('CLI core commands over HTTP', () => {
+  const makeTempDir = trackTempDirs();
+  const executableCleanups: Array<() => Promise<void>> = [];
   let server: ReturnType<typeof createServer>;
   let apiBase = '';
   let stdoutWrite: MockInstance;
@@ -926,6 +928,7 @@ describe('CLI core commands over HTTP', () => {
   });
 
   afterEach(async () => {
+    for (const cleanup of executableCleanups.splice(0)) await cleanup();
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
@@ -1137,83 +1140,83 @@ describe('CLI core commands over HTTP', () => {
   test.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
     '%s retains a lost acceptance handle in one JSON error and never resends',
     async (entrypoint) => {
-      const home = mkdtempSync(join(tmpdir(), 'station-cli-turn-key-'));
-      try {
-        const result = await new Promise<{
-          code: number | null;
-          stdout: string;
-          stderr: string;
-        }>((resolveResult, reject) => {
-          const child = spawn(
-            process.execPath,
-            [
-              '--import',
-              'tsx',
-              resolve(entrypoint),
-              'chat',
-              'codex',
-              'trigger lost acceptance',
-              '--json',
-              `--api-base=${apiBase}`,
-            ],
-            {
-              env: {
-                ...process.env,
-                STATION_HOME: home,
-                STATION_INSTANCE_NAME: 'cli-stable-key-test',
-              },
-              stdio: ['ignore', 'pipe', 'pipe'],
-              windowsHide: true,
-              timeout: 20000,
-              killSignal: 'SIGKILL',
-            },
-          );
-          onTestFinished(() => {
-            if (child.exitCode === null) child.kill('SIGKILL');
-          });
-          let stdout = '';
-          let stderr = '';
-          child.stdout.on('data', (chunk) => {
-            stdout += chunk;
-          });
-          child.stderr.on('data', (chunk) => {
-            stderr += chunk;
-          });
-          child.once('error', reject);
-          child.once('close', (code) =>
-            resolveResult({ code, stdout, stderr }),
-          );
-        });
-        expect(result.code).toBe(1);
-        expect(result.stdout).toBe('');
-        expect(chatRequests).toHaveLength(1);
-        expect(result.stderr.trim().split('\n')).toHaveLength(1);
-        expect(result.stderr).toMatch(/^\{"success":false,/);
-        const failure = JSON.parse(result.stderr);
-        expect(failure).toMatchObject({
-          success: false,
-          error: expect.any(String),
-          clientTurnId: chatRequests[0].clientTurnId,
-          conversationId: chatRequests[0].conversationId,
-        });
-        expect(failure.clientTurnId).toEqual(expect.any(String));
-        expect(failure.conversationId).toEqual(expect.any(String));
-        const { runCli } = await import('../cli.js');
-        await expect(
-          runCli([
+      const home = makeTempDir('station-cli-turn-key-');
+      const result = await new Promise<{
+        code: number | null;
+        stdout: string;
+        stderr: string;
+      }>((resolveResult, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            '--import',
+            'tsx',
+            resolve(entrypoint),
             'chat',
             'codex',
             'trigger lost acceptance',
             '--json',
-            `--client-turn-id=${failure.clientTurnId}`,
             `--api-base=${apiBase}`,
-          ]),
-        ).rejects.toBeInstanceOf(TypeError);
-        expect(chatRequests).toHaveLength(2);
-        expect(chatRequests[1]).toEqual(chatRequests[0]);
-      } finally {
-        rmSync(home, { recursive: true, force: true });
-      }
+          ],
+          {
+            env: {
+              ...process.env,
+              STATION_HOME: home,
+              STATION_ROOT: home,
+              STATION_INSTANCE_NAME: 'cli-stable-key-test',
+            },
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
+            timeout: 20000,
+            killSignal: 'SIGKILL',
+          },
+        );
+        const closed = new Promise<void>((resolveClose) => {
+          child.once('close', () => resolveClose());
+        });
+        executableCleanups.push(async () => {
+          if (child.exitCode === null && child.signalCode === null)
+            child.kill('SIGKILL');
+          await closed;
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on('data', (chunk) => {
+          stderr += chunk;
+        });
+        child.once('error', reject);
+        child.once('close', (code) => resolveResult({ code, stdout, stderr }));
+      });
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(chatRequests).toHaveLength(1);
+      expect(result.stderr.trim().split('\n')).toHaveLength(1);
+      expect(result.stderr).toMatch(/^\{"success":false,/);
+      const failure = JSON.parse(result.stderr);
+      expect(failure).toMatchObject({
+        success: false,
+        error: expect.any(String),
+        clientTurnId: chatRequests[0].clientTurnId,
+        conversationId: chatRequests[0].conversationId,
+      });
+      expect(failure.clientTurnId).toEqual(expect.any(String));
+      expect(failure.conversationId).toEqual(expect.any(String));
+      const { runCli } = await import('../cli.js');
+      await expect(
+        runCli([
+          'chat',
+          'codex',
+          'trigger lost acceptance',
+          '--json',
+          `--client-turn-id=${failure.clientTurnId}`,
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toBeInstanceOf(TypeError);
+      expect(chatRequests).toHaveLength(2);
+      expect(chatRequests[1]).toEqual(chatRequests[0]);
     },
     30000,
   );
