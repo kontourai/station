@@ -208,7 +208,21 @@
 
     "packages/cli/src/__tests__/delegate.test.ts",
 
-    "packages/cli/src/commands/telemetry.ts"
+    "packages/cli/src/commands/telemetry.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
   ],
 
   "checks": [
