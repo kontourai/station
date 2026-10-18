@@ -1187,6 +1187,8 @@ with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed ma
 return a validation error with 400 before mutation. Full without a current
 publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
+remains pending and needs confirmation after DNT is removed.
 Only the existing operator Full stream has a sender in this foundation. The
 [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
