@@ -3149,6 +3149,82 @@ crashPoints.push(
 /** Invocation terminal contracts share the real public command boundary. */
 const invocationTerminals: readonly KernelConformanceCase[] = [
   {
+    name: 'invocation terminal: engine-opened acknowledgement refuses an otherwise matching accepted intent row',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'body',
+        };
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        const expected = await boundary(session, 'b');
+        assert.ok(expected);
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.acceptInvocation',
+            expected,
+            providerTurnId: 'N',
+            now: at(13),
+          }),
+          { kind: 'accepted' },
+        );
+        const accepted = await boundary(session, 'b');
+        assert.deepEqual(accepted, {
+          ...expected,
+          state: 'accepted',
+          providerTurnId: 'N',
+          updatedAt: at(13),
+        });
+        assert.deepEqual(
+          await session.run(recordAccepted('b', 't', 'N', owner, at(13))),
+          { kind: 'busy' },
+        );
+        assert.deepEqual(await boundary(session, 'b'), accepted);
+        assert.deepEqual(
+          await session.run(
+            recordAccepted('legacy', 'legacy-thread', 'N', owner, at(13)),
+          ),
+          { kind: 'applied' },
+        );
+        const legacy = await boundary(session, 'legacy');
+        assert.deepEqual(
+          await session.run(
+            recordAccepted('legacy', 'legacy-thread', 'N', owner, at(13)),
+          ),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await boundary(session, 'legacy'), legacy);
+      }),
+  },
+
+  {
     name: 'invocation terminal: early backward-clock retirement survives reopen and exact ownership retries',
     areas: ['turnBoundary', 'turnDedup'],
     run: (harness) =>
@@ -3599,17 +3675,6 @@ const invocationTerminals: readonly KernelConformanceCase[] = [
         assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
         assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
         assert.deepEqual(await boundary(session, 'b'), expected);
-        assert.deepEqual(
-          await session.run({
-            type: 'turnBoundary.recordAccepted',
-            boundaryId: 'b',
-            threadId: 't',
-            providerTurnId: 'N',
-            owner,
-            now: at(14),
-          }),
-          { kind: 'busy' },
-        );
         assert.deepEqual(
           await session.run({
             type: 'turnBoundary.observeTerminal',
