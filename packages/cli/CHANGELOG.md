@@ -1,5 +1,15 @@
 # @kontourai/station-cli
 
+## 0.9.0
+
+### Minor Changes
+
+- 9e16733: Add explicit source-version requirements to portable delegation with
+  `--portable-project`, `--resource`, `--source-commit` and `--attempt-id`.
+  Add receiver-local `delegate attempt` lookup for existing grant-bound claims.
+  These operations do not transfer files, install dependencies, protect a checkout
+  against later writers or retry uncertain execution.
+
 ## 0.8.0
 
 ### Minor Changes

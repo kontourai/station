@@ -1,5 +1,16 @@
 # @kontourai/station-shared
 
+## 0.10.0
+
+### Patch Changes
+
+- Updated dependencies [7fda30b]
+- Updated dependencies [e1c6c47]
+- Updated dependencies [c5a8aa3]
+- Updated dependencies [9f4aab6]
+- Updated dependencies [5c42047]
+  - @kontourai/station-contracts@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
