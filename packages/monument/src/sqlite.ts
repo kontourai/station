@@ -1,6 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
 import {
+  assertInvocationTerminalFact,
+  assertInvocationTerminalQuery,
+  assertInvocationTerminalRetirement,
+  findInvocationTerminal,
+  isSynchronousTerminalBundle,
+  sameTerminalData,
+} from './decisions/invocation-terminal.js';
+import {
   isPreparedTurnSettlement,
   sameSettlementOwner,
 } from './decisions/prepared-settlement.js';
@@ -20,6 +28,10 @@ import {
 import type {
   InboxEntryRecord,
   InboxEntryState,
+  InvocationTerminalFact,
+  InvocationTerminalQuery,
+  InvocationTerminalRead,
+  InvocationTerminalRetirement,
   PreparedTurnIntent,
   PreparedTurnSettlement,
   RequestKeyRecord,
@@ -88,8 +100,31 @@ export interface SqliteRequestKeyTable {
   readonly resultColumn: string;
 }
 
+/** Private synchronous storage operations on the host's existing transaction. */
+export interface SqliteInvocationTerminalFacts {
+  readonly readObservation: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    terminalEventId: string,
+  ) => InvocationTerminalFact | undefined;
+  readonly find: (
+    database: SqliteKernelDatabase,
+    query: InvocationTerminalQuery,
+  ) => InvocationTerminalRead;
+  readonly readRetirement: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    boundaryId: string,
+  ) => InvocationTerminalRetirement | undefined;
+  readonly recordRetirement: (
+    database: SqliteKernelDatabase,
+    witness: InvocationTerminalRetirement,
+  ) => void;
+}
+
 /** A host's boundary rows. Bound tables are checked, never migrated. */
 export interface SqliteTurnBoundaryTable {
+  readonly invocationTerminals?: SqliteInvocationTerminalFacts;
   readonly table: string;
   readonly ownerEncoding: 'json' | 'columns';
   /** Opt in to prepared intent storage. Every named column must exist at open. */
@@ -202,7 +237,7 @@ export interface SqliteExecuteOptions {
   readonly withinHostTransaction?: boolean;
 }
 
-export const SQLITE_KERNEL_SCHEMA_VERSION = 3;
+export const SQLITE_KERNEL_SCHEMA_VERSION = 4;
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 const WAL_ATTEMPTS = 5;
 
@@ -255,10 +290,39 @@ CREATE UNIQUE INDEX IF NOT EXISTS monument_turn_boundaries_one_invocation
 const TURN_TERMINAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_turn_terminals (
   thread_id TEXT NOT NULL,
-  provider_turn_id TEXT NOT NULL,
-  PRIMARY KEY (thread_id, provider_turn_id)
+  fact_kind TEXT NOT NULL CHECK (fact_kind IN ('legacy', 'invocation', 'retirement')),
+  fact_id TEXT NOT NULL,
+  provider_turn_id TEXT,
+  invocation_id TEXT,
+  terminal_event_id TEXT,
+  terminal_created_at TEXT,
+  eligible INTEGER,
+  retirement_json TEXT,
+  PRIMARY KEY (thread_id, fact_kind, fact_id)
 );
+CREATE INDEX IF NOT EXISTS monument_turn_terminals_invocation
+  ON monument_turn_terminals(thread_id, invocation_id, provider_turn_id, terminal_event_id)
+  WHERE fact_kind = 'invocation' AND eligible = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS monument_turn_terminals_event
+  ON monument_turn_terminals(thread_id, terminal_event_id) WHERE fact_kind = 'invocation';
 `;
+function migrateTerminalTable(db: SqliteKernelDatabase): void {
+  const columns = db
+    .prepare('PRAGMA table_info(monument_turn_terminals)')
+    .all() as Array<{ name: string }>;
+  if (
+    columns.length &&
+    !columns.some((column) => column.name === 'fact_kind')
+  ) {
+    db.exec(
+      'ALTER TABLE monument_turn_terminals RENAME TO monument_turn_terminals_v3',
+    );
+    db.exec(TURN_TERMINAL_SCHEMA);
+    db.exec(`INSERT INTO monument_turn_terminals(thread_id, fact_kind, fact_id, provider_turn_id)
+      SELECT thread_id, 'legacy', provider_turn_id, provider_turn_id FROM monument_turn_terminals_v3`);
+    db.exec('DROP TABLE monument_turn_terminals_v3');
+  } else db.exec(TURN_TERMINAL_SCHEMA);
+}
 const REQUEST_KEYS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_request_keys (
   caller_session_id TEXT NOT NULL,
@@ -379,6 +443,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
   const boundary = tables.turnBoundary;
+  let invocationTerminals: SqliteInvocationTerminalFacts | undefined;
   if (
     boundary &&
     boundary !== 'unused' &&
@@ -397,6 +462,41 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
       );
   }
   if (boundary && boundary !== 'unused') {
+    if (
+      boundary.terminalFacts !== 'host' &&
+      boundary.terminalFacts !== 'kernel'
+    )
+      throw new SqliteKernelConfigurationError('Invalid terminalFacts mode.');
+    if (
+      'invocationTerminals' in boundary &&
+      !Object.hasOwn(boundary, 'invocationTerminals')
+    )
+      throw new SqliteKernelConfigurationError(
+        'Invocation terminal bundle must be an own property.',
+      );
+    if (Object.hasOwn(boundary, 'invocationTerminals')) {
+      if (
+        !Object.hasOwn(
+          Object.getOwnPropertyDescriptor(boundary, 'invocationTerminals')!,
+          'value',
+        )
+      )
+        throw new SqliteKernelConfigurationError(
+          'Invocation terminal bundle must be own data.',
+        );
+      const bundle = boundary.invocationTerminals;
+      if (
+        !bundle ||
+        !isSynchronousTerminalBundle(bundle) ||
+        boundary.terminalFacts !== 'host' ||
+        !boundary.intentColumns
+      )
+        throw new SqliteKernelConfigurationError(
+          'Invocation terminal bundle requires host mode, intentColumns and all four own functions.',
+        );
+      invocationTerminals = Object.freeze({ ...bundle });
+    }
+
     if (
       boundary.terminalFacts === 'host' &&
       typeof boundary.terminalSeen !== 'function'
@@ -468,6 +568,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               ...tables.turnBoundary,
               table: identifier(tables.turnBoundary.table),
               intentColumns: resolveIntentColumns(tables.turnBoundary),
+              ...(invocationTerminals ? { invocationTerminals } : {}),
               ...(tables.turnBoundary.creationSequence
                 ? {
                     creationSequence: {
@@ -705,7 +806,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         : '',
       tables.turnBoundary !== 'unused' &&
       tables.turnBoundary.terminalFacts === 'kernel'
-        ? TURN_TERMINAL_SCHEMA
+        ? META_SCHEMA
         : '',
       tables.requestKeys !== 'unused' && tables.requestKeys.owned
         ? REQUEST_KEYS_SCHEMA
@@ -716,6 +817,11 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
     if (!owned) return;
     db.exec(META_SCHEMA);
     db.exec(owned);
+    if (
+      tables.turnBoundary !== 'unused' &&
+      tables.turnBoundary.terminalFacts === 'kernel'
+    )
+      migrateTerminalTable(db);
     if (tables.turnBoundary !== 'unused' && tables.turnBoundary.owned) {
       const present = new Set(
         (
@@ -756,7 +862,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
       return;
     }
-    if (row.value === '1' || row.value === '2') {
+    if (row.value === '1' || row.value === '2' || row.value === '3') {
       db.prepare(
         "UPDATE monument_meta SET value = ? WHERE key = 'schema_version'",
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
@@ -765,6 +871,63 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         `monument schema version ${row.value} is not ${SQLITE_KERNEL_SCHEMA_VERSION}; refusing to open.`,
       );
   });
+}
+
+type DecodedTerminal =
+  | { kind: 'legacy' }
+  | { kind: 'invocation'; fact: InvocationTerminalFact }
+  | { kind: 'retirement'; witness: InvocationTerminalRetirement };
+function decodeTerminalRow(row: Record<string, unknown>): DecodedTerminal {
+  if (typeof row.thread_id !== 'string' || typeof row.fact_id !== 'string')
+    throw new Error('Invalid terminal row identity.');
+  if (row.fact_kind === 'legacy') {
+    if (
+      typeof row.provider_turn_id !== 'string' ||
+      row.fact_id !== row.provider_turn_id ||
+      [
+        'invocation_id',
+        'terminal_event_id',
+        'terminal_created_at',
+        'eligible',
+        'retirement_json',
+      ].some((key) => row[key] !== null)
+    )
+      throw new Error('Invalid legacy terminal row.');
+    return { kind: 'legacy' };
+  }
+  if (row.fact_kind !== 'invocation' && row.fact_kind !== 'retirement')
+    throw new Error('Unknown terminal row kind.');
+  if (
+    (row.eligible !== 0 && row.eligible !== 1) ||
+    (row.provider_turn_id !== null && typeof row.provider_turn_id !== 'string')
+  )
+    throw new Error('Invalid terminal row columns.');
+  const fact = {
+    threadId: row.thread_id,
+    invocationId: row.invocation_id,
+    terminalEventId: row.terminal_event_id,
+    terminalCreatedAt: row.terminal_created_at,
+    retire: row.eligible === 1,
+    ...(row.provider_turn_id === null
+      ? {}
+      : { providerTurnId: row.provider_turn_id }),
+  };
+  assertInvocationTerminalFact(fact);
+  if (row.fact_kind === 'invocation') {
+    if (row.retirement_json !== null || row.fact_id !== fact.terminalEventId)
+      throw new Error('Invalid invocation terminal row.');
+    return { kind: 'invocation', fact };
+  }
+  if (typeof row.retirement_json !== 'string')
+    throw new Error('Missing retirement JSON.');
+  const witness: unknown = JSON.parse(row.retirement_json);
+  assertInvocationTerminalRetirement(witness);
+  if (
+    witness.boundary.boundaryId !== row.fact_id ||
+    !sameTerminalData(witness.terminal, fact)
+  )
+    throw new Error('Retirement columns differ from JSON.');
+  return { kind: 'retirement', witness };
 }
 
 // --- row codecs ------------------------------------------------------------
@@ -1323,20 +1486,115 @@ function sqliteTransaction(
     turnTerminals: {
       has: (threadId, providerTurnId) => {
         requireTerminalTable();
-        return (
-          one(
-            'SELECT 1 AS present FROM monument_turn_terminals WHERE thread_id = ? AND provider_turn_id = ?',
-            threadId,
-            providerTurnId,
-          ) !== undefined
+        const rows = all(
+          "SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND fact_kind = 'legacy' AND fact_id = ?",
+          threadId,
+          providerTurnId,
         );
+        for (const row of rows) decodeTerminalRow(row);
+        return rows.length > 0;
       },
       add: (threadId, providerTurnId) => {
         requireTerminalTable();
-        run(
-          'INSERT OR IGNORE INTO monument_turn_terminals (thread_id, provider_turn_id) VALUES (?, ?)',
+        const existing = one(
+          "SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND fact_kind = 'legacy' AND fact_id = ?",
           threadId,
           providerTurnId,
+        );
+        if (existing) {
+          decodeTerminalRow(existing);
+          return;
+        }
+        run(
+          "INSERT INTO monument_turn_terminals (thread_id, fact_kind, fact_id, provider_turn_id) VALUES (?, 'legacy', ?, ?)",
+          threadId,
+          providerTurnId,
+          providerTurnId,
+        );
+      },
+      findInvocation: (query) => {
+        assertInvocationTerminalQuery(query);
+        requireTerminalTable();
+        const facts: InvocationTerminalFact[] = [];
+        for (const row of all(
+          'SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND invocation_id = ?',
+          query.threadId,
+          query.invocationId,
+        )) {
+          const decoded = decodeTerminalRow(row);
+          if (decoded.kind === 'invocation') facts.push(decoded.fact);
+        }
+        return findInvocationTerminal(facts, query);
+      },
+      addInvocation: (fact) => {
+        requireTerminalTable();
+        assertInvocationTerminalFact(fact);
+        const existing = one(
+          "SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND terminal_event_id = ? AND fact_kind = 'invocation'",
+          fact.threadId,
+          fact.terminalEventId,
+        );
+        if (existing) {
+          const decoded = decodeTerminalRow(existing);
+          if (
+            decoded.kind !== 'invocation' ||
+            !sameTerminalData(decoded.fact, fact)
+          )
+            throw new Error('Conflicting invocation terminal event.');
+          return;
+        }
+        run(
+          "INSERT INTO monument_turn_terminals (thread_id, fact_kind, fact_id, provider_turn_id, invocation_id, terminal_event_id, terminal_created_at, eligible) VALUES (?, 'invocation', ?, ?, ?, ?, ?, ?)",
+          fact.threadId,
+          fact.terminalEventId,
+          fact.providerTurnId ?? null,
+          fact.invocationId,
+          fact.terminalEventId,
+          fact.terminalCreatedAt,
+          fact.retire ? 1 : 0,
+        );
+      },
+      readRetirement: (threadId, boundaryId) => {
+        requireTerminalTable();
+        const row = one(
+          "SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND fact_kind = 'retirement' AND fact_id = ?",
+          threadId,
+          boundaryId,
+        );
+        if (!row) return undefined;
+        const decoded = decodeTerminalRow(row);
+        if (decoded.kind !== 'retirement')
+          throw new Error('Invalid retirement row.');
+        return decoded.witness;
+      },
+      recordRetirement: (witness) => {
+        requireTerminalTable();
+        assertInvocationTerminalRetirement(witness);
+        const { boundary, terminal } = witness;
+        const previous = one(
+          "SELECT * FROM monument_turn_terminals WHERE thread_id = ? AND fact_kind = 'retirement' AND fact_id = ?",
+          boundary.threadId,
+          boundary.boundaryId,
+        );
+        if (previous) {
+          const decoded = decodeTerminalRow(previous);
+          if (
+            decoded.kind !== 'retirement' ||
+            !sameTerminalData(decoded.witness, witness)
+          )
+            throw new Error('Conflicting invocation terminal retirement.');
+          return;
+        }
+        run(
+          "INSERT INTO monument_turn_terminals(thread_id, fact_kind, fact_id, provider_turn_id, invocation_id, terminal_event_id, terminal_created_at, eligible, retirement_json) VALUES (?, 'retirement', ?, ?, ?, ?, ?, ?, ?)",
+          boundary.threadId,
+          boundary.boundaryId,
+          terminal.providerTurnId ?? null,
+          terminal.invocationId,
+          terminal.terminalEventId,
+          terminal.terminalCreatedAt,
+          terminal.retire ? 1 : 0,
+          JSON.stringify(witness),
         );
       },
       deleteThread: (threadId) => {
@@ -1508,6 +1766,31 @@ export function openSqliteKernelStorage(
     boundary !== 'unused' && !boundary.owned
       ? boundary.terminalFacts === 'host'
         ? {
+            ...(boundary.invocationTerminals
+              ? {
+                  invocationTerminals: {
+                    readObservation: (thread: string, event: string) =>
+                      boundary.invocationTerminals!.readObservation(
+                        db,
+                        thread,
+                        event,
+                      ),
+                    find: (query: InvocationTerminalQuery) =>
+                      boundary.invocationTerminals!.find(db, query),
+                    readRetirement: (thread: string, id: string) =>
+                      boundary.invocationTerminals!.readRetirement(
+                        db,
+                        thread,
+                        id,
+                      ),
+                    recordRetirement: (witness: InvocationTerminalRetirement) =>
+                      boundary.invocationTerminals!.recordRetirement(
+                        db,
+                        witness,
+                      ),
+                  },
+                }
+              : {}),
             terminalSeen: (thread: string, turn: string) =>
               boundary.terminalSeen!(db, thread, turn),
             retiredBoundaryIds: (thread: string) =>
@@ -1562,6 +1845,25 @@ export function openSqliteKernelStorage(
     )
       throw new SqliteKernelConfigurationError(
         `${command.type}: this storage keeps no turnDedup tables.`,
+      );
+    if (
+      boundary !== 'unused' &&
+      boundary.terminalFacts === 'host' &&
+      !boundary.invocationTerminals &&
+      (command.type === 'turnBoundary.acceptInvocation' ||
+        (command.type === 'turnBoundary.observeTerminal' &&
+          'invocationId' in command))
+    )
+      throw new SqliteKernelConfigurationError(
+        'Invocation terminal commands require the complete host bundle.',
+      );
+    if (
+      command.type === 'turnBoundary.acceptInvocation' &&
+      command.expected.intent?.dedupKey !== undefined &&
+      tables.turnDedup === 'unused'
+    )
+      throw new SqliteKernelConfigurationError(
+        'Invocation acceptance requires turnDedup tables.',
       );
     if (db.isTransaction) {
       if (!executeOptions.withinHostTransaction)

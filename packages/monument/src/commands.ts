@@ -2,6 +2,7 @@ import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
   InboxEntryKind,
   InboxEntryRecord,
+  InvocationTerminalFact,
   PreparedDedupSnapshot,
   PreparedTurnIntent,
   PreparedTurnSettlement,
@@ -196,6 +197,20 @@ export type PreparedSettlementResult =
   | { readonly kind: 'applied' }
   | { readonly kind: 'refused' };
 
+/** Latched owned acceptance; neither acknowledgement authorizes another effect. */
+export interface TurnBoundaryAcceptInvocationCommand {
+  readonly type: 'turnBoundary.acceptInvocation';
+  readonly expected: TurnBoundaryRecord;
+  readonly expectedDedup?: TurnDedupRecord;
+  readonly providerTurnId: string;
+  readonly now: string;
+}
+export type TurnBoundaryAcceptInvocationResult =
+  | { readonly kind: 'accepted' }
+  | { readonly kind: 'terminal'; readonly terminal: InvocationTerminalFact }
+  | { readonly kind: 'ambiguous' }
+  | { readonly kind: 'stale' };
+
 export interface TurnBoundaryTransitionCommand {
   readonly type: 'turnBoundary.transition';
   readonly boundaryId: string;
@@ -240,6 +255,7 @@ export interface TurnBoundaryRecordAcceptedCommand {
 
 export interface TurnBoundaryObserveTerminalCommand {
   readonly type: 'turnBoundary.observeTerminal';
+  readonly invocationId?: string;
   readonly threadId: string;
   readonly providerTurnId?: string;
   /** A session-level terminal retires every turn row on the thread. */
@@ -521,6 +537,7 @@ export interface KernelResults {
   'turnBoundary.resumePrepared': TurnBoundaryResumePreparedResult;
   'turnBoundary.cancelPrepared': PreparedSettlementResult;
   'turnBoundary.recordDefinitiveRefusal': PreparedSettlementResult;
+  'turnBoundary.acceptInvocation': TurnBoundaryAcceptInvocationResult;
   'turnBoundary.transition': TurnBoundaryTransitionResult;
   'turnBoundary.remove': TurnBoundaryRemoveResult;
   'turnBoundary.recordAccepted': TurnBoundaryCreateResult;
@@ -558,6 +575,7 @@ export type KernelCommand =
   | TurnBoundaryResumePreparedCommand
   | TurnBoundaryCancelPreparedCommand
   | TurnBoundaryRecordDefinitiveRefusalCommand
+  | TurnBoundaryAcceptInvocationCommand
   | TurnBoundaryTransitionCommand
   | TurnBoundaryRemoveCommand
   | TurnBoundaryRecordAcceptedCommand

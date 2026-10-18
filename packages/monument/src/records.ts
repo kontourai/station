@@ -153,3 +153,34 @@ export interface InboxEntryRecord {
   readonly createdAt: number;
   readonly updatedAt: number;
 }
+
+/** Trusted ordinary terminal assertion; it supplies no native-origin proof. */
+export interface InvocationTerminalFact {
+  readonly threadId: string;
+  readonly invocationId: string;
+  readonly terminalEventId: string;
+  readonly providerTurnId?: string;
+  readonly terminalCreatedAt: string;
+  readonly retire: boolean;
+}
+
+export interface InvocationTerminalQuery {
+  readonly threadId: string;
+  readonly invocationId: string;
+  readonly providerTurnId?: string;
+  readonly allowMissingProviderTurnId: boolean;
+  readonly terminalEventId?: string;
+}
+
+export type InvocationTerminalRead =
+  | { readonly kind: 'found'; readonly fact: InvocationTerminalFact }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unknown' };
+
+/** Exact pre-deletion ownership evidence, retained in the terminal area. */
+export interface InvocationTerminalRetirement {
+  readonly schema: 'monument.invocation-terminal-retirement/v1';
+  readonly terminal: InvocationTerminalFact;
+  readonly boundary: TurnBoundaryRecord;
+  readonly dedup?: TurnDedupRecord;
+}
