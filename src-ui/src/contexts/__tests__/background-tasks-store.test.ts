@@ -456,53 +456,62 @@ test('a live delegate reopens in its parent chat after 50 finished Bash cards ev
     new Date(
       Date.parse('2026-07-29T00:00:00.000Z') + seconds * 1000,
     ).toISOString();
-  store.ingest(
-    event('session.started', {
-      threadId: 'delegate',
-      sessionId: 'delegate',
-      createdAt: at(0),
-      metadata: { taskId: 'delegate', parentTaskId: 'chat-1' },
-    }),
-  );
-  store.ingest(
-    event('turn.completed', {
-      threadId: 'delegate',
-      turnId: 'first',
-      createdAt: at(1),
-    }),
-  );
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-bound',
+    method: 'session.started',
+    threadId: 'delegate',
+    sessionId: 'delegate',
+    createdAt: at(0),
+    metadata: { taskId: 'delegate', parentTaskId: 'chat-1' },
+  });
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-finished',
+    method: 'turn.completed',
+    threadId: 'delegate',
+    turnId: 'first',
+    createdAt: at(1),
+  });
   for (let i = 0; i < 50; i += 1) {
     const toolCallId = `bash-${i}`;
-    store.ingest(
-      event('tool.started', {
-        threadId: 'chat-1',
-        turnId: 'parent-turn',
-        toolCallId,
-        toolName: 'Bash',
-        createdAt: at(2 + i * 2),
-      }),
-    );
-    store.ingest(
-      event('tool.completed', {
-        threadId: 'chat-1',
-        turnId: 'parent-turn',
-        toolCallId,
-        toolName: 'Bash',
-        status: 'success',
-        createdAt: at(3 + i * 2),
-      }),
-    );
+    const itemId = `item-${i}`;
+    store.ingest({
+      provider: 'claude',
+      eventId: `started-${i}`,
+      method: 'tool.started',
+      threadId: 'chat-1',
+      turnId: 'parent-turn',
+      itemId,
+      toolCallId,
+      toolName: 'Bash',
+      arguments: { command: 'true' },
+      createdAt: at(2 + i * 2),
+    });
+    store.ingest({
+      provider: 'claude',
+      eventId: `finished-${i}`,
+      method: 'tool.completed',
+      threadId: 'chat-1',
+      turnId: 'parent-turn',
+      itemId,
+      toolCallId,
+      toolName: 'Bash',
+      status: 'success',
+      createdAt: at(3 + i * 2),
+    });
   }
   expect(Object.keys(store.getSnapshot().entries)).toHaveLength(50);
   expect(store.getSnapshot().entries.delegate).toBeUndefined();
-  store.ingest(
-    event('turn.started', {
-      threadId: 'delegate',
-      turnId: 'follow-up',
-      prompt: 'Continue the review',
-      createdAt: at(200),
-    }),
-  );
+  store.ingest({
+    provider: 'claude',
+    eventId: 'delegate-follow-up',
+    method: 'turn.started',
+    threadId: 'delegate',
+    turnId: 'follow-up',
+    prompt: 'Continue the review',
+    createdAt: at(200),
+  });
   expect(
     selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []).running,
   ).toEqual([
@@ -539,13 +548,15 @@ test('an idle legacy delegate remains addressable for a later turn without anoth
     delegateParents: { 'old-delegate': 'chat-1' },
   });
   store.reconcileSnapshot({ sessions: [] });
-  store.ingest(
-    event('turn.started', {
-      threadId: 'old-delegate',
-      turnId: 'follow-up',
-      prompt: 'Late turn',
-    }),
-  );
+  store.ingest({
+    provider: 'claude',
+    eventId: 'idle-follow-up',
+    method: 'turn.started',
+    threadId: 'old-delegate',
+    turnId: 'follow-up',
+    prompt: 'Late turn',
+    createdAt: '2026-07-29T00:00:05.000Z',
+  });
   expect(
     selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []).running,
   ).toEqual([
