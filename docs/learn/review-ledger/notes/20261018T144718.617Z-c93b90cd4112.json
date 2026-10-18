@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed usage-telemetry wrapper and SettingsView prop/save deltas against reveal/focus/navigation claims. Stable catalog id, view routing, mount deadline, highlight and unsaved navigation guard remain intact. The outbox and reason prompt now sit below the row; the editable tier remains the reveal target. No prose change needed.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]}
+  ]
+}
