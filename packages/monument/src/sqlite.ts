@@ -457,6 +457,13 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
       boundary.terminalFacts !== 'kernel'
     )
       throw new SqliteKernelConfigurationError('Invalid terminalFacts mode.');
+    if (
+      'invocationTerminals' in boundary &&
+      !Object.hasOwn(boundary, 'invocationTerminals')
+    )
+      throw new SqliteKernelConfigurationError(
+        'Invocation terminal bundle must be an own property.',
+      );
     if (Object.hasOwn(boundary, 'invocationTerminals')) {
       if (
         !Object.hasOwn(
@@ -545,7 +552,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               ...tables.turnBoundary,
               table: identifier(tables.turnBoundary.table),
               intentColumns: resolveIntentColumns(tables.turnBoundary),
-              ...(tables.turnBoundary.invocationTerminals
+              ...(Object.hasOwn(tables.turnBoundary, 'invocationTerminals')
                 ? {
                     invocationTerminals: Object.freeze({
                       ...tables.turnBoundary.invocationTerminals,
