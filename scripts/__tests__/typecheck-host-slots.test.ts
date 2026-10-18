@@ -46,6 +46,24 @@ import {
 } from '../typecheck-aggregate.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** Whether tsc-ts ships a build for this host (its own platform table). */
+const TSC_TS_HAS_BUILD = Boolean(
+  (
+    await import(
+      pathToFileURL(
+        join(
+          dirname(
+            createRequire(join(REPO_ROOT, 'package.json')).resolve(
+              'tsc-ts/package.json',
+            ),
+          ),
+          'bin',
+          'platforms.js',
+        ),
+      ).href
+    )
+  ).hostPlatform(),
+);
 const LIB_URL = pathToFileURL(
   join(REPO_ROOT, 'scripts', 'lib', 'typecheck-host-slots.mjs'),
 ).href;
@@ -841,47 +859,49 @@ describe('tsc-slot runner', () => {
     }
   });
 
-  test('the local default runs its compiler, or TypeScript 7 where it cannot', async () => {
-    const manifest = createRequire(join(REPO_ROOT, 'package.json')).resolve(
-      'tsc-ts/package.json',
-    );
-    const { hostPlatform } = await import(
-      pathToFileURL(join(dirname(manifest), 'bin', 'platforms.js')).href
-    );
+  test('the local default runs its compiler, or TypeScript 7 where it cannot', () => {
     // Bun refuses --listFiles, so a Bun default falls back here too.
     const expected =
-      DEFAULT_COMPILERS.local === 'tsc-ts' && hostPlatform()
+      DEFAULT_COMPILERS.local === 'tsc-ts' && TSC_TS_HAS_BUILD
         ? '/@tsc-ts/'
         : '/@typescript/typescript-';
     expect(runSelected([], {}).lib).toContain(expected);
   });
 
-  test('installed tsc-ts implements the installed TypeScript version', () => {
-    // tsc-ts ports one TypeScript release; a bump of either package alone
-    // would leave local checks on a different checker than hosted CI.
-    const version = (compiler: string) =>
-      spawnSync(
-        process.execPath,
-        [
-          join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
-          `--compiler=${compiler}`,
-          '--version',
-        ],
-        { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
-      ).stdout.trim();
-    const typescript = JSON.parse(
-      readFileSync(
-        join(REPO_ROOT, 'node_modules', 'typescript', 'package.json'),
-        'utf8',
-      ),
-    ).version;
-    expect(version('tsc')).toBe(`Version ${typescript}`);
-    expect(version('tsc-ts')).toBe(`Version ${typescript}`);
-  });
+  // Where tsc-ts has no build, an explicit selection fails for that reason
+  // rather than for version drift.
+  test.skipIf(!TSC_TS_HAS_BUILD)(
+    'installed tsc-ts implements the installed TypeScript version',
+    () => {
+      // tsc-ts ports one TypeScript release; a bump of either package alone
+      // would leave local checks on a different checker than hosted CI.
+      const version = (compiler: string) =>
+        spawnSync(
+          process.execPath,
+          [
+            join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+            `--compiler=${compiler}`,
+            '--version',
+          ],
+          { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+        ).stdout.trim();
+      const typescript = JSON.parse(
+        readFileSync(
+          join(REPO_ROOT, 'node_modules', 'typescript', 'package.json'),
+          'utf8',
+        ),
+      ).version;
+      expect(version('tsc')).toBe(`Version ${typescript}`);
+      expect(version('tsc-ts')).toBe(`Version ${typescript}`);
+    },
+  );
 
   // The runner copy loads owned-process (and its Windows helpers) only on
-  // Windows; the guardrail scratch-repo tests cover that wiring.
-  test.skipIf(process.platform === 'win32')(
+  // Windows; the guardrail scratch-repo tests cover that wiring. With another
+  // local default there is no tsc-ts fallback to prove.
+  test.skipIf(
+    process.platform === 'win32' || DEFAULT_COMPILERS.local !== 'tsc-ts',
+  )(
     'without tsc-ts installed, the default falls back silently and an explicit choice fails',
     () => {
       const root = tempDir('tc-no-tsc-ts-');

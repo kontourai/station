@@ -24,6 +24,9 @@ updates:
           - "@vitest/*"
           - "@playwright/*"
           - "typescript"
+          # tsc-ts ports one TypeScript release; a test fails when the two
+          # differ, so they must bump in the same PR.
+          - "tsc-ts"
           - "tsx"
       observability:
         patterns:
