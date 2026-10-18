@@ -16,6 +16,8 @@ export type AttachmentStagingCapability =
   | {
       state: 'supported';
       version: typeof ATTACHMENT_STAGING_PROTOCOL_VERSION;
+      /** Current-host delegation can materialize staged files in its workspace. */
+      delegationFiles?: true;
       maxConcurrentUploads: typeof ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS;
     }
   | { state: 'legacy' }

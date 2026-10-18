@@ -118,6 +118,10 @@ import {
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
 import {
+  type DelegationStagedFiles,
+  materializeDelegationFiles,
+} from '../services/orchestration/delegation-files.js';
+import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
 } from '../services/orchestration/dispatch-cwd-admission.js';
@@ -391,6 +395,8 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Server-only current-host staging authority, composed by the authenticated route. */
+  stagedFiles?: DelegationStagedFiles;
   prompt: string;
   target: ExecutionTarget;
   sessionId?: string;
@@ -5185,6 +5191,16 @@ export async function delegateTask(
     throw new Error(
       'Task room invocation admission requires the current Task Project.',
     );
+  if (
+    input.stagedFiles &&
+    (input.target.environment.kind !== 'current' ||
+      input.delegationAttemptId ||
+      input.taskRoomInvocationAdmission ||
+      input.sessionId)
+  )
+    throw new Error(
+      'Delegation files require a new current-host task without an attempt id or Task room request.',
+    );
   const readAuthority = readAuthorityForInput(input);
   // #2875: a prepared intent IS a portable intent with a version
   // requirement — every portable rule below (admission, no-onward-hop, SSH
@@ -5217,6 +5233,15 @@ export async function delegateTask(
     remote,
     orchestrationService,
   );
+  if (
+    input.stagedFiles &&
+    (selectedTarget.kind !== 'current' ||
+      selectedTarget.relayEnvironmentId ||
+      !orchestrationService)
+  )
+    throw new Error(
+      'Current-host delegation files cannot be forwarded to another Station.',
+    );
   if (portableIntent && selectedTarget.kind !== 'current') {
     // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
     // peer must execute on THIS verified receiver or refuse — a caller
@@ -5828,6 +5853,25 @@ export async function delegateTask(
         );
       }
     }
+    const fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
+    let delegatePrompt = input.prompt;
+    if (input.stagedFiles) {
+      if (!resolvedCwd)
+        throw new Error(
+          'Delegation files require a resolved workspace directory.',
+        );
+      if (
+        resolved.workspace?.kind === 'project' &&
+        resolved.workspace.workspaceIsolation.mode !== 'shared'
+      )
+        throw new Error(
+          'Delegation files require a shared workspace; worktree provisioning is not supported by this delegation path.',
+        );
+      const attachments = input.stagedFiles.resolve(fileBinding);
+      input.dispatchCwdAdmission?.recheck(resolvedCwd, 'session');
+      const paths = await materializeDelegationFiles(resolvedCwd, attachments);
+      delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${paths.map((path) => JSON.stringify(path)).join('\n')}`;
+    }
     const session = await orchestrationService.readSession(
       sessionId,
       readAuthority,
@@ -6052,7 +6096,7 @@ export async function delegateTask(
         type: 'sendTurn',
         input: {
           threadId: sessionId,
-          input: input.prompt,
+          input: delegatePrompt,
           // See the foreground sendTurn: the Agent's declared model is a
           // start-time selection, not a per-turn override.
           ...(input.target.model?.override
@@ -6060,6 +6104,9 @@ export async function delegateTask(
             : {}),
           ...(resolved.modelOptions
             ? { modelOptions: { ...resolved.modelOptions } }
+            : {}),
+          ...(input.stagedFiles
+            ? { clientTurnId: fileBinding.clientTurnId }
             : {}),
           ...(attemptClaim
             ? { clientTurnId: attemptClaim.initialClientTurnId }
@@ -6096,6 +6143,7 @@ export async function delegateTask(
           : {}),
       },
     );
+    input.stagedFiles?.accept(fileBinding);
     // The dispatch returning means the turn was durably accepted by the
     // adapter (the dedup-hit path returns the SAME already-accepted turn
     // rather than executing again). Record that flag before the claim

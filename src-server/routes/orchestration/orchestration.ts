@@ -130,6 +130,7 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type { DelegationStagedFiles } from '../../services/orchestration/delegation-files.js';
 import type {
   DelegationResultCanceller,
   DelegationResultDelivery,
@@ -721,7 +722,40 @@ const agentDelegationContextSchema = z.object({
   denyApprovals: z.boolean().optional(),
 });
 
+const stagedAttachmentReferencesSchema = z
+  .array(
+    z.object({
+      stageId: z.string().min(1).max(128),
+      clientAttachmentId: z.string().min(1).max(128),
+      source: z.literal('current-composer'),
+      kind: z.enum(['image', 'file']),
+      name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
+      mimeType: z.enum([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/json',
+        'application/pdf',
+        'text/csv',
+        'text/markdown',
+        'text/plain',
+      ]),
+      size: z.number().int(),
+      digest: z
+        .string()
+        .max(71)
+        .regex(/^sha256-[0-9a-f]{64}$/),
+      expiresAt: z.string().max(40).datetime(),
+    }),
+  )
+  .max(CHAT_ATTACHMENT_MAX_COUNT)
+  .optional();
+
 export const delegateTaskSchema = z.object({
+  attachmentRefs: stagedAttachmentReferencesSchema,
+  // Inline bytes are not a delegation transport; never silently discard them.
+  attachments: z.never().optional(),
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
@@ -821,35 +855,7 @@ export const foregroundMessageObjectSchema = z.object({
       }
     })
     .optional(),
-  attachmentRefs: z
-    .array(
-      z.object({
-        stageId: z.string().min(1).max(128),
-        clientAttachmentId: z.string().min(1).max(128),
-        source: z.literal('current-composer'),
-        kind: z.enum(['image', 'file']),
-        name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
-        mimeType: z.enum([
-          'image/gif',
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-          'application/json',
-          'application/pdf',
-          'text/csv',
-          'text/markdown',
-          'text/plain',
-        ]),
-        size: z.number().int(),
-        digest: z
-          .string()
-          .max(71)
-          .regex(/^sha256-[0-9a-f]{64}$/),
-        expiresAt: z.string().max(40).datetime(),
-      }),
-    )
-    .max(CHAT_ATTACHMENT_MAX_COUNT)
-    .optional(),
+  attachmentRefs: stagedAttachmentReferencesSchema,
   clientTurnId: z.string().min(1).max(200).optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
@@ -1112,6 +1118,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  stagedFiles?: DelegationStagedFiles;
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
@@ -3529,6 +3536,27 @@ export function createOrchestrationRoutes(
       if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      const references = body.attachmentRefs;
+      if (
+        references?.length &&
+        (!principal ||
+          !deps.hydrateStagedAttachments ||
+          !deps.acceptStagedAttachments ||
+          body.target.environment.kind !== 'current' ||
+          body.attemptId ||
+          body.taskRoomRequest)
+      )
+        throw new Error(
+          'Delegation files require a resolved principal and a new current-host task without an attempt id or Task room request.',
+        );
+      const stagedFiles: DelegationStagedFiles | undefined = references?.length
+        ? {
+            resolve: (binding) =>
+              deps.hydrateStagedAttachments!(principal!, references, binding),
+            accept: (binding) =>
+              deps.acceptStagedAttachments!(principal!, references, binding),
+          }
+        : undefined;
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
       // #484 controller/receiver split: this route NEVER mints the
       // receiver admission itself — minting here, before `delegateTask`
@@ -3617,6 +3645,7 @@ export function createOrchestrationRoutes(
       ) =>
         delegate({
           ...request,
+          ...(stagedFiles ? { stagedFiles } : {}),
           ...(contextSnapshot
             ? {
                 prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,

@@ -97,6 +97,10 @@ import {
   requirePositional,
 } from './core-api.js';
 import {
+  loadDelegateAttachments,
+  stageDelegateAttachments,
+} from './delegate-attachments.js';
+import {
   type DelegateWaitResult,
   formatDurationMs,
   formatWaitOutcomeLine,
@@ -808,11 +812,23 @@ async function runDelegateCreate(
   // station#979: usage error before any request, same as every other flag
   // check above.
   const onRequest = resolveOnRequestMode(parsed);
+  const attach = optionalValueFlag(parsed, 'attach');
+  if (attach && (environment.kind !== 'current' || prepared))
+    throw new Error(
+      '--attach requires a new current-host delegation without prepared execution.',
+    );
+  const attachments = attach
+    ? await loadDelegateAttachments(parsed.repeatedFlags.attach ?? [attach])
+    : undefined;
 
   let data: DelegatedTaskHandle;
   try {
+    const attachmentRefs = attachments
+      ? await stageDelegateAttachments(apiBase, attachments)
+      : undefined;
     data = await delegateTask(apiBase, {
       prompt,
+      ...(attachmentRefs ? { attachmentRefs } : {}),
       target: {
         environment,
         agent: agentId(agent),
@@ -1262,6 +1278,8 @@ export async function runDelegateCommand(
   const hasCreateTarget = Boolean(optionalValueFlag(parsed, 'agent'));
   const conversationId = optionalValueFlag(parsed, 'session');
   if (conversationId) {
+    if (parsed.flags.attach !== undefined)
+      throw new Error('--attach is create-only.');
     if (
       PREPARED_DELEGATION_FLAGS.some((name) => parsed.flags[name] !== undefined)
     ) {
@@ -1294,6 +1312,9 @@ export async function runDelegateCommand(
   ) {
     throw new Error('Prepared delegation flags are create-only.');
   }
+
+  if (action && parsed.flags.attach !== undefined)
+    throw new Error('--attach is create-only.');
 
   switch (action) {
     case 'attempt':

@@ -1,3 +1,4 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 /**
  * Canonical delegation fetchers (#977 Wave 2), inside the #167 DRY client
@@ -53,6 +54,7 @@ import type {
 } from '@kontourai/station-contracts/execution-target';
 import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import { envelopeError, type StationHttpError } from './api-error-message';
+import { getAttachmentStagingCapability } from './attachment-staging';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
 import { rethrowDeadline } from './request-deadline';
@@ -178,6 +180,8 @@ export interface DelegateTaskInput {
    * are server-produced handle fields, never caller-selected routing input.
    */
   prompt: string;
+  /** Current-host staged files; refused on hosts without delegationFiles support. */
+  attachmentRefs?: StagedAttachmentReference[];
   target: ExecutionTarget;
   parentTaskId?: string;
   /**
@@ -200,6 +204,7 @@ function delegationRequestProjection(
 ): DelegateTaskInput {
   return {
     prompt: input.prompt,
+    ...(input.attachmentRefs ? { attachmentRefs: input.attachmentRefs } : {}),
     target: input.target,
     ...(input.parentTaskId === undefined
       ? {}
@@ -287,11 +292,19 @@ export async function delegateTask(
   input: DelegateTaskInput,
   opts?: ClientRequestOptions,
 ): Promise<DelegatedTaskHandle> {
+  const request = input.attachmentRefs?.length
+    ? structuredClone(delegationRequestProjection(input))
+    : delegationRequestProjection(input);
+  if (request.attachmentRefs?.length) {
+    const capability = await getAttachmentStagingCapability(apiBase, opts);
+    if (capability.state !== 'supported' || capability.delegationFiles !== true)
+      throw new Error('This Station does not support delegation files.');
+  }
   const response = await mutateJson(
     `${apiBase}/api/orchestration/delegations`,
     'POST',
     opts,
-    delegationRequestProjection(input),
+    request,
   );
   return normalizeDelegationIdentity(
     await unwrapDelegationResponse<DelegatedTaskHandle>(response),

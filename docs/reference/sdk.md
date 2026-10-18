@@ -1104,6 +1104,20 @@ Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
 offers — paired-Station selections.
 
+### `delegateTask(apiBase, input, options?)` with files
+
+The canonical client accepts optional `attachmentRefs` from
+`prepareAttachmentStage` and `uploadAttachmentStage`. It checks that the
+selected host advertises `delegationFiles: true` on its attachment-staging
+capability before posting references, so an older host cannot silently strip
+them. References carry metadata and digest, never upload grants or local paths.
+The authenticated route binds them to server-owned task/turn identities and
+writes validated bytes into a fresh directory inside the resolved workspace.
+This supports new current-host tasks with a shared workspace only; no
+saved-Environment forwarding,
+prepared attempt or Task room request. File limits and cleanup are described in
+the [CLI delegate reference](cli.md#delegate).
+
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
 Dispatches one delegated task. The mutation variable is backwards
