@@ -1,0 +1,7 @@
+{
+  "revision": "f38ba2b2ebf76ed81a4ec2eda8cb2e696403e789",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Rechecked the receiver README after its final paragraph wrapping. The /48 contributor, secondary suppression, erasure, cache, restart and k-1 padding operating limits still match this deployment guide; no semantic receiver change followed the prior review.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]}
+  ]
+}
