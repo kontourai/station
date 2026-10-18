@@ -23,12 +23,12 @@
             <a href="https://github.com/kontourai/station/blob/main/docs/user/concepts.md">Edit on GitHub</a>
           </aside>
           <article class="docs-content">
-            <h1>Station Concepts</h1>
+            <h1 id="station-concepts">Station Concepts</h1>
 <p>Station uses a small set of user-facing concepts. Transport names, process details, and internal record shapes stay out of the way unless setup or diagnosis requires them.</p>
-<h2>Start with a computer, AI, and a conversation</h2>
+<h2 id="start-with-a-computer-ai-and-a-conversation">Start with a computer, AI, and a conversation</h2>
 <p>Your computer runs Station and your AI apps. Choose an AI and send a message. A phone connects to that computer to use the same conversations and files.</p>
 <p>Add a <strong>Project</strong> when you want to work in a folder or share context. Save a custom <strong>Agent</strong> when you want reusable instructions and tools. Choose <strong>Run a task…</strong> when you want tracked work you can return to. These choices can wait until you need them; starting a chat does not require creating each one.</p>
-<h2>Station And Device</h2>
+<h2 id="station-and-device">Station And Device</h2>
 <ul>
 <li>A <strong>Station</strong> is the host you connect to and work on.
 </li>
@@ -37,7 +37,7 @@
 <li>Pairing grants a device scoped, revocable access to a Station.
 </li>
 </ul>
-<h2>Agents, Engines, And Model Connections</h2>
+<h2 id="agents-engines-and-model-connections">Agents, Engines, And Model Connections</h2>
 <ul>
 <li>An <strong>agent</strong> is the working identity you choose for a Task or Session.
 </li>
@@ -64,7 +64,7 @@
 </li>
 </ul>
 <p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.md">Connections guide</a> for the current supported model services and engines and their setup details.</p>
-<h2>Projects, Tasks, And Sessions</h2>
+<h2 id="projects-tasks-and-sessions">Projects, Tasks, And Sessions</h2>
 <ul>
 <li>A <strong>Project</strong> supplies the working context and available agents.
 </li>
@@ -79,7 +79,7 @@
 </ul>
 <p>Example: “Explain this function” can be a direct chat. “Refactor this module, run its gates, and preserve the evidence” should be a Task. A Task can retain one Session across several turns and use another for a later attempt.</p>
 <p>When a conversation status/history read or an inbox read fails, retained conversation rows say <strong>Last known:</strong> before their computed status. The status uses a muted style without a pulsing indicator or running clock. The transcript's background-work indicator also says <strong>Last known</strong>. Each reader keeps its own failure until that reader succeeds; loading older history does not clear a failed current-history read. A live update past the failed observation’s sequence within the same stream epoch supersedes that failure individually: it verifies current status, even if the older read fails after that update. The sequence is captured when the read starts. A stream epoch change (such as replacing the orchestration database) resets sequence fences and retires pending old-epoch reads. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its reader recovers. Hiding and showing a row preserves its last-known status. Observations are released when the conversation is absent from the loaded inventory and no row or reader references it, or its authority query cache is cleared. A released reader cannot recreate an observation when its pending read settles. Other conversations and Stations retain their own observations. Use <strong>Resync</strong> on the conversation or <strong>Refresh inbox</strong> to request fresh observations.</p>
-<h2>Gates, Evidence, And Receipts</h2>
+<h2 id="gates-evidence-and-receipts">Gates, Evidence, And Receipts</h2>
 <ul>
 <li>A <strong>gate</strong> decides whether work may advance.
 </li>
@@ -99,9 +99,9 @@
 </li>
 </ul>
 <p>Example: interactive terminal panes need the <code>node-pty</code> native module, which requires a C++ compiler to build on Linux. On a machine without one, Station installs and runs with the terminal capability degraded: <code>station doctor</code> prints a warn line with the rebuild command, the system status readiness record reports <code>terminal</code> as not ready with the same reason, and opening a terminal pane states why it cannot open. Agent execution does not use <code>node-pty</code> and is unaffected.</p>
-<h2>Local-First Data</h2>
+<h2 id="local-first-data">Local-First Data</h2>
 <p>Station stores its data under <code>~/.station</code> by default. Model services, Engines, paired devices, remote computers and other configured integrations can exchange data outside that directory. Some make startup or background requests; desktop builds also contact their release feed. Observability export requires a configured endpoint. See the repository's <a href="https://github.com/kontourai/station/blob/main/docs/privacy-policy.md">data-flow working copy</a> for the distinction between declared settings and verified behavior.</p>
-<h2>Next</h2>
+<h2 id="next">Next</h2>
 <ul>
 <li>Follow <a href="getting-started.html">Getting started</a>.
 </li>

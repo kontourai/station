@@ -23,14 +23,14 @@
             <a href="https://github.com/kontourai/station/blob/main/docs/user/native-recovery.md">Edit on GitHub</a>
           </aside>
           <article class="docs-content">
-            <h1>Recover a desktop start</h1>
+            <h1 id="recover-a-desktop-start">Recover a desktop start</h1>
 <p>This guide is for a packaged Station desktop app that stays hidden while it starts, says <strong>Station is taking longer than usual to start</strong>, or opens but then cannot reach its local service. It describes the recovery behavior implemented in the desktop host; it is not evidence that every platform's packaged app has been exercised. Contributor and operator procedures are in the repository's <a href="https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md">native shell verification guide</a>.</p>
-<h2>What a normal packaged start does</h2>
+<h2 id="what-a-normal-packaged-start-does">What a normal packaged start does</h2>
 <p>Stable, Beta, and Nightly configure their main desktop window to start hidden. For a Desktop-owned sidecar, the native host proves its exact generation, instance ID, boot ID, and local API base. Revealing application content also requires the main renderer to have mounted. The native shell starts the identity proof; the renderer separately reports that it mounted. An old ticket cannot reveal a newer sidecar.</p>
 <p>If an installed service owns the home, or Desktop owns no sidecar, the host can instead reveal the mounted connection/recovery surface. That does not establish that a backend is reachable or ready. On macOS, an activation request can make a native startup cover visible while readiness is pending. It shows the app icon and <strong>Starting Station</strong>, and it does not expose application content.</p>
 <p>This avoids showing a usable-looking window before its protected local surface is ready. The original native-startup work is recorded in <a href="https://github.com/kontourai/station-archive/issues/3808">archive#3808</a>.</p>
 <p>The short Station intro is separate from native readiness. If it has already started visibly, a ready app finishes the name reveal and fades into the workspace. It does not wait for a loading-animation cycle. Fast starts can skip an unseen intro; reduced motion and recovery screens do not wait for it. Bringing an existing window back or changing Stations does not replay the intro.</p>
-<h2>When the window does not appear</h2>
+<h2 id="when-the-window-does-not-appear">When the window does not appear</h2>
 <p>A cold start can take longer than 30 seconds on a slow or busy computer. If readiness has not completed after a 30-second startup epoch, Station keeps starting and offers a choice once for that epoch:</p>
 <ul>
 <li>On macOS, the startup cover changes to <strong>Station is taking longer than usual to start.</strong> with <strong>Restart</strong> and <strong>Quit</strong> buttons. Return selects <strong>Restart</strong>; with keyboard navigation turned on, Tab moves between the two buttons and Space presses the focused one. Escape does nothing. While the cover is shown, typing and editing shortcuts are ignored; the Quit, Close, Hide and Minimize shortcuts still work, including on non-Latin keyboard layouts (where they use the key positions of a US keyboard). Closing the window only hides it: Station keeps starting, and the window comes back when you open Station again (Dock, launching it, or the tray). If Station was launched in the background (tray-only), this message appears when you open the window. If the cover cannot be shown, the dialog described next appears instead; it can stay open after the window appears, and its buttons are then ignored.
@@ -51,7 +51,7 @@
 </ul>
 <p>If the message reappears after a restart, stop restarting blindly and collect the bounded diagnostics below. A data-home schema error containing <code>STATION_HOME_RESET_REQUIRED</code> is deliberately fail-closed: restart attempts do not repair it. Follow the exact <code>station home reset</code> conditions only after you have a backup and have selected the intended home.</p>
 <p>Some home or schema refusals occur before the supervisor starts. They show a separate <strong>Exit</strong>-only dialog and start no backend. Repeatedly launching the app does not repair the refused home.</p>
-<h2>Check the local diagnosis</h2>
+<h2 id="check-the-local-diagnosis">Check the local diagnosis</h2>
 <p>From the Station checkout or installed command, run:</p>
 <pre><code>
 station doctor
@@ -64,10 +64,10 @@ station service status --json
 <tr><td>Installed service log</td><td><code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.out.log</code> and <code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.err.log</code></td><td><code>journalctl --user -u station-&lt;instance&gt;.service</code> (no service log file)</td><td><code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.log</code></td></tr></tbody></table></div>
 <p>Choose the app identifier for your installed channel (Stable, Beta, or Nightly) from the <a href="https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md">channel log path table in the repository guide</a>.</p>
 <p>The desktop shell honors <code>STATION_DESKTOP_LOG_LEVEL</code> set before launch: <code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>, or <code>off</code>. Its file rotation is configured for up to five archived files plus the active log, with a 5 MiB rotation threshold. This is not a hard file-size or total-size cap: an oversized log entry can exceed the threshold. If the shell log directory is unwritable, the host falls back to stdout. The server logging configuration is maintained with the installed app. Logs can contain local data or secrets; redact them before sharing.</p>
-<h2>Second launches and the tray</h2>
+<h2 id="second-launches-and-the-tray">Second launches and the tray</h2>
 <p>An interactive second desktop launch, a reviewed deep link, and the macOS reopen event ask the existing app to activate its main window. A background or tray-only launch can suppress activation. While readiness is pending, content reveal is deferred; macOS may show the native startup cover described above. Once ready, the same reveal authority focuses the window.</p>
 <p>The tray is a different surface: it reports the currently selected local backend. For an installed service it can offer service actions; for a Desktop-owned sidecar it labels the built-in service and does not use service controls. Neither a tray click nor a second launch proves that startup readiness completed.</p>
-<h2>Evidence limits and open platform work</h2>
+<h2 id="evidence-limits-and-open-platform-work">Evidence limits and open platform work</h2>
 <p>The source and focused tests cover state transitions and browser-renderer logic. There is also a separate Tauri-WebView hostile-plugin harness. Its existence is not a successful run: browser tests, source checks and an available native harness must not be presented as packaged or physical-device evidence.</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Behavior</th><th>Current evidence</th><th>Status</th></tr></thead><tbody><tr><td>Hidden release window, exact ticket, slow-start recovery, late reveal, restart, and activation deferral</td><td>Source configuration and pure Rust/UI test coverage associated with archive#3808</td><td><strong>NOT_VERIFIED</strong> on packaged macOS, Windows, and Linux shells</td></tr>
 <tr><td>Hostile plugin IPC denial in a real Tauri WebView</td><td>Separate browser and real-WebView harnesses exist; the native lane was not run for this documentation review</td><td><strong>NOT_VERIFIED</strong> here; historical gap recorded in <a href="https://github.com/kontourai/station-archive/issues/2495">archive#2495</a></td></tr>
