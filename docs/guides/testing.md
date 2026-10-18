@@ -1372,7 +1372,7 @@ and replays stored errors for unchanged files.
 | Name | Compiler | Notes |
 | --- | --- | --- |
 | `tsc` | TypeScript 7.0.2 | The reference compiler. |
-| `tsc-ts` | [tsc-ts](https://github.com/vercel-labs/tsc-ts), an experimental TypeScript 7.0.2 port | Same flags, diagnostics and incremental build info as `tsc`, with faster cold and edit-after-change checks. |
+| `tsc-ts` | [tsc-ts](https://github.com/vercel-labs/tsc-ts), an experimental TypeScript 7.0.2 port | Same flags and incremental mode as `tsc`, with faster cold and edit-after-change checks. Diagnostics matched `tsc` on Station's projects but are not guaranteed to (for example, `--target es5` reports differently). |
 | `bun` | Bun's checker | Cold project checks only; see below. |
 
 The `DEFAULT_COMPILERS` constant in that file sets the default: currently
@@ -1389,7 +1389,9 @@ An explicit choice that cannot run fails. A default that cannot run here
 (tsc-ts has no build for the platform or is not installed, or Bun does not
 accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
 own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
-authoritative and report the difference upstream.
+authoritative and report the difference upstream. A test fails when the
+installed `tsc-ts` and `typescript` report different versions, so update them
+together.
 
 #### Optional Bun diagnostics
 

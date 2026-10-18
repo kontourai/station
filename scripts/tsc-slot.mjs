@@ -27,7 +27,14 @@
  *    projects never share one.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { availableParallelism } from 'node:os';
 import {
@@ -53,8 +60,8 @@ const COMPILER_ENV = 'STATION_TYPECHECK_COMPILER';
 
 /**
  * - `tsc`: TypeScript 7, the reference compiler.
- * - `tsc-ts`: an experimental TypeScript 7 port; same flags and diagnostics,
- *   faster cold checks.
+ * - `tsc-ts`: an experimental TypeScript 7 port with the same flags and faster
+ *   cold checks. Diagnostics are expected to match; `tsc` is authoritative.
  * - `bun`: Bun's cold, non-incremental checker (see `bunCompiler`).
  */
 export const COMPILERS = Object.freeze(['tsc', 'tsc-ts', 'bun']);
@@ -270,7 +277,13 @@ async function tscTsCompiler() {
   const compiler = toNamespacedPath(
     join(dirname(platformPackage), 'lib', executableName()),
   );
-  if (!existsSync(compiler)) throw new Error(`Compiler not found: ${compiler}`);
+  // Missing or not executable (an install that dropped the mode bit) counts
+  // as unavailable here, before a slot is taken, rather than failing execve.
+  try {
+    accessSync(compiler, constants.X_OK);
+  } catch {
+    throw new Error(`Compiler not found or not executable: ${compiler}`);
+  }
   return compiler;
 }
 

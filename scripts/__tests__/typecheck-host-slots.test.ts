@@ -856,6 +856,108 @@ describe('tsc-slot runner', () => {
     expect(runSelected([], {}).lib).toContain(expected);
   });
 
+  test('installed tsc-ts implements the installed TypeScript version', () => {
+    // tsc-ts ports one TypeScript release; a bump of either package alone
+    // would leave local checks on a different checker than hosted CI.
+    const version = (compiler: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+          `--compiler=${compiler}`,
+          '--version',
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+      ).stdout.trim();
+    const typescript = JSON.parse(
+      readFileSync(
+        join(REPO_ROOT, 'node_modules', 'typescript', 'package.json'),
+        'utf8',
+      ),
+    ).version;
+    expect(version('tsc')).toBe(`Version ${typescript}`);
+    expect(version('tsc-ts')).toBe(`Version ${typescript}`);
+  });
+
+  // The runner copy loads owned-process (and its Windows helpers) only on
+  // Windows; the guardrail scratch-repo tests cover that wiring.
+  test.skipIf(process.platform === 'win32')(
+    'without tsc-ts installed, the default falls back silently and an explicit choice fails',
+    () => {
+      const root = tempDir('tc-no-tsc-ts-');
+      for (const file of [
+        'scripts/tsc-slot.mjs',
+        'scripts/lib/bounded-capture.mjs',
+        'scripts/lib/module-entry.mjs',
+        'scripts/lib/typecheck-host-slots.mjs',
+        'packages/shared/src/process-identity.mjs',
+        'packages/shared/src/windows-system-utility.mjs',
+      ]) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), readFileSync(join(REPO_ROOT, file)));
+      }
+      writeFileSync(join(root, 'package.json'), '{"private":true}\n');
+      mkdirSync(join(root, 'node_modules'));
+      symlinkSync(
+        join(REPO_ROOT, 'node_modules', 'typescript'),
+        join(root, 'node_modules', 'typescript'),
+        'dir',
+      );
+      const project = join(root, 'project');
+      mkdirSync(project);
+      writeFileSync(
+        join(project, 'tsconfig.json'),
+        JSON.stringify({ compilerOptions: { types: [] }, files: ['bad.ts'] }),
+      );
+      writeFileSync(
+        join(project, 'bad.ts'),
+        'export const bad: string = 42;\n',
+      );
+      const run = (args: string[]) =>
+        spawnSync(
+          process.execPath,
+          [
+            join(root, 'scripts', 'tsc-slot.mjs'),
+            ...args,
+            '-p',
+            'tsconfig.json',
+            '--noEmit',
+            '--pretty',
+            'false',
+          ],
+          {
+            cwd: project,
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 60_000,
+            env: {
+              ...process.env,
+              CI: '',
+              STATION_TYPECHECK_COMPILER: '',
+              STATION_TSBUILDINFO_DIR: join(root, 'cache'),
+              STATION_TYPECHECK_SLOT_DIR: tempDir('tc-no-tsc-ts-slots-'),
+            },
+          },
+        );
+
+      const fallback = run([]);
+      expect(fallback.stdout).toContain('bad.ts(1,14): error TS2322');
+      expect(fallback.status).toBe(1);
+      // The coverage gate reads runner stderr as diagnostics.
+      expect(fallback.stderr).toBe('');
+      expect(readdirSync(join(root, 'cache'))).toEqual([
+        'project__tsconfig.json.tsbuildinfo',
+      ]);
+
+      const explicit = run(['--compiler=tsc-ts']);
+      expect(explicit.status).toBe(1);
+      expect(explicit.stdout).toBe('');
+      expect(explicit.stderr).toContain(
+        "Cannot find module 'tsc-ts/package.json'",
+      );
+    },
+  );
+
   test('leaves caller-chosen incremental settings, non-compile modes and the opt-out alone', () => {
     for (const args of [
       ['-p', 'x.json', '--incremental'],
