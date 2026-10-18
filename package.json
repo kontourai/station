@@ -388,7 +388,7 @@
     "chokidar": "^5.0.0",
     "debug": "^4.4.3",
     "dompurify": "^3.4.16",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.8",
     "google-auth-library": "^11.1.0",
     "hono": "^4.13.13",
     "idb-keyval": "^6.3.0",
