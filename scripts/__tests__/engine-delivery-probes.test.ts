@@ -746,6 +746,10 @@ describe('engine delivery probes', () => {
       result.rows.find((row) => row.scenario === 'delivery')?.turns.at(-1)
         ?.checks?.toolServerUsed,
     ).toBe('fail');
+    expect(
+      result.rows.find((row) => row.scenario === 'delivery')?.delivery
+        ?.disabledTool.probe,
+    ).toBe('pass');
   });
   it.each(['blocked-rejected', 'no-tool-list', 'advertised-blocked'] as const)(
     'does not confuse attempted blocking with a breach: %s',

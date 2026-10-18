@@ -554,7 +554,7 @@ export const scenarios = [
               ctx.delivery,
               'disabledTool',
               checks,
-              ['toolServerUsed', 'disabledTool'],
+              ['disabledTool'],
               turnId,
             );
           return checks;

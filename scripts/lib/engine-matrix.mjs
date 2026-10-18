@@ -580,7 +580,7 @@ async function runMatrixWithLifecycle(
             artifactContent,
             evaluate,
           ) {
-            if (expectedText === null && !evaluate)
+            if (expectedText === null && typeof evaluate !== 'function')
               throw new Error('A null expected response requires an evaluator');
             // Recheck isolation before every billable turn, including switches.
             const current = await api('/api/connections/agents');
