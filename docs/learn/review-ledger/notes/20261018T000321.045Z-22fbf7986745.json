@@ -1,0 +1,13 @@
+{
+  "revision": "d4fc71a33886500eb80dfcff62f56a740cccf096",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the ui-tools endpoint type correction: the raw catalog is unknown[], so projection now validates originalName is a string before emitting it. Valid App definitions and the open-only, no-spawn policy are unchanged; malformed entries are omitted. Existing definition-membership documentation remains accurate. The real service/route suite passed 64 tests and the focused server-tests typecheck passed; no new provider/device qualification.","inputs":["docs/design/mcp-ui-host.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the ui-tools endpoint type correction: the raw catalog is unknown[], so projection now validates originalName is a string before emitting it. Valid App definitions and the open-only, no-spawn policy are unchanged; malformed entries are omitted. Existing definition-membership documentation remains accurate. The real service/route suite passed 64 tests and the focused server-tests typecheck passed; no new provider/device qualification.","inputs":["docs/guides/plugins.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the ui-tools endpoint type correction: the raw catalog is unknown[], so projection now validates originalName is a string before emitting it. Valid App definitions and the open-only, no-spawn policy are unchanged; malformed entries are omitted. Existing definition-membership documentation remains accurate. The real service/route suite passed 64 tests and the focused server-tests typecheck passed; no new provider/device qualification.","inputs":["docs/reference/api.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the ui-tools endpoint type correction: the raw catalog is unknown[], so projection now validates originalName is a string before emitting it. Valid App definitions and the open-only, no-spawn policy are unchanged; malformed entries are omitted. Existing definition-membership documentation remains accurate. The real service/route suite passed 64 tests and the focused server-tests typecheck passed; no new provider/device qualification.","inputs":["examples/mcp-ui-demo/README.md","src-server/routes/agents/tools.ts"]}
+  ]
+}
