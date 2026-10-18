@@ -307,24 +307,53 @@ checking its path and body locally. Run it on the same host/filesystem as Statio
 a remote-only client cannot perform this step.
 
 The script lives at the API-returned skill package directory plus
-`scripts/probe.mjs`. Claude's workspace materializer may also copy it into
-`<cwd>/.claude/skills/<skill-id>/scripts/probe.mjs`. Its nonce is absent from
-`SKILL.md` and the prompt, but an engine with filesystem access can still find
-and read that script without loading the skill. A hidden filename or an obscure
-package directory does not establish a delivery boundary. The nonce and output
-therefore remain raw script-access/output observations: **skill delivery is
-unverified even when both pass**, with an explicit `skillDelivery` check and
-reason in the report. A skill-exclusive invocation path or an independently
-observed load receipt is required to prove that stronger claim; this diagnostic
-does not add such a path. Codex and ACP currently declare skills unsupported,
-so they receive only the MCP turn.
+`scripts/probe.mjs`. Claude may materialize it under
+`<cwd>/.claude/skills/<skill-id>/scripts/probe.mjs`. Finding this file is not skill
+invocation. The skill verdict additionally requires the exact turn's recorded
+`Skill` tool call with `arguments.skill` equal to the probe's unique name and a
+matching successful `tool.completed` event. The answer nonce **or** the script's
+file in stored outputs must also be observed. A `Read` of that script without
+`Skill` fails. Missing invocation records or a missing engine-specific shape
+remain unverified, with their reason. A failed invocation cannot pass merely
+because the script was read separately.
+
+The per-engine table is intentionally small:
+
+| Engine | Adopted invocation shape | Fixture basis / limit |
+| --- | --- | --- |
+| Claude | SDK assistant `tool_use` named `Skill`, `input.skill`; mapped to `tool.started` with the same name/input, then a successful completion for that call ID | [Skill capture](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl), lines 2–4; [Read-only counterexample](../../src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl), lines 2–3; [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts) |
+| Station (`station-agent`) | None adopted; unverified | No captured invocation shape in this provider corpus. `activate_skill` exists in [SkillService](../../src-server/services/agents/skill-service.ts); that declaration is not an invocation receipt. |
+| Codex | None adopted; unverified | [Recorded collaboration stream](../../src-server/providers/__tests__/fixtures/codex-0.155.1-collab-v1-spawn-wait-completed.jsonl) supplies no adopted skill form; [mapper](../../src-server/providers/adapters/codex-adapter-events.ts). Skills are currently declared unsupported. |
+| ACP | None adopted; unverified | No raw skill-invocation capture; [mapper](../../src-server/providers/adapters/acp-adapter-events.ts). Do not guess from a CLI-specific tool title. Skills are currently declared unsupported. |
+| Muse | None adopted; unverified | [Recorded Bash stream](../../src-server/providers/__tests__/fixtures/muse-1.3-bash-tool-turn.jsonl) supplies no adopted skill form; [adapter](../../src-server/providers/adapters/muse-adapter.ts). Skills are currently declared unsupported. |
+
+The new Claude fixtures are real **CLI tool-execution** captures, driven by
+loopback fixture inference rather than a real model. Claude Code 2.1.296 / Agent
+SDK 0.3.300 advertises the input schema; the local provider requests the call,
+the CLI loads the skill or reads the file, and both captures end successfully.
+They prove the emitted protocol shape and mapper behavior, not live-model
+adherence or behavior on every CLI version. The [capture metadata](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json)
+records provenance and redactions. Usage/cost fields are CLI estimates over
+fixture token counts, not provider billing evidence. The manual, non-billable
+[capture helper](../../scripts/fixtures/capture-skill-delivery.mjs) uses only a
+loopback endpoint, fixture credentials and an isolated CLI config:
+
+```sh
+node scripts/fixtures/capture-skill-delivery.mjs skill /absolute/path/to/claude
+node scripts/fixtures/capture-skill-delivery.mjs read /absolute/path/to/claude
+```
+
+Those commands write raw local artifacts under `.kontourai/skill-captures/`;
+inspect and scrub them before committing. Normal tests replay checked-in
+captures through the real mapper; they do not start the CLI or call a model.
 
 The MCP verdict uses exact, server-qualified names in `tool.started` events,
 never assistant prose. Missing identity provenance cannot verify a delivery
 cell. A declared delivery without a passing probe renders **unverified** in a
 separate delivery table. The overall scenario still requires the existing UI
 output observer and a passing skill-delivery check where claimed for a pass.
-A passing stored-output delivery probe does not establish rendering. The separate `nativeToolPolicy` delivery cell preserves
+A passing stored-output delivery probe does not establish rendering. The separate
+`nativeToolPolicy` delivery cell preserves
 the capability matrix's declaration but always renders **unverified**, including
 when MCP selection passes. This probe observes neither native tool disables
 nor the pre-tool blocking/grant chain. External adapters also lack a native
@@ -345,3 +374,45 @@ including alongside a skipped dependency. Session receipts and declared workspac
 outputs remain for inspection; remove the disposable instance/workspace after
 review. Provider loading, real Station lifecycle, native-tool policy enforcement,
 and rendered outputs are **NOT_VERIFIED** by the deterministic fixture suite.
+
+### Delivery API route audit
+
+The mounted route owners are `runtime-routes.ts:3135` (`/agents`), `:3167`
+(`/api/skills`) and `:3828` (`/integrations`). Setup requires an operator
+credential with authority to author command-backed integrations; the integration
+management middleware and command-choice gate are not bypassed by a probe.
+`validate()` parses JSON and applies the named schema
+(`src-server/routes/schemas/schema-validation.ts:67`). GET/DELETE leaves use
+`param()` (`:114`) plus the named service's ownership/existence checks; they have
+no body schema. The probe sends no PUT requests.
+
+| Probe request | Real route owner | Validation / submitted body |
+| --- | --- | --- |
+| `POST /integrations` | `src-server/routes/agents/tools.ts:422` | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts:212`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
+| `POST /integrations/:id/reconnect` | `src-server/routes/agents/tools.ts:894` | No body schema; `{}` is ignored. `probeIntegration` performs the real handshake and persists inventory. |
+| `GET /integrations` | `src-server/routes/agents/tools.ts:342` | No body; discovered original tool names are projected by the real route. |
+| `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:291`; `{ disabledTools: ['blocked'] }`. |
+| `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:290`; `{ enabled: true }`. |
+| `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description and `global: true`. |
+| `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
+| `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`; name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
+| `DELETE /agents/:slug` | `src-server/routes/agents/agents.ts:557` | Required slug; service refuses reserved identities or referenced Agents. |
+| `DELETE /api/skills/:name` | `src-server/routes/agents/skills.ts:324` | Required name; service requires a writable, owned package. |
+| `DELETE /integrations/:id` | `src-server/routes/agents/tools.ts:869` | Required ID; built-ins and contributed definitions cannot be deleted. Removing the integration also removes its stored disable policy. |
+
+The [real-route lifecycle suite](../../scripts/__tests__/engine-delivery-routes.test.ts)
+mounts these actual Hono route factories with real ConfigLoader, SkillService,
+MCPService, AgentService and file persistence in a temporary home. It runs the
+actual scenario setup and registered cleanup, including lost acknowledgement
+after Agent persistence, probes the local MCP process, checks persisted skill /
+policy / Agent state, then checks that all three DELETEs removed their resources.
+Only authenticated-principal binding and runtime Agent activation are test
+composition; no LLM adapter starts. The verdict suite's setup stubs now use the
+real mutation schemas and exact route/method patterns instead of accepting any
+`/integrations/*` operation.
+
+The base runner's start/send transport is a separate known integration gap at
+#3828 round 2: its internal start/send commands are not admitted by the real
+public command schema. The setup/cleanup proof above makes no live-turn claim.
+A further base merge must use the real public start/send routes and requalify
+that boundary before live matrix execution is claimed.

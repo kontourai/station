@@ -3,11 +3,28 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ENGINE_CAPABILITY_MATRICES } from '../../packages/contracts/src/engine-capability-matrix.js';
+import type { CanonicalRuntimeEvent } from '../../packages/contracts/src/runtime-events.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  type ClaudeMessageState,
+  mapClaudeSdkMessage,
+} from '../../src-server/providers/adapters/claude-adapter-events.js';
+import { recordClaudeTurnDispatched } from '../../src-server/providers/adapters/claude-sdk-turns.js';
+import {
+  agentCreateSchema,
+  localSkillCreateSchema,
+} from '../../src-server/routes/schemas/schema-definitions/content.js';
+import {
+  integrationEnabledSchema,
+  integrationSchema,
+  integrationToolsApplySchema,
+} from '../../src-server/routes/schemas/schema-definitions/runtime.js';
+import { assertSafeSkillName } from '../../src-server/services/agents/skill-metadata.js';
 import {
   checkDisabledTool,
   DISABLED_TOOL_IDS,
@@ -46,8 +63,54 @@ async function toolInventory() {
   return names;
 }
 
+async function skillCaptureEvents(
+  readOnly: boolean,
+  skillId: string,
+): Promise<CanonicalRuntimeEvent[]> {
+  const name = readOnly
+    ? 'claude-2.1.296-script-read-local.jsonl'
+    : 'claude-2.1.296-skill-invocation-local.jsonl';
+  const raw = await readFile(
+    new URL(
+      `../../src-server/providers/__tests__/fixtures/${name}`,
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  // Parameterize only the probe identifier; keep the captured tool envelope/input keys.
+  const messages: SDKMessage[] = raw
+    .replaceAll('delivery-fixture', skillId)
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  const record: ClaudeMessageState = {
+    session: {
+      provider: 'claude',
+      threadId: 'fixture-session',
+      status: 'running',
+      createdAt: '2026-10-18T00:00:00Z',
+      updatedAt: '2026-10-18T00:00:00Z',
+    },
+    lastSessionState: 'running',
+  };
+  recordClaudeTurnDispatched(record, 'fixture-turn');
+  const events: CanonicalRuntimeEvent[] = [];
+  for (const message of messages)
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      message,
+      publish: (event) => events.push(event),
+    });
+  return events.filter((event) => event.method.startsWith('tool.'));
+}
+
 type Fault =
   | 'nonce'
+  | 'read-only'
+  | 'failed-skill'
+  | 'no-invocation'
+  | 'no-script-proof'
   | 'artifact'
   | 'prose-only'
   | 'blocked'
@@ -91,6 +154,7 @@ async function exercise(
       model: string;
       sessionId: string;
       artifactContent?: string;
+      events?: CanonicalRuntimeEvent[];
     }
   >();
   let skillId = '';
@@ -104,7 +168,10 @@ async function exercise(
     method = body ? 'POST' : 'GET',
   ): Promise<{ data: unknown }> => {
     requests.push({ path, body, method });
-    if (method === 'DELETE') {
+    if (
+      method === 'DELETE' &&
+      /^\/(?:agents|api\/skills|integrations)\/[^/]+$/.test(path)
+    ) {
       if (fault === 'cleanup' && path.startsWith('/agents/'))
         throw new Error('agent delete refused');
       return { data: {} };
@@ -134,14 +201,14 @@ async function exercise(
           .map(([threadId]) => ({ threadId, isLoaded: true })),
       };
     if (path === '/integrations' && method === 'POST') {
-      serverId = (body as { id: string }).id;
+      serverId = integrationSchema.parse(body).id;
       return { data: {} };
     }
-    if (path.endsWith('/reconnect'))
+    if (/^\/integrations\/[^/]+\/reconnect$/.test(path) && method === 'POST')
       return {
         data: { probe: { ok: fault !== 'unreachable', error: 'offline' } },
       };
-    if (path === '/integrations')
+    if (path === '/integrations' && method === 'GET')
       return {
         data: [
           {
@@ -152,18 +219,36 @@ async function exercise(
           },
         ],
       };
-    if (path.startsWith('/integrations/')) return { data: {} };
-    if (path === '/api/skills/local') {
-      const skill = body as { name: string; body: string };
+    if (
+      /^\/integrations\/[^/]+\/tools\/apply$/.test(path) &&
+      method === 'POST'
+    ) {
+      integrationToolsApplySchema.parse(body);
+      return { data: {} };
+    }
+    if (/^\/integrations\/[^/]+\/enabled$/.test(path) && method === 'POST') {
+      integrationEnabledSchema.parse(body);
+      return { data: {} };
+    }
+    if (path === '/api/skills/local' && method === 'POST') {
+      const skill = localSkillCreateSchema.parse(body);
+      assertSafeSkillName(skill.name);
       skillId = skill.name;
       skillBody = skill.body;
       await mkdir(join(root, skillId));
       await writeFile(join(root, skillId, 'SKILL.md'), skill.body);
       return { data: {} };
     }
-    if (path.startsWith('/api/skills/'))
+    if (/^\/api\/skills\/[^/]+$/.test(path) && method === 'GET')
       return { data: { path: join(root, skillId) } };
-    if (path === '/agents') {
+    if (path === '/agents' && method === 'POST') {
+      const agent = agentCreateSchema.parse(body);
+      if (
+        agent.skills !== undefined &&
+        (!Array.isArray(agent.skills) ||
+          agent.skills.some((name) => name !== skillId))
+      )
+        throw new Error('Unknown skills');
       if (fault === 'prepare')
         throw new Error('agent create acknowledgement lost');
       return { data: {} };
@@ -201,6 +286,7 @@ async function exercise(
       let text = 'STATION_SMOKE_OK';
       let outputs: string[] = [];
       let calls: string[] = [];
+      let captured: CanonicalRuntimeEvent[] = [];
       if (prompt.startsWith('Remember this secret'))
         session.secret = prompt.split(': ')[1].split('.')[0];
       else if (prompt.startsWith('Reply with exactly the secret'))
@@ -214,7 +300,10 @@ async function exercise(
           timeout: 5000,
         });
         scriptRan = true;
-        text = fault === 'nonce' ? 'script completed' : result.stdout.trim();
+        text =
+          fault === 'nonce' || fault === 'no-script-proof'
+            ? 'script completed'
+            : result.stdout.trim();
         const artifact = skillBody.match(/writes (delivery-\w+\.txt)/)?.[1];
         expect(artifact).toBeDefined();
         expect(await readFile(join(root, artifact ?? ''), 'utf8')).toBe(
@@ -228,7 +317,18 @@ async function exercise(
             ),
           ),
         ).not.toContain(result.stdout.trim());
-        outputs = fault === 'artifact' ? [] : [artifact ?? ''];
+        outputs =
+          fault === 'artifact' || fault === 'no-script-proof'
+            ? []
+            : [artifact ?? ''];
+        if (engine === 'claude' && fault !== 'no-invocation')
+          captured = await skillCaptureEvents(fault === 'read-only', skillId);
+        if (fault === 'failed-skill')
+          captured = captured.map((event) =>
+            event.method === 'tool.completed'
+              ? { ...event, status: 'error' }
+              : event,
+          );
         if (fault === 'prior-ping') calls = [`mcp__${serverId}__ping`];
         if (fault === 'blocked-in-skill') calls = [`mcp__${serverId}__blocked`];
       } else if (prompt.startsWith('Call ping')) {
@@ -250,6 +350,7 @@ async function exercise(
         calls,
         model: input.modelId,
         sessionId: input.threadId,
+        events: captured,
         artifactContent:
           /containing exactly (STATION_MATRIX_ARTIFACT:[\w-]+)/.exec(
             prompt,
@@ -278,6 +379,7 @@ async function exercise(
       return {
         data: relevant.flatMap(([turnId, turn]) => [
           { method: 'turn.completed', turnId },
+          ...(turn.events?.map((event) => ({ ...event, turnId })) ?? []),
           ...turn.calls.map((toolName) => ({
             method: 'tool.started',
             turnId,
@@ -350,30 +452,30 @@ describe('engine delivery probes', () => {
     }
   });
 
-  it.each(['claude', 'codex', 'acp'])(
+  it.each(['claude', 'codex', 'acp', 'station-agent'])(
     'registers once per %s engine across two advertised models and requests cleanup',
     async (engine) => {
       const { result, requests, scriptRan } = await exercise(undefined, engine);
       const rows = result.rows.filter((row) => row.scenario === 'delivery');
       expect(rows).toHaveLength(1);
       expect(rows[0].delivery?.toolServers.probe).toBe('pass');
-      expect(scriptRan).toBe(engine === 'claude');
-      expect(rows[0].turns).toHaveLength(engine === 'claude' ? 2 : 1);
+      const hasSkill = ['claude', 'station-agent'].includes(engine);
+      expect(scriptRan).toBe(hasSkill);
+      expect(rows[0].turns).toHaveLength(hasSkill ? 2 : 1);
       if (engine === 'claude') {
         expect(rows[0].delivery?.script.probe).toBe('pass');
         expect(rows[0].turns[0].checks).toMatchObject({
-          skillNonce: 'pass',
-          scriptOutput: 'pass',
-          skillDelivery: 'unverified',
+          scriptExecuted: 'pass',
+          skillDelivery: 'pass',
         });
-        expect(rows[0].delivery?.skills.probe).toBe('unverified');
+        expect(rows[0].delivery?.skills.probe).toBe('pass');
         expect(renderMatrix(result)).toContain(
-          '| claude | skills | session | unverified |',
+          '| claude | skills | session | pass |',
         );
       }
       expect(rows[0].delivery?.nativeToolPolicy.probe).toBe('unverified');
       expect(renderMatrix(result)).toContain(
-        `| ${engine} | nativeToolPolicy | ${ENGINE_CAPABILITY_MATRICES[engine].toolPolicy.state} | unverified |`,
+        `| ${engine} | nativeToolPolicy | ${ENGINE_CAPABILITY_MATRICES[engine === 'station-agent' ? 'station' : engine].toolPolicy.state} | unverified |`,
       );
       expect(result.plan).toMatchObject({
         builtInTurns: 12,
@@ -388,16 +490,44 @@ describe('engine delivery probes', () => {
           },
         ],
       });
-      expect(result.sentTurns).toBe(engine === 'claude' ? 14 : 13);
-      expect(rows[0].status).toBe('unverified'); // UI and skill-loading proof are absent.
+      expect(result.sentTurns).toBe(hasSkill ? 14 : 13);
+      if (engine !== 'claude') {
+        expect(rows[0].delivery?.skills.probe).toBe('unverified');
+        expect(rows[0].delivery?.skills.reason).toContain(
+          'No captured skill-invocation shape',
+        );
+      }
+      expect(rows[0].status).toBe('unverified'); // No UI observer was supplied.
       expect(
         requests.filter((request) => request.method === 'DELETE'),
-      ).toHaveLength(engine === 'claude' ? 3 : 2);
+      ).toHaveLength(hasSkill ? 3 : 2);
       expect(
         requests.some((request) => request.path.endsWith('/tools/apply')),
       ).toBe(engine !== 'acp');
     },
   );
+
+  it.each(['nonce', 'artifact'] as const)(
+    'accepts skill invocation with the remaining independent script proof when %s is absent',
+    async (fault) => {
+      const { result } = await exercise(fault);
+      const row = result.rows.find((row) => row.scenario === 'delivery');
+      expect(row?.delivery?.skills.probe).toBe('pass');
+      expect(row?.turns[0].checks).toMatchObject({
+        skillDelivery: 'pass',
+        scriptExecuted: 'pass',
+      });
+    },
+  );
+
+  it('keeps a missing invocation record unverified rather than treating script access as skill delivery', async () => {
+    const { result } = await exercise('no-invocation');
+    const row = result.rows.find((row) => row.scenario === 'delivery');
+    expect(row?.delivery?.skills).toMatchObject({
+      probe: 'unverified',
+      reason: 'No skill-invocation event recorded in this turn',
+    });
+  });
 
   it('forwards every cleanup DELETE through the matrix wrapper to the API transport', async () => {
     const { requests } = await exercise();
@@ -415,8 +545,9 @@ describe('engine delivery probes', () => {
   });
 
   it.each([
-    ['nonce', 'skillNonce'],
-    ['artifact', 'scriptOutput'],
+    ['no-script-proof', 'scriptExecuted'],
+    ['read-only', 'skillDelivery'],
+    ['failed-skill', 'skillDelivery'],
     ['prose-only', 'toolServerUsed'],
     ['blocked', 'disabledTool'],
     ['blocked-in-skill', 'disabledTool'],

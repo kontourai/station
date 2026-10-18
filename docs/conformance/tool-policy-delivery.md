@@ -215,9 +215,11 @@ it cannot reduce the selected Agent profile to fit the engine. See
 
 The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
 register with the live matrix runner. They use a temporary API-created Agent,
-skill and MCP integration. A script-only nonce and its declared output observe script access/output;
-skill delivery stays unverified because an engine can discover the co-located
-script without loading the skill; a follow-up `tool.started` record tests MCP use. A known
+skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
+script nonce or declared output tests skill delivery. A Read-only path fails;
+an absent invocation shape stays unverified. The Claude shape comes from real
+CLI tool execution with loopback fixture inference, not a billable/live model
+capture. A follow-up `tool.started` record tests MCP use. A known
 fixture action is disabled through Station's integration policy and checked
 against the same run's discovered tool inventory before absence can count as
 success. A recorded call to the fixture's enabled action is also required.

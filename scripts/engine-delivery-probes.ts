@@ -11,7 +11,14 @@ type Api = (
   body?: unknown,
   method?: string,
 ) => Promise<{ data?: unknown }>;
-type Event = { method: string; toolName?: string; turnId?: string };
+type Event = {
+  method: string;
+  toolName?: string;
+  turnId?: string;
+  toolCallId?: string;
+  arguments?: unknown;
+  status?: string;
+};
 type Evidence = {
   declared: string;
   probe?: Verdict;
@@ -62,6 +69,117 @@ export const DISABLED_TOOL_IDS = {
   claude: 'blocked',
   codex: 'blocked',
 } as const;
+
+type SkillInvocationShape = {
+  toolName: string;
+  skillArgument: string;
+  readToolName: string;
+  readPathArgument: string;
+  fixture: string;
+  readFixture: string;
+  mapper: string;
+};
+
+// Captured CLI tool execution with loopback fixture inference, not live-model proof.
+const SKILL_INVOCATION_SHAPES: Record<string, SkillInvocationShape | null> = {
+  claude: {
+    toolName: 'Skill',
+    skillArgument: 'skill',
+    readToolName: 'Read',
+    readPathArgument: 'file_path',
+    fixture:
+      'src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl',
+    readFixture:
+      'src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl',
+    mapper: 'src-server/providers/adapters/claude-adapter-events.ts',
+  },
+  'station-agent': null,
+  codex: null,
+  acp: null,
+  muse: null,
+};
+
+function argument(event: Event, key: string): unknown {
+  const input = event.arguments;
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? Reflect.get(input, key)
+    : undefined;
+}
+
+function checkSkillInvocation(
+  engine: string,
+  skillId: string,
+  events: Event[],
+  scriptObserved: boolean,
+): { verdict: Verdict; reason: string } {
+  const shape = SKILL_INVOCATION_SHAPES[engine];
+  if (!shape)
+    return {
+      verdict: 'unverified',
+      reason: `No captured skill-invocation shape for ${engine}`,
+    };
+  const invoked = events.filter(
+    (event) =>
+      event.method === 'tool.started' &&
+      event.toolName === shape.toolName &&
+      argument(event, shape.skillArgument) === skillId,
+  );
+  if (!invoked.length) {
+    const read = events.some((event) => {
+      const path = argument(event, shape.readPathArgument);
+      return (
+        event.method === 'tool.started' &&
+        event.toolName === shape.readToolName &&
+        typeof path === 'string' &&
+        path.replaceAll('\\', '/').endsWith(`/${skillId}/scripts/probe.mjs`)
+      );
+    });
+    if (read)
+      return {
+        verdict: 'fail',
+        reason: 'Probe script was read without a skill invocation',
+      };
+    return {
+      verdict: 'unverified',
+      reason: 'No skill-invocation event recorded in this turn',
+    };
+  }
+  const failed = invoked.some(
+    (call) =>
+      call.toolCallId &&
+      events.some(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === call.toolCallId &&
+          ['error', 'cancelled', 'unresolved'].includes(event.status ?? ''),
+      ),
+  );
+  if (failed) return { verdict: 'fail', reason: 'Skill invocation failed' };
+  const completed = invoked.some(
+    (call) =>
+      call.toolCallId &&
+      events.some(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === call.toolCallId &&
+          event.status === 'success',
+      ),
+  );
+  if (!completed)
+    return {
+      verdict: 'unverified',
+      reason: 'Skill invocation completion was not observed',
+    };
+  return scriptObserved
+    ? {
+        verdict: 'pass',
+        reason: 'Recorded skill invocation and script nonce or output observed',
+      }
+    : {
+        verdict: 'fail',
+        reason: 'Skill invoked without a script nonce or output',
+      };
+}
 
 function disabledId(engine: string): string | undefined {
   return Object.entries(DISABLED_TOOL_IDS).find(([id]) => id === engine)?.[1];
@@ -146,8 +264,10 @@ export const scenarios = [
       const policy = disabledId(ctx.engine) !== undefined;
       ctx.delivery.skills = {
         declared: matrix.skills.state,
-        reason:
-          'Co-located script access cannot establish that the engine loaded the skill',
+        probe: 'unverified',
+        reason: SKILL_INVOCATION_SHAPES[ctx.engine]
+          ? 'No skill-invocation event observed yet'
+          : `No captured skill-invocation shape for ${ctx.engine}`,
       };
       ctx.delivery.script = { declared: matrix.skills.state };
       ctx.delivery.toolServers = { declared: matrix.toolServers.state };
@@ -309,28 +429,23 @@ export const scenarios = [
           undefined,
           ({ text, storedOutputs, events, identityChecks, turnId }) => {
             allCalls.push(...callsIn(events));
+            const nonceObserved = text.includes(state.nonce);
+            const outputObserved = storedOutputs.includes(state.artifact);
+            const invocation = checkSkillInvocation(
+              ctx.engine,
+              state.skillId,
+              events,
+              nonceObserved || outputObserved,
+            );
             const checks: Record<string, Verdict> = {
               deliveryIdentity: identityVerdict(identityChecks),
-              skillDelivery: 'unverified',
-              skillNonce: text.includes(state.nonce) ? 'pass' : 'fail',
-              scriptOutput: storedOutputs.includes(state.artifact)
-                ? 'pass'
-                : 'fail',
+              skillDelivery: invocation.verdict,
+              scriptExecuted: nonceObserved || outputObserved ? 'pass' : 'fail',
             };
-            record(
-              ctx.delivery,
-              'skills',
-              checks,
-              ['skillNonce', 'skillDelivery'],
-              turnId,
-            );
-            record(
-              ctx.delivery,
-              'script',
-              checks,
-              ['skillNonce', 'scriptOutput'],
-              turnId,
-            );
+            ctx.delivery.skills.reason = invocation.reason;
+            ctx.delivery.script.reason = `Answer nonce ${nonceObserved ? 'observed' : 'absent'}; declared script output ${outputObserved ? 'observed' : 'absent'}`;
+            record(ctx.delivery, 'skills', checks, ['skillDelivery'], turnId);
+            record(ctx.delivery, 'script', checks, ['scriptExecuted'], turnId);
             return checks;
           },
         );
