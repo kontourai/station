@@ -50,7 +50,9 @@ A drain captures the initial committed outbox high-water position and applies
 that finite window across pages, leaving concurrent later appends for the next
 call. `listOutbox` returns `throughPosition`; later page requests retain it.
 Its ready view requires a settled run and every required outbox disposition
-applied and acknowledged. It returns only completed tapes in request order.
+applied and acknowledged. It returns only completed tapes in request order, requiring each tape to match
+its owning pin/attempt, exact completed outbox and applied sink body, native
+tape header and retained partial prefix. Request IDs remain scoped to a run.
 It is a response projection, with no editable conversation/history API. No
 unresolved row is evicted. Defaults are 128 open runs, 1024 calls/run, 32 MiB
 per body/request/response, 16 MiB committed partials/attempt, 7-day settled

@@ -691,8 +691,23 @@ export function openSqliteRuntimeProjection(options: {
               return { kind: 'unavailable' };
           }
         const tapes: BodyRef[] = [];
-        for (const pin of run.pins)
-          for (const a of pin.attempts) {
+        let previous: string | null = null;
+        for (const [ordinal, pin] of run.pins.entries()) {
+          if (
+            pin.pin.ordinal !== ordinal ||
+            pin.pin.entryDigest !== run.spec.entry.body.digest ||
+            pin.pin.previousResponseDigest !== previous ||
+            pin.pin.request.codec !== 'runtime-ai-sdk-v3-request/1'
+          )
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          readBody(database, policy, pin.pin.request);
+          let completed: string | null = null;
+          for (const [number, a] of pin.attempts.entries()) {
+            if (
+              a.attempt.requestId !== pin.pin.requestId ||
+              a.attempt.number !== number + 1
+            )
+              throw new RuntimeError('DURABLE_RECORD_DAMAGED');
             const identity = {
               key,
               requestId: a.attempt.requestId,
@@ -710,17 +725,70 @@ export function openSqliteRuntimeProjection(options: {
                 return { kind: 'unavailable' };
             } else if (a.state === 'completed' && a.tape) {
               const id = projectionId({ ...identity, kind: 'completed' });
+              const committed = state.outbox.get(id);
+              const expected = {
+                ...identity,
+                id,
+                kind: 'completed',
+                body: a.tape,
+              };
+              const applied = database
+                .prepare(
+                  'SELECT record FROM agent_runtime_projection WHERE id=?',
+                )
+                .get(id);
               if (
-                !state.outbox.has(id) ||
-                !database
-                  .prepare('SELECT id FROM agent_runtime_projection WHERE id=?')
-                  .get(id)
+                !committed?.acknowledged ||
+                !same(committed.projection, expected) ||
+                applied?.record !== canonical(expected)
               )
-                return { kind: 'unavailable' };
-              readBody(database, policy, a.tape);
+                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+              if (
+                a.tape.codec !== 'runtime-ai-sdk-v3-tape/1' ||
+                completed !== null
+              )
+                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+              const tape = readTape(readBody(database, policy, a.tape));
+              if (
+                tape.requestId !== pin.pin.requestId ||
+                tape.requestId !== a.attempt.requestId ||
+                tape.attempt !== a.attempt.number
+              )
+                throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+              for (const [sequence, part] of a.partials.entries()) {
+                if (
+                  part.codec !== 'runtime-ai-sdk-v3-part/1' ||
+                  !tape.parts[sequence] ||
+                  digestBytes(encode(tape.parts[sequence])) !== part.digest
+                )
+                  throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+                readBody(database, policy, part);
+                const partialId = projectionId({
+                  ...identity,
+                  kind: 'partial',
+                  sequence,
+                });
+                const partial = state.outbox.get(partialId);
+                if (
+                  !partial ||
+                  !same(partial.projection, {
+                    ...identity,
+                    id: partialId,
+                    kind: 'partial',
+                    sequence,
+                    body: part,
+                  })
+                )
+                  throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+              }
+              completed = a.tape.digest;
               tapes.push(a.tape);
             } else return { kind: 'unavailable' };
           }
+          if (completed === null && ordinal < run.pins.length - 1)
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          previous = completed;
+        }
         return { kind: 'ready', tapes };
       });
     },

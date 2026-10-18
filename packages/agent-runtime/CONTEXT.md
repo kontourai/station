@@ -47,3 +47,9 @@ current authority/cancellation before held replay release, expired saved full
 answers while projection authority lags, and malformed operation/foreign-tape
 receipt links between real SQLite generations. Public entry bytes are an
 observable copy; current admission and framework construction use private bytes.
+
+`r3-ready.test.ts` owns direct ready-read admission: two real completed SQLite
+runs, distinct or identical per-run request/attempt headers, one foreign tape
+reference substitution, unchanged journal/projection/BLOB authority and exact
+restoration. The owning completed marker/body relation and native header/prefix
+are checked in the same authorized read snapshot before returning ready.
