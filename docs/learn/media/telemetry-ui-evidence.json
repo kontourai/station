@@ -1,0 +1,639 @@
+{
+  "kind": "local-telemetry-ui-qualification",
+  "implementationRevision": "e5b6c519bfcc9a97c2ed44ff997eee596e5cefa4",
+  "baseRevision": "3f889efa11a826710c8bd43f39e1e8920720a350",
+  "gallery": {
+    "schemaVersion": 1,
+    "runId": null,
+    "capturedAt": "2026-10-18T13:51:29.802Z",
+    "expected": 68,
+    "selection": [
+      "telemetry-lite-notice-desktop",
+      "telemetry-lite-notice-mobile",
+      "telemetry-outbox-desktop",
+      "telemetry-outbox-mobile",
+      "telemetry-feedback-desktop",
+      "telemetry-feedback-mobile"
+    ],
+    "screens": [
+      {
+        "file": "telemetry-lite-notice-desktop.png",
+        "ok": true,
+        "name": "telemetry-lite-notice-desktop",
+        "error": null,
+        "sha256": "cf9861608033945fdb9052394c552e6cba4bfc4af8a985b2db60a65076e9b89d",
+        "controls": [
+          {
+            "label": "Turn off Operator telemetry",
+            "disabled": false
+          },
+          {
+            "label": "Dismiss notice",
+            "disabled": false
+          },
+          {
+            "label": "Station home",
+            "disabled": false
+          },
+          {
+            "label": "Home",
+            "disabled": false
+          },
+          {
+            "label": "Activity",
+            "disabled": false
+          },
+          {
+            "label": "New Project",
+            "disabled": false
+          },
+          {
+            "label": "New Board",
+            "disabled": false
+          },
+          {
+            "label": "Who is here: nobody is publishing live work",
+            "disabled": false
+          },
+          {
+            "label": "Schedule",
+            "disabled": false
+          },
+          {
+            "label": "Customize",
+            "disabled": false
+          },
+          {
+            "label": "Settings",
+            "disabled": false
+          },
+          {
+            "label": "Collapse workspace map",
+            "disabled": false
+          },
+          {
+            "label": "Left region",
+            "disabled": false
+          },
+          {
+            "label": "Bottom region",
+            "disabled": false
+          },
+          {
+            "label": "Right region",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "Profile and settings",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Kontour outbox",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Operator outbox",
+            "disabled": false
+          },
+          {
+            "label": "Move the dock",
+            "disabled": false
+          },
+          {
+            "label": "Choose a project",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          },
+          {
+            "label": "Chat settings",
+            "disabled": false
+          },
+          {
+            "label": "Move Chat",
+            "disabled": false
+          },
+          {
+            "label": "Add pane to Bottom",
+            "disabled": false
+          },
+          {
+            "label": "Expand dock region to workspace",
+            "disabled": false
+          },
+          {
+            "label": "Show Chat",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-lite-notice-desktop.png"
+      },
+      {
+        "file": "telemetry-outbox-desktop.png",
+        "ok": true,
+        "name": "telemetry-outbox-desktop",
+        "error": null,
+        "sha256": "1cf1795af1c9a2c9e1f0328bb0e22b5a05362c8547202bfb0d8c203f764b3342",
+        "controls": [
+          {
+            "label": "Station home",
+            "disabled": false
+          },
+          {
+            "label": "Home",
+            "disabled": false
+          },
+          {
+            "label": "Activity",
+            "disabled": false
+          },
+          {
+            "label": "New Project",
+            "disabled": false
+          },
+          {
+            "label": "New Board",
+            "disabled": false
+          },
+          {
+            "label": "Who is here: nobody is publishing live work",
+            "disabled": false
+          },
+          {
+            "label": "Schedule",
+            "disabled": false
+          },
+          {
+            "label": "Customize",
+            "disabled": false
+          },
+          {
+            "label": "Settings",
+            "disabled": false
+          },
+          {
+            "label": "Collapse workspace map",
+            "disabled": false
+          },
+          {
+            "label": "Left region",
+            "disabled": false
+          },
+          {
+            "label": "Bottom region",
+            "disabled": false
+          },
+          {
+            "label": "Right region",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "Profile and settings",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Kontour outbox",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Operator outbox",
+            "disabled": false
+          },
+          {
+            "label": "Move the dock",
+            "disabled": false
+          },
+          {
+            "label": "Choose a project",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          },
+          {
+            "label": "Chat settings",
+            "disabled": false
+          },
+          {
+            "label": "Move Chat",
+            "disabled": false
+          },
+          {
+            "label": "Add pane to Bottom",
+            "disabled": false
+          },
+          {
+            "label": "Expand dock region to workspace",
+            "disabled": false
+          },
+          {
+            "label": "Show Chat",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-outbox-desktop.png"
+      },
+      {
+        "file": "telemetry-feedback-desktop.png",
+        "ok": true,
+        "name": "telemetry-feedback-desktop",
+        "error": null,
+        "sha256": "7d75e099e88010b5560ef4e1d82e4a2ed7feac34da7bdbdb2c22cac1c1cbef57",
+        "controls": [
+          {
+            "label": "Station home",
+            "disabled": false
+          },
+          {
+            "label": "Home",
+            "disabled": false
+          },
+          {
+            "label": "Activity",
+            "disabled": false
+          },
+          {
+            "label": "New Project",
+            "disabled": false
+          },
+          {
+            "label": "New Board",
+            "disabled": false
+          },
+          {
+            "label": "Who is here: nobody is publishing live work",
+            "disabled": false
+          },
+          {
+            "label": "Schedule",
+            "disabled": false
+          },
+          {
+            "label": "Customize",
+            "disabled": false
+          },
+          {
+            "label": "Settings",
+            "disabled": false
+          },
+          {
+            "label": "Collapse workspace map",
+            "disabled": false
+          },
+          {
+            "label": "Left region",
+            "disabled": false
+          },
+          {
+            "label": "Bottom region",
+            "disabled": false
+          },
+          {
+            "label": "Right region",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "Profile and settings",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Kontour outbox",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Operator outbox",
+            "disabled": false
+          },
+          {
+            "label": "Move the dock",
+            "disabled": false
+          },
+          {
+            "label": "Choose a project",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          },
+          {
+            "label": "Chat settings",
+            "disabled": false
+          },
+          {
+            "label": "Move Chat",
+            "disabled": false
+          },
+          {
+            "label": "Add pane to Bottom",
+            "disabled": false
+          },
+          {
+            "label": "Expand dock region to workspace",
+            "disabled": false
+          },
+          {
+            "label": "Show Chat",
+            "disabled": false
+          },
+          {
+            "label": "Close usage telemetry disclosure",
+            "disabled": false
+          },
+          {
+            "label": "Privacy",
+            "disabled": false
+          },
+          {
+            "label": "Too much data",
+            "disabled": false
+          },
+          {
+            "label": "Performance",
+            "disabled": false
+          },
+          {
+            "label": "Not useful",
+            "disabled": false
+          },
+          {
+            "label": "Unexpected",
+            "disabled": false
+          },
+          {
+            "label": "Other",
+            "disabled": false
+          },
+          {
+            "label": "Skip",
+            "disabled": false
+          },
+          {
+            "label": "Not now",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-feedback-desktop.png"
+      },
+      {
+        "file": "telemetry-lite-notice-mobile.png",
+        "ok": true,
+        "name": "telemetry-lite-notice-mobile",
+        "error": null,
+        "sha256": "a276e41cfea29e30e616e86890d86402400d04f276f01e1c5246184989ad304e",
+        "controls": [
+          {
+            "label": "Turn off Operator telemetry",
+            "disabled": false
+          },
+          {
+            "label": "Dismiss notice",
+            "disabled": false
+          },
+          {
+            "label": "Toggle menu",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "More actions",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Kontour outbox",
+            "disabled": false
+          },
+          {
+            "label": "Expand chat",
+            "disabled": false
+          },
+          {
+            "label": "Switch project \u2014 No project",
+            "disabled": false
+          },
+          {
+            "label": "Chats and tasks",
+            "disabled": false
+          },
+          {
+            "label": "Chat actions",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-lite-notice-mobile.png"
+      },
+      {
+        "file": "telemetry-outbox-mobile.png",
+        "ok": true,
+        "name": "telemetry-outbox-mobile",
+        "error": null,
+        "sha256": "499896c91d8711f280ee8dd0084a58ea93bd387e09111aeadf82b4cafcdd0521",
+        "controls": [
+          {
+            "label": "Toggle menu",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "More actions",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Operator outbox",
+            "disabled": false
+          },
+          {
+            "label": "Expand chat",
+            "disabled": false
+          },
+          {
+            "label": "Switch project \u2014 No project",
+            "disabled": false
+          },
+          {
+            "label": "Chats and tasks",
+            "disabled": false
+          },
+          {
+            "label": "Chat actions",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-outbox-mobile.png"
+      },
+      {
+        "file": "telemetry-feedback-mobile.png",
+        "ok": true,
+        "name": "telemetry-feedback-mobile",
+        "error": null,
+        "sha256": "6218cefa287a6543346f97ce172bb1d0b16c1f8a451f6f22440ab57ab7c7d1c4",
+        "controls": [
+          {
+            "label": "Toggle menu",
+            "disabled": false
+          },
+          {
+            "label": "Choose Station \u2014 Connected \u00b7 Station E2E",
+            "disabled": false
+          },
+          {
+            "label": "Notifications (1 need attention)",
+            "disabled": false
+          },
+          {
+            "label": "More actions",
+            "disabled": false
+          },
+          {
+            "label": "Refresh Kontour outbox",
+            "disabled": false
+          },
+          {
+            "label": "Expand chat",
+            "disabled": false
+          },
+          {
+            "label": "Switch project \u2014 No project",
+            "disabled": false
+          },
+          {
+            "label": "Chats and tasks",
+            "disabled": false
+          },
+          {
+            "label": "Chat actions",
+            "disabled": false
+          },
+          {
+            "label": "New chat",
+            "disabled": false
+          },
+          {
+            "label": "Close usage telemetry disclosure",
+            "disabled": false
+          },
+          {
+            "label": "Privacy",
+            "disabled": false
+          },
+          {
+            "label": "Too much data",
+            "disabled": false
+          },
+          {
+            "label": "Performance",
+            "disabled": false
+          },
+          {
+            "label": "Not useful",
+            "disabled": false
+          },
+          {
+            "label": "Unexpected",
+            "disabled": false
+          },
+          {
+            "label": "Other",
+            "disabled": false
+          },
+          {
+            "label": "Skip",
+            "disabled": false
+          },
+          {
+            "label": "Not now",
+            "disabled": false
+          }
+        ],
+        "reviewArtifact": "docs/learn/media/telemetry-ui-feedback-mobile.png"
+      }
+    ]
+  },
+  "galleryCommand": "PLAYWRIGHT_BROWSERS_PATH=/Users/brian/Library/Caches/ms-playwright npm run test:e2e:screenshot -- --screens=telemetry-lite-notice-desktop,telemetry-lite-notice-mobile,telemetry-outbox-desktop,telemetry-outbox-mobile,telemetry-feedback-desktop,telemetry-feedback-mobile",
+  "beforeImages": {
+    "scope": "Diagnostic working-tree captures before dock-clearance repair; no committed source SHA is asserted.",
+    "files": [
+      "telemetry-ui-lite-notice-desktop-before.png",
+      "telemetry-ui-lite-notice-mobile-before.png"
+    ]
+  },
+  "faultInjection": {
+    "baseline": {
+      "revision": "e5b6c519bfcc9a97c2ed44ff997eee596e5cefa4",
+      "command": "npm run test:focused -- src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
+      "testsPassed": 7
+    },
+    "notice": {
+      "initialOutcome": "SURVIVED: one-frame assertion did not cover two-frame dispatch",
+      "qualifiedMutation": "Remove the covering-modal guard from TelemetryLiteNotice",
+      "qualifiedOutcome": "CAUGHT: expected zero /lite-notices POSTs while covered; observed one after two frames"
+    },
+    "feedback": {
+      "mutation": "Remove the DNT guards from disclosure feedback offering/rendering",
+      "outcome": "CAUGHT: Why lower Operator prompt present under DNT"
+    },
+    "outbox": {
+      "initialOutcome": "CAUGHT at missing dropped-count summary, not used as payload-secrecy proof",
+      "qualifiedMutation": "Render dropped payload JSON in addition to retaining its count summary",
+      "qualifiedOutcome": "CAUGHT: rendered text contains dropped-secret"
+    },
+    "restoration": {
+      "testsPassed": 7,
+      "workingTreeClean": true
+    }
+  },
+  "limits": [
+    "Local controlled component/route and browser evidence only",
+    "No native packaged-shell, hosted exact-head CI, real publisher delivery, receiver deployment or release qualification",
+    "Kontour Full UI remains unavailable; registry publisher registration remains another lane"
+  ]
+}
