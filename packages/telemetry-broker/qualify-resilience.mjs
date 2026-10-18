@@ -239,8 +239,8 @@ export async function qualifyResilience(
       locker.off('error', recordLockError);
       locker.release(Boolean(lockConnectionError));
     }
-    if (lockConnectionError) throw lockConnectionError;
   }
+  if (lockConnectionError) throw lockConnectionError;
   const reopened = new store.constructor(pool);
   await reopened.migrate();
   await reopened.lite.finalize();
