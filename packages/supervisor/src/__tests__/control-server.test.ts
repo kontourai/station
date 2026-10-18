@@ -121,7 +121,12 @@ describe('control server private directories', () => {
       await control.listen();
       // The path is deleted and another process binds it.
       rmSync(endpoint.path);
-      const other = createServer((socket) => socket.end('other\n'));
+      const other = createServer((socket) => {
+        // The supervisor's probe connects and disconnects at once; on Linux the
+        // accepted side then sees ECONNRESET, which must not go unhandled.
+        socket.on('error', () => {});
+        socket.end('other\n');
+      });
       await new Promise<void>((resolve) =>
         other.listen(endpoint.path, resolve),
       );
