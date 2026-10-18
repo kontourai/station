@@ -10,7 +10,9 @@
  * claims then read as dead. The start port is the service's own `sendTurn`
  * with the entry's key, which is where the production continuation ends.
  */
+import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -25,6 +27,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
+import { evaluateSessionWait } from '../session-turn-wait.js';
 import { TURN_DEDUP_MAX_ENTRIES } from '../sqlite-turn-dedup-persistence.js';
 import {
   ThreadInboxDelivery,
@@ -50,11 +53,19 @@ const permitted = new Set<string>([OWNER]);
 const devicesAllowed = new Set<string>();
 let sequence = 0;
 
+type OwningTurn = Readonly<{ threadId: string; invocationId?: string }>;
 class CountingAdapter extends GateTestAdapter {
+  readonly entered: OwningTurn[] = [];
   override async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     sends.push(input.input);
+    this.entered.push(
+      Object.freeze({
+        threadId: input.threadId,
+        invocationId: input.invocationId,
+      }),
+    );
     if (nextSend === 'hang') {
       nextSend = 'answer';
       return new Promise(() => {});
@@ -115,6 +126,10 @@ function boot(
           event: stored.payload,
         })),
     headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
+    readInputlessTurnDisposition: (threadId) =>
+      store.readInputlessTurnDisposition(threadId),
+    readInvocationTerminal: (threadId, invocationId, turnId) =>
+      store.readInvocationTerminal(threadId, invocationId, turnId),
     coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
     conversationOf: (threadId) => threadId,
     currentSessionId: (conversationId) => conversationId,
@@ -178,6 +193,7 @@ async function emit(
   world: World,
   method: string,
   fields: Record<string, unknown>,
+  owner?: OwningTurn,
 ) {
   sequence += 1;
   world.adapter.events.push({
@@ -187,6 +203,7 @@ async function emit(
     createdAt: new Date().toISOString(),
     method,
     ...fields,
+    ...(owner === undefined ? {} : { invocationId: owner.invocationId }),
   } as unknown as CanonicalRuntimeEvent);
   await new Promise((resolve) => setTimeout(resolve, 5));
 }
@@ -210,10 +227,19 @@ async function runningFirstTurn(world: World) {
     type: 'sendTurn',
     input: { threadId: THREAD, input: 'read the file', clientTurnId: 'first' },
   });
-  await emit(world, 'turn.started', {
-    turnId: 'turn-1',
-    prompt: 'read the file',
-  });
+  const firstTurn = world.adapter.entered[0];
+  if (!firstTurn?.invocationId)
+    throw new Error('actual initial send context prerequisite');
+  await emit(
+    world,
+    'turn.started',
+    {
+      turnId: 'turn-1',
+      prompt: 'read the file',
+    },
+    firstTurn,
+  );
+  return firstTurn;
 }
 
 const payload: ThreadInboxPayload = {
@@ -245,6 +271,33 @@ async function settle(world: World) {
   await world.inbox.idle();
 }
 
+/** Actual owner images retained before assertions, including failed runs. */
+function recoveryImage(file: string, world: World, original: OwningTurn, stage: string) {
+  const db = new DatabaseSync(file);
+  try {
+    const events = world.store.listEventsByMethods(THREAD, ACTIVE_TURN_FOLD_METHODS)
+      .map((row) => ({ sequence: row.sequence, event: row.payload }));
+    const image = {
+      stage, original,
+      boundary: db.prepare('SELECT * FROM orchestration_turn_boundaries WHERE thread_id=?').all(THREAD),
+      audit: db.prepare('SELECT * FROM orchestration_prepared_turns WHERE thread_id=?').all(THREAD),
+      dedup: db.prepare('SELECT * FROM orchestration_turn_dedup').all(),
+      events,
+      durable: world.store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+      local: world.service.hasActiveTurn(THREAD),
+      wait: evaluateSessionWait({
+        foldEvents: () => events,
+        headSequence: () => world.store.readSessionInventoryHighWater(THREAD),
+        coordinatorBusy: () => world.service.hasActiveTurn(THREAD),
+        readInvocationTerminal: (...args) => world.store.readInvocationTerminal(...args),
+        readInputlessTurnDisposition: (...args) => world.store.readInputlessTurnDisposition(...args),
+      }, THREAD, 'turn-settled', 0),
+    };
+    appendFileSync('/tmp/3566-host-r4-restart-owner-images-20261018.jsonl', `${JSON.stringify(image)}\n`);
+    return image;
+  } finally { db.close(); }
+}
+
 const followUpSends = () => sends.filter((input) => input === FOLLOW_UP);
 
 afterEach(async () => {
@@ -267,7 +320,8 @@ describe('thread inbox (#3568)', () => {
   test('a follow-up queued during a turn, then a restart before its terminal, is sent exactly once', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
+    recoveryImage(file, first, firstTurn, 'distinct:before-crash');
     const queued = queueFollowUp(first);
     expect(queued).toMatchObject({
       outcome: 'queued',
@@ -282,13 +336,16 @@ describe('thread inbox (#3568)', () => {
     // Before the restarted Station reattaches the Session, its log still
     // shows the turn open: recovery leaves the follow-up waiting.
     await second.inbox.reconcile();
+    recoveryImage(file, second, firstTurn, 'distinct:before-disposal');
     expect(followUpSends()).toEqual([]);
     expect(second.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
 
     // Reattaching ends the turn the restart interrupted (`turn.aborted`), and
     // that terminal places the follow-up.
     await startSession(second);
+    recoveryImage(file, second, firstTurn, 'distinct:after-disposal-before-placement');
     await settle(second);
+    recoveryImage(file, second, firstTurn, 'distinct:after-placement');
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     expect(second.inbox.list(THREAD)).toMatchObject([
       { state: 'sent', turnId: expect.any(String), sessionId: THREAD },
@@ -296,7 +353,7 @@ describe('thread inbox (#3568)', () => {
 
     // The interrupted turn's own completion arriving late, the follow-up's
     // turn ending, and another startup send nothing more.
-    await emit(second, 'turn.completed', { turnId: 'turn-1' });
+    await emit(second, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await emit(second, 'turn.started', { turnId: 'turn-follow-up' });
     await emit(second, 'turn.completed', { turnId: 'turn-follow-up' });
     await second.inbox.reconcile();
@@ -313,8 +370,9 @@ describe('thread inbox (#3568)', () => {
   test('the same key submitted twice across a restart is one entry, and is sent once', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     expect(queueFollowUp(first).outcome).toBe('queued');
+    recoveryImage(file, first, firstTurn, 'same-key:before-crash');
     await crash(first);
 
     const second = boot(file);
@@ -330,9 +388,12 @@ describe('thread inbox (#3568)', () => {
       }),
     ).toEqual({ outcome: 'conflict' });
 
+    recoveryImage(file, second, firstTurn, 'same-key:before-disposal');
     await startSession(second);
-    await emit(second, 'turn.completed', { turnId: 'turn-1' });
+    recoveryImage(file, second, firstTurn, 'same-key:after-disposal-before-placement');
+    await emit(second, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(second);
+    recoveryImage(file, second, firstTurn, 'same-key:after-placement');
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     expect(second.inbox.list(THREAD)).toHaveLength(1);
     await crash(second);
@@ -353,8 +414,8 @@ describe('thread inbox (#3568)', () => {
 
   test('a follow-up submitted after its turn already ended is placed at once', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    const firstTurn = await runningFirstTurn(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     queueFollowUp(world);
     await settle(world);
@@ -363,7 +424,7 @@ describe('thread inbox (#3568)', () => {
 
   test('follow-ups go one per turn, in the order they were queued', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'a');
     world.inbox.submit({
       conversationId: THREAD,
@@ -373,12 +434,15 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD).map((entry) => entry.position)).toEqual([
       1, 2,
     ]);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     // The first follow-up started a turn; the second waits for it to end.
     expect(sends.slice(1)).toEqual([FOLLOW_UP]);
-    await emit(world, 'turn.started', { turnId: 'turn-2' });
-    await emit(world, 'turn.completed', { turnId: 'turn-2' });
+    const followUp = world.adapter.entered[1];
+    if (!followUp?.invocationId)
+      throw new Error('actual follow-up request prerequisite');
+    await emit(world, 'turn.started', { turnId: 'turn-2' }, followUp);
+    await emit(world, 'turn.completed', { turnId: 'turn-2' }, followUp);
     await settle(world);
     expect(sends.slice(1)).toEqual([FOLLOW_UP, 'second follow-up']);
   });
@@ -386,8 +450,8 @@ describe('thread inbox (#3568)', () => {
   test('an entry claimed but never handed to the engine before a crash is sent once after recovery', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
-    await emit(first, 'turn.completed', { turnId: 'turn-1' });
+    const firstTurn = await runningFirstTurn(first);
+    await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(first);
     // The crash lands after the placement was recorded, before the start.
     const store = first.store.threadInboxStore();
@@ -411,10 +475,10 @@ describe('thread inbox (#3568)', () => {
   test('an entry the engine accepted before the crash settles sent after it, with no second send', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     first.afterStart.hang = true;
     queueFollowUp(first);
-    await emit(first, 'turn.completed', { turnId: 'turn-1' });
+    await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await new Promise((resolve) => setTimeout(resolve, 20));
     // The engine has it; the process dies before the inbox heard back.
     expect(followUpSends()).toEqual([FOLLOW_UP]);
@@ -432,7 +496,7 @@ describe('thread inbox (#3568)', () => {
   test('an entry handed to the engine with an unknown outcome is surfaced after a restart, never re-sent', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     nextSend = 'hang';
     queueFollowUp(first, 'a');
     first.inbox.submit({
@@ -440,7 +504,7 @@ describe('thread inbox (#3568)', () => {
       clientTurnId: 'b',
       payload: { ...payload, message: 'behind it' },
     });
-    await emit(first, 'turn.completed', { turnId: 'turn-1' });
+    await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await new Promise((resolve) => setTimeout(resolve, 20));
     // The engine call began and never answered.
     expect(followUpSends()).toEqual([FOLLOW_UP]);
@@ -485,14 +549,14 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'a');
     world.inbox.submit({
       conversationId: THREAD,
       clientTurnId: 'b',
       payload: { ...payload, message: 'second follow-up' },
     });
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(world.inbox.list(THREAD)).toMatchObject([
       {
@@ -527,9 +591,9 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
     expect(followUpSends()).toEqual([]);
@@ -543,9 +607,9 @@ describe('thread inbox (#3568)', () => {
   test('a busy flag that outlives the terminal is looked at again, and the follow-up goes', async () => {
     let coordinatorHolds = true;
     const world = boot(path(), { coordinatorBusy: () => coordinatorHolds });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     expect(followUpSends()).toEqual([]);
     // No further event arrives; only the bounded re-check can see this.
     coordinatorHolds = false;
@@ -556,7 +620,7 @@ describe('thread inbox (#3568)', () => {
   test('an entry claimed on a session the conversation has left, but never sent, is sent once', async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     const store = first.store.threadInboxStore();
     store.submit({
       conversationId: THREAD,
@@ -579,10 +643,10 @@ describe('thread inbox (#3568)', () => {
 
   test('a sender who may no longer send to the conversation is refused at placement, and nothing is sent', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
     permitted.delete(OWNER);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(followUpSends()).toEqual([]);
     expect(world.inbox.list(THREAD)).toMatchObject([
@@ -592,7 +656,7 @@ describe('thread inbox (#3568)', () => {
 
   test('a sender placement would refuse is never accepted', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     expect(
       world.inbox.submit({
         conversationId: THREAD,
@@ -605,7 +669,7 @@ describe('thread inbox (#3568)', () => {
 
   test('a device revoked or narrowed after it queued is refused at placement', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     devicesAllowed.add('phone');
     const fromPhone = {
       ...payload,
@@ -623,7 +687,7 @@ describe('thread inbox (#3568)', () => {
       }).outcome,
     ).toBe('queued');
     devicesAllowed.delete('phone');
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(followUpSends()).toEqual([]);
     expect(world.inbox.list(THREAD)).toMatchObject([
@@ -643,7 +707,7 @@ describe('thread inbox (#3568)', () => {
     const READER = 'human:local:reader';
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     permitted.add(READER);
     nextSend = 'hang';
     first.inbox.submit({
@@ -652,7 +716,7 @@ describe('thread inbox (#3568)', () => {
       payload: { message: 'reader note', actor: { userId: READER } },
     });
     queueFollowUp(first, 'owner-1');
-    await emit(first, 'turn.completed', { turnId: 'turn-1' });
+    await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await new Promise((resolve) => setTimeout(resolve, 20));
     await crash(first);
     const second = boot(file);
@@ -699,9 +763,9 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // More refusals than the four-step schedule: the last delay repeats.
     await eventuallyTrue(() => followUpSends().length === 1, 3_000);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
@@ -727,9 +791,9 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(followUpSends()).toEqual([]);
     await emit(world, 'session.state-changed', {
@@ -745,9 +809,9 @@ describe('thread inbox (#3568)', () => {
       placementDeadlineMs: 50,
       start: async () => new Promise(() => {}),
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'a');
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(world.inbox.list(THREAD)).toMatchObject([
       { clientTurnId: 'a', state: 'unconfirmed', reasonCode: 'start_deadline' },
@@ -768,9 +832,9 @@ describe('thread inbox (#3568)', () => {
         return inner.settle(...args);
       },
     }));
-    await runningFirstTurn(flaky);
+    const firstTurn = await runningFirstTurn(flaky);
     queueFollowUp(flaky);
-    await emit(flaky, 'turn.completed', { turnId: 'turn-1' });
+    await emit(flaky, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await eventuallyTrue(
       () => flaky.inbox.list(THREAD)[0]?.state === 'sent',
       3_000,
@@ -802,10 +866,10 @@ describe('thread inbox (#3568)', () => {
         },
       }),
     );
-    await runningFirstTurn(stuck);
+    const firstTurn = await runningFirstTurn(stuck);
     // Queued once the turn has ended, so no busy wait left a re-check
     // pending: only the one the guard schedules can settle it now.
-    await emit(stuck, 'turn.completed', { turnId: 'turn-1' });
+    await emit(stuck, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(stuck);
     queueFollowUp(stuck);
     await eventuallyTrue(
@@ -819,7 +883,7 @@ describe('thread inbox (#3568)', () => {
       conversationOf: (threadId) =>
         threadId === 'later-session' ? THREAD : threadId,
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     world.inbox.submit({
       conversationId: 'later-session',
       clientTurnId: 'via-session',
@@ -833,7 +897,7 @@ describe('thread inbox (#3568)', () => {
 
   test('the lookup answers queued only to the sender, and only while it waits', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
     expect(world.inbox.deliveryOutcome(THREAD, 'follow-up-1', OWNER)).toBe(
       'queued',
@@ -842,7 +906,7 @@ describe('thread inbox (#3568)', () => {
       world.inbox.deliveryOutcome(THREAD, 'follow-up-1', 'human:local:other'),
     ).toBeUndefined();
     expect(world.inbox.mustQueue(THREAD)).toBe(true);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     // Sent: the turn ledger answers for it now.
     expect(
@@ -853,7 +917,7 @@ describe('thread inbox (#3568)', () => {
   test("a store that never opened its inbox still forgets a deleted conversation's entries", async () => {
     const file = path();
     const first = boot(file);
-    await runningFirstTurn(first);
+    const firstTurn = await runningFirstTurn(first);
     queueFollowUp(first);
     await crash(first);
     // A new process deletes the conversation before anything opened the inbox.
@@ -868,7 +932,7 @@ describe('thread inbox (#3568)', () => {
 
   test('a deleted conversation takes its queued follow-ups with it', async () => {
     const world = boot(path());
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
     world.store.deleteThread(THREAD);
     expect(world.inbox.list(THREAD)).toEqual([]);
@@ -876,11 +940,11 @@ describe('thread inbox (#3568)', () => {
 
   test('R2-3a: an entry abandoned at its deadline that the engine did take settles sent at the next drive', async () => {
     const world = boot(path(), { placementDeadlineMs: 50 });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     // The engine takes it, and the answer never reaches the inbox.
     world.afterStart.hang = true;
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // The start never answers, so only the deadline (`unconfirmed`,
     // `start_deadline`) and a later drive reading the ledger can make it
     // `sent`.
@@ -914,9 +978,9 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await eventuallyTrue(
       () => world.inbox.list(THREAD)[0]?.state === 'sent',
       3_000,
@@ -936,9 +1000,9 @@ describe('thread inbox (#3568)', () => {
         });
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     // The terminal's drive, then exactly three timer firings.
     expect(calls).toBe(4);
@@ -957,9 +1021,9 @@ describe('thread inbox (#3568)', () => {
       // have been sent, so it must never be sent again.
       inspectDelivery: () => ({ outcome: 'expired' }),
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(followUpSends()).toEqual([]);
     expect(world.inbox.list(THREAD)).toMatchObject([
@@ -975,9 +1039,9 @@ describe('thread inbox (#3568)', () => {
         });
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(world.inbox.list(THREAD)).toMatchObject([
       {
@@ -1019,9 +1083,9 @@ describe('thread inbox (#3568)', () => {
         }
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // Past the deadline, then drives while the abandoned start is still held.
     // (Without the guard the first of these can re-queue it at once, so the
     // `unconfirmed` state is not waited for here.)
@@ -1052,10 +1116,10 @@ describe('thread inbox (#3568)', () => {
       placementDeadlineMs: 50,
       start: async () => new Promise(() => {}),
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'owner-key');
     expect(world.inbox.heldByOther(THREAD, 'owner-key', READER)).toBe(true);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(world.inbox.list(THREAD, OWNER)).toMatchObject([
       { clientTurnId: 'owner-key', state: 'unconfirmed' },
@@ -1086,9 +1150,9 @@ describe('thread inbox (#3568)', () => {
           throw Object.assign(new Error('workspace detail'), { code });
         },
       });
-      await runningFirstTurn(world);
+      const firstTurn = await runningFirstTurn(world);
       queueFollowUp(world);
-      await emit(world, 'turn.completed', { turnId: 'turn-1' });
+      await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
       await settle(world);
       expect(world.inbox.list(THREAD)).toMatchObject([
         {
@@ -1112,7 +1176,7 @@ describe('thread inbox (#3568)', () => {
         });
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'a');
     // Reaches `expected`, then stays there: nothing more is scheduled.
     const callsSettleAt = async (expected: number) => {
@@ -1121,7 +1185,7 @@ describe('thread inbox (#3568)', () => {
       await world.inbox.idle();
       expect(calls).toBe(expected);
     };
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // The terminal's drive and three firings: the budget is spent.
     await callsSettleAt(4);
     // The same submission again is not a new message: one drive, no firing.
@@ -1142,7 +1206,7 @@ describe('thread inbox (#3568)', () => {
         return deviceId === 'phone';
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     const queuedAt = clock;
     expect(
       world.inbox.submit({
@@ -1159,7 +1223,7 @@ describe('thread inbox (#3568)', () => {
       }).outcome,
     ).toBe('queued');
     clock += 60_000;
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(world);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     // At submit and at placement, both against the time it was queued.
@@ -1184,10 +1248,10 @@ describe('thread inbox (#3568)', () => {
             });
         }),
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'owner-key');
     expect(world.inbox.inFlight(THREAD, 'owner-key')).toBe(false);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // Before its deadline: started, not answered.
     await eventuallyTrue(() => answer !== undefined, 1_000);
     expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
@@ -1230,10 +1294,10 @@ describe('thread inbox (#3568)', () => {
         };
       },
     });
-    await runningFirstTurn(world);
+    const firstTurn = await runningFirstTurn(world);
     queueFollowUp(world, 'a');
     queueFollowUp(world, 'b');
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     // The terminal's drive and the bounded re-checks, all spent.
     await new Promise((resolve) => setTimeout(resolve, 300));
     await world.inbox.idle();
