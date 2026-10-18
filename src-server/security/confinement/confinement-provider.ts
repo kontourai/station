@@ -1,5 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
+  ConfinementFallbackReason,
   ConfinementLevel,
   ConfinementMechanism,
   ConfinementPlan,
@@ -7,6 +8,7 @@ import type {
   ConfinementPosture,
   ConfinementRefusalCode,
   ConfinementWorkspaceAccess,
+  ConfinementWriteGrant,
   ExecutionConfinementRecord,
 } from '@kontourai/station-contracts/execution-confinement';
 import type {
@@ -21,13 +23,32 @@ import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
  * docs/design/approval-posture-server-ordered.md#410-confinement-providers-2494.
  */
 
-/** What a provider is handed: the spawn it confines and what it may reach. */
+/**
+ * What a provider is handed: the spawn it confines and what it may reach.
+ * Every path is absolute and symlink-resolved by whoever builds the spec;
+ * a provider matches paths as given.
+ *
+ * - `writable`: directory trees the process may write (and read).
+ * - `writableFiles`: single files it may write, matched exactly (a branch
+ *   ref, its lock and its log), never as a tree.
+ * - `writeDenied`: trees or files inside a writable grant that stay
+ *   read-only; these win over every grant.
+ * - `hidden`: trees or files the process may not read at all.
+ * - `readable`: trees inside a hidden one that stay readable (the writable
+ *   grants are readable without being listed here).
+ */
 export interface ConfinementSpawnSpec {
   command: string;
   args: readonly string[];
   cwd: string;
   env: Readonly<Record<string, string>>;
-  grants: { writable: readonly string[]; readable: readonly string[] };
+  grants: {
+    writable: readonly string[];
+    readable: readonly string[];
+    writableFiles?: readonly string[];
+    writeDenied?: readonly string[];
+    hidden?: readonly string[];
+  };
   network: 'none' | 'loopback' | 'full';
 }
 
@@ -119,9 +140,9 @@ export class ConfinementRefusedError extends SessionStartRefusedError {
  * `host`, and is recorded honestly as such.
  *
  * `appliedMode` is the mode the engine is given, after
- * `ApprovalPosture.resolve`: an engine without a native sandbox has already
- * had a `workspace` `never` lowered to `auto` there, so it requires nothing
- * here (Claude and ACP are unchanged until a mechanism exists for them).
+ * `ApprovalPosture.resolve`: an engine with no mechanism at all (ACP) has
+ * already had a `workspace` `never` lowered to `auto` there, so it requires
+ * nothing here. Codex and Claude keep `never` and require `os-profile`.
  */
 export function requiredConfinementLevel(
   confinement: StationConfinement,
@@ -185,10 +206,11 @@ function planFor(
  *   mode), so its record says what Codex reported. With none, no mechanism.
  * - Required: the first provider of at least the required level that is
  *   available, can run this workspace isolation, and that this start path
- *   can engage. In this slice that is engine-native providers only; a
- *   spawn-wrapper is refused rather than resolved and silently not applied.
- *   With none, the start is refused (fail closed) and the refusal names the
- *   missing mechanism.
+ *   can engage: an engine-native provider, or a spawn-wrapper that names
+ *   this engine (its adapter is the one that wraps the spawn, as the Claude
+ *   adapter does for Seatbelt). A spawn-wrapper naming no engine is refused
+ *   rather than resolved and silently not applied. With none, the start is
+ *   refused (fail closed) and the refusal names the missing mechanism.
  */
 export function resolveConfinement(
   input: ConfinementResolutionInput,
@@ -231,9 +253,12 @@ export function resolveConfinement(
       );
       continue;
     }
-    if (provider.engagement !== 'engine-native') {
+    if (
+      provider.engagement !== 'engine-native' &&
+      !provider.engines?.includes(input.engine)
+    ) {
       reasons.push(
-        `${provider.mechanism}: no start path applies a spawn-wrapped confinement yet`,
+        `${provider.mechanism}: no start path applies a spawn-wrapped confinement for ${input.engine}`,
       );
       continue;
     }
@@ -281,6 +306,7 @@ export function noMechanismConfinementRecord(
 export function observedConfinementRecord(
   plan: ConfinementPlan,
   observed: ConfinementPosture,
+  writeGrants?: readonly ConfinementWriteGrant[],
 ): ExecutionConfinementRecord {
   const required = plan.requiredLevel !== 'host';
   const posture =
@@ -302,6 +328,27 @@ export function observedConfinementRecord(
     mechanism: plan.mechanism,
     workspaceAccess: plan.workspaceAccess,
     policyBasis: plan.policyBasis,
+    ...(writeGrants ? { writeGrants: [...writeGrants] } : {}),
+  };
+}
+
+/**
+ * #2494: the record of a start whose plan asked for confinement but which
+ * ran with none engaged, at a lower approval mode, for `reason`. Not
+ * required (the mode the engine runs at no longer requires it), and
+ * `no-mechanism`: nothing confines it.
+ */
+export function fallbackConfinementRecord(
+  plan: Pick<ConfinementPlan, 'policyBasis'>,
+  reason: ConfinementFallbackReason,
+): ExecutionConfinementRecord {
+  return {
+    level: 'host',
+    required: false,
+    posture: 'no-mechanism',
+    workspaceAccess: 'mounted',
+    policyBasis: plan.policyBasis,
+    fallback: reason,
   };
 }
 
@@ -323,7 +370,20 @@ const POSTURES = new Set<string>([
   'no-mechanism',
   'configured-but-failed',
 ]);
-const MECHANISMS = new Set<string>(['codex-sandbox']);
+const MECHANISMS = new Set<string>(['codex-sandbox', 'seatbelt']);
+const WRITE_GRANTS = new Set<string>([
+  'workspace',
+  'git-worktree',
+  'git-objects',
+  'git-branch-ref',
+  'station-temp',
+  'station-config',
+]);
+const FALLBACKS = new Set<string>([
+  'confined-credential-unavailable',
+  'config-root-pinned',
+  'resume-bound-elsewhere',
+]);
 
 /** A stored record read back, or `undefined` when it is not one. */
 export function readConfinementRecord(
@@ -343,7 +403,14 @@ export function readConfinementRecord(
       record.policyBasis !== 'workspace-floor') ||
     (record.mechanism !== undefined &&
       (typeof record.mechanism !== 'string' ||
-        !MECHANISMS.has(record.mechanism)))
+        !MECHANISMS.has(record.mechanism))) ||
+    (record.writeGrants !== undefined &&
+      (!Array.isArray(record.writeGrants) ||
+        !record.writeGrants.every(
+          (grant) => typeof grant === 'string' && WRITE_GRANTS.has(grant),
+        ))) ||
+    (record.fallback !== undefined &&
+      (typeof record.fallback !== 'string' || !FALLBACKS.has(record.fallback)))
   )
     return undefined;
   return {
@@ -355,5 +422,11 @@ export function readConfinementRecord(
       : {}),
     workspaceAccess: record.workspaceAccess,
     policyBasis: record.policyBasis,
+    ...(record.writeGrants
+      ? { writeGrants: record.writeGrants as ConfinementWriteGrant[] }
+      : {}),
+    ...(record.fallback
+      ? { fallback: record.fallback as ConfinementFallbackReason }
+      : {}),
   };
 }

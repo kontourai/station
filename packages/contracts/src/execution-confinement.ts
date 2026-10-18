@@ -65,7 +65,51 @@ export type ConfinementPolicyBasis = 'operator-policy' | 'workspace-floor';
 /** A confinement mechanism Station can engage and observe. */
 export type ConfinementMechanism =
   /** Codex's own process sandbox, read back from Codex's thread response. */
-  'codex-sandbox';
+  | 'codex-sandbox'
+  /**
+   * A macOS Seatbelt profile Station applies around the engine process
+   * (`sandbox-exec`), observed once the engine answers its startup handshake
+   * from inside it.
+   */
+  | 'seatbelt';
+
+/**
+ * What a confinement profile lets the process write, by kind. Content-free:
+ * the kinds, never the paths.
+ *
+ * - `workspace`: the resolved workspace.
+ * - `git-worktree`: a linked worktree's own git directory.
+ * - `git-objects`: the repository's shared object store.
+ * - `git-branch-ref`: the worktree's own branch ref, its lock and its log.
+ * - `station-temp`: a Station-owned temporary directory for this session.
+ * - `station-config`: the Station-owned engine configuration directory.
+ */
+export type ConfinementWriteGrant =
+  | 'workspace'
+  | 'git-worktree'
+  | 'git-objects'
+  | 'git-branch-ref'
+  | 'station-temp'
+  | 'station-config';
+
+/**
+ * Why a start whose policy asked for confinement ran at a lower approval
+ * mode instead, with no mechanism engaged. Each is derived from a check at
+ * the start, never written as a label:
+ *
+ * - `confined-credential-unavailable`: no credential the confined engine
+ *   can use without the operator's own state (an environment credential, or
+ *   one enrolled in the Station-owned configuration directory) was found.
+ * - `config-root-pinned`: the start continues a conversation pinned to the
+ *   operator's global configuration root (adoption, or a source-affinity
+ *   resume), which a confined engine may not write.
+ * - `resume-bound-elsewhere`: the start resumes a conversation recorded
+ *   under another configuration home.
+ */
+export type ConfinementFallbackReason =
+  | 'confined-credential-unavailable'
+  | 'config-root-pinned'
+  | 'resume-bound-elsewhere';
 
 /**
  * Content-free record of a session start's confinement: no host paths and
@@ -87,6 +131,19 @@ export interface ExecutionConfinementRecord {
   mechanism?: ConfinementMechanism;
   workspaceAccess: ConfinementWorkspaceAccess;
   policyBasis: ConfinementPolicyBasis;
+  /**
+   * What the applied profile lets the process write, when the mechanism is
+   * one Station builds (a Seatbelt profile). Absent for an engine's own
+   * sandbox, whose grants Station reads back rather than writes.
+   */
+  writeGrants?: readonly ConfinementWriteGrant[];
+  /**
+   * Present when the policy asked for confinement and the start instead ran
+   * at a lower approval mode (full access applied as `auto`) with no
+   * mechanism engaged. Then `required` is false and the posture
+   * `no-mechanism`.
+   */
+  fallback?: ConfinementFallbackReason;
 }
 
 /**
