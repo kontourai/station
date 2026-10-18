@@ -54,7 +54,11 @@
 
     "packages/telemetry-broker/src/__tests__/passive-signals.test.ts",
 
-    "packages/telemetry-broker/src/broker-error.ts"
+    "packages/telemetry-broker/src/broker-error.ts",
+
+    "packages/telemetry-broker/src/noisy-count.ts",
+
+    "packages/telemetry-broker/qualify-resilience.mjs"
   ],
 
   "checks": [

@@ -77,8 +77,6 @@ pool.on('error', () =>
 );
 const store = new PgProductRepository(pool);
 await store.migrate();
-await store.retain();
-await store.lite.finalize();
 const app = createProductBroker(store, operatorKey);
 const server = createServer(getRequestListener(app.fetch));
 server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
@@ -94,22 +92,26 @@ const credentialRefresh = setInterval(() => {
     );
 }, 30_000);
 credentialRefresh.unref();
-const finalization = setInterval(() => {
+const finalizeClosedDays = () => {
   void store.lite
     .finalize()
     .catch(() =>
       process.stderr.write('Telemetry finalization did not complete\n'),
     );
-}, 3600000);
+};
+const finalization = setInterval(finalizeClosedDays, 3600000);
 finalization.unref();
-const retention = setInterval(() => {
+finalizeClosedDays();
+const retainExpiredRows = () => {
   void store
     .retain()
     .catch(() =>
       process.stderr.write('Telemetry retention did not complete\n'),
     );
-}, 3600000);
+};
+const retention = setInterval(retainExpiredRows, 3600000);
 retention.unref();
+retainExpiredRows();
 let stopping = false;
 const stop = () => {
   if (stopping) return;

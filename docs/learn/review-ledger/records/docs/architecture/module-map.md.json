@@ -1084,7 +1084,11 @@
 
     "packages/telemetry-broker/src/lite-routes.ts",
 
-    "packages/telemetry-broker/qualify-lite.mjs"
+    "packages/telemetry-broker/qualify-lite.mjs",
+
+    "packages/telemetry-broker/src/noisy-count.ts",
+
+    "packages/telemetry-broker/qualify-resilience.mjs"
   ],
 
   "checks": [
