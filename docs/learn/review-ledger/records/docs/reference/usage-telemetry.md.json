@@ -90,7 +90,23 @@
 
     "src-server/security/coding-authority.ts",
 
-    "src-ui/src/components/UsageTelemetryDisclosure.css"
+    "src-ui/src/components/UsageTelemetryDisclosure.css",
+
+    "src-ui/src/hooks/useTelemetryStatus.ts",
+
+    "src-ui/src/components/TelemetryLiteNotice.tsx",
+
+    "src-ui/src/components/TelemetryFeedbackPrompt.tsx",
+
+    "src-ui/src/components/TelemetryPrivacy.css",
+
+    "src-ui/src/views/settings/TelemetryOutbox.tsx",
+
+    "src-ui/src/views/SettingsView.tsx",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "tests/screenshots.spec.ts"
   ],
 
   "checks": [
