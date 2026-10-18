@@ -401,9 +401,11 @@ test('notice receipts follow visible presentation, survive remount, and require 
           ?.inventoryRevision,
       ).toBe((await service.telemetryStatus()).liteInventoryRevision),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss notice' }));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(screen.getByRole('button', { name: 'Dismiss notice' })).toBeTruthy();
     view.unmount();
     view = renderNotice();
+    expect(screen.queryByRole('complementary')).toBeNull();
     await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull());
     // A stale receipt is not a notice for today's catalog.
     const dailyPath = join(home, 'config', 'telemetry-daily.json');
@@ -421,6 +423,12 @@ test('notice receipts follow visible presentation, survive remount, and require 
         (await service.telemetryStatus()).liteNotices.operator
           ?.inventoryRevision,
       ).not.toBe('old-revision'),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Turn off Operator telemetry' }),
+    );
+    await waitFor(async () =>
+      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('off'),
     );
   } finally {
     modal.remove();

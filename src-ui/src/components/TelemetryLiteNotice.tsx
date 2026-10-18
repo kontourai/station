@@ -1,12 +1,16 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { authenticatedFetch, mutateJson } from '@kontourai/station-sdk';
-import { DEFAULT_CLIENT_REQUEST_TIMEOUT_MS } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+} from '@kontourai/station-sdk/client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 import { recoveryConfigKey } from '../hooks/useRecoveryConfig';
 import {
+  type TelemetryStatus,
   telemetryPublisherLabel,
   useTelemetryStatus,
 } from '../hooks/useTelemetryStatus';
@@ -54,50 +58,91 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
   const [seen, setSeen] = useState<string[]>([]);
   const [closed, setClosed] = useState<string[]>([]);
   const element = useRef<HTMLElement>(null);
-  const publisher = Object.entries(status.data?.publishers ?? {}).find(
-    ([id, state]) =>
-      state &&
-      state.tier === 'lite' &&
-      state.reason !== 'DNT' &&
-      status.data?.liteNotices?.[id as TelemetryPublisherId]
-        ?.inventoryRevision !== status.data?.liteInventoryRevision &&
-      !closed.includes(
-        `${targetKey}:${id}:${status.data?.liteInventoryRevision}`,
-      ),
-  )?.[0] as TelemetryPublisherId | undefined;
+  const [presented, setPresented] = useState<{
+    publisher: TelemetryPublisherId;
+    targetKey: string;
+    revision: string;
+  }>();
   const revision = status.data?.liteInventoryRevision;
+  const presentedStatus =
+    presented && status.data?.publishers[presented.publisher];
+  const pinnedPublisher =
+    presented?.targetKey === targetKey &&
+    presented.revision === revision &&
+    presentedStatus?.tier === 'lite' &&
+    presentedStatus.reason !== 'DNT' &&
+    !closed.includes(`${targetKey}:${presented.publisher}:${revision}`)
+      ? presented.publisher
+      : undefined;
+  const publisher =
+    pinnedPublisher ??
+    (Object.entries(status.data?.publishers ?? {}).find(
+      ([id, state]) =>
+        state &&
+        state.tier === 'lite' &&
+        state.reason !== 'DNT' &&
+        status.data?.liteNotices?.[id as TelemetryPublisherId]
+          ?.inventoryRevision !== status.data?.liteInventoryRevision &&
+        !closed.includes(
+          `${targetKey}:${id}:${status.data?.liteInventoryRevision}`,
+        ),
+    )?.[0] as TelemetryPublisherId | undefined);
   const key = `${targetKey}:${publisher}:${revision}`;
   const receipt = useMutation({
     mutationFn: async (target: {
       publisher: TelemetryPublisherId;
       revision: string;
+      apiBase: string;
+      identityKey: string | undefined;
+      requestScope: ApiRequestScope | null;
     }) => {
       const body = {
         publisher: target.publisher,
         inventoryRevision: target.revision,
       };
-      const response = scope
-        ? await mutateJson(
-            `${apiBase}/api/usage-telemetry/lite-notices`,
-            'POST',
-            {
-              timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-              ...(scope.requestScope
-                ? { requestScope: scope.requestScope }
-                : {}),
-            },
-            body,
-          )
-        : await authenticatedFetch(
-            `${apiBase}/api/usage-telemetry/lite-notices`,
-            {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(body),
-            },
-          );
+      const response =
+        target.identityKey !== undefined
+          ? await mutateJson(
+              `${target.apiBase}/api/usage-telemetry/lite-notices`,
+              'POST',
+              {
+                timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+                ...(target.requestScope
+                  ? { requestScope: target.requestScope }
+                  : {}),
+              },
+              body,
+            )
+          : await authenticatedFetch(
+              `${target.apiBase}/api/usage-telemetry/lite-notices`,
+              {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+              },
+            );
       if (!response.ok)
         throw new Error('The notice receipt could not be saved.');
+    },
+    onSuccess: (_result, target) => {
+      client.setQueryData<TelemetryStatus>(
+        ['telemetry-status', target.apiBase, target.identityKey],
+        (current) => {
+          if (!current || current.liteInventoryRevision !== target.revision)
+            return current;
+          return {
+            ...current,
+            liteNotices: {
+              ...current.liteNotices,
+              [target.publisher]: {
+                publisher: target.publisher,
+                inventoryRevision: target.revision,
+                shownAt: new Date().toISOString(),
+              },
+            },
+          };
+        },
+      );
     },
   });
   useEffect(() => {
@@ -128,8 +173,15 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
             rect.bottom <= 0
           )
             return;
+          setPresented({ publisher, revision, targetKey });
           setSeen((prior) => [...prior, key]);
-          receipt.mutate({ publisher, revision });
+          receipt.mutate({
+            publisher,
+            revision,
+            apiBase,
+            identityKey: scope?.identityKey,
+            requestScope: scope?.requestScope ?? null,
+          });
         });
       });
     };
@@ -147,7 +199,18 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
       observer.disconnect();
       document.removeEventListener('visibilitychange', check);
     };
-  }, [enabled, publisher, revision, key, seen, receipt.mutate]);
+  }, [
+    enabled,
+    publisher,
+    revision,
+    key,
+    targetKey,
+    apiBase,
+    scope?.identityKey,
+    scope?.requestScope,
+    seen,
+    receipt.mutate,
+  ]);
   if (!enabled || !publisher || !revision) return null;
   const close = () => {
     setClosed((prior) => [...prior, key]);

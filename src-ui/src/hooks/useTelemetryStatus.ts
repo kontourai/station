@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 
-interface TelemetryStatus {
+export interface TelemetryStatus {
   publishers: Partial<Record<TelemetryPublisherId, TelemetryPublisherStatus>>;
   liteInventoryRevision: string;
   liteInventory: Record<

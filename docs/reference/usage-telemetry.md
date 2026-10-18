@@ -76,8 +76,10 @@ in the visible viewport, while the document is visible and no modal covers it.
 It waits while first-run or connection setup owns the screen, adding no new
 blocking onboarding step. DNT hides the notice and the API refuses a receipt
 under DNT. A failed receipt leaves Lite suppressed; dismissing never counts as
-a receipt. Server-side receipts survive reload and restart; each Lite revision
-requires its own presentation. Distributions do not supply the notice copy or
+a receipt. Successful receipt writes update the authority-scoped status cache; the current
+panel stays available until dismissed or turned off, while a remount does not
+replay an old cached notice. Server-side receipts survive reload and restart;
+each Lite revision requires its own presentation. Distributions do not supply the notice copy or
 its controls.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
