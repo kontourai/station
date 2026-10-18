@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // archive#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
@@ -1465,7 +1466,12 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
           ...base,
           method: 'session.state-changed',
           from: 'running',
-          to: 'needs_input',
+          sessionId: threadId,
+          to: 'awaiting-approval',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          sessionState: 'needs_input',
+          transitionReason: 'runtime_exit',
+          transitionSource: 'system_recovery',
           interruptedTurnBoundary: {
             boundaryId: 'boundary',
             priorState: 'accepted',
@@ -1480,6 +1486,7 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
           ...base,
           method: 'runtime.error',
           turnId: 'turn-plan',
+          severity: 'error',
           message: 'Engine stopped',
         });
       } else {

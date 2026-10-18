@@ -48,20 +48,26 @@ describe('ActiveChatsStore', () => {
 
   test('forgets activity after the final chat for a conversation closes', () => {
     const store = new ActiveChatsStore({ storage: new MemoryStorage() });
-    store.initChat('first', { conversationId: 'conv' });
-    store.initChat('second', { conversationId: 'conv' });
+    const metadata = {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Conversation',
+      conversationId: 'conv',
+    };
+    store.initChat('first', metadata);
+    store.initChat('second', metadata);
     store.applyConversationActivity({
       conversationId: 'conv',
       asOfSequence: 10,
     });
     store.removeChat('first');
-    store.initChat('third', { conversationId: 'conv' });
+    store.initChat('third', metadata);
     expect(store.getSnapshot().third.conversationActivity?.asOfSequence).toBe(
       10,
     );
     store.removeChat('second');
     store.removeChat('third');
-    store.initChat('reopened', { conversationId: 'conv' });
+    store.initChat('reopened', metadata);
     expect(store.getSnapshot().reopened.conversationActivity).toBeUndefined();
   });
 

@@ -35,6 +35,8 @@ const messages: MessageData[] = [
 function open(key: string) {
   activeChatsStore.initChat(key, {
     agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Conversation',
     conversationId: 'conv',
   });
 }
@@ -52,6 +54,7 @@ test('closing the last chat retires its transcript, status and background task b
   conversationsStore.setStatus('assistant', 'conv', 'processing');
   backgroundTasksStore.ingest({
     method: 'session.started',
+    sessionId: 'delegate',
     provider: 'claude',
     threadId: 'delegate',
     createdAt: '2026-07-29T00:00:00.000Z',
