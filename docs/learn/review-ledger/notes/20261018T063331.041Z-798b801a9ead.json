@@ -1,0 +1,7 @@
+{
+  "revision": "049ca5b373283025a2fdb4f19ba6a139f7bffd15",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the two Seatbelt test files to PROCESS_HEAVY_VITEST_FILES with inline reasons, following the documented rule that child-process tests are classified in scripts/vitest-resource-manifest.mjs; worker counts, groups and deadlines described here are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

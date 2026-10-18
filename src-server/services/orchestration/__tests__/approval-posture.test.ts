@@ -19,6 +19,7 @@ import {
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
@@ -149,6 +150,8 @@ describe('server-ordered approval posture (#2436)', () => {
       eventBus: bus,
       eventStore: store,
       resolveStationDefaultApprovalMode: async () => stationDefault,
+      // #2494: Seatbelt available on any host, so Claude resolves the same.
+      confinementProviders: confinementProvidersForTests(),
       // The authored-Agent start gate (resolveSessionAgent) is satisfied the
       // way production resolves a defined Agent.
       resolveSessionAgent: async (input) => ({
@@ -701,7 +704,7 @@ describe('server-ordered approval posture (#2436)', () => {
         } as CanonicalRuntimeEvent);
     }
 
-    test('an unattended start that reaches never through a default is confined: Codex keeps never sandboxed, Claude applies auto', async () => {
+    test('an unattended start that reaches never through a default is confined: Codex keeps never sandboxed, Claude keeps never under its Seatbelt plan', async () => {
       stationDefault = 'never';
       await start('c-codex-station', 'codex');
       expect(codex.starts.at(-1)).toMatchObject({
@@ -709,9 +712,11 @@ describe('server-ordered approval posture (#2436)', () => {
         modelOptions: { approvalMode: 'never' },
       });
       await start('c-claude-station', 'claude');
+      // #2494: the adapter applies it as Auto unless it observes the profile.
       expect(claude.starts.at(-1)).toMatchObject({
         confinement: 'workspace',
-        modelOptions: { approvalMode: 'auto' },
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: { mechanism: 'seatbelt', requiredLevel: 'os-profile' },
       });
 
       stationDefault = undefined;
@@ -719,7 +724,8 @@ describe('server-ordered approval posture (#2436)', () => {
       await start('c-claude-agent', 'claude', undefined, 'builder');
       expect(claude.starts.at(-1)).toMatchObject({
         confinement: 'workspace',
-        modelOptions: { approvalMode: 'auto' },
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: { mechanism: 'seatbelt' },
       });
       expect(startStamp('c-claude-agent')).toBe('workspace');
     });
@@ -771,7 +777,9 @@ describe('server-ordered approval posture (#2436)', () => {
       );
       expect(claude.starts.at(-1)).toMatchObject({
         confinement: 'workspace',
-        modelOptions: { approvalMode: 'auto' },
+        // #2494: full access only under the Seatbelt plan.
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: { mechanism: 'seatbelt' },
         metadata: { stationConfinement: 'workspace' },
       });
       expect(startStamp('c-forged')).toBe('workspace');
@@ -837,7 +845,9 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(claude.starts.at(-1)).toMatchObject({
         threadId: 'c-cred-confined',
         confinement: 'workspace',
-        modelOptions: { approvalMode: 'auto' },
+        // #2494: the restart re-resolves the Seatbelt plan for its process.
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: { mechanism: 'seatbelt' },
       });
       expect(claude.lastTurnMode()).toBe('auto');
       // #2493 Q1: the replay goes straight to the adapter; it must carry the

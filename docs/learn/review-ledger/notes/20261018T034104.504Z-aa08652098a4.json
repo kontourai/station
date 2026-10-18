@@ -1,0 +1,7 @@
+{
+  "revision": "38f6b9a3701b43260169cb986588c40bde071d2f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the terminal guardrail alignment after #3772 against scripts/proof-repo-guardrails.mjs and its fail-closed child-process suite. The guide still correctly describes fail-closed structural contracts, real child-process verdicts, unchanged negative catches, focused evidence, and process-heavy classification. The proof now requires the async poll declaration and execFile pgrep call, preserves Windows/delegation/retired-inline checks, and rejects synchronous pgrep. Executed the real proof (exit 0, Repo guardrail proof passed), all 20 focused cases including the unchanged positive control, and physical non-async/missing-probe mutations (exit 1 with named findings) with exact restorations back to exit 0. No prose change is needed; hosted process-heavy execution remains NOT_VERIFIED.","inputs":["docs/guides/testing.md","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}
