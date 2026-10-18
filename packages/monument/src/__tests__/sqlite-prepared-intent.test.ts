@@ -36,7 +36,7 @@ const schema = `CREATE TABLE host_boundaries (
   settlement_json TEXT
 );`;
 const cases = kernelConformanceCasesFor(['turnDedup', 'turnBoundary']).filter(
-  (entry) => entry.name.startsWith('prepared '),
+  (entry) => entry.name.startsWith('prepared ') || entry.name.startsWith('invocation terminal:'),
 );
 
 for (const field of ['constructor', 'toString']) {
