@@ -161,10 +161,12 @@ write classification because it launches a browser process.
 ## Preview host enforcement amendment
 
 The viewer-side RTC residual is accepted by the owner. It does not authorize
-network access from Station's disposable preview browser. The HTTP egress proxy
-and Chromium's non-proxied-UDP preference alone did not prevent ICE UDP. Preview
+network access from Station's disposable preview browser. The HTTP egress proxy and Chromium's command-line
+non-proxied-UDP switch alone did not prevent ICE UDP on Chrome 155. Preview
 now seeds its fresh profile with Chrome's `webrtc.ip_handling_policy` set to
-`disable_non_proxied_udp`, with multiple routes and non-proxied UDP disabled.
+`disable_non_proxied_udp`. This is the load-bearing RTC control measured on
+Chrome 155; the ineffective legacy `multiple_routes_enabled` and
+`nonproxied_udp_enabled` keys have been removed.
 This applies across realms, including nested srcdoc and closed shadow roots;
 it does not depend on hiding constructors. The existing launch flag alone was
 insufficient. Browser DNS is denied with host-resolver rules; the deny-all HTTP
@@ -196,3 +198,15 @@ Behavior sources inspected: [codex-acp thread.rs](https://github.com/zed-industr
 Other ACP engines may report different titles; their successful publication does
 not establish that an unqualified title identifies station-control. Live engine
 qualification is reported separately from this adapter regression.
+
+
+Preview still uses the ordinary acquisition preference for an installed system
+Chrome/Edge before the pinned download. It does not assume those browsers honor
+profile preferences: before any authored HTML loads, a separate temporary
+internal target reads `chrome://prefs-internals/` and requires the effective
+`webrtc.ip_handling_policy` value to be `disable_non_proxied_udp`, with no
+per-URL overrides. Chromium reports managed-policy precedence in that resolved
+value. A mismatch, unreadable/unsupported diagnostic, timeout or URL override
+refuses preview with a fixed, clear error. The diagnostic target is closed;
+authored content uses a separate fresh target. This keeps system-browser support
+while failing closed for enterprise overrides and incompatible browser versions.

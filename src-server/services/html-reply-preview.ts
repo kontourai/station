@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildHtmlReplyDocument } from '@kontourai/station-shared/html-reply-document';
 import { ChromiumAcquisition } from './browser/chromium-acquisition.js';
-import { ChromiumServerHost } from './browser/hosts/chromium-server-host.js';
+import {
+  BrowserHostPolicyError,
+  ChromiumServerHost,
+} from './browser/hosts/chromium-server-host.js';
 import { HtmlReplyRefusal } from './html-reply-errors.js';
 
 const LIMIT = {
@@ -42,6 +45,7 @@ export class HtmlReplyPreview {
       launchTimeoutMs: 15_000,
       jsHeapLimitMb: 128,
       denyHostResolution: true,
+      requireRestrictedWebRtc: true,
       egressPolicy: {
         listeners: () => ({ ports: [], hostnames: [] }),
         interfaceAddresses: () => [],
@@ -70,8 +74,6 @@ export class HtmlReplyPreview {
           JSON.stringify({
             webrtc: {
               ip_handling_policy: 'disable_non_proxied_udp',
-              multiple_routes_enabled: false,
-              nonproxied_udp_enabled: false,
             },
           }),
         );
@@ -179,6 +181,15 @@ export class HtmlReplyPreview {
       const running = work();
       workPromise = running;
       return await Promise.race([running, timeout]);
+    } catch (error) {
+      if (
+        error instanceof BrowserHostPolicyError &&
+        error.code === 'webrtc-policy-unverified'
+      )
+        throw new HtmlReplyRefusal(
+          'HTML preview requires effective WebRTC policy disable_non_proxied_udp without URL overrides. This browser is unsupported or enterprise policy overrides the profile.',
+        );
+      throw error;
     } finally {
       if (timer) clearTimeout(timer);
       await host.shutdown();

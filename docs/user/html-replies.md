@@ -10,7 +10,10 @@ Ask the Agent to preview its page, inspect the screenshot, and publish the same
 HTML. Preview returns a PNG, the content height at the requested width, and
 console messages with stacks. It uses Station's existing Chromium acquisition
 and a disposable profile. If Chromium is unavailable, install it through the
-Browser workspace; publishing itself does not need Chromium.
+Browser workspace; publishing itself does not need Chromium. Preview checks the
+browser's effective WebRTC policy before loading authored content. It refuses an
+unsupported browser or enterprise override that prevents the restrictive policy,
+even when the profile file requests it.
 
 Publishing writes to the conversation and may require engine tool approval.
 For example, Codex configured with approval policy `never` can refuse the write;

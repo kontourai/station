@@ -12,6 +12,7 @@ type HtmlReplyRefusalReason =
   | 'HTML preview needs Chromium. Install it through the Browser workspace first.'
   | 'HTML preview exceeded 15 seconds'
   | 'HTML preview expired'
+  | 'HTML preview requires effective WebRTC policy disable_non_proxied_udp without URL overrides. This browser is unsupported or enterprise policy overrides the profile.'
   | 'HTML preview bootstrap failed'
   | 'HTML preview measurement failed'
   | 'HTML preview content height exceeds 2000 pixels or is invalid'

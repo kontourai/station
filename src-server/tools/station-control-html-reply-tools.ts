@@ -8,7 +8,7 @@ export function registerHtmlReplyTools(registry: StationControlToolRegistry) {
       .string()
       .max(256 * 1024)
       .describe(
-        'Self-contained HTML. Inline scripts run only in an isolated sandbox; CSP blocks ordinary network loads; WebRTC isolation is incomplete for nested srcdoc frames. Never ask viewers for secrets. Use --background, --foreground, --accent, --chart-1..6 theme variables. Quoted absolute PNG/JPEG/GIF/WebP paths within this session workspace are embedded.',
+        'Self-contained HTML. Inline scripts run only in an isolated sandbox; CSP blocks ordinary network loads; In the published viewer, WebRTC isolation is incomplete for nested srcdoc frames. Never ask viewers for secrets. Use --background, --foreground, --accent, --chart-1..6 theme variables. Quoted absolute PNG/JPEG/GIF/WebP paths within this session workspace are embedded.',
       ),
     height: z.number().int().min(100).max(2000).default(500),
   };

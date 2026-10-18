@@ -248,7 +248,7 @@ station-control and select `html_preview` and `html_render`; ACP must attach the
 whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
 height and console output, then publish the same HTML. Pages appear at the tool
 result and survive reload. Use the host theme CSS variables. App/session access
-and ordinary network loads are blocked. WebRTC isolation is incomplete: nested
+and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
 srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not
 ask viewers for secrets. Preview and publishing are bounded writes and respect
 engine tool approval. Chromium is needed only for
