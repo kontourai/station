@@ -4,6 +4,7 @@
  * bound on the event store's turn-scoped read.
  */
 
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
@@ -1259,10 +1260,20 @@ test.each([
   'queued-malformed',
   'queued-unknown',
   'consistent',
-  ...(['old', 'v2', 'oldambiguous'] as const).flatMap((format) =>
-    (['pending', 'claimed', 'consumed', 'delivered'] as const).map(
-      (state) => `compat-${format}-${state}` as const,
-    ),
+  ...(['old', 'v2', 'oldambiguous', 'earliestnative'] as const).flatMap(
+    (format) =>
+      (format === 'earliestnative'
+        ? ([
+            'pending',
+            'claimed',
+            'consumed',
+            'delivered',
+            'cancelled',
+            'refused',
+            'undeliverable',
+          ] as const)
+        : (['pending', 'claimed', 'consumed', 'delivered'] as const)
+      ).map((state) => `compat-${format}-${state}` as const),
   ),
 ] as const)(
   'real result delivery validates %s invocation scope before its first bounded output effect',
@@ -1326,10 +1337,12 @@ test.each([
           .hasPossibleEffect('child');
         return read.kind !== 'available' || read.active;
       },
-      sessionOwnerId: () => 'owner',
+      sessionOwnerId: () => (order.endsWith('-refused') ? 'stranger' : 'owner'),
       start: async ({ text, clientTurnId }) => {
         starts.push(text);
         deliveryKeys.push(clientTurnId);
+        if (order.endsWith('-undeliverable'))
+          throw new Error('clean no-effect parent refusal');
         if (order.endsWith('-claimed')) return { outcome: 'indeterminate' };
         return {
           outcome: 'started',
@@ -1452,24 +1465,40 @@ test.each([
       eventStore.appendEvent(done);
       if (order.startsWith('compat-')) {
         const [, format, state] = order.split('-');
-        parentBusy = state === 'pending' || state === 'consumed';
+        parentBusy =
+          state === 'pending' || state === 'consumed' || state === 'cancelled';
         await delivery.reconcile();
         if (state === 'consumed') store.consume('child');
+        if (state === 'cancelled')
+          store.beginCancel('child', 'historical-stop', null);
+        if (state === 'undeliverable')
+          for (let attempt = 1; attempt < 5; attempt++)
+            await delivery.reconcile();
         const original = store.listForChild('child')[0];
         if (!original) throw new Error('actual recorded result prerequisite');
         expect(original.state).toBe(state);
         const key =
-          format === 'old' || format === 'oldambiguous'
-            ? `settled:child:invocation-${invocationId}`
-            : JSON.stringify([
-                'station.delegation-result/2',
-                'child',
-                'invocation',
-                invocationId,
-              ]);
-        eventStore['db']
-          .prepare('UPDATE delegation_result_deliveries SET transition_key=?')
-          .run(key);
+          format === 'earliestnative'
+            ? `settled:child:${native}`
+            : format === 'old' || format === 'oldambiguous'
+              ? `settled:child:invocation-${invocationId}`
+              : JSON.stringify([
+                  'station.delegation-result/2',
+                  'child',
+                  'invocation',
+                  invocationId,
+                ]);
+        if (format === 'earliestnative') {
+          const historicalDeliveryId = `dr-${createHash('sha256').update(`child\u0000${key}`).digest('hex').slice(0, 40)}`;
+          eventStore['db']
+            .prepare(
+              'UPDATE delegation_result_deliveries SET transition_key=?,delivery_id=?',
+            )
+            .run(key, historicalDeliveryId);
+        } else
+          eventStore['db']
+            .prepare('UPDATE delegation_result_deliveries SET transition_key=?')
+            .run(key);
         const before = store.listForChild('child')[0]!;
         parentBusy = false;
         const calls = starts.length;
@@ -1479,7 +1508,7 @@ test.each([
           before.deliveryId,
         );
         expect(store.listForChild('child')[0]?.transitionKey).toBe(key);
-        if (format === 'oldambiguous') {
+        if (format === 'oldambiguous' || format === 'earliestnative') {
           expect(starts).toHaveLength(calls);
           expect(store.listForChild('child')[0]).toEqual(before);
         } else if (state === 'pending') expect(starts).toHaveLength(1);

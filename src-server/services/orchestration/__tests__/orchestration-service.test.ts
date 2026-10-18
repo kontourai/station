@@ -25622,6 +25622,37 @@ describe('OrchestrationService', () => {
   // `interruptUserTurnCooperatively` re-derived "no active turn" from the
   // same fold `hasActiveTurn` intentionally under-reports through and
   // early-returned WITHOUT ever calling `adapter.interruptTurn`.
+  test.each(['ordinary', 'explicit', 'completed', 'deferred', 'provider', 'structured'] as const)(
+    'actual Stop conserves structured B for $0 after raw starts', async (kind) => {
+      const threadId = `stop-structured-${kind}`;
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      let invocationId: string | undefined;
+      claude.sendTurn.mockImplementationOnce(async (input) => {
+        invocationId = input.invocationId;
+        claude.events.push({ method: 'turn.started', eventId: `${threadId}:B-start`, provider: 'claude', threadId, turnId: 'N', invocationId: input.invocationId, prompt: 'B', createdAt: new Date().toISOString() });
+        return { threadId, turnId: 'N' };
+      });
+      await service.dispatch({ type: 'sendTurn', input: { threadId, input: 'B' } });
+      expect(invocationId).toBeTypeOf('string');
+      await waitFor(() => eventStore.listEvents(threadId), (rows) => rows.some((row) => row.id === `${threadId}:B-start`));
+      const append = (event: CanonicalRuntimeEvent) => claude.events.push(event);
+      const base = { provider: 'claude', threadId, createdAt: new Date().toISOString() };
+      if (kind === 'completed') append({ ...base, method: 'turn.completed', eventId: `${threadId}:done`, turnId: 'N', invocationId });
+      if (kind === 'deferred') append({ ...base, provider: 'codex', method: 'runtime.error', eventId: `${threadId}:deferred`, turnId: 'N', invocationId, severity: 'error', retriable: true, message: 'retry pending' });
+      append({ ...base, method: 'turn.started', eventId: `${threadId}:raw`, turnId: kind === 'completed' ? 'N' : 'M', prompt: 'raw observation' });
+      if (kind === 'provider' || kind === 'structured') append({ ...base, method: 'turn.started', eventId: `${threadId}:new`, turnId: 'new', ...(kind === 'provider' ? { metadata: { trigger: 'provider' } } : { invocationId: 'C' }), prompt: 'new owner' });
+      await waitFor(() => eventStore.listEvents(threadId), (rows) => rows.some((row) => row.id === `${threadId}:${kind === 'provider' || kind === 'structured' ? 'new' : 'raw'}`));
+      expect(eventStore.listEvents(threadId).find((row) => row.id === `${threadId}:raw`)?.payload.invocationId).toBeUndefined();
+      claude.interruptTurn.mockClear();
+      const target = kind === 'provider' || kind === 'structured' ? 'new' : 'N';
+      claude.interruptTurn.mockResolvedValueOnce({ outcome: 'cancelled', turnId: target });
+      const answer = await service.dispatch({ type: 'interruptTurn', threadId, ...(kind === 'explicit' ? { turnId: 'N' } : {}) });
+      if (kind === 'completed') { expect(answer).toMatchObject({ outcome: 'no-active-turn' }); expect(claude.interruptTurn).not.toHaveBeenCalled(); }
+      else { expect(answer).toMatchObject({ turnId: target }); expect(claude.interruptTurn).toHaveBeenCalledTimes(1); expect(claude.interruptTurn).toHaveBeenCalledWith(threadId, target); }
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('Stop still reaches adapter.interruptTurn through a codex deferred-retriable runtime.error', async () => {
     const codex = new FakeAdapter('codex');
     const routingService = new OrchestrationService({
