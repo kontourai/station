@@ -101,13 +101,17 @@ export function scheduleRuntimeEngineSpawnTmpReaping(
   const reap =
     context.reap ||
     (() => {
-      reapEngineSpawnTmpDir(
-        engineSpawnTmpDirPath(),
-        ENGINE_SPAWN_TMP_MAX_AGE_MS,
-      );
-      // #2494: confined sessions' temp directories whose owner process is
-      // gone (from boot, and on the same schedule).
-      reapStaleSeatbeltSessionDirs(resolveHomeDir());
+      try {
+        reapEngineSpawnTmpDir(
+          engineSpawnTmpDirPath(),
+          ENGINE_SPAWN_TMP_MAX_AGE_MS,
+        );
+      } finally {
+        // #2494: confined sessions' temp directories whose owner process is
+        // gone (from boot, and on the same schedule), whether or not the
+        // sweep above failed.
+        reapStaleSeatbeltSessionDirs(resolveHomeDir());
+      }
     });
   const runReap = () => {
     void Promise.resolve()

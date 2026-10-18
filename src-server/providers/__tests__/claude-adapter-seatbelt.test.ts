@@ -8,7 +8,7 @@
  * production one, so the profile and the posture rules are real. The kernel
  * side is `seatbelt.process.test.ts`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -339,6 +339,52 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     startingQuery(Promise.resolve({}));
     await startConfined('apply-failed');
     await expect(adapter.hasSession('apply-failed')).resolves.toBe(true);
+  });
+
+  test('a failure after the posture is observed (lifting to full access) stops the engine, cleans up and settles the start', async () => {
+    const revoke = vi.fn();
+    createAdapter();
+    adapter = new ClaudeAdapter({
+      confinedStationHome: stationHome,
+      confinementHandshakeTimeoutMs: 2_000,
+      getConnectionEnv: async () => FAKE_ENV_CREDENTIAL,
+      seatbeltProvider: createSeatbeltConfinementProvider(),
+      revokeStationControlCallerToken: revoke,
+    });
+    const query = startingQuery(Promise.resolve({}));
+    query.setPermissionMode.mockRejectedValueOnce(
+      new Error('Claude Code process exited with code 1'),
+    );
+    const failed = startConfined('lift-fails');
+    await expect(failed).rejects.toBeInstanceOf(SessionStartRefusedError);
+    await expect(failed).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+    });
+    const child = FakeClaudeChild.newest!;
+    const tmpDir = (child.spawnArgs.options.env as Record<string, string>)
+      .TMPDIR;
+    expect(child.killed).toBe(true);
+    expect(query.close).toHaveBeenCalled();
+    expect(existsSync(tmpDir)).toBe(false);
+    expect(revoke).toHaveBeenCalledWith('lift-fails');
+    await expect(adapter.hasSession('lift-fails')).resolves.toBe(false);
+    // The thread is not fenced: the same thread starts again.
+    startingQuery(Promise.resolve({}));
+    await startConfined('lift-fails');
+    await expect(adapter.hasSession('lift-fails')).resolves.toBe(true);
+  });
+
+  test('a never start with no confinement field and no plan counts as workspace and runs at Auto', async () => {
+    createAdapter();
+    const query = startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'absent-confinement',
+      cwd: workspace,
+      modelOptions: { approvalMode: 'never' },
+    });
+    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+    expect(query.options?.allowDangerouslySkipPermissions).toBeUndefined();
   });
 
   test('a workspace session at another mode is unchanged: no wrapper, no grant, no record from the adapter', async () => {

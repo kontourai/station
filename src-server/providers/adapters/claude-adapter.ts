@@ -1072,13 +1072,12 @@ function withConfinementFallback<T extends ProviderSessionStartInput>(
  * access only under a Seatbelt plan, which the adapter applies only once it
  * observes the profile; without one (a start path that skipped resolving
  * its confinement) full access is applied as Auto here, never spawned
- * unconfined. Starts that carry no confinement are the adapter's direct
- * callers and keep their mode.
+ * unconfined. An absent confinement is `workspace`, by contract.
  */
 function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
   input: T,
 ): T {
-  return input.confinement === 'workspace' &&
+  return (input.confinement ?? 'workspace') === 'workspace' &&
     input.confinementPlan?.mechanism !== 'seatbelt' &&
     readApprovalMode(input.modelOptions) === 'never'
     ? {
@@ -1638,14 +1637,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbelt.launch.writeGrants,
     );
     if (posture === 'confined') return confinementRecord;
-    if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
-    record.promptQueue.close();
-    sdkQuery.close();
-    await engineProcess.terminate();
-    seatbelt.launch.cleanup();
-    this.options.revokeStationControlCallerToken?.(threadId);
-    if (record.nativeOwnershipClaimed)
-      this.options.nativeSessionOwnership?.retired(threadId);
+    await this.abandonSeatbeltStart(record, sdkQuery, engineProcess, seatbelt);
     const stderr = engineProcess.stderrTail();
     throw new ConfinementRefusedError(
       'confinement_not_observed',
@@ -1655,6 +1647,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : 'The engine was not spawned through the profile Station built.'
       } The session was not started.`,
     );
+  }
+
+  /**
+   * #2494: undoes a confined start that will not be announced: the record
+   * leaves the session map, the engine is stopped, the session's temp
+   * directory is removed and its caller credential revoked.
+   */
+  private async abandonSeatbeltStart(
+    record: ClaudeSessionRecord,
+    sdkQuery: Query,
+    engineProcess: ClaudeEngineProcess,
+    seatbelt: SeatbeltStart,
+  ): Promise<void> {
+    const threadId = record.session.threadId;
+    if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
+    record.promptQueue.close();
+    sdkQuery.close();
+    await engineProcess.terminate();
+    seatbelt.launch.cleanup();
+    this.options.revokeStationControlCallerToken?.(threadId);
+    if (record.nativeOwnershipClaimed)
+      this.options.nativeSessionOwnership?.retired(threadId);
   }
 
   /** #2494: says, once per start, that full access ran as Auto and why. */
@@ -2205,11 +2219,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           seatbelt,
           seatbeltSpawn.pending(),
         );
-        if (requestedPermissionMode === 'bypassPermissions') {
-          await sdkQuery.setPermissionMode('bypassPermissions');
-          permissionMode = 'bypassPermissions';
-          record.currentPermissionMode = permissionMode;
-          record.requestedPermissionMode = permissionMode;
+        try {
+          if (requestedPermissionMode === 'bypassPermissions') {
+            await sdkQuery.setPermissionMode('bypassPermissions');
+            permissionMode = 'bypassPermissions';
+            record.currentPermissionMode = permissionMode;
+            record.requestedPermissionMode = permissionMode;
+          }
+        } catch (error) {
+          // Observed, but the lift never applied (the engine exited, say):
+          // the same teardown as a refusal, so the start settles and the
+          // thread can start again.
+          await this.abandonSeatbeltStart(
+            record,
+            sdkQuery,
+            engineProcess,
+            seatbelt,
+          );
+          throw new ConfinementRefusedError(
+            'confinement_not_observed',
+            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+          );
         }
         record.allowsBypassPermissions = true;
         delete record.confinementPending;

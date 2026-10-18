@@ -790,9 +790,23 @@ connection's `env`. Without one, such a session runs at Auto, and says so. The
 optional **Confined Claude credential** readiness entry reports whether one is
 present. A confined session uses a Station-owned Claude configuration
 directory, so your own `CLAUDE.md`, settings, hooks, plugins and MCP
-configuration do not apply to it. It also gets only an allowlisted
-environment: variables you set in the connection's `env` pass, but Station's
-own `GH_TOKEN`, `NPM_TOKEN`, cloud keys and SSH agent do not. On Linux and Windows such a session is
+configuration do not apply to it. A selected credential profile gets a
+confined copy of its own that starts empty, so a login held only in that
+profile does not reach it: the session runs at Auto until it has an
+environment credential. The readiness entry checks only the default confined
+home.
+
+A confined session also gets only an allowlisted environment. Variables you
+set in the connection's `env` pass, as do paths, locale, proxy and TLS
+settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
+identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
+dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
+`NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
+connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
+push with your SSH agent. In a linked worktree it can commit to its own
+branch, but `git stash`, `fetch` and `pull` are refused: they write shared
+refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
+change. On Linux and Windows such a session is
 refused, because no confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 

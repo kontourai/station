@@ -178,7 +178,12 @@ describe.skipIf(!probe.ok)(
         windowsHide: true,
       });
       launch.cleanup();
-      return { status: result.status, stderr: result.stderr, launch };
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        launch,
+      };
     }
 
     test('the probe ran the production profile, not a stand-in', () => {
@@ -438,6 +443,45 @@ describe.skipIf(!probe.ok)(
       60_000,
     );
 
+    test('a linked worktree can commit but not stash: refs/stash is shared, by design (L1)', async () => {
+      const result = await confined(
+        worktree,
+        [
+          `cd "${worktree}"`,
+          'echo stash-me > stash.txt',
+          'git add stash.txt',
+          'if git stash push -q -m confined; then echo STASHED; else echo STASH_DENIED; fi',
+          'git commit -q -m after-stash-attempt && echo COMMITTED',
+        ].join('\n'),
+      );
+      expect(result.stdout).toContain('STASH_DENIED');
+      expect(result.stdout).toContain('COMMITTED');
+      expect(git(repo, 'stash', 'list')).toBe('');
+      expect(git(repo, 'log', '-1', '--format=%s', 'feature')).toBe(
+        'after-stash-attempt',
+      );
+    });
+
+    test('a checkout whose .git is inside the workspace can stash and switch to an existing branch', async () => {
+      git(repo, 'branch', '-f', 'topic', 'main');
+      const result = await confined(
+        repo,
+        [
+          'set -e',
+          `cd "${repo}"`,
+          'echo dirty >> README.md',
+          'git stash push -q -m confined',
+          'git switch -q topic',
+          'git switch -q main',
+          'git stash pop -q',
+          'git checkout -q -- README.md',
+        ].join('\n'),
+      );
+      expect(unexpectedStderr(result.stderr)).toBe('');
+      expect(result.status).toBe(0);
+      expect(git(repo, 'branch', '--show-current')).toBe('main');
+    });
+
     test.each([
       ['an SSH key', () => join(home, '.ssh', 'id_ed25519')],
       ['AWS credentials', () => join(home, '.aws', 'credentials')],
@@ -629,7 +673,7 @@ describe.skipIf(!probe.ok)(
       expect(readdirSync(join(dotGit, 'hooks')).sort()).toEqual(hooksBefore);
     });
 
-    test('an app in the workspace cannot be launched outside the sandbox', async () => {
+    test('an app in the workspace cannot be launched outside the sandbox', async (ctx) => {
       const marker = join(outside, 'launched');
       const app = join(worktree, 'Probe.app');
       mkdirSync(join(app, 'Contents', 'MacOS'), { recursive: true });
@@ -641,12 +685,34 @@ describe.skipIf(!probe.ok)(
       writeFileSync(executable, `#!/bin/sh\necho launched > "${marker}"\n`, {
         mode: 0o755,
       });
+      const markerWritten = async () => {
+        for (let waited = 0; waited < 10_000; waited += 250) {
+          if (existsSync(marker)) return true;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        return false;
+      };
       try {
+        // Positive control: the same probe launched unconfined writes its
+        // marker, so the denial below is the profile's, not a broken app.
+        const control = spawnSync('/usr/bin/open', ['-n', app], {
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+        const launched = control.status === 0 && (await markerWritten());
+        if (!launched) {
+          process.stderr.write(
+            `\n[seatbelt.process] SKIPPED app-launch denial: the probe app does not launch unconfined on this host (${control.stderr.trim() || `exit ${control.status}`})\n`,
+          );
+          ctx.skip('the probe app does not launch unconfined on this host');
+        }
+        rmSync(marker, { force: true });
         const result = await confined(worktree, `open -n "${app}"`);
         expect(result.status).not.toBe(0);
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-        expect(existsSync(marker)).toBe(false);
+        expect(result.stderr).toMatch(/-54/);
+        expect(await markerWritten()).toBe(false);
       } finally {
+        rmSync(marker, { force: true });
         rmSync(app, { recursive: true, force: true });
       }
     });
@@ -657,7 +723,7 @@ describe.skipIf(!probe.ok)(
       expect(result.stderr).toMatch(/Operation not permitted/);
     });
 
-    test('the login Keychain is unreachable through the security tool', async () => {
+    test('the login Keychain is unreachable through the security tool', async (ctx) => {
       // An item this host's login Keychain holds (any), found from outside.
       const outsideFind = spawnSync(
         '/usr/bin/security',
@@ -669,9 +735,9 @@ describe.skipIf(!probe.ok)(
       );
       if (outsideFind.status !== 0) {
         process.stderr.write(
-          '\n[seatbelt.process] Keychain lookup not compared: this host has no readable login Keychain item\n',
+          '\n[seatbelt.process] SKIPPED Keychain comparison: this host has no readable login Keychain item\n',
         );
-        return;
+        ctx.skip('this host has no readable login Keychain item to compare');
       }
       const result = await confined(
         worktree,

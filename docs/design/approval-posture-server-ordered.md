@@ -855,14 +855,18 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   connection's `env`, the app-home layer) pass as configured. Everything
   else stays out, among them `GH_TOKEN`, `NPM_TOKEN`, cloud keys and
   `SSH_AUTH_SOCK`, so a confined session cannot push with the operator's SSH
-  agent.
+  agent. The git author and committer identity and `EDITOR`/`VISUAL` pass.
+  Toolchain variables (`NVM_DIR`, `JAVA_HOME`, `GOPATH`, …) are dropped unless
+  the connection's `env` sets them.
 - **The posture.** It comes from the provider's `pending.observe` after the
   engine answers its `initialize` handshake. It is `confined` only when the
   spawn seam recorded `sandbox-exec` with exactly this profile and command,
   the handshake was answered over that process's stdout (`sandbox-exec` execs
   the engine only after the profile applied), and the grants are in bounds.
   Only then does the adapter call `setPermissionMode('bypassPermissions')`
-  and publish `session.started`; a turn sent before then is refused.
+  and publish `session.started`; a turn sent before then is refused. If the
+  lift itself fails after the posture is observed (the engine exited), the
+  start is torn down the same way and refused.
   Anything else (no answer within 60 seconds,
   the engine exited, a different spawn, grants out of bounds) is
   `configured-but-failed`: the engine is stopped and the start is refused
@@ -870,9 +874,10 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
 - **Turns.** `ApprovalPosture` keeps `never` on a Claude turn only when the
   thread's latest `session.started` record is an observed `confined`
   posture. The adapter refuses full access on a turn to an engine spawned
-  without the grant, as before. As defence in depth, a start marked
-  `workspace` that reaches the adapter at `never` without a Seatbelt plan is
-  applied as Auto, never spawned unconfined at full access. A respawn, a
+  without the grant, as before. As defence in depth, a `workspace` start
+  (an absent confinement is `workspace`) that reaches the adapter at `never`
+  without a Seatbelt plan is applied as Auto, never spawned unconfined at
+  full access. A respawn, a
   credential-profile restart and a resume each re-resolve the plan, so they
   are confined and observed again, or fall back to Auto.
 - **Profile shape.** On macOS 26 a profile that allows reads only from system
@@ -910,7 +915,10 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     and the `.git` directory itself, which cannot be removed, renamed or
     replaced by a pointer file (its contents can be emptied, and its
     `config` and `hooks` survive). Commits, a second commit and status still
-    work in both layouts.
+    work in both layouts; a checkout with `.git` inside the workspace can
+    also stash and switch branches. A linked worktree cannot stash, fetch or
+    pull, by design: those write shared refs (`refs/stash`, remote-tracking
+    refs, `packed-refs`).
   - Every path is symlink-resolved before it enters the profile (`/tmp` is
     `/private/tmp`). A path SBPL cannot spell (a quote, a backslash, a
     control character) is refused.
@@ -933,7 +941,9 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   for a selected credential profile or the app-home opt-in. It is never the
   operator's `~/.claude`, a connection's `configHome`, or an app home itself.
   A credential for it is an environment credential, or a credential file
-  enrolled there for confined use. The operator's own login is never copied. Claude rotates its refresh
+  enrolled there for confined use. A credential profile's confined twin
+  starts empty, so a login held only in the profile does not reach it, and
+  such a session falls back to Auto (`confined-credential-unavailable`). The operator's own login is never copied. Claude rotates its refresh
   token on every refresh, so two holders of one login invalidate each other.
 - **Falling back to Auto.** A start whose plan names Seatbelt runs at Auto,
   with nothing engaged, when a check finds one of these, in order:

@@ -116,6 +116,9 @@ const CONFINED_ENV_KEYS = new Set([
   'all_proxy',
   'ENABLE_TOOL_SEARCH',
   'USE_BUILTIN_RIPGREP',
+  // Identity and editor, not credentials.
+  'EDITOR',
+  'VISUAL',
 ]);
 const CONFINED_ENV_PREFIXES = [
   'LC_',
@@ -127,6 +130,8 @@ const CONFINED_ENV_PREFIXES = [
   'MAX_MCP_',
   'BASH_DEFAULT_',
   'BASH_MAX_',
+  'GIT_AUTHOR_',
+  'GIT_COMMITTER_',
 ];
 
 /** Whether an ambient variable may reach the confined engine. */

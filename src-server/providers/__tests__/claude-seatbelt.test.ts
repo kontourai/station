@@ -141,6 +141,16 @@ describe('the confined spawn environment', () => {
     ['NODE_EXTRA_CA_CERTS', true],
     ['ANTHROPIC_BASE_URL', true],
     ['CLAUDE_CODE_OAUTH_TOKEN', true],
+    ['GIT_AUTHOR_NAME', true],
+    ['GIT_AUTHOR_EMAIL', true],
+    ['GIT_COMMITTER_NAME', true],
+    ['GIT_COMMITTER_EMAIL', true],
+    ['EDITOR', true],
+    ['VISUAL', true],
+    ['GIT_ASKPASS', false],
+    ['GIT_SSH_COMMAND', false],
+    ['NVM_DIR', false],
+    ['JAVA_HOME', false],
   ])('%s is allowed: %s', (key, allowed) => {
     expect(confinedEnvAllows(key)).toBe(allowed);
   });
