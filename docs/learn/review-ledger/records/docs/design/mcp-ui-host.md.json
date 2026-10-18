@@ -64,7 +64,17 @@
 
     "src-server/runtime/bootstrap/station-runtime.ts",
 
-    "src-server/services/plugins/__tests__/mcp-service.test.ts"
+    "src-server/services/plugins/__tests__/mcp-service.test.ts",
+
+    "src-server/domain/config-loader.ts",
+
+    "src-server/tools/station-control-mcp-server.ts",
+
+    "src-server/runtime/agents/__tests__/runtime-default-agent.test.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/__tests__/pairing-route-scopes.test.ts"
   ],
 
   "checks": [
