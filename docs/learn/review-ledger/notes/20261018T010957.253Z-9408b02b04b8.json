@@ -1,0 +1,7 @@
+{
+  "revision": "09aed1288db8975514478c68ec42b9ba974cdf89",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the mcp-service policy fixture cleanup: the new case now uses trackTempDirs rather than a raw mkdtemp call, retaining hook-owned cleanup on failure. The policy test inputs/assertions and production code are unchanged. All 67 service tests and the raw-temp-directory ratchet passed; no ratchet ceiling was raised.","inputs":["docs/design/mcp-ui-host.md","src-server/services/plugins/__tests__/mcp-service.test.ts"]}
+  ]
+}
