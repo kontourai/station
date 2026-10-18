@@ -21,8 +21,8 @@ acknowledge the disclosure, even with `access:manage`.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
 relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
-receipt now resolve to Lite and stop Full delivery. There is no Lite sender in
-this foundation. To resume Full events, explicitly choose operator Full in
+receipt now resolve to Lite and stop Full delivery. Lite uses the completed-day
+sender described below. To resume Full events, explicitly choose operator Full in
 Settings or run `station telemetry set operator full`, then acknowledge the
 current disclosure in Settings. Explicit stored choices take precedence over
 environment defaults; DO_NOT_TRACK always wins.

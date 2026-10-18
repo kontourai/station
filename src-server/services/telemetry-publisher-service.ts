@@ -434,7 +434,10 @@ export class TelemetryPublisherService {
           outcome = 'sent';
           reason = 'acknowledged';
         }
-        await response.body?.cancel();
+        await abortableTelemetryOperation(
+          Promise.resolve(response.body?.cancel()),
+          controller.signal,
+        );
       } catch {
         /* Transport failures are recorded without endpoint or error text. */
       } finally {

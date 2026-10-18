@@ -1190,12 +1190,17 @@ publisher disclosure remains effectively Lite. Agents also receive 403 from
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority.
+`PUT /config/app` may include request-only `telemetryFeedbackReason`; it sends once
+for each actual lowering before the lower choice is applied, including Off. DNT
+suppresses feedback, and feedback failure never blocks lowering.
 `POST /api/usage-telemetry/feedback` accepts exactly publisher, action and a fixed
-enum reason, and `POST /api/usage-telemetry/lite-notices` records publisher and the
+enum reason. Non-skip feedback requires a recorded lowering within 10 minutes,
+no prior reason for that change, and at most one standalone reason per publisher
+per UTC day; unavailable feedback returns 409.
+`POST /api/usage-telemetry/lite-notices` records publisher and the
 shown inventoryRevision. Both writes require `access:manage` and refuse agent
-principals. See the exact
-feedback enum and notice behavior in the usage reference. The
-[usage reference](usage-telemetry.md) owns the program and deployment limits.
+principals. See the exact feedback enum and notice behavior in the usage reference.
+The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks
 
@@ -1210,8 +1215,7 @@ defaults or cached success.
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
 Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
-disclosure consent or establishes downstream delivery/query acceptance. The
-[usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
+disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.
 
 ---
