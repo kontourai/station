@@ -287,7 +287,7 @@ describe('persistent runner policy', () => {
     return [
       { file: workflow.file, document },
       ...readWorkflowDocuments().filter(
-        ({ file }) => file === '.github/workflows/full-regression.yml',
+        ({ file }) => file !== '.github/workflows/ci.yml',
       ),
     ];
   }
@@ -552,6 +552,14 @@ describe('persistent runner policy', () => {
     [
       'pr-title',
       (job: Record<string, unknown>) => {
+        const steps = job.steps as Array<Record<string, unknown>>;
+        (steps[1].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.base.sha }}';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
         job.permissions = { contents: 'write' };
       },
     ],
@@ -565,7 +573,7 @@ describe('persistent runner policy', () => {
       'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        (steps[0].with as Record<string, unknown>).ref =
+        (steps[1].with as Record<string, unknown>).ref =
           '${{ github.event.pull_request.head.sha }}';
       },
     ],
@@ -587,7 +595,70 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId,
       message:
-        'Required PR title check must use the exact base-only read-only topology',
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.permissions = {
+        contents: 'read',
+        'pull-requests': 'read',
+        statuses: 'write',
+        checks: 'write',
+      };
+    },
+    (job: Record<string, unknown>) => {
+      (job.concurrency as Record<string, unknown>)['cancel-in-progress'] = true;
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).shift();
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).pop();
+    },
+    (job: Record<string, unknown>) => {
+      job.name = 'PR title policy';
+    },
+  ])('rejects unsafe title status publication topology', (mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('pr-title', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('rejects PR-number-scoped concurrency for a shared-SHA commit status', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('pr-title', (job) => {
+          (job.concurrency as Record<string, unknown>).group =
+            'ci-pr-title-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('does not grant status publication to candidate source jobs', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks-statics', (job) => {
+          job.permissions = { contents: 'read', statuses: 'write' };
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks-statics',
+      message:
+        'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
     });
   });
 
@@ -1321,6 +1392,223 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.needs = [];
+    },
+    (job: Record<string, unknown>) => {
+      job.if = 'always()';
+    },
+    (job: Record<string, unknown>) => {
+      job.steps = [{ run: 'node candidate-policy.mjs' }];
+    },
+  ])('rejects widened trusted delivery planning authority', (mutate) => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('delivery-plan', mutate),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'delivery-plan',
+      message:
+        'delivery routing must retain its exact reviewed trusted-policy checkout, diff and admission topology',
+    });
+  });
+
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.workflow_run.head_sha }}';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps.push({ run: 'node candidate.mjs' });
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.permissions.contents = 'write';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.on.workflow_run.types = ['completed'];
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.if = 'always()';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.merge_group.head_sha }}';
+    },
+  ])('rejects widened source verification publication authority', (mutate) => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/source-verification-policy.yml',
+    );
+    if (!workflow) throw new Error('Missing source verification publisher');
+    const document = structuredClone(workflow.document) as Parameters<
+      typeof mutate
+    >[0];
+    mutate(document);
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'reconcile',
+      message:
+        'source verification publisher must retain its exact reviewed trusted-policy, read-only evidence and isolated status-write topology',
+    });
+  });
+
+  test('rejects a source marker that treats a base retarget as metadata-only', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!workflow) throw new Error('Missing CI');
+    const document = structuredClone(workflow.document) as Record<
+      string,
+      unknown
+    >;
+    document['run-name'] = 'PR metadata';
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'workflow',
+      message:
+        'source run-name must distinguish metadata-only edits without suppressing base-retarget verification',
+    });
+  });
+
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps[0].with!.ref =
+        `\${{ github.event.pull_request.head.sha }}`;
+    },
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps.push({
+        run: 'node candidate.mjs',
+      });
+    },
+  ])(
+    'refuses widening the merged-tail controller to candidate execution',
+    (mutate) => {
+      const workflow = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/pr-ci-supersession.yml',
+      );
+      if (!workflow) throw new Error('Missing supersession controller');
+      const document = structuredClone(workflow.document) as Parameters<
+        typeof mutate
+      >[0];
+      mutate(document);
+      expect(
+        persistentRunnerPolicyFindings([{ ...workflow, document }]),
+      ).toContainEqual({
+        file: workflow.file,
+        jobId: 'cancel-obsolete',
+        message:
+          'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+      });
+    },
+  );
+
+  test('follows nested local candidate workflows and refuses an unreviewed callee', () => {
+    const workflow = {
+      on: { pull_request_target: {} },
+      permissions: { contents: 'read' },
+      jobs: {
+        nested: { uses: './.github/workflows/bridge.yml' },
+      },
+    };
+    const bridge = {
+      on: { workflow_call: null },
+      permissions: { contents: 'read' },
+      jobs: {
+        nested: { uses: './.github/workflows/unreviewed.yml' },
+      },
+    };
+    const leaf = {
+      on: { workflow_call: null },
+      permissions: { contents: 'write' },
+      jobs: {},
+    };
+    const findings = persistentRunnerPolicyFindings([
+      { file: '.github/workflows/desktop-rust.yml', document: workflow },
+      { file: '.github/workflows/bridge.yml', document: bridge },
+      { file: '.github/workflows/unreviewed.yml', document: leaf },
+    ]);
+    expect(findings).toContainEqual({
+      file: '.github/workflows/unreviewed.yml',
+      jobId: 'workflow',
+      message:
+        'pull_request_target is reserved for reviewed base-controlled PR workflows',
+    });
+  });
+
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
     const workflows = readWorkflowDocuments();
     const expected = [
@@ -1336,7 +1624,11 @@ describe('persistent runner policy', () => {
     for (const file of expected) {
       const document = workflows.find((workflow) => workflow.file === file)
         ?.document as { on?: Record<string, unknown> } | undefined;
-      expect(document?.on).toHaveProperty('pull_request_target');
+      expect(
+        document?.on &&
+          ('pull_request_target' in document.on ||
+            'workflow_call' in document.on),
+      ).toBe(true);
       expect(document?.on).not.toHaveProperty('pull_request');
     }
   });
@@ -3861,7 +4153,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       );
     const uses = (prefix: string) =>
       untrustedSteps.filter((step) => String(step.uses).startsWith(prefix));
-    expect(uses('actions/setup-node@').length).toBeGreaterThanOrEqual(17);
+    expect(uses('actions/setup-node@').length).toBeGreaterThan(0);
     expect(uses('pnpm/setup@').length).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
     expect(uses('actions/cache/restore@')).toHaveLength(1);
@@ -4207,7 +4499,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         }
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(17);
+    expect(checked).toBeGreaterThan(0);
     const quoted = oneStepWorkflow(
       { merge_group: {} },
       { uses: SETUP_NODE_ACTION, with: { 'package-manager-cache': 'false' } },

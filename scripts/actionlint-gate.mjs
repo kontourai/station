@@ -34,10 +34,20 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load } from 'js-yaml';
+import { dump, load } from 'js-yaml';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -375,6 +385,9 @@ const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'pr-title',
+  'source-policy',
+  'delivery-plan',
+  'delivery-validation',
   'fast-checks',
   'fast-checks-plan',
   'fast-checks-shard',
@@ -423,15 +436,15 @@ const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
 export const CHECKOUT_ACTION =
   'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 export const SETUP_NODE_ACTION =
-  'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
+  'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
+  'github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
+  'github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+  'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9';
 const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
 const WINDOWS_PR_JOB = 'windows-pr-portable';
 const WINDOWS_PR_EVIDENCE_UPLOAD_NAME =
@@ -454,7 +467,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024';
+  'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -579,6 +592,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
+  '.github/workflows/delivery-validation.yml',
   '.github/workflows/docs-kit.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/gallery-pr-check.yml',
@@ -661,7 +675,7 @@ const MISSING_CALLEE_MESSAGE =
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a lockfile-verification log on every run,
- *   independently of its `cache` input, with no opt-out (reviewed dist at fbda4c85: the
+ *   independently of its `cache` input, with no opt-out (reviewed source/dist at a0881977: the
  *   post step calls the save unconditionally). That save is NOT safe on its
  *   own merits: the key is the hash of the checked-out (candidate) lockfile,
  *   the pre-upload check only confirms earlier records survived (appended
@@ -687,7 +701,7 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   // trusted-base topology separately owns its credential admission.
   'actions/create-github-app-token': (step) =>
     step.uses ===
-    'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1'
+    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
       ? []
       : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
@@ -781,7 +795,7 @@ const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
   name: 'Upload the archive and its descriptor',
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
-  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  uses: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
   with: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     name: 'station-server-${{ matrix.target }}',
@@ -842,9 +856,10 @@ function isExactMergeQueueFullRegressionCall(file, jobId, job) {
     hasExactKeys(job.permissions, ['contents', 'actions']) &&
     job.permissions.contents === 'read' &&
     job.permissions.actions === 'read' &&
-    hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
+    hasExactKeys(job.with, ['source_sha', 'allow_reuse', 'capacity_class']) &&
     job.with.source_sha === `\${{ github.sha }}` &&
-    job.with.allow_reuse === true
+    job.with.allow_reuse === true &&
+    job.with.capacity_class === 'integration'
   );
 }
 
@@ -1392,8 +1407,66 @@ function skipsAutomaticPullRequest(condition) {
   );
 }
 
+function prCapableWorkflowFiles(workflows) {
+  const byFile = new Map(
+    workflows.map(({ file, document }) => [file, document]),
+  );
+  const capable = new Set(
+    workflows
+      .filter(
+        ({ file, document }) =>
+          workflowHasTrigger(document, PULL_REQUEST_TARGET) ||
+          (BASE_CONTROLLED_PR_WORKFLOWS.has(file) &&
+            workflowHasTrigger(document, 'workflow_call')),
+      )
+      .map(({ file }) => file),
+  );
+  const pending = [...capable];
+  while (pending.length) {
+    const file = pending.pop();
+    for (const job of Object.values(byFile.get(file)?.jobs ?? {})) {
+      const callee = localReusableWorkflowFile(job?.uses ?? '');
+      if (
+        !callee ||
+        capable.has(callee) ||
+        !byFile.has(callee) ||
+        restrictEventsByCondition(new Set([PULL_REQUEST_TARGET]), job.if)
+          .size === 0
+      )
+        continue;
+      capable.add(callee);
+      pending.push(callee);
+    }
+  }
+  return capable;
+}
+
+function isReviewedDeliveryCall(file, jobId, job) {
+  const calls = {
+    '.github/workflows/ci.yml': {
+      'delivery-validation': 'delivery-validation',
+    },
+    '.github/workflows/delivery-validation.yml': {
+      install: 'install-smoke',
+      portable: 'portable-server-archives',
+      native: 'desktop-rust',
+      desktop: 'desktop-clean-checkout',
+      ecosystem: 'ecosystem-packaging',
+    },
+  };
+  const callee = calls[file]?.[jobId];
+  return Boolean(
+    callee &&
+      job.uses === `./.github/workflows/${callee}.yml` &&
+      job.steps === undefined &&
+      job.secrets === undefined &&
+      !containsSecretReference(job),
+  );
+}
+
 export function persistentRunnerPolicyFindings(workflows) {
   const findings = [];
+  const prCapable = prCapableWorkflowFiles(workflows);
   const workflowsByFile = new Map(
     workflows.map(({ file, document }) => [file, document]),
   );
@@ -1409,7 +1482,9 @@ export function persistentRunnerPolicyFindings(workflows) {
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
     findings.push(...fullRegressionActionlintFindings(file, document));
-    findings.push(...baseControlledPrWorkflowFindings(file, document));
+    findings.push(
+      ...baseControlledPrWorkflowFindings(file, document, prCapable.has(file)),
+    );
     findings.push(...mergeQueueWorkflowFindings(file, document));
     findings.push(...untrustedCacheFindings(file, document, workflowsByFile));
   }
@@ -1600,16 +1675,34 @@ function referencesCredential(job) {
  * base-only PR title topology may read the token; its full shape is
  * independently checked by primaryCiRouterFindings.
  */
+function isExactDeliveryPlanner(job) {
+  return (
+    Boolean(job) &&
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(job)))
+      .digest('hex') ===
+      'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
+  );
+}
+
 function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
     .filter(([jobId, job]) => {
+      if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
+        return false;
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
-      const step = withoutReadToken.steps?.find(
-        (entry) => entry.name === 'Validate live pull-request title',
-      );
-      if (step?.env?.GH_TOKEN === `\${{ github.token }}`)
-        delete step.env.GH_TOKEN;
+      for (const step of withoutReadToken.steps ?? []) {
+        if (
+          [
+            'Mark title policy pending before setup',
+            'Publish live title policy',
+            'Fail title policy after publication or setup error',
+          ].includes(step.name) &&
+          step.env?.GH_TOKEN === `\${{ github.token }}`
+        )
+          delete step.env.GH_TOKEN;
+      }
       return referencesCredential(withoutReadToken);
     })
     .map(([jobId]) => ({ file, jobId, message: CI_CREDENTIAL_MESSAGE }));
@@ -2438,6 +2531,16 @@ function fastChecksShardingFindings(file, jobs) {
   return findings;
 }
 
+function isExactSourcePolicyCall(job) {
+  if (!job) return false;
+  return (
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(job)))
+      .digest('hex') ===
+    'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
+  );
+}
+
 function primaryCiRouterFindings(file, document) {
   if (!workflowHasTrigger(document, PULL_REQUEST_TARGET)) {
     if (file !== '.github/workflows/ci.yml' || !hasCiRouterTrigger(document))
@@ -2456,6 +2559,16 @@ function primaryCiRouterFindings(file, document) {
   const findings = collectRequiredBrowserSmokeFindings(document).map(
     (message) => ({ file, jobId: 'fast-checks', message }),
   );
+  if (
+    document['run-name'] !==
+    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}"
+  )
+    findings.push({
+      file,
+      jobId: 'workflow',
+      message:
+        'source run-name must distinguish metadata-only edits without suppressing base-retarget verification',
+    });
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({
@@ -2475,6 +2588,13 @@ function primaryCiRouterFindings(file, document) {
     if (
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
+      !(jobId === 'source-policy' && isExactSourcePolicyCall(job)) &&
+      !(
+        jobId === 'delivery-plan' &&
+        hasExactKeys(job.permissions, ['contents', 'pull-requests']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions['pull-requests'] === 'read'
+      ) &&
       !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
@@ -2482,6 +2602,7 @@ function primaryCiRouterFindings(file, document) {
           JSON.stringify({
             contents: 'read',
             'pull-requests': 'read',
+            statuses: 'write',
           })
       ) &&
       !(
@@ -2515,6 +2636,30 @@ function primaryCiRouterFindings(file, document) {
         message: 'ci.yml pull_request_target router is missing a reviewed job',
       });
   }
+  // These jobs read base policy before any candidate execution. Bind the
+  // checkout, complete diff, permissions, admission and local callee together.
+  if (!isExactSourcePolicyCall(jobs['source-policy']))
+    findings.push({
+      file,
+      jobId: 'source-policy',
+      message:
+        'source publication caller must retain its exact reviewed isolation and source-only admission',
+    });
+  const deliveryJobs = Object.fromEntries(
+    ['delivery-plan', 'delivery-validation'].map((id) => [id, jobs[id]]),
+  );
+  if (
+    createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(deliveryJobs)))
+      .digest('hex') !==
+    'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
+  )
+    findings.push({
+      file,
+      jobId: 'delivery-plan',
+      message:
+        'delivery routing must retain its exact reviewed trusted-policy checkout, diff and admission topology',
+    });
   for (const jobId of Object.keys(jobs)) {
     if (!PRIMARY_ROUTER_JOBS.has(jobId))
       findings.push({
@@ -2578,42 +2723,64 @@ function primaryCiRouterFindings(file, document) {
     });
   const title = jobs['pr-title'];
   const expectedTitle = {
-    name: 'PR title',
-    if: `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`,
-    permissions: { contents: 'read', 'pull-requests': 'read' },
+    name: 'PR title status publisher',
+    if: "${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
+    permissions: {
+      contents: 'read',
+      'pull-requests': 'read',
+      statuses: 'write',
+    },
     concurrency: {
-      group: `ci-pr-title-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
-      'cancel-in-progress': true,
+      group:
+        'ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+      'cancel-in-progress': false,
     },
     'runs-on': 'ubuntu-22.04',
     'timeout-minutes': 3,
     steps: [
       {
-        name: 'Check out base policy for pull-request title',
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        uses: CHECKOUT_ACTION,
+        name: 'Mark title policy pending before setup',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          STATUS_SHA:
+            '${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+        },
+        run: "node --input-type=module <<'NODE'\nconst response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {\n  method: 'POST',\n  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ context: 'PR title policy', state: 'pending', description: 'Validating live title policy' }),\n  signal: AbortSignal.timeout(30000),\n});\nif (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);\nNODE\n",
+      },
+      {
+        name: 'Check out workflow policy for pull-request title',
+        uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
         with: {
           'fetch-depth': 1,
           'persist-credentials': false,
-          repository: `\${{ github.repository }}`,
-          ref: `\${{ github.event.pull_request.base.sha }}`,
+          repository: '${{ github.repository }}',
+          ref: "${{ github.event_name == 'pull_request_target' && github.workflow_sha || github.event.merge_group.base_sha }}",
         },
       },
       {
-        uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        with: { 'node-version-file': '.nvmrc', 'package-manager-cache': false },
+        uses: SETUP_NODE_ACTION,
+        with: {
+          'node-version-file': '.nvmrc',
+          'package-manager-cache': false,
+        },
       },
       {
-        name: 'Validate live pull-request title',
-        if: `\${{ github.event_name == 'pull_request_target' }}`,
-        env: { GH_TOKEN: `\${{ github.token }}` },
+        name: 'Publish live title policy',
+        id: 'policy',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+        },
         run: 'node scripts/pr-title-check.mjs',
       },
       {
-        name: 'Acknowledge title checks at queue admission',
-        if: `\${{ github.event_name == 'merge_group' }}`,
-        run: 'echo "PR titles are required before merge-queue admission."',
+        name: 'Fail title policy after publication or setup error',
+        if: "${{ always() && steps.policy.outcome != 'success' }}",
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          STATUS_SHA:
+            '${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}',
+        },
+        run: "node --input-type=module <<'NODE'\nconst response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {\n  method: 'POST',\n  headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ context: 'PR title policy', state: 'failure', description: 'Title policy validation or publication failed' }),\n  signal: AbortSignal.timeout(30000),\n});\nif (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);\nNODE\n",
       },
     ],
   };
@@ -2622,7 +2789,7 @@ function primaryCiRouterFindings(file, document) {
       file,
       jobId: 'pr-title',
       message:
-        'Required PR title check must use the exact base-only read-only topology',
+        'Title status publisher must use the exact trusted-policy topology',
     });
   if (
     jobs['fast-checks']?.name !==
@@ -2806,7 +2973,7 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
+  '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
@@ -2817,7 +2984,39 @@ function orderedPolicy(value) {
     );
   return value;
 }
-function baseControlledPrWorkflowFindings(file, document) {
+function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
+  if (file === '.github/workflows/pr-ci-supersession.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest ===
+      '6bcfb0af788025369a0f9d1a90fc61dae2826dd06cb1d56bf2bc933d9bec044b'
+      ? []
+      : [
+          {
+            file,
+            jobId: 'cancel-obsolete',
+            message:
+              'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+          },
+        ];
+  }
+  if (file === '.github/workflows/source-verification-policy.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest ===
+      'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
+      ? []
+      : [
+          {
+            file,
+            jobId: 'reconcile',
+            message:
+              'source verification publisher must retain its exact reviewed trusted-policy, read-only evidence and isolated status-write topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/landing-automation.yml') {
     const digest = createHash('sha256')
       .update(JSON.stringify(orderedPolicy(document)))
@@ -2835,6 +3034,7 @@ function baseControlledPrWorkflowFindings(file, document) {
   }
   if (file === '.github/workflows/ci.yml') return [];
   if (
+    !prCapable &&
     !workflowHasTrigger(document, PULL_REQUEST_TARGET) &&
     file !== SECURITY_ANALYSIS_WORKFLOW
   )
@@ -2904,11 +3104,17 @@ function baseControlledPrWorkflowFindings(file, document) {
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
     const exactDocsGateCall = isExactDocsGateCall(file, jobId, job);
+    const exactDeliveryCall = isReviewedDeliveryCall(file, jobId, job);
     const runner = classifyRunner(job);
     // The exact calls have no runner of their own. This rule does not follow
     // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
     // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
-    if (!runner.hosted && !exactFullRegressionCall && !exactDocsGateCall)
+    if (
+      !runner.hosted &&
+      !exactFullRegressionCall &&
+      !exactDocsGateCall &&
+      !exactDeliveryCall
+    )
       findings.push({
         file,
         jobId,
@@ -2926,6 +3132,7 @@ function baseControlledPrWorkflowFindings(file, document) {
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
               exactFullRegressionCall ||
               exactDocsGateCall ||
+              exactDeliveryCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,
@@ -3020,8 +3227,12 @@ function isReviewedCacheRestore(file, jobId, step) {
 function untrustedCacheFindings(file, document, workflowsByFile) {
   const findings = [];
   const events = new Set(
-    UNTRUSTED_CACHE_TRIGGERS.filter((trigger) =>
-      workflowHasTrigger(document, trigger),
+    UNTRUSTED_CACHE_TRIGGERS.filter(
+      (trigger) =>
+        workflowHasTrigger(document, trigger) ||
+        (trigger === PULL_REQUEST_TARGET &&
+          BASE_CONTROLLED_PR_WORKFLOWS.has(file) &&
+          workflowHasTrigger(document, 'workflow_call')),
     ),
   );
   const isCallee = workflowHasTrigger(document, 'workflow_call');
@@ -3261,6 +3472,73 @@ export function readWorkflowDocuments() {
     }));
 }
 
+// GitHub supports queue:max, but pinned actionlint 1.7.12 does not yet:
+// https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+// Validate the complete reviewed concurrency shapes before removing ONLY the
+// new schema field from a temporary lint copy. Security policy uses originals.
+const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
+const PR_SOURCE_FIFO_GROUPS = {
+  'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+};
+export function legacyActionlintSources(workflows) {
+  const expected = {
+    '.github/workflows/delivery-validation.yml': 'station-background-compute',
+    '.github/workflows/hosted-capacity-probe.yml': 'station-background-compute',
+    '.github/workflows/full-regression.yml': BACKGROUND_QUALIFICATION_GROUP,
+  };
+  return workflows.map(({ file, document }) => {
+    const copy = structuredClone(document);
+    const concurrency = copy?.concurrency;
+    if (Object.hasOwn(expected, file)) {
+      if (
+        !concurrency ||
+        typeof concurrency !== 'object' ||
+        Array.isArray(concurrency) ||
+        !hasExactKeys(concurrency, ['group', 'queue', 'cancel-in-progress']) ||
+        concurrency.group !== expected[file] ||
+        concurrency.queue !== 'max' ||
+        concurrency['cancel-in-progress'] !== false
+      )
+        throw new Error(`Unreviewed FIFO concurrency in ${file}`);
+      delete concurrency.queue;
+    } else if (
+      concurrency &&
+      typeof concurrency === 'object' &&
+      Object.hasOwn(concurrency, 'queue')
+    )
+      throw new Error(`Unreviewed FIFO workflow ${file}`);
+    for (const [jobId, job] of Object.entries(document?.jobs ?? {})) {
+      const queued =
+        job?.concurrency &&
+        typeof job.concurrency === 'object' &&
+        Object.hasOwn(job.concurrency, 'queue');
+      if (
+        file === '.github/workflows/ci.yml' &&
+        Object.hasOwn(PR_SOURCE_FIFO_GROUPS, jobId)
+      ) {
+        const concurrency = job?.concurrency;
+        if (
+          !concurrency ||
+          !hasExactKeys(concurrency, [
+            'group',
+            'queue',
+            'cancel-in-progress',
+          ]) ||
+          concurrency.group !== PR_SOURCE_FIFO_GROUPS[jobId] ||
+          concurrency.queue !== 'max' ||
+          concurrency['cancel-in-progress'] !== false
+        )
+          throw new Error(`Unreviewed PR source FIFO job ${jobId}`);
+      } else if (queued) throw new Error(`Unreviewed FIFO job in ${file}`);
+    }
+    for (const job of Object.values(copy?.jobs ?? {}))
+      if (job?.concurrency && Object.hasOwn(job.concurrency, 'queue'))
+        delete job.concurrency.queue;
+    return { file, source: dump(copy, { lineWidth: -1, noRefs: true }) };
+  });
+}
+
 function main() {
   if (!existsSync(WORKFLOW_DIR)) {
     console.error(
@@ -3305,30 +3583,39 @@ function main() {
     }).exitCode;
   }
 
-  // No arguments: actionlint discovers `.github/workflows` from the repo root
-  // itself. Passing the directory is a USAGE ERROR (exit 3, "is a directory"),
-  // not a scan — and the first draft of this gate did exactly that, parsed the
-  // resulting error text into zero findings, and reported OK. A gate that
-  // never ran its own tool and calls that a pass is the precise failure this
-  // gate exists to prevent, so the exit status is now classified rather than
-  // assumed.
-  //
-  //   0 → clean scan
-  //   1 → scan ran, findings reported (the normal path here)
-  //   anything else → the tool did not scan; FAIL loudly
+  let sources;
+  try {
+    sources = legacyActionlintSources(readWorkflowDocuments());
+  } catch (error) {
+    console.error(`[actionlint] ${error.message}`);
+    return 1;
+  }
+  const lintRoot = mkdtempSync(join(tmpdir(), 'station-actionlint-'));
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSyncBounded(binary, [], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    mkdirSync(join(lintRoot, '.git'));
+    mkdirSync(join(lintRoot, '.github/workflows'), { recursive: true });
+    const config = join(REPO_ROOT, '.github/actionlint.yaml');
+    if (existsSync(config))
+      copyFileSync(config, join(lintRoot, '.github/actionlint.yaml'));
+    for (const { file, source } of sources)
+      writeFileSync(join(lintRoot, file), source);
+    stdout = execFileSyncBounded(
+      binary,
+      sources.map(({ file }) => file),
+      {
+        cwd: lintRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    // A capture overflow or spawn failure carries no child output; its
-    // message is the only diagnostic, so never print an empty detail.
     stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
+  } finally {
+    rmSync(lintRoot, { recursive: true, force: true });
   }
 
   if (status !== 0 && status !== 1) {

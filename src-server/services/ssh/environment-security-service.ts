@@ -646,6 +646,22 @@ export class EnvironmentSecurityService {
             )
           : true;
       }
+      if (
+        this.#devicePairingService?.credentialMayManagePairing(candidate) &&
+        (isPairingApprovalLeaf(request) ||
+          isDeviceAccessManagementLeaf(request) ||
+          (request.method.toUpperCase() === 'POST' &&
+            request.path === '/api/pairing/offers') ||
+          (request.method.toUpperCase() === 'DELETE' &&
+            /^\/api\/pairing\/offers\/[^/]+$/.test(request.path)))
+      ) {
+        return request.activity
+          ? this.#devicePairingService.recordCredentialActivity(
+              candidate,
+              request.activity.lastSeenFrom,
+            )
+          : true;
+      }
       // archive#1887: other device grants have ONE narrow
       // exception. A device the operator explicitly promoted (scope carries
       // `access:approve`) may act on PENDING REQUESTS — list, confirm, deny —
@@ -683,8 +699,8 @@ export class EnvironmentSecurityService {
   /**
    * Whether `candidate` would be admitted by {@link authorizeCredential} to
    * the pending-request approval leaves (#765 D5): the operator credential,
-   * or a device the operator promoted with `access:approve`
-   * ({@link DevicePairingService.credentialMayApprovePairing}). The SAME two
+   * a host-issued browser session, or a device explicitly promoted with `access:approve`
+   * ({@link DevicePairingService.credentialMayApprovePairing}). These same
    * derivations that branch composes at the HTTP boundary, exported so a
    * read-side surface (the attention projection's Approve/Deny affordance)
    * consumes the boundary's own predicate rather than re-deriving it — a
@@ -697,7 +713,8 @@ export class EnvironmentSecurityService {
   credentialMayDecidePairingRequests(candidate: string): boolean {
     if (
       this.verifyOperatorCredential(candidate) ||
-      this.#devicePairingService?.isLocalGrantMintedCredential(candidate)
+      this.#devicePairingService?.isLocalGrantMintedCredential(candidate) ||
+      this.#devicePairingService?.credentialMayManagePairing(candidate)
     )
       return true;
     return (

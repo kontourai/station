@@ -147,7 +147,9 @@ function completeChangedDiagnosticIsConsistent(diagnostic) {
       executions.filter((execution) => execution.infrastructureError).length +
         (preparation?.infrastructureError === true ? 1 : 0) &&
     diagnostic.counts.parserErrors ===
-      executions.filter((execution) => execution.error).length &&
+      executions.filter(
+        (execution) => execution.error && !execution.infrastructureError,
+      ).length &&
     diagnostic.counts.emptyReports ===
       executions.filter((execution) => execution.empty).length
   );

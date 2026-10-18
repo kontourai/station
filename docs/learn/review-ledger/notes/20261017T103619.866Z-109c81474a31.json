@@ -1,0 +1,9 @@
+{
+  "revision": "d4a5e84b07fcee7117a12ddb6fb824f4481b3f9e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed main 88ebfbf2059 integration. SessionMessageDelivery now comes from the public Monument entry point; runtime routes retain the tool-library authorization and mounts. The canonical record preserves the union of 518 source paths; all other human metadata matches both parents. Delivery, runtime authority, execution, inbox and chat suites passed 254 tests. Eight Linux-only service tests were skipped on macOS. The four-scene Profile/dock recovery browser spec passed; no provider or release qualification is inferred.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regeneration after the module-map delivery-owner move. Canonical tool-source, approval and Project-policy topics remain alongside current Monument ownership. Generated-content check validates 114 topics at digest 6eb0e4c6d92078bbd229745dc095a9838b5fdd29a17aed8aa671bb7b9f501185. Focused suites passed 254 tests with eight platform skips; E2E types, fixture policy and the real Profile/dock recovery spec passed. Hosted successor qualification remains pending.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

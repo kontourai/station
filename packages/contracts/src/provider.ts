@@ -4,6 +4,10 @@ import type { EngineId } from './agent-identity.js';
 export type { EngineId } from './agent-identity.js';
 
 import type { ChatAttachmentInput } from './chat-attachment.js';
+import {
+  type ConfinementPlan,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from './execution-confinement.js';
 import type { TenantExecutionContext } from './tenancy.js';
 import type {
   WorkspaceIsolationConfig,
@@ -339,6 +343,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
@@ -884,6 +889,11 @@ export const PROVIDER_SESSION_START_FAILED_CODE =
  * re-send it.
  */
 export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+/** The key already names a different submitted intent. No turn was accepted. */
+export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+/** This keyed input cannot be represented completely by the supported digest. */
+export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
+  'client_turn_input_unsupported';
 
 /**
  * A send refused before any engine effect because the bound engine cannot
@@ -994,6 +1004,7 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  askBeforeUse?: string[];
   /**
    * #90 D14: `false` when the agent's operator switched the built-in browser
    * tools (`station-browser`) off. Absent means the engine's default: an
@@ -1151,6 +1162,13 @@ export interface ProviderSessionStartInput {
    * commands omit this field; absent is `workspace`.
    */
   confinement?: StationConfinement;
+  /**
+   * #2494: server-resolved confinement mechanism for this spawn, present only
+   * when one is engaged. Public orchestration commands omit this field. The
+   * adapter that engages the mechanism observes the started process and
+   * stamps `STATION_CONFINEMENT_RECORD_METADATA_KEY` on `session.started`.
+   */
+  confinementPlan?: ConfinementPlan;
   metadata?: Record<string, unknown>;
   /**
    * Server-only opaque app-home selector for a single provider spawn. It is

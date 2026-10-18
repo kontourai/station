@@ -11,8 +11,9 @@ Connect / GitHub-secret checklist, use [store-entry.md](./store-entry.md).
 Listing copy is in
 [store-listing.md](./store-listing.md). This doc only covers what's specific to
 getting a signed Android/iOS build from a GitHub release into Play's internal
-testing track and TestFlight. The daily Android nightly channel is a separate,
-scheduled pipeline under its own applicationId — see
+testing track and TestFlight. The Android Nightly channel is a separate
+pipeline with hourly eligibility checks and a six-hour default minimum
+publication interval, under its own applicationId — see
 [nightly.md](./nightly.md#android-nightly-play-internal-testing).
 
 Station's Android release build (signed universal APK + AAB) and iOS device
@@ -446,11 +447,10 @@ still be established by the operator.
    `https://token.actions.githubusercontent.com`. Restrict its attribute
    condition to repository `kontourai/station` and only the trusted
    `nightly.yml@refs/heads/main` and `release.yml@refs/tags/v*` workflow refs.
-   A Nightly started by Main qualification runs as a called workflow, so its
-   top-level `workflow_ref` claim is `main-qualification.yml@refs/heads/main`.
-   A condition on `workflow_ref` must admit that ref too, or that entry
-   point's Play and Secret Manager steps fail authentication. The live
-   condition is `NOT_VERIFIED` by this source review.
+   Scheduled and manual Nightly now run directly from `nightly.yml`; main
+   qualification no longer calls Nightly. A historical admission for
+   `main-qualification.yml@refs/heads/main` is not required by the current
+   delivery graph. The live condition is `NOT_VERIFIED` by this source review.
 3. Grant that provider's repository principal only
    `roles/iam.workloadIdentityUser` on the service account. Do not create a
    user-managed service-account key.

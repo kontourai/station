@@ -26,12 +26,9 @@ name: "PR: Portable archives"
 # explicit head-repository/head-SHA checkout that persists no credentials,
 # on ephemeral GitHub-hosted runners, under a read-only token.
 
-# Every input that changes an archive's bytes or its proof triggers a run.
-# scripts/__tests__/portable-server-archive.test.ts derives the builder's and
-# the smoke's local imports and fails if one is missing here, and holds push
-# and pull_request_target to the same list. Server, UI and shared package
-# sources are deliberately not listed: they change on most pull requests,
-# and ordinary CI owns them.
+# The trusted delivery planner owns affected PR routing in
+# scripts/pr-delivery-paths.json. Scheduled qualification and publication
+# callers retain the complete native target matrix below.
 on:
   workflow_call:
     inputs:
@@ -53,99 +50,6 @@ on:
         default: false
         type: boolean
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/portable-server-archives.yml'
-      - '.nvmrc'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'esbuild.config.mjs'
-      - 'docs/reference/station-docs.md'
-      - 'docs/learn/mcp-topics.json'
-      - 'docs/architecture/module-map.md'
-      - 'docs/learn/atlas.json'
-      - 'install.sh'
-      - 'install.ps1'
-      - 'schemas/**'
-      - 'examples/**'
-      - 'config/portable-server-node-runtime.json'
-      # The release ring table and grammar that stamp .station-release.json.
-      - 'config/channel-ports.json'
-      - 'packages/shared/src/portable-server-targets.mjs'
-      - 'packages/shared/src/release-manifest.mjs'
-      - 'packages/shared/src/release-rings.generated.mjs'
-      - 'packaging/portable-server/**'
-      - 'packages/cli/**'
-      - 'scripts/build-portable-server-archive.mjs'
-      - 'scripts/generate-station-docs.mjs'
-      - 'scripts/smoke-portable-server-archive.mjs'
-      - 'scripts/station-cli.ts'
-      - 'scripts/station-cli-implementation.ts'
-      - 'scripts/source-bootstrap.ts'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/container-release-metadata.mjs'
-      - 'scripts/lib/desktop-build-manifest.mjs'
-      - 'scripts/lib/bundled-registry.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/documentation-model.mjs'
-      - 'scripts/lib/elf-symbol-floor.mjs'
-      - 'scripts/lib/free-ports.mjs'
-      - 'scripts/lib/git-environment.mjs'
-      - 'scripts/lib/module-entry.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
-      - 'scripts/lib/portable-smoke-diagnostics.mjs'
-      - 'scripts/lib/server-build-config.mjs'
-      - 'scripts/lib/station-stop-hint.mjs'
-  pull_request_target:
-    paths:
-      - '.github/workflows/portable-server-archives.yml'
-      - '.nvmrc'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'esbuild.config.mjs'
-      - 'docs/reference/station-docs.md'
-      - 'docs/learn/mcp-topics.json'
-      - 'docs/architecture/module-map.md'
-      - 'docs/learn/atlas.json'
-      - 'install.sh'
-      - 'install.ps1'
-      - 'schemas/**'
-      - 'examples/**'
-      - 'config/portable-server-node-runtime.json'
-      # The release ring table and grammar that stamp .station-release.json.
-      - 'config/channel-ports.json'
-      - 'packages/shared/src/portable-server-targets.mjs'
-      - 'packages/shared/src/release-manifest.mjs'
-      - 'packages/shared/src/release-rings.generated.mjs'
-      - 'packaging/portable-server/**'
-      - 'packages/cli/**'
-      - 'scripts/build-portable-server-archive.mjs'
-      - 'scripts/generate-station-docs.mjs'
-      - 'scripts/smoke-portable-server-archive.mjs'
-      - 'scripts/station-cli.ts'
-      - 'scripts/station-cli-implementation.ts'
-      - 'scripts/source-bootstrap.ts'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/container-release-metadata.mjs'
-      - 'scripts/lib/desktop-build-manifest.mjs'
-      - 'scripts/lib/bundled-registry.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/documentation-model.mjs'
-      - 'scripts/lib/elf-symbol-floor.mjs'
-      - 'scripts/lib/free-ports.mjs'
-      - 'scripts/lib/git-environment.mjs'
-      - 'scripts/lib/module-entry.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
-      - 'scripts/lib/portable-smoke-diagnostics.mjs'
-      - 'scripts/lib/server-build-config.mjs'
-      - 'scripts/lib/station-stop-hint.mjs'
-
 permissions:
   contents: read
 
@@ -161,6 +65,7 @@ jobs:
     name: Build and smoke ${{ matrix.target }}
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - runner: ubuntu-22.04
@@ -196,7 +101,7 @@ jobs:
       - name: Setup pinned pnpm
         # #2675: pnpm v11 ships no working native binary for Intel macOS.
         if: runner.os != 'macOS' || runner.arch != 'X64'
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
       - name: Setup pinned pnpm from its JS package (Intel macOS)
         if: runner.os == 'macOS' && runner.arch == 'X64'
@@ -217,7 +122,7 @@ jobs:
           ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -258,7 +163,7 @@ jobs:
       # this step exactly.
       - name: Upload the archive and its descriptor
         if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-server-${{ matrix.target }}
           path: |

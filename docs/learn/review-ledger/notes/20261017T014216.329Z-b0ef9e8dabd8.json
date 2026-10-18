@@ -1,0 +1,7 @@
+{
+  "revision": "4eab208162a1aff43ec340ee4ab3628487eabb57",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reviewed test-only removal at4eab208162a after integrating main5634e87 current source-admission policy. The removed CLI assertion still required retired Nightly full-regression admission and reproduced1failure/74passes on merged source. The canonical nightly-two-phase keeper parses actual workflow publishers and requires literal source-gate success; existing identity, stage, receipt and Beta/Stable qualification checks remain. Three owner suites pass117tests. Weakening the actual nightly-cli success condition to !=failure makes that exact keeper fail1/5; byte-identical restoration returns6/6green. The guide accurately distinguishes exact-source Nightly usability from separately scheduled full qualification and retained Beta/Stable promotion receipts; no prose change needed. Added the identity-test source binding to cover this previously unmapped test contract. No production/workflow behavior changed by the deletion; five approved advisory renewals and product/Profile bytes are retained. Hosted combined qualification remains pending.","inputs":["docs/guides/nightly.md","scripts/__tests__/nightly-build-identity.test.ts"]}
+  ]
+}

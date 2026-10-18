@@ -1,0 +1,25 @@
+{
+  "revision": "8723eb0804c71b0655d01f771ac8dd2bf538ec04",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Reviewed release-note instructions against the unchanged ci:fast step list: changesets validation still precedes package builds and typechecks after admission. The new Linux live-service refusal launches no steps and changes no package-release policy.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"Reviewed readiness, hosted statics and lane ownership claims against run-ci-fast and typecheck-aggregate changes. Only direct CLI admission changed; imported APIs, FAST_STATIC_COMMANDS and hosted runner composition remain intact. No governance requirements were weakened.","inputs":[".veritas/README.md","scripts/run-ci-fast.mjs","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"AGENTS.md","note":"Reviewed typecheck-slot guidance and testing link against the comment-only slot change. Fixed /tmp spelling does not unify PrivateTmp mounts; the canonical testing guide now states the shared-directory requirement. Local focused-evidence and hosted broad-check guidance remains accurate.","inputs":["AGENTS.md","scripts/lib/typecheck-host-slots.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed ci:fast composition, hosted readiness/typechecking, normal push-hook ownership and code-health invocation against the direct-entry admission guard. The bounded lane is unchanged outside a live Station service; the linked testing guide owns the new Linux execution restriction and namespace caveat. No full local CI pass is claimed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/run-ci-fast.mjs","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed Verification command examples and ci:fast affected-test/static composition against both CLI entrypoints. Focused tests and individual typecheck lanes remain available; imported APIs and hosted splitting are unchanged. The existing testing-guide link owns live-service admission limits. CLI refusal and restored focused tests were executed; no broad local compilation was run.","inputs":["docs/guides/development.md","scripts/run-ci-fast.mjs","scripts/typecheck-aggregate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed Linux CLI admission from run-ci-fast/typecheck-aggregate through live-service-verification and real child-process tests. Default and nested instance cgroups reject before subprocess launch; runner cgroups admit; unreadable membership fails closed. 34 focused tests pass with two existing Windows-only skips; deliberate guard bypass causes four intended failures and restored bytes pass. Actual live ci:fast refuses with owner infrastructure exit80. Documented limits: arbitrary shells/focused commands remain in the service memory domain; PrivateTmp needs an explicit shared slot directory.","inputs":["docs/guides/testing.md","scripts/lib/typecheck-host-slots.mjs","scripts/run-ci-fast.mjs","scripts/typecheck-aggregate.mjs","scripts/vitest-resource-manifest.mjs","scripts/lib/live-service-verification.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed focused policy, process-test resource classification, bounded subprocess output and canonical schedule guidance. The new child CLI test uses bounded capture/windowsHide and is classified process-heavy. The testing guide change adds live-service refusal and corrects PrivateTmp semantics without changing schedule or resource lane policy.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing-guide dependency against the narrow tooling change: server focused-test, lifecycle and fixture/profile/mutation routes remain unchanged. The canonical guide now limits broad aggregate commands in a Linux Station service; no server/runtime behavior changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed linked testing/fixture guidance against the narrow live-service CLI guard. UI focused tests and the mutation/profile route are unchanged; no UI navigation or runtime claims were modified. Aggregate admission limits live in the canonical testing guide.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed test-effectiveness and individual typecheck:e2e guidance against CLI admission. Individual lanes and focused browser journeys remain available; only full aggregate entrypoints refuse a live Station Linux cgroup. No fixture or receipt success requirements were changed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

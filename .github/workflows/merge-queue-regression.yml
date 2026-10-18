@@ -15,5 +15,6 @@ jobs:
       actions: read
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: integration
       source_sha: ${{ github.sha }}
       allow_reuse: true

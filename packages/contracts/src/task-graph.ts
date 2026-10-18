@@ -555,6 +555,10 @@ export interface TaskRecord {
 }
 
 export interface TaskCreateInput {
+  /** Explicitly accepted chat proposal; creation atomically retains its source Session. */
+  shapingSource?: { sessionId: string; turnId: string };
+  /** Accepted markdown for the shared Task document, not its summary. */
+  proposalBrief?: string;
   projectId: string;
   title: string;
   description?: string;
@@ -819,6 +823,14 @@ export function validateTaskCreateInput(input: TaskCreateInput): string[] {
   if (input.priority && !isTaskPriority(input.priority)) {
     errors.push(`priority must be one of: ${TASK_PRIORITIES.join(', ')}`);
   }
+  if (
+    input.shapingSource &&
+    (!isNonBlankString(input.shapingSource.sessionId) ||
+      !isNonBlankString(input.shapingSource.turnId))
+  )
+    errors.push('shapingSource requires an exact Session and turn');
+  if (input.shapingSource && !isNonBlankString(input.description))
+    errors.push('an accepted proposal requires a brief');
   errors.push(...validateTaskWorkspaceBinding(input.workspaceBinding));
   return errors;
 }
@@ -1165,4 +1177,58 @@ export function createTaskSessionId(
   dispatchIndex: number,
 ): string {
   return `task-${taskId}-${dispatchIndex}`;
+}
+
+/** Station's prompt/proposal seam. This is not a Builder Kit invocation. */
+export interface TaskProposal {
+  title: string;
+  goal: string;
+  doneWhen: string[];
+  firstStep: string;
+}
+
+export function readTaskProposal(text: string): TaskProposal | null {
+  const matches = [
+    ...text.matchAll(/```station-task-proposal\s*\n([\s\S]*?)\n```/g),
+  ];
+  if (matches.length !== 1 || matches[0][1].length > 12_000) return null;
+  try {
+    const value: unknown = JSON.parse(matches[0][1]);
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    if (
+      !('title' in value) ||
+      !('goal' in value) ||
+      !('doneWhen' in value) ||
+      !('firstStep' in value)
+    )
+      return null;
+    const { title, goal, doneWhen, firstStep } = value;
+    if (
+      typeof title !== 'string' ||
+      !title.trim() ||
+      title.length > 240 ||
+      typeof goal !== 'string' ||
+      !goal.trim() ||
+      typeof firstStep !== 'string' ||
+      !firstStep.trim() ||
+      !Array.isArray(doneWhen) ||
+      doneWhen.length === 0 ||
+      doneWhen.length > 32 ||
+      doneWhen.some((item) => typeof item !== 'string' || !item.trim())
+    )
+      return null;
+    return {
+      title: title.trim(),
+      goal: goal.trim(),
+      doneWhen: doneWhen.map((item: string) => item.trim()),
+      firstStep: firstStep.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function taskProposalBrief(proposal: TaskProposal): string {
+  return `## Goal\n\n${proposal.goal}\n\n## Done when\n\n${proposal.doneWhen.map((item) => `- [ ] ${item}`).join('\n')}\n\n## Suggested first step\n\n${proposal.firstStep}`;
 }

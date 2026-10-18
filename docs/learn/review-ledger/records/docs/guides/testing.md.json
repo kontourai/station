@@ -196,6 +196,10 @@
 
     "scripts/lib/vitest-error-reporter.mjs",
 
+    "scripts/gallery-review-evidence.mjs",
+
+    "scripts/__tests__/gallery-review-evidence.test.ts",
+
     "scripts/screenshot-diff.mjs",
 
     "scripts/__tests__/screenshot-diff.test.ts",
@@ -204,7 +208,9 @@
 
     ".github/workflows/pr-ci-supersession.yml",
 
-    "scripts/__tests__/pr-ci-supersession.test.ts"
+    "scripts/__tests__/pr-ci-supersession.test.ts",
+
+    "scripts/lib/live-service-verification.mjs"
   ],
 
   "checks": [

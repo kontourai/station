@@ -12,6 +12,10 @@ import {
   AGENT_PROFILE_CAPABILITIES,
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
+import {
+  type ExecutionConfinementRecord,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type {
   EnvironmentRef,
   ExecutionModelRequest,
@@ -54,7 +58,6 @@ import {
   sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
-  INTERNAL_SESSION_READ_SCOPE,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -85,6 +88,7 @@ import {
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
+import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -132,6 +136,7 @@ import {
 } from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -943,6 +948,33 @@ function capabilityDeliveryReport(
     };
   }
   return report;
+}
+
+/**
+ * #2494: the confinement record on the session's latest `session.started`,
+ * or `undefined` when it recorded none (or something that is not one).
+ */
+export function startedSessionConfinement(
+  events: readonly unknown[],
+): ExecutionConfinementRecord | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      (event as { method?: unknown }).method !== 'session.started'
+    )
+      continue;
+    const metadata = (event as { metadata?: unknown }).metadata;
+    return metadata && typeof metadata === 'object'
+      ? readConfinementRecord(
+          (metadata as Record<string, unknown>)[
+            STATION_CONFINEMENT_RECORD_METADATA_KEY
+          ],
+        )
+      : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -6108,6 +6140,10 @@ export async function delegateTask(
     // otherwise-successful dispatch, and `delegate status` re-derives the same
     // view from the same events on every read.
     let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+    // #2494: the receipt is resolved before the session exists, so the
+    // confinement the started process was observed under is read back from
+    // the session's own start record here, beside the delivery disclosure.
+    let confinement: ExecutionConfinementRecord | undefined;
     try {
       const detail = await orchestrationService.readSession(
         sessionId,
@@ -6116,15 +6152,19 @@ export async function delegateTask(
       capabilityDelivery = delegatedCapabilityDelivery(
         (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
       );
+      confinement = startedSessionConfinement(detail?.events ?? []);
     } catch {
       capabilityDelivery = undefined;
+      confinement = undefined;
     }
     return {
       ...handleFor(input, target, project, sessionId),
       target: { kind: 'agent', id: resolved.agentId },
-      resolution: preparationReceipt
-        ? { ...resolved.receipt, preparation: preparationReceipt }
-        : resolved.receipt,
+      resolution: {
+        ...resolved.receipt,
+        ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
+        ...(confinement ? { confinement } : {}),
+      },
       provider: resolved.provider,
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
@@ -6166,7 +6206,16 @@ export async function executeExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId || input.handoffIntent)
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const capturedProject = admission?.project;
   const capturedAgent = admission?.agentSpec;
   if (admission) {
@@ -6477,29 +6526,55 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    readPendingConversationSubmission: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+      userId?: string,
+    ) => {
+      if (
+        typeof orchestrationService.readPendingConversationSubmission !==
+        'function'
+      )
+        throw new Error('The requested conversation is unavailable.');
+      return orchestrationService.readPendingConversationSubmission(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        userId,
+      );
+    },
     inspectConversationTurnKey: (
       _access: EnvironmentAccess,
       conversationId: string,
       clientTurnId: string,
-    ) =>
-      typeof orchestrationService.inspectTurnDelivery === 'function'
-        ? orchestrationService.inspectTurnDelivery(
-            conversationId,
-            clientTurnId,
-            INTERNAL_SESSION_READ_SCOPE,
-          )
-        : undefined,
+      inputDigest?: string,
+    ) => {
+      if (typeof orchestrationService.inspectTurnDelivery !== 'function')
+        throw new Error('The requested conversation is unavailable.');
+      const inspection = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        inputDigest,
+      );
+      if (inspection === null)
+        throw new Error('The requested conversation is unavailable.');
+      return inspection;
+    },
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,
       clientTurnId: string,
       signal?: AbortSignal,
+      inputDigest?: string,
     ) =>
       typeof orchestrationService.joinHeldTurnKey === 'function'
         ? await orchestrationService.joinHeldTurnKey(
             sessionId,
             clientTurnId,
             signal,
+            inputDigest,
           )
         : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
@@ -6587,6 +6662,7 @@ export async function executeExecutionTargetMessage(
         handoff.conversationId,
         handoff.idempotencyKey,
         readAuthority,
+        handoff.inputDigest,
       ),
     retireNativeReturnSource: async (_access, handoffSessionId) =>
       orchestrationService.retireNativeReturnSource(
@@ -6804,6 +6880,9 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6822,6 +6901,9 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6843,7 +6925,7 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies);
+  return executeResolvedForegroundMessage(input, resolverDependencies, context);
 }
 
 /**
@@ -7011,7 +7093,17 @@ export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId)
+    input = snapshotTurnSubmissionFields(input, [
+      'model',
+      'environment',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {
@@ -7155,5 +7247,8 @@ export async function continueExecutionTargetMessage(
       },
     },
     orchestrationService,
+    undefined,
+    undefined,
+    context,
   );
 }

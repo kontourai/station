@@ -1,27 +1,12 @@
 name: "PR: Desktop Rust"
 
 # The bundled-server supervisor state machine (src-desktop) is a pure,
-# exhaustively unit-tested Rust module. It runs on its own paths-filtered lane
-# (mirroring desktop-clean-checkout.yml) so the Rust toolchain + webkit
-# prerequisites are only provisioned when desktop code actually changes. Locally
+# exhaustively unit-tested Rust module. The shared delivery planner selects
+# this lane for affected pull requests; scheduled qualification also runs it. Locally
 # the same command rides `npm run verify:local` via `verify:desktop-rust`.
 on:
+  workflow_call:
   workflow_dispatch:
-  pull_request_target:
-    paths:
-      - '.github/workflows/desktop-rust.yml'
-      - 'src-desktop/**'
-      - 'packages/contracts/src/native-push.ts'
-      - 'scripts/run-agent-activity-android-unit-tests.mjs'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/desktop-rust.yml'
-      - 'src-desktop/**'
-      - 'packages/contracts/src/native-push.ts'
-      - 'scripts/run-agent-activity-android-unit-tests.mjs'
-
 permissions:
   contents: read
 
@@ -30,32 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # #1726 (bump jni 0.21.1 -> 0.22.4) passed every required check and then
-  # reddened `main` at `cargo build`. Nothing was wrong with the gates: the
-  # Android-only code is `#[cfg(target_os = "android")]`, so the desktop-rust
-  # job below never compiles it, and build-android.yml runs on push to `main`
-  # rather than on pull requests. The only lane that compiles Android code ran
-  # AFTER the merge — while that workflow's own header calls itself "the only
-  # CI signal for Android-breaking changes".
-  #
-  # This closes the gap at the cheapest point that would have caught it: a type
-  # check, not an APK. `cargo check` never links the target, so this is a small
-  # fraction of build-android.yml's four-target assembly and Gradle packaging,
-  # and one ABI is enough — an API break like #1726's `method not found` does
-  # not vary by target.
-  #
-  # Uses ONLY the actions this workflow already runs. No `setup-android` and no
-  # `setup-java`: this is a pull_request_target lane, where the gate rightly
-  # refuses unreviewed actions, and neither is needed anyway. adb lives in
-  # platform-tools and only matters when driving a device; aapt/apksigner live
-  # in build-tools and only matter when packaging an APK. The single Android
-  # requirement here is a C compiler, because `ring`'s build script compiles C
-  # for the target and build scripts run during `check` — and the hosted image
-  # already ships an NDK.
-  android-cross-check:
-    name: Android type check
+  desktop-rust:
+    name: Native Rust and Kotlin checks
+    timeout-minutes: 90
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,13 +26,34 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with: { targets: aarch64-linux-android }
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with: { install: false }
 
-      # Resolved rather than pinned: the revision is an image detail, and any
-      # recent NDK supplies the C compiler this needs. Fails closed — an image
-      # without one must not read as a passing type check.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android, components: rustfmt }
+
+      - name: Install Linux desktop prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - id: prerequisites
+        run: npm run dependencies:ci
+
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
+        run: |
+          cargo fmt --check --manifest-path src-desktop/Cargo.toml
+          cargo fmt --check --manifest-path src-desktop/plugins/agent-activity/Cargo.toml
+
       - name: Resolve the image's Android NDK
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: |
           set -euo pipefail
           root="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
@@ -109,42 +93,14 @@ jobs:
       # frontendDist at build-script time and that requirement does not vary by
       # target, so no frontend build is needed to type-check Rust.
       - name: Type-check the Android-only code paths
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: |
           mkdir -p dist-server dist-desktop-runtime/node_modules dist-desktop-runtime/examples
           cd src-desktop
           cargo check --target aarch64-linux-android --lib
 
-  # The agent-activity plugin's Kotlin unit tests: the notification model, the
-  # registration pin, and the AES-GCM known-answer vectors, including the
-  # phone's copy of NATIVE_PUSH_SEALED_TEST_VECTOR. They ran only by hand in a
-  # generated gen/android, so the phone's opener and the Station's sealer could
-  # drift apart unobserved (#2516). The script needs no Rust build: it gives
-  # Gradle the plugin plus the `tauri` crate's Android library that
-  # Cargo.lock resolves, under the checked-in gen/android root script and
-  # wrapper, and fails when a test class under src/test did not run.
-  #
-  # Same trust posture as android-cross-check: no new actions. The hosted image
-  # ships JDK 17 and the Android SDK (with accepted licenses), which is all
-  # Gradle needs to compile and run JVM unit tests.
-  agent-activity-android-unit-tests:
-    name: Agent-activity Kotlin unit tests
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
       - name: Run the plugin's Kotlin unit tests
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: |
           set -euo pipefail
           if [ -z "${JAVA_HOME_17_X64:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
@@ -153,54 +109,6 @@ jobs:
           fi
           JAVA_HOME="$JAVA_HOME_17_X64" node scripts/run-agent-activity-android-unit-tests.mjs --no-daemon
 
-  # rustfmt's default style for both Rust crates. Formatting drifted while
-  # nothing checked it, so any `cargo fmt` rewrote unrelated files. No build:
-  # rustfmt only parses, so this needs neither system packages nor a frontend.
-  rust-format:
-    name: Rust format
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with: { components: rustfmt }
-
-      - name: Check formatting
-        run: |
-          cargo fmt --check --manifest-path src-desktop/Cargo.toml
-          cargo fmt --check --manifest-path src-desktop/plugins/agent-activity/Cargo.toml
-
-  desktop-rust:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
-        with: { install: false }
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
-      - name: Install Linux desktop prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
-
-      - run: npm run dependencies:ci
-
       - name: Run bundled-server supervisor Rust tests
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: npm run verify:desktop-rust

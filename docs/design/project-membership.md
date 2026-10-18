@@ -207,6 +207,24 @@ Missing, stale and unavailable authorization fail closed with distinguishable
 outcomes. Recheck after asynchronous preparation and immediately before the
 commit or external effect; record the actual membership/grant revision used.
 
+## Project agent authoring and tool acquisition
+
+The scoped `/api/tool-library` surface permits current Admins and Owners to
+create/edit constrained agents bound to the exact local Project ID. Owners can
+narrow the default all-shared-sources policy. Operators install sources;
+Project admins request missing permitted sources through a durable Inbox item.
+Operator installation approval does not widen a selected Project policy.
+Personal OAuth remains owned by the requesting principal and Project.
+
+**My access** projects Station authority and current Project roles without
+promoting an account merely because its browser also presents an operator
+credential. These authoring leaves are separately admitted for account-bound
+Devices; legacy Agent mutation and member turn gates remain unchanged. Agent
+execution is still unavailable to members. See
+[Shared Projects](../guides/agents.md#shared-projects),
+[route authority](../../src-server/runtime/routes/tool-library-runtime.ts) and
+[Project transaction owner](../../src-server/services/projects/project-membership-service.ts).
+
 ## Agent audience
 
 > Status: the declaration and the list/read/turn refusal are implemented for

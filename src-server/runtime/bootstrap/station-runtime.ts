@@ -35,6 +35,7 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
@@ -42,6 +43,7 @@ import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -1116,6 +1118,21 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      projectToolPolicy: () => {
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(
+          input.agent!.slug,
+          spec,
+          typeof input.metadata?.projectSlug === 'string'
+            ? this.projectService.getProject(input.metadata.projectSlug).id
+            : spec.project
+              ? this.projectService.getProject(spec.project).id
+              : undefined,
+          input.agent?.toolServers?.map((server) => server.id) ?? [],
+        );
+      },
       agentPolicyService: getAgentPolicyService(this.logger),
       approvalGuardian: new ApprovalGuardianService({
         appConfig: this.appConfig,
@@ -3694,6 +3711,20 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          validateProjectTools: async (slug, spec, input) => {
+            const policy = new ToolLibraryService(
+              this.configLoader.getProjectHomeDir(),
+            );
+            policy.assertAgent(
+              slug,
+              spec,
+              typeof input.metadata?.projectSlug === 'string'
+                ? this.projectService.getProject(input.metadata.projectSlug).id
+                : spec.project
+                  ? this.projectService.getProject(spec.project).id
+                  : undefined,
+            );
+          },
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -4424,6 +4455,10 @@ export class StationRuntime {
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
       loadProjectTools: createProjectNativeToolLoader({
+        validateProjectTools: (slug, spec, project, servers) =>
+          new ToolLibraryService(
+            this.configLoader.getProjectHomeDir(),
+          ).assertAgent(slug, spec, project.id, servers),
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
@@ -4552,6 +4587,31 @@ export class StationRuntime {
   ) {
     return {
       agentSlug,
+      validateProjectTools: (
+        slug: string,
+        spec: AgentSpec,
+        invocation?: import('../types.js').InvocationContext,
+        additions: readonly string[] = [],
+      ) => {
+        const foreground = currentNativeForegroundRelay()?.project;
+        const sessionProject = invocation?.sessionId
+          ? this.orchestrationEventStore.readConversationProjectSlug(
+              invocation.sessionId,
+            )
+          : undefined;
+        const effectiveSlug =
+          foreground?.slug ?? sessionProject ?? spec.project;
+        const project =
+          typeof effectiveSlug === 'string'
+            ? this.projectService.getProject(effectiveSlug)
+            : undefined;
+        if (foreground && foreground.id !== project?.id)
+          throw new Error('Project changed.');
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(slug, spec, project?.id, additions);
+      },
       appConfig,
       configLoader: composition
         ? this.configLoader.forPluginActivationComposition(composition)

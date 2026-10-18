@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 
 interface TerminalSubprocessEntry {
   pid: number | null;
@@ -25,34 +25,57 @@ function detectWindowsSubprocesses(pid: number): boolean {
   return psResult.toString().trim().length > 0;
 }
 
-function detectUnixSubprocesses(pid: number): boolean {
-  execSync(`pgrep -P ${pid}`, { stdio: 'ignore', windowsHide: true });
-  return true;
+function detectUnixSubprocesses(pid: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'pgrep',
+      ['-P', String(pid)],
+      { timeout: 2000, windowsHide: true },
+      (error) => {
+        if (error?.code === 1 && !error.killed) resolve(false);
+        else if (error) reject(error);
+        else resolve(true);
+      },
+    );
+  });
 }
 
-export function pollTerminalSubprocessActivity({
+export async function pollTerminalSubprocessActivity({
   sessionId,
   entry,
   emit,
   debug = console.debug,
-}: PollTerminalSubprocessActivityInput): void {
+}: PollTerminalSubprocessActivityInput): Promise<void> {
   if (entry.status !== 'running' || entry.pid == null) return;
+  const pid = entry.pid;
 
   try {
     const hasChildProcess =
       process.platform === 'win32'
         ? detectWindowsSubprocesses(entry.pid)
-        : detectUnixSubprocesses(entry.pid);
+        : await detectUnixSubprocesses(pid);
 
-    if (!entry.hasRunningSubprocess && hasChildProcess) {
-      entry.hasRunningSubprocess = true;
+    if (entry.status !== 'running' || entry.pid !== pid) return;
+
+    if (entry.hasRunningSubprocess !== hasChildProcess) {
+      entry.hasRunningSubprocess = hasChildProcess;
       emit({
         type: 'activity',
         sessionId,
-        hasRunningSubprocess: true,
+        hasRunningSubprocess: hasChildProcess,
       });
     }
   } catch (error) {
+    if (entry.status !== 'running' || entry.pid !== pid) return;
+    if (
+      error &&
+      typeof error === 'object' &&
+      'killed' in error &&
+      error.killed
+    ) {
+      debug('Terminal subprocess probe timed out:', sessionId, error);
+      return;
+    }
     debug(
       'Failed to poll subprocesses for terminal session:',
       sessionId,

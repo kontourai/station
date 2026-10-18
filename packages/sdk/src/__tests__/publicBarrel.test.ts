@@ -40,6 +40,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'peerCredentials',
   'peerEnrollments',
   'personalLayouts',
+  'personalBoards',
   'pluginVisibility',
   'knowledgeStores',
   'mcpPromptRun',

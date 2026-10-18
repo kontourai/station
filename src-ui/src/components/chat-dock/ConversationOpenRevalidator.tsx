@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useWorkObservation } from '../../contexts/work-observation';
 import { resumeHeldQueueDrain } from '../../hooks/orchestration/queueDrain';
 import {
   type SelectableModel,
@@ -42,16 +43,21 @@ export function ConversationOpenRevalidator({
   agents,
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
+  const observation = useWorkObservation(conversationId);
   useEffect(() => {
     let cancelled = false;
+    const read = observation?.read(conversationId, 'open', () => !cancelled);
     void import('./conversationOpenController')
       .then(async (controller) => {
+        if (cancelled || read?.current() === false) return;
         const resolution =
           await controller.resolveConversationOpenAuthoritatively(
             conversationId,
             apiBase,
+            observation,
+            () => !cancelled && read?.current() !== false,
           );
-        if (cancelled) return;
+        if (cancelled || read?.current() === false) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];
         const sameChild = !controller.conversationExecutionChanged(
           resolution,
@@ -127,7 +133,9 @@ export function ConversationOpenRevalidator({
         resumeHeldQueueDrain(apiBase, sessionId);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || read?.current() === false) return;
+        if (observation?.unavailable(conversationId) === undefined)
+          read?.failed();
         updateChat(sessionId, {
           conversationOpenPending: false,
           conversationOpenFailed: true,
@@ -139,6 +147,7 @@ export function ConversationOpenRevalidator({
       cancelled = true;
     };
   }, [
+    observation,
     apiBase,
     conversationId,
     sessionId,

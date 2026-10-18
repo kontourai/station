@@ -6,7 +6,10 @@ import {
 } from '../views/agent-editor/agentsViewUtils';
 import type { AgentFormData } from '../views/agent-editor/types';
 import {
+  applyNewToolApprovalDefaults,
   removeIntegration,
+  selectIntegrationTools,
+  setIntegrationToolApproval,
   slugify,
   toggleIntegrationAutoApprove,
   toggleIntegrationToolAutoApprove,
@@ -57,6 +60,83 @@ function buildForm(): AgentFormData {
 }
 
 describe('agent-editor utils', () => {
+  test('editing one source keeps other grants and does not rebind source-qualified names', () => {
+    const form = buildForm();
+    form.tools.mcpServers = ['github', 'filesystem'];
+    form.tools.autoApprove = ['github_get_issue'];
+    const tools: Tool[] = [
+      { id: 'read', name: 'get_issue', toolName: 'get_issue' },
+      { id: 'write', name: 'write_file', toolName: 'write_file' },
+    ];
+    const next = setIntegrationToolApproval(
+      form,
+      'filesystem',
+      'filesystem_write_file',
+      'ask',
+      tools,
+    );
+    expect(next.tools.autoApprove).toEqual(['github_get_issue']);
+    expect(next.tools.askBeforeUse).toEqual(['mcp/filesystem/write_file']);
+  });
+  test('including future tools saves an ask default with a reviewed read exception', () => {
+    const previous = buildForm();
+    previous.tools.mcpServers = [];
+    const tools: Tool[] = [
+      {
+        id: 'read',
+        name: 'read',
+        readOnly: true,
+        classificationSource: 'station',
+      },
+    ];
+    const selected = selectIntegrationTools(previous, 'reports', 'all', {
+      reports: tools,
+    });
+    const next = applyNewToolApprovalDefaults(
+      selected,
+      previous,
+      'reports',
+      tools,
+      'station',
+    );
+    const saved = buildAgentPayload(next);
+    expect(saved.tools?.askBeforeUse).toEqual(['mcp/reports/*']);
+    expect(saved.tools?.autoApprove).toEqual(['mcp/reports/read']);
+  });
+
+  test('narrowing future selections preserves the exact Always exception', () => {
+    const form = buildForm();
+    form.tools.askBeforeUse = ['mcp/github/*'];
+    form.tools.autoApprove = ['mcp/github/find'];
+    const next = selectIntegrationTools(form, 'github', ['github_find'], {
+      github: toolList,
+    });
+    expect(next.tools.askBeforeUse).toEqual(['mcp/github/*']);
+    expect(next.tools.autoApprove).toEqual(['mcp/github/find']);
+  });
+
+  test('narrowing a catalog retains explicit approval for a selected action missing from discovery', () => {
+    const form = buildForm();
+    form.tools.askBeforeUse = ['mcp/github/missing'];
+    form.tools.autoApprove = ['*'];
+    const next = selectIntegrationTools(
+      form,
+      'github',
+      ['github_missing', 'github_find'],
+      { github: toolList },
+    );
+    expect(next.tools.askBeforeUse).toEqual(['mcp/github/missing']);
+  });
+
+  test('narrowing an ask-all source preserves prompts for retained actions', () => {
+    const form = buildForm();
+    form.tools.askBeforeUse = ['github_*'];
+    const next = selectIntegrationTools(form, 'github', ['github_run'], {
+      github: toolList,
+    });
+    expect(next.tools.askBeforeUse).toEqual(['github_*']);
+  });
+
   test('slugify normalizes names', () => {
     expect(slugify('My Planner Agent')).toBe('my-planner-agent');
     expect(slugify('  Review++ Agent  ')).toBe('review-agent');

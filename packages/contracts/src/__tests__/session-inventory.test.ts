@@ -292,6 +292,18 @@ describe('Session inventory v1', () => {
     expect(parseSessionInventoryProjection(kept)).toBeNull();
   });
   test('requires one bound Basis and rejects foreign reviewed-source identity, relation, and gap data', () => {
+    const notChosen = currentProjection();
+    notChosen.groups[1].items[0].reviewedSource.review = 'not-chosen';
+    notChosen.groups[1].items[0].contributionGaps = [
+      'reviewed-source-review-not-chosen',
+    ];
+    expect(
+      parseSessionInventoryProjection(notChosen)?.groups[1].items[0],
+    ).toMatchObject({
+      reviewedSource: { review: 'not-chosen' },
+      contributionGaps: ['reviewed-source-review-not-chosen'],
+      relations: ['contributed-to'],
+    });
     expect(parseSessionInventoryProjection(currentProjection())).not.toBeNull();
     const missingBasis = currentProjection();
     delete missingBasis.basis;

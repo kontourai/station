@@ -46,6 +46,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
+  type ConversationKeyInspection,
   type InboxCancelResult,
   type InboxEntryRecord,
   type InboxSubmitResult,
@@ -53,6 +54,8 @@ import {
   type KernelCommand,
   type KernelResults,
   type OwnerLiveness,
+  type SessionStartResult,
+  startUnlessDelivered,
 } from '@kontourai/monument';
 import {
   openSqliteKernelStorage,
@@ -85,11 +88,7 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
-import {
-  type ConversationKeyInspection,
-  type SessionStartResult,
-  startUnlessDelivered,
-} from './session-message-delivery.js';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
@@ -148,6 +147,8 @@ export interface ThreadInboxActor {
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
+  /** Original server-captured identity; older queued entries have unknown proof. */
+  readonly inputDigest?: string;
   readonly ambientContext?: string;
   readonly model?: ExecutionModelRequest;
   readonly actor: ThreadInboxActor;
@@ -201,6 +202,9 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
+    ...(typeof value.inputDigest === 'string'
+      ? { inputDigest: value.inputDigest }
+      : {}),
     ...(typeof value.ambientContext === 'string'
       ? { ambientContext: value.ambientContext }
       : {}),
@@ -223,6 +227,16 @@ function decodePayload(raw: string): ThreadInboxPayload | undefined {
       ? { clientOrigin: value.clientOrigin }
       : {}),
   };
+}
+
+/** Existing FIFO acceptance, returned only after the caller's read/send checks. */
+export class ConversationTurnQueuedError extends Error {
+  constructor(
+    readonly entry: ConversationInboxEntry & { clientTurnId: string },
+  ) {
+    super('This message is already waiting in the conversation inbox.');
+    this.name = 'ConversationTurnQueuedError';
+  }
 }
 
 /** What a settled entry recorded about its effect. */
@@ -418,6 +432,28 @@ export function createSqliteThreadInboxStore(db: SqliteDatabase) {
       });
       return result.kind === 'found' ? result.entry : undefined;
     },
+    readPendingSubmission(conversationId: string, clientTurnId: string) {
+      const result = run({
+        type: 'inbox.read',
+        inboxId: conversationId,
+        key: clientTurnId,
+      });
+      if (result.kind !== 'found' || !MAY_STILL_SEND.has(result.entry.state))
+        return undefined;
+      const payload = decodePayload(result.entry.payload);
+      if (!payload)
+        throw new Error('Station could not read this queued message.');
+      return {
+        entry: {
+          ...projectThreadInboxEntry(result.entry),
+          clientTurnId: result.entry.key,
+        },
+        userId: payload.actor.userId,
+        ...(payload.inputDigest !== undefined
+          ? { inputDigest: payload.inputDigest }
+          : {}),
+      };
+    },
     list(conversationId: string): readonly InboxEntryRecord[] {
       return run({ type: 'inbox.list', inboxId: conversationId }).entries;
     },
@@ -466,6 +502,8 @@ export interface ThreadInboxDeliveryPorts {
   inspectDelivery(
     conversationId: string,
     clientTurnId: string,
+    inputDigest?: string,
+    userId?: string,
   ): ConversationKeyInspection;
   /**
    * Continue the conversation with the entry's input, as its recorded actor.
@@ -655,6 +693,22 @@ export class ThreadInboxDelivery {
       );
   }
 
+  private inspectDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    payload: ThreadInboxPayload,
+  ) {
+    const inspection = this.ports.inspectDelivery(
+      conversationId,
+      clientTurnId,
+      payload.inputDigest,
+      payload.actor.userId,
+    );
+    if (inspection === null || inspection === undefined)
+      throw new Error('The requested conversation is unavailable.');
+    return inspection;
+  }
+
   /**
    * Accept a follow-up, durable before this returns, and try to place it. A
    * sender placement would refuse is never accepted.
@@ -668,6 +722,17 @@ export class ThreadInboxDelivery {
     const now = this.now();
     if (this.refusalFor(inbox, input.payload, now))
       return { outcome: 'not-permitted' };
+    this.inspectDelivery(inbox, input.clientTurnId, input.payload);
+    const prior = this.ports.store.read(inbox, input.clientTurnId);
+    const priorDigest = prior
+      ? decodePayload(prior.payload)?.inputDigest
+      : undefined;
+    if (
+      priorDigest !== undefined &&
+      input.payload.inputDigest !== undefined &&
+      priorDigest !== input.payload.inputDigest
+    )
+      throw new ClientTurnInputConflictError();
     const result = this.ports.store.submit({
       ...input,
       conversationId: inbox,
@@ -966,7 +1031,10 @@ export class ThreadInboxDelivery {
   ): boolean {
     if (decodeOutcome(head.outcome).reasonCode !== 'start_deadline')
       return false;
-    const held = this.ports.inspectDelivery(conversationId, head.key);
+    const payload = decodePayload(head.payload);
+    if (!payload)
+      throw new Error('Station could not read this queued message.');
+    const held = this.inspectDelivery(conversationId, head.key, payload);
     if (held?.outcome === 'started') {
       this.ports.store.resolveUnconfirmed(
         head,
@@ -1060,7 +1128,7 @@ export class ThreadInboxDelivery {
           startUnlessDelivered({
             conversationId,
             inspect: () =>
-              this.ports.inspectDelivery(conversationId, entry.key),
+              this.inspectDelivery(conversationId, entry.key, payload),
             start: () =>
               this.ports.start({
                 conversationId,

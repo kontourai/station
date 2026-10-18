@@ -4,7 +4,11 @@ import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 export interface RegistryItem
   extends Pick<
     CatalogRegistryItem,
-    'catalog' | 'catalogSourceName' | 'catalogFreshness' | 'installedPluginName'
+    | 'catalog'
+    | 'catalogSourceName'
+    | 'catalogFreshness'
+    | 'installedPluginName'
+    | 'toolOrigin'
   > {
   id: string;
   displayName?: string;

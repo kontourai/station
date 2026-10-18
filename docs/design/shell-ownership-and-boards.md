@@ -7,9 +7,12 @@
 > [service](../../src-server/services/layouts/personal-layout-service.ts), and
 > [view](../../src-ui/src/views/PersonalBoardView.tsx); the
 > [sidebar](../../src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx)
-> consumes that surface. Still unbuilt: instance-shared Boards (storage only,
-> no route or UI), placing the Review layout kind on a Board, adding panes to
-> a Board from the UI, Board reorder and clone. Use the
+> consumes that surface. [Personal Board authoring](../user/personal-boards.md)
+> adds templates, a visual section editor, live projections and chat proposals
+> with explicit preview and Apply. Existing Layout tabs remain supported.
+> Still unbuilt: instance-shared Boards (storage only, no route or UI), placing
+> the Review layout kind on a Board, arbitrary plugin-pane composition from
+> the Board editor, Board-list reorder and clone. Use the
 > [pane authoring guide](../guides/workspace-pane-authoring.md) for the
 > current pane contract.
 >

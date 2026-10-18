@@ -1,0 +1,31 @@
+{
+  "revision": "439cd2b81407016820ed62a3c5fc38dcec1a7b75",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed prepared-create CLI dispatch through SDK request projection, receiver schemas/capability gating, version checks and grant-bound attempt lookup. Documented all-four flags, exact lowercase commit, no transfer/setup/protection, direct receiver and same-grant limits. CLI HTTP/help tests executed (136 passed); no real peer/provider, AX or packaged-release claim.","inputs":["docs/reference/cli.md","packages/cli/src/commands/delegate.ts","packages/cli/src/__tests__/delegate.test.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Updated only the CLI slice: explicit source commit and existing receiver-local lookup are implemented; automatic caller HEAD remains deferred. Existing receiver version-check, race disclosure, result-return and worktree-protection owners remain accurate. This is source and CLI HTTP fixture evidence, not a new live receiver journey.","inputs":["docs/design/remote-execution-preparation.md","packages/cli/src/commands/delegate.ts","packages/cli/src/__tests__/delegate.test.ts"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed CLI additive prepared-create and observation-only attempt delta against Work and execution / Evidence and governance. Project, Task, Session, Agent and evidence ownership remain unchanged; no context prose change needed.","inputs":["CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed runtime/evidence context relationships against prepared CLI target and attempt lookup. Both use existing execution and evidence owners; no new context or dependency edge is introduced.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed affected Project/Task/Session/Agent/run/activity vocabulary against CLI delta. Prepared workspace inputs and attempt observation do not change lifecycle meanings or make execution status a work-correctness proof; no vocabulary change needed.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed existing execution-preparation subpath and delegated supervision/quota claims against CLI delta. Existing canonical target/preparation/attempt contracts are consumed unchanged; status/event/wait formatting and quota ownership are unchanged. No new public contract shape or contract-reference edit needed.","inputs":["docs/reference/contracts.md","packages/cli/src/commands/delegate.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed CLI routing row and hosted execution boundary claims against prepared create/attempt lookup. Existing CLI reference now owns flag/grant details; this change provisions no cloud backend, hosted isolation, capacity or budget authority. Integration routing remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed client-only package role, saved-Station target/credential selection and published-command boundaries against additive delegation CLI. Existing reference link owns detailed delegation syntax; no backend is implicitly started and credential custody is unchanged. Published artifact availability remains separate.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed CLI request assembly and checkpoint/triage findings against the new prepared delegate projection. New create uses existing SDK contract; it does not repair or contradict retained chat workspace, model-option or checkpoint findings. No findings prose change needed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed diagnostic-command scope against delegation-only CLI reference additions. Triage registration, diagnostics collection, readonly harness and redaction are unchanged; new prepared delegation is not a triage effect.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed help-only delta against skill-experience CLI and publication guidance. New delegate attempt/preparation help changes no skill-experience admission, receipt or installation command; no prose change needed.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed current migrate-playbooks route note and historical scope against additive delegate help. Migration registration and repository-only launcher requirement are unchanged; preserve the frozen historical ADR.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed public-package contract and historical-assessment boundaries against CLI changes. This slice consumes Station SDK/contracts; no AX or sibling-product internal dependency was introduced. Existing integration direction remains accurate.","inputs":["docs/strategy/kontour-integration-surface.md"]}
+  ]
+}
