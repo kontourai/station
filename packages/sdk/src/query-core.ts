@@ -1,7 +1,6 @@
 import {
   hashKey,
   keepPreviousData,
-  type UseQueryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -39,7 +38,7 @@ import { _getApiBase } from './api';
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
 export interface QueryConfig<T> {
-  structuralSharing?: UseQueryOptions<T>['structuralSharing'];
+  structuralSharing?: boolean | ((previous: T | undefined, next: T) => T);
   staleTime?: number;
   gcTime?: number;
   enabled?: boolean;
@@ -196,6 +195,7 @@ function useApiQueryWithMountPolicy<T>(
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
   const intervalForError = config?.refetchIntervalForError;
+  const structuralSharing = config?.structuralSharing;
   const query = useQuery<T>({
     queryKey,
     queryFn: ({ signal }) => queryFn(signal),
@@ -226,9 +226,16 @@ function useApiQueryWithMountPolicy<T>(
     ...(config?.retryDelay === undefined
       ? {}
       : { retryDelay: config.retryDelay }),
-    ...(config?.structuralSharing === undefined
+    // TanStack erases cache values here; query owners retain their data type.
+    ...(structuralSharing === undefined
       ? {}
-      : { structuralSharing: config.structuralSharing }),
+      : {
+          structuralSharing:
+            typeof structuralSharing === 'function'
+              ? (previous: unknown, next: unknown) =>
+                  structuralSharing(previous as T | undefined, next as T)
+              : structuralSharing,
+        }),
     placeholderData: config?.keepPreviousData ? keepPreviousData : undefined,
   });
 
