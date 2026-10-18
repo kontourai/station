@@ -877,6 +877,8 @@ test('feedback HTTP admission, publisher/action/day dedupe, operator counts and 
       headers: { authorization: `Bearer ${publisherKey}` },
     })
   ).json();
+  expect(publicBefore).not.toHaveProperty('feedback');
+  expect(publisherBefore).not.toHaveProperty('feedback');
   expect(await (await post(payload)).json()).toEqual({ inserted: 1 });
   await lite.createSource({
     id: 'kontour-alias',
