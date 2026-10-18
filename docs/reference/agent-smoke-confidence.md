@@ -86,9 +86,13 @@ time; these deterministic tests are not a live-provider receipt.
 `dogfood:agent-smoke -- --matrix` extends the command's API/credential path
 with longer diagnostic sessions. It does not replace the one-turn smoke or
 promote connection readiness. The matrix is opt-in, may incur provider charges,
-and stays outside deterministic CI. Tests run against a loopback stub API;
-real-provider and rendered-browser qualification remain **NOT_VERIFIED** until
-an operator explicitly runs them.
+and live runs stay outside deterministic CI. Offline tests drive the real Hono
+orchestration routes and `OrchestrationService` over loopback HTTP, replacing
+only the provider adapter and read-only agent/connection configuration. They
+exercise real validation, conversation continuation, provenance projection,
+output admission/storage/inspection and activation lifecycle. The test output
+observer is a fake engine-side observer; real-provider and rendered-browser
+qualification remain **NOT_VERIFIED** until an operator explicitly runs them.
 
 Prepare a separate Station with an isolated `STATION_HOME`, instance name,
 non-default server/UI ports (for example 43141/43000), a disposable working
@@ -112,8 +116,11 @@ present. Refusal exits 2 before reading credentials, loading extensions, or
 making requests. Credentials shorter than 16 characters are refused before any
 request; short strings are never used for global redaction replacements.
 
-The runner discovers the engine's advertised models and starts one session per
-selected model. Repeat `--model=ID` to allowlist launch selectors; omitted models
+Configure an available Agent bound to the selected connection. The runner uses
+that connection's execution-default Agent, or an explicit `--agent=SLUG` (which
+must have that binding). Native Station Agents may use the built-in engine
+without an explicit connection binding. The runner discovers the engine's
+advertised models and creates one conversation per selected model. Repeat `--model=ID` to allowlist launch selectors; omitted models
 are never called, including during switch-and-back. Without an allowlist, all
 advertised models are planned. `--max-turns=N` is a hard send ceiling (default 24,
 allowed 1–1000). A plan larger than the ceiling refuses the entire run before
@@ -122,7 +129,7 @@ count and explains how to select fewer models with repeatable `--model=ID` or
 explicitly increase `--max-turns`. Four models with only the built-in scenarios
 fit exactly at 24 turns; five require 30. Extension reservations add to that
 count. The accepted plan and its
-turn count are printed as JSON on stderr before session commands; stdout stays
+turn count are printed as JSON on stderr before the first foreground submission; stdout stays
 one JSON results document. Each model gets up to six built-in sends:
 
 | Scenario | Check |
@@ -131,13 +138,20 @@ one JSON results document. Each model gets up to six built-in sends:
 | Follow-up | Recall that secret without repeating it in the prompt |
 | Model switch and back | Recall on a second advertised model, then the original |
 | Artifact | Write a file with a fresh content nonce, call `declare_output`, compare its stored path and inspect its exact text bytes |
-| Recycle | Observe loaded → unloaded across `stopSession`, then loaded after a recall send in the same Station session |
+| Recycle | Observe loaded → unloaded across `stopSession`, then loaded after a foreground continuation recall |
 
 One selected model leaves switch-and-back **unverified** and plans four built-in
 sends. Recycle reads `/api/orchestration/sessions/loaded` before stop, after stop,
 and after recall. A no-op stop or unavailable unload/resume observation is
 **unverified** with its reason; a forgotten secret fails the response check.
-These observations prove the public API's activation transition, not an OS
+The first message uses `POST /api/orchestration/chat` with the Agent target,
+workspace, model override and conversation ID. Follow-ups, model switches and
+recycle recall use `POST /api/orchestration/chat/:conversationId/continue` with
+a model override. The runner follows each receipt's `sessionId` and
+`providerTurnId`; it does not assume conversation and runtime session IDs stay
+identical. Stop uses the public `/api/orchestration/commands` route's
+`stopSession` command. Internal `startSession` and `sendTurn` commands are not
+accepted by that route. These observations prove the public API's activation transition, not an OS
 process exit or native provider-session identity. JSON retains those states.
 Artifact support depends on the engine using Station's native output producer;
 an undeclared file cannot pass. The runner uses the output's exact event ID with
@@ -167,10 +181,13 @@ supply that identity, while an explicitly vendor-qualified request also covers
 new families and vendor namespaces without a fixed registry. A bare unknown family cannot establish a reported prefix's vendor
 and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
 forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
-matching vendor, including `us.meta.*`, and Vertex's
+matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, and Vertex's
 `claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
 cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
-versions fail. The accepted/rejected table in the
+versions fail. Dots inside bare model IDs (for example `grok-4.1` or
+`qwen3.5-coder`) remain part of the model name. Only an explicit `vendor/`
+prefix or a known `region.vendor.` form establishes a vendor prefix.
+The accepted/rejected table in the
 [matrix tests](../../scripts/__tests__/station-engine-matrix.test.ts) pins this
 policy. All stored-output pages are read; partial results fail. Duplicate or
 extra rendered names fail even if the expected card exists.
@@ -193,15 +210,16 @@ trusted local ES module. It may export either or both:
 - `scenarios: [{ id, async run(ctx) { /* probe */ } }]`: append unique scenario
   IDs after the built-ins. The existing `additionalScenarios` interface remains
   valid. An optional positive integer `maxTurns` per scenario declares its
-  planning bound per model (or once per engine with `scope: 'engine'`). Without
-  declarations, the plan reserves the
+  planning bound per model (or once per engine with `scope: 'engine'`). Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario instance);
-  its printed count is an upper bound. Every managed `sendTurn` command still
-  consumes both the printed plan reservation and the hard run ceiling, including
-  `ctx.api` and `ctx.command` calls.
+  its printed count is an upper bound. Every managed foreground submission or continuation, background/delegated
+  submission, and `steerTurn`/`steerTurnOnce` command consumes both the printed
+  plan reservation and the hard run ceiling, including `ctx.api` and
+  `ctx.command` calls. The effective HTTP method and path are normalized before
+  counting; query strings and an explicit method cannot bypass the ceiling.
   An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox.
-  `ctx` provides `sessionId`, `model`, `switchModel`,
+  `ctx` provides the current `sessionId`, stable `conversationId`, `model`, `switchModel`,
   `nonce`, `artifactName`, `artifactContent`,
   `api(path, optionalBody, optionalMethod)`, `command(command)`,
   `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent, optionalEvaluator)` and
@@ -211,7 +229,8 @@ trusted local ES module. It may export either or both:
   cannot pass. An engine-scoped scenario uses `scope: 'engine'` and gets a fresh
   session on the first selected model, once per invocation. Its optional
   `prepare(ctx)` runs before session startup and can return `{ metadata, state }`
-  or `{ skipReason }`. Register each cleanup with
+  or `{ skipReason }`. A returned `metadata.agentSlug` selects that Agent in the
+  public chat target after checking its availability and engine binding. Register each cleanup with
   `ctx.deferCleanup(label, asyncCleanup)` before attempting its mutation;
   obligations run in reverse order after the final session stop, including on
   setup, startup or turn failure and skip. Each cleanup failure adds a failed
@@ -232,7 +251,11 @@ The adapter catalog and orchestration return types explicitly retain optional
 `resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
 checks that a fake adapter's concrete alias resolution survives real discovery,
 service dispatch and JSON serialization. A catalog resolution is not per-turn
-served-model proof.
+served-model proof. The [matrix integration test](../../src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts)
+executes all five scenarios against the real foreground routes with a fake
+adapter, including actual stored outputs and inspected file contents. The
+pure tests retain the model-alias table, verdict rules and Markdown renderer;
+there is no permissive replacement for the execution routes.
 
 JSON goes to stdout and a timestamped `.json` file alongside a generated,
 dated Markdown matrix in `docs/reference/engine-matrix-runs/` by default.
@@ -240,11 +263,11 @@ Use `--output-dir=PATH` for private receipts. Both include engine, connection,
 launch selector, scenario, verdict, engine-inferred connection, served-as and
 failure text; JSON also retains concrete comparison models, the send plan/count,
 session/turn IDs and individual checks. New session-level `runtime.error` events
-without a turn ID retain their actual error text. An initial snapshot establishes
-the session error cursor; it then advances only through a completed-turn event.
-Reads before later sends do not reset it. Errors in the gap after a terminal,
+without a turn ID retain their actual error text. The cursor starts empty for
+each new conversation and advances only through a completed-turn event. Startup
+errors belong to this run. Reads before later sends do not reset the cursor. Errors in the gap after a terminal,
 including errors emitted during `stopSession`, fail the next attempted scenario
-before another billable send. Initial historical errors remain excluded.
+before another billable send.
 Exit 0 requires every row
 to pass; failures or unverified rows exit 1. Review receipts before committing:
 provider errors receive bounded redaction, but arbitrary error text and model
@@ -297,10 +320,10 @@ policy probe is unsupported; it receives an unrestricted fixture for the MCP
 use check. Muse and unknown engines without server delivery are skipped.
 
 The temporary Agent binds the selected connection, integration, Station Control
-(for `declare_output`), and supported skill through Station's APIs. The skill's
+and supported skill through Station's APIs. The skill's
 nonce appears only in `scripts/probe.mjs`, never its `SKILL.md` or a prompt. The
-script prints it and creates a uniquely named workspace file. The answer must
-contain the nonce and the exact file must appear in that turn's stored outputs.
+script prints it and creates a uniquely named workspace file. Script execution requires the answer nonce or the exact file among that turn's
+stored outputs. The separate output evidence records whether the file was declared.
 The skill API currently creates `SKILL.md` but cannot upload bundled resources,
 so this diagnostic adds the script directly to the API-created package after
 checking its path and body locally. Run it on the same host/filesystem as Station;
@@ -372,8 +395,8 @@ Obligations are registered before creation so a lost acknowledgement still
 triggers a cleanup attempt. Every failed cleanup is reported as a failed row,
 including alongside a skipped dependency. Session receipts and declared workspace
 outputs remain for inspection; remove the disposable instance/workspace after
-review. Provider loading, real Station lifecycle, native-tool policy enforcement,
-and rendered outputs are **NOT_VERIFIED** by the deterministic fixture suite.
+review. Live provider loading, native-tool policy enforcement, and actual rendered
+outputs are **NOT_VERIFIED** by the deterministic fixture suite.
 
 ### Delivery API route audit
 
@@ -395,7 +418,7 @@ no body schema. The probe sends no PUT requests.
 | `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:290`; `{ enabled: true }`. |
 | `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description and `global: true`. |
 | `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
-| `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`; name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
+| `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts:92`, managed prompt guard `:132`); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
 | `DELETE /agents/:slug` | `src-server/routes/agents/agents.ts:557` | Required slug; service refuses reserved identities or referenced Agents. |
 | `DELETE /api/skills/:name` | `src-server/routes/agents/skills.ts:324` | Required name; service requires a writable, owned package. |
 | `DELETE /integrations/:id` | `src-server/routes/agents/tools.ts:869` | Required ID; built-ins and contributed definitions cannot be deleted. Removing the integration also removes its stored disable policy. |
@@ -411,8 +434,20 @@ composition; no LLM adapter starts. The verdict suite's setup stubs now use the
 real mutation schemas and exact route/method patterns instead of accepting any
 `/integrations/*` operation.
 
-The base runner's start/send transport is a separate known integration gap at
-#3828 round 2: its internal start/send commands are not admitted by the real
-public command schema. The setup/cleanup proof above makes no live-turn claim.
-A further base merge must use the real public start/send routes and requalify
-that boundary before live matrix execution is claimed.
+The [full matrix integration harness](../../src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts)
+now also mounts these CRUD routes and runs the entire bundled delivery scenario
+against real foreground routes, OrchestrationService, EventBus and SQLite. A fake
+Station adapter loads the API-created Agent from the real store, executes the
+bundled script, declares its actual file through the native output owner, and
+calls `ping` on the configured local MCP server. The result retains Station's
+unverified skill cell because no captured Station invocation shape is adopted;
+script, MCP and selection checks pass. The test asserts fourteen counted sends,
+three successful DELETEs and no retained resources. It found and fixed an invalid
+empty managed-Agent prompt that schema-only stubs had accepted. It does not
+exercise external adapters' passthrough or prove native policy enforcement.
+
+| Turn request | Real route owner | Validation / submitted body |
+| --- | --- | --- |
+| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:2916` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
+| `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:3310` | `continueForegroundMessageSchema` (`:997`); message, `model.override` and client turn ID. |
+| `POST /api/orchestration/commands` | `orchestration.ts:5650` | `orchestrationCommandSchema` (`:571`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 function modelVendor(model) {
+  if (/^deepseek-/.test(model)) return 'deepseek';
+  if (/^grok-/.test(model)) return 'x-ai';
+  if (/^kimi-/.test(model)) return 'moonshot';
   if (/^claude-/.test(model)) return 'anthropic';
   if (/^(?:gpt-|chatgpt-|codex-|o[134](?:-|$))/.test(model)) return 'openai';
   if (/^(?:gemini|gemma)-/.test(model)) return 'google';
@@ -12,17 +15,13 @@ function modelVendor(model) {
 
 function modelIdentity(value) {
   const qualified = value.replace(/^openrouter\//, '');
-  const region =
-    /^(?:us|eu|apac|global|jp|au|us-gov)\.(?=[a-z][a-z0-9-]*[/.])/.exec(
+  const regional =
+    /^(?:us|eu|apac|global|jp|au|us-gov)\.([a-z][a-z0-9-]*)\.(.+)$/.exec(
       qualified,
     );
-  const unwrapped = region ? qualified.slice(region[0].length) : qualified;
-  // Known bare model names may contain dots; those are not vendor separators.
-  const prefix = modelVendor(unwrapped)
-    ? null
-    : /^([a-z][a-z0-9-]*)[/.]/.exec(unwrapped);
-  const model = prefix ? unwrapped.slice(prefix[0].length) : unwrapped;
-  return { model, vendor: prefix?.[1], valid: !region || Boolean(prefix) };
+  const explicit = /^([a-z][a-z0-9-]*)\/(.+)$/.exec(qualified);
+  const prefix = regional ?? explicit;
+  return { model: prefix?.[2] ?? qualified, vendor: prefix?.[1] };
 }
 
 function modelSnapshot(model) {
@@ -30,14 +29,18 @@ function modelSnapshot(model) {
     /^(.*?)[-@](20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v(\d+(?::\d+)?))?$/.exec(model);
   return match
     ? { base: match[1], date: match[2].replaceAll('-', ''), version: match[3] }
-    : { base: model };
+    : /^(.*?)-v(\d+:\d+)$/.test(model)
+      ? {
+          base: model.replace(/-v\d+:\d+$/, ''),
+          version: /-v(\d+:\d+)$/.exec(model)[1],
+        }
+      : { base: model };
 }
 
 export function checkServedModel(requested, reported) {
   if (!requested || !reported) return 'unverified';
   const a = modelIdentity(requested);
   const b = modelIdentity(reported);
-  if (!a.valid || !b.valid) return 'fail';
   const familyVendor = modelVendor(a.model);
   const requestedVendor = familyVendor ?? a.vendor;
   if (
@@ -337,7 +340,7 @@ async function inspectArtifact(
  * @typedef {{requestedModel?: string, reportedModel?: string|null, servedBy?: string|null,
  * servedEngine?: string|null, turnId?: string, status?: string,
  * checks?: Record<string,string>, storedOutputs?: string[], renderedOutputs?: string[]|null}} MatrixTurn
- * @typedef {{engine: string, connectionId: string, model: string, sessionId: string,
+ * @typedef {{engine: string, connectionId: string, model: string, conversationId?: string, sessionId?: string,
  * scenario: string, status: string, turns: MatrixTurn[], failure: string|null,
  * delivery?: Record<string,DeliveryEvidence>}} MatrixRow
  * @typedef {{version: number, generatedAt: string, evidence: string, plan: {modelIds: string[], builtInTurns: number, plannedTurnCount: number, maxTurns: number, extensionBudget: string, additionalScenarios: Array<{id: string, scope: string, maxTurns: number|null, instances: number, minimumPlannedTurns: number}>}, sentTurns?: number, rows: MatrixRow[]}} MatrixResult
@@ -346,7 +349,7 @@ async function inspectArtifact(
 /**
  * @param {{api: Function, connectionId: string, cwd: string, timeoutMs?: number,
  * observeOutputs?: Function, additionalScenarios?: Array<{id: string, scope?: string, maxTurns?: number, prepare?: Function, run: Function}>,
- * modelIds?: string[], maxTurns?: number, onPlan?: Function}} options
+ * modelIds?: string[], maxTurns?: number, agentId?: string, onPlan?: Function}} options
  * @returns {Promise<MatrixResult>}
  */
 export async function runMatrix({
@@ -359,6 +362,7 @@ export async function runMatrix({
   modelIds = [],
   maxTurns = 24,
   onPlan = () => {},
+  agentId = '',
 }) {
   const inventory = await api('/api/connections/agents');
   if (inventory.failures?.length)
@@ -384,15 +388,42 @@ export async function runMatrix({
     maxTurns,
   );
   await onPlan(plan);
+  const agents = (await api('/api/agents')).data;
+  const matchesConnection = (agent) =>
+    agent.execution?.agentConnectionId === connectionId ||
+    (engine === 'station-agent' && !agent.execution?.agentConnectionId);
+  const agent = agentId
+    ? agents.find((entry) => entry.slug === agentId)
+    : agents.find(
+        (entry) =>
+          entry.executionDefault === true &&
+          matchesConnection(entry) &&
+          entry.available !== false,
+      );
+  if (!agent || !matchesConnection(agent) || agent.available === false)
+    throw new Error('Select --agent=ID bound to the connection under test');
   let sentTurns = 0;
   const checkedApi = async (path, body, ...rest) => {
-    if (path === '/api/orchestration/commands' && body?.type === 'sendTurn') {
+    const pathname = new URL(path, 'http://station.invalid').pathname.replace(
+      /\/+$/,
+      '',
+    );
+    const method = String(rest[0] ?? (body ? 'POST' : 'GET')).toUpperCase();
+    const billable =
+      /^\/api\/orchestration\/chat(?:\/(?:background|delegated|[^/]+\/continue))?$/.test(
+        pathname,
+      ) ||
+      (pathname === '/api/orchestration/commands' &&
+        ['sendTurn', 'steerTurn', 'steerTurnOnce'].includes(body?.type));
+    if (method === 'POST' && billable) {
       if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
       sentTurns++;
     }
     return api(path, body, ...rest);
   };
+  /** @type {MatrixResult["rows"]} */
+  const rows = [];
   /** @type {MatrixResult} */
   const result = {
     version: 1,
@@ -401,7 +432,7 @@ export async function runMatrix({
       ? 'Station API with caller-supplied output observer; inspect per-turn checks'
       : 'Station API only; rendered UI NOT_VERIFIED',
     plan,
-    rows: [],
+    rows,
   };
   const command = (value) =>
     checkedApi('/api/orchestration/commands', value).then((body) => body.data);
@@ -419,11 +450,13 @@ export async function runMatrix({
       })),
   ];
   for (const { model, selected, lifecycle } of jobs) {
-    const sessionId = `station-matrix-${randomUUID()}`;
+    const conversationId = `station-matrix-${randomUUID()}`;
+    let activeSessionId;
     const nonce = randomUUID();
-    const base = { engine, connectionId, model, sessionId };
+    const base = { engine, connectionId, model, conversationId };
     let started = false;
-    let completedEventIds;
+    let completedEventIds = new Set();
+    let jobAgent = agent;
     const cleanup = [];
     const delivery = {};
     const setup = {
@@ -432,7 +465,10 @@ export async function runMatrix({
       connectionId,
       cwd,
       model,
-      sessionId,
+      get sessionId() {
+        return activeSessionId ?? conversationId;
+      },
+      conversationId,
       delivery,
       deferCleanup: (label, run) => cleanup.push({ label, run }),
     };
@@ -449,22 +485,26 @@ export async function runMatrix({
         });
         continue;
       }
-      // A start may take effect even if its HTTP acknowledgement is lost.
-      started = true;
-      await command({
-        type: 'startSession',
-        input: {
-          threadId: sessionId,
-          provider: engine,
-          modelId: model,
-          cwd,
-          metadata: { ...prepared?.metadata, connectionId },
-        },
-      });
+      if (prepared?.metadata?.agentSlug) {
+        jobAgent = (
+          await checkedApi(
+            `/api/agents/${encodeURIComponent(prepared.metadata.agentSlug)}`,
+          )
+        ).data;
+        if (
+          !jobAgent ||
+          !matchesConnection(jobAgent) ||
+          jobAgent.available === false
+        )
+          throw new Error(
+            'Prepared Agent is unavailable or bound to another engine',
+          );
+      }
       let priorFailed = false;
       for (const scenario of selected) {
         const row = {
           ...base,
+          sessionId: activeSessionId ?? conversationId,
           scenario: scenario.id,
           status: 'unverified',
           turns: [],
@@ -479,6 +519,10 @@ export async function runMatrix({
         const ctx = {
           ...setup,
           state: prepared?.state,
+          get sessionId() {
+            return activeSessionId ?? conversationId;
+          },
+          conversationId,
           nonce,
           model,
           switchModel: models.find((candidate) => candidate !== model),
@@ -515,13 +559,13 @@ export async function runMatrix({
               throw new Error('Connection isolation changed');
             const turn = { requestedModel, status: 'fail' };
             row.turns.push(turn);
-            const priorEvents = (
-              await api(`/api/orchestration/sessions/${sessionId}/events`)
-            ).data;
-            // Baseline once; later reads must retain the gap after the last terminal.
-            completedEventIds ??= new Set(
-              priorEvents.map((event) => event.eventId),
-            );
+            const priorEvents = activeSessionId
+              ? (
+                  await api(
+                    `/api/orchestration/sessions/${activeSessionId}/events`,
+                  )
+                ).data
+              : [];
             const pendingError = priorEvents.find(
               (event) =>
                 event.method === 'runtime.error' &&
@@ -529,23 +573,55 @@ export async function runMatrix({
                 !completedEventIds.has(event.eventId),
             );
             if (pendingError) throw new Error(pendingError.message);
-            const ack = await command({
-              type: 'sendTurn',
-              input: {
-                threadId: sessionId,
-                modelId: requestedModel,
-                input,
-                clientTurnId: randomUUID(),
-              },
-            });
-            if (!ack?.turnId)
-              throw new Error('Turn was not acknowledged; no automatic retry');
-            turn.turnId = ack.turnId;
+            const first = !started;
+            started = true;
+            const ack = (
+              await checkedApi(
+                first
+                  ? '/api/orchestration/chat'
+                  : `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+                first
+                  ? {
+                      conversationId,
+                      target: {
+                        environment: { kind: 'current' },
+                        agent: jobAgent.slug,
+                        expectedEngine: jobAgent.execution?.agentConnectionId
+                          ? { kind: 'connection', connectionId }
+                          : { kind: 'station' },
+                        workspace: { kind: 'directory', cwd },
+                        model: { override: requestedModel },
+                      },
+                      message: input,
+                      clientTurnId: randomUUID(),
+                    }
+                  : {
+                      message: input,
+                      model: { override: requestedModel },
+                      clientTurnId: randomUUID(),
+                    },
+              )
+            ).data;
+            if (
+              !ack?.providerTurnId ||
+              !ack.sessionId ||
+              ack.conversationId !== conversationId
+            )
+              throw new Error(
+                'Foreground turn identity was not acknowledged; no automatic retry',
+              );
+            if (activeSessionId !== ack.sessionId)
+              completedEventIds = new Set();
+            activeSessionId = ack.sessionId;
+            const sessionId = activeSessionId;
+            row.sessionId = sessionId;
+            turn.sessionId = sessionId;
+            turn.turnId = ack.providerTurnId;
             const deadline = Date.now() + timeoutMs;
             completedEventIds = await waitForTurn(
               api,
               sessionId,
-              ack.turnId,
+              ack.providerTurnId,
               deadline,
               completedEventIds,
             );
@@ -554,13 +630,14 @@ export async function runMatrix({
             ).data;
             const assistant = messages.filter(
               (message) =>
-                message.role === 'assistant' && message.turnId === ack.turnId,
+                message.role === 'assistant' &&
+                message.metadata?.turnId === ack.providerTurnId,
             );
             const provenance = assistant.find(
               (message) =>
-                message.provenance?.sessionId === sessionId &&
-                message.provenance?.turnId === ack.turnId,
-            )?.provenance;
+                message.metadata?.provenance?.sessionId === sessionId &&
+                message.metadata?.provenance?.turnId === ack.providerTurnId,
+            )?.metadata?.provenance;
             turn.reportedModel = observed(provenance?.reportedModel) ?? null;
             turn.servedEngine = observed(provenance?.engine)?.provider ?? null;
             // Connection identity is resolved from observed engine + isolated inventory, never request metadata.
@@ -572,7 +649,7 @@ export async function runMatrix({
             const storedItems = await readStoredOutputs(
               api,
               sessionId,
-              ack.turnId,
+              ack.providerTurnId,
               deadline,
             );
             const stored = storedItems.map((item) =>
@@ -584,7 +661,7 @@ export async function runMatrix({
             const contentCheck = await inspectArtifact(
               api,
               sessionId,
-              ack.turnId,
+              ack.providerTurnId,
               storedItems,
               artifactName,
               artifactContent,
@@ -597,11 +674,11 @@ export async function runMatrix({
               turn.modelResolutionReason = 'alias without resolution';
             const observation = await observeOutputs?.({
               sessionId,
-              turnId: ack.turnId,
+              turnId: ack.providerTurnId,
             });
             turn.renderedOutputs =
               observation?.sessionId === sessionId &&
-              observation?.turnId === ack.turnId
+              observation?.turnId === ack.providerTurnId
                 ? observation.names
                 : null;
             const text = assistant
@@ -635,12 +712,12 @@ export async function runMatrix({
             if (evaluate) {
               const events = (
                 await api(`/api/orchestration/sessions/${sessionId}/events`)
-              ).data.filter((event) => event.turnId === ack.turnId);
+              ).data.filter((event) => event.turnId === ack.providerTurnId);
               const checks = await evaluate({
                 text,
                 storedOutputs: stored,
                 events,
-                turnId: ack.turnId,
+                turnId: ack.providerTurnId,
                 identityChecks: {
                   servedModel: turn.checks.servedModel,
                   servedConnection: turn.checks.servedConnection,
@@ -709,6 +786,7 @@ export async function runMatrix({
       for (const scenario of selected)
         result.rows.push({
           ...base,
+          sessionId: activeSessionId ?? conversationId,
           scenario: scenario.id,
           status: 'fail',
           turns: [],
@@ -718,10 +796,14 @@ export async function runMatrix({
     } finally {
       if (started) {
         try {
-          await command({ type: 'stopSession', threadId: sessionId });
+          await command({
+            type: 'stopSession',
+            threadId: activeSessionId ?? conversationId,
+          });
         } catch {
           result.rows.push({
             ...base,
+            sessionId: activeSessionId ?? conversationId,
             scenario: 'cleanup',
             status: 'fail',
             turns: [],

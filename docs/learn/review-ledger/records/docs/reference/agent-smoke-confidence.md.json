@@ -92,7 +92,15 @@
 
     "src-server/routes/schemas/schema-definitions/runtime.ts",
 
-    "src-server/routes/schemas/schema-validation.ts"
+    "src-server/routes/schemas/schema-validation.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "packages/sdk/src/client/execution.ts"
   ],
 
   "checks": [

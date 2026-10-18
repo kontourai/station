@@ -398,7 +398,8 @@ export const scenarios = [
       await ctx.api('/agents', {
         name: skillId,
         slug: skillId,
-        prompt: '',
+        prompt:
+          'Follow the delivery probe instructions and report observed results.',
         model: ctx.model,
         execution: {
           ...(ctx.engine === 'station-agent'

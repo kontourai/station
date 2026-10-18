@@ -10,11 +10,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ENGINE_CAPABILITY_MATRICES } from '../../packages/contracts/src/engine-capability-matrix.js';
 import type { CanonicalRuntimeEvent } from '../../packages/contracts/src/runtime-events.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { validator } from '../../src-server/domain/validator.js';
 import {
   type ClaudeMessageState,
   mapClaudeSdkMessage,
 } from '../../src-server/providers/adapters/claude-adapter-events.js';
 import { recordClaudeTurnDispatched } from '../../src-server/providers/adapters/claude-sdk-turns.js';
+import {
+  continueForegroundMessageSchema,
+  foregroundMessageObjectSchema,
+} from '../../src-server/routes/orchestration/orchestration.js';
 import {
   agentCreateSchema,
   localSkillCreateSchema,
@@ -187,6 +192,26 @@ async function exercise(
           },
         ],
       };
+    if (path === '/api/agents')
+      return {
+        data: [
+          {
+            slug: 'matrix',
+            executionDefault: true,
+            execution: { agentConnectionId: 'engine' },
+          },
+        ],
+      };
+    if (path.startsWith('/api/agents/'))
+      return {
+        data: {
+          slug: skillId,
+          execution: {
+            agentConnectionId:
+              engine === 'station-agent' ? undefined : 'engine',
+          },
+        },
+      };
     if (path.endsWith('/models'))
       return {
         data: (engine === 'claude'
@@ -249,37 +274,52 @@ async function exercise(
           agent.skills.some((name) => name !== skillId))
       )
         throw new Error('Unknown skills');
+      const { slug, ...spec } = agent;
+      validator.validateAgentSpec(spec, slug);
+      skillId = String(agent.slug);
       if (fault === 'prepare')
         throw new Error('agent create acknowledgement lost');
       return { data: {} };
     }
-    if (path === '/api/orchestration/commands') {
-      const command = body as {
-        type: string;
-        threadId?: string;
-        input?: {
-          threadId: string;
-          metadata?: { agentSlug?: string };
-          input?: string;
-          modelId: string;
-        };
+    if (path === '/api/orchestration/commands' && method === 'POST') {
+      const command = body as { type: string; threadId?: string };
+      if (command.type !== 'stopSession')
+        throw new Error('Unknown orchestration command');
+      const session = sessions.get(command.threadId ?? '');
+      if (session) session.loaded = false;
+      return { data: {} };
+    }
+    if (
+      method === 'POST' &&
+      (path === '/api/orchestration/chat' ||
+        /^\/api\/orchestration\/chat\/[^/]+\/continue$/.test(path))
+    ) {
+      const first = path === '/api/orchestration/chat';
+      const parsed = first
+        ? foregroundMessageObjectSchema.parse(body)
+        : continueForegroundMessageSchema.parse(body);
+      const value = body as {
+        conversationId?: string;
+        target?: { agent: string; model: { override: string } };
+        message: string;
+        model?: { override: string };
       };
-      if (command.type === 'stopSession') {
-        const session = sessions.get(command.threadId ?? '');
-        if (session) session.loaded = false;
-        return { data: {} };
-      }
-      const input = command.input;
-      if (!input) throw new Error('missing command input');
-      if (command.type === 'startSession') {
-        const delivery = !!input.metadata?.agentSlug;
-        sessions.set(input.threadId, { delivery, loaded: true });
+      const threadId = first
+        ? value.conversationId!
+        : decodeURIComponent(path.split('/')[4]);
+      if (first) {
+        const delivery = value.target?.agent === skillId;
+        sessions.set(threadId, { delivery, loaded: true });
         if (delivery && fault === 'start')
           throw new Error('start acknowledgement lost');
-        return { data: {} };
       }
-      const session = sessions.get(input.threadId);
-      if (!session || !input.input) throw new Error('missing session/input');
+      const input = {
+        threadId,
+        input: parsed.message,
+        modelId: value.target?.model.override ?? value.model?.override ?? '',
+      };
+      const session = sessions.get(threadId);
+      if (!session) throw new Error('missing session');
       if (session.delivery && fault === 'send') throw new Error('send failed');
       session.loaded = true;
       const prompt = input.input;
@@ -312,8 +352,8 @@ async function exercise(
         expect(skillBody).not.toContain(result.stdout.trim());
         expect(
           JSON.stringify(
-            requests.filter(
-              (request) => request.path === '/api/orchestration/commands',
+            requests.filter((request) =>
+              request.path.startsWith('/api/orchestration/chat'),
             ),
           ),
         ).not.toContain(result.stdout.trim());
@@ -356,7 +396,13 @@ async function exercise(
             prompt,
           )?.[1],
       });
-      return { data: { turnId } };
+      return {
+        data: {
+          providerTurnId: turnId,
+          sessionId: input.threadId,
+          conversationId: input.threadId,
+        },
+      };
     }
     const sessionId = path.split('/')[4];
     const relevant = [...turns].filter(
@@ -391,21 +437,23 @@ async function exercise(
       return {
         data: relevant.map(([turnId, turn]) => ({
           role: 'assistant',
-          turnId,
           parts: [{ type: 'text', text: turn.text }],
-          provenance: {
-            sessionId,
+          metadata: {
             turnId,
-            reportedModel: { state: 'observed', value: turn.model },
-            engine:
-              fault === 'missing-engine'
-                ? { state: 'unavailable' }
-                : {
-                    state: 'observed',
-                    value: {
-                      provider: fault === 'wrong-engine' ? 'other' : engine,
+            provenance: {
+              sessionId,
+              turnId,
+              reportedModel: { state: 'observed', value: turn.model },
+              engine:
+                fault === 'missing-engine'
+                  ? { state: 'unavailable' }
+                  : {
+                      state: 'observed',
+                      value: {
+                        provider: fault === 'wrong-engine' ? 'other' : engine,
+                      },
                     },
-                  },
+            },
           },
         })),
       };

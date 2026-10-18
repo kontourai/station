@@ -76,6 +76,7 @@ export async function main() {
       additionalScenarios: extension.scenarios,
       observeOutputs: extension.observeOutputs,
       modelIds: optionValues('model'),
+      agentId: optionValue('agent'),
       maxTurns: Number(optionValue('max-turns') ?? 24),
       onPlan: (plan) =>
         console.error(JSON.stringify({ type: 'engine-matrix-plan', ...plan })),
