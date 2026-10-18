@@ -2149,6 +2149,23 @@ test('inputless disposition holds corrupt captured markers and unavailable audit
     expect(
       owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
     ).toEqual({ kind: 'applied' });
+    const original = eventStore['db']
+      .prepare('SELECT * FROM orchestration_turn_boundaries')
+      .all();
+    const captured = original.find(
+      (row) =>
+        typeof row === 'object' &&
+        row !== null &&
+        'invocation_id' in row &&
+        row.invocation_id === capture.intent.invocationId,
+    );
+    if (
+      typeof captured !== 'object' ||
+      captured === null ||
+      !('body_ref' in captured) ||
+      typeof captured.body_ref !== 'string'
+    )
+      throw new Error('actual complete captured marker prerequisite');
     eventStore['db']
       .prepare(
         'UPDATE orchestration_turn_boundaries SET body_ref=NULL WHERE invocation_id=?',
@@ -2165,14 +2182,60 @@ test('inputless disposition holds corrupt captured markers and unavailable audit
         .prepare('SELECT * FROM orchestration_turn_boundaries')
         .all(),
     ).toEqual(before);
+    eventStore['db']
+      .prepare(
+        'UPDATE orchestration_turn_boundaries SET body_ref=? WHERE invocation_id=?',
+      )
+      .run(captured.body_ref, capture.intent.invocationId);
+    expect(
+      eventStore['db']
+        .prepare('SELECT * FROM orchestration_turn_boundaries')
+        .all(),
+    ).toEqual(original);
+    expect(
+      eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect('untouched'),
+    ).toEqual({ kind: 'available', active: false });
+    expect(eventStore.readInputlessTurnDisposition('untouched')).toEqual({
+      kind: 'inputless',
+    });
+    const audit = eventStore['db']
+      .prepare('SELECT * FROM orchestration_prepared_turns')
+      .all();
     eventStore['db'].exec(
       'SAVEPOINT unavailable_audit; DROP TABLE orchestration_prepared_turns',
     );
-    try {
-      expect(eventStore.readInputlessTurnDisposition('untouched')).toEqual({
-        kind: 'unknown',
+    const prepare = eventStore['db'].prepare.bind(eventStore['db']);
+    const failures: { sql: string; error: unknown }[] = [];
+    const observed = vi
+      .spyOn(eventStore['db'], 'prepare')
+      .mockImplementation((sql) => {
+        try {
+          return prepare(sql);
+        } catch (error) {
+          failures.push({ sql, error });
+          throw error;
+        }
       });
+    try {
+      expect(
+        eventStore.readInputlessTurnDisposition('untouched'),
+        'unavailable audit must refuse after the strict records were restored',
+      ).toEqual({ kind: 'unknown' });
+      expect(failures).toHaveLength(1);
+      expect(failures[0]?.sql).toContain('FROM orchestration_prepared_turns');
+      expect(failures[0]?.error).toBeInstanceOf(Error);
+      expect(failures[0]?.error).toMatchObject({
+        message: expect.stringContaining(
+          'no such table: orchestration_prepared_turns',
+        ),
+      });
+      expect(
+        eventStore['db']
+          .prepare('SELECT * FROM orchestration_turn_boundaries')
+          .all(),
+      ).toEqual(original);
     } finally {
+      observed.mockRestore();
       eventStore['db'].exec(
         'ROLLBACK TO unavailable_audit; RELEASE unavailable_audit',
       );
@@ -2181,7 +2244,15 @@ test('inputless disposition holds corrupt captured markers and unavailable audit
       eventStore['db']
         .prepare('SELECT * FROM orchestration_turn_boundaries')
         .all(),
-    ).toEqual(before);
+    ).toEqual(original);
+    expect(
+      eventStore['db']
+        .prepare('SELECT * FROM orchestration_prepared_turns')
+        .all(),
+    ).toEqual(audit);
+    expect(eventStore.readInputlessTurnDisposition('untouched')).toEqual({
+      kind: 'inputless',
+    });
   } finally {
     eventStore.close();
   }
