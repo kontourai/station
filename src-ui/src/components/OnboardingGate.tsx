@@ -79,6 +79,7 @@ import './OnboardingGate.css';
 import { triggerHaptic } from '../platform/native/haptics';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
+import { TelemetryLiteNotice } from './TelemetryLiteNotice';
 import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
 type ConnectionModalMode =
@@ -861,6 +862,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       )}
       {connectedNotice}
       {children}
+      <TelemetryLiteNotice
+        enabled={!firstRunChapterOpen && !showModal && !setupLauncherVisible}
+      />
       {usageTelemetryDisclosureMounted ? (
         <UsageTelemetryDisclosure firstRun />
       ) : null}

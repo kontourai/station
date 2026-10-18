@@ -13,7 +13,8 @@ This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
 disclosure inventories and per-publisher Settings controls. The daily sender lane
 adds completed-day Lite pings, the bounded local ledger, action-bound feedback and
-CLI/log notices. Publisher-specific consent UI, plugin publishers, receiver
+CLI/log notices. The UI lane adds Lite notices, ledger presentation, and optional lowering reasons.
+Author Full consent, plugin publishers, receiver
 changes, dashboards, release injection and deployment remain separate lanes. This decision does not assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 
@@ -103,7 +104,8 @@ means no feedback transmission; it must not create another background signal.
 The daily sender records sent payloads and coalesced dropped-observation counts
 with publisher, tier, outcome and reason in a local ledger. It retains at most
 30 days and 5 MiB, evicting oldest first, and is exposed through an authenticated
-API and `station telemetry outbox`. Settings presentation is a later UI lane.
+API and `station telemetry outbox`. Settings presents the latest 50 records per publisher, with sent JSON and
+reason/count-only presentation for suppressed or dropped records.
 `station telemetry status` and `station telemetry set <publisher> <tier>` use the
 running Station's authenticated APIs and report effective policy reasons.
 
@@ -151,7 +153,7 @@ remain separate from local source/tests and from this decision's acceptance.
 
 ## Consent repair after foundation review
 
-Settings exposes each built-in publisher's saved choice, with Off always
+Settings renders each status publisher's saved choice, with Off always
 available. Effective resolution is shown separately, including DO_NOT_TRACK
 and Full awaiting acknowledgement. Declining Full writes operator Off before
 acknowledging the inventory; acknowledging alone must not turn a pending saved
@@ -224,3 +226,20 @@ receipts independently of wording revision 2. Tier-change requests can include a
 optional fixed-enum reason, sent once before the lower choice is applied,
 including Off. Standalone feedback requires a lowering within 10 minutes and is
 limited to one per publisher per UTC day. DNT permits neither path.
+
+### Lite notice and feedback presentation
+
+The kernel-owned desktop/web Lite notice is non-modal and records its current
+publisher/revision only after visible presentation, without adding a blocking
+first-run step. DNT hides it and refuses notice writes. An inline Off control
+remains available. Status projects persisted Lite receipts so reloads and
+server restarts do not cause a second notice for the same inventory.
+
+Settings derives publisher rows from status, preserving a separate draft choice
+and optional fixed-enum reason for each publisher. Save sends each edited
+publisher with its reason in the same config write; Skip transmits no feedback.
+The disclosure dialog uses the same optional prompt before its existing
+write-before-acknowledge order. DNT offers neither reason prompt. Kontour Full
+remains unavailable in the UI until its separate destination-bound disclosure
+journey is implemented. Registry publisher registration/storage remains another
+lane; generic presentation alone does not register one.

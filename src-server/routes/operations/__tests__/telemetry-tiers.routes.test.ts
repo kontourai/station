@@ -147,3 +147,45 @@ test('environment-only opt-in stays Lite and reports environment even with a cur
     },
   });
 });
+
+test.each([undefined, '1'])(
+  'Lite receipt status survives service recreation and DNT refuses recording; DNT=%s',
+  async (dnt) => {
+    const home = makeTempDir('station-notice-status-');
+    const options = {
+      homeDir: home,
+      appConfig: { defaultModel: '', invokeModel: '', structureModel: '' },
+      version: '1.2.3',
+      logger: { warn: vi.fn() },
+      env: dnt ? { DO_NOT_TRACK: dnt } : {},
+      fetch: vi.fn(),
+    };
+    const service = new UsageTelemetryService(options);
+    const app = createUsageTelemetryDisclosureRoutes(service);
+    expect(await (await app.request('/status')).json()).toMatchObject({
+      data: { liteNotices: {} },
+    });
+    const status = await service.telemetryStatus();
+    expect(status.liteNotices).toEqual({});
+    const post = (inventoryRevision: string) =>
+      app.request('/lite-notices', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ publisher: 'operator', inventoryRevision }),
+      });
+    expect((await post('old-revision')).status).toBe(409);
+    expect((await post(status.liteInventoryRevision)).status).toBe(
+      dnt ? 409 : 200,
+    );
+    const restarted = new UsageTelemetryService(options);
+    const after = await restarted.telemetryStatus();
+    if (dnt) expect(after.liteNotices).toEqual({});
+    else
+      expect(after.liteNotices.operator).toMatchObject({
+        publisher: 'operator',
+        inventoryRevision: status.liteInventoryRevision,
+        shownAt: expect.any(String),
+      });
+    expect(options.fetch).not.toHaveBeenCalled();
+  },
+);

@@ -2,14 +2,16 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
-Settings → Telemetry offers separate Kontour and Operator Off/Lite/Full
-choices. Off is always available. Effective state and its reason are shown
+Settings → Privacy & sharing → Telemetry lists publishers from the status API,
+with a separate Off/Lite/Full control for each. Kontour and Operator are the
+current built-in publishers; registry publishers appear when the host registers them. Off is always available. Effective state and its reason are shown
 separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
 choice waits at Lite until the current disclosure is acknowledged. **Turn
 off usage telemetry** saves operator Off before acknowledging. Resetting
 Station settings preserves these choices. The current Settings control keeps
 Kontour Full unavailable until the UI lane connects its separate author disclosure;
-the server exposes that destination-bound disclosure API.
+the server exposes that destination-bound disclosure API. This UI change keeps
+that existing Full restriction; it does not grant author consent.
 
 DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
 offers visible Off, Lite, and Full radio choices and a **Save operator choice
@@ -50,7 +52,8 @@ runtime environment variable of the same name is supplied. Source builds have
 no author address. No real receiver or release endpoint is enabled by this change.
 The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
-build destination; the UI lane presents that disclosure.
+build destination. The current UI leaves Kontour Full unavailable; its
+destination-bound acknowledgement remains an API capability.
 
 Every non-desktop server, including `station start`, `service run`, Docker and
 web servers with a UI port, prints a one-time Lite notice per publisher and
@@ -58,13 +61,24 @@ inventory revision through the [unfiltered stderr notice path](../../src-server/
 and records it before sending. The launching CLI prints the notice in the
 terminal after readiness when its pre-launch state lacks a current receipt. The server records its own log notice
 asynchronously; HTTP readiness does not imply that receipt is already written.
-Unattended services retain the notice in their logs. This first-start log notice is the fallback while the web notice
-UI is not wired; a UI port does not imply that a person saw a notice.
+Unattended services retain the notice in their logs. A UI port does not imply
+that a person saw a notice; a logged notice and a rendered UI notice are
+different presentation paths.
 Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the UI. Until it records
 the shown revision with `POST /api/usage-telemetry/lite-notices`, daily payloads
 are suppressed with reason `notice`. A current receipt survives restart and the
 daily timer starts even without a new UI call. An inventory change requires a new
 notice. The body is `{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
+The status API exposes persisted `liteNotices` per publisher. The kernel UI shows
+an outstanding Lite notice as a non-modal panel, with an inline Off action and
+the server's exact field inventory. It records the receipt after the panel is
+in the visible viewport, while the document is visible and no modal covers it.
+It waits while first-run or connection setup owns the screen, adding no new
+blocking onboarding step. DNT hides the notice and the API refuses a receipt
+under DNT. A failed receipt leaves Lite suppressed; dismissing never counts as
+a receipt. Server-side receipts survive reload and restart; each Lite revision
+requires its own presentation. Distributions do not supply the notice copy or
+its controls.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
 with a current receipt migrates to operator Full; without it, operator Lite.
@@ -84,6 +98,12 @@ Lite. These commands support the normal target/credential flags. The status API 
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
+Settings exposes a **What was sent** section for every status publisher, showing
+the newest 50 records for that publisher and an explicit empty/error state.
+Sent entries have a collapsible JSON viewer. Unsent entries expose only their
+reason and observation count, with Off/DNT/disclosure/notice/unconfigured
+classified as suppressed and transport/overflow/expired as dropped. There is no
+payload viewer for either unsent category. Refresh reads the current ledger.
 
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. For author Full, read `GET /api/usage-telemetry/disclosure?publisher=kontour` and
 include `publisher:kontour` and its exact `destination` in the acknowledgement POST.
@@ -199,6 +219,13 @@ optional reason before the new choice is persisted and applied, including Off.
 Feedback persistence or transport failure never prevents applying the lower tier.
 An unchanged or raised choice sends no reason. A repeated request cannot replay
 the reason. DNT suppresses the signal and does not record a feedback window.
+Settings offers the fixed reasons and Skip when lowering a publisher's choice;
+the reason is staged until Save. Each edited publisher is written independently,
+with its optional reason in that same config request, preserving omitted
+publishers. The Full disclosure dialog offers the same optional prompt before
+its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is
+offered under DNT. Failed writes do not acknowledge. Feedback is action metadata,
+not a persisted setting.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action
@@ -348,7 +375,14 @@ owns their atomic persistence and the ledger.
 real HTTP receivers and writer-shaped files, including restart and eviction.
 [Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
 and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)
-cover activation, inventory rejection, buffering and disclosure. They use
+cover activation, inventory rejection, buffering and disclosure.
+The [UI route-seam tests](../../src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx)
+mount the real components against config and telemetry routes with real local
+persistence, and observe feedback transport before Off is persisted. They also
+exercise hidden notices, stale revisions, and dropped-payload presentation.
+The [gallery](../../tests/screenshots.spec.ts) defines desktop and 390px mobile
+Lite notice, outbox and feedback scenes. These are controlled local evidence;
+they do not establish a packaged native-shell or live-receiver deployment. They use
 controlled endpoints; a live ingestion deployment needs its own delivery evidence.
 
 # Event inventory

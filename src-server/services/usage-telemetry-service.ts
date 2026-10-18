@@ -11,6 +11,7 @@ import {
   type ProductTelemetryObservation,
   STATION_DAILY_FIELDS,
   type TelemetryFeedback,
+  type TelemetryLiteNoticeReceipt,
   type TelemetryOutboxEntry,
 } from '@kontourai/station-contracts/product-telemetry';
 import type {
@@ -361,6 +362,9 @@ export class UsageTelemetryService {
   }
   async telemetryStatus(): Promise<
     ResolvedTelemetryConfiguration & {
+      liteNotices: Partial<
+        Record<'kontour' | 'operator', TelemetryLiteNoticeReceipt>
+      >;
       liteInventoryRevision: string;
       liteInventory: typeof STATION_DAILY_FIELDS;
       fullInventoryRevision: string;
@@ -369,6 +373,7 @@ export class UsageTelemetryService {
     await this.loadDisclosureReceipt();
     return {
       ...this.resolvedConfiguration(),
+      liteNotices: this.publishers.local.notices(),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,
       fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,

@@ -4,6 +4,7 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
+import type { TelemetryTierChoices } from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -315,6 +316,32 @@ let telemetryEndpointConfigured: boolean | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
+let telemetryDnt = false;
+vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useTelemetryStatus')>();
+  return {
+    ...actual,
+    useTelemetryStatus: () => ({
+      data: {
+        publishers: Object.fromEntries(
+          ['kontour', 'operator'].map((id) => [
+            id,
+            {
+              tier: telemetryDnt ? 'off' : 'lite',
+              reason: telemetryDnt ? 'DNT' : 'user',
+              userChoice: (
+                configSnapshot.config?.telemetryTier as
+                  | TelemetryTierChoices
+                  | undefined
+              )?.[id as 'kontour' | 'operator'],
+            },
+          ]),
+        ),
+      },
+    }),
+  };
+});
 vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -470,6 +497,7 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 
 describe('settings catalog completeness', () => {
   beforeEach(() => {
+    telemetryDnt = false;
     isMobile = false;
     isDesktop = false;
     pluginVisibilityRefused = false;
@@ -2200,7 +2228,77 @@ describe('settings catalog completeness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(updateConfig).toHaveBeenCalledWith({
-        telemetryTier: { kontour: 'lite', operator: 'lite' },
+        telemetryTier: { operator: 'lite' },
+      }),
+    );
+  });
+
+  test.each([false, true])(
+    'Settings stages feedback with the publisher write and skips the offer under DNT=%s',
+    async (dnt) => {
+      telemetryDnt = dnt;
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { kontour: 'lite', operator: 'full' },
+        },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+      fireEvent.change(
+        screen.getByRole('combobox', { name: 'Operator telemetry' }),
+        { target: { value: 'off' } },
+      );
+      if (dnt) expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+      else {
+        expect(updateConfig).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(updateConfig).toHaveBeenCalledWith({
+          telemetryTier: { operator: 'off' },
+          ...(dnt ? {} : { telemetryFeedbackReason: 'privacy' }),
+        }),
+      );
+    },
+  );
+
+  test('discarding an optional reason does not attach it to an imported tier change', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'lite', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    const { container } = await renderSettings();
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Operator telemetry' }),
+      { target: { value: 'off' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    const file = new File([], 'station-settings.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(file, 'text', {
+      value: async () =>
+        JSON.stringify({
+          version: 2,
+          station: { telemetryTier: { operator: 'off' } },
+        }),
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    await screen.findByText('Unsaved changes');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'off' },
       }),
     );
   });

@@ -1,4 +1,10 @@
+import type {
+  TelemetryFeedbackReason,
+  TelemetryPublisherId,
+  TelemetryTierChoices,
+} from '@kontourai/station-contracts/product-telemetry';
 import { SectionNavigation } from '../components/SectionNavigation';
+import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
@@ -242,6 +248,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
+  const telemetryStatus = useTelemetryStatus();
+  const [telemetryFeedback, setTelemetryFeedback] = useState<
+    Partial<Record<TelemetryPublisherId, TelemetryFeedbackReason>>
+  >({});
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -289,6 +299,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const selectProject = (slug: string | null) => {
     guard(() => {
       setConfig(savedConfig);
+      setTelemetryFeedback({});
       setOverrideDraft({});
       setSelectedProjectSlug(slug);
     });
@@ -633,6 +644,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     try {
       const { serverConfig, droppedDeviceKeys } =
         await parseImportedSettingsFile(file);
+      setTelemetryFeedback({});
       setConfig({ ...config, ...serverConfig });
       // archive#settings-revamp: an invalid device
       // value is dropped (not silently merged, not a hard failure) — surface
@@ -668,21 +680,42 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     ) as Partial<AppConfig>;
     // The server merges publishers independently. Do not replay an untouched
     // publisher from a draft that predates a withdrawal on another device.
+    const savedTelemetryChoices: TelemetryTierChoices | undefined =
+      savedConfig.telemetryTier;
     if (changed.telemetryTier) {
       changed.telemetryTier = Object.fromEntries(
         Object.entries(changed.telemetryTier).filter(
           ([publisher, tier]) =>
-            tier !==
-            savedConfig.telemetryTier?.[publisher as 'kontour' | 'operator'],
+            tier !== savedTelemetryChoices?.[publisher as TelemetryPublisherId],
         ),
       );
       if (Object.keys(changed.telemetryTier).length === 0)
         delete changed.telemetryTier;
     }
     const { logLevel, ...plainChanges } = changed;
+    const feedbackAtSave = telemetryFeedback;
+    const dntAtSave = telemetryStatus.data?.publishers;
     const plainWrite =
       Object.keys(plainChanges).length > 0
-        ? updateConfig(plainChanges)
+        ? (async () => {
+            const { telemetryTier, ...other } = plainChanges;
+            if (Object.keys(other).length) await updateConfig(other);
+            for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
+              const publisher = id as TelemetryPublisherId;
+              const reason =
+                dntAtSave?.[publisher]?.reason === 'DNT'
+                  ? undefined
+                  : feedbackAtSave[publisher];
+              // A reason is explicit action metadata, never a stored setting.
+              const write = {
+                telemetryTier: { [publisher]: tier },
+                ...(reason && reason !== 'skip'
+                  ? { telemetryFeedbackReason: reason }
+                  : {}),
+              };
+              await updateConfig(write);
+            }
+          })()
         : undefined;
     const logLevelWrite =
       logLevel !== undefined
@@ -1116,7 +1149,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   <Section icon="◉" title="Telemetry" id="section-telemetry">
                     <StationConfigSection
                       section="telemetry"
-                      telemetryPublishers={telemetryDisclosure.data?.publishers}
+                      telemetryPublishers={telemetryStatus.data?.publishers}
+                      showTelemetryOutbox
+                      onTelemetryFeedback={(publisher, reason) =>
+                        setTelemetryFeedback((current) => ({
+                          ...current,
+                          [publisher]: reason,
+                        }))
+                      }
                       embedded
                       config={config}
                       provenance={provenance}
@@ -1614,6 +1654,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             className="settings__save-pill-discard"
             onClick={() => {
               setConfig(savedConfig);
+              setTelemetryFeedback({});
               setOverrideDraft({});
             }}
           >

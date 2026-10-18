@@ -16,7 +16,11 @@
  * reader who follows `?view=` lands somewhere the row is not.
  */
 
-import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  TelemetryFeedbackReason,
+  TelemetryPublisherId,
+  TelemetryPublisherStatus,
+} from '@kontourai/station-contracts/product-telemetry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -156,6 +160,8 @@ export function StationConfigSection({
   containerScope,
   projectOverride,
   telemetryPublishers,
+  onTelemetryFeedback,
+  showTelemetryOutbox,
 }: {
   /** Which section's keys to render; see `STATION_SETTING_KEYS_BY_SECTION`. */
   section: StationSettingsSectionId;
@@ -179,10 +185,14 @@ export function StationConfigSection({
    */
   containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
-  telemetryPublishers?: Record<
-    'kontour' | 'operator',
-    TelemetryPublisherStatus
+  telemetryPublishers?: Partial<
+    Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
+  onTelemetryFeedback?: (
+    publisher: TelemetryPublisherId,
+    reason: TelemetryFeedbackReason,
+  ) => void;
+  showTelemetryOutbox?: boolean;
 }) {
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
@@ -194,6 +204,8 @@ export function StationConfigSection({
           config={config}
           onChange={onChange}
           publishers={telemetryPublishers}
+          onFeedback={onTelemetryFeedback}
+          showOutbox={showTelemetryOutbox}
         />
       );
     const definition = REGISTRY_BY_KEY.get(key);

@@ -5,7 +5,10 @@ import {
   type TelemetryLiteNoticeReceipt,
   type TelemetryOutboxEntry,
 } from '@kontourai/station-contracts/product-telemetry';
-import { mutateJsonFile } from '@kontourai/station-shared/json-file-storage';
+import {
+  mutateJsonFile,
+  readJsonFile,
+} from '@kontourai/station-shared/json-file-storage';
 
 type Publisher = 'kontour' | 'operator';
 export interface TelemetryDailyState {
@@ -33,6 +36,14 @@ export class TelemetryLocalState {
   constructor(homeDir: string) {
     this.dailyPath = join(homeDir, 'config', 'telemetry-daily.json');
     this.outboxPath = join(homeDir, 'config', 'telemetry-outbox.json');
+  }
+  notices(): TelemetryDailyState['notices'] {
+    return (
+      readJsonFile<TelemetryDailyState | null>(this.dailyPath, null, {
+        maxBytes: 16 * 1024,
+        label: 'Telemetry daily state',
+      })?.notices ?? {}
+    );
   }
   daily(update: (state: TelemetryDailyState | null) => TelemetryDailyState) {
     return mutateJsonFile<TelemetryDailyState | null>(

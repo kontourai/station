@@ -1,5 +1,7 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryFeedbackReason,
+  type TelemetryPublisherId,
   type TelemetryPublisherStatus,
   type TelemetryTier,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -33,6 +35,7 @@ import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
+import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
 import './UsageTelemetryDisclosure.css';
 
 type Disclosure = {
@@ -63,7 +66,7 @@ type Disclosure = {
    * environment has already turned off.
    */
   telemetryEnabled?: boolean;
-  publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
+  publishers?: Partial<Record<TelemetryPublisherId, TelemetryPublisherStatus>>;
   /**
    * Which link of that chain won. `'env'` is the one that matters: the value
    * is in force but nothing durable records it, so keeping it has to write it
@@ -514,7 +517,7 @@ function DisclosureSummary({
   return (
     <>
       <p className={chrome.lede}>
-        {data.publishers?.operator.reason === 'DNT'
+        {data.publishers?.operator?.reason === 'DNT'
           ? 'DO_NOT_TRACK is active: nothing is sent. Save an operator choice of Off, Lite, or Full. Full will still require confirmation after DO_NOT_TRACK is removed.'
           : usageTelemetryDisclosureSummary(data.endpointConfigured)}
       </p>
@@ -613,6 +616,7 @@ interface UsageTelemetryDecision {
   keep: () => void;
   /** Make the other one true. */
   change: () => void;
+  feedback?: ReactNode;
   dntChoice?: {
     value: TelemetryTier;
     onChange: (tier: TelemetryTier) => void;
@@ -695,6 +699,7 @@ function useUsageTelemetryDecision(
       target: RecoveryDecisionTarget & {
         next: TelemetryTier;
         tierAware: boolean;
+        feedbackReason?: TelemetryFeedbackReason;
       },
     ) => {
       const response = await mutateJson(
@@ -705,7 +710,12 @@ function useUsageTelemetryDecision(
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
         target.tierAware
-          ? { telemetryTier: { operator: target.next } }
+          ? {
+              telemetryTier: { operator: target.next },
+              ...(target.feedbackReason && target.feedbackReason !== 'skip'
+                ? { telemetryFeedbackReason: target.feedbackReason }
+                : {}),
+            }
           : { telemetryEnabled: target.next === 'full' },
       );
       // Guarded when the target carries a scope: the decode re-asserts
@@ -747,6 +757,10 @@ function useUsageTelemetryDecision(
         queryKey: recoveryDisclosureKey(target.apiBase, target.identityKey),
       }),
   });
+  const [pendingFeedback, setPendingFeedback] = useState<{
+    target: string;
+    choose: (reason: TelemetryFeedbackReason) => void;
+  }>();
   const [settingError, setSettingError] = useState(false);
   const [dntSelection, setDntSelection] = useState<{
     target: string;
@@ -788,7 +802,10 @@ function useUsageTelemetryDecision(
   const keepMustRecord =
     tierAware || (configEnabled === undefined && data?.enabledSource === 'env');
 
-  const decide = (next: TelemetryTier) => {
+  const decide = (
+    next: TelemetryTier,
+    feedbackReason?: TelemetryFeedbackReason,
+  ) => {
     if (busy || !data) return;
     setSettingError(false);
     if (scoped) {
@@ -812,7 +829,7 @@ function useUsageTelemetryDecision(
         return;
       }
       recoveryConfigWrite.mutate(
-        { ...target, next, tierAware },
+        { ...target, next, tierAware, feedbackReason },
         {
           onSuccess: (result) => {
             // A key the server declines comes back in `ignoredKeys` on a
@@ -855,7 +872,12 @@ function useUsageTelemetryDecision(
     }
     updateProtected.mutate(
       tierAware
-        ? { telemetryTier: { operator: next } }
+        ? {
+            telemetryTier: { operator: next },
+            ...(feedbackReason && feedbackReason !== 'skip'
+              ? { telemetryFeedbackReason: feedbackReason }
+              : {}),
+          }
         : { telemetryEnabled: next === 'full' },
       {
         onSuccess: (result) => {
@@ -886,6 +908,29 @@ function useUsageTelemetryDecision(
         onError: () => setSettingError(true),
       },
     );
+  };
+
+  const requestDecision = (next: TelemetryTier) => {
+    const previous =
+      savedChoice ?? operator?.tier ?? (enabled ? 'full' : 'off');
+    const rank = { off: 0, lite: 1, full: 2 };
+    if (
+      tierAware &&
+      operator &&
+      operator.reason !== 'DNT' &&
+      rank[next] < rank[previous]
+    ) {
+      setPendingFeedback({
+        target: choiceTarget,
+        choose: (reason) => {
+          setPendingFeedback(undefined);
+          decide(next, reason);
+        },
+      });
+    } else {
+      setPendingFeedback(undefined);
+      decide(next);
+    }
   };
 
   const acknowledgeError = scoped
@@ -921,8 +966,17 @@ function useUsageTelemetryDecision(
             : usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () =>
-      decide(operator?.reason === 'DNT' ? dntChoice : enabled ? 'full' : 'off'),
-    change: () => decide(enabled ? 'off' : 'full'),
+      requestDecision(
+        operator?.reason === 'DNT' ? dntChoice : enabled ? 'full' : 'off',
+      ),
+    change: () => requestDecision(enabled ? 'off' : 'full'),
+    feedback:
+      pendingFeedback?.target === choiceTarget && operator?.reason !== 'DNT' ? (
+        <TelemetryFeedbackPrompt
+          publisher="Operator"
+          onChoose={pendingFeedback.choose}
+        />
+      ) : undefined,
     dntChoice:
       operator?.reason === 'DNT'
         ? {
@@ -992,6 +1046,7 @@ function DisclosureDecisionActions({
   decision: UsageTelemetryDecision;
   keepRef?: Ref<HTMLButtonElement>;
 }) {
+  if (decision.feedback) return decision.feedback;
   return (
     <>
       {!decision.dntChoice && (

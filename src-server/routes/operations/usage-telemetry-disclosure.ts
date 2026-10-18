@@ -121,6 +121,11 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_notice_changed' } },
         409,
       );
+    if (status.publishers[body.publisher].reason === 'DNT')
+      return c.json(
+        { success: false, error: { code: 'telemetry_notice_DNT' } },
+        409,
+      );
     await service.recordLiteNotice(body.publisher, body.inventoryRevision);
     return c.json({ success: true });
   });

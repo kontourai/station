@@ -1714,9 +1714,20 @@ interface Screen {
 
 function telemetryConsentScreens(): Screen[] {
   return [DESKTOP, MOBILE].flatMap((viewport) =>
-    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
-      const pending = mode === 'pending-full';
-      const dialogVisible = mode !== 'settings-dnt';
+    (
+      [
+        'settings-dnt',
+        'pending-full',
+        'dialog-dnt',
+        'lite-notice',
+        'outbox',
+        'feedback',
+      ] as const
+    ).map((mode) => {
+      const pending = mode === 'pending-full' || mode === 'feedback';
+      const dnt = mode.includes('dnt');
+      const dialogVisible =
+        mode === 'pending-full' || mode === 'dialog-dnt' || mode === 'feedback';
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
@@ -1732,7 +1743,10 @@ function telemetryConsentScreens(): Screen[] {
           const configHandler = async (route: Route) => {
             const response = await route.fetch();
             const body = await response.json();
-            body.data.telemetryTier = { kontour: 'off', operator: 'full' };
+            body.data.telemetryTier = {
+              kontour: 'off',
+              operator: pending || dnt ? 'full' : 'lite',
+            };
             delete body.data.telemetryEnabled;
             // This fixture represents an upgraded home, outside guided setup.
             delete body.data.firstRun;
@@ -1747,19 +1761,99 @@ function telemetryConsentScreens(): Screen[] {
             body.data.publishers = {
               kontour: {
                 tier: 'off',
-                reason: pending ? 'user' : 'DNT',
+                reason: dnt ? 'DNT' : 'user',
                 userChoice: 'off',
                 source: 'config',
               },
               operator: {
-                tier: pending ? 'lite' : 'off',
-                reason: pending ? 'disclosure' : 'DNT',
-                userChoice: 'full',
+                tier: dnt ? 'off' : 'lite',
+                reason: pending ? 'disclosure' : dnt ? 'DNT' : 'user',
+                userChoice: pending || dnt ? 'full' : 'lite',
                 source: 'config',
               },
             };
             await route.fulfill({ response, json: body });
           };
+          const statusPattern = /\/api\/usage-telemetry\/status$/;
+          const statusHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.publishers = {
+              kontour: {
+                tier: 'off',
+                reason: dnt ? 'DNT' : 'user',
+                userChoice: 'off',
+              },
+              operator: {
+                tier: dnt ? 'off' : 'lite',
+                reason: pending ? 'disclosure' : dnt ? 'DNT' : 'user',
+                userChoice: pending || dnt ? 'full' : 'lite',
+              },
+            };
+            body.data.liteNotices =
+              mode === 'lite-notice'
+                ? {}
+                : {
+                    operator: {
+                      publisher: 'operator',
+                      inventoryRevision: body.data.liteInventoryRevision,
+                      shownAt: '2026-10-18T00:00:00Z',
+                    },
+                  };
+            await route.fulfill({ response, json: body });
+          };
+          const outboxPattern = /\/api\/usage-telemetry\/outbox\?publisher=.+$/;
+          const outboxHandler = async (route: Route) => {
+            if (route.request().url().includes('publisher=kontour'))
+              return route.fulfill({ json: { success: true, data: [] } });
+            await route.fulfill({
+              json: {
+                success: true,
+                data:
+                  mode === 'outbox'
+                    ? [
+                        {
+                          publisher: 'operator',
+                          tier: 'lite',
+                          recordedAt: '2026-10-18T08:00:00Z',
+                          outcome: 'dropped',
+                          reason: 'notice',
+                          payload: { event: 'telemetry_dropped', count: 3 },
+                        },
+                        {
+                          publisher: 'operator',
+                          tier: 'lite',
+                          recordedAt: '2026-10-18T08:01:00Z',
+                          outcome: 'dropped',
+                          reason: 'transport',
+                          payload: { event: 'telemetry_dropped', count: 1 },
+                        },
+                        {
+                          publisher: 'operator',
+                          tier: 'lite',
+                          recordedAt: '2026-10-18T08:02:00Z',
+                          outcome: 'sent',
+                          reason: 'acknowledged',
+                          payload: {
+                            publisher: 'operator',
+                            action: 'tier-lowered',
+                            reason: 'privacy',
+                          },
+                        },
+                      ]
+                    : [],
+              },
+            });
+          };
+          const noticePattern = /\/api\/usage-telemetry\/lite-notices$/;
+          const noticeHandler = async (route: Route) => {
+            await route.fulfill({ json: { success: true } });
+          };
+          routes.push(
+            [statusPattern, statusHandler],
+            [outboxPattern, outboxHandler],
+            [noticePattern, noticeHandler],
+          );
           routes.push(
             [configPattern, configHandler],
             [disclosurePattern, disclosureHandler],
@@ -1773,6 +1867,58 @@ function telemetryConsentScreens(): Screen[] {
           });
         },
         afterGoto: async (page) => {
+          if (mode === 'lite-notice') {
+            await expect(
+              page.getByRole('complementary', {
+                name: 'Lite telemetry notice for Operator',
+              }),
+            ).toBeVisible();
+            await expect(
+              page.getByRole('button', { name: 'Turn off Operator telemetry' }),
+            ).toBeVisible();
+            for (const name of [
+              'Turn off Operator telemetry',
+              'Dismiss notice',
+            ]) {
+              const action = page.getByRole('button', { name, exact: true });
+              await action.scrollIntoViewIfNeeded();
+              await expect(action).toBeInViewport();
+              await action.click({ trial: true });
+            }
+            return;
+          }
+          if (mode === 'outbox') {
+            const outbox = page.getByRole('region', {
+              name: 'What was sent to Operator',
+            });
+            await outbox.scrollIntoViewIfNeeded();
+            await outbox.getByText('View sent payload JSON').click();
+            await expect(
+              outbox.getByText('Suppressed', { exact: true }),
+            ).toBeVisible();
+            await expect(
+              outbox.getByText('Dropped', { exact: true }),
+            ).toBeVisible();
+            await expect(outbox.locator('pre')).toContainText('privacy');
+            return;
+          }
+          if (mode === 'feedback') {
+            const dialog = page.getByRole('dialog', {
+              name: 'What Station sends',
+            });
+            await dialog
+              .getByRole('button', { name: 'Turn off usage telemetry' })
+              .click();
+            await expect(
+              dialog.getByRole('heading', {
+                name: 'Why lower Operator telemetry? (optional)',
+              }),
+            ).toBeFocused();
+            await expect(
+              dialog.getByRole('button', { name: 'Skip', exact: true }),
+            ).toBeVisible();
+            return;
+          }
           if (dialogVisible) {
             const dialog = page.getByRole('dialog', {
               name: 'What Station sends',

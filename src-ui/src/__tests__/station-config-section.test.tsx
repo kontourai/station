@@ -348,3 +348,37 @@ test('#2144 slice 6: a stored value is what the row shows', () => {
     ).value,
   ).toBe('never');
 });
+
+test('publisher controls render registry publishers without borrowing Kontour identity or choices', () => {
+  const onChange = vi.fn();
+  const onFeedback = vi.fn();
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+      onTelemetryFeedback={onFeedback}
+      telemetryPublishers={{
+        'publisher:example.tools': { tier: 'lite', reason: 'default' },
+      }}
+    />,
+  );
+  expect(
+    screen.queryByRole('combobox', { name: 'Kontour telemetry' }),
+  ).toBeNull();
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'example.tools telemetry' }),
+    { target: { value: 'off' } },
+  );
+  expect(
+    screen.getByRole('heading', {
+      name: 'Why lower example.tools telemetry? (optional)',
+    }),
+  ).toBe(document.activeElement);
+  fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+  expect(onFeedback).toHaveBeenCalledWith('publisher:example.tools', 'skip');
+  expect(onChange).toHaveBeenCalledWith({
+    telemetryTier: { 'publisher:example.tools': 'off' },
+  });
+});

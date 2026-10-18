@@ -1,0 +1,101 @@
+import type {
+  TelemetryOutboxEntry,
+  TelemetryPublisherId,
+} from '@kontourai/station-contracts/product-telemetry';
+import { authenticatedFetch } from '@kontourai/station-sdk';
+import { useQuery } from '@tanstack/react-query';
+import { Button } from '../../components/Button';
+import { useApiBase } from '../../contexts/ApiBaseContext';
+import { telemetryPublisherLabel } from '../../hooks/useTelemetryStatus';
+import '../../components/TelemetryPrivacy.css';
+
+const SUPPRESSED = new Set([
+  'off',
+  'DNT',
+  'disclosure',
+  'notice',
+  'unconfigured',
+]);
+const LIMIT = 50;
+
+export function TelemetryOutbox({
+  publisher,
+}: {
+  publisher: TelemetryPublisherId;
+}) {
+  const { apiBase } = useApiBase();
+  const query = useQuery({
+    queryKey: ['telemetry-outbox', apiBase, publisher],
+    queryFn: async ({ signal }): Promise<TelemetryOutboxEntry[]> => {
+      const response = await authenticatedFetch(
+        `${apiBase}/api/usage-telemetry/outbox?publisher=${encodeURIComponent(publisher)}`,
+        { signal },
+      );
+      if (!response.ok) throw new Error('The outbox could not be loaded.');
+      return (await response.json()).data;
+    },
+    staleTime: 0,
+  });
+  const entries = query.data
+    ?.filter((entry) => entry.publisher === publisher)
+    .slice(-LIMIT)
+    .reverse();
+  return (
+    <section
+      className="telemetry-outbox"
+      aria-label={`What was sent to ${telemetryPublisherLabel(publisher)}`}
+    >
+      <h3>What was sent — {telemetryPublisherLabel(publisher)}</h3>
+      <p>
+        Latest {LIMIT} records per publisher. Local history retains at most 30
+        days and 5 MiB across publishers; oldest records are evicted. Suppressed
+        and dropped records show reasons and counts, without a payload viewer.
+      </p>
+      <Button
+        variant="secondary"
+        disabled={query.isFetching}
+        onClick={() => void query.refetch()}
+      >
+        Refresh {telemetryPublisherLabel(publisher)} outbox
+      </Button>
+      {query.isLoading && <p role="status">Loading outbox…</p>}
+      {query.isError && (
+        <p role="alert">
+          The outbox could not be loaded. Use Refresh to try again.
+        </p>
+      )}
+      {entries?.length === 0 && (
+        <p>No telemetry records for this publisher yet.</p>
+      )}
+      <ol className="telemetry-outbox__list">
+        {entries?.map((entry, index) => (
+          <li key={`${entry.recordedAt}:${index}`}>
+            <p>
+              <strong>
+                {entry.outcome === 'sent'
+                  ? 'Sent'
+                  : SUPPRESSED.has(entry.reason)
+                    ? 'Suppressed'
+                    : 'Dropped'}
+              </strong>{' '}
+              · {entry.tier} · {entry.reason} ·{' '}
+              <time dateTime={entry.recordedAt}>{entry.recordedAt}</time>
+            </p>
+            {entry.outcome === 'sent' ? (
+              <details>
+                <summary>View sent payload JSON</summary>
+                <pre>{JSON.stringify(entry.payload, null, 2)}</pre>
+              </details>
+            ) : (
+              <p>
+                {'count' in entry.payload
+                  ? `${entry.payload.count} ${entry.payload.count === 1 ? 'observation' : 'observations'}`
+                  : 'Payload not displayed for an unsent record.'}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
