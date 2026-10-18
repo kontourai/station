@@ -41,6 +41,10 @@ beforeEach(async () => {
   );
   await migrateLite(sqlClient(db));
   await migrateLite(sqlClient(db));
+  await sqlClient(db).query(
+    'UPDATE station_telemetry.lite_noise_key SET secret=$1',
+    [Buffer.alloc(32, 7)],
+  );
   await db.transaction((tx) => assertLiteSchema(sqlClient(tx)));
   today = (
     await db.query<{ day: string }>(
@@ -88,6 +92,8 @@ async function send(address: string, rare = false) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         ...dailyPing(),
+        surfaces_today: ['web', 'cli'],
+        safe_mode_entered: 127,
         public_plugins_enabled: rare ? ['rare.plugin'] : ['public.plugin'],
       }),
     },
@@ -135,6 +141,37 @@ test('padding probe always releases rare values, including zero, on identical fi
       c.value === 'rare.plugin',
   );
   expect(rare).toBeDefined();
+  const truths = (
+    await db.query<{
+      dimension: string;
+      value: string;
+      pings: number;
+      clients: number;
+    }>(
+      "SELECT dimension,value,pings,clients FROM station_telemetry.lite_marginals WHERE publisher='kontour' AND day=$1",
+      [closedWeek],
+    )
+  ).rows;
+  expect(
+    truths.find(
+      (r) =>
+        r.dimension === 'public_plugins_enabled' && r.value === 'rare.plugin',
+    ),
+  ).toMatchObject({ pings: 9, clients: 9 });
+  expect(
+    before.some(
+      (c) =>
+        c.week === closedWeek &&
+        c.estimate !==
+          Number(
+            truths.find(
+              (r) => r.dimension === c.dimension && r.value === c.value,
+            )?.pings ?? 0,
+          ),
+    ),
+    'published estimates must include nonzero noise rather than exact counts',
+  ).toBe(true);
+
   expect(
     before.filter((c) => c.dimension === 'platform' && c.value === 'aix'),
   ).toHaveLength(4);
@@ -154,6 +191,15 @@ test('padding probe always releases rare values, including zero, on identical fi
   await send('203.0.113.1', true);
   await closeDay();
   const withVictim = await lite.aggregates('kontour');
+  expect(
+    (
+      await db.query(
+        "SELECT pings,clients FROM station_telemetry.lite_marginals WHERE publisher='kontour' AND day=$1 AND dimension='public_plugins_enabled' AND value='rare.plugin'",
+        [closedWeek],
+      )
+    ).rows,
+  ).toEqual([{ pings: 10, clients: 10 }]);
+
   const after = [];
   after.push(...withVictim.cells);
   let cursor = withVictim.nextCursor;
@@ -167,6 +213,17 @@ test('padding probe always releases rare values, including zero, on identical fi
   ).toEqual(
     before.map(({ week, dimension, value }) => [week, dimension, value]),
   );
+  const kontourKey = `stq_${'k'.repeat(43)}`;
+  await lite.setPublisherKey(
+    'kontour',
+    createHash('sha256').update(kontourKey).digest('hex'),
+  );
+  const publicCells = await lite.aggregates('kontour');
+  expect((await lite.aggregates('kontour', kontourKey)).cells).toEqual(
+    publicCells.cells,
+  );
+  expect(publicCells.epsilonPerCount).toBe(1 / 280);
+  expect(publicCells.epsilonPerPing).toBe(1 / 7);
   const own = await readAll(
     '/v1/publishers/publisher%3Aexample/aggregates',
     publisherKey,
@@ -177,43 +234,70 @@ test('padding probe always releases rare values, including zero, on identical fi
   ).toBe(false);
 });
 
-test('operator endpoints require the operator key and return exact daily pings and contributor counts', async () => {
-  await send('198.51.100.1');
-  await send('198.51.100.1');
-  await send('198.51.100.2');
-  await closeDay();
-  for (const period of ['daily', 'weekly']) {
-    for (const key of [undefined, publisherKey, `sto_${'x'.repeat(43)}`])
+test.each([
+  ['IPv4', ['198.51.100.1', '198.51.100.1', '198.51.100.2']],
+  [
+    'IPv6 /48',
+    ['2001:db8:1234:1::1', '2001:db8:1234:2::1', '2001:db8:5678:1::1'],
+  ],
+])(
+  'operator endpoints require the operator key and return exact daily pings and contributor counts (%s)',
+  async (_label, addresses) => {
+    for (const address of addresses) await send(address);
+    await closeDay();
+    for (const period of ['daily', 'weekly']) {
+      for (const key of [undefined, publisherKey, `sto_${'x'.repeat(43)}`])
+        expect(
+          (
+            await app.request(
+              `/v1/operator/lite/${period}`,
+              key ? auth(key) : undefined,
+            )
+          ).status,
+        ).toBe(401);
       expect(
         (
           await app.request(
-            `/v1/operator/lite/${period}`,
-            key ? auth(key) : undefined,
+            `/v1/operator/lite/${period}?platform=linux`,
+            auth(),
           )
         ).status,
-      ).toBe(401);
-    expect(
-      (await app.request(`/v1/operator/lite/${period}?platform=linux`, auth()))
-        .status,
-    ).toBe(400);
-    const r = await app.request(`/v1/operator/lite/${period}`, auth());
-    expect(r.status).toBe(200);
-    const result = await r.json();
-    expect(result.marginals).toContainEqual({
-      period: closedWeek,
-      publisher: 'kontour',
-      dimension: 'platform',
-      value: 'linux',
-      pings: '3',
-      contributors: '2',
-    });
-    expect(result.contributorUnit).toBe(
-      period === 'daily'
-        ? 'distinct-daily-network-keys'
-        : 'sum-of-distinct-daily-network-keys',
-    );
-  }
-});
+      ).toBe(400);
+      const r = await app.request(`/v1/operator/lite/${period}`, auth());
+      expect(r.status).toBe(200);
+      const result = await r.json();
+      expect(result.marginals).toContainEqual({
+        period: closedWeek,
+        publisher: 'kontour',
+        dimension: 'platform',
+        value: 'linux',
+        pings: '3',
+        contributors: '2',
+      });
+      for (const [dimension, value] of [
+        ['safe_mode_entered', '21+'],
+        ['surfaces_today', 'web'],
+        ['surfaces_today', 'cli'],
+        ['first_active_this_week', 'true'],
+        ['engines_used_today', 'codex'],
+      ]) {
+        expect(result.marginals).toContainEqual({
+          period: closedWeek,
+          publisher: 'kontour',
+          dimension,
+          value,
+          pings: '3',
+          contributors: '2',
+        });
+      }
+      expect(result.contributorUnit).toBe(
+        period === 'daily'
+          ? 'distinct-daily-network-keys'
+          : 'sum-of-distinct-daily-network-keys',
+      );
+    }
+  },
+);
 
 test('release waits for the closed ISO week and sums pings from multiple days exactly once', async () => {
   await send('198.51.100.1');
@@ -346,6 +430,13 @@ test('migration 5 to 6 is transactional and idempotent without changing exact ma
   await db.exec(
     'DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version=6',
   );
+  await db.query(
+    "INSERT INTO station_telemetry.lite_marginals VALUES($1,'kontour','platform','linux',123,45,true)",
+    [closedWeek],
+  );
+  const marginals = (
+    await db.query('SELECT * FROM station_telemetry.lite_marginals')
+  ).rows;
   const key = (
     await db.query('SELECT secret FROM station_telemetry.lite_noise_key')
   ).rows;
@@ -376,4 +467,25 @@ test('migration 5 to 6 is transactional and idempotent without changing exact ma
     (await db.query('SELECT secret FROM station_telemetry.lite_noise_key'))
       .rows,
   ).toEqual(key);
+  expect(
+    (await db.query('SELECT * FROM station_telemetry.lite_marginals')).rows,
+  ).toEqual(marginals);
+});
+
+test('a stale arrival-day salt rolls back raw insertion, jobs and capacity', async () => {
+  await expect(
+    lite.ingest('kontour', dailyPing(), {
+      day: '2000-01-01',
+      hash: 'a'.repeat(64),
+    }),
+  ).rejects.toMatchObject({ code: 'storage_busy' });
+  expect(
+    (await db.query('SELECT pings FROM station_telemetry.lite_capacity')).rows,
+  ).toEqual([{ pings: 0 }]);
+  expect(
+    (await db.query('SELECT * FROM station_telemetry.lite_pings')).rows,
+  ).toEqual([]);
+  expect(
+    (await db.query('SELECT * FROM station_telemetry.lite_finalization')).rows,
+  ).toEqual([]);
 });

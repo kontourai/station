@@ -235,9 +235,8 @@ ignored. Behind a proxy all clients share one key; NAT also merges contributors.
 Run one receiver process. Restart changes the salt and can count the same
 network again that day, inflating distinct contributor counts; multiple
 processes have independent salts and limits. This is not a unique-person count
-or a Sybil defense. An attacker controlling at least k−1 distinct contributor
-keys can still pad one victim past k; /48 grouping raises the cost but provides
-no authenticity. A proxy-aware deployment needs a separately reviewed trusted
+or a Sybil defense. Network grouping provides no authenticity; published support
+is fixed and has no contributor threshold to pad. A proxy-aware deployment needs a separately reviewed trusted
 ingress boundary, with access logging disabled/sanitized there. This package
 does not qualify infrastructure logging. OHTTP and DAP/Prio remain deferred.
 
@@ -266,12 +265,13 @@ and approximate 1 GiB limits.
 
 Retention and finalization run at startup and in independent hourly jobs.
 Finalization commits per dimension, then separately erases contributor hashes and
-contribution arrays in batches. Only finalized marginals meeting the k pre-filter
-are exposed, always with noise. The first public read also finalizes closed days
+contribution arrays for each completed publisher/day in batches. The operator
+view is exact; published weekly marginals always include the full public domain
+with noise. The first public read also finalizes closed days
 before caching. Raw pings expire after 90 days, including UUID dedupe. Downtime
 or a failed sweep delays finalization and erasure; these are periodic operations,
 not database TTL guarantees. See [Public aggregates](#public-aggregates) for
-migration 5, privacy calibration, bounded jobs and key handling.
+migrations 5–6, privacy calibration, bounded jobs and key handling.
 
 Receipt-day pings approximate active installations. Daily first-active-week and
 first-active-month counts can be summed over a **complete calendar week or
@@ -449,8 +449,9 @@ npm run test:focused -- packages/telemetry-broker/src/__tests__/broker.test.ts \
 
 The diagnostic creates a uniquely named database, removes it only on success,
 and retains failures for diagnosis. Focused broker tests use in-memory PostgreSQL (PGlite) and synthetic socket
-bindings to exercise SQL finalization, k filtering, stable noisy counts, single-network padding,
-count buckets and publisher isolation without an external database. PGlite is
+bindings to exercise SQL finalization, padding-shape invariance, frozen weekly
+noise, exact IPv4/IPv6-/48 contributor counts, operator authorization, migration
+rollback and publisher isolation without an external database. PGlite is
 a development dependency, absent from the receiver bundle. The focused limiter test uses real HTTP
 with a storage refusal fixture and a controlled UTC clock; it does not claim
 database ingestion. Passive API tests use a local HTTP fixture, not production.
