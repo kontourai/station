@@ -144,13 +144,29 @@ import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import type { ChatSession } from '../types';
 
-function buildChatInput() {
+function buildChatInput(): Parameters<typeof ChatDockBody>[0]['chatInput'] {
   return {
     quotes: [],
     quotedDraftText: '',
     removeQuote: vi.fn(),
     input: '',
     attachments: [],
+    attachmentError: null,
+    attachmentStages: [],
+    sendBlockedReason: undefined,
+    attachmentNotice: undefined,
+    attachUnavailableReason: undefined,
+    removalUnblocksSend: false,
+    modelSelectionReason: undefined,
+    modelsStale: false,
+    selectAttachmentFiles: vi.fn(async () => {}),
+    replaceAttachmentFile: vi.fn(async () => {}),
+    setAttachmentError: vi.fn(),
+    retryAttachmentStage: vi.fn(async () => {}),
+    cancelAttachmentStage: vi.fn(async () => {}),
+    handleAcpSessionModeChange: vi.fn(),
+    openModelForExecution: vi.fn(),
+    handleRestorePortableDraft: vi.fn(),
     textareaRef: { current: null },
     currentModel: undefined,
     canModelSelect: false,
@@ -229,11 +245,7 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
           modelSupportsAttachments={false}
           fileAttachmentsSupported={false}
           availableModels={[]}
-          chatInput={
-            { ...input, input: draft } as Parameters<
-              typeof ChatDockBody
-            >[0]['chatInput']
-          }
+          chatInput={{ ...input, input: draft }}
           setShowStatsPanel={setShowStatsPanel}
           onNewChat={newChat}
         />
@@ -298,7 +310,7 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
           modelSupportsAttachments={false}
           fileAttachmentsSupported={false}
           availableModels={[]}
-          chatInput={buildChatInput() as any}
+          chatInput={buildChatInput()}
           setShowStatsPanel={vi.fn()}
         />
       </QueryClientProvider>,
