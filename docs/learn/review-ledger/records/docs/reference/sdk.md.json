@@ -664,7 +664,9 @@
 
     "src-server/providers/model-provider-failure.ts",
 
-    "src-server/runtime/conversation/stream-orchestrator.ts"
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "src-ui/src/lib/attachment-staging-queue.ts"
   ],
 
   "checks": [

@@ -218,7 +218,13 @@
 
     "src-server/providers/model-provider-failure.ts",
 
-    "src-server/runtime/conversation/stream-orchestrator.ts"
+    "src-server/runtime/conversation/stream-orchestrator.ts",
+
+    "packages/contracts/src/__tests__/provider-failure.test.ts",
+
+    "src-server/providers/__tests__/station-agent-adapter.test.ts",
+
+    "src-ui/src/utils/chatErrorTranslation.ts"
   ],
 
   "checks": [
