@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { checkQualificationHealth } from '../qualification-health.mjs';
 
 const NOW = Date.parse('2026-10-05T12:00:00Z');
@@ -50,6 +50,8 @@ async function observe({
   failJobs = false,
   failLiveInventory = false,
   enabled = true,
+  productionClock = false,
+  onRead = (_path: string) => {},
 }: {
   runs?: ReturnType<typeof run>[];
   jobs?: Record<
@@ -69,6 +71,8 @@ async function observe({
   failJobs?: boolean;
   failLiveInventory?: boolean;
   enabled?: boolean;
+  productionClock?: boolean;
+  onRead?: (path: string) => void;
 } = {}) {
   const writes: {
     method: string;
@@ -91,6 +95,7 @@ async function observe({
       return;
     }
     reads.push(path);
+    onRead(path);
     if (path.endsWith('/runs')) {
       const status = new URL(
         request.url ?? '/',
@@ -162,7 +167,7 @@ async function observe({
         STATION_QUALIFIED_NIGHTLY: enabled ? 'enabled' : '',
         GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
       },
-      NOW,
+      productionClock ? undefined : NOW,
     );
     return { result, writes, reads };
   } finally {
@@ -173,6 +178,100 @@ async function observe({
 }
 
 describe('qualification health through the GitHub API', () => {
+  it('accepts a Nightly created during API observation instead of treating invocation time as a future-data fence', async () => {
+    let observed = NOW;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => observed);
+    try {
+      const { result } = await observe({
+        productionClock: true,
+        scheduledRuns: [
+          run(900, 0, {
+            path: '.github/workflows/nightly.yml',
+            created_at: new Date(NOW + 30_000).toISOString(),
+            updated_at: new Date(NOW + 40_000).toISOString(),
+          }),
+        ],
+        onRead: (path) => {
+          if (path.includes('/nightly.yml/runs')) observed = NOW + 60_000;
+        },
+      });
+      expect(result.healthy).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('accepts qualification and Nightly gates completing during their job reads', async () => {
+    let observed = NOW;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => observed);
+    try {
+      const completed = new Date(NOW + 30_000).toISOString();
+      const { result } = await observe({
+        productionClock: true,
+        jobs: {
+          1: [gate({ completed_at: completed })],
+          900: [
+            gate({
+              name: '1 · Source gate (lint, typecheck, browser smoke)',
+              completed_at: completed,
+            }),
+          ],
+        },
+        onRead: (path) => {
+          if (path.endsWith('/jobs')) observed = NOW + 60_000;
+        },
+      });
+      expect(result.healthy).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('uses the final observation clock when a scheduled request ages beyond its threshold during reads', async () => {
+    let observed = NOW;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => observed);
+    try {
+      const { result } = await observe({
+        productionClock: true,
+        scheduledRuns: [run(900, 4, { path: '.github/workflows/nightly.yml' })],
+        onRead: (path) => {
+          if (path.includes('/runs/900/attempts/1/jobs'))
+            observed = NOW + 60_000;
+        },
+      });
+      expect(result.healthy).toBe(false);
+      expect(result.reasons).toContain(
+        'No scheduled Nightly request within 4 hours (schedule freshness bound; manual runs do not establish scheduled liveness).',
+      );
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('still refuses timestamps beyond the actual observation clock', async () => {
+    let observed = NOW;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => observed);
+    try {
+      await expect(
+        observe({
+          productionClock: true,
+          scheduledRuns: [
+            run(900, 0, {
+              path: '.github/workflows/nightly.yml',
+              created_at: new Date(NOW + 120_000).toISOString(),
+              updated_at: new Date(NOW + 120_000).toISOString(),
+            }),
+          ],
+          onRead: (path) => {
+            if (path.includes('/nightly.yml/runs')) observed = NOW + 60_000;
+          },
+        }),
+      ).rejects.toThrow('Invalid canonical Nightly run');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('reports a missing scheduled Nightly request even when source qualification is healthy', async () => {
     const { result, writes } = await observe({
       manualRuns: [],

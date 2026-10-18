@@ -55,6 +55,44 @@ function chipValue() {
 }
 
 describe('ApprovalModeChip', () => {
+  test('Codex Ask discloses the unknown reviewer while preserving picker selection', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="ask"
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger().getAttribute('title')).toContain(
+      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
+    );
+    expect(trigger().getAttribute('aria-label')).toContain(
+      'Codex reviewer not reported here',
+    );
+    await openSheet();
+    expect(
+      option(
+        /Ask first.*untrusted commands.*reviewer may approve sandbox escalations automatically/i,
+      ),
+    ).toHaveProperty('checked', true);
+    fireEvent.click(option(/^Auto/));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('auto');
+
+    rerender(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="ask"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger().getAttribute('title')).not.toContain('Codex reviewer');
+    await openSheet();
+    expect(option(/Ask first.*Claude asks/i)).toBeTruthy();
+    expect(screen.queryByText(/configured reviewer may approve/i)).toBeNull();
+  });
+
   test('an inherited mode shows what the engine confirmed in the visible chip', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
@@ -598,7 +636,7 @@ describe('ApprovalModeChip', () => {
     // The description is visible text in the sheet now, not an <option> title —
     // it was previously reachable only by hovering a native select option.
     const autoDescription =
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.';
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.";
     expect(screen.getByText(autoDescription)).toBeTruthy();
     // `option` now resolves the native `<input type="radio">` itself (real
     // radio semantics, archive#996) — a leaf element with no text-node
