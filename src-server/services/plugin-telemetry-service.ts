@@ -521,6 +521,7 @@ export class PluginTelemetryService {
   ) {
     let outcome: TelemetryOutboxEntry['outcome'] = 'dropped';
     let reason: TelemetryOutboxEntry['reason'] = 'expired';
+    const artifactCurrent = await binding.isCurrent();
     const state = await this.local.publisherDaily<PublisherState>(
       publisherId(binding),
       (state) => state,
@@ -541,7 +542,8 @@ export class PluginTelemetryService {
       state &&
       !state.retired &&
       state.revision === snapshot.revision &&
-      (await binding.isCurrent())
+      artifactCurrent &&
+      binding.isSelected()
     ) {
       const resolution = this.resolution(binding, state);
       reason =

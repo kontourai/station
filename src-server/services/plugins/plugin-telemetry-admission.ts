@@ -83,13 +83,15 @@ export async function pluginTelemetryBindings(
       plugin,
       generation: captured.installation.incarnation,
       receipt: trust.receipt,
-      isSelected: () => captured.isCurrent(),
+      isSelected: () => captured.isCurrent() && admission.isApplied(),
       declaration: installed.manifest.telemetry,
       async isCurrent() {
         try {
           await admission.assertCurrent();
           return (
-            captured.isCurrent() && (await installed.artifact.isCurrentAsync())
+            captured.isCurrent() &&
+            (await installed.artifact.isCurrentAsync()) &&
+            admission.isApplied()
           );
         } catch {
           return false;
