@@ -163,6 +163,15 @@ product decisions.
     refuses an existing path. Closing the server removes only the private
     name; the real path is removed only after it is moved aside and found
     to be the inode this process bound.
+    Filesystems that refuse `link()` (some FUSE, SMB, or 9p mounts) make
+    the bind fail closed, and a control path whose directory leaves no room
+    for the private name within the socket path limit is refused at start.
+    A third process that binds the path in the instant it is moved aside
+    loses it when this process puts it back; its self-check then sees the
+    conflict and it exits with status 1 (an accepted gap). While holding the
+    lock, the supervisor removes leftover private names of exactly its own
+    pattern that are sockets older than a minute, so names from a killed
+    process do not accumulate.
   - Every 5 seconds the holder confirms the top epoch is still its own,
     draining and exiting with status 1 if not. If its socket file was
     deleted or replaced (on Windows, if the pipe server stopped listening)
@@ -280,7 +289,9 @@ goes through the guarded command:
 station-supervisor --break-lock --home <home> --instance <id> [--force] [--reason <text>]
 ```
 
-It re-checks the holder itself. A holder that is live by its recorded
+It re-checks the holder itself. Its output shows only the holder's
+executable name and first argument, without control characters, since later
+arguments can carry secrets. A holder that is live by its recorded
 process fingerprint is refused. A holder whose identity cannot be verified,
 or a lock still being written, needs `--force`; the refusal shows the
 holder's pid and command line so an operator can decide. Otherwise it marks

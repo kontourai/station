@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { SUPERVISOR_MAIN } from './harness.ts';
+import { FAKE_CORE, SUPERVISOR_MAIN } from './harness.ts';
 
 function run(args: string[]) {
   return spawnSync(process.execPath, [SUPERVISOR_MAIN, ...args], {
@@ -31,4 +31,34 @@ describe('supervisor command line (child process)', () => {
     );
     expect(result.stderr).not.toMatch(/^\s+at /m);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses a --control path whose private bind name would not fit sun_path',
+    () => {
+      // The path itself fits; the private name `.sXXXXXX` beside it does not.
+      const limit = process.platform === 'linux' ? 107 : 103;
+      const dir = `/tmp/sv-long-${'x'.repeat(limit - 2 - '/tmp/sv-long-'.length)}`;
+      const control = `${dir}/a`;
+      expect(Buffer.byteLength(control)).toBeLessThanOrEqual(limit);
+      const result = spawnSync(
+        process.execPath,
+        [
+          SUPERVISOR_MAIN,
+          '--entry',
+          FAKE_CORE,
+          '--home',
+          dir,
+          '--instance',
+          't',
+          '--control',
+          control,
+        ],
+        { encoding: 'utf8', timeout: 10_000, windowsHide: true },
+      );
+      expect(result.status, result.stderr).toBe(2);
+      expect(result.stderr).toContain(
+        `--control directory is too long for the socket's private bind name: ${control}`,
+      );
+    },
+  );
 });

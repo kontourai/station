@@ -2,12 +2,13 @@
  * The lock module in-process: epochs never go backwards, and garbage
  * collection never touches the current top.
  */
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import {
   acquireInstanceLock,
+  breakInstanceLock,
   collectOlderEpochs,
   releaseInstanceLock,
 } from '../instance-lock.ts';
@@ -52,5 +53,23 @@ describe('lock epochs (in-process)', () => {
     // Garbage collection by an older lock never removes the current top.
     collectOlderEpochs(first, runDir, 't');
     expect(existsSync(join(runDir, 'instance-t.lock.2'))).toBe(true);
+  });
+
+  it('removes its temporary file when marking a lock released fails', async () => {
+    const { runDir } = setup();
+    // The top "epoch" is a non-empty directory, so the final rename fails.
+    mkdirSync(join(runDir, 'instance-t.lock.1', 'inside'), { recursive: true });
+    await expect(
+      breakInstanceLock({
+        runDir,
+        instance: 't',
+        force: true,
+        reason: 'test',
+        breakLockCommand: 'x',
+      }),
+    ).rejects.toThrow();
+    expect(
+      readdirSync(runDir).filter((name) => name.endsWith('.break')),
+    ).toEqual([]);
   });
 });

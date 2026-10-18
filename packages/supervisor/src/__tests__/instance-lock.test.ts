@@ -13,6 +13,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -332,6 +333,54 @@ describe('instance lock (real processes)', () => {
       `stop it with SIGTERM to pid ${first.child.pid} or the control channel's stop request, then start again`,
     );
   }, 60_000);
+
+  posixOnly(
+    'sweeps only stale leftovers of its own naming pattern from the control directory',
+    async () => {
+      const dir = makeShortHome();
+      const control = join(dir, 'c.sock');
+      // A socket file left by a killed process, under each private naming pattern.
+      const leftover = async (name: string) => {
+        const path = join(dir, name);
+        const child = spawn(
+          process.execPath,
+          [
+            '-e',
+            `require('net').createServer().listen(${JSON.stringify(path)}, () => process.stdout.write('up'))`,
+          ],
+          { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true },
+        );
+        await once(child.stdout as NodeJS.ReadableStream, 'data');
+        child.kill('SIGKILL');
+        await once(child, 'exit');
+        return path;
+      };
+      const old = new Date(Date.now() - 120_000);
+      const staleBind = await leftover('.sa1b2c3');
+      const staleAside = await leftover('.d0f9e8d');
+      const freshBind = await leftover('.s123456');
+      const wrongName = await leftover('.sZZZZZZ');
+      for (const path of [staleBind, staleAside, wrongName])
+        utimesSync(path, old, old);
+      const regular = join(dir, '.dabcdef');
+      writeFileSync(regular, 'not a socket');
+      utimesSync(regular, old, old);
+
+      const supervisor = await startSupervisor({
+        home: makeTempDir('sup-lock-sweep-'),
+        control,
+      });
+      expect((await supervisor.status()).state).toBe('serving');
+      expect(existsSync(staleBind)).toBe(false);
+      expect(existsSync(staleAside)).toBe(false);
+      // Too fresh to be a leftover, the wrong pattern, or not a socket: kept.
+      expect(existsSync(freshBind)).toBe(true);
+      expect(existsSync(wrongName)).toBe(true);
+      expect(existsSync(regular)).toBe(true);
+      expect(supervisor.output()).toContain(`removed leftover ${staleBind}`);
+    },
+    60_000,
+  );
 
   it('drains and exits 1 when its epoch is superseded while serving', async () => {
     const home = makeTempDir('sup-lock-superseded-live-');

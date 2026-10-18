@@ -8,10 +8,14 @@
  * is what clients derive too. Tuning flags exist for operators and tests.
  */
 import { realpathSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createEntryBoundary } from './entry-boundary.ts';
-import { breakInstanceLock, SupervisorStartError } from './instance-lock.ts';
+import {
+  breakInstanceLock,
+  breakLockCommandFor,
+  SupervisorStartError,
+} from './instance-lock.ts';
 import {
   type ControlEndpoint,
   isValidInstanceId,
@@ -132,7 +136,7 @@ async function main(): Promise<void> {
         typeof parsed.reason === 'string'
           ? parsed.reason
           : 'operator break-lock',
-      breakLockCommand: `station-supervisor --break-lock --home ${resolve(home)} --instance ${instance}`,
+      breakLockCommand: breakLockCommandFor(resolve(home), instance),
     });
     (result.code === 0 ? process.stdout : process.stderr).write(
       `station-supervisor: ${result.message}\n`,
@@ -178,6 +182,17 @@ async function main(): Promise<void> {
       Buffer.byteLength(raw.control) > unixSocketPathLimit(process.platform)
     ) {
       fail(`--control path exceeds the socket path limit: ${raw.control}`);
+    }
+    // The socket is bound at a private name beside it (`.s` + 6 hex digits)
+    // and published with link(); that name must fit sun_path too.
+    if (
+      process.platform !== 'win32' &&
+      Buffer.byteLength(join(dirname(resolve(raw.control)), '.sXXXXXX')) >
+        unixSocketPathLimit(process.platform)
+    ) {
+      fail(
+        `--control directory is too long for the socket's private bind name: ${raw.control}`,
+      );
     }
     endpoint = { ...derived, path: raw.control, fallbackDir: null };
   }

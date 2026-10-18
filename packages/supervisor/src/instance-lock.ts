@@ -304,7 +304,9 @@ export async function acquireInstanceLock(options: {
             `another supervisor (pid ${pid ?? 'unknown'}) holds ${options.description} (epoch ${highest}, ${state}: ${why}); refusing to start`,
             `  lock file: ${holder}`,
             `  ${remedy(verdict, options.breakLockCommand ?? 'station-supervisor --break-lock')}`,
-          ].join('\n'),
+          ]
+            .map(printable)
+            .join('\n'),
         );
       }
       options.log(
@@ -430,7 +432,9 @@ export async function breakInstanceLock(options: {
   if (verdict.verified) {
     return {
       code: 1,
-      message: `refusing to break the lock: ${remedy(verdict, options.breakLockCommand)} (lock file: ${path})`,
+      message: printable(
+        `refusing to break the lock: ${remedy(verdict, options.breakLockCommand)} (lock file: ${path})`,
+      ),
     };
   }
   if (verdict.state !== 'dead' && !options.force) {
@@ -443,8 +447,10 @@ export async function breakInstanceLock(options: {
       message: [
         `refusing to break the lock without --force: ${remedy(verdict, options.breakLockCommand)}`,
         `  lock file: ${path}`,
-        `  holder command line: ${command}`,
-      ].join('\n'),
+        `  holder command line: ${redactCommandLine(command)}`,
+      ]
+        .map(printable)
+        .join('\n'),
     };
   }
   let content: Record<string, unknown> = {};
@@ -469,9 +475,54 @@ export async function breakInstanceLock(options: {
   } finally {
     closeSync(fd);
   }
-  renameSync(temp, path);
+  try {
+    renameSync(temp, path);
+  } finally {
+    // On success the temp name is gone already; on failure, never leave it behind.
+    try {
+      unlinkSync(temp);
+    } catch {
+      // Renamed, or never there.
+    }
+  }
   return {
     code: 0,
     message: `marked instance lock epoch ${highest} released (${verdict.state === 'dead' ? verdict.why : `forced: ${verdict.why}`})`,
   };
+}
+
+/** Quotes `value` as one shell word: POSIX single quotes, or Windows double quotes. */
+function shellQuote(value: string): string {
+  if (process.platform === 'win32') return `"${value.replaceAll('"', '\\"')}"`;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** The exact break-lock command for an instance, safe to paste into a shell. */
+export function breakLockCommandFor(home: string, instance: string): string {
+  return `station-supervisor --break-lock --home ${shellQuote(home)} --instance ${instance}`;
+}
+
+/** Removes control characters (keeping the newlines that separate message lines). */
+function printable(text: string): string {
+  return text.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '');
+}
+
+/**
+ * Only the executable's basename and its first argument: later arguments may
+ * carry secrets (tokens, keys) that must not reach logs or terminals.
+ */
+function redactCommandLine(commandLine: string): string {
+  const trimmed = printable(commandLine).trim();
+  if (trimmed === '' || trimmed === 'unknown') return 'unknown';
+  const words: string[] = [];
+  const pattern = /"([^"]*)"|(\S+)/g;
+  for (
+    let match = pattern.exec(trimmed);
+    match && words.length < 2;
+    match = pattern.exec(trimmed)
+  ) {
+    words.push(match[1] ?? match[2] ?? '');
+  }
+  const executable = (words[0] ?? '').split(/[\\/]/).at(-1) ?? '';
+  return [executable, words[1]].filter(Boolean).join(' ');
 }

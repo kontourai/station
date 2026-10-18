@@ -20,6 +20,7 @@ import {
 } from './generation-registry.ts';
 import {
   acquireInstanceLock,
+  breakLockCommandFor,
   collectOlderEpochs,
   type InstanceLock,
   releaseInstanceLock,
@@ -275,7 +276,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     instance: options.instance,
     control: options.endpoint.path,
     description: `instance ${options.instance} in ${dirname(runDir)}`,
-    breakLockCommand: `station-supervisor --break-lock --home ${dirname(runDir)} --instance ${options.instance}`,
+    breakLockCommand: breakLockCommandFor(dirname(runDir), options.instance),
     log,
     pendingGraceMs: options.lockPendingGraceMs,
     testDelayMs: Number.isFinite(testDelay)
@@ -303,6 +304,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       );
     }
     collectOlderEpochs(held, runDir, options.instance);
+    for (const leftover of control.sweepLeftovers())
+      log(`removed leftover ${leftover}`);
     log(`acquired instance lock epoch ${held.epoch}`);
     control.publishToken();
     // Holding the lock, any generation still on record was orphaned by a

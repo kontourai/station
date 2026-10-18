@@ -155,4 +155,56 @@ describe('--break-lock (child processes)', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('no instance lock to break');
   });
+
+  it('shows only a redacted, control-free holder command line', async () => {
+    const home = makeTempDir('sup-break-redact-');
+    const script = join(makeTempDir('sup-break-redact-script-'), 'holder.js');
+    writeFileSync(script, 'setInterval(() => {}, 1000);\n');
+    const holder = spawn(
+      process.execPath,
+      [script, '--token=secret-value', 'bell\u0007end'],
+      {
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
+    children.push(holder);
+    await once(holder, 'spawn');
+    // An empty recorded fingerprint: the holder cannot be verified, so the
+    // refusal shows its command line for the operator.
+    writeEpoch(home, 1, {
+      pid: holder.pid,
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: '',
+      createdAt: Date.now(),
+      control: 'x',
+    });
+    const result = breakLock(home);
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toMatch(
+      /holder command line: node(\.exe)? \S*holder\.js/,
+    );
+    expect(result.stderr).not.toContain('secret-value');
+    expect(result.stderr).not.toContain('--token');
+    expect(result.stderr).not.toContain('\u0007');
+  }, 60_000);
+
+  it('quotes the home in the suggested break-lock command', async () => {
+    const home = join(
+      makeTempDir('sup-break-quote-'),
+      "a b $(touch pwned) 'q'",
+    );
+    mkdirSync(join(home, 'run'), { recursive: true, mode: 0o700 });
+    // A lock still being written: the refusal suggests --break-lock --force.
+    writeFileSync(epochFile(home, 1), '');
+    const starter = await startSupervisor({ home, waitForServing: false });
+    expect((await starter.exited).code, starter.output()).toBe(1);
+    const quoted =
+      process.platform === 'win32'
+        ? `"${home}"`
+        : `'${home.replaceAll("'", "'\\''")}'`;
+    expect(starter.output()).toContain(
+      `station-supervisor --break-lock --home ${quoted} --instance test --force`,
+    );
+  }, 60_000);
 });

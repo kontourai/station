@@ -7,6 +7,8 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -154,6 +156,40 @@ describe('control server private directories', () => {
       expect(await answer(endpoint.path)).toBe('connected');
       await control.close();
       expect(existsSync(endpoint.path)).toBe(false);
+    },
+  );
+
+  posixOnly(
+    'puts back a socket file that was swapped while it was moved aside',
+    async () => {
+      const home = makeShortHome();
+      const endpoint = endpointIn(home);
+      // Another process's socket, ready to be swapped in at the moved-aside name.
+      const otherPath = join(home, 'other.sock');
+      const other = createServer((socket) => {
+        socket.on('error', () => {});
+        socket.end('other\n');
+      });
+      await new Promise<void>((resolve) => other.listen(otherPath, resolve));
+      const control = server(endpoint, {
+        testHooks: {
+          afterMoveAside: (aside: string) => renameSync(otherPath, aside),
+        },
+      });
+      await control.listen();
+      try {
+        await control.close();
+        // The swapped-in inode was not ours: it went back to the endpoint path.
+        expect(existsSync(endpoint.path)).toBe(true);
+        expect(await answer(endpoint.path)).toBe('other');
+        expect(
+          readdirSync(join(home, 'run')).filter((name) =>
+            name.startsWith('.d'),
+          ),
+        ).toEqual([]);
+      } finally {
+        await new Promise((resolve) => other.close(resolve));
+      }
     },
   );
 });

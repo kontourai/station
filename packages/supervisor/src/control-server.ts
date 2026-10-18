@@ -9,6 +9,7 @@ import {
   linkSync,
   lstatSync,
   openSync,
+  readdirSync,
   renameSync,
   unlinkSync,
   writeSync,
@@ -52,6 +53,8 @@ import {
 /** Upper bound for any client-supplied duration. */
 const MAX_REQUEST_DURATION_MS = 60 * 60_000;
 const MAX_ID_LENGTH = 128;
+/** Private socket names younger than this may belong to a bind in flight. */
+const LEFTOVER_MIN_AGE_MS = 60_000;
 /** A refused client is disconnected within this time even if it never reads. */
 const REFUSED_CLOSE_TIMEOUT_MS = 1_000;
 
@@ -72,6 +75,11 @@ export interface ControlServerOptions {
   handlers: ControlHandlers;
   platform?: NodeJS.Platform;
   log?: (message: string) => void;
+  /** Test-only seams. */
+  testHooks?: {
+    /** Runs between moving the socket file aside and checking its inode. */
+    afterMoveAside?: (aside: string) => void;
+  };
   /** True while this process holds the instance lock's top epoch; gates replacing a stale socket file. */
   mayReplaceStaleSocket?: () => boolean;
   /** The uid directories must belong to. Tests replace it to exercise the foreign-owner refusal. */
@@ -232,27 +240,25 @@ export class ControlServer {
       dirname(endpoint.path),
       `.s${randomBytes(3).toString('hex')}`,
     );
-    // Only if the private name would not fit sun_path: bind directly then.
-    const direct =
-      Buffer.byteLength(privateName) > unixSocketPathLimit(this.platform);
-    const server = await this.listenOn(
-      direct ? endpoint.path : privateName,
-      refuseListening,
-    );
-    if (!direct) {
-      chmodSync(privateName, 0o600);
-      try {
-        linkSync(privateName, endpoint.path);
-      } catch (error) {
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-        throw (error as NodeJS.ErrnoException).code === 'EEXIST'
-          ? refuseListening()
-          : error;
-      }
-      unlinkSync(privateName);
-    } else {
-      chmodSync(endpoint.path, 0o600);
+    // No direct-bind fallback: binding at the real path would bring back
+    // Node's unlink-on-close of a path that may no longer be ours.
+    if (Buffer.byteLength(privateName) > unixSocketPathLimit(this.platform)) {
+      throw new Error(
+        `control socket directory is too long for the socket's private bind name: ${endpoint.path}`,
+      );
     }
+    const server = await this.listenOn(privateName, refuseListening);
+    chmodSync(privateName, 0o600);
+    try {
+      // Filesystems that refuse link() (some FUSE, SMB, 9p) fail closed here.
+      linkSync(privateName, endpoint.path);
+    } catch (error) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      throw (error as NodeJS.ErrnoException).code === 'EEXIST'
+        ? refuseListening()
+        : error;
+    }
+    unlinkSync(privateName);
     const bound = lstatSync(endpoint.path);
     this.boundIdentity = { dev: bound.dev, ino: bound.ino };
     this.bound = true;
@@ -300,6 +306,7 @@ export class ControlServer {
     } catch {
       return;
     }
+    this.options.testHooks?.afterMoveAside?.(aside);
     try {
       const moved = lstatSync(aside);
       if (
@@ -310,6 +317,9 @@ export class ControlServer {
         return;
       }
       // Replaced between the check and the rename: put it back untouched.
+      // Residual race (accepted): a third process that binds the path while
+      // it is moved aside loses it here; its self-check sees the conflict and
+      // it exits 1, so the instance heals by restarting.
       try {
         linkSync(aside, path);
       } catch {
@@ -319,6 +329,39 @@ export class ControlServer {
     } catch {
       // Best effort.
     }
+  }
+
+  /**
+   * Removes leftovers of this server's own private names (`.s` bind names and
+   * `.d` moved-aside names, six hex digits) from the control directory. Call
+   * only while holding the instance lock. Only socket files older than a
+   * minute are touched: the directory may be shared by other instances, whose
+   * in-flight bind names exist for milliseconds.
+   */
+  sweepLeftovers(): string[] {
+    if (this.platform === 'win32') return [];
+    const dir = dirname(this.options.endpoint.path);
+    const removed: string[] = [];
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return removed;
+    }
+    for (const name of names) {
+      if (!/^\.[sd][0-9a-f]{6}$/.test(name)) continue;
+      const path = join(dir, name);
+      try {
+        const stat = lstatSync(path);
+        if (!stat.isSocket() || Date.now() - stat.mtimeMs < LEFTOVER_MIN_AGE_MS)
+          continue;
+        unlinkSync(path);
+        removed.push(path);
+      } catch {
+        // Gone already.
+      }
+    }
+    return removed;
   }
 
   private socketFileIsOurs(): boolean {
