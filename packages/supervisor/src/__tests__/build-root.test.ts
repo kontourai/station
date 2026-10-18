@@ -56,22 +56,35 @@ describe('handoff entry boundary (real processes)', () => {
     const before = await supervisor.status();
     expect(before.active?.generation).toBe(1);
 
+    // Every case is tried and recorded, so a failure names all the cases it lets through.
+    const outcomes: Array<Record<string, unknown>> = [];
     for (const [name, entry] of refusals) {
       const result = await supervisor.handoff({ entry });
-      expect(result, name).toMatchObject({
-        type: 'handoff.result',
-        outcome: 'refused',
-        reason: 'entry-outside-build-root',
-      });
       const status = await supervisor.status();
-      expect(status.state, name).toBe('serving');
-      expect(status.trial, name).toBeNull();
-      expect(status.active, name).toMatchObject({
-        generation: 1,
-        bootId: before.active?.bootId,
-        pid: before.active?.pid,
+      outcomes.push({
+        name,
+        outcome: result.outcome,
+        reason: result.reason,
+        state: status.state,
+        trial: status.trial,
+        activeGeneration: status.active?.generation,
+        activePid: status.active?.pid,
       });
     }
+    expect(outcomes).toEqual(
+      refusals.map(([name]) => ({
+        name,
+        outcome: 'refused',
+        reason: 'entry-outside-build-root',
+        state: 'serving',
+        trial: null,
+        activeGeneration: 1,
+        activePid: before.active?.pid,
+      })),
+    );
+    expect((await supervisor.status()).active?.bootId).toBe(
+      before.active?.bootId,
+    );
     // No generation was ever forked for a refusal.
     expect(supervisor.output().match(/generation \d+ started/g)).toHaveLength(
       1,
