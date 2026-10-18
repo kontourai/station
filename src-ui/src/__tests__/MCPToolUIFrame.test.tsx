@@ -273,7 +273,7 @@ describe('MCPToolUIFrame', () => {
       }, []);
       const [expanded, setExpanded] = useState(false);
       return (
-        <button onClick={() => setExpanded(!expanded)}>
+        <button type="button" onClick={() => setExpanded(!expanded)}>
           {expanded ? 'Expanded row' : 'Collapsed row'}
         </button>
       );
