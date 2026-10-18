@@ -741,7 +741,7 @@ function delegationAttachmentValidationRefusal(
         ? 'delegation_files_unsupported'
         : 'delegation_files_ref_invalid';
   const refusal = new DelegationFileRefusal(code);
-  return { code, error: refusal.message };
+  return { code, error: errorMessage(refusal) };
 }
 
 function validateFiles<T>(schema: z.ZodSchema<T>) {
@@ -3857,7 +3857,7 @@ export function createOrchestrationRoutes(
             error:
               error instanceof AttachmentStageError
                 ? 'Attachment staging refused these delegation files.'
-                : error.message,
+                : errorMessage(error),
             code: error.code,
           },
           error instanceof DelegationFileRefusal &&

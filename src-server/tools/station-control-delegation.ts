@@ -131,10 +131,9 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
-import {
-  OrchestrationCommandDispatchError,
-  type OrchestrationService,
-  type PeerReportedPendingRequest,
+import type {
+  OrchestrationService,
+  PeerReportedPendingRequest,
 } from '../services/orchestration/orchestration-service.js';
 import {
   type PresentableOpenRequest,
@@ -6229,13 +6228,18 @@ export async function delegateTask(
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
   } catch (attemptError) {
-    // Only an explicit rejected receipt proves dispatch never reached a turn.
-    if (
-      attemptError instanceof OrchestrationCommandDispatchError &&
-      attemptError.receipt.status === 'rejected' &&
-      attemptError.outcome !== 'indeterminate'
-    )
-      retainFiles = false;
+    // This local service's rejection must identify this exact command/thread;
+    // unknown outcomes and another command's receipt cannot release these files.
+    const failure = record(attemptError);
+    const receipt = record(failure.receipt);
+    const rejectedTurn =
+      attemptError instanceof Error &&
+      fileBinding !== undefined &&
+      receipt.threadId === fileBinding.threadId &&
+      receipt.commandType === 'sendTurn' &&
+      receipt.status === 'rejected' &&
+      failure.outcome !== 'indeterminate';
+    if (rejectedTurn) retainFiles = false;
     if (input.stagedFiles && fileBinding && !retainFiles) {
       try {
         await workspaceFiles?.remove();
@@ -6255,11 +6259,7 @@ export async function delegateTask(
       throw new DelegationFileRefusal('delegation_files_outcome_unknown', {
         cause: attemptError,
       });
-    if (
-      input.stagedFiles &&
-      attemptError instanceof OrchestrationCommandDispatchError &&
-      !retainFiles
-    )
+    if (input.stagedFiles && rejectedTurn && !retainFiles)
       throw new DelegationFileRefusal('delegation_files_turn_refused', {
         cause: attemptError,
       });
