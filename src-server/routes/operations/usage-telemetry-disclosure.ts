@@ -140,6 +140,15 @@ export function createUsageTelemetryDisclosureRoutes(
         },
         409,
       );
+    if (disclosure.publishers.operator.reason === 'DNT')
+      return c.json(
+        {
+          success: false,
+          error:
+            'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+        },
+        409,
+      );
     await service.acknowledgeDisclosure(body.inventoryRevision);
     return c.json({ success: true, data: await service.disclosure() });
   });

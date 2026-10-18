@@ -76,7 +76,9 @@
 
     "src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
 
-    "src-server/routes/system/__tests__/config.routes.test.ts"
+    "src-server/routes/system/__tests__/config.routes.test.ts",
+
+    "src-ui/src/components/UsageTelemetryDisclosure.css"
   ],
 
   "checks": [

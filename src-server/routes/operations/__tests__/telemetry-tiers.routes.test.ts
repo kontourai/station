@@ -43,6 +43,18 @@ test('status uses the live service configuration, respects DNT and never sends',
       },
     },
   });
+  const acknowledgement = await createUsageTelemetryDisclosureRoutes(
+    subject,
+  ).request('/disclosure/acknowledgements', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      acknowledgementProtocol: 2,
+      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+    }),
+  });
+  expect(acknowledgement.status).toBe(409);
+  expect((await subject.disclosure()).acknowledged).toBe(false);
   expect(fetch).not.toHaveBeenCalled();
 });
 

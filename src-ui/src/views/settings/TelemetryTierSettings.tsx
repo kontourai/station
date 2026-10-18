@@ -1,6 +1,6 @@
 import type {
+  TelemetryPublisherStatus,
   TelemetryTier,
-  TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
 import type { AppConfig } from '../../types';
 import { SettingsPageRow } from './SettingsPageRow';
@@ -13,10 +13,7 @@ export function TelemetryTierSettings({
 }: {
   config: AppConfig;
   onChange: (config: AppConfig) => void;
-  publishers?: Record<
-    'kontour' | 'operator',
-    TelemetryTierResolution & { userChoice?: TelemetryTier }
-  >;
+  publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
 }) {
   return (
     <div {...settingsRow('usage-telemetry')} tabIndex={-1}>

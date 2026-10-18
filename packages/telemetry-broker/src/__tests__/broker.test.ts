@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
 import type { ProductTelemetryCommitReceipt as ProductCommit } from '@kontourai/station-contracts/product-telemetry';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import type { QueryResultRow } from 'pg';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
@@ -18,7 +18,7 @@ const operatorKey = `sto_${'a'.repeat(43)}`;
 const sourceKey = `stp_${'b'.repeat(43)}`;
 const batch = () => ({
   schema_version: 1,
-  inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+  inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   distinct_id: 'a'.repeat(64),
   events: [
     {
@@ -61,7 +61,7 @@ beforeEach(() => {
   store.probe.mockResolvedValue({
     protocol: 'station-product-probe/v1',
     sourceId: commit.sourceId,
-    inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+    inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     checkedAt: '2026-10-10T12:00:02.000Z',
     storage: 'postgres-schema-v1',
   });
@@ -77,7 +77,7 @@ describe('product receiver HTTP admission and acknowledgement boundary', () => {
       '/v1/product/probes',
       post({
         protocol: 'station-product-probe/v1',
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
       }),
     );
     expect(response.status).toBe(200);
@@ -85,7 +85,7 @@ describe('product receiver HTTP admission and acknowledgement boundary', () => {
       probe: {
         protocol: 'station-product-probe/v1',
         sourceId: commit.sourceId,
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
         checkedAt: '2026-10-10T12:00:02.000Z',
         storage: 'postgres-schema-v1',
       },
@@ -97,12 +97,12 @@ describe('product receiver HTTP admission and acknowledgement boundary', () => {
   test.each([
     {
       protocol: 'station-product-probe/v2',
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     },
     { protocol: 'station-product-probe/v1', inventoryRevision: 'stale' },
     {
       protocol: 'station-product-probe/v1',
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
       prompt: 'private-content',
     },
   ])(
@@ -127,7 +127,7 @@ describe('product receiver HTTP admission and acknowledgement boundary', () => {
         '/v1/product/probes',
         post({
           protocol: 'station-product-probe/v1',
-          inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+          inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
         }),
       );
       expect(response.status).toBe(status);

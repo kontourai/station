@@ -18,6 +18,7 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
 } from '@kontourai/station-shared/product-telemetry';
@@ -216,6 +217,15 @@ export class UsageTelemetryService {
     return this.hasCurrentDisclosureReceipt;
   }
   async acknowledgeDisclosure(inventoryRevision: string): Promise<void> {
+    if (
+      resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+      ).publishers.operator.reason === 'DNT'
+    )
+      throw new Error(
+        'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+      );
     if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
       throw new Error(
         'Usage telemetry disclosure changed; review the current inventory.',
@@ -413,7 +423,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               protocol: 'station-product-probe/v1',
-              inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             }),
             signal: controller.signal,
           }),
@@ -718,7 +728,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               schema_version: 1,
-              inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
               distinct_id: distinctId,
               events: batch,
             } satisfies ProductTelemetryBatch),

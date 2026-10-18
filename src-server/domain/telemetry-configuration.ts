@@ -2,8 +2,8 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   resolveTelemetryTier,
   TELEMETRY_TIERS,
+  type TelemetryPublisherStatus,
   type TelemetryTier,
-  type TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
 import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
@@ -15,9 +15,8 @@ import { STATION_AUTHOR_TELEMETRY_ENDPOINT } from './telemetry-build-constants.j
 export interface ResolvedTelemetryConfiguration {
   publishers: Record<
     'kontour' | 'operator',
-    TelemetryTierResolution & {
+    TelemetryPublisherStatus & {
       source: 'config' | 'env' | 'default';
-      userChoice?: TelemetryTier;
     }
   >;
   authorEndpoint: string | undefined;

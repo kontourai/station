@@ -1,7 +1,7 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryPublisherStatus,
   type TelemetryTier,
-  type TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
   authenticatedFetch,
@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
   type Ref,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
@@ -32,6 +33,7 @@ import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
+import './UsageTelemetryDisclosure.css';
 
 type Disclosure = {
   acknowledged: boolean;
@@ -61,10 +63,7 @@ type Disclosure = {
    * environment has already turned off.
    */
   telemetryEnabled?: boolean;
-  publishers?: Record<
-    'kontour' | 'operator',
-    TelemetryTierResolution & { userChoice?: TelemetryTier }
-  >;
+  publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   /**
    * Which link of that chain won. `'env'` is the one that matters: the value
    * is in force but nothing durable records it, so keeping it has to write it
@@ -458,7 +457,9 @@ function DisclosureSummary({
   return (
     <>
       <p className={chrome.lede}>
-        {usageTelemetryDisclosureSummary(data.endpointConfigured)}
+        {data.publishers?.operator.reason === 'DNT'
+          ? 'DO_NOT_TRACK is active: nothing is sent. Save an operator choice of Off, Lite, or Full. Full will still require confirmation after DO_NOT_TRACK is removed.'
+          : usageTelemetryDisclosureSummary(data.endpointConfigured)}
       </p>
       <details className={chrome.inventory}>
         <summary>See exactly what is sent</summary>
@@ -555,6 +556,10 @@ interface UsageTelemetryDecision {
   keep: () => void;
   /** Make the other one true. */
   change: () => void;
+  dntChoice?: {
+    value: TelemetryTier;
+    onChange: (tier: TelemetryTier) => void;
+  };
   /** The failure to disclose beside the actions, when there is one. */
   notice: ReactNode;
   /** The receipt failed, so the keeping action is a retry. */
@@ -564,16 +569,11 @@ interface UsageTelemetryDecision {
 /**
  * THE decision, shared by every surface that offers it (#1600).
  *
- * THE SETTINGS TOGGLE IS THE SOURCE OF TRUTH. Both actions write and read
- * `telemetryEnabled` through the same `PUT /config/app` the Settings row uses
- * (`views/settings/StationConfigSection.tsx`), so no surface here can record a
- * preference Settings does not show. "Keep" usually writes nothing — the state
- * it names is already the case — unless the ENVIRONMENT is the only thing
- * holding that state, in which case it records it, because a decision resting
- * on `STATION_TELEMETRY_ENABLED` alone disappears the day that variable does.
- * The changing action always writes, and either action acknowledges only once
- * its write has landed, so a refused write can never be reported as a saved
- * choice.
+ * Decisions use the same config write path as Settings. Tier-aware choices
+ * persist the operator tier before acknowledging; legacy choices use
+ * `telemetryEnabled`. Under DNT, saving only records the tier and never
+ * acknowledges. An environment-only legacy choice must be persisted so it
+ * survives removal of that variable. Refused writes never acknowledge.
  *
  * `data` is optional so this can be called before the inventory has settled,
  * where the hook rules require it; the actions no-op until it has.
@@ -615,6 +615,7 @@ function useUsageTelemetryDecision(
   // rendering in either tree.
   const scope = useOptionalRecoveryScope();
   const scoped = scope !== null;
+  const { apiBase } = useApiBase();
 
   const acknowledgeProtected = useAcknowledgeDisclosure(onDecided);
   // The SAME `['config']` query the Settings row reads and this write
@@ -634,7 +635,10 @@ function useUsageTelemetryDecision(
   const queryClient = useQueryClient();
   const recoveryConfigWrite = useMutation({
     mutationFn: async (
-      target: RecoveryDecisionTarget & { next: boolean; tierAware: boolean },
+      target: RecoveryDecisionTarget & {
+        next: TelemetryTier;
+        tierAware: boolean;
+      },
     ) => {
       const response = await mutateJson(
         `${target.apiBase}/config/app`,
@@ -644,8 +648,8 @@ function useUsageTelemetryDecision(
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
         target.tierAware
-          ? { telemetryTier: { operator: target.next ? 'full' : 'off' } }
-          : { telemetryEnabled: target.next },
+          ? { telemetryTier: { operator: target.next } }
+          : { telemetryEnabled: target.next === 'full' },
       );
       // Guarded when the target carries a scope: the decode re-asserts
       // the intent-time capture is still current after the bytes arrive.
@@ -687,6 +691,10 @@ function useUsageTelemetryDecision(
       }),
   });
   const [settingError, setSettingError] = useState(false);
+  const [dntSelection, setDntSelection] = useState<{
+    target: string;
+    tier: TelemetryTier;
+  }>();
 
   const config = (scoped ? recoveryConfig.data : protectedConfig.data) as
     | {
@@ -698,6 +706,13 @@ function useUsageTelemetryDecision(
     data?.publishers !== undefined || config?.telemetryTier !== undefined;
   const operator = data?.publishers?.operator;
   const savedChoice = config?.telemetryTier?.operator ?? operator?.userChoice;
+  const choiceTarget = JSON.stringify(
+    scoped ? [scope.apiBase, scope.identityKey] : [apiBase],
+  );
+  const dntChoice =
+    dntSelection?.target === choiceTarget
+      ? dntSelection.tier
+      : (savedChoice ?? 'lite');
   const configEnabled = tierAware
     ? savedChoice !== undefined
       ? savedChoice === 'full'
@@ -716,7 +731,7 @@ function useUsageTelemetryDecision(
   const keepMustRecord =
     tierAware || (configEnabled === undefined && data?.enabledSource === 'env');
 
-  const decide = (next: boolean) => {
+  const decide = (next: TelemetryTier) => {
     if (busy || !data) return;
     setSettingError(false);
     if (scoped) {
@@ -730,7 +745,7 @@ function useUsageTelemetryDecision(
         identityKey: scope.identityKey,
         requestScope: scope.requestScope,
       };
-      if (next === enabled && !keepMustRecord) {
+      if ((next === 'full') === enabled && !keepMustRecord) {
         // Nothing to write: the choice is the state the host is already
         // in, and something durable already says so.
         acknowledgeRecovery.mutate({
@@ -760,6 +775,10 @@ function useUsageTelemetryDecision(
             queryClient.invalidateQueries({
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
+            if (operator?.reason === 'DNT') {
+              onDecided?.();
+              return;
+            }
             acknowledgeRecovery.mutate({
               ...target,
               inventoryRevision: data.inventoryRevision,
@@ -770,7 +789,7 @@ function useUsageTelemetryDecision(
       );
       return;
     }
-    if (next === enabled && !keepMustRecord) {
+    if ((next === 'full') === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
       acknowledgeProtected.mutate(data.inventoryRevision);
@@ -778,8 +797,8 @@ function useUsageTelemetryDecision(
     }
     updateProtected.mutate(
       tierAware
-        ? { telemetryTier: { operator: next ? 'full' : 'off' } }
-        : { telemetryEnabled: next },
+        ? { telemetryTier: { operator: next } }
+        : { telemetryEnabled: next === 'full' },
       {
         onSuccess: (result) => {
           // A key the server declines comes back in `ignoredKeys` on a 2xx,
@@ -796,6 +815,13 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
+          if (operator?.reason === 'DNT') {
+            queryClient.invalidateQueries({
+              queryKey: ['usage-telemetry-disclosure'],
+            });
+            onDecided?.();
+            return;
+          }
           acknowledgeProtected.mutate(data.inventoryRevision);
         },
         onError: () => setSettingError(true),
@@ -810,7 +836,7 @@ function useUsageTelemetryDecision(
     labels:
       operator?.reason === 'DNT'
         ? {
-            keep: 'Save operator choice as Off',
+            keep: `Save operator choice as ${dntChoice[0].toUpperCase()}${dntChoice.slice(1)}`,
             change: 'Save operator choice as Full',
           }
         : tierAware &&
@@ -835,8 +861,16 @@ function useUsageTelemetryDecision(
                 }
             : usageTelemetryDecisionLabels(enabled),
     busy,
-    keep: () => decide(enabled),
-    change: () => decide(!enabled),
+    keep: () =>
+      decide(operator?.reason === 'DNT' ? dntChoice : enabled ? 'full' : 'off'),
+    change: () => decide(enabled ? 'off' : 'full'),
+    dntChoice:
+      operator?.reason === 'DNT'
+        ? {
+            value: dntChoice,
+            onChange: (tier) => setDntSelection({ target: choiceTarget, tier }),
+          }
+        : undefined,
     notice: settingError ? (
       <p className="usage-telemetry-disclosure__error" role="alert">
         The usage telemetry setting could not be saved.
@@ -852,13 +886,6 @@ function useUsageTelemetryDecision(
               saves Off before acknowledging this inventory.
             </p>
           )}
-        {operator?.reason === 'DNT' && (
-          <p className="usage-telemetry-disclosure__lede">
-            DO_NOT_TRACK is active: telemetry is Off. Saving a choice here
-            replaces your saved operator choice; telemetry stays Off while
-            DO_NOT_TRACK is active.
-          </p>
-        )}
         {acknowledgeErrorNotice(
           acknowledgeError,
           scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
@@ -869,10 +896,36 @@ function useUsageTelemetryDecision(
   };
 }
 
-/**
- * The two named actions, in the order every surface renders them: the change
- * second-from-last, the keeping action primary and last.
- */
+function DisclosureDntChoices({
+  decision,
+}: {
+  decision: UsageTelemetryDecision;
+}) {
+  const name = useId();
+  const choice = decision.dntChoice;
+  if (!choice) return null;
+  return (
+    <fieldset
+      className="usage-telemetry-disclosure__choices"
+      disabled={decision.busy}
+    >
+      <legend>Operator choice</legend>
+      {(['off', 'lite', 'full'] as const).map((tier) => (
+        <label key={tier}>
+          <input
+            type="radio"
+            name={name}
+            checked={choice.value === tier}
+            onChange={() => choice.onChange(tier)}
+          />
+          {tier[0].toUpperCase() + tier.slice(1)}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/** Save the selected DNT tier, or offer the normal Full/Off decisions. */
 function DisclosureDecisionActions({
   decision,
   keepRef,
@@ -882,13 +935,15 @@ function DisclosureDecisionActions({
 }) {
   return (
     <>
-      <Button
-        variant="secondary"
-        aria-busy={decision.busy}
-        onClick={decision.change}
-      >
-        {decision.labels.change}
-      </Button>
+      {!decision.dntChoice && (
+        <Button
+          variant="secondary"
+          aria-busy={decision.busy}
+          onClick={decision.change}
+        >
+          {decision.labels.change}
+        </Button>
+      )}
       <Button
         ref={keepRef}
         variant="primary"
@@ -954,6 +1009,7 @@ export function UsageTelemetryDisclosureStep({
           discovers action surfaces by scanning source for exactly this
           attribute, and an indirection it cannot read drops this file out of
           the inventory it is listed in. */}
+      <DisclosureDntChoices decision={decision} />
       {decision.notice}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         <DisclosureDecisionActions decision={decision} />
@@ -1033,6 +1089,7 @@ export function UsageTelemetryDisclosure({
       >
         <div data-testid="usage-telemetry-disclosure-modal">
           <DisclosureSummary data={data} chrome={STANDALONE_CHROME} />
+          <DisclosureDntChoices decision={decision} />
           {decision.notice}
         </div>
       </Dialog>
@@ -1051,6 +1108,7 @@ export function UsageTelemetryDisclosure({
         <p>You acknowledged this inventory.</p>
       ) : (
         <>
+          <DisclosureDntChoices decision={decision} />
           {decision.notice}
           <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
             <DisclosureDecisionActions decision={decision} />

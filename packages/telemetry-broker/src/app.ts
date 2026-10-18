@@ -2,9 +2,9 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { HttpBindings } from '@hono/node-server';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
   parseProductTelemetryProbeRequest,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -100,7 +100,7 @@ export function createProductBroker(
       state: 'alive',
       scope: 'process',
       productProtocol: 1,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     }),
   );
   app.use('/v1/operator/*', async (c, next) => {

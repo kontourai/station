@@ -16,10 +16,7 @@
  * reader who follows `?view=` lands somewhere the row is not.
  */
 
-import type {
-  TelemetryTier,
-  TelemetryTierResolution,
-} from '@kontourai/station-contracts/product-telemetry';
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -184,7 +181,7 @@ export function StationConfigSection({
   projectOverride?: StationConfigProjectOverride;
   telemetryPublishers?: Record<
     'kontour' | 'operator',
-    TelemetryTierResolution & { userChoice?: TelemetryTier }
+    TelemetryPublisherStatus
   >;
 }) {
   const rows = (
