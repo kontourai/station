@@ -1,3 +1,4 @@
+import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
@@ -92,30 +93,39 @@ export function useSessionTranscriptEvents(
     window.reload,
   ]);
 
+  const previousStitchedEvents = useRef<readonly OrchestrationSequencedEvent[]>(
+    [],
+  );
+  const stitchedEvents = useMemo(() => {
+    const next = stitchWindowWithLiveEvents({
+      windowEvents: window.events,
+      watermark: window.watermark,
+      liveEvents,
+      threadIds: new Set([
+        session.threadId,
+        window.currentSessionId,
+        ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+      ]),
+      previous: previousStitchedEvents.current,
+    });
+    previousStitchedEvents.current = next;
+    return next;
+  }, [
+    window.events,
+    window.watermark,
+    window.currentSessionId,
+    window.sessionLineage,
+    liveEvents,
+    session.threadId,
+  ]);
   const events = useMemo(
     () =>
-      stitchWindowWithLiveEvents({
-        windowEvents: window.events,
-        watermark: window.watermark,
-        liveEvents,
-        threadIds: new Set([
-          session.threadId,
-          window.currentSessionId,
-          ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
-        ]),
-      })
+      stitchedEvents
         .map((item) => item.event)
         .filter((event): event is CanonicalRuntimeEvent =>
           Boolean(event.eventId),
         ),
-    [
-      window.events,
-      window.watermark,
-      window.currentSessionId,
-      window.sessionLineage,
-      liveEvents,
-      session.threadId,
-    ],
+    [stitchedEvents],
   );
 
   return {

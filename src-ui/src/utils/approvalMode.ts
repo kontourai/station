@@ -83,10 +83,12 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
 > = {
   auto: {
     codex:
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.',
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
   },
   ask: {
+    codex:
+      'Codex asks about untrusted commands; its configured reviewer may approve sandbox escalations automatically.',
     // #1545: Station imposes no approval floor over Claude's own permission
     // flow in this mode, so the copy has to name whose rules can skip an
     // approval. It says "and this workspace's" because Station sets no

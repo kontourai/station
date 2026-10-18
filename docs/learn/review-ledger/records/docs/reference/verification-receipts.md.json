@@ -42,7 +42,11 @@
 
     "package.json#/engines",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    "scripts/lib/verification-ci-fast-diagnostics.mjs",
+
+    "scripts/__tests__/verification-terminal-receipt.test.ts"
   ],
 
   "checks": [

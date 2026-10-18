@@ -152,8 +152,12 @@ import {
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
-import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
+import {
+  ConversationTurnQueuedError,
+  type ThreadInboxDelivery,
+} from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
+import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -1875,6 +1879,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
+      options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -2622,8 +2627,18 @@ export function createOrchestrationRoutes(
         delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
-              resolveAttachments: (binding) =>
+              resolveAttachments: (
+                binding: { threadId: string; clientTurnId: string },
+                options?: { inspectOnly?: true },
+              ) =>
                 (() => {
+                  if (options?.inspectOnly)
+                    return deps.hydrateStagedAttachments!(
+                      principal!,
+                      stagedAttachments,
+                      binding,
+                      options,
+                    );
                   stagedBinding = binding;
                   stagedBindingForRelease = binding;
                   stagedAttachmentsForRelease = stagedAttachments;
@@ -2678,6 +2693,16 @@ export function createOrchestrationRoutes(
         ))
       ) {
         const inbox = deps.threadInbox!;
+        const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
+        if (
+          orchestrationService.inspectTurnDelivery(
+            followUp.conversationId,
+            followUp.clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          ) === null
+        )
+          throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () =>
           queuedFollowUpResponse(
             c,
@@ -2686,6 +2711,7 @@ export function createOrchestrationRoutes(
               clientTurnId: followUp.clientTurnId,
               payload: {
                 message: followUp.message,
+                inputDigest,
                 ...(followUp.ambientContext
                   ? { ambientContext: followUp.ambientContext }
                   : {}),
@@ -2767,6 +2793,12 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof ConversationTurnQueuedError)
+        return queuedFollowUpResponse(
+          c,
+          { outcome: 'queued', entry: error.entry },
+          error.entry,
+        );
       const busyCode = errorCode(error);
       if (
         queueOnBusyRefusal &&
@@ -2871,7 +2903,9 @@ export function createOrchestrationRoutes(
             errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
               // Another attempt still holds the key: a conflict to retry,
               // as the inbox's own in-flight refusal answers it.
-              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+              errorCode(error) === 'client_turn_input_conflict' ||
+              errorCode(error) === 'inbox_key_held'
             ? 409
             : 400,
       );
@@ -3378,6 +3412,12 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        if (error instanceof ConversationTurnQueuedError)
+          return queuedFollowUpResponse(
+            c,
+            { outcome: 'queued', entry: error.entry },
+            error.entry,
+          );
         const fullAccessRefused = fullAccessRefusalFor(c, error);
         if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
@@ -3424,7 +3464,11 @@ export function createOrchestrationRoutes(
           },
           // Another attempt still holds the key: a conflict to retry, as
           // the inbox's own in-flight refusal answers it.
-          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ? 409 : 400,
+          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+            errorCode(error) === 'client_turn_input_conflict' ||
+            errorCode(error) === 'inbox_key_held'
+            ? 409
+            : 400,
         );
       }
     },

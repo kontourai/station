@@ -879,11 +879,12 @@ export async function fetchOrchestrationCommandReceipt(
 
 export async function fetchOrchestrationSessions(
   apiBase?: string,
+  options?: ClientRequestOptions,
 ): Promise<OrchestrationSessionSummary[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/orchestration/sessions/read-model`,
-    { progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
+    { ...options, progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
   );
   const result = (await response.json()) as {
     success: boolean;

@@ -34,8 +34,10 @@ import {
 import { normalizeHostInput } from '../core/hostInput';
 import { MOBILE_APP_DOWNLOADS } from '../core/mobileAppDownloads';
 import {
+  encodeBrowserPairingLink,
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
+  parseBrowserPairingLink,
 } from '../core/pairingDeepLink';
 import {
   rememberPairingEndpoint,
@@ -522,7 +524,10 @@ export function JoinDevicePairingPanel({
   };
 
   const reviewPayload = (payload: string) => {
-    const offer = decodeDevicePairingPayload(payload.trim());
+    const browserLink = parseBrowserPairingLink(payload.trim());
+    const offer = decodeDevicePairingPayload(
+      browserLink?.status === 'ok' ? browserLink.payload : payload.trim(),
+    );
     if (!offer) {
       setError('This is not a valid Station pairing code.');
       return;
@@ -1118,32 +1123,18 @@ function isDevicePairingOffer(value: unknown): value is DevicePairingOffer {
   );
 }
 
-/**
- * The presets THIS interactive device-pairing UI offers. Standard is the
- * default — the read-only preset is an explicit opt-in for a device the
- * operator wants to intentionally under-power (e.g. "pair my phone
- * read-only" from the issue's story).
- *
- * station#1123 slice 1 added a third preset, `'delegation'`, to
- * `PAIRING_SCOPE_PRESETS` — deliberately NOT offered here. This flow pairs
- * an interactive device a human is holding (QR/manual code, joiner names
- * itself); a delegation grant is for a PEER STATION and is minted through
- * the dedicated provisioning path (`station environment peers add` /
- * `POST /api/environments/peers`), not this UI. Slice 5 ("Add a peer" UI)
- * is where a delegation-producing flow would live, if one is ever built
- * here at all. Iterating a fixed tuple rather than
- * `Object.keys(PAIRING_SCOPE_PRESETS)` keeps this screen byte-identical as
- * the preset set grows.
- */
-const OFFERED_SCOPE_PRESETS = [
-  'standard',
-  'read-only',
-] as const satisfies readonly PairingScopePreset[];
+/** Device invitations offer use permissions; administration stays with the host. */
+const OFFERED_SCOPE_PRESETS = ['full-device', 'standard', 'read-only'] as const;
 
 const SCOPE_PRESET_COPY: Record<
   (typeof OFFERED_SCOPE_PRESETS)[number],
   { label: string; description: string }
 > = {
+  'full-device': {
+    label: 'Full device access',
+    description:
+      'Can run commands and use full access without approval prompts.',
+  },
   standard: {
     label: 'Standard',
     description: 'Can use chats, files, and the terminal.',
@@ -1243,9 +1234,9 @@ export function HostDevicePairingPanel({
   const [endpoint, setEndpoint] = useState(
     () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
   );
-  const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
-    DEFAULT_PAIRING_SCOPE_PRESET,
-  );
+  const [scopePreset, setScopePreset] = useState<
+    PairingScopePreset | 'full-device'
+  >(DEFAULT_PAIRING_SCOPE_PRESET);
   const [clientChannel, setClientChannel] =
     useState<Exclude<PairingDeepLinkChannel, 'dev'>>(initialClientChannel);
   // Per pending device request: what the approver keeps of what it asked
@@ -1270,6 +1261,17 @@ export function HostDevicePairingPanel({
     () => (offer ? encodeDevicePairingPayload(offer) : ''),
     [offer],
   );
+  const [browserUrl, setBrowserUrl] = useState(() =>
+    /^https?:$/.test(window.location.protocol) ? window.location.origin : '',
+  );
+  const browserPairingLink = useMemo(() => {
+    if (!payload || !browserUrl) return undefined;
+    try {
+      return encodeBrowserPairingLink({ payload, browserUrl });
+    } catch {
+      return undefined;
+    }
+  }, [payload, browserUrl]);
   const pairingLink = useMemo(
     () =>
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
@@ -1638,7 +1640,11 @@ export function HostDevicePairingPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           endpoint,
-          scope: pairingScopePresetString(scopePreset),
+          scope:
+            scopePreset === 'full-device'
+              ? FULL_DEVICE_ACCESS_SCOPE
+              : pairingScopePresetString(scopePreset),
+          approval: 'on-create',
         }),
       });
       if (!response.ok) {
@@ -2082,7 +2088,8 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            Scan the invitation on your phone, then approve access here.
+            Create a single-use invitation with the access selected below.
+            Anyone with it can pair until it expires.
           </p>
           <fieldset
             style={{
@@ -2184,6 +2191,28 @@ export function HostDevicePairingPanel({
           <div>
             Manual code: <strong>{offer.manualCode}</strong>
           </div>
+          <button
+            type="button"
+            style={secondaryBtnStyle}
+            onClick={async () => {
+              setError(null);
+              try {
+                const response = await authenticatedFetch(
+                  `/api/pairing/offers/${encodeURIComponent(offer.offerId)}`,
+                  { method: 'DELETE' },
+                );
+                if (!response.ok)
+                  throw new Error('Invitation cancellation refused');
+                setOffer(null);
+              } catch {
+                setError(
+                  'Could not cancel this invitation. Check the connection and try again.',
+                );
+              }
+            }}
+          >
+            Cancel invitation
+          </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
             Access: {describeDeviceScope(offer.scope)}
           </small>
@@ -2244,6 +2273,29 @@ export function HostDevicePairingPanel({
             style={secondaryBtnStyle}
           >
             Copy pairing link
+          </button>
+          <label style={{ display: 'grid', gap: 6, width: '100%' }}>
+            Browser app address
+            <input
+              aria-label="Browser app address"
+              type="url"
+              value={browserUrl}
+              onChange={(event) => setBrowserUrl(event.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <small>
+            Use an address the other device can open in its browser.
+          </small>
+          <button
+            type="button"
+            disabled={!browserPairingLink}
+            onClick={() =>
+              void navigator.clipboard?.writeText(browserPairingLink ?? '')
+            }
+            style={secondaryBtnStyle}
+          >
+            Copy browser link
           </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
             Install the selected Station app on your phone before scanning with

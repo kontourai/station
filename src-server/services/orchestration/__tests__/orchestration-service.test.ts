@@ -142,7 +142,10 @@ import {
   OrchestrationCommandDispatchError,
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
-import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
+import {
+  recoverOrchestrationSessions,
+  SESSION_RECOVERY_FAILED_CODE,
+} from '../orchestration-session-state.js';
 import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
@@ -1277,9 +1280,7 @@ describe('OrchestrationService', () => {
           () => undefined,
           (error: unknown) => error,
         );
-      await vi.waitFor(() =>
-        expect(whenSessionReady).toHaveBeenCalledTimes(1),
-      );
+      await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
 
       // The wait runs before the turn-start claim, so an exclusive workspace
       // operation is not refused as busy because of it.
@@ -16362,6 +16363,61 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test.each([
+      { name: 'text', change: { input: 'B' } },
+      { name: 'exact whitespace', change: { input: 'A ' } },
+      { name: 'ambient context', change: { ambientContext: 'different context' } },
+      { name: 'requested model', change: { modelId: 'claude-sonnet' } },
+      { name: 'requested options', change: { modelOptions: { effort: 'high' } } },
+      { name: 'attachment content', change: { attachments: [{ kind: 'file' as const, name: 'note.txt', mimeType: 'text/plain' as const, size: 1, dataUrl: 'data:text/plain;base64,Qg==' }] } },
+    ])('#3567: same key with changed $name conflicts without accepting B or invoking again', async ({ change }) => {
+      const threadId = 'thread-input-conflict';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
+      claude.sendTurn.mockClear();
+      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const first = await service.dispatch({ type: 'sendTurn', input: original });
+      await expect(service.dispatch({ type: 'sendTurn', input: { ...original, ...change } })).rejects.toMatchObject({ code: 'client_turn_input_conflict', receipt: { status: 'rejected' } });
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      expect(claude.sendTurn.mock.calls[0][0].input).toBe('A');
+      expect(await service.dispatch({ type: 'sendTurn', input: original })).toEqual(first);
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('#3567: retained caller mutations cannot change the submitted adapter payload or replay identity', async () => {
+      const threadId = 'thread-owned-submission';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      claude.sendTurn.mockClear();
+      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', ambientContext: 'context A', modelOptions: { effort: 'low' }, attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const retry = structuredClone(original);
+      const signal = new AbortController().signal; original.signal = signal;
+      let entered!: () => void;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const reached = new Promise<void>((resolve) => { entered = resolve; });
+      const read = service.readSession.bind(service);
+      const spy = vi.spyOn(service, 'readSession').mockImplementationOnce(async (...args) => { entered(); await held; return read(...args); });
+      const pending = service.dispatch({ type: 'sendTurn', input: original });
+      await reached;
+      original.modelOptions!.effort = 'high'; original.input = 'B'; original.ambientContext = 'context B'; original.attachments![0].dataUrl = 'data:text/plain;base64,Qg==';
+      release();
+      const first = await pending;
+      spy.mockRestore();
+      expect(claude.sendTurn.mock.calls[0][0]).toMatchObject({ displayInput: 'A', modelOptions: { effort: 'low' }, attachments: retry.attachments });
+      expect(claude.sendTurn.mock.calls[0][0].signal).toBe(signal);
+      expect(claude.sendTurn.mock.calls[0][0].input).not.toContain('context B');
+      expect(await service.dispatch({ type: 'sendTurn', input: retry })).toEqual(first);
+      await expect(service.dispatch({ type: 'sendTurn', input: original })).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('#3567: unsupported JSON options are refused before any adapter send', async () => {
+      const threadId = 'thread-unsupported-digest';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
+      claude.sendTurn.mockClear();
+      await expect(service.dispatch({ type: 'sendTurn', input: { threadId, input: 'A', clientTurnId: 'K', modelOptions: { effort: undefined } } })).rejects.toMatchObject({ code: 'client_turn_input_unsupported', receipt: { status: 'rejected' } });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
     test('#3559: records invocation before the provider call, and sends nothing when that record fails', async () => {
       const ledger = eventStore.createTurnDeduplicator();
       let failBegin = true;
@@ -17023,7 +17079,7 @@ describe('OrchestrationService', () => {
       await waitingService.shutdown();
     });
 
-    test('a resend that outwaits a live owner\'s claim older than 15 minutes stays retryable, never indeterminate', async () => {
+    test("a resend that outwaits a live owner's claim older than 15 minutes stays retryable, never indeterminate", async () => {
       const ledger = eventStore.createTurnDeduplicator();
       const slowService = new OrchestrationService({
         adapterRegistry: createRegistry([claude]),
@@ -25085,6 +25141,14 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock, claude]),
       eventBus,
       eventStore,
+      resolveSessionAgent: createSessionAgentResolver({
+        loadAgentSpec: async (slug) =>
+          ['agent-old', 'agent-new'].includes(slug)
+            ? { name: slug, prompt: `Instructions for ${slug}` }
+            : null,
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      }),
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
 
@@ -25102,11 +25166,15 @@ describe('OrchestrationService', () => {
           agentSlug: 'agent-new',
           cwd: newCwd,
         }),
+        agent: expect.objectContaining({
+          slug: 'agent-new',
+          systemPrompt: 'Instructions for agent-new',
+        }),
       }),
     );
   });
 
-  test('a throwing resolveSessionAgent logs and recovery continues into adapter.startSession (#895 wave B review LOW)', async () => {
+  test('a recovery resolver failure refuses engine start and preserves a retryable session', async () => {
     const recoveryCwd = mkdtempSync(join(tmp, 'recovery-resolver-'));
     eventStore.upsertSession({
       provider: 'claude',
@@ -25114,6 +25182,7 @@ describe('OrchestrationService', () => {
       status: 'running',
       model: 'claude-sonnet',
       cwd: recoveryCwd,
+      resumeCursor: 'retained-provider-cursor',
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
     });
@@ -25132,28 +25201,40 @@ describe('OrchestrationService', () => {
 
     recoveryService.initialize();
     await awaitSessionRecoveryCompleted(recoveryService);
-    await materializeBySendingATurn(
-      recoveryService,
-      'thread-recovery-resolver-throws',
-    );
+    await expect(
+      materializeBySendingATurn(
+        recoveryService,
+        'thread-recovery-resolver-throws',
+      ),
+    ).rejects.toThrow('boom: resolver exploded');
 
     expect(resolveSessionAgent).toHaveBeenCalled();
-    expect(claude.startSession).toHaveBeenCalledWith(
+    expect(claude.startSession).not.toHaveBeenCalled();
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to recover provider session',
       expect.objectContaining({
         threadId: 'thread-recovery-resolver-throws',
+        error: 'boom: resolver exploded',
       }),
     );
-    expect(warn).toHaveBeenCalledWith(
-      'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-      expect.objectContaining({
-        threadId: 'thread-recovery-resolver-throws',
-      }),
+    expect(eventStore.listEvents('thread-recovery-resolver-throws')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'runtime.error',
+          payload: expect.objectContaining({
+            code: SESSION_RECOVERY_FAILED_CODE,
+            retriable: true,
+          }),
+        }),
+      ]),
     );
     expect(eventStore.readSessions()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           threadId: 'thread-recovery-resolver-throws',
-          status: 'ready',
+          status: 'error',
+          resumeCursor: 'retained-provider-cursor',
         }),
       ]),
     );

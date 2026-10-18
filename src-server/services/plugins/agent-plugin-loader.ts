@@ -47,9 +47,11 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { toolOriginLocation } from './integration-origin.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   computePluginContentDigest,
@@ -1132,16 +1134,36 @@ export class AgentPluginLoader {
         ...this.options,
         composition,
       }).listIntegrations();
-    return this.listInstalled().flatMap((plugin) =>
-      plugin.tools.map((tool) => ({
+    const aliases = readRegistryInstallAliases(this.options.projectHomeDir);
+    return this.listInstalled().flatMap((plugin) => {
+      const matchingAliases = Object.entries(aliases).filter(
+        ([, alias]) => alias.pluginName === plugin.manifest.name,
+      );
+      const installed =
+        matchingAliases.length === 1 ? matchingAliases[0] : undefined;
+      return plugin.tools.map((tool) => ({
         id: tool.id,
         kind: tool.kind,
         displayName: tool.displayName,
+        description: tool.description,
         transport: tool.transport,
         source: `agent-plugin:${plugin.manifest.name}`,
+        origin: {
+          kind: 'plugin',
+          pluginName: plugin.manifest.name,
+          version: plugin.manifest.version,
+          ...(installed
+            ? {
+                registryId: toolOriginLocation(installed[1].registryKey),
+                itemId: installed[0],
+                registryName: toolOriginLocation(installed[1].registryKey),
+                location: toolOriginLocation(installed[1].supplyChain?.source),
+              }
+            : {}),
+        },
         enabled: true,
-      })),
-    );
+      }));
+    });
   }
 
   private hasAgentPluginSchema(pluginRoot: string): boolean {

@@ -1,8 +1,3 @@
-import type {
-  ChildWorkModel,
-  ChildWorkStatus,
-  ChildWorkUsage,
-} from '@kontourai/station-contracts/child-work';
 import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
@@ -16,6 +11,12 @@ import {
 import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { AgentGlyph } from '../../components/icons/Glyph';
+import {
+  CHILD_WORK_MODEL_SOURCE_TEXT,
+  CHILD_WORK_STATUS_LABEL,
+  childWorkUsageClauses,
+  formatChildWorkElapsed,
+} from '../../utils/child-work-display';
 import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
@@ -33,51 +34,6 @@ import './ChildWorkRow.css';
  * confirmed" are not "Completed" and not "Stopped". A control renders only
  * from the row model's `stop`, which the selectors derive from a wired seam.
  */
-
-/** `m:ss`, or `h:mm:ss` past an hour. */
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return hours > 0
-    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
-    : `${minutes}:${pad(seconds)}`;
-}
-
-const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
-  running: 'Running',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Stopped',
-  // Decision F: a stop nobody confirmed is not a stop that happened.
-  'stopped-unconfirmed': 'Stop requested — not confirmed',
-  // The reporter stopped listing it without an outcome.
-  unresolved: 'No result',
-};
-
-/** Only the members the engine reported; a reported 0 prints. */
-function usageClauses(usage: ChildWorkUsage | undefined): string[] {
-  if (!usage) return [];
-  const clauses: string[] = [];
-  if (usage.totalTokens !== undefined)
-    clauses.push(`${usage.totalTokens.toLocaleString()} tokens`);
-  if (usage.toolUses !== undefined)
-    clauses.push(
-      `${usage.toolUses} tool ${usage.toolUses === 1 ? 'use' : 'uses'}`,
-    );
-  if (usage.durationMs !== undefined)
-    clauses.push(`ran ${formatElapsed(usage.durationMs)}`);
-  return clauses;
-}
-
-/** #3163: where the model shown came from, in the engine's terms. */
-const CHILD_WORK_MODEL_SOURCE_TEXT: Record<ChildWorkModel['source'], string> = {
-  'subagent-reply': "Reported on the subagent's own reply",
-  'spawn-result': 'Reported by the engine when it spawned the subagent',
-  'child-thread': "Reported by the subagent's own thread",
-};
 
 function provenanceText(provenance: ChildWorkProvenance): string {
   switch (provenance.kind) {
@@ -173,8 +129,8 @@ export function ChildWorkRow({
   const kind = item.kindLabel ?? (isDelegate ? 'Delegate' : 'Subagent');
   const meta = [
     kind,
-    ...(elapsedMs !== undefined ? [formatElapsed(elapsedMs)] : []),
-    ...usageClauses(item.usage),
+    ...(elapsedMs !== undefined ? [formatChildWorkElapsed(elapsedMs)] : []),
+    ...childWorkUsageClauses(item.usage),
   ].join(' · ');
   // #3163: an engine subagent's OWN model, or the plain fact that its engine
   // did not report one. Never the parent's. A delegate is a session of its

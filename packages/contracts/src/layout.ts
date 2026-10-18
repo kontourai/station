@@ -1,4 +1,5 @@
 import type { AgentId } from './agent-identity.js';
+import type { PersonalBoardDefinition } from './personal-board.js';
 import { isPrincipalRef, type PrincipalRef } from './principal.js';
 
 /**
@@ -431,6 +432,7 @@ export interface LayoutTemplate {
 }
 
 export interface LayoutDefinition {
+  dashboard?: PersonalBoardDefinition;
   name: string;
   slug: string;
   icon?: string;

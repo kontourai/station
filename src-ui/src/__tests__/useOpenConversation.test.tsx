@@ -271,6 +271,7 @@ describe('useOpenConversation fetch-failure handling', () => {
       'http://api',
       'claude-code',
       'fork-child',
+      undefined,
     );
     expect(mocks.updateChat).toHaveBeenCalledWith(
       'fork-child',
