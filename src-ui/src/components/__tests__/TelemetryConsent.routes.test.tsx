@@ -588,7 +588,10 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
   bridge.scope = {
     apiBase: 'http://recovery.test',
     identityKey: 'recovery-1',
-    requestScope: null,
+    requestScope: {
+      apiBase: 'http://recovery.test',
+      authorityKey: 'captured-authority',
+    },
   };
   bridge.scopedRead.mockResolvedValue(
     new Response(
@@ -615,7 +618,10 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
     await screen.findByText('Payload not displayed for an unsent record.');
     expect(bridge.scopedRead).toHaveBeenCalledWith(
       'http://recovery.test/api/usage-telemetry/outbox?publisher=operator&limit=50',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        requestScope: bridge.scope.requestScope,
+      }),
     );
     expect(
       client.getQueryData([
@@ -633,29 +639,48 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
   }
 });
 
-test('a failed dialog tier write focuses its error after the reason prompt closes', async () => {
-  const { client, loader } = await publisherFixture();
-  bridge.save.mockRejectedValueOnce(new Error('refused'));
-  const advance = vi.fn();
-  const view = render(
-    <QueryClientProvider client={client}>
-      <UsageTelemetryDisclosureStep onAdvance={advance} />
-    </QueryClientProvider>,
-  );
-  try {
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Turn off usage telemetry' }),
+test.each(['tier', 'acknowledgement'])(
+  'a failed dialog %s write focuses its error after the reason prompt closes',
+  async (failure) => {
+    const { client, loader } = await publisherFixture();
+    if (failure === 'tier')
+      bridge.save.mockRejectedValueOnce(new Error('refused'));
+    else {
+      const dispatch = bridge.request.getMockImplementation();
+      if (!dispatch) throw new Error('Missing route fixture');
+      bridge.request.mockImplementation((url: string, init?: RequestInit) =>
+        String(url).endsWith('/acknowledgements')
+          ? new Response(JSON.stringify({ success: false, error: 'refused' }), {
+              status: 409,
+            })
+          : dispatch(url, init),
+      );
+    }
+    const advance = vi.fn();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <UsageTelemetryDisclosureStep onAdvance={advance} />
+      </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }));
-    const error = await screen.findByText(
-      'The usage telemetry setting could not be saved.',
-    );
-    await waitFor(() => expect(document.activeElement).toBe(error));
-    expect(advance).not.toHaveBeenCalled();
-    expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('lite');
-  } finally {
-    view.unmount();
-    client.clear();
-    loader.dispose();
-  }
-});
+    try {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Turn off usage telemetry' }),
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Skip' }));
+      const error = await screen.findByText(
+        failure === 'tier'
+          ? 'The usage telemetry setting could not be saved.'
+          : 'The disclosure acknowledgement could not be saved.',
+      );
+      await waitFor(() => expect(document.activeElement).toBe(error));
+      expect(advance).not.toHaveBeenCalled();
+      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(
+        failure === 'tier' ? 'lite' : 'off',
+      );
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);

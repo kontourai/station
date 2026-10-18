@@ -446,7 +446,11 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   );
 }
 
-function acknowledgeErrorNotice(isError: boolean, error: unknown): ReactNode {
+function acknowledgeErrorNotice(
+  isError: boolean,
+  error: unknown,
+  errorRef: Ref<HTMLParagraphElement>,
+): ReactNode {
   const updateRequired =
     error instanceof UsageTelemetryProtocolUpdateRequiredError ||
     (typeof error === 'object' &&
@@ -454,7 +458,12 @@ function acknowledgeErrorNotice(isError: boolean, error: unknown): ReactNode {
       'status' in error &&
       error.status === 426);
   return isError ? (
-    <p className="usage-telemetry-disclosure__error" role="alert">
+    <p
+      className="usage-telemetry-disclosure__error"
+      role="alert"
+      tabIndex={-1}
+      ref={errorRef}
+    >
       {updateRequired
         ? 'Update this app to acknowledge the current usage telemetry inventory. You can dismiss this disclosure or turn telemetry off.'
         : 'The disclosure acknowledgement could not be saved.'}
@@ -766,9 +775,7 @@ function useUsageTelemetryDecision(
   }>();
   const [settingError, setSettingError] = useState(false);
   const settingErrorRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    if (settingError) settingErrorRef.current?.focus();
-  }, [settingError]);
+
   const [dntSelection, setDntSelection] = useState<{
     target: string;
     tier: TelemetryTier;
@@ -955,6 +962,9 @@ function useUsageTelemetryDecision(
   const acknowledgeError = scoped
     ? acknowledgeRecovery.isError
     : acknowledgeProtected.isError;
+  useEffect(() => {
+    if (settingError || acknowledgeError) settingErrorRef.current?.focus();
+  }, [settingError, acknowledgeError]);
   return {
     labels:
       operator?.reason === 'DNT'
@@ -1026,6 +1036,7 @@ function useUsageTelemetryDecision(
         {acknowledgeErrorNotice(
           acknowledgeError,
           scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
+          settingErrorRef,
         )}
       </>
     ),

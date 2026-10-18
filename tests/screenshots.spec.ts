@@ -1717,6 +1717,7 @@ function telemetryConsentScreens(): Screen[] {
     (
       [
         'settings-dnt',
+        'settings-feedback',
         'pending-full',
         'dialog-dnt',
         'lite-notice',
@@ -1724,7 +1725,10 @@ function telemetryConsentScreens(): Screen[] {
         'feedback',
       ] as const
     ).map((mode) => {
-      const pending = mode === 'pending-full' || mode === 'feedback';
+      const pending =
+        mode === 'pending-full' ||
+        mode === 'feedback' ||
+        mode === 'settings-feedback';
       const dnt = mode.includes('dnt');
       const dialogVisible =
         mode === 'pending-full' || mode === 'dialog-dnt' || mode === 'feedback';
@@ -1889,6 +1893,27 @@ function telemetryConsentScreens(): Screen[] {
             }
             return;
           }
+          if (mode === 'settings-feedback') {
+            const tier = page.getByRole('combobox', {
+              name: 'Operator telemetry',
+            });
+            await tier.selectOption('off');
+            const heading = page.getByRole('heading', {
+              name: 'Why lower Operator telemetry? (optional)',
+            });
+            await expect(heading).toBeFocused();
+            const tierBox = await tier.boundingBox();
+            const promptBox = await heading.boundingBox();
+            if (!tierBox || !promptBox)
+              throw new Error('Missing Settings feedback geometry');
+            expect(promptBox.y).toBeGreaterThanOrEqual(
+              tierBox.y + tierBox.height,
+            );
+            await expect(
+              page.getByRole('button', { name: 'Cancel', exact: true }),
+            ).toBeVisible();
+            return;
+          }
           if (mode === 'outbox') {
             const summary = page.getByText('What was sent to Operator', {
               exact: true,
@@ -1901,6 +1926,15 @@ function telemetryConsentScreens(): Screen[] {
               name: 'What was sent to Operator',
             });
             await outbox.scrollIntoViewIfNeeded();
+            const tierBox = await page
+              .getByRole('combobox', { name: 'Operator telemetry' })
+              .boundingBox();
+            const outboxBox = await outbox.boundingBox();
+            if (!tierBox || !outboxBox)
+              throw new Error('Missing outbox row geometry');
+            expect(outboxBox.y).toBeGreaterThanOrEqual(
+              tierBox.y + tierBox.height,
+            );
             await outbox.getByText('View sent payload JSON').click();
             await expect(
               outbox.getByText('Suppressed', { exact: true }),

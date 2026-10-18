@@ -445,6 +445,8 @@ One rule, everywhere a setting is edited:
   same rule for their own multi-field server documents. This never applies
   to S3 device settings — nothing in that scope round-trips to the server —
   or to a single S1/S2 field edited in isolation.
+Telemetry publisher choices in the Station draft are saved in separate requests before other settings. Each successful publisher write advances its saved baseline even if a later request fails. The error reports a partial save, and retry sends only unsaved choices. Optional reasons compare the draft with the saved tier; Cancel or Escape restores the prior draft without writing.
+
 - Rule of thumb when adding a new setting: if the write is one field with no
   cross-field validation dependency, save immediately; if committing that one
   field mid-edit could leave a larger document half-intended, batch it behind

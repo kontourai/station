@@ -1175,7 +1175,7 @@ queue and requests; saved collector changes require restart activation. See
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
 scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
 with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
-`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) and optional saved `userChoice`. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) optional saved `userChoice`, and `fullAvailable` (false for Kontour, true for Operator). Older servers may omit availability; clients must not infer Full support from absence. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
 field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
 a service not yet constructed returns 503 `telemetry_not_ready`.
 
@@ -1191,7 +1191,7 @@ While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
-returns the bounded local payload ledger with `orchestration:read` authority.
+returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
 `PUT /config/app` may include request-only `telemetryFeedbackReason`; it sends once
 for each actual lowering before the lower choice is applied, including Off. DNT
 suppresses feedback, and feedback failure never blocks lowering.
@@ -1200,7 +1200,7 @@ enum reason. Non-skip feedback requires a recorded lowering within 10 minutes,
 no prior reason for that change, and at most one standalone reason per publisher
 per UTC day; unavailable feedback returns 409.
 `POST /api/usage-telemetry/lite-notices` records publisher and the
-shown inventoryRevision. Both writes require `access:manage` and refuse agent
+shown inventoryRevision. A stale inventory, DNT, or an effective tier other than Lite returns 409 without recording a receipt. Both writes require `access:manage` and refuse agent
 principals. See the exact feedback enum and notice behavior in the usage reference.
 The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 

@@ -67,6 +67,8 @@
 }
 .telemetry-outbox summary,
 .telemetry-lite-notice summary {
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
   cursor: pointer;
 }
 .telemetry-outbox summary:focus-visible,
