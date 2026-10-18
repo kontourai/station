@@ -50,6 +50,32 @@ function rootsConfined(
 }
 
 /**
+ * #2494 D3: why Codex's report is not a confinement, for a refusal the
+ * operator can act on, or `undefined` when it is one.
+ */
+export function describeCodexSandboxGap(
+  evidence: CodexSandboxEvidence,
+): string | undefined {
+  const reported = evidence.reported;
+  if (reported?.type === 'readOnly') return undefined;
+  if (reported?.type === 'workspaceWrite') {
+    const allowed = [
+      ...(evidence.workspace ? [evidence.workspace] : []),
+      ...(evidence.permittedRoots ?? []),
+    ];
+    const outside = reported.writableRoots.filter(
+      (root) => !allowed.some((base) => within(base, root)),
+    );
+    return outside.length > 0
+      ? `Codex reported writable roots outside the workspace: ${outside.join(', ')}. Remove them from Codex's \`sandbox_workspace_write.writable_roots\` configuration, or run the session as the operator (a host session).`
+      : undefined;
+  }
+  return reported
+    ? `Codex reported its sandbox as ${reported.type} instead of the workspace-write Station asked for. Change Codex's sandbox configuration, or run the session as the operator (a host session).`
+    : 'Codex did not report the sandbox it applied.';
+}
+
+/**
  * Codex's sandbox posture, from the policy Codex reports it applied (its
  * response, not a kernel observation):
  *
