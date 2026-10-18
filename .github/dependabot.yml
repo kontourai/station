@@ -24,6 +24,11 @@ updates:
           - "@vitest/*"
           - "@playwright/*"
           - "typescript"
+          # tsc-ts ports one TypeScript release; a test fails when the two
+          # differ, so they must bump in the same PR. A TypeScript release
+          # with no matching tsc-ts yet keeps this group red: wait for tsc-ts,
+          # or move the local default in scripts/tsc-slot.mjs back to tsc.
+          - "tsc-ts"
           - "tsx"
       observability:
         patterns:

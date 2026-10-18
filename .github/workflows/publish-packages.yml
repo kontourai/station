@@ -111,10 +111,10 @@ jobs:
       # a manual bootstrap publish uses. Whether the floor check should move
       # to pnpm is a follow-up; this block deliberately leaves it as it was.
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
@@ -499,7 +499,7 @@ jobs:
       - name: Mint version PR installation token
         if: steps.version-operation.outputs.version-pr == 'true'
         id: version-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.STATION_AUTOMATION_APP_ID }}
           private-key: ${{ secrets.STATION_AUTOMATION_APP_PRIVATE_KEY }}
@@ -598,7 +598,7 @@ jobs:
       - name: Mint the ledger push token
         id: ledger_token
         if: env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -652,7 +652,7 @@ jobs:
       - name: Retain this run's deploy ledger files
         if: ${{ always() && env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true' }}
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: deploy-ledger-npm-${{ github.run_id }}
           path: |

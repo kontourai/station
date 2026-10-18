@@ -386,6 +386,24 @@ export class BrowserLiveSurfaces {
     const offLease =
       lease?.onChange((next) => {
         const holder = next.holder;
+        if (holder?.kind === 'human') {
+          // Human control never inherits an Agent's target-local theme override.
+          void live.host
+            .cdp()
+            .send(
+              'Emulation.setEmulatedMedia',
+              {
+                features: [{ name: 'prefers-color-scheme', value: '' }],
+              },
+              live.target.cdpSessionId,
+            )
+            .catch((error) =>
+              this.options.onError?.(
+                'browser color scheme reset failed',
+                error,
+              ),
+            );
+        }
         // A dialog held for a person does not outlive their control: once
         // it is released, lapses or passes to an agent, it is dismissed, so
         // nobody is left behind a modal page (the pane renews the person's

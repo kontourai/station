@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-18T06:50:13Z | nightly-npm | 0.8.0-nightly.2482.39104631066 | `64d458b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39104631066) |
 | 2026-10-17T22:09:45Z | nightly-npm | 0.7.0-nightly.2481.39073016966 | `b1970f2` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39073016966) |
 | 2026-10-17T20:59:11Z | nightly-desktop | 0.1.11-nightly.2481.2 | `597e0e6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
 | 2026-10-17T20:59:08Z | nightly-android | 0.1.11-nightly.2481.2 | `597e0e6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39063645742) |
@@ -296,6 +297,45 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-18T06:50:13Z · nightly-npm · 0.8.0-nightly.2482.39104631066
+
+- Ship SHA: `64d458b2e90d12156dd654ce7184f7e38f3a7d61`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.8.0-nightly.2482.39104631066 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `b1970f2` ([full sha](https://github.com/kontourai/station/commit/b1970f240db2edb2cf692253561ed18239214080)):
+
+**Features**
+
+- [#3803](https://github.com/kontourai/station/pull/3803) feat(confinement): provider contract and Codex sandbox record (#2494 slice 1)
+- [#3779](https://github.com/kontourai/station/pull/3779) feat(browser): add leased pointer, select and media tools
+- [#3782](https://github.com/kontourai/station/pull/3782) feat(devices): add bound agent tools under the shared control lease
+
+**Fixes**
+
+- [#3802](https://github.com/kontourai/station/pull/3802) fix(ci): align terminal guardrail proof with async subprocess probe
+- [#3781](https://github.com/kontourai/station/pull/3781) fix(terminal): scope websocket events and commands to owning session
+- [#3787](https://github.com/kontourai/station/pull/3787) fix(ui): prevent scroll and layout jumps
+- [#3743](https://github.com/kontourai/station/pull/3743) fix(chat): distinguish Codex approval policy from inherited reviewer
+- [#3774](https://github.com/kontourai/station/pull/3774) fix(ci): validate health evidence at observation time
+- [#3700](https://github.com/kontourai/station/pull/3700) fix(release): deliver reviewed package versions and consumed declaration
+
+**Docs**
+
+- [#3784](https://github.com/kontourai/station/pull/3784) docs(design): propose process supervisor and integrated terminal redesign
+
+**Other**
+
+- [#3736](https://github.com/kontourai/station/pull/3736) build(deps): consolidate all nine open Dependabot updates
+- [#3796](https://github.com/kontourai/station/pull/3796) perf(typecheck): select tsc, tsc-ts or Bun with a switchable default
+- [#3794](https://github.com/kontourai/station/pull/3794) chore(security): renew four advisory exceptions through 2026-10-25 (#3150)
+- [#3793](https://github.com/kontourai/station/pull/3793) test(ui): align tests with #3787 scroll and render changes
+- [#3772](https://github.com/kontourai/station/pull/3772) perf(terminal): bound replay history and yield subprocess probes
+- [#3777](https://github.com/kontourai/station/pull/3777) perf(activity): bound history lists and visible conflict queries
 
 ## 2026-10-17T22:09:45Z · nightly-npm · 0.7.0-nightly.2481.39073016966
 

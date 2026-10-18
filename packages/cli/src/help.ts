@@ -437,6 +437,19 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  telemetry: {
+    summary: 'Read or change per-publisher telemetry tiers',
+    usage: [
+      'station telemetry status',
+      'station telemetry set <kontour|operator> <off|lite|full>',
+    ],
+    actions: ['status', 'set'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'DO_NOT_TRACK forces Off. Full requires the current disclosure acknowledgement.',
+    ],
+  },
   config: {
     group: 'Configuration',
     summary: 'Read and write Station configuration values',

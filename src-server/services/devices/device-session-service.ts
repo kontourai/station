@@ -19,6 +19,7 @@ import {
   authorizeDeviceSurfaceAction,
   type DeviceAccess,
 } from './device-access.js';
+import { deviceAgentGrantAllows } from './device-agent-authority.js';
 import type { DeviceHostActions } from './device-host-tools.js';
 import type { DeviceHubEndpoint } from './device-hub-endpoint.js';
 import {
@@ -59,6 +60,7 @@ interface SessionEntry {
   producer: DeviceLiveSurfaceProducer;
   unregister: () => Promise<void>;
   open: boolean;
+  watched: boolean;
   /** Pending end because nobody is watching (see `idleEndMs`). */
   idleTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -244,8 +246,13 @@ export class DeviceSessionService {
    * a poller matches by platform and name. A boot that fails is reported
    * through `onError` and the device simply stays stopped.
    */
-  async start(target: MobileDeviceTarget): Promise<DeviceStartResult> {
+  async start(
+    target: MobileDeviceTarget,
+    stillAuthorized: () => boolean | Promise<boolean> = () => true,
+  ): Promise<DeviceStartResult> {
     const device = await this.findDevice(target);
+    if (!(await stillAuthorized()))
+      throw new DeviceSessionError('not-authorized');
     if (device.booted) return { deviceId: device.deviceId, state: 'running' };
     const deviceKey = key(target.platform, target.deviceId);
     if (!this.starting.has(deviceKey)) {
@@ -291,7 +298,9 @@ export class DeviceSessionService {
      * caller whose credential lapsed while the helper attached must not
      * end up with a registered surface.
      */
-    stillAuthorized: () => boolean = () => true,
+    stillAuthorized: () => boolean | Promise<boolean> = () => true,
+    /** Called only by the creator, never by a caller joining an existing session. */
+    onCreated?: (session: DeviceSessionSummary) => void,
   ): Promise<DeviceSessionSummary> {
     if (this.disposed) throw new DeviceSessionError('hub-unavailable');
     const existing = this.forDevice(target.platform, target.deviceId);
@@ -306,7 +315,8 @@ export class DeviceSessionService {
         throw this.hostFailure(error);
       }
     }
-    if (!stillAuthorized()) throw new DeviceSessionError('not-authorized');
+    if (!(await stillAuthorized()))
+      throw new DeviceSessionError('not-authorized');
     // Re-check after the await: a concurrent open may have won.
     const raced = this.forDevice(target.platform, target.deviceId);
     if (raced) return raced;
@@ -355,6 +365,7 @@ export class DeviceSessionService {
       producer,
       unregister: async () => {},
       open: true,
+      watched: false,
       idleTimer: null,
     };
     const session = {
@@ -371,17 +382,20 @@ export class DeviceSessionService {
         producer as LiveSurfaceProducer,
         {
           authorize: (
-            _principal: string,
+            principal: string,
             _surfaceId: string,
             action,
             context?: LiveSurfaceAuthorizationContext,
           ) =>
-            authorizeDeviceSurfaceAction(
-              this.options.access,
-              session,
-              action,
-              context?.request,
-            ),
+            context?.agentGrant !== undefined
+              ? entry.open &&
+                deviceAgentGrantAllows(context.agentGrant, principal, session)
+              : authorizeDeviceSurfaceAction(
+                  this.options.access,
+                  session,
+                  action,
+                  context?.request,
+                ),
         },
       );
     } catch (error) {
@@ -391,6 +405,7 @@ export class DeviceSessionService {
     }
     this.sessions.set(sessionId, entry);
     this.byDevice.set(key(device.platform, device.deviceId), sessionId);
+    onCreated?.({ ...summary });
     producer.open();
     // Nobody watches yet: if nobody ever does, the session ends by itself.
     this.watching(sessionId, false);
@@ -402,13 +417,18 @@ export class DeviceSessionService {
    * left). The last viewer leaving arms the idle end; a viewer arriving
    * disarms it.
    *
-   * Agent device control is NOT wired in this lane (an agent cannot claim a
-   * device surface today: it fails closed). When it is, an agent driving an
-   * unwatched device (D6) must keep its session from this idle end.
+   * Verified agent activity renews this grace for an unwatched session. It
+   * does not create a viewer or claim that the frame stream is running.
    */
+  noteAgentActivity(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (entry && !entry.watched) this.watching(sessionId, false);
+  }
+
   private watching(sessionId: string, watching: boolean): void {
     const entry = this.sessions.get(sessionId);
     if (!entry?.open) return;
+    entry.watched = watching;
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     entry.idleTimer = null;
     if (watching) return;

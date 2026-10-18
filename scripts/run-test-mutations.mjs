@@ -84,6 +84,55 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'telemetry-decline-pending-full',
+    test: 'src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx',
+    failure:
+      'declining pending Full through the real dialog and routes persists Off before acknowledgement and never sends',
+    files: [
+      {
+        path: 'src-ui/src/components/UsageTelemetryDisclosure.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    updateProtected.mutate(\n',
+            '    if (!next) { acknowledgeProtected.mutate(data.inventoryRevision); return; }\n    updateProtected.mutate(\n',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-tier-only-authority',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'tier-only raises require consent authority',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(",
+            'const writesTelemetryChoice = [].some(',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-standard-withdrawal',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'a standard paired device can lower Full',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (writesTelemetryChoice) {',
+            "          if (writesTelemetryChoice && !mayRaiseTelemetry) throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');\n          if (writesTelemetryChoice) {",
+          ),
+      },
+    ],
+  },
+  {
     id: 'telemetry-hosted-first-write',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:

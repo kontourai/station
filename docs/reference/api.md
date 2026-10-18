@@ -1163,11 +1163,34 @@ write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
 
-Telemetry destination/reference fields have an additional operator or
-`access:manage` guard; an internal-agent request cannot write them. Invalid
+Raising telemetry tiers (including legacy enabled writes), or changing destinations
+and references, requires the operator or `access:manage`. Standard paired devices
+may lower tiers, including to Off. An internal-agent request cannot write these fields. Invalid
 addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Telemetry tiers
+
+`GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
+scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
+with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) and optional saved `userChoice`. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
+a service not yet constructed returns 503 `telemetry_not_ready`.
+
+Save a choice with `PUT /config/app`, for example
+`{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
+preserved. Raising a tier requires the operator or `access:manage`; a standard
+paired device may lower it. Agents are refused. `telemetryTier` must be an object
+with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
+return a validation error with 400 before mutation. Full without a current
+publisher disclosure remains effectively Lite. Agents also receive 403 from
+`POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
+remains pending and needs confirmation after DNT is removed.
+Only the existing operator Full stream has a sender in this foundation. The
+[usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks
 

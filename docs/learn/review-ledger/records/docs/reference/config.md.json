@@ -162,7 +162,9 @@
 
     "src-server/runtime/routes/tool-library-runtime.ts",
 
-    "src-server/services/projects/project-native-tools.ts"
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/domain/telemetry-build-constants.ts"
   ],
 
   "checks": [

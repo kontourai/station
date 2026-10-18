@@ -212,7 +212,9 @@
 
     "packages/cli/src/help.ts",
 
-    "packages/cli/src/__tests__/core-http.test.ts"
+    "packages/cli/src/__tests__/core-http.test.ts",
+
+    "packages/cli/src/commands/telemetry.ts"
   ],
 
   "checks": [

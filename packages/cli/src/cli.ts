@@ -109,6 +109,7 @@ import {
   runSurfaceCommand,
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
+import { runTelemetryCommand } from './commands/telemetry.js';
 import { runTriageCommand } from './commands/triage.js';
 import { versionText } from './commands/version.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
@@ -466,6 +467,7 @@ const INDIVIDUAL_COMMANDS = [
   'link',
   'shortcut',
   'config',
+  'telemetry',
   'checkpoints',
   'environment',
   'export',
@@ -1260,6 +1262,8 @@ function buildProgram(
       console.log(`Nothing to archive at ${result.projectHome}.`);
     }
   });
+
+  register('telemetry', runTelemetryCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

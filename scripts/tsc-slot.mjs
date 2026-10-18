@@ -2,8 +2,10 @@
 /**
  * `tsc`, holding a host-wide typecheck slot and compiling incrementally.
  *
- * Usage: `node scripts/tsc-slot.mjs <tsc arguments>` — the arguments are
- * tsc's own, unchanged. Every `typecheck:*` package script runs its compiler
+ * Usage: `node scripts/tsc-slot.mjs [--compiler=<name>] <tsc arguments>` — the
+ * arguments are tsc's own, unchanged. The compiler is `DEFAULT_COMPILERS`
+ * unless `--compiler=` or `STATION_TYPECHECK_COMPILER` names one of
+ * `COMPILERS`. Every `typecheck:*` package script runs its compiler
  * through this runner, so the slot cap in `scripts/lib/typecheck-host-slots.mjs`
  * holds for the aggregate, the pre-push hook, `ci:fast` and ad-hoc runs alike.
  *
@@ -25,7 +27,14 @@
  *    projects never share one.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { availableParallelism } from 'node:os';
 import {
@@ -36,7 +45,7 @@ import {
   resolve,
   toNamespacedPath,
 } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -47,6 +56,24 @@ import {
 
 const INCREMENTAL_ENV = 'STATION_TYPECHECK_INCREMENTAL';
 const BUILDINFO_DIR_ENV = 'STATION_TSBUILDINFO_DIR';
+const COMPILER_ENV = 'STATION_TYPECHECK_COMPILER';
+
+/**
+ * - `tsc`: TypeScript 7, the reference compiler.
+ * - `tsc-ts`: an experimental TypeScript 7 port with the same flags and faster
+ *   cold checks. Diagnostics are expected to match; `tsc` is authoritative.
+ * - `bun`: Bun's cold, non-incremental checker (see `bunCompiler`).
+ */
+export const COMPILERS = Object.freeze(['tsc', 'tsc-ts', 'bun']);
+
+/**
+ * The compiler used when neither `--compiler=<name>` nor
+ * `STATION_TYPECHECK_COMPILER` selects one. Change a value here to move the
+ * default. Hosted CI (`CI` set) keeps TypeScript 7, which owns the merge gate.
+ * An unavailable default falls back to `tsc` silently; an explicit selection
+ * that cannot run fails instead.
+ */
+export const DEFAULT_COMPILERS = Object.freeze({ local: 'tsc-ts', ci: 'tsc' });
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -123,27 +150,35 @@ export function projectConfigPath(args, cwd) {
 /**
  * One build info file per project config. Paths inside the repository map
  * to a readable name (`packages__shared__tsconfig.json.tsbuildinfo`); a
- * config elsewhere gets a digest of its absolute path.
+ * config elsewhere gets a digest of its absolute path. Compilers other than
+ * `tsc` get their own file: both stamp the same TypeScript version, so one
+ * would accept and replay the other's stored state.
  */
-function buildInfoPathFor(configPath, { repoRoot, cacheDir }) {
+function buildInfoPathFor(configPath, { repoRoot, cacheDir, compiler }) {
   const rel = relative(repoRoot, configPath);
   const name =
     rel && !rel.startsWith('..') && !isAbsolute(rel)
       ? rel.replace(/[\\/]+/g, '__').replace(/[^A-Za-z0-9._-]/g, '_')
       : `external-${createHash('sha256').update(configPath).digest('hex').slice(0, 16)}`;
-  return join(cacheDir, `${name}.tsbuildinfo`);
+  const suffix = compiler === 'tsc' ? '' : `.${compiler}`;
+  return join(cacheDir, `${name}${suffix}.tsbuildinfo`);
 }
 
 /**
  * The tsc argument list this runner executes.
  *
  * @param {string[]} args
- * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, repoRoot?: string }} [options]
+ * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, repoRoot?: string, compiler?: string }} [options]
  * @returns {{ args: string[], buildInfoFile: string | null }}
  */
 export function planTscArgs(
   args,
-  { cwd = process.cwd(), env = process.env, repoRoot = REPO_ROOT } = {},
+  {
+    cwd = process.cwd(),
+    env = process.env,
+    repoRoot = REPO_ROOT,
+    compiler = 'tsc',
+  } = {},
 ) {
   const names = args.map(flagName);
   if (
@@ -159,6 +194,7 @@ export function planTscArgs(
   const buildInfoFile = buildInfoPathFor(projectConfigPath(args, cwd), {
     repoRoot,
     cacheDir,
+    compiler,
   });
   return {
     args: [...args, '--incremental', '--tsBuildInfoFile', buildInfoFile],
@@ -187,6 +223,97 @@ function nativeCompiler() {
       process.platform === 'win32' ? 'tsc.exe' : 'tsc',
     ),
   );
+}
+
+/**
+ * The compiler this invocation selects and the arguments left for it.
+ * `--compiler=<name>` (or the older `--bun`) beats `STATION_TYPECHECK_COMPILER`,
+ * which beats `DEFAULT_COMPILERS`.
+ *
+ * @param {string[]} argv
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ compiler: string, explicit: boolean, args: string[] }}
+ */
+export function selectCompiler(argv, env = process.env) {
+  let selected = null;
+  const args = [];
+  for (const arg of argv) {
+    if (arg === '--bun') selected = 'bun';
+    else if (arg.startsWith('--compiler='))
+      selected = arg.slice('--compiler='.length);
+    else args.push(arg);
+  }
+  selected ??= env[COMPILER_ENV] || null;
+  if (selected === null) {
+    const ci = Boolean(env.CI) && env.CI !== 'false' && env.CI !== '0';
+    return {
+      compiler: ci ? DEFAULT_COMPILERS.ci : DEFAULT_COMPILERS.local,
+      explicit: false,
+      args,
+    };
+  }
+  if (!COMPILERS.includes(selected))
+    throw new Error(
+      `Unknown typecheck compiler "${selected}"; expected one of: ${COMPILERS.join(', ')}.`,
+    );
+  return { compiler: selected, explicit: true, args };
+}
+
+/** The native tsc-ts executable, located by tsc-ts's own platform table. */
+async function tscTsCompiler() {
+  const require = createRequire(join(REPO_ROOT, 'package.json'));
+  const manifest = require.resolve('tsc-ts/package.json');
+  const { executableName, hostPlatform, packageName } = await import(
+    pathToFileURL(join(dirname(manifest), 'bin', 'platforms.js')).href
+  );
+  const platform = hostPlatform();
+  if (!platform)
+    throw new Error(
+      `tsc-ts has no build for ${process.platform}-${process.arch}.`,
+    );
+  const platformPackage = createRequire(manifest).resolve(
+    `${packageName(platform)}/package.json`,
+  );
+  const compiler = toNamespacedPath(
+    join(dirname(platformPackage), 'lib', executableName()),
+  );
+  // Missing or not executable (an install that dropped the mode bit) counts
+  // as unavailable here, before a slot is taken, rather than failing execve.
+  try {
+    accessSync(compiler, constants.X_OK);
+  } catch {
+    throw new Error(`Compiler not found or not executable: ${compiler}`);
+  }
+  return compiler;
+}
+
+/**
+ * What runs for these arguments. A default that cannot run here (not
+ * installed, no build for this platform, or arguments Bun does not accept)
+ * becomes TypeScript 7 without a message: the coverage gate reads compiler
+ * stderr as diagnostics.
+ */
+async function planCompiler(argv, cwd) {
+  const selection = selectCompiler(argv);
+  const { args } = selection;
+  try {
+    if (selection.compiler === 'bun')
+      return { args, plan: bunCompiler(args, cwd) };
+    if (selection.compiler === 'tsc-ts')
+      return {
+        args,
+        plan: {
+          compiler: await tscTsCompiler(),
+          ...planTscArgs(args, { cwd, compiler: 'tsc-ts' }),
+        },
+      };
+  } catch (error) {
+    if (selection.explicit) throw error;
+  }
+  return {
+    args,
+    plan: { compiler: nativeCompiler(), ...planTscArgs(args, { cwd }) },
+  };
 }
 
 function bunCompiler(argv, cwd) {
@@ -301,11 +428,9 @@ async function runWindowsCompiler(compiler, args, cwd) {
 
 async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
-  const bun = argv.includes('--bun');
-  argv = argv.filter((arg) => arg !== '--bun');
-  const plan = bun
-    ? bunCompiler(argv, cwd)
-    : { compiler: nativeCompiler(), ...planTscArgs(argv, { cwd }) };
+  const selected = await planCompiler(argv, cwd);
+  argv = selected.args;
+  const { plan } = selected;
   if (plan.buildInfoFile)
     mkdirSync(dirname(plan.buildInfoFile), { recursive: true });
   if (!existsSync(plan.compiler))
