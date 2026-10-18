@@ -258,8 +258,7 @@ type PendingRequest = {
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
 /** #2494: id of the confined-credential readiness entry (macOS only). */
-export const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID =
-  'claude-confined-credential';
+const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
 /** Id of the prerequisite `buildCliRuntimePrerequisites` emits for that command. */
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
@@ -1035,7 +1034,7 @@ interface SeatbeltStart {
 }
 
 /** #2494: the warning a start that fell back to Auto publishes. */
-export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
+const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
   'confined_full_access_unavailable';
 
 const DEFAULT_CONFINEMENT_HANDSHAKE_TIMEOUT_MS = 60_000;
@@ -1051,9 +1050,8 @@ function withConfinementFallback<T extends ProviderSessionStartInput>(
   plan: ConfinementPlan,
   reason: ConfinementFallbackReason,
 ): T {
-  const { confinementPlan: _plan, ...rest } = input;
-  return {
-    ...rest,
+  const next: T = {
+    ...input,
     ...(readApprovalMode(input.modelOptions) === 'never'
       ? { modelOptions: { ...input.modelOptions, approvalMode: 'auto' } }
       : {}),
@@ -1064,7 +1062,10 @@ function withConfinementFallback<T extends ProviderSessionStartInput>(
         reason,
       ),
     },
-  } as unknown as T;
+  };
+  // The plan is removed, not left as `undefined`: no fallback start carries one.
+  delete next.confinementPlan;
+  return next;
 }
 
 /**

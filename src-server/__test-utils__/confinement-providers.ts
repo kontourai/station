@@ -10,7 +10,7 @@ import { createSeatbeltConfinementProvider } from '../security/confinement/seatb
  * `seatbelt.process.test.ts`, and its availability rules by
  * `seatbelt.test.ts`.
  */
-export function availableSeatbeltProvider(): ConfinementProvider {
+function availableSeatbeltProvider(): ConfinementProvider {
   return createSeatbeltConfinementProvider({
     platform: () => 'darwin',
     // Any executable stands in for `sandbox-exec`; nothing is spawned.

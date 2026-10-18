@@ -73,7 +73,7 @@ function applicableMode(
  * #2494: whether `record` (a session's latest start record) says its engine
  * runs inside an observed confinement of at least `os-profile`.
  */
-export function observedConfined(
+function observedConfined(
   record: ExecutionConfinementRecord | undefined,
 ): boolean {
   return record?.posture === 'confined' && record.level !== 'host';
