@@ -446,7 +446,14 @@ describe('exact attention request route and immediate response guard', () => {
         retained,
         'the actual preparation must commit its retrievable envelope',
       ).toBeDefined();
-      const envelope = JSON.parse(String(retained?.envelope_json));
+      if (
+        typeof retained !== 'object' ||
+        retained === null ||
+        !('envelope_json' in retained) ||
+        typeof retained.envelope_json !== 'string'
+      )
+        throw new Error('Expected the actual retained prepared envelope.');
+      const envelope = JSON.parse(retained.envelope_json);
       expect(envelope.resumeGuard.requiresFreshCompanions).toBe(true);
     },
   );

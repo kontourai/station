@@ -16431,10 +16431,13 @@ describe('OrchestrationService', () => {
       const send = () => service.dispatch({ type: 'sendTurn', input: { threadId, input: 'hello', clientTurnId: 'client-3559-begin' } });
       await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
       expect(claude.sendTurn).not.toHaveBeenCalled();
-      expect(eventStore['db'].prepare('SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ?').get(threadId)?.state).toBe('prepared');
+      expect(eventStore['db'].prepare('SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ?').get(threadId)).toMatchObject({ state: 'prepared' });
       const pending = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup').all();
       expect(pending).toHaveLength(1);
-      expect(JSON.parse(String(pending[0].owner_json)).invocation).toBe('pending');
+      const pendingClaim = pending[0];
+      if (typeof pendingClaim !== 'object' || pendingClaim === null || !('owner_json' in pendingClaim) || typeof pendingClaim.owner_json !== 'string')
+        throw new Error('Expected the actual retained pending owner.');
+      expect(JSON.parse(pendingClaim.owner_json).invocation).toBe('pending');
       eventStore['db'].exec('DROP TRIGGER fail_compound_begin');
       await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
       expect(claude.sendTurn).not.toHaveBeenCalled();
@@ -16443,11 +16446,13 @@ describe('OrchestrationService', () => {
       await service.dispatch({ type: 'startSession', input: { threadId: nextThread, provider: 'claude' } });
       claude.sendTurn.mockImplementationOnce(async (input) => {
         const boundary = eventStore['db'].prepare('SELECT state, dedup_key FROM orchestration_turn_boundaries WHERE thread_id = ?').get(input.threadId);
-        expect(boundary?.state).toBe('invoking');
-        if (!boundary || typeof boundary.dedup_key !== 'string')
+        expect(boundary).toMatchObject({ state: 'invoking' });
+        if (typeof boundary !== 'object' || boundary === null || !('dedup_key' in boundary) || typeof boundary.dedup_key !== 'string')
           throw new Error('Expected the actual linked claim before provider entry.');
         const dedup = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?').get(boundary.dedup_key);
-        expect(JSON.parse(String(dedup?.owner_json)).invocation).toBe('begun');
+        if (typeof dedup !== 'object' || dedup === null || !('owner_json' in dedup) || typeof dedup.owner_json !== 'string')
+          throw new Error('Expected the actual linked begun owner.');
+        expect(JSON.parse(dedup.owner_json).invocation).toBe('begun');
         return { threadId: input.threadId, turnId: 'turn-3559-begin' };
       });
       await expect(service.dispatch({ type: 'sendTurn', input: { threadId: nextThread, input: 'hello', clientTurnId: 'new-key' } })).resolves.toMatchObject({ turnId: 'turn-3559-begin' });
