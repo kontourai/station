@@ -1026,6 +1026,54 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     }
   });
 
+  test('paired devices cannot raise a plugin publisher above its policy default, while the operator can choose and peers can lower', async () => {
+    const home = makeTempDir('station-plugin-policy-authority-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    await loader.loadAppConfig();
+    await loader.updateAppConfig({
+      telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+    });
+    const paired = new Hono<{ Variables: Record<string, unknown> }>();
+    paired.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential: 'paired',
+        authority: undefined,
+        deviceId: 'paired',
+        deviceKind: 'device',
+        source: 'bearer',
+      });
+      setGrantedPairingScope(c, 'orchestration:read orchestration:operate');
+      await next();
+    });
+    paired.route('/', createConfigRoutes(loader, mockLogger));
+    const operator = withOperatorPrincipal(
+      createConfigRoutes(loader, mockLogger),
+    );
+    const put = (app: Pick<Hono, 'request'>, tier: 'off' | 'lite') =>
+      app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { 'publisher:writer': tier } }),
+      });
+    try {
+      expect((await put(paired, 'lite')).status).toBe(403);
+      expect(
+        (await loader.loadAppConfig()).telemetryTier?.['publisher:writer'],
+      ).toBeUndefined();
+      expect((await put(operator, 'lite')).status).toBe(200);
+      expect((await put(paired, 'off')).status).toBe(200);
+      expect(
+        (await loader.loadAppConfig()).telemetryTier?.['publisher:writer'],
+      ).toBe('off');
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test.each([
     { foo: 'full' },
     'full',

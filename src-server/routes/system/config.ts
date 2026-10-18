@@ -824,15 +824,18 @@ export function createConfigRoutes(
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
-            // DNT blocks sending without changing the underlying choice/default.
-            const defaults = resolveTelemetryConfiguration(
-              { ...current, telemetryTier: {} },
-              { ...process.env, DO_NOT_TRACK: '' },
-            ).publishers;
             const publishers = new Set([
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
             ]);
+            // Compare every publisher with its actual policy/environment default, independently of DNT.
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+              {},
+              {},
+              [...publishers].filter(isTelemetryPublisherId),
+            ).publishers;
             for (const publisher of publishers) {
               const key = publisher as keyof NonNullable<
                 AppConfig['telemetryTier']
