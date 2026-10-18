@@ -351,7 +351,8 @@ function requestShape(path, body, method, refusal = 'API route refused') {
     throw new Error(refusal);
   const parsed = new URL(path, REQUEST_BASE);
   if (parsed.origin !== REQUEST_BASE) throw new Error(refusal);
-  const pathname = parsed.pathname.replace(/\/+$/, '');
+  const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+  if (pathname.startsWith('//')) throw new Error(refusal);
   return {
     pathname,
     path: `${pathname}${parsed.search}`,

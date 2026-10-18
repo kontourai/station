@@ -248,7 +248,8 @@ trusted local ES module. It may export either or both:
 Both API channels validate a Station-relative path and a string HTTP method
 once, then forward the normalized pathname plus query and uppercase method.
 Absolute/protocol-relative URLs, any raw backslash, and a parsed origin other
-than the sentinel Station origin are refused. Non-string methods are refused
+than the sentinel Station origin are refused. A normalized pathname starting
+with `//` is also refused so resolving the forwarded value cannot change hosts. Non-string methods are refused
 without invoking `toString`. Trailing transport arguments are still forwarded.
 GET without a body and POST with a body remain the defaults.
 

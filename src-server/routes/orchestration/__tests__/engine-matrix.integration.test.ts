@@ -1330,6 +1330,8 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     };
     const transport = vi.fn(
       async (path: string, body?: unknown, method?: string) => {
+        if (path === '//evil.invalid/agents')
+          return { success: true, data: {} }; // Must never be handed to a URL-resolving transport.
         if (path === '/integrations/matrix-setup/reconnect?check=1')
           return { success: true, data: {} };
         return api(path, body, method);
@@ -1350,6 +1352,9 @@ describe('engine matrix through real foreground routes and orchestration', () =>
               'post',
             );
             await ctx.api('/api/./agents?check=2', undefined, 'get');
+            await expect(
+              ctx.api('/safe/..//evil.invalid/agents', undefined, 'GET'),
+            ).rejects.toThrow('API route refused');
             await expect(
               ctx.api('/api/future-route', undefined, flippingMethod),
             ).rejects.toThrow('API route refused');
