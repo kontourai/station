@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import type { RegistryPackageClaim } from '@kontourai/station-contracts/registry-trust';
 import { createPluginTelemetry } from '@kontourai/station-sdk/client';
 import {
@@ -920,7 +921,7 @@ test('one plugin minting 2000 Pane capabilities cannot block another plugin', as
   const f = await fixture({ secondPlugin: true });
   await f.install();
   await f.installSecond();
-  // This case owns token quotas; catalog freshness has separate signed-install coverage.
+  // Token quotas are volatile; catalog freshness and daily-state persistence have separate coverage.
   const bindings = await telemetryAdmission.pluginTelemetryBindings(
     {
       homeDir: f.home,
@@ -931,6 +932,12 @@ test('one plugin minting 2000 Pane capabilities cannot block another plugin', as
   );
   vi.spyOn(telemetryAdmission, 'pluginTelemetryBindings').mockResolvedValue(
     bindings,
+  );
+  vi.spyOn(TelemetryLocalState.prototype, 'publisherDaily').mockImplementation(
+    async <T>(
+      _publisher: TelemetryPublisherId,
+      update: (state: T | null) => T | null,
+    ) => update(null),
   );
   const oldest = await f.capability();
   const body = { events: [{ event: 'closed', attributes: {} }] };
