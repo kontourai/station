@@ -32,7 +32,7 @@ owning declarations; import the canonical type rather than copying an interface.
 `@kontourai/station-shared/mcp-app-result` exports
 `isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
 result whose `isError` is absent or false. It is only a cheap candidate filter:
-the UI separately requires membership in the connected tool-definition catalog,
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
 and history retention requires a Station-owned completion stamp. Result metadata
 cannot authorize either behavior or a resource read.
 See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
