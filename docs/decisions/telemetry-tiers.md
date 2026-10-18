@@ -111,45 +111,70 @@ cannot keep a shared secret. Use a public per-channel source identifier, strict
 schema validation, bounded requests and in-memory rate limits keyed by a daily
 salted hash of IP. Never persist IPs or user agents, including proxy/access logs,
 error reporting, backups, and derived raw request records. Rotate and discard
-the salt and rate-limit state daily. Public and publisher counts use the same
-true k=10 distinct-contributor pre-filter followed by deterministic per-coordinate
-two-sided geometric noise. The schema permits 16 scalar/bucket increments plus
-5 surfaces, 8 engines, 20 public plugins and 8 engine-failure buckets: sensitivity
-57 per added/removed ping. Per-count ε=1/57 composes to ε≤1 per ping per publisher
-per UTC arrival day for fixed release support (replacement adjacency costs ≤2).
-Counts are rounded, clamped nonnegative estimates; the unclamped noise has
-expected absolute error of about 57 pings and a 95th-percentile absolute error
-of 171 pings. Small values near k are often uninformative; 100k-scale values have roughly 0.171% 95% relative error.
+the salt and rate-limit state daily.
 
-The hard true-count pre-filter itself is **not differential privacy**: adding a
-victim can change a value from absent to present. k−1 colluding keys plus the
-victim can pass the pre-filter; noise bounds what is learned from the released
-counts, not that threshold decision. Consequently the complete API has no pure
-ε=1 guarantee. Full support privacy needs a private threshold or fixed public
-domain. This preserves the orchestrator's requested k pre-filter while stating
-its remaining disclosure. Counts bound one ping's influence, not a person or
-installation; repeated pings, multi-day lifetime contributions and cross-publisher
-contributions compose with growing privacy loss. Prior exact publications remain
-exposed. Set histograms overlap and noisy differences do not give exact counts.
-Plugin/distribution aggregate access uses scoped publisher keys and an independent
-post-auth admission budget. Unknown keys never open database transactions.
+Owner decision (2026-10-17): Kontour's analytics view is **exact and operator-only**.
+`/v1/operator/lite/daily` and `/weekly` require the private `sto_` key and expose
+exact per-publisher marginals from `lite_marginals`. Daily contributor counts are
+distinct daily network keys. Weekly counts sum contributor-days: salts rotate
+daily, so weekly unique contributors cannot be deduplicated without changing the
+linkability contract. Both endpoints reject query filters and use `no-store`.
 
-The receiver generates a persistent random 32-byte HMAC key on first migration
-and stores it in a database table with `PUBLIC` privileges revoked. Restrict
-service/database-owner and backup access. Domain-separated HMAC seeds include
-publisher, day, dimension and value; both views and repeated reads reuse the same
-noise, including across restarts. This is a finite-precision cryptographic
-implementation of the geometric mechanism. Back up the key with the schema.
-Losing/rotating it changes historical estimates, creates additional independent
-releases and enables averaging; preserve old keys or published estimates before
-any future rotation. Compromise reveals the noise. No rotation endpoint exists.
+Published public-dashboard and third-party publisher views release **weekly**
+ISO-8601 UTC-arrival totals, with noisy estimates over ten profile/adoption
+fields: channel, version, platform, arch, surfaces_today, engines_used_today,
+first_active_this_week, first_active_this_month, distribution and
+public_plugins_enabled. Counters/friction and customization remain private.
+The fixed public domain contains all enum/boolean/empty-set values and each
+publisher's operator-configured public release versions/registry IDs. Custom
+version/distribution values collapse to `custom`. Every coordinate, even true
+zero, always receives noise. There is no true k=10 pre-filter or presence oracle.
+Catalogs must be public configuration independent of private observations.
+Publisher keys see only their publisher's domain. Bounded 200-cell keyset pages
+replace the prior 10,000-row published cap; cursors navigate, never filter.
 
-The receiver computes closed-day marginals in resumable per-dimension SQL
-transactions, erases temporary contributor associations in bounded batches, and
-runs raw/Full retention independently. Public reads never take the ingest
-admission lock. These local receiver behaviors do not establish deployed privacy,
-proxy logging policy or an installed Station sender. See the
-[receiver contract and verification](../../packages/telemetry-broker/README.md#public-aggregates).
+Adding/removing one ping changes at most seven scalar counts plus five surfaces,
+eight engines and twenty public plugins: **sensitivity 40**. Per-count ε=1/280
+composes to **ε≤1/7 per ping, publisher and ISO week**. An honest install sends
+at most seven pings/week, hence **per-install-week ε≤1**; the receiver cannot
+verify installations or enforce that honest-client bound. Replacement costs
+at most twice the add/remove bound. Multiple weeks and publishers compose.
+The ideal fixed-domain two-sided geometric mechanism is **pure ε-DP**. The
+persistent-key HMAC implementation uses finite 52-bit uniforms; cryptographic
+and finite-precision qualifications apply to the implementation. Prior exact
+or thresholded releases remain exposed.
+
+Unclamped expected absolute noise is ≈280 weekly pings (95% ≤839). Clamping at
+zero improves absolute error near zero while introducing upward bias. Utility
+for a value present in every ping is:
+
+| Daily pings | Weekly pings | MAE | Relative MAE | 95% absolute error / weekly total |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 700 | ≈280 | 40% | 839 / 120% |
+| 1,000 | 7,000 | ≈280 | 4% | 839 / 12% |
+| 10,000 | 70,000 | ≈280 | 0.4% | 839 / 1.2% |
+
+Sparse values can be uninformative. Overlapping set histograms cannot be summed
+or joined. Calendar flags count pings carrying that flag, not distinct people.
+
+Migration 6 stores immutable publisher/week markers and every published cell.
+Finalization sums exact daily marginals once per closed week and snapshots the
+public domain. Public/publisher reads and reopen reuse the stored estimates.
+The HMAC coordinate includes publisher, week, dimension and value, never count;
+a changed-count re-release would reveal an exact difference and is forbidden.
+Back up markers, cells and the migration-5 secret together; never regenerate
+historical publications. Restrict database/service/backup access; the secret's
+`PUBLIC` privileges are revoked. There is no rotation/republication endpoint.
+Compromise reveals the noise.
+
+Closed-day exact marginal work commits per dimension. Erasure runs in bounded
+batches for each completed publisher/day; a stuck dimension retains only that
+publisher/day's associations while others progress. Raw/Full retention runs
+independently. Public reads do not take the ingest admission lock. Snapshot
+refresh failure beyond 60 seconds returns 503, not unauthorized; fresh revoked
+keys are still refused immediately by database checks. These local receiver
+behaviors do not establish deployed privacy, proxy logging policy or an installed
+Station sender. See the [receiver contract and verification](../../packages/telemetry-broker/README.md#public-aggregates).
 
 ## Deferred privacy transport
 

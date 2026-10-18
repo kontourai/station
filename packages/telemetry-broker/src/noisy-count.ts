@@ -1,19 +1,7 @@
 import { createHmac } from 'node:crypto';
-import { STATION_DAILY_FIELDS } from '@kontourai/station-contracts/product-telemetry';
+import { PUBLIC_COUNT_EPSILON } from './public-domain.js';
 
-// Add/remove-one-ping L1 sensitivity: 16 scalar buckets + sets of 5+8+20+8 = 57.
-// Empty sets contribute one sentinel, already bounded by their arrayMax.
-const sensitivity = Object.entries(STATION_DAILY_FIELDS).reduce(
-  (sum, [field, rule]) =>
-    sum +
-    (field === 'event' || field === 'event_id'
-      ? 0
-      : 'arrayMax' in rule
-        ? rule.arrayMax
-        : 1),
-  0,
-);
-const countEpsilon = 1 / sensitivity;
+const countEpsilon = PUBLIC_COUNT_EPSILON;
 
 export function noisyCount(
   secret: Buffer,
@@ -26,7 +14,7 @@ export function noisyCount(
   const seed = createHmac('sha256', secret)
     .update(
       JSON.stringify([
-        'station-lite-noise-v1',
+        'station-lite-weekly-noise-v2',
         publisher,
         day,
         dimension,

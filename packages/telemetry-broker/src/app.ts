@@ -63,9 +63,13 @@ export function createProductBroker(
         /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
           c.req.header('authorization') ?? '',
         )?.[1] ?? '';
-      if (
-        !store.lite?.hasCredential(decodeURIComponent(publisherMatch[1]), key)
-      )
+      let publisher: string;
+      try {
+        publisher = decodeURIComponent(publisherMatch[1]);
+      } catch {
+        return c.json({ error: 'invalid_publisher' }, 400);
+      }
+      if (!store.lite?.hasCredential(publisher, key))
         return preAuthAdmission(c, async () => {
           c.res = c.json({ error: 'source_unauthorized' }, 401);
         });
@@ -211,7 +215,8 @@ export function createProductBroker(
               ? 507
               : error.code === 'query_limit'
                 ? 422
-                : error.code === 'invalid_source' ||
+                : error.code === 'invalid_cursor' ||
+                    error.code === 'invalid_source' ||
                     error.code === 'invalid_daily_ping'
                   ? 400
                   : 503;

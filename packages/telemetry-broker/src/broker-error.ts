@@ -2,6 +2,8 @@ export class BrokerError extends Error {
   constructor(
     readonly code:
       | 'source_unauthorized'
+      | 'credentials_stale'
+      | 'invalid_cursor'
       | 'event_conflict'
       | 'storage_limit'
       | 'invalid_source'

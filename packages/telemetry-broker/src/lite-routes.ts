@@ -4,6 +4,7 @@ import type { HttpBindings } from '@hono/node-server';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { receiverAdmission } from './admission.js';
+import { BrokerError } from './broker-error.js';
 import type { LiteRepository } from './lite-store.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './public-dashboard.js';
 
@@ -90,47 +91,67 @@ export function registerLiteRoutes(
     await store.revokePublisherKey(c.req.param('publisher'));
     return c.json({ revoked: true });
   });
+  for (const period of ['daily', 'weekly'] as const) {
+    app.get(`/v1/operator/lite/${period}`, async (c) => {
+      if (c.req.url.includes('?'))
+        return c.json({ error: 'filters_unsupported' }, 400);
+      c.header('Cache-Control', 'no-store');
+      return c.json(await store.exact(period));
+    });
+  }
+  const cursorFor = (url: string): string | undefined => {
+    const params = new URL(url).searchParams;
+    if (
+      [...params.keys()].some((k) => k !== 'cursor') ||
+      params.getAll('cursor').length > 1
+    )
+      throw new BrokerError('invalid_cursor');
+    return params.get('cursor') ?? undefined;
+  };
   app.get('/v1/publishers/:publisher/aggregates', async (c) => {
-    if (c.req.url.includes('?'))
-      return c.json({ error: 'filters_unsupported' }, 400);
+    const cursor = cursorFor(c.req.url);
     const key =
       /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
         c.req.header('authorization') ?? '',
       )?.[1] ?? '';
     if (!key) return c.json({ error: 'source_unauthorized' }, 401);
     c.header('Cache-Control', 'no-store');
-    return c.json(await store.aggregates(c.req.param('publisher'), key));
+    return c.json(
+      await store.aggregates(c.req.param('publisher'), key, cursor),
+    );
   });
   const publicAdmission = receiverAdmission();
   let cachedDay = '';
-  let cached:
-    | Promise<Awaited<ReturnType<LiteRepository['publicAggregates']>>>
-    | undefined;
+  const pages = new Map<
+    string,
+    Promise<Awaited<ReturnType<LiteRepository['publicAggregates']>>>
+  >();
   app.get('/v1/public/aggregates', async (c) => {
     c.header('X-Content-Type-Options', 'nosniff');
-    if (c.req.url.includes('?'))
-      return c.json({ error: 'filters_unsupported' }, 400);
+    const cursor = cursorFor(c.req.url);
     c.header('Cache-Control', 'no-store');
     const today = new Date().toISOString().slice(0, 10);
     if (cachedDay !== today) {
-      cached = undefined;
+      pages.clear();
       cachedDay = today;
     }
-    let response = cached;
+    const page = cursor ?? '';
+    let response = pages.get(page);
     if (!response) {
       const refused = await publicAdmission(c, async () => {
-        const pending = store.publicAggregates().catch((error) => {
-          if (cached === pending) cached = undefined;
+        const pending = store.publicAggregates(cursor).catch((error) => {
+          if (pages.get(page) === pending) pages.delete(page);
           throw error;
         });
-        response = cached = pending;
+        if (pages.size >= 128) pages.delete(pages.keys().next().value!);
+        pages.set(page, pending);
+        response = pending;
       });
       if (refused) return refused;
     }
     const result = await response!;
-    // A receiver/database clock disagreement must not cache an unfinished day.
     if (result.finalizedBeforeDay !== today) {
-      if (cached === response) cached = undefined;
+      if (pages.get(page) === response) pages.delete(page);
       return c.json(result);
     }
     c.header(

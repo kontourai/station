@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 
 /** Real HTTP/PG regression owner; called by the existing bundled receiver harness. */
 export async function qualifyResilience(
@@ -29,7 +29,7 @@ export async function qualifyResilience(
       headers: { 'content-type': 'application/json', 'x-api-key': credential },
       body: JSON.stringify({
         schema_version: 1,
-        inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
         distinct_id: 'a'.repeat(64),
         events: [
           {
@@ -105,7 +105,9 @@ export async function qualifyResilience(
       "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
     )
   ).rows[0].day;
-  const day = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
+  const d = new Date(today);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7);
+  const day = d.toISOString().slice(0, 10);
   await store.lite.createSource({
     id: scaleSource,
     publisher,
@@ -170,6 +172,28 @@ export async function qualifyResilience(
     `INSERT INTO station_telemetry.lite_finalization SELECT $1::date,$2,key FROM jsonb_object_keys($3::jsonb) key`,
     [day, publisher, JSON.stringify(template.contributions)],
   );
+  const erasureSource = `erase-${randomUUID()}`;
+  const erasurePublisher = `publisher:zz-erase-${randomUUID()}`;
+  await store.lite.createSource({
+    id: erasureSource,
+    publisher: erasurePublisher,
+    channel: 'stable',
+    registryIds: ['public.plugin'],
+    releaseVersions: ['1.2.3'],
+  });
+  await store.lite.ingest(
+    erasureSource,
+    { ...ping, event_id: randomUUID() },
+    { day: today, hash: 'b'.repeat(64) },
+  );
+  await pool.query(
+    'UPDATE station_telemetry.lite_finalization SET day=$1 WHERE publisher=$2',
+    [day, erasurePublisher],
+  );
+  await pool.query(
+    "UPDATE station_telemetry.lite_pings SET received_at=$1::date::timestamp AT TIME ZONE 'UTC' WHERE source_id=$2",
+    [day, erasureSource],
+  );
   const locker = await pool.connect();
   const started = performance.now();
   let lockConnectionError;
@@ -211,6 +235,16 @@ export async function qualifyResilience(
     assert.ok(
       Number(committed.rows[0].n) > 0,
       'completed scale dimensions must survive an interrupted finalizer',
+    );
+    assert.equal(
+      (
+        await pool.query(
+          'SELECT 1 FROM station_telemetry.lite_pings WHERE source_id=$1 AND (client_hash IS NOT NULL OR contributions IS NOT NULL)',
+          [erasureSource],
+        )
+      ).rowCount,
+      0,
+      'blocked publisher dimension cannot prevent another publisher/day association erasure',
     );
     await pool.query(
       "UPDATE station_telemetry.events SET received_at=clock_timestamp()-interval '91 days' WHERE source_id=$1",
@@ -280,19 +314,24 @@ export async function qualifyResilience(
   );
   const first = await store.lite.aggregates(publisher);
   assert.deepEqual(
-    (await reopened.lite.aggregates(publisher)).days,
-    first.days,
+    (await reopened.lite.aggregates(publisher)).cells,
+    first.cells,
     'repository reopen preserves the secret and estimates',
   );
   assert.deepEqual(
-    (await store.lite.aggregates(publisher)).days,
-    first.days,
+    (await store.lite.aggregates(publisher)).cells,
+    first.cells,
     'uncached scale reads retain identical noise',
   );
-  const errors = Object.entries(first.days[0].distributions).flatMap(
-    ([, values]) =>
-      Object.values(values).map((value) => Math.abs(value - 100000)),
-  );
+  const errors = (
+    await pool.query(
+      `SELECT abs(p.estimate-m.pings)::float8 AS error
+    FROM station_telemetry.lite_published p JOIN station_telemetry.lite_marginals m
+    ON p.publisher=m.publisher AND p.week=m.day AND p.dimension=m.dimension AND p.value=m.value
+    WHERE p.publisher=$1 AND p.week=$2`,
+      [publisher, day],
+    )
+  ).rows.map((r) => r.error);
   console.log(
     JSON.stringify({
       control: 'real-postgres-scale',
@@ -302,10 +341,59 @@ export async function qualifyResilience(
       publishedCounts: errors.length,
       meanAbsoluteError: errors.reduce((a, b) => a + b, 0) / errors.length,
       maxAbsoluteError: Math.max(...errors),
-      epsilonPerCount: 1 / 57,
-      epsilonPerAddedPing: 1,
+      epsilonPerCount: 1 / 280,
+      epsilonPerAddedPing: 1 / 7,
     }),
   );
+  // Real keys are known before a failed refresh. Expiry must be unavailable, not unauthorized.
+  const readPublisher = `publisher:ttl-${randomUUID()}`;
+  const readKey = `stq_${randomBytes(32).toString('base64url')}`;
+  await store.lite.setPublisherKey(
+    readPublisher,
+    createHash('sha256').update(readKey).digest('hex'),
+  );
+  await store.refreshCredentials();
+  assert.equal(store.hasCredential(key), true);
+  assert.equal(store.lite.hasCredential(readPublisher, readKey), true);
+  const realNow = Date.now;
+  const expiryServer = createServer(
+    getRequestListener(createProductBroker(store, operatorKey).fetch),
+  );
+  await new Promise((resolve) => expiryServer.listen(0, '127.0.0.1', resolve));
+  try {
+    await pool.query(
+      'ALTER TABLE station_telemetry.sources ADD COLUMN qualification_refresh_failure text',
+    );
+    await assert.rejects(store.refreshCredentials());
+    Date.now = () => realNow() + 61000;
+    const staleBase = `http://127.0.0.1:${expiryServer.address().port}`;
+    for (const [path, init] of [
+      [
+        '/v1/product/events',
+        { method: 'POST', headers: { 'x-api-key': key }, body: '{}' },
+      ],
+      [
+        `/v1/publishers/${encodeURIComponent(readPublisher)}/aggregates`,
+        { headers: { authorization: `Bearer ${readKey}` } },
+      ],
+    ]) {
+      const r = await fetch(staleBase + path, init);
+      assert.equal(
+        r.status,
+        503,
+        'valid keys with expired credential snapshot return 503',
+      );
+      assert.deepEqual(await r.json(), { error: 'credentials_stale' });
+    }
+  } finally {
+    Date.now = realNow;
+    await pool.query(
+      'ALTER TABLE station_telemetry.sources DROP COLUMN qualification_refresh_failure',
+    );
+    await store.refreshCredentials();
+    expiryServer.closeAllConnections();
+    await new Promise((resolve) => expiryServer.close(resolve));
+  }
   const admissionLock = await pool.connect();
   try {
     await admissionLock.query('BEGIN');

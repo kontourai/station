@@ -126,8 +126,9 @@ export class PgProductRepository implements ProductRepository {
     return pending;
   }
   hasCredential(key: string): boolean {
+    if (Date.now() >= this.credentialsUntil)
+      throw new BrokerError('credentials_stale');
     return (
-      Date.now() < this.credentialsUntil &&
       /^stp_[A-Za-z0-9_-]{43}$/.test(key) &&
       this.credentialSources.has(hash(key).toString('hex'))
     );
@@ -211,7 +212,7 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length > 5 ||
+          rows.length > 6 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
@@ -332,13 +333,14 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 5 ||
+      rows.length !== 6 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
       rows[2].version !== 3 ||
       rows[3].version !== 4 ||
-      rows[4].version !== 5
+      rows[4].version !== 5 ||
+      rows[5].version !== 6
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);

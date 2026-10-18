@@ -282,7 +282,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         hash: digest(`qa-network-${i}`),
       });
     const date = new Date(`${today}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() - 1);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7) - 7);
     const closedDay = date.toISOString().slice(0, 10);
     // Fixture-only time travel: production always assigns the locked receiver day.
     await pool.query(
@@ -306,33 +306,116 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     );
     const publicRead = await request('/v1/public/aggregates');
     assert.equal(publicRead.status, 200);
-    const day = publicRead.body.days.find((d) => d.day === closedDay);
-    assert.equal(publicRead.body.minimumDistinctDailyClients, 10);
-    assert.equal('representedPings' in day, false, 'no joint-derived total');
-    assert.equal(typeof day.distributions.platform.linux, 'number');
+    const allCells = async (path, credential) => {
+      let cursor = null;
+      const cells = [];
+      do {
+        const page = await request(
+          path + (cursor ? `?cursor=${cursor}` : ''),
+          undefined,
+          credential,
+        );
+        assert.equal(page.status, 200);
+        assert.ok(page.body.cells.length <= 200);
+        cells.push(...page.body.cells);
+        cursor = page.body.nextCursor;
+      } while (cursor);
+      return cells;
+    };
+    const cells = await allCells('/v1/public/aggregates');
+    const published = cells.filter((c) => c.week === closedDay);
     assert.equal(
-      day.distributions.platform.darwin,
-      undefined,
-      'sub-k network value omitted',
+      new Set(cells.map((c) => c.week)).size,
+      4,
+      'four closed ISO weeks, never daily releases',
     );
-    assert.equal(day.distributions.home_replaced.true, undefined);
+    assert.ok(
+      cells.every((c) => new Date(c.week).getUTCDay() === 1),
+      'ISO UTC Monday boundary',
+    );
     assert.equal(
-      typeof day.distributions.public_plugins_enabled['public.plugin'],
+      typeof published.find(
+        (c) => c.dimension === 'platform' && c.value === 'darwin',
+      )?.estimate,
       'number',
+      'sub-k values remain on fixed support',
     );
-    assert.equal(
-      typeof day.distributions.engine_connect_failures['codex:2-3'],
-      'number',
+    assert.ok(
+      !cells.some(
+        (c) =>
+          c.dimension === 'home_replaced' ||
+          c.dimension === 'engine_connect_failures' ||
+          c.dimension === 'safe_mode_entered',
+      ),
+      'public field reduction',
     );
-    assert.equal(typeof day.distributions.safe_mode_entered['1'], 'number');
-    assert.equal(
-      typeof day.distributions.first_active_this_week.true,
-      'number',
-    );
+    for (const period of ['daily', 'weekly']) {
+      assert.equal(
+        (await request(`/v1/operator/lite/${period}`)).status,
+        401,
+        'exact operator endpoint requires operator auth',
+      );
+      assert.equal(
+        (await request(`/v1/operator/lite/${period}`, undefined, key)).status,
+        401,
+      );
+      assert.equal(
+        (
+          await request(
+            `/v1/operator/lite/${period}?from=2020-01-01`,
+            undefined,
+            operatorKey,
+          )
+        ).status,
+        400,
+      );
+      const exact = await request(
+        `/v1/operator/lite/${period}`,
+        undefined,
+        operatorKey,
+      );
+      assert.equal(exact.status, 200);
+      assert.deepEqual(
+        exact.body.marginals.find(
+          (c) =>
+            c.publisher === 'kontour' &&
+            c.dimension === 'platform' &&
+            c.value === 'linux',
+        ),
+        {
+          period: closedDay,
+          publisher: 'kontour',
+          dimension: 'platform',
+          value: 'linux',
+          pings: '20',
+          contributors: '10',
+        },
+        'operator has exact ping and distinct daily contributor counts',
+      );
+    }
     assert.deepEqual(
       (await request('/v1/public/aggregates')).body,
       publicRead.body,
       'repeated publication is stable',
+    );
+    const frozen = await pool.query(
+      'SELECT * FROM station_telemetry.lite_published ORDER BY week,publisher,dimension,value',
+    );
+    await pool.query(
+      "UPDATE station_telemetry.lite_marginals SET pings=pings+1000 WHERE publisher='kontour'",
+    );
+    await store.lite.finalize();
+    assert.deepEqual(
+      (
+        await pool.query(
+          'SELECT * FROM station_telemetry.lite_published ORDER BY week,publisher,dimension,value',
+        )
+      ).rows,
+      frozen.rows,
+      'published week cannot be finalized twice',
+    );
+    await pool.query(
+      "UPDATE station_telemetry.lite_marginals SET pings=pings-1000 WHERE publisher='kontour'",
     );
     assert.equal(JSON.stringify(publicRead.body).includes(publisher), false);
     assert.equal(
@@ -349,10 +432,15 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       key,
     );
     assert.equal(own.status, 200);
-    assert.deepEqual(
-      own.body.days,
-      [],
-      'publisher reads also suppress sub-k contributors',
+    assert.ok(
+      own.body.cells.length > 0,
+      'publisher receives zero-inclusive fixed-domain noisy totals',
+    );
+    assert.equal(own.body.publisher, publisher);
+    assert.equal(
+      (await request('/v1/publishers/%E0/aggregates', undefined, key)).status,
+      400,
+      'malformed URI is a client error',
     );
     assert.equal(
       (await request('/v1/publishers/kontour/aggregates', undefined, key))
@@ -456,8 +544,8 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     await assertPrivateStorage();
     return [
       'lite HTTP/PostgreSQL: public sources, strict unknown/nested/array/catalog rejection, bounded streaming bodies, commit/dedupe/conflict',
-      'lite daily rollups: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
-      'public marginal suppression; scoped publisher keys, revocation, static same-origin dashboard',
+      'lite exact daily/weekly operator marginals: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
+      'weekly fixed-domain noisy publication, immutable re-finalization; scoped publisher keys, revocation, static same-origin dashboard',
       'IP/user-agent privacy: captured stdout/stderr plus every database table, accepted/rejected/error paths',
     ];
   } finally {

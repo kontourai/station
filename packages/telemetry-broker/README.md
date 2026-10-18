@@ -295,124 +295,145 @@ per-engine failure buckets, and both friction counters. Friction histograms
 count **pings at that counter/bucket**, not the sum of failures. Multi-valued
 surface/plugin/engine histograms can sum above the number of pings.
 
+### Owner analytics: exact operator view
+
+Kontour's owner analytics are exact. `GET /v1/operator/lite/daily` and
+`GET /v1/operator/lite/weekly` require the private operator Bearer `sto_` key.
+Publisher keys and anonymous callers receive 401. Responses are `no-store` and
+query strings are rejected. Daily covers the last 30 closed UTC arrival days;
+weekly covers four closed ISO weeks, Monday through Sunday in UTC. Both read
+all publishers and all dimensions from finalized `lite_marginals`, with exact
+integer strings for `pings` and `contributors`. They refuse more than 10,000
+rows with 422 rather than truncate. No exact route is linked from the dashboard.
+
+Daily `contributors` counts distinct daily IPv4/IPv6-/48 network hashes per
+value, not people or installations. Weekly `contributors` is the **sum of daily
+distinct contributors (contributor-days)**. Daily salts deliberately prevent
+cross-day linkage, so exact distinct weekly contributors cannot be reconstructed
+from `lite_marginals`. The response names that unit explicitly. Shared networks,
+restarts and dishonest clients affect these metrics.
+
 ### Public aggregates
 
-`GET /v1/public/aggregates` publishes Kontour's per-dimension marginals over the
-last 30 closed UTC arrival days. Both public and publisher views release a value
-only when at least **ten distinct daily contributor keys** supplied it. Keys use
-IPv4 addresses or IPv6 /48s; the metric counts untrusted pings, not people or
-verified installations. One victim plus nine pings from one IP supplies at most
-two keys. **k−1 colluding keys plus the victim can pass the pre-filter; noise
-bounds what is learned from the counts.** This is not Sybil resistance.
+`GET /v1/public/aggregates` publishes Kontour's **weekly noisy marginal totals**
+for the last four closed ISO weeks (UTC receiver arrival). Authenticated
+`GET /v1/publishers/:publisher/aggregates` returns only that publisher's identical
+weekly publication. Published fields are channel, version, platform, arch,
+surfaces_today, engines_used_today, first_active_this_week,
+first_active_this_month, distribution, and public_plugins_enabled. These answer
+profile/adoption questions. Counters, friction, setup, age, private-plugin and
+customization fields remain available only to the exact operator view.
 
-Every released count is a **noisy estimate**. The receiver adds two-sided
-geometric (discrete Laplace) noise with per-count ε = **1/57**. The
-[shared schema](../contracts/src/product-telemetry.ts) bounds one ping to 16
-single-valued dimensions (including the two bucketed friction counters), plus
-at most 5 surface, 8 engine, 20 public-plugin, and 8 engine-failure values:
-16 + 5 + 8 + 20 + 8 = **57** count increments. Empty sets contribute one `none`
-sentinel within those bounds. Counters add one bucket count, never their numeric
-magnitude. For add/remove-one-ping adjacency, L1 sensitivity is at most 57;
-sequential composition gives ε ≤ 57 × (1/57) = **1 per ping, publisher, UTC day**
-for a fixed set of released coordinates. Replacement of a ping costs at most 2.
-Schema bounds determine calibration in code; raising a bound increases noise.
+The public domain is fixed independently of traffic: every enum value, both
+boolean values, empty-set `none`, operator-configured `releaseVersions` and
+`registryIds`, plus `custom` for version/distribution and `none` for distribution.
+All values always receive noise, including true zero. **There is no true-count
+k pre-filter.** Nine attacker networks plus a victim cannot change the release
+shape. Each publisher gets its own configured catalogs; no other publisher's
+versions or registry IDs appear. Catalogs are public configuration and must not
+be populated from private observed values. New sources can add at most 1,000
+unique versions and 1,000 registry IDs per publisher; domains already exceeding
+this bound before migration remain intact. A published week's domain is frozen;
+configuration additions first affect weeks not yet published. Revoking a source
+does not retract its historical public catalog or publications.
 
-HMAC-SHA-256 keyed by a persistent secret seeds separate geometric variates for
-each (publisher, day, dimension, value). Public and authenticated reads share
-those coordinates and the secret. Uncached reads, restarts, and raw-row deletion
-therefore return the same estimate; repeated reads cannot average away the
-noise. The integer result is rounded and clamped at zero. This implements the
-geometric mechanism using a cryptographic pseudorandom function and finite
-52-bit uniforms, rather than an ideal infinite random source. The unclamped
-noise has mean absolute error about 57 pings and a 95th-percentile absolute
-error of 171 pings. At count 10 the estimate is often uninformative; at count
-100,000 that 95% error is about 0.171%. Never treat an estimate of zero as zero
-activity or derive exact intersections by subtracting these marginals.
+A ping increments a coordinate at most once: seven scalar fields + at most five
+surfaces + eight engines + twenty public plugins = **L1 sensitivity 40** for
+add/remove-one-ping adjacency. Empty sets contribute one sentinel within those
+bounds. Per-count **ε=1/(7×40)=1/280** gives **ε≤1/7 per ping per publisher/week**.
+An honest install pings at most seven times per week, hence **per-install-week
+ε≤1**. Replacement adjacency costs twice the add/remove bound. This is not an
+enforced installation, person, lifetime or cross-publisher bound: the receiver
+has no installation identity, and retries with new IDs or malicious senders can
+exceed it. Multi-week and multi-publisher contributions compose.
 
-**The complete API is not pure ε-DP:** its true-count k pre-filter reveals
-presence/absence at the 9→10 boundary. The ε=1 bound describes noisy count values
-on fixed release support; it does not protect that support decision. A full DP
-release needs a separately reviewed private threshold or fixed public domain.
-The mechanism bounds a single ping, not an installation or a person's lifetime.
-Multiple pings, days and publishers compose; lifetime and cross-publisher privacy
-loss grow with contributions. k−1 colluding networks, outside knowledge,
-proxy/NAT sharing and same-day restart inflation still affect the pre-filter.
-Existing exact-count snapshots cannot be made private retroactively.
+Every published count uses the pure ε-DP two-sided geometric mechanism, rounded
+and clamped nonnegative. Fixed support removes the prior threshold presence
+oracle. The implementation approximates ideal randomness with HMAC-SHA-256 and
+finite 52-bit uniforms; the mathematical pure-DP statement describes the ideal
+mechanism, with cryptographic/finite-precision qualifications for this code.
+Unclamped mean absolute error is `2a/(1-a²) ≈ 280` pings, `a=exp(-1/280)`;
+95% of absolute noise is at most 839 pings. Clamping reduces absolute error near
+zero but biases estimates upward. Utility assumes a value receives every ping:
 
-No joint cells, grand total, suppressed remainder, arbitrary range, dimension
-filter or cohort query is exposed. Query strings are rejected. Set histograms
-overlap; dimensions cannot be joined. Missing values/days mean suppressed or
-unavailable data. Calendar activity flags are estimates.
+| Daily pings | Weekly pings | Mean absolute noise | Relative MAE | 95% absolute noise / weekly total |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 700 | ≈280 | 40% | 839 / 120% |
+| 1,000 | 7,000 | ≈280 | 4% | 839 / 12% |
+| 10,000 | 70,000 | ≈280 | 0.4% | 839 / 1.2% |
 
-Migration 5 creates a random 32-byte server secret on first migration/start in
-`station_telemetry.lite_noise_key`. The table grants no access to `PUBLIC`; use a
-dedicated database owner/service role and restrict database and backup access.
-Only the receiver and database administrators may read it. It never enters HTTP
-responses or logs. Back up the complete schema including this key: losing or
-changing it generates independent noise for already published coordinates and
-allows additional releases to be averaged. There is no rotation endpoint.
-Preserve the key for published days; a future rotation must retain old keys or
-persist their published estimates. Key compromise exposes the noise and removes
-its count protection.
+Sparse values have much worse relative utility. Set histograms overlap and must
+not be summed to a total; dimensions cannot be joined. First-active flags count
+pings carrying the flag; they are not distinct weekly/monthly installations.
+Prior exact or thresholded snapshots cannot be made private retroactively.
 
-The API `privacyUnit` names one received ping per publisher/UTC day; network
-keys describe only the k pre-filter.
+Each response has at most **200 cells** (`week`, `dimension`, `value`, `estimate`)
+and `nextCursor`. Follow `?cursor=<nextCursor>` until null. Cursors are bounded,
+validated keyset positions, not filters; unknown/duplicate query parameters or
+malformed cursors return 400. There is no 10,000-row published cap. The dashboard
+follows every page and selects its week/dimension locally. It uses text nodes,
+same-origin requests, and a CSP with no third-party scripts or analytics.
 
-Migration 5 adds a partial `lite_pending` index for bounded association erasure,
-removes secondary suppression and `lite_clients`, drops
-`lite_marginals.publishable`, and creates `lite_finalization` jobs. Ingest stores
-bounded contribution arrays and one job per (day, publisher, dimension).
-Closed-day finalization computes all values of a dimension with one grouped SQL
-query and commits that dimension and job removal together. Interrupted passes
-resume pending jobs; completed dimensions remain committed. After all dimensions
-of a publisher/day finish, separate 2,000-row transactions erase raw contributor
-hashes and contribution associations. Retention deletes commits, Full events and
-90-day raw Lite pings in independent batches, separately scheduled from
-finalization. Failed finalization cannot roll those deletes back. Raw retention
-can expire data before a repeatedly failing finalizer recovers; missing aggregates
-are unavailable, not zero. Older binaries refuse migration 5.
+### Finalization, migration and retention
 
-The first public read finalizes closed days before filling the UTC-day cache.
-Neither misses nor hits acquire the ingest admission advisory lock; finalizers
-fence only transactions assigning the specific closed day. Cache hits do no
-storage work. Failures and receiver/database cutoff disagreement are not cached.
-Responses include `nosniff` and a lifetime ending at UTC midnight. Publisher
-reads check database authority on every read, preserving immediate revocation.
-`/public/` serves a static dashboard with text-node rendering and a CSP allowing
-no third-party scripts, analytics or network requests.
+Migration 6 transactionally adds `lite_publications` (one marker per publisher,
+ISO week) and `lite_published` (frozen domain cells and estimates). Migration is
+idempotent; older binaries refuse schema 6. The first finalizer after a week
+closes atomically claims its marker, snapshots public configuration, sums daily
+marginals, and stores every noisy cell. Existing markers are never updated;
+re-finalization cannot change published estimates even if exact marginals change.
+Noise seeds include mechanism version, publisher, week, dimension and value,
+**never the count**. Releasing a changed count with the same seed would expose
+an exact difference, so publications must be immutable. Public and publisher
+reads, cache refills and repository reopen reuse stored estimates.
 
-### Publisher access
+Migration 5's 32-byte noise key remains in `lite_noise_key` with `PUBLIC` access
+revoked. Restrict service/database-owner and backup access. Back up the complete
+schema, including the key, publication markers and cells; never independently
+restore/clear the markers or regenerate historical publications. No rotation or
+republication API exists. Key compromise reveals the noise. Lost published
+estimates cannot safely be replaced with an independent release.
 
-An independent publisher read credential is `stq_` plus 32 random base64url
-bytes. Generate and keep it privately, like the operator key. An operator
-Bearer `sto_` request to `POST /v1/operator/lite/publishers` supplies exactly
+Ingest journals one job per (day,publisher,dimension). Each closed-day dimension
+commits its exact counts and job removal in its own transaction. A failed
+publisher/day is skipped for that pass while other publishers/days continue.
+Separate 2,000-row transactions erase contributor hashes and contribution arrays
+only for publisher/days with no pending dimensions. A stuck dimension retains
+its own associations but does not block other publishers' erasure. The original
+failure still reaches the caller. Full/90-day raw retention runs independently;
+if it expires inputs before finalization recovers, exact aggregates are incomplete.
+
+Hourly finalization and the first aggregate read publish closed weeks. Reads
+never acquire the ingest admission lock. Public pages share a bounded 128-page
+UTC-day cache; hits perform no database work. Failures or receiver/database day
+disagreement are not cached. Publication markers persist beyond the four-week
+read window. UTC arrival week can differ from sender-local first-active periods;
+keep receiver/database clocks aligned as described above.
+
+### Publisher access and credential availability
+
+An independent publisher credential is `stq_` plus 32 random base64url bytes.
+Provision with operator Bearer `sto_` at `POST /v1/operator/lite/publishers`, body
 `{ "publisher": "publisher:example", "credentialHash": "<lowercase SHA-256>" }`.
-Only the digest is stored. Repeating that operation rotates the publisher's
-key; `DELETE /v1/operator/lite/publishers/:publisher` revokes it. These routes
-use the existing operator authorization boundary.
+Repeating rotates it; `DELETE /v1/operator/lite/publishers/:publisher` revokes it.
+Publisher credentials never ingest or read exact owner analytics.
 
-`GET /v1/publishers/:publisher/aggregates` requires that publisher's Bearer
-`stq_` credential and returns only its own k-filtered noisy marginals for the last
-30 closed days. Operator/source keys and a different publisher's key are refused.
-Publisher credentials never ingest. Missing, malformed or unknown credentials are rejected without opening a database
-transaction. An in-memory digest snapshot classifies known product and publisher
-keys before selecting a budget. Anonymous failures and unknown routes consume
-pre-auth admission before any database work. Known product keys and authenticated
-publisher reads each consume their own per-credential post-auth budget, so bad-key
-floods cannot occupy storage transactions or spend authenticated tokens. Actual
-product operations and publisher reads still recheck authority in their storage
-transaction. Snapshots load at startup, refresh after credential mutations and
-every 30 seconds; a snapshot older than 60 seconds fails closed. Out-of-process
-changes become visible within that TTL; storage authority still refuses revoked
-keys immediately. A bounded LRU retains up to 10,000 credential budgets; eviction
-or restart resets a budget. Both query endpoints cap work at 10,000 marginal
-values and refuse over-limit queries rather than truncating them.
+In-memory digest snapshots classify known Full and publisher keys before database
+work. Unknown keys consume separate pre-auth admission; known keys get their own
+post-auth budgets. Storage operations recheck authority, preserving immediate
+revocation. Snapshots refresh at startup, after mutations, and every 30 seconds.
+After a failed refresh leaves the snapshot **60 seconds stale**, authentication
+returns **503 credentials_stale**, including for valid keys; it never misreports
+401. Fresh unknown/revoked keys return 401. Malformed percent-encoded publisher
+paths return 400. Out-of-process changes refresh within the TTL; per-request
+storage checks still reject revocations immediately. Credential budgets use a
+bounded 10,000-entry LRU; eviction/restart resets a budget.
 
 ### Verification
 
 The existing qualifier includes `qualify-lite.mjs`: real local HTTP and
 PostgreSQL checks for strict rejection, bounded streaming bodies, replay/conflict,
-marginal suppression, publisher isolation/revocation,
+fixed weekly domains, exact operator authorization, immutable publication, publisher isolation/revocation,
 retention, schema refusal, and captured stdout/stderr plus database rows for IPs,
 user agents and rejected content. A smaller diagnostic (not a manifest-bound
 qualification receipt) is available after building:
@@ -421,6 +442,7 @@ qualification receipt) is available after building:
 STATION_TELEMETRY_QUALIFICATION_DATABASE_URL=<private-local-qa-url> \
   node packages/telemetry-broker/qualify-lite.mjs
 npm run test:focused -- packages/telemetry-broker/src/__tests__/broker.test.ts \
+  packages/telemetry-broker/src/__tests__/lite-weekly.test.ts \
   packages/telemetry-broker/src/__tests__/lite-rate-limit.test.ts \
   packages/telemetry-broker/src/__tests__/passive-signals.test.ts
 ```

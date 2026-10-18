@@ -1,30 +1,41 @@
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Station public telemetry</title><style>
-body{font:16px system-ui,sans-serif;line-height:1.6;max-width:64rem;margin:3rem auto;padding:0 1rem;color:#172630;background:#f5f7f8}
-table{border-collapse:collapse;width:100%;background:white}th,td{text-align:left;padding:.6rem;border-bottom:1px solid #d8e1e7}
-section{margin:2rem 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{line-height:1.2}
+*{box-sizing:border-box}body{font:16px system-ui,sans-serif;line-height:1.6;max-width:64rem;margin:3rem auto;padding:0 1.2rem;color:#172630;background:#f5f7f8}
+h1{font-size:2.5rem;line-height:1.15;margin:.4rem 0}h2{font-size:1.2rem}.eyebrow{color:#326358;text-transform:uppercase;letter-spacing:.1em;font-size:.8rem;font-weight:700}
+.note{background:#e7f0ed;border-left:4px solid #326358;padding:1rem 1.2rem;border-radius:4px}label{display:flex;flex:1;flex-direction:column;font-weight:600;gap:.3rem}select{font:inherit;max-width:100%;padding:.6rem;background:white;border:1px solid #a8bcb6;border-radius:6px}.controls{display:flex;gap:1rem;margin:1.5rem 0;flex-wrap:wrap}
+table{border-collapse:collapse;width:100%;background:white}th,td{text-align:left;padding:.7rem;border-bottom:1px solid #d8e1e7}td:last-child,th:last-child{text-align:right}td{overflow-wrap:anywhere}section{margin:2rem 0}.muted{color:#52656f}a{color:#245b50}
+@media(max-width:480px){body{margin:1.5rem auto}h1{font-size:2rem}.controls{display:block}label{margin-bottom:1rem}}
 </style><script src="/public/dashboard.js" defer></script></head><body>
-<h1>Station public telemetry</h1><p>Kontour publisher · last 30 closed UTC receipt days.</p>
-<p>Counts are noisy estimates of received pings, not people. Each published dimension value requires at least ten distinct daily network keys (IPv4 addresses or IPv6 /48s).
-Values below that threshold are omitted. Each released count uses fixed daily differential-privacy noise (per-count ε=1/57); repeated reads return the same estimate. The threshold itself can reveal membership. Set histograms overlap and cannot be summed to a total; dimensions cannot be joined. Missing days mean no publishable data, not zero use.</p>
-<p id="status" role="status">Loading aggregates…</p><main id="results"></main>
-<p><a href="/v1/public/aggregates">Read the aggregate JSON</a></p></body></html>`;
+<div class="eyebrow">Station · Kontour publisher</div><h1>Weekly usage estimates</h1>
+<p class="muted">Last four closed ISO weeks · Monday–Sunday · UTC receiver arrival</p>
+<div class="note"><strong>Noisy estimates, not people.</strong> Every value in the fixed public domain is released, including values with no pings. Zero estimates do not imply zero activity. Counts use one frozen release per publisher and week.</div>
+<p>Profile and adoption fields only. Counters and friction stay in the private operator view. Set values overlap; do not sum them or join dimensions. Calendar activity flags count pings carrying that flag.</p>
+<p class="muted">Pure ε-DP geometric mechanism: per-count ε=1/280, per-ping ε≤1/7. At seven pings per install-week, ε≤1. Typical absolute noise: about 280 pings; 95% within 839 pings. The implementation uses persistent-key HMAC and finite-precision sampling.</p>
+<p id="status" role="status">Loading weekly estimates…</p>
+<main><div class="controls"><label>Week beginning (UTC)<select id="week" disabled></select></label><label>Dimension<select id="dimension" disabled></select></label></div><section id="results"></section></main>
+<p><a href="/v1/public/aggregates">Read the paginated aggregate JSON</a></p></body></html>`;
 
 export const DASHBOARD_JS = `async function load(){
- const status=document.getElementById('status'),root=document.getElementById('results');
+ const status=document.getElementById('status'),root=document.getElementById('results'),week=document.getElementById('week'),dimension=document.getElementById('dimension');
  try{
-  const response=await fetch('/v1/public/aggregates',{credentials:'omit'});
-  if(!response.ok)throw new Error('unavailable');
-  const data=await response.json();
-  status.textContent=data.days.length?'Published marginal values only. Calendar activity flags are estimates.':'No publishable values yet.';
-  for(const day of data.days){
-   const section=document.createElement('section'),title=document.createElement('h2');title.textContent=day.day;section.append(title);
-   const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Usage and friction distributions';details.open=true;details.append(summary);
-   const table=document.createElement('table'),head=document.createElement('tr');for(const label of ['Dimension','Bucket','Estimated pings']){const th=document.createElement('th');th.textContent=label;th.scope='col';head.append(th)}table.append(head);
-   for(const [dimension,buckets] of Object.entries(day.distributions))for(const [bucket,count] of Object.entries(buckets)){
-    const row=document.createElement('tr');for(const value of [dimension,bucket,count]){const td=document.createElement('td');td.textContent=String(value);row.append(td)}table.append(row);
-   }details.append(table);section.append(details);root.append(section);
+  const cells=[];let cursor=null;
+  do{
+   const response=await fetch('/v1/public/aggregates'+(cursor?'?cursor='+encodeURIComponent(cursor):''),{credentials:'omit'});
+   if(!response.ok)throw new Error('unavailable');
+   const data=await response.json();cells.push(...data.cells);cursor=data.nextCursor;
+  }while(cursor);
+  status.textContent=cells.length?'Fixed public domain · all values included · estimates are frozen for each week.':'No configured public domain is available yet.';
+  for(const [select,values] of [[week,[...new Set(cells.map(c=>c.week))].sort().reverse()],[dimension,[...new Set(cells.map(c=>c.dimension))].sort()]]){
+   for(const value of values){const option=document.createElement('option');option.value=value;option.textContent=value;select.append(option)}select.disabled=!values.length;
   }
- }catch{status.textContent='Aggregates are unavailable. Try again later.'}
+  function render(){
+   root.replaceChildren();const title=document.createElement('h2');title.textContent=dimension.value+' · week of '+week.value;root.append(title);
+   const table=document.createElement('table'),head=document.createElement('tr');for(const label of ['Public value','Estimated weekly pings']){const th=document.createElement('th');th.textContent=label;th.scope='col';head.append(th)}table.append(head);
+   for(const cell of cells.filter(c=>c.week===week.value&&c.dimension===dimension.value)){
+    const row=document.createElement('tr');for(const value of [cell.value,cell.estimate.toLocaleString()]){const td=document.createElement('td');td.textContent=String(value);row.append(td)}table.append(row);
+   }root.append(table);
+  }
+  week.addEventListener('change',render);dimension.addEventListener('change',render);if(cells.length)render();
+ }catch{status.textContent='Weekly estimates are unavailable. Try again later.'}
 }load();`;
