@@ -216,13 +216,15 @@ it cannot reduce the selected Agent profile to fit the engine. See
 The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
 register with the live matrix runner. They use a temporary API-created Agent,
 skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
-script nonce or declared output tests skill delivery. A Read-only path fails;
+verified HMAC execution receipt in inspected artifact contents and answer tests skill delivery. A Read-only path fails;
 an absent invocation shape stays unverified. The Claude shape comes from real
 CLI tool execution with loopback fixture inference, not a billable/live model
-capture. A follow-up `tool.started` record tests MCP use. A known
+capture. A follow-up tool start plus a call-ID-matched successful completion tests MCP use; observable output must contain the ping marker. A known
 fixture action is disabled through Station's integration policy and checked
-against the same run's discovered tool inventory before absence can count as
-success. A recorded call to the fixture's enabled action is also required.
+against the same run's discovered tool inventory. Non-use alone is unverified:
+positive selection evidence requires an engine tool list naming this server's
+ping but excluding blocked. Rejected attempts are not breaches; successful
+blocked completions or the action's output are breaches.
 
 This is an MCP tool-selection probe for Station, Claude and Codex. The separate
 `nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot

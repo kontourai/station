@@ -87,9 +87,12 @@ time; these deterministic tests are not a live-provider receipt.
 with longer diagnostic sessions. It does not replace the one-turn smoke or
 promote connection readiness. The matrix is opt-in, may incur provider charges,
 and live runs stay outside deterministic CI. Offline tests drive the real Hono
-orchestration routes and `OrchestrationService` over loopback HTTP, replacing
-only the provider adapter and read-only agent/connection configuration. They
-exercise real validation, conversation continuation, provenance projection,
+orchestration routes and `OrchestrationService` over loopback HTTP, behind the
+daemon's real ingress middleware. `EnvironmentSecurityService` mints the bearer
+credential, the production resolver derives the principal, and the production
+current-principal check guards requests. A headerless request receives 401.
+Only the provider adapter and read-only agent/connection configuration are
+faked. These tests exercise real validation, conversation continuation, provenance projection,
 output admission/storage/inspection and activation lifecycle. The test output
 observer is a fake engine-side observer; real-provider and rendered-browser
 qualification remain **NOT_VERIFIED** until an operator explicitly runs them.
@@ -153,6 +156,10 @@ identical. Stop uses the public `/api/orchestration/commands` route's
 `stopSession` command. Internal `startSession` and `sendTurn` commands are not
 accepted by that route. These observations prove the public API's activation transition, not an OS
 process exit or native provider-session identity. JSON retains those states.
+The offline adapter publishes an opaque `resumeCursor` through the provider
+session/turn contract. Its durable memory is keyed only by that cursor, never
+by Station's thread ID; stop clears hot memory. Recycle recall therefore
+requires Station to return the cursor on restart. Dropping it fails recall.
 Artifact support depends on the engine using Station's native output producer;
 an undeclared file cannot pass. The runner uses the output's exact event ID with
 `POST /outputs/:eventId/inspect`, requires the returned session/turn/output
@@ -181,12 +188,17 @@ supply that identity, while an explicitly vendor-qualified request also covers
 new families and vendor namespaces without a fixed registry. A bare unknown family cannot establish a reported prefix's vendor
 and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
 forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
-matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, and Vertex's
+matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, bare
+Bedrock vendor-dot forms such as `anthropic.claude-sonnet-4-5-20250929-v1:0`, and Vertex's
 `claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
 cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
 versions fail. Dots inside bare model IDs (for example `grok-4.1` or
 `qwen3.5-coder`) remain part of the model name. Only an explicit `vendor/`
-prefix or a known `region.vendor.` form establishes a vendor prefix.
+prefix, a known Bedrock vendor-dot prefix, or a known `region.vendor.` form
+establishes a vendor prefix. `moonshotai`/`moonshot`, `xai`/`x-ai` and
+`deepseek-ai`/`deepseek` name the same vendors. An undated `-v1:0` suffix is
+accepted only on a Bedrock vendor-dot form; bare `gpt-4.1-v1:0` and
+`claude-sonnet-4-5-v1:0` are distinct IDs, not accepted aliases.
 The accepted/rejected table in the
 [matrix tests](../../scripts/__tests__/station-engine-matrix.test.ts) pins this
 policy. All stored-output pages are read; partial results fail. Duplicate or
@@ -212,11 +224,16 @@ trusted local ES module. It may export either or both:
   valid. An optional positive integer `maxTurns` per scenario declares its
   planning bound per model (or once per engine with `scope: 'engine'`). Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario instance);
-  its printed count is an upper bound. Every managed foreground submission or continuation, background/delegated
-  submission, and `steerTurn`/`steerTurnOnce` command consumes both the printed
-  plan reservation and the hard run ceiling, including `ctx.api` and
-  `ctx.command` calls. The effective HTTP method and path are normalized before
-  counting; query strings and an explicit method cannot bypass the ceiling.
+  its printed count is an upper bound. Every POST through the managed API
+  reserves a turn, including unknown routes, handoff, delegation continuation,
+  Agent chat/invoke and steer commands. Only these known non-billable operations
+  are exempt: `stopSession`, `interruptTurn`, `inspectSteerInput`,
+  `setApprovalMode`, `discardDraft`, and session-output inspection. This is a
+  conservative request budget: an extension's other POSTs consume its declared
+  `maxTurns` reservation even if they do not invoke a model. Review those
+  reservations when adding extension setup operations. The effective HTTP
+  method and path are normalized; query strings and explicit methods cannot
+  bypass either the printed reservation or hard run ceiling.
   An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox.
   `ctx` provides the current `sessionId`, stable `conversationId`, `model`, `switchModel`,
@@ -239,13 +256,18 @@ trusted local ES module. It may export either or both:
   map. The evaluator receives the exact turn's assistant text, complete stored
   output names, events, and identity checks. It returns additional named verdicts;
   it cannot overwrite the built-in checks. Passing `null` as the expected text
-  delegates response judgment to those checks. Added scenarios may send additional
+  delegates response judgment to those checks and requires an evaluator. Artifact content may be an expected string or a verifier function over the inspected text. The evaluator also receives `sessionEvents` for engine-reported configuration receipts. Added scenarios may send additional
   billable turns; review extension code before confirming.
 
 `ctx.api` forwards every supplied transport argument. Its third argument is the
 HTTP method: `ctx.api(path, undefined, 'DELETE')` performs DELETE cleanup. If the
 method is omitted, the command transport retains its GET default without a body
 and POST default with a body. Existing two-argument calls remain valid.
+`ctx.sessionId` is a getter: before the first send it is the proposed
+conversation ID, and after each send it is the runtime session ID in Station's
+receipt. Read it lazily when making an observation or API request; do not
+capture or destructure it before a send and reuse that value afterward.
+`ctx.conversationId` remains stable across those changes.
 
 The adapter catalog and orchestration return types explicitly retain optional
 `resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
@@ -265,7 +287,10 @@ failure text; JSON also retains concrete comparison models, the send plan/count,
 session/turn IDs and individual checks. New session-level `runtime.error` events
 without a turn ID retain their actual error text. The cursor starts empty for
 each new conversation and advances only through a completed-turn event. Startup
-errors belong to this run. Reads before later sends do not reset the cursor. Errors in the gap after a terminal,
+errors belong to this run. Reads before later sends do not reset the cursor.
+An error explicitly scoped to an earlier completed turn is not attributed to a
+new turn; the offline negative control pins that distinction. Unscoped startup
+errors on a freshly created matrix conversation are never excluded as history. Errors in the gap after a terminal,
 including errors emitted during `stopSession`, fail the next attempted scenario
 before another billable send.
 Exit 0 requires every row
@@ -312,8 +337,16 @@ local stdio MCP server exposes harmless `ping` and `blocked` actions. The table
 in `scripts/engine-delivery-probes.ts` names `blocked` for Station, Claude and
 Codex; the deterministic test reads the fixture's actual MCP `tools/list`, and
 runtime preflight repeats the existence check against Station's integration
-inventory. The disabled-tool verdict requires a recorded positive `ping` call
-and no recorded `blocked` call across either probe turn. Unknown IDs fail before
+inventory. MCP use requires a successful `tool.completed` matched to the current
+turn's server-qualified `ping` start by call ID; observable output must contain
+`DELIVERY_PING_OK`. A blocked action is a breach only with a matched successful
+completion or its `DISABLED_TOOL_WAS_CALLED` output. A rejected/hallucinated
+attempt is not a breach. Positive selection proof requires an engine-reported
+tool list containing this server's `ping` and omitting `blocked`; without it,
+non-use remains unverified. Claude's init `tools` shape comes from line 1 of the
+[CLI capture](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl);
+the mapper retains it as `session.configured.metadata.engineToolNames`. Other
+engines without this receipt remain unverified. Unknown IDs fail before
 sending. This tests MCP selection, not a native-tool disable or the entire
 pre-tool approval chain. ACP has no MCP per-tool selection channel, and its
 policy probe is unsupported; it receives an unrestricted fixture for the MCP
@@ -322,8 +355,13 @@ use check. Muse and unknown engines without server delivery are skipped.
 The temporary Agent binds the selected connection, integration, Station Control
 and supported skill through Station's APIs. The skill's
 nonce appears only in `scripts/probe.mjs`, never its `SKILL.md` or a prompt. The
-script prints it and creates a uniquely named workspace file. Script execution requires the answer nonce or the exact file among that turn's
-stored outputs. The separate output evidence records whether the file was declared.
+script generates a fresh runtime input and writes `{ input, proof }`, where
+`proof = HMAC-SHA256(nonce, input)`. The receipt must appear in the answer and
+its contents must verify through the existing identity-bound artifact inspection
+API. Echoing the embedded nonce or declaring a known filename is insufficient.
+The script cell additionally requires passing skill delivery. This proves a
+computed execution receipt, not OS attestation of a particular executable: an
+agent running equivalent HMAC code can reproduce the receipt protocol.
 The skill API currently creates `SKILL.md` but cannot upload bundled resources,
 so this diagnostic adds the script directly to the API-created package after
 checking its path and body locally. Run it on the same host/filesystem as Station;
@@ -334,8 +372,7 @@ The script lives at the API-returned skill package directory plus
 `<cwd>/.claude/skills/<skill-id>/scripts/probe.mjs`. Finding this file is not skill
 invocation. The skill verdict additionally requires the exact turn's recorded
 `Skill` tool call with `arguments.skill` equal to the probe's unique name and a
-matching successful `tool.completed` event. The answer nonce **or** the script's
-file in stored outputs must also be observed. A `Read` of that script without
+matching successful `tool.completed` event and the verified execution receipt. A `Read` of that script without
 `Skill` fails. Missing invocation records or a missing engine-specific shape
 remain unverified, with their reason. A failed invocation cannot pass merely
 because the script was read separately.
@@ -370,7 +407,7 @@ Those commands write raw local artifacts under `.kontourai/skill-captures/`;
 inspect and scrub them before committing. Normal tests replay checked-in
 captures through the real mapper; they do not start the CLI or call a model.
 
-The MCP verdict uses exact, server-qualified names in `tool.started` events,
+The MCP verdict uses exact, server-qualified tool starts and matched successful completions,
 never assistant prose. Missing identity provenance cannot verify a delivery
 cell. A declared delivery without a passing probe renders **unverified** in a
 separate delivery table. The overall scenario still requires the existing UI
@@ -393,7 +430,12 @@ Cleanup stops the probe session, deletes the temporary Agent and skill through
 Station's APIs, and deletes the integration (including its disable policy).
 Obligations are registered before creation so a lost acknowledgement still
 triggers a cleanup attempt. Every failed cleanup is reported as a failed row,
-including alongside a skipped dependency. Session receipts and declared workspace
+including alongside a skipped dependency. SIGINT/SIGTERM trigger all registered
+compensations once, concurrently so a stalled session stop cannot prevent the
+three DELETEs. A five-second deadline exits 130/143 and prints unconfirmed and
+all run-owned IDs for recovery. SIGKILL, host/process crashes, or a server-side
+create that commits after an interrupted request's cleanup are outside that
+confirmation; inspect the printed IDs before discarding the instance. Session receipts and declared workspace
 outputs remain for inspection; remove the disposable instance/workspace after
 review. Live provider loading, native-tool policy enforcement, and actual rendered
 outputs are **NOT_VERIFIED** by the deterministic fixture suite.
@@ -416,7 +458,7 @@ no body schema. The probe sends no PUT requests.
 | `GET /integrations` | `src-server/routes/agents/tools.ts:342` | No body; discovered original tool names are projected by the real route. |
 | `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:291`; `{ disabledTools: ['blocked'] }`. |
 | `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:290`; `{ enabled: true }`. |
-| `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description and `global: true`. |
+| `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description; omitted `global` uses the local package scope. |
 | `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
 | `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts:92`, managed prompt guard `:132`); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
 | `DELETE /agents/:slug` | `src-server/routes/agents/agents.ts:557` | Required slug; service refuses reserved identities or referenced Agents. |
@@ -441,7 +483,7 @@ Station adapter loads the API-created Agent from the real store, executes the
 bundled script, declares its actual file through the native output owner, and
 calls `ping` on the configured local MCP server. The result retains Station's
 unverified skill cell because no captured Station invocation shape is adopted;
-script, MCP and selection checks pass. The test asserts fourteen counted sends,
+execution and MCP-use checks pass; script and selection cells remain unverified without native skill/tool-list receipts. The test asserts fourteen counted sends,
 three successful DELETEs and no retained resources. It found and fixed an invalid
 empty managed-Agent prompt that schema-only stubs had accepted. It does not
 exercise external adapters' passthrough or prove native policy enforcement.

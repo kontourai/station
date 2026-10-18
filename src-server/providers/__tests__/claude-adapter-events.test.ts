@@ -106,6 +106,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'system',
         subtype: 'init',
+        tools: [],
         session_id: 'forked-child',
         cwd: '/workspace/project',
         model: 'claude-sonnet-4-6',
@@ -1631,6 +1632,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
       message: {
         type: 'system',
         subtype: 'init',
+        tools: [],
         session_id: 'thread-report',
         cwd: '/workspace',
         model: 'claude-fable-5',
@@ -2419,6 +2421,7 @@ describe('#2324 turn ledger attribution with command lifecycle', () => {
     map({
       type: 'system',
       subtype: 'init',
+      tools: [],
       cwd: '/w',
       model: 'm',
       capabilities: ['msg_lifecycle_v1'],

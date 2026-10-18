@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,8 @@ type Event = {
   toolCallId?: string;
   arguments?: unknown;
   status?: string;
+  output?: unknown;
+  metadata?: { engineToolNames?: string[] };
 };
 type Evidence = {
   declared: string;
@@ -51,11 +53,12 @@ type Context = Setup & {
     model: string,
     expected: string | null,
     artifact: string | undefined,
-    artifactContent: string | undefined,
+    artifactContent: string | ((text: string) => boolean) | undefined,
     evaluate?: (turn: {
       text: string;
       storedOutputs: string[];
       events: Event[];
+      sessionEvents: Event[];
       turnId: string;
       identityChecks: Record<string, Verdict>;
     }) => Record<string, Verdict>,
@@ -173,11 +176,11 @@ function checkSkillInvocation(
   return scriptObserved
     ? {
         verdict: 'pass',
-        reason: 'Recorded skill invocation and script nonce or output observed',
+        reason: 'Recorded skill invocation and verified execution receipt',
       }
     : {
         verdict: 'fail',
-        reason: 'Skill invoked without a script nonce or output',
+        reason: 'Skill invoked without a verified execution receipt',
       };
 }
 
@@ -185,17 +188,45 @@ function disabledId(engine: string): string | undefined {
   return Object.entries(DISABLED_TOOL_IDS).find(([id]) => id === engine)?.[1];
 }
 
+function completions(events: Event[], names: string[]) {
+  return events.filter(
+    (event) =>
+      event.method === 'tool.completed' &&
+      event.toolCallId &&
+      events.some(
+        (call) =>
+          call.method === 'tool.started' &&
+          call.toolCallId === event.toolCallId &&
+          names.includes(call.toolName ?? ''),
+      ),
+  );
+}
+
 export function checkDisabledTool(
   engine: string,
   inventory: string[],
-  calls: string[],
+  events: Event[],
   serverId: string,
+  reportedTools?: string[],
 ): Verdict {
   const id = disabledId(engine);
   if (!id) return 'unverified';
   if (!inventory.includes(id)) return 'fail';
-  return calls.some((name) => toolNames(serverId, id).includes(name))
-    ? 'fail'
+  if (
+    completions(events, toolNames(serverId, id)).some(
+      (event) =>
+        event.status === 'success' ||
+        (typeof event.output === 'string' &&
+          event.output.includes('DISABLED_TOOL_WAS_CALLED')),
+    )
+  )
+    return 'fail';
+  if (
+    !reportedTools?.some((name) => toolNames(serverId, 'ping').includes(name))
+  )
+    return 'unverified';
+  return reportedTools.some((name) => toolNames(serverId, id).includes(name))
+    ? 'unverified'
     : 'pass';
 }
 
@@ -206,12 +237,6 @@ function toolNames(serverId: string, name: string) {
     normalizeToolName(`${serverId}_${name}`),
     `mcp__${serverId}__${name}`,
   ];
-}
-
-function callsIn(events: Event[]) {
-  return events
-    .filter((event) => event.method === 'tool.started')
-    .map((event) => event.toolName ?? '');
 }
 
 async function data<T>(
@@ -367,7 +392,6 @@ export const scenarios = [
           name: skillId,
           body,
           description: 'Temporary engine delivery probe',
-          global: true,
         });
         const installed = await data<{ path: string }>(
           ctx.api,
@@ -387,7 +411,7 @@ export const scenarios = [
         await mkdir(join(installed.path, 'scripts'));
         await writeFile(
           join(installed.path, 'scripts/probe.mjs'),
-          `import { writeFileSync } from 'node:fs';\nconst nonce = ${JSON.stringify(nonce)};\nwriteFileSync(${JSON.stringify(artifact)}, nonce, { flag: 'wx' });\nconsole.log(nonce);\n`,
+          `import { writeFileSync } from 'node:fs';\nimport { randomBytes, createHmac } from 'node:crypto';\nconst nonce = ${JSON.stringify(nonce)};\nconst input = randomBytes(32).toString('hex');\nconst proof = createHmac('sha256', nonce).update(input).digest('hex');\nconst receipt = JSON.stringify({ input, proof });\nwriteFileSync(${JSON.stringify(artifact)}, receipt, { flag: 'wx' });\nconsole.log(receipt);\n`,
           { flag: 'wx' },
         );
       }
@@ -420,33 +444,62 @@ export const scenarios = [
     },
     async run(ctx: Context) {
       const state = ctx.state;
-      const allCalls: string[] = [];
+      const allEvents: Event[] = [];
       if (state.skill) {
+        let receiptProof: string | undefined;
         await ctx.send(
           `Use the ${state.skillId} skill now. Follow its instructions and return its script receipt.`,
           ctx.model,
           null,
-          undefined,
-          undefined,
-          ({ text, storedOutputs, events, identityChecks, turnId }) => {
-            allCalls.push(...callsIn(events));
-            const nonceObserved = text.includes(state.nonce);
-            const outputObserved = storedOutputs.includes(state.artifact);
+          state.artifact,
+          (content) => {
+            receiptProof = undefined;
+            try {
+              const receipt = JSON.parse(content) as {
+                input?: unknown;
+                proof?: unknown;
+              };
+              if (
+                typeof receipt.input !== 'string' ||
+                !/^[a-f0-9]{64}$/.test(receipt.input) ||
+                typeof receipt.proof !== 'string'
+              )
+                return false;
+              const expected = createHmac('sha256', state.nonce)
+                .update(receipt.input)
+                .digest('hex');
+              if (receipt.proof !== expected) return false;
+              receiptProof = expected;
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          ({ text, events, identityChecks, turnId }) => {
+            allEvents.push(...events);
+            const executed = !!receiptProof && text.includes(receiptProof);
             const invocation = checkSkillInvocation(
               ctx.engine,
               state.skillId,
               events,
-              nonceObserved || outputObserved,
+              executed,
             );
             const checks: Record<string, Verdict> = {
               deliveryIdentity: identityVerdict(identityChecks),
               skillDelivery: invocation.verdict,
-              scriptExecuted: nonceObserved || outputObserved ? 'pass' : 'fail',
+              scriptExecuted: executed ? 'pass' : 'fail',
             };
             ctx.delivery.skills.reason = invocation.reason;
-            ctx.delivery.script.reason = `Answer nonce ${nonceObserved ? 'observed' : 'absent'}; declared script output ${outputObserved ? 'observed' : 'absent'}`;
+            ctx.delivery.script.reason =
+              'Requires matching skill invocation and a verified HMAC receipt in declared artifact contents and answer';
             record(ctx.delivery, 'skills', checks, ['skillDelivery'], turnId);
-            record(ctx.delivery, 'script', checks, ['scriptExecuted'], turnId);
+            record(
+              ctx.delivery,
+              'script',
+              checks,
+              ['scriptExecuted', 'skillDelivery'],
+              turnId,
+            );
             return checks;
           },
         );
@@ -457,13 +510,25 @@ export const scenarios = [
         null,
         undefined,
         undefined,
-        ({ events, identityChecks, turnId }) => {
-          const currentCalls = callsIn(events);
-          const calls = [...allCalls, ...currentCalls];
+        ({ events, sessionEvents, identityChecks, turnId }) => {
+          const calls = [...allEvents, ...events];
+          const reportedTools = sessionEvents
+            .filter(
+              (event) =>
+                event.method === 'session.configured' &&
+                event.metadata?.engineToolNames,
+            )
+            .at(-1)?.metadata?.engineToolNames;
           const checks: Record<string, Verdict> = {
             deliveryIdentity: identityVerdict(identityChecks),
-            toolServerUsed: currentCalls.some((name) =>
-              toolNames(state.serverId, 'ping').includes(name),
+            toolServerUsed: completions(
+              events,
+              toolNames(state.serverId, 'ping'),
+            ).some(
+              (event) =>
+                event.status === 'success' &&
+                (event.output === undefined ||
+                  JSON.stringify(event.output).includes('DELIVERY_PING_OK')),
             )
               ? 'pass'
               : 'fail',
@@ -473,6 +538,7 @@ export const scenarios = [
                   state.inventory,
                   calls,
                   state.serverId,
+                  reportedTools,
                 )
               : 'unverified',
           };

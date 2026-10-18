@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createMatrixCleanup } from './matrix-cleanup.mjs';
 
 function modelVendor(model) {
   if (/^deepseek-/.test(model)) return 'deepseek';
@@ -20,16 +21,28 @@ function modelIdentity(value) {
       qualified,
     );
   const explicit = /^([a-z][a-z0-9-]*)\/(.+)$/.exec(qualified);
-  const prefix = regional ?? explicit;
-  return { model: prefix?.[2] ?? qualified, vendor: prefix?.[1] };
+  const dotted = /^(anthropic|amazon|meta|mistral|cohere|ai21)\.(.+)$/.exec(
+    qualified,
+  );
+  const prefix = regional ?? explicit ?? dotted;
+  const vendorAliases = new Map([
+    ['moonshotai', 'moonshot'],
+    ['xai', 'x-ai'],
+    ['deepseek-ai', 'deepseek'],
+  ]);
+  return {
+    model: prefix?.[2] ?? qualified,
+    vendor: vendorAliases.get(prefix?.[1]) ?? prefix?.[1],
+    bedrock: Boolean(regional ?? dotted),
+  };
 }
 
-function modelSnapshot(model) {
+function modelSnapshot(model, bedrock) {
   const match =
     /^(.*?)[-@](20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v(\d+(?::\d+)?))?$/.exec(model);
   return match
     ? { base: match[1], date: match[2].replaceAll('-', ''), version: match[3] }
-    : /^(.*?)-v(\d+:\d+)$/.test(model)
+    : bedrock && /^(.*?)-v(\d+:\d+)$/.test(model)
       ? {
           base: model.replace(/-v\d+:\d+$/, ''),
           version: /-v(\d+:\d+)$/.exec(model)[1],
@@ -48,8 +61,8 @@ export function checkServedModel(requested, reported) {
     (requestedVendor && b.vendor && b.vendor !== requestedVendor)
   )
     return 'fail';
-  const left = modelSnapshot(a.model);
-  const right = modelSnapshot(b.model);
+  const left = modelSnapshot(a.model, a.bedrock);
+  const right = modelSnapshot(b.model, b.bedrock);
   if (
     left.base !== right.base ||
     (left.date && right.date && left.date !== right.date) ||
@@ -329,7 +342,13 @@ async function inspectArtifact(
         inspection.item?.turnId === turnId &&
         inspection.kind === 'text'
       )
-        contentCheck = inspection.text === artifactContent ? 'pass' : 'fail';
+        contentCheck = (
+          typeof artifactContent === 'function'
+            ? artifactContent(inspection.text) === true
+            : inspection.text === artifactContent
+        )
+          ? 'pass'
+          : 'fail';
     }
   }
   return contentCheck;
@@ -352,18 +371,21 @@ async function inspectArtifact(
  * modelIds?: string[], maxTurns?: number, agentId?: string, onPlan?: Function}} options
  * @returns {Promise<MatrixResult>}
  */
-export async function runMatrix({
-  api,
-  connectionId,
-  cwd,
-  timeoutMs = 60_000,
-  observeOutputs,
-  additionalScenarios = [],
-  modelIds = [],
-  maxTurns = 24,
-  onPlan = () => {},
-  agentId = '',
-}) {
+async function runMatrixWithLifecycle(
+  {
+    api,
+    connectionId,
+    cwd,
+    timeoutMs = 60_000,
+    observeOutputs,
+    additionalScenarios = [],
+    modelIds = [],
+    maxTurns = 24,
+    onPlan = () => {},
+    agentId = '',
+  },
+  cleanupScope,
+) {
   const inventory = await api('/api/connections/agents');
   if (inventory.failures?.length)
     throw new Error('Connection inventory is incomplete');
@@ -409,12 +431,22 @@ export async function runMatrix({
       '',
     );
     const method = String(rest[0] ?? (body ? 'POST' : 'GET')).toUpperCase();
-    const billable =
-      /^\/api\/orchestration\/chat(?:\/(?:background|delegated|[^/]+\/continue))?$/.test(
-        pathname,
-      ) ||
+    const nonBillable =
       (pathname === '/api/orchestration/commands' &&
-        ['sendTurn', 'steerTurn', 'steerTurnOnce'].includes(body?.type));
+        [
+          'stopSession',
+          'interruptTurn',
+          'inspectSteerInput',
+          'setApprovalMode',
+          'discardDraft',
+        ].includes(body?.type)) ||
+      /^\/api\/orchestration\/sessions\/[^/]+\/outputs\/[^/]+\/inspect$/.test(
+        pathname,
+      );
+    // Unknown POST routes reserve a turn too: extensions must not bypass the ceiling.
+    const billable = !nonBillable;
+    if (cleanupScope.interrupted && method === 'POST' && billable)
+      throw new Error('Run interrupted');
     if (method === 'POST' && billable) {
       if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
@@ -433,9 +465,11 @@ export async function runMatrix({
       : 'Station API only; rendered UI NOT_VERIFIED',
     plan,
     rows,
+    sentTurns: 0,
   };
   const command = (value) =>
     checkedApi('/api/orchestration/commands', value).then((body) => body.data);
+  const trackCleanup = cleanupScope.trackCleanup;
   const modelScenarios = registered.filter(
     (scenario) => scenario.scope !== 'engine',
   );
@@ -455,6 +489,7 @@ export async function runMatrix({
     const nonce = randomUUID();
     const base = { engine, connectionId, model, conversationId };
     let started = false;
+    let sessionCleanup;
     let completedEventIds = new Set();
     let jobAgent = agent;
     const cleanup = [];
@@ -470,7 +505,8 @@ export async function runMatrix({
       },
       conversationId,
       delivery,
-      deferCleanup: (label, run) => cleanup.push({ label, run }),
+      deferCleanup: (label, run) =>
+        cleanup.push({ label, run: trackCleanup(label, run) }),
     };
     try {
       const prepared = await lifecycle?.prepare?.(setup);
@@ -544,6 +580,8 @@ export async function runMatrix({
             artifactContent,
             evaluate,
           ) {
+            if (expectedText === null && !evaluate)
+              throw new Error('A null expected response requires an evaluator');
             // Recheck isolation before every billable turn, including switches.
             const current = await api('/api/connections/agents');
             if (
@@ -574,6 +612,13 @@ export async function runMatrix({
             );
             if (pendingError) throw new Error(pendingError.message);
             const first = !started;
+            if (first)
+              sessionCleanup = trackCleanup(`session ${conversationId}`, () =>
+                command({
+                  type: 'stopSession',
+                  threadId: activeSessionId ?? conversationId,
+                }),
+              );
             started = true;
             const ack = (
               await checkedApi(
@@ -710,13 +755,17 @@ export async function runMatrix({
                   : 'fail',
             };
             if (evaluate) {
-              const events = (
+              const sessionEvents = (
                 await api(`/api/orchestration/sessions/${sessionId}/events`)
-              ).data.filter((event) => event.turnId === ack.providerTurnId);
+              ).data;
+              const events = sessionEvents.filter(
+                (event) => event.turnId === ack.providerTurnId,
+              );
               const checks = await evaluate({
                 text,
                 storedOutputs: stored,
                 events,
+                sessionEvents,
                 turnId: ack.providerTurnId,
                 identityChecks: {
                   servedModel: turn.checks.servedModel,
@@ -796,10 +845,7 @@ export async function runMatrix({
     } finally {
       if (started) {
         try {
-          await command({
-            type: 'stopSession',
-            threadId: activeSessionId ?? conversationId,
-          });
+          await sessionCleanup();
         } catch {
           result.rows.push({
             ...base,
@@ -875,4 +921,14 @@ export function renderMatrix(result) {
         ]
       : []),
   ].join('\n');
+}
+
+/** @param {Parameters<typeof runMatrixWithLifecycle>[0]} options */
+export async function runMatrix(options) {
+  const lifecycle = createMatrixCleanup();
+  try {
+    return await runMatrixWithLifecycle(options, lifecycle);
+  } finally {
+    lifecycle.dispose();
+  }
 }

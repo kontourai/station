@@ -71,6 +71,8 @@ async function toolInventory() {
 async function skillCaptureEvents(
   readOnly: boolean,
   skillId: string,
+  fault?: Fault,
+  serverId?: string,
 ): Promise<CanonicalRuntimeEvent[]> {
   const name = readOnly
     ? 'claude-2.1.296-script-read-local.jsonl'
@@ -88,6 +90,74 @@ async function skillCaptureEvents(
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line));
+  for (const message of messages) {
+    if (
+      message.type === 'system' &&
+      message.subtype === 'init' &&
+      serverId &&
+      fault !== 'no-tool-list'
+    )
+      message.tools.push(`mcp__${serverId}__ping`);
+    if (
+      message.type === 'system' &&
+      message.subtype === 'init' &&
+      serverId &&
+      fault === 'advertised-blocked'
+    )
+      message.tools.push(`mcp__${serverId}__blocked`);
+    if (
+      message.type === 'assistant' &&
+      Array.isArray(message.message.content)
+    ) {
+      for (const block of message.message.content)
+        if (
+          block.type === 'tool_use' &&
+          block.name === 'Skill' &&
+          fault === 'wrong-skill'
+        )
+          block.input = { skill: 'another-skill' };
+      if (
+        (fault === 'wrong-completion' || fault === 'two-call-failed') &&
+        message.message.content.some(
+          (block) => block.type === 'tool_use' && block.name === 'Skill',
+        )
+      )
+        message.message.content.push({
+          type: 'tool_use',
+          id: 'toolu_other',
+          name: 'Read',
+          input: { file_path: '/workspace/unrelated' },
+        });
+    }
+    if (
+      message.type === 'user' &&
+      Array.isArray(message.message.content) &&
+      message.message.content.some((block) => block.type === 'tool_result')
+    ) {
+      if (fault === 'wrong-completion')
+        message.message.content = [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_other',
+            content: 'Other call succeeded',
+          },
+        ];
+      if (fault === 'two-call-failed')
+        message.message.content = [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_skill_fixture',
+            is_error: true,
+            content: 'Skill failed',
+          },
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_other',
+            content: 'Other call succeeded',
+          },
+        ];
+    }
+  }
   const record: ClaudeMessageState = {
     session: {
       provider: 'claude',
@@ -107,10 +177,26 @@ async function skillCaptureEvents(
       message,
       publish: (event) => events.push(event),
     });
-  return events.filter((event) => event.method.startsWith('tool.'));
+  return events.filter(
+    (event) =>
+      event.method.startsWith('tool.') || event.method === 'session.configured',
+  );
 }
 
 type Fault =
+  | 'read-echo'
+  | 'wrong-artifact'
+  | 'wrong-skill'
+  | 'wrong-completion'
+  | 'two-call-failed'
+  | 'ping-error'
+  | 'ping-wrong-id'
+  | 'advertised-blocked'
+  | 'ping-missing'
+  | 'ping-wrong-output'
+  | 'blocked-rejected'
+  | 'no-tool-list'
+  | 'refused-create'
   | 'nonce'
   | 'read-only'
   | 'failed-skill'
@@ -146,6 +232,7 @@ async function exercise(
   const root = await temp('delivery-probe-');
   const inventory = await toolInventory();
   const requests = options.requests ?? [];
+  const created = new Set<string>();
   const sessions = new Map<
     string,
     { secret?: string; delivery: boolean; loaded: boolean }
@@ -179,6 +266,8 @@ async function exercise(
     ) {
       if (fault === 'cleanup' && path.startsWith('/agents/'))
         throw new Error('agent delete refused');
+      if (!created.delete(path))
+        throw new Error(`404: ${path} was never created`);
       return { data: {} };
     }
     if (path === '/api/connections/agents')
@@ -202,7 +291,9 @@ async function exercise(
           },
         ],
       };
-    if (path.startsWith('/api/agents/'))
+    if (path.startsWith('/api/agents/')) {
+      if (!created.has(path.replace('/api/agents/', '/agents/')))
+        throw new Error('404: Agent not found');
       return {
         data: {
           slug: skillId,
@@ -212,6 +303,7 @@ async function exercise(
           },
         },
       };
+    }
     if (path.endsWith('/models'))
       return {
         data: (engine === 'claude'
@@ -227,6 +319,7 @@ async function exercise(
       };
     if (path === '/integrations' && method === 'POST') {
       serverId = integrationSchema.parse(body).id;
+      created.add(`/integrations/${serverId}`);
       return { data: {} };
     }
     if (/^\/integrations\/[^/]+\/reconnect$/.test(path) && method === 'POST')
@@ -259,6 +352,7 @@ async function exercise(
       const skill = localSkillCreateSchema.parse(body);
       assertSafeSkillName(skill.name);
       skillId = skill.name;
+      created.add(`/api/skills/${skillId}`);
       skillBody = skill.body;
       await mkdir(join(root, skillId));
       await writeFile(join(root, skillId, 'SKILL.md'), skill.body);
@@ -277,6 +371,8 @@ async function exercise(
       const { slug, ...spec } = agent;
       validator.validateAgentSpec(spec, slug);
       skillId = String(agent.slug);
+      if (fault === 'refused-create') throw new Error('Agent create refused');
+      created.add(`/agents/${skillId}`);
       if (fault === 'prepare')
         throw new Error('agent create acknowledgement lost');
       return { data: {} };
@@ -327,6 +423,7 @@ async function exercise(
       let outputs: string[] = [];
       let calls: string[] = [];
       let captured: CanonicalRuntimeEvent[] = [];
+      let receiptContent: string | undefined;
       if (prompt.startsWith('Remember this secret'))
         session.secret = prompt.split(': ')[1].split('.')[0];
       else if (prompt.startsWith('Reply with exactly the secret'))
@@ -334,21 +431,39 @@ async function exercise(
       else if (prompt.startsWith('Create ')) outputs = [prompt.split(' ')[1]];
       else if (prompt.startsWith('Use the delivery-')) {
         const script = join(root, skillId, 'scripts/probe.mjs');
-        const result = await exec(process.execPath, [script], {
-          cwd: root,
-          windowsHide: true,
-          timeout: 5000,
-        });
-        scriptRan = true;
+        const result =
+          fault === 'read-echo'
+            ? {
+                stdout:
+                  /const nonce = (.*);/.exec(
+                    await readFile(script, 'utf8'),
+                  )?.[1] ?? '',
+              }
+            : await exec(process.execPath, [script], {
+                cwd: root,
+                windowsHide: true,
+                timeout: 5000,
+              });
+        scriptRan = fault !== 'read-echo';
         text =
           fault === 'nonce' || fault === 'no-script-proof'
             ? 'script completed'
             : result.stdout.trim();
         const artifact = skillBody.match(/writes (delivery-\w+\.txt)/)?.[1];
         expect(artifact).toBeDefined();
-        expect(await readFile(join(root, artifact ?? ''), 'utf8')).toBe(
-          result.stdout.trim(),
-        );
+        if (scriptRan)
+          expect(await readFile(join(root, artifact ?? ''), 'utf8')).toBe(
+            result.stdout.trim(),
+          );
+        receiptContent =
+          fault === 'read-echo'
+            ? 'read only'
+            : fault === 'wrong-artifact'
+              ? JSON.stringify({
+                  ...JSON.parse(result.stdout.trim()),
+                  proof: '0'.repeat(64),
+                })
+              : result.stdout.trim();
         expect(skillBody).not.toContain(result.stdout.trim());
         expect(
           JSON.stringify(
@@ -362,7 +477,12 @@ async function exercise(
             ? []
             : [artifact ?? ''];
         if (engine === 'claude' && fault !== 'no-invocation')
-          captured = await skillCaptureEvents(fault === 'read-only', skillId);
+          captured = await skillCaptureEvents(
+            fault === 'read-only' || fault === 'read-echo',
+            skillId,
+            fault,
+            serverId,
+          );
         if (fault === 'failed-skill')
           captured = captured.map((event) =>
             event.method === 'tool.completed'
@@ -381,7 +501,8 @@ async function exercise(
                   ? `${serverId}/ping`
                   : `mcp__${serverId}__ping`,
               ];
-        if (fault === 'blocked') calls.push(`mcp__${serverId}__blocked`);
+        if (fault === 'blocked' || fault === 'blocked-rejected')
+          calls.push(`mcp__${serverId}__blocked`);
       }
       const turnId = `turn-${++seq}`;
       turns.set(turnId, {
@@ -392,6 +513,7 @@ async function exercise(
         sessionId: input.threadId,
         events: captured,
         artifactContent:
+          receiptContent ??
           /containing exactly (STATION_MATRIX_ARTIFACT:[\w-]+)/.exec(
             prompt,
           )?.[1],
@@ -426,11 +548,41 @@ async function exercise(
         data: relevant.flatMap(([turnId, turn]) => [
           { method: 'turn.completed', turnId },
           ...(turn.events?.map((event) => ({ ...event, turnId })) ?? []),
-          ...turn.calls.map((toolName) => ({
-            method: 'tool.started',
-            turnId,
-            toolName,
-          })),
+          ...turn.calls.flatMap((toolName, index) => {
+            const toolCallId = `${turnId}-call-${index}`;
+            const started = {
+              method: 'tool.started',
+              turnId,
+              toolName,
+              toolCallId,
+            };
+            if (fault === 'ping-missing' && toolName.endsWith('ping'))
+              return [started];
+            return [
+              started,
+              {
+                method: 'tool.completed',
+                turnId,
+                toolName,
+                toolCallId:
+                  fault === 'ping-wrong-id' && toolName.endsWith('ping')
+                    ? 'unrelated-call'
+                    : toolCallId,
+                status:
+                  (fault === 'ping-error' && toolName.endsWith('ping')) ||
+                  (fault === 'blocked-rejected' && toolName.endsWith('blocked'))
+                    ? 'error'
+                    : 'success',
+                output: toolName.endsWith('ping')
+                  ? fault === 'ping-wrong-output'
+                    ? 'No such tool'
+                    : 'DELIVERY_PING_OK'
+                  : fault === 'blocked-rejected'
+                    ? 'No such tool'
+                    : 'DISABLED_TOOL_WAS_CALLED',
+              },
+            ];
+          }),
         ]),
       };
     if (path.endsWith('/messages'))
@@ -493,7 +645,11 @@ describe('engine delivery probes', () => {
           engine === 'station-agent' ? 'station' : engine
         ].toolServers.state,
       ).not.toBe('unsupported');
-      expect(checkDisabledTool(engine, names, [], 'configured')).toBe('pass');
+      expect(
+        checkDisabledTool(engine, names, [], 'configured', [
+          'mcp__configured__ping',
+        ]),
+      ).toBe('pass');
       expect(checkDisabledTool(engine, ['ping'], [], 'configured')).toBe(
         'fail',
       );
@@ -521,6 +677,10 @@ describe('engine delivery probes', () => {
           '| claude | skills | session | pass |',
         );
       }
+      if (engine !== 'acp')
+        expect(rows[0].delivery?.disabledTool.probe).toBe(
+          engine === 'claude' ? 'pass' : 'unverified',
+        );
       expect(rows[0].delivery?.nativeToolPolicy.probe).toBe('unverified');
       expect(renderMatrix(result)).toContain(
         `| ${engine} | nativeToolPolicy | ${ENGINE_CAPABILITY_MATRICES[engine === 'station-agent' ? 'station' : engine].toolPolicy.state} | unverified |`,
@@ -555,18 +715,61 @@ describe('engine delivery probes', () => {
     },
   );
 
-  it.each(['nonce', 'artifact'] as const)(
-    'accepts skill invocation with the remaining independent script proof when %s is absent',
+  it.each(['nonce', 'artifact', 'read-echo', 'wrong-artifact'] as const)(
+    'rejects non-execution script evidence: %s',
     async (fault) => {
       const { result } = await exercise(fault);
       const row = result.rows.find((row) => row.scenario === 'delivery');
-      expect(row?.delivery?.skills.probe).toBe('pass');
-      expect(row?.turns[0].checks).toMatchObject({
-        skillDelivery: 'pass',
-        scriptExecuted: 'pass',
-      });
+      expect(row?.turns[0].checks?.scriptExecuted).toBe('fail');
+      expect(row?.delivery?.script.probe).not.toBe('pass');
     },
   );
+  it.each(['wrong-skill', 'wrong-completion', 'two-call-failed'] as const)(
+    'matches skill name and completion identity: %s',
+    async (fault) => {
+      const { result } = await exercise(fault);
+      const row = result.rows.find((row) => row.scenario === 'delivery');
+      expect(row?.delivery?.skills.probe).toBe(
+        fault === 'two-call-failed' ? 'fail' : 'unverified',
+      );
+      expect(row?.delivery?.script.probe).not.toBe('pass');
+    },
+  );
+  it.each([
+    'ping-error',
+    'ping-missing',
+    'ping-wrong-output',
+    'ping-wrong-id',
+  ] as const)('requires a successful MCP result: %s', async (fault) => {
+    const { result } = await exercise(fault);
+    expect(
+      result.rows.find((row) => row.scenario === 'delivery')?.turns.at(-1)
+        ?.checks?.toolServerUsed,
+    ).toBe('fail');
+  });
+  it.each(['blocked-rejected', 'no-tool-list', 'advertised-blocked'] as const)(
+    'does not confuse attempted blocking with a breach: %s',
+    async (fault) => {
+      const { result } = await exercise(fault);
+      expect(
+        result.rows.find((row) => row.scenario === 'delivery')?.turns.at(-1)
+          ?.checks?.disabledTool,
+      ).toBe(
+        fault === 'no-tool-list' || fault === 'advertised-blocked'
+          ? 'unverified'
+          : 'pass',
+      );
+    },
+  );
+  it('reports cleanup of a refused create as unconfirmed instead of pretending DELETE succeeded', async () => {
+    const { result } = await exercise('refused-create');
+    expect(result.rows).toContainEqual(
+      expect.objectContaining({
+        scenario: 'cleanup',
+        failure: expect.stringContaining('404: /agents/'),
+      }),
+    );
+  });
 
   it('keeps a missing invocation record unverified rather than treating script access as skill delivery', async () => {
     const { result } = await exercise('no-invocation');

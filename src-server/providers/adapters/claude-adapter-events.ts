@@ -517,6 +517,7 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        engineToolNames: [...message.tools],
         ...(record.attemptedResumeCursor === message.session_id
           ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
           : {}),
