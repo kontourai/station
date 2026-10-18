@@ -769,6 +769,11 @@ type ClaudeSessionRecord = {
   engineProcess?: ClaudeEngineProcess;
   /** #2494: removes a Seatbelt-confined session's Station temp directory. */
   confinementCleanup?: () => void;
+  /**
+   * #2494: set while a confined start waits for its posture to be observed;
+   * a turn is refused until it is, so none runs before the profile is known.
+   */
+  confinementPending?: true;
   nativeOwnershipBindingKey?: string;
   nativeOwnershipClaimed?: true;
 };
@@ -1025,6 +1030,8 @@ interface SeatbeltStart {
   launch: ConfinedClaudeLaunch;
   /** The app-home layer pointing the engine at its Station-owned home. */
   appHomeEnv: Record<string, string>;
+  /** Variables the operator configured for this engine; they pass as set. */
+  configuredKeys: ReadonlySet<string>;
 }
 
 /** #2494: the warning a start that fell back to Auto publishes. */
@@ -1058,6 +1065,27 @@ function withConfinementFallback<T extends ProviderSessionStartInput>(
       ),
     },
   } as unknown as T;
+}
+
+/**
+ * #2494: defence in depth. A start the server marked `workspace` runs full
+ * access only under a Seatbelt plan, which the adapter applies only once it
+ * observes the profile; without one (a start path that skipped resolving
+ * its confinement) full access is applied as Auto here, never spawned
+ * unconfined. Starts that carry no confinement are the adapter's direct
+ * callers and keep their mode.
+ */
+function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
+  input: T,
+): T {
+  return input.confinement === 'workspace' &&
+    input.confinementPlan?.mechanism !== 'seatbelt' &&
+    readApprovalMode(input.modelOptions) === 'never'
+    ? {
+        ...input,
+        modelOptions: { ...input.modelOptions, approvalMode: 'auto' },
+      }
+    : input;
 }
 
 const CONFINEMENT_FALLBACK_MESSAGES: Record<ConfinementFallbackReason, string> =
@@ -1392,6 +1420,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    input = withoutUnconfinedFullAccess(input);
     if (
       input.requireNativeResumeIdentity &&
       !claudeResumeSessionId(input.resumeCursor)
@@ -1542,17 +1571,22 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       configDir: decision.configDir,
       stationHome,
     });
-    const {
-      CLAUDE_SECURESTORAGE_CONFIG_DIR: _operatorKeychainNamespace,
-      ...appHomeEnv
-    } = context.appHomeEnv ?? {};
+    // The secure-store override is dropped by the spawn wrapper, from
+    // whichever layer it comes, not here.
     return {
       input,
       confined: {
         plan,
         provider: this.options.seatbeltProvider ?? seatbeltConfinementProvider,
         launch,
-        appHomeEnv: { ...appHomeEnv, CLAUDE_CONFIG_DIR: launch.configDir },
+        appHomeEnv: {
+          ...context.appHomeEnv,
+          CLAUDE_CONFIG_DIR: launch.configDir,
+        },
+        configuredKeys: new Set([
+          ...Object.keys(context.connectionEnv ?? {}),
+          ...Object.keys(context.appHomeEnv ?? {}),
+        ]),
       },
     };
   }
@@ -1653,6 +1687,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       throw new Error(`Claude session already exists: ${input.threadId}`);
     }
+    input = withoutUnconfinedFullAccess(input);
     if (input.sourceBoundary)
       throw new Error('Claude does not support a completed-turn fork cutoff.');
     // #2494: adoption deliberately pins the global configuration root
@@ -1888,7 +1923,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     }
     const seatbeltSpawn = seatbelt
-      ? confinedClaudeSpawn(seatbelt.provider, seatbelt.launch)
+      ? confinedClaudeSpawn(
+          seatbelt.provider,
+          seatbelt.launch,
+          seatbelt.configuredKeys,
+        )
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
@@ -2156,6 +2195,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // observed the started engine. The SDK sends `initialize` as the query
       // is created; its answer arriving over the stdout of the process
       // spawned through `sandbox-exec` is the evidence.
+      record.confinementPending = true;
       this.sessions.set(input.threadId, record);
       return (async () => {
         const confinementRecord = await this.observeSeatbeltStart(
@@ -2172,6 +2212,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.requestedPermissionMode = permissionMode;
         }
         record.allowsBypassPermissions = true;
+        delete record.confinementPending;
         return announce(confinementRecord);
       })();
     }
@@ -2186,6 +2227,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
     }
+    // #2494: no turn runs before a confined start's posture is observed.
+    if (record.confinementPending)
+      throw new SendTurnRefusedError(
+        'This Claude session is still starting inside its confinement.',
+      );
     this.refuseSendWhileTurnOwed(record);
     return this.dispatchTurn(record, input, crypto.randomUUID());
   }

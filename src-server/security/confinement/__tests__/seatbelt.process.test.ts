@@ -12,7 +12,9 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -121,6 +123,8 @@ describe.skipIf(!probe.ok)(
       outside = join(root, 'outside');
       for (const dir of [
         join(home, '.ssh'),
+        join(home, '.aws'),
+        join(home, '.config', 'gh'),
         join(home, '.claude'),
         join(stationRoot, 'installs', 'stable'),
         stationHome,
@@ -128,6 +132,11 @@ describe.skipIf(!probe.ok)(
       ])
         mkdirSync(dir, { recursive: true });
       writeFileSync(join(home, '.ssh', 'id_ed25519'), 'not a real key\n');
+      // Fixture secrets: never the operator's own.
+      writeFileSync(join(home, '.aws', 'credentials'), 'fixture\n');
+      writeFileSync(join(home, '.config', 'gh', 'hosts.yml'), 'fixture\n');
+      writeFileSync(join(home, '.claude', '.credentials.json'), '{}\n');
+      writeFileSync(join(stationRoot, 'instances.json'), 'station root\n');
       writeFileSync(join(home, '.claude', 'settings.json'), '{}\n');
       writeFileSync(join(stationHome, 'station.sqlite'), 'station data\n');
       writeFileSync(
@@ -148,7 +157,7 @@ describe.skipIf(!probe.ok)(
     async function confined(workspace: string, script: string) {
       const launch = await prepareConfinedClaudeLaunch({
         workspace: canonicalPath(workspace),
-        configDir: join(stationHome, 'app-homes', 'claude-confined'),
+        configDir: join(stationHome, 'confined-homes', 'claude'),
         stationHome,
         home,
         stationRoot,
@@ -295,7 +304,7 @@ describe.skipIf(!probe.ok)(
       // the real home folder.
       const launch = await prepareConfinedClaudeLaunch({
         workspace: canonicalPath(worktree),
-        configDir: join(stationHome, 'app-homes', 'claude-confined'),
+        configDir: join(stationHome, 'confined-homes', 'claude'),
         stationHome,
         stationRoot,
       });
@@ -311,7 +320,7 @@ describe.skipIf(!probe.ok)(
     });
 
     test("the operator's Claude config is not writable; the Station-owned one is", async () => {
-      const stationConfig = join(stationHome, 'app-homes', 'claude-confined');
+      const stationConfig = join(stationHome, 'confined-homes', 'claude');
       const allowed = await confined(
         worktree,
         `echo '{}' > "${stationConfig}/settings.json"`,
@@ -363,7 +372,7 @@ describe.skipIf(!probe.ok)(
         // operator's own login is never involved.
         const launch = await prepareConfinedClaudeLaunch({
           workspace: canonicalPath(worktree),
-          configDir: join(stationHome, 'app-homes', 'claude-confined'),
+          configDir: join(stationHome, 'confined-homes', 'claude'),
           stationHome,
           stationRoot,
         });
@@ -428,6 +437,242 @@ describe.skipIf(!probe.ok)(
       },
       60_000,
     );
+
+    test.each([
+      ['an SSH key', () => join(home, '.ssh', 'id_ed25519')],
+      ['AWS credentials', () => join(home, '.aws', 'credentials')],
+      ['the gh login', () => join(home, '.config', 'gh', 'hosts.yml')],
+      [
+        "the operator's Claude credential file",
+        () => join(home, '.claude', '.credentials.json'),
+      ],
+      ["Station's runtime home", () => join(stationHome, 'station.sqlite')],
+      [
+        "Station's root, outside the runtime home",
+        () => join(stationRoot, 'instances.json'),
+      ],
+    ])('%s is unreadable, however it is spelled', async (_label, secretOf) => {
+      const secret = secretOf();
+      // Readable from outside: the denial below is the profile's.
+      expect(readFileSync(secret, 'utf8').length).toBeGreaterThan(0);
+      const link = join(outside, `link-${secret.length}`);
+      rmSync(link, { force: true });
+      execFileSync('ln', ['-s', secret, link], { windowsHide: true });
+      const spellings = [
+        secret,
+        `/System/Volumes/Data${secret}`,
+        link,
+        // APFS is case-insensitive.
+        secret
+          .replace(home, `${home}`)
+          .replace(/\/\.([a-z])/, (m) => m.toUpperCase()),
+      ];
+      for (const spelling of spellings) {
+        const result = await confined(worktree, `cat "${spelling}"`);
+        expect(result.status, spelling).not.toBe(0);
+      }
+    });
+
+    test('a hidden file cannot be hard-linked or cloned into the workspace', async () => {
+      const secret = join(home, '.ssh', 'id_ed25519');
+      const hard = await confined(
+        worktree,
+        `ln "${secret}" "${worktree}/hard"`,
+      );
+      const clone = await confined(
+        worktree,
+        `cp -c "${secret}" "${worktree}/clone"`,
+      );
+      expect(hard.status).not.toBe(0);
+      expect(clone.status).not.toBe(0);
+      expect(existsSync(join(worktree, 'hard'))).toBe(false);
+      expect(existsSync(join(worktree, 'clone'))).toBe(false);
+    });
+
+    test('a hard link made outside the sandbox beforehand is readable: an accepted residual', async () => {
+      // Documented gap: Seatbelt matches the path used, and a hard link is
+      // another path to the same file. Pinned so a change is noticed.
+      const secret = join(home, '.ssh', 'id_ed25519');
+      const prelinked = join(worktree, 'prelinked');
+      rmSync(prelinked, { force: true });
+      execFileSync('ln', [secret, prelinked], { windowsHide: true });
+      try {
+        const read = await confined(worktree, `cat "${prelinked}"`);
+        expect(read.status).toBe(0);
+      } finally {
+        rmSync(prelinked, { force: true });
+      }
+    });
+
+    test('a granted path does not grant its sibling that shares the prefix', async () => {
+      const sibling = `${worktree}-evil`;
+      mkdirSync(sibling, { recursive: true });
+      const result = await confined(worktree, `echo x > "${sibling}/x"`);
+      expect(result.status).not.toBe(0);
+      expect(existsSync(join(sibling, 'x'))).toBe(false);
+    });
+
+    test('a denied git path is denied in another case', async () => {
+      const dotGit = canonicalPath(join(repo, '.git'));
+      const result = await confined(
+        repo,
+        `echo x > "${dotGit}/HOOKS/pre-commit"`,
+      );
+      expect(result.status).not.toBe(0);
+      expect(existsSync(join(dotGit, 'hooks', 'pre-commit'))).toBe(false);
+    });
+
+    test.each([
+      ['commondir', 'commondir'],
+      ['gitdir', 'gitdir'],
+      ['a config', 'config'],
+      ['hooks', 'hooks/post-checkout'],
+    ])(
+      "a linked worktree's git directory keeps its %s read-only (R1)",
+      async (_label, file) => {
+        const gitDir = join(
+          canonicalPath(join(repo, '.git')),
+          'worktrees',
+          'feature',
+        );
+        const target = join(gitDir, file);
+        const before = existsSync(target) ? readFileSync(target, 'utf8') : null;
+        const write = await confined(
+          worktree,
+          `mkdir -p "$(dirname "${target}")" 2>/dev/null; echo /tmp/evil > "${target}"`,
+        );
+        expect(write.status).not.toBe(0);
+        const remove = await confined(worktree, `rm -f "${target}"`);
+        expect(existsSync(target) ? readFileSync(target, 'utf8') : null).toBe(
+          before,
+        );
+        void remove;
+      },
+    );
+
+    test.each([
+      [
+        "another worktree's commondir",
+        (g: string) => `echo /tmp/evil > "${g}/worktrees/feature/commondir"`,
+      ],
+      [
+        "another worktree's gitdir",
+        (g: string) => `echo /tmp/evil > "${g}/worktrees/feature/gitdir"`,
+      ],
+      [
+        "a submodule's config",
+        (g: string) =>
+          `mkdir -p "${g}/modules/sub" && echo "[core]" > "${g}/modules/sub/config"`,
+      ],
+      [
+        'a commondir redirect',
+        (g: string) => `echo /tmp/evil > "${g}/commondir"`,
+      ],
+      [
+        'object alternates',
+        (g: string) => `echo /tmp/evil >> "${g}/objects/info/alternates"`,
+      ],
+      ['a renamed .git', (g: string) => `mv "${g}" "${g}-moved"`],
+    ])(
+      'a checkout whose .git is inside the workspace cannot change %s (R2)',
+      async (_label, command) => {
+        const dotGit = canonicalPath(join(repo, '.git'));
+        const pointerBefore = readFileSync(
+          join(dotGit, 'worktrees', 'feature', 'commondir'),
+          'utf8',
+        );
+        const result = await confined(repo, command(dotGit));
+        expect(result.status).not.toBe(0);
+        expect(existsSync(join(dotGit, 'HEAD'))).toBe(true);
+        expect(existsSync(`${dotGit}-moved`)).toBe(false);
+        expect(existsSync(join(dotGit, 'commondir'))).toBe(false);
+        expect(existsSync(join(dotGit, 'modules'))).toBe(false);
+        expect(
+          readFileSync(
+            join(dotGit, 'worktrees', 'feature', 'commondir'),
+            'utf8',
+          ),
+        ).toBe(pointerBefore);
+        expect(git(repo, 'status', '--porcelain')).toBeDefined();
+      },
+    );
+
+    test('a .git emptied from inside is never replaced by a pointer file or given config (R2)', async () => {
+      // A throwaway checkout: emptying its .git is allowed workspace damage.
+      const scratch = join(root, 'scratch');
+      mkdirSync(scratch, { recursive: true });
+      git(scratch, 'init', '-q', '-b', 'main');
+      const dotGit = canonicalPath(join(scratch, '.git'));
+      const configBefore = readFileSync(join(dotGit, 'config'), 'utf8');
+      const hooksBefore = readdirSync(join(dotGit, 'hooks')).sort();
+      const result = await confined(
+        scratch,
+        [
+          `rm -rf "${dotGit}" 2>/dev/null`,
+          `printf 'gitdir: /tmp/evil\n' > "${dotGit}" 2>/dev/null`,
+          `printf '[core]\n\tfsmonitor = touch /tmp/pwned\n' > "${dotGit}/config" 2>/dev/null`,
+          `mkdir -p "${dotGit}/hooks" 2>/dev/null`,
+          'true',
+        ].join('; '),
+      );
+      expect(result.status).toBe(0);
+      // The directory stays a directory; its config and hooks survive
+      // unchanged (they cannot be removed or rewritten).
+      expect(lstatSync(dotGit).isDirectory()).toBe(true);
+      expect(readFileSync(join(dotGit, 'config'), 'utf8')).toBe(configBefore);
+      expect(readdirSync(join(dotGit, 'hooks')).sort()).toEqual(hooksBefore);
+    });
+
+    test('an app in the workspace cannot be launched outside the sandbox', async () => {
+      const marker = join(outside, 'launched');
+      const app = join(worktree, 'Probe.app');
+      mkdirSync(join(app, 'Contents', 'MacOS'), { recursive: true });
+      writeFileSync(
+        join(app, 'Contents', 'Info.plist'),
+        `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>probe</string><key>CFBundleIdentifier</key><string>dev.station.seatbelt-probe</string></dict></plist>\n`,
+      );
+      const executable = join(app, 'Contents', 'MacOS', 'probe');
+      writeFileSync(executable, `#!/bin/sh\necho launched > "${marker}"\n`, {
+        mode: 0o755,
+      });
+      try {
+        const result = await confined(worktree, `open -n "${app}"`);
+        expect(result.status).not.toBe(0);
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        expect(existsSync(marker)).toBe(false);
+      } finally {
+        rmSync(app, { recursive: true, force: true });
+      }
+    });
+
+    test('a setuid program cannot be run from inside', async () => {
+      const result = await confined(worktree, '/usr/bin/crontab -l');
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/Operation not permitted/);
+    });
+
+    test('the login Keychain is unreachable through the security tool', async () => {
+      // An item this host's login Keychain holds (any), found from outside.
+      const outsideFind = spawnSync(
+        '/usr/bin/security',
+        ['find-generic-password', '-a', process.env.USER ?? ''],
+        {
+          stdio: 'ignore',
+          windowsHide: true,
+        },
+      );
+      if (outsideFind.status !== 0) {
+        process.stderr.write(
+          '\n[seatbelt.process] Keychain lookup not compared: this host has no readable login Keychain item\n',
+        );
+        return;
+      }
+      const result = await confined(
+        worktree,
+        `/usr/bin/security find-generic-password -a "${process.env.USER ?? ''}" > /dev/null`,
+      );
+      expect(result.status).toBe(44);
+    });
 
     test('signals reach only processes inside the sandbox', async () => {
       const outsider = spawn('/bin/sleep', ['30'], {

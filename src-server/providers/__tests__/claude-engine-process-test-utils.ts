@@ -188,6 +188,7 @@ type ClaudeQueryOptions = {
     signal: AbortSignal;
   }) => SdkSpawnedProcess;
   canUseTool?: (...args: any[]) => any;
+  env?: Record<string, string | undefined>;
 };
 
 type FakeClaudeEngine = {
@@ -222,7 +223,8 @@ export function startFakeClaudeEngine(
   const process = options.spawnClaudeCodeProcess({
     command: FAKE_CLAUDE_COMMAND,
     args: [],
-    env: {},
+    // The env the adapter handed the SDK, as the SDK passes it to the spawn.
+    env: options.env ?? {},
     signal: new AbortController().signal,
   });
   // The fake command makes the fake spawn return a FakeClaudeChild, and the

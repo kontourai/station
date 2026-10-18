@@ -18,8 +18,10 @@ import { spawnSync } from 'node:child_process';
 import {
   accessSync,
   constants,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
 } from 'node:fs';
@@ -192,12 +194,22 @@ export interface SeatbeltGrantInput {
 }
 
 /**
- * The write and read grants of a confined start. For a linked worktree:
- * its own git directory, the shared object store, and only its own branch's
- * ref, lock and log; never the shared hooks, config or info, the worktree's
- * `.git` pointer file (it could be repointed), or its `config.worktree`.
- * For a checkout whose git directory is inside the workspace: the same
- * hooks, config and info stay read-only.
+ * The write and read grants of a confined start. Git reads configuration,
+ * hooks and redirects from its directories, and the operator's unconfined
+ * git later runs in the same checkout, so every such file stays read-only:
+ *
+ * - Always: the repository's `hooks`, `config`, `info`, a `commondir` (in a
+ *   main `.git` it would redirect the repository), `objects/info/alternates`,
+ *   and the worktree's `config.worktree`.
+ * - A linked worktree may write its own git directory, the shared object
+ *   store, and only its own branch's ref, lock and log. Its `.git` pointer
+ *   file and its git directory's `commondir` and `gitdir` (each could be
+ *   repointed at a directory carrying a `config` with `core.fsmonitor` or
+ *   `core.hooksPath`), and a `config` or `hooks` there, stay read-only.
+ * - A checkout whose `.git` is inside the workspace keeps, besides the
+ *   above, every other worktree's and submodule's pointers and config
+ *   (`worktrees`, `modules`) read-only, and the `.git` directory itself
+ *   cannot be removed, renamed or replaced by a pointer file.
  */
 export function seatbeltGrants(
   input: SeatbeltGrantInput,
@@ -209,6 +221,7 @@ export function seatbeltGrants(
   ];
   const writableFiles: string[] = [];
   const writeDenied: string[] = [];
+  const writeDeniedExact: string[] = [];
   const git = input.git;
   if (git) {
     const common = git.commonDir;
@@ -216,10 +229,21 @@ export function seatbeltGrants(
       join(common, 'hooks'),
       join(common, 'config'),
       join(common, 'info'),
+      join(common, 'commondir'),
+      join(common, 'objects', 'info', 'alternates'),
       join(git.gitDir, 'config.worktree'),
     );
-    if (!within(input.workspace, common)) {
-      writeDenied.push(join(input.workspace, '.git'));
+    if (within(input.workspace, common)) {
+      writeDenied.push(join(common, 'worktrees'), join(common, 'modules'));
+      writeDeniedExact.push(common);
+    } else {
+      writeDenied.push(
+        join(input.workspace, '.git'),
+        join(git.gitDir, 'commondir'),
+        join(git.gitDir, 'gitdir'),
+        join(git.gitDir, 'config'),
+        join(git.gitDir, 'hooks'),
+      );
       writable.push(git.gitDir, join(common, 'objects'));
       if (git.branch) {
         const ref = join(common, 'refs', 'heads', git.branch);
@@ -235,6 +259,7 @@ export function seatbeltGrants(
     writable,
     writableFiles,
     writeDenied,
+    writeDeniedExact,
     hidden: [...input.hidden],
     readable: [...input.readable],
   };
@@ -284,6 +309,7 @@ export function seatbeltProfile(
     ...rule('allow', 'file-read* file-write*', 'subpath', grants.writable),
     ...rule('allow', 'file-read* file-write*', 'literal', grants.writableFiles),
     ...rule('deny', 'file-write*', 'subpath', grants.writeDenied),
+    ...rule('deny', 'file-write*', 'literal', grants.writeDeniedExact),
   ].join('\n');
 }
 
@@ -305,9 +331,77 @@ export function seatbeltTempRoot(stationHome: string): string {
   return join(stationHome, 'tmp', 'confined-sessions');
 }
 
-/** Where Station-owned engine configuration homes live. */
+/**
+ * Where confined engines' Station-owned configuration homes live: a root of
+ * their own, never `app-homes`, which unconfined spawns (the app-home
+ * opt-in, credential profiles) use. A file planted in a confined home (a
+ * `settings.json` hook) therefore never reaches an unconfined session.
+ */
 export function seatbeltConfigRoot(stationHome: string): string {
-  return join(stationHome, 'app-homes');
+  return join(stationHome, 'confined-homes');
+}
+
+/** A confined session's temp directory name: `session-<owner pid>-<random>`. */
+const SESSION_DIR = /^session-(\d+)-[A-Za-z0-9]{6}$/;
+
+/** The prefix `mkdtemp` completes for a session owned by `pid`. */
+export function seatbeltSessionDirPrefix(pid: number = process.pid): string {
+  return `session-${pid}-`;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
+}
+
+/**
+ * Removes confined sessions' temp directories whose owner process is gone
+ * (a crash or a kill skipped their cleanup). An entry is removed only when
+ * ownership is proven: it is a real directory (not a link) directly in
+ * Station's confined-session root, owned by this user, named
+ * `session-<pid>-<random>`, and no process `pid` exists. A live owner, this
+ * process included, keeps its directory: its sessions remove their own on
+ * stop. Best-effort: an entry that cannot be read or removed is skipped.
+ */
+export function reapStaleSeatbeltSessionDirs(
+  stationHome: string,
+  deps: {
+    isAlive?: (pid: number) => boolean;
+    uid?: number | undefined;
+  } = {},
+): number {
+  const root = seatbeltTempRoot(canonicalPath(stationHome));
+  let entries: string[];
+  try {
+    if (realpathSync(root) !== root) return 0;
+    entries = readdirSync(root);
+  } catch {
+    return 0;
+  }
+  const isAlive = deps.isAlive ?? processAlive;
+  const uid = 'uid' in deps ? deps.uid : process.getuid?.();
+  let reaped = 0;
+  for (const entry of entries) {
+    const owner = SESSION_DIR.exec(entry);
+    if (!owner) continue;
+    const pid = Number(owner[1]);
+    const path = join(root, entry);
+    try {
+      const stats = lstatSync(path);
+      if (!stats.isDirectory() || stats.isSymbolicLink()) continue;
+      if (uid !== undefined && stats.uid !== uid) continue;
+      if (pid === process.pid || isAlive(pid)) continue;
+      rmSync(path, { recursive: true, force: true });
+      reaped += 1;
+    } catch {
+      // Best-effort.
+    }
+  }
+  return reaped;
 }
 
 /**
@@ -354,7 +448,7 @@ export function seatbeltWriteGrantKinds(
     if (path === bounds.workspace) kinds.add('workspace');
     else if (
       dirname(path) === seatbeltTempRoot(bounds.stationHome) &&
-      basename(path).length > 0
+      SESSION_DIR.test(basename(path))
     )
       kinds.add('station-temp');
     else if (dirname(path) === seatbeltConfigRoot(bounds.stationHome))
@@ -383,10 +477,22 @@ export function seatbeltWriteGrantKinds(
       join(git.commonDir, 'hooks'),
       join(git.commonDir, 'config'),
       join(git.commonDir, 'info'),
+      join(git.commonDir, 'commondir'),
+      join(git.commonDir, 'objects', 'info', 'alternates'),
       join(git.gitDir, 'config.worktree'),
-      ...(linked ? [join(bounds.workspace, '.git')] : []),
+      ...(linked
+        ? [
+            join(bounds.workspace, '.git'),
+            join(git.gitDir, 'commondir'),
+            join(git.gitDir, 'gitdir'),
+            join(git.gitDir, 'config'),
+            join(git.gitDir, 'hooks'),
+          ]
+        : [join(git.commonDir, 'worktrees'), join(git.commonDir, 'modules')]),
     ];
     if (!needed.every((path) => denied.has(path))) return undefined;
+    if (!linked && !(grants.writeDeniedExact ?? []).includes(git.commonDir))
+      return undefined;
   }
   return [...kinds].sort();
 }

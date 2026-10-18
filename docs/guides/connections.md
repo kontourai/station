@@ -790,7 +790,9 @@ connection's `env`. Without one, such a session runs at Auto, and says so. The
 optional **Confined Claude credential** readiness entry reports whether one is
 present. A confined session uses a Station-owned Claude configuration
 directory, so your own `CLAUDE.md`, settings, hooks, plugins and MCP
-configuration do not apply to it. On Linux and Windows such a session is
+configuration do not apply to it. It also gets only an allowlisted
+environment: variables you set in the connection's `env` pass, but Station's
+own `GH_TOKEN`, `NPM_TOKEN`, cloud keys and SSH agent do not. On Linux and Windows such a session is
 refused, because no confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 

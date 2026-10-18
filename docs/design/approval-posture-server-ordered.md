@@ -848,20 +848,33 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   directories are Station-owned, and `CLAUDE_SECURESTORAGE_CONFIG_DIR` is
   dropped. The engine spawns at Auto (`acceptEdits`), with the
   `allowDangerouslySkipPermissions` grant the SDK only takes at spawn.
+- **The environment.** An allowlist, not Station's whole environment: paths,
+  locale, terminal, TLS trust and proxy variables, and `CLAUDE_*`,
+  `ANTHROPIC_*`, `MCP_*` and `DISABLE_*` settings (which carry the confined
+  credential). Variables the operator configured for this engine (the
+  connection's `env`, the app-home layer) pass as configured. Everything
+  else stays out, among them `GH_TOKEN`, `NPM_TOKEN`, cloud keys and
+  `SSH_AUTH_SOCK`, so a confined session cannot push with the operator's SSH
+  agent.
 - **The posture.** It comes from the provider's `pending.observe` after the
   engine answers its `initialize` handshake. It is `confined` only when the
   spawn seam recorded `sandbox-exec` with exactly this profile and command,
   the handshake was answered over that process's stdout (`sandbox-exec` execs
   the engine only after the profile applied), and the grants are in bounds.
   Only then does the adapter call `setPermissionMode('bypassPermissions')`
-  and publish `session.started`. Anything else (no answer within 60 seconds,
+  and publish `session.started`; a turn sent before then is refused.
+  Anything else (no answer within 60 seconds,
   the engine exited, a different spawn, grants out of bounds) is
   `configured-but-failed`: the engine is stopped and the start is refused
   (`confinement_not_observed`). It never falls back to an unconfined spawn.
 - **Turns.** `ApprovalPosture` keeps `never` on a Claude turn only when the
   thread's latest `session.started` record is an observed `confined`
   posture. The adapter refuses full access on a turn to an engine spawned
-  without the grant, as before.
+  without the grant, as before. As defence in depth, a start marked
+  `workspace` that reaches the adapter at `never` without a Seatbelt plan is
+  applied as Auto, never spawned unconfined at full access. A respawn, a
+  credential-profile restart and a resume each re-resolve the plan, so they
+  are confined and observed again, or fall back to Auto.
 - **Profile shape.** On macOS 26 a profile that allows reads only from system
   paths aborts even `/usr/bin/true`, so reads are broad and writes narrow:
   `(deny default)`, then process, file-read, Mach, sysctl, IPC and network
@@ -873,25 +886,39 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     `~/.claude/.credentials.json`, `~/.codex/auth.json`, and Station's root
     and runtime home. Station's `installs` stay readable.
   - Writes are allowed to the workspace, a per-session Station temp directory
-    (`<home>/tmp/confined-sessions/session-*`, also the engine's `TMPDIR`),
-    and the Station-owned Claude configuration directory.
+    (`<home>/tmp/confined-sessions/session-<pid>-*`, also the engine's
+    `TMPDIR`), and the Station-owned Claude configuration directory. A
+    session removes its temp directory when it stops. At boot and on the
+    engine temp sweep's schedule, Station removes a temp directory whose
+    owner process is gone, after checking it is a real directory directly in
+    that root, owned by this user, and named for that process.
   - For a linked worktree, writes are also allowed to its own git directory,
     the shared `objects`, and exactly its branch's
     `refs/heads/<branch>`, `.lock` and `logs/refs/heads/<branch>`. The git
     layout is read from git's own pointer files (`locateGitDirectories`),
     never by running git.
-  - Writes are then denied to the shared `hooks`, `config` and `info`, the
-    worktree's `.git` pointer file, and its `config.worktree`. A checkout
-    whose `.git` is inside the workspace keeps `hooks`, `config` and `info`
-    read-only too.
+  - Writes are then denied to whatever git later reads as configuration,
+    hooks or a redirect, because the operator's unconfined git runs in the
+    same checkout. Always: the repository's `hooks`, `config` and `info`, a
+    `commondir`, `objects/info/alternates`, and the worktree's
+    `config.worktree`. For a linked worktree, also its `.git` pointer file
+    and its git directory's `commondir`, `gitdir`, `config` and `hooks`
+    (repointing `commondir` at a directory whose `config` sets
+    `core.fsmonitor` would run code in the operator's next git). For a
+    checkout whose `.git` is inside the workspace, also `worktrees` and
+    `modules` (every other worktree's and submodule's pointers and config),
+    and the `.git` directory itself, which cannot be removed, renamed or
+    replaced by a pointer file (its contents can be emptied, and its
+    `config` and `hooks` survive). Commits, a second commit and status still
+    work in both layouts.
   - Every path is symlink-resolved before it enters the profile (`/tmp` is
     `/private/tmp`). A path SBPL cannot spell (a quote, a backslash, a
     control character) is refused.
 - **Breadth.** The record carries the kinds of the write grants
   (`writeGrants`). A required start whose grants reach past the workspace,
   that git subset, the session's Station temp directory and a directory
-  directly under Station's `app-homes`, or that lacks a deny its git layout
-  needs, is `configured-but-failed`. It is refused before anything is
+  directly under Station's `confined-homes`, or that lacks a deny its git
+  layout needs, is `configured-but-failed`. It is refused before anything is
   spawned.
 - **Credentials (owner decision of 2026-10-18).** The confined engine never
   reads the operator's Keychain, and never writes the operator's `~/.claude`.
@@ -899,10 +926,14 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   non-empty `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` or
   `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in its environment,
   or an OAuth credential file in its Station-owned configuration directory.
-  That directory is the selected credential profile's or app home's
-  directory, when that is one of Station's app homes, else
-  `<home>/app-homes/claude-confined`. A connection's `configHome` is never
-  used. The operator's own login is never copied. Claude rotates its refresh
+  That directory is always under `<home>/confined-homes`, which no
+  unconfined spawn uses, so a `settings.json` hook planted there never runs
+  in an operator's unconfined session: `confined-homes/claude` by default,
+  and a twin named after the app home (`confined-homes/credential-profile-…`)
+  for a selected credential profile or the app-home opt-in. It is never the
+  operator's `~/.claude`, a connection's `configHome`, or an app home itself.
+  A credential for it is an environment credential, or a credential file
+  enrolled there for confined use. The operator's own login is never copied. Claude rotates its refresh
   token on every refresh, so two holders of one login invalidate each other.
 - **Falling back to Auto.** A start whose plan names Seatbelt runs at Auto,
   with nothing engaged, when a check finds one of these, in order:
@@ -920,7 +951,7 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
   why and, for a missing credential, names the setup step. Readiness reports
   the same credential check on macOS as the optional
   `claude-confined-credential` prerequisite, without attempting a login. It
-  checks Station's default confined home; a selected credential profile is
+  checks `confined-homes/claude`; a selected credential profile's twin is
   not modelled.
 - **What a confined session does not load.** Its `CLAUDE_CONFIG_DIR` is
   Station's, so the operator's own `CLAUDE.md`, settings, hooks, plugins and
@@ -928,13 +959,27 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
 - **Residuals.**
   - `os-profile` does not hide arbitrary operator files: reads are broad,
     and `container` (#2496) is the level that hides them.
-  - Mach services are broadly allowed. Apple Events to unconfined
-    applications are not blocked (they need the operator's Automation
-    consent), nor attacks on the operator's other processes through Mach
-    services; neither was probed. `launchctl submit` was probed and launchd
-    refuses it from inside the sandbox.
-  - A writable project `.claude/settings.json` in the workspace can add hooks
-    (#3800). They run inside the sandbox, so they do not widen it.
+  - Kernel-tested denials: a hidden file read directly, through the
+    `/System/Volumes/Data` firmlink, through a symlink and in another case;
+    a hard link or clone of it made from inside; a write to a sibling that
+    shares a granted path's prefix; a denied git path in another case;
+    launching an app from the workspace (`open`, LaunchServices `-54`);
+    running a setuid program (`crontab`); reading the login Keychain through
+    `security`; `launchctl submit`.
+  - A hard link to a hidden file made outside the sandbox beforehand is
+    readable from inside: Seatbelt matches the path used, and a hard link is
+    another path to the same file. Pinned by a test so a change is noticed.
+  - Mach services stay broadly allowed (`(allow mach*)`): Claude Code, Node
+    and the tools it runs need them, and no narrower list was proven. Not
+    probed: data-protection Keychain items through `secd`, Apple Events to
+    unconfined applications (they need the operator's Automation consent),
+    and attacks on the operator's other processes through Mach services.
+  - The workspace is writable, so confined code can write files a later
+    unconfined session in that folder may load: `.claude/settings.json`
+    hooks, `.mcp.json` servers, `.codex/config.toml`, a nested repository's
+    `.git`. The same class as #3800, accepted here: inside the sandbox they
+    do not widen it, but an unconfined session that loads them runs them
+    unconfined.
   - The macOS `xcrun` git shim cannot write its cache in the per-user system
     temp folder, and a background `pack-refs` cannot write the shared
     `packed-refs`. Git prints warnings and carries on.

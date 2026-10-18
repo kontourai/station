@@ -62,7 +62,10 @@ import {
   createSeatbeltConfinementProvider,
   type SeatbeltEvidence,
 } from '../../security/confinement/seatbelt.js';
-import { SessionStartRefusedError } from '../adapter-shape.js';
+import {
+  SendTurnRefusedError,
+  SessionStartRefusedError,
+} from '../adapter-shape.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import {
   FAKE_CLAUDE_COMMAND,
@@ -144,9 +147,21 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     options: {
       connectionEnv?: Record<string, string>;
       provider?: ConfinementProvider<SeatbeltEvidence>;
+      appHomeDir?: string;
     } = {},
   ) {
     adapter = new ClaudeAdapter({
+      ...(options.appHomeDir
+        ? {
+            getAppHomeEnv: async () => ({
+              env: {
+                CLAUDE_CONFIG_DIR: options.appHomeDir!,
+                CLAUDE_SECURESTORAGE_CONFIG_DIR: options.appHomeDir!,
+              },
+              profileRef: 'work',
+            }),
+          }
+        : {}),
       confinedStationHome: stationHome,
       confinementHandshakeTimeoutMs: 2_000,
       getConnectionEnv: async () =>
@@ -173,7 +188,12 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     await adapter?.stopAll();
     mockQuery.mockReset();
     mockForkSession.mockReset();
+    vi.unstubAllEnvs();
   });
+
+  /** The environment the latest engine process was spawned with. */
+  const spawnedEnv = () =>
+    FakeClaudeChild.newest!.spawnArgs.options.env as Record<string, string>;
 
   function startConfined(threadId = 'confined', extra: object = {}) {
     return adapter.startSession({
@@ -226,7 +246,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect(child.spawnArgs.args[2]).toBe(FAKE_CLAUDE_COMMAND);
     const env = child.spawnArgs.options.env as Record<string, string>;
     expect(env.CLAUDE_CONFIG_DIR).toBe(
-      join(stationHome, 'app-homes', 'claude-confined'),
+      join(stationHome, 'confined-homes', 'claude'),
     );
     expect(env.TMPDIR).toContain(
       join(stationHome, 'tmp', 'confined-sessions', 'session-'),
@@ -376,7 +396,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
   });
 
   test('a credential enrolled in the Station-owned config dir is enough; the operator Keychain is never consulted', async () => {
-    const configDir = join(stationHome, 'app-homes', 'claude-confined');
+    const configDir = join(stationHome, 'confined-homes', 'claude');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, '.credentials.json'),
@@ -435,6 +455,174 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
     expect((await started('adopted')).stationConfinementRecord).toMatchObject({
       fallback: 'config-root-pinned',
+    });
+  });
+
+  test('the confined engine gets an allowlisted environment: no ambient GH_TOKEN, cloud keys or SSH agent', async () => {
+    vi.stubEnv('GH_TOKEN', 'ghp_planted_for_this_test');
+    vi.stubEnv('NPM_TOKEN', 'npm_planted');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws-planted');
+    vi.stubEnv('SSH_AUTH_SOCK', '/tmp/planted-agent.sock');
+    createAdapter({
+      connectionEnv: {
+        ...FAKE_ENV_CREDENTIAL,
+        // Configured for this engine by the operator: passes as set.
+        STATION_TEST_CONFIGURED: 'kept',
+        CLAUDE_SECURESTORAGE_CONFIG_DIR: '',
+      },
+    });
+    startingQuery(Promise.resolve({}));
+    await startConfined('env');
+    const env = spawnedEnv();
+    for (const key of [
+      'GH_TOKEN',
+      'NPM_TOKEN',
+      'AWS_SECRET_ACCESS_KEY',
+      'SSH_AUTH_SOCK',
+      'CLAUDE_SECURESTORAGE_CONFIG_DIR',
+    ])
+      expect(env, key).not.toHaveProperty(key);
+    expect(env).toMatchObject({
+      ANTHROPIC_API_KEY: FAKE_ENV_CREDENTIAL.ANTHROPIC_API_KEY,
+      STATION_TEST_CONFIGURED: 'kept',
+      PATH: expect.any(String),
+    });
+    // The unconfined spawn keeps today's full environment.
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'env-unconfined',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    expect(spawnedEnv().GH_TOKEN).toBe('ghp_planted_for_this_test');
+  });
+
+  test("a selected credential profile's confined home is its own, never the profile's app home an unconfined session uses", async () => {
+    const profileHome = join(
+      stationHome,
+      'app-homes',
+      'credential-profile-abc',
+    );
+    mkdirSync(profileHome, { recursive: true });
+    createAdapter({ appHomeDir: profileHome });
+    startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'profile-unconfined',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const unconfinedHome = spawnedEnv().CLAUDE_CONFIG_DIR;
+    expect(unconfinedHome).toBe(profileHome);
+    startingQuery(Promise.resolve({}));
+    await startConfined('profile-confined');
+    const confinedHome = spawnedEnv().CLAUDE_CONFIG_DIR;
+    expect(confinedHome).toBe(
+      join(stationHome, 'confined-homes', 'credential-profile-abc'),
+    );
+    expect(confinedHome).not.toBe(unconfinedHome);
+    expect(spawnedEnv()).not.toHaveProperty('CLAUDE_SECURESTORAGE_CONFIG_DIR');
+  });
+
+  test('a turn sent before the start is observed is refused, and never runs at bypassPermissions', async () => {
+    createAdapter();
+    const handshake = deferred<unknown>();
+    const query = startingQuery(handshake.promise);
+    const starting = startConfined('racing');
+    await vi.waitFor(() =>
+      expect(query.initializationResult).toHaveBeenCalled(),
+    );
+    await expect(
+      adapter.sendTurn({
+        threadId: 'racing',
+        input: 'go',
+        modelOptions: { approvalMode: 'never' },
+      }),
+    ).rejects.toBeInstanceOf(SendTurnRefusedError);
+    expect(query.setPermissionMode).not.toHaveBeenCalled();
+    handshake.resolve({});
+    await starting;
+    // Once observed, the same turn is accepted at the lifted mode.
+    expect(query.setPermissionMode).toHaveBeenCalledExactlyOnceWith(
+      'bypassPermissions',
+    );
+  });
+
+  test('a resumed confined session is confined and observed again, never resumed unconfined', async () => {
+    createAdapter();
+    startingQuery(Promise.resolve({}));
+    await startConfined('resumed');
+    const binding = (await started('resumed')).nativeResumeBindingKey as string;
+    await adapter.stopSession('resumed');
+    events.length = 0;
+    const query = startingQuery(Promise.resolve({}));
+    await startConfined('resumed', {
+      resumeCursor: 'native-session-1',
+      nativeResumeBindingKey: binding,
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(
+      '/usr/bin/sandbox-exec',
+    );
+    expect(query.setPermissionMode).toHaveBeenCalledWith('bypassPermissions');
+    expect((await started('resumed')).stationConfinementRecord).toMatchObject({
+      posture: 'confined',
+    });
+  });
+
+  test('a resume recorded under another config home falls back to Auto, recorded as resume-bound-elsewhere', async () => {
+    createAdapter();
+    // Started before confinement applied: recorded under the global home.
+    startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'elsewhere',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const binding = (await started('elsewhere'))
+      .nativeResumeBindingKey as string;
+    await adapter.stopSession('elsewhere');
+    events.length = 0;
+    const query = startingQuery(Promise.resolve({}));
+    await startConfined('elsewhere', {
+      resumeCursor: 'native-session-2',
+      nativeResumeBindingKey: binding,
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
+    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+    expect((await started('elsewhere')).stationConfinementRecord).toMatchObject(
+      { fallback: 'resume-bound-elsewhere' },
+    );
+  });
+
+  test('a workspace start at never that arrives without a Seatbelt plan runs at Auto, never unconfined at full access', async () => {
+    createAdapter();
+    const query = startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'no-plan',
+      cwd: workspace,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'never' },
+    });
+    expect(FakeClaudeChild.newest!.spawnArgs.command).toBe(FAKE_CLAUDE_COMMAND);
+    expect(query.options).toMatchObject({ permissionMode: 'acceptEdits' });
+    expect(query.options?.allowDangerouslySkipPermissions).toBeUndefined();
+    // The operator's own (host) start is unchanged.
+    const host = startingQuery(Promise.resolve({}));
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'host',
+      cwd: workspace,
+      confinement: 'host',
+      modelOptions: { approvalMode: 'never' },
+    });
+    expect(host.options).toMatchObject({
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
     });
   });
 

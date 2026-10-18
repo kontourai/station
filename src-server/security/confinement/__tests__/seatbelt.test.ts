@@ -4,15 +4,23 @@
  * derives from evidence. The kernel's behaviour under the production
  * profile is `seatbelt.process.test.ts`.
  */
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  canonicalPath,
   confineWithSeatbelt,
   createSeatbeltConfinementProvider,
   observeSeatbeltPosture,
+  reapStaleSeatbeltSessionDirs,
   type SeatbeltBounds,
   type SeatbeltEvidence,
   seatbeltGrants,
   seatbeltProfile,
+  seatbeltSessionDirPrefix,
+  seatbeltTempRoot,
   seatbeltWorkspaceRefusal,
   seatbeltWriteGrantKinds,
 } from '../seatbelt.js';
@@ -26,8 +34,8 @@ const GIT = {
   commonDir: COMMON,
   branch: 'feat/x',
 };
-const TEMP = `${STATION_HOME}/tmp/confined-sessions/session-abc`;
-const CONFIG = `${STATION_HOME}/app-homes/claude-confined`;
+const TEMP = `${STATION_HOME}/tmp/confined-sessions/session-4242-abcdef`;
+const CONFIG = `${STATION_HOME}/confined-homes/claude`;
 
 function linkedGrants() {
   return seatbeltGrants({
@@ -116,9 +124,17 @@ describe('Seatbelt grants and profile', () => {
         `${COMMON}/hooks`,
         `${COMMON}/config`,
         `${COMMON}/info`,
+        `${COMMON}/commondir`,
+        `${COMMON}/objects/info/alternates`,
         `${GIT.gitDir}/config.worktree`,
         `${WORKSPACE}/.git`,
+        // Redirects a later unconfined git would follow (R1).
+        `${GIT.gitDir}/commondir`,
+        `${GIT.gitDir}/gitdir`,
+        `${GIT.gitDir}/config`,
+        `${GIT.gitDir}/hooks`,
       ],
+      writeDeniedExact: [],
       hidden: [`${HOME}/.ssh`],
       readable: [],
     });
@@ -140,8 +156,15 @@ describe('Seatbelt grants and profile', () => {
       `${dotGit}/hooks`,
       `${dotGit}/config`,
       `${dotGit}/info`,
+      `${dotGit}/commondir`,
+      `${dotGit}/objects/info/alternates`,
       `${dotGit}/config.worktree`,
+      // Other worktrees' and submodules' pointers and config (R2).
+      `${dotGit}/worktrees`,
+      `${dotGit}/modules`,
     ]);
+    // `.git` itself cannot be removed, renamed or replaced by a pointer.
+    expect(grants.writeDeniedExact).toEqual([dotGit]);
   });
 
   test('rules are ordered so the later, narrower rule wins', () => {
@@ -250,6 +273,18 @@ describe('Seatbelt breadth', () => {
         ),
       }),
     ],
+    ...(['commondir', 'gitdir'] as const).map(
+      (file) =>
+        [
+          `a missing ${file} deny in the worktree's git dir`,
+          (g: ReturnType<typeof linkedGrants>) => ({
+            ...g,
+            writeDenied: (g.writeDenied ?? []).filter(
+              (path) => path !== `${GIT.gitDir}/${file}`,
+            ),
+          }),
+        ] as const,
+    ),
     [
       'a missing .git pointer deny',
       (g: ReturnType<typeof linkedGrants>) => ({
@@ -259,10 +294,78 @@ describe('Seatbelt breadth', () => {
         ),
       }),
     ],
-  ])('a grant reaching %s is out of bounds', (_label, widen) => {
+  ] as const)('a grant reaching %s is out of bounds', (_label, widen) => {
     expect(seatbeltWriteGrantKinds(widen(linkedGrants()), BOUNDS)).toBe(
       undefined,
     );
+  });
+
+  test.each([
+    [
+      'worktrees',
+      (g: ReturnType<typeof seatbeltGrants>, dotGit: string) => ({
+        ...g,
+        writeDenied: (g.writeDenied ?? []).filter(
+          (p) => p !== `${dotGit}/worktrees`,
+        ),
+      }),
+    ],
+    [
+      'modules',
+      (g: ReturnType<typeof seatbeltGrants>, dotGit: string) => ({
+        ...g,
+        writeDenied: (g.writeDenied ?? []).filter(
+          (p) => p !== `${dotGit}/modules`,
+        ),
+      }),
+    ],
+    [
+      'the .git directory itself',
+      (g: ReturnType<typeof seatbeltGrants>) => ({
+        ...g,
+        writeDeniedExact: [],
+      }),
+    ],
+  ] as const)(
+    'a checkout with .git inside the workspace is out of bounds without its %s deny',
+    (_label, drop) => {
+      const dotGit = `${WORKSPACE}/.git`;
+      const git = { gitDir: dotGit, commonDir: dotGit, branch: 'main' };
+      const grants = seatbeltGrants({
+        workspace: WORKSPACE,
+        stationTempDir: TEMP,
+        stationConfigDir: CONFIG,
+        git,
+        hidden: [],
+        readable: [],
+      });
+      const bounds = { ...BOUNDS, git };
+      expect(seatbeltWriteGrantKinds(grants, bounds)).toEqual([
+        'station-config',
+        'station-temp',
+        'workspace',
+      ]);
+      expect(seatbeltWriteGrantKinds(drop(grants, dotGit), bounds)).toBe(
+        undefined,
+      );
+    },
+  );
+
+  test('a temp directory not named for its owner process is out of bounds', () => {
+    const grants = linkedGrants();
+    expect(
+      seatbeltWriteGrantKinds(
+        {
+          ...grants,
+          writable: grants.writable.map((path) =>
+            path === TEMP
+              ? `${STATION_HOME}/tmp/confined-sessions/anything`
+              : path,
+          ),
+        },
+        BOUNDS,
+      ),
+    ).toBe(undefined);
   });
 
   test.each([
@@ -360,5 +463,70 @@ describe('Seatbelt posture', () => {
       }),
     ).toBe('confined');
     expect(pending.observe(undefined)).toBe('configured-but-failed');
+  });
+});
+
+describe('reaping stale confined-session temp directories (R9)', () => {
+  const makeTempDir = trackTempDirs();
+
+  function layout() {
+    const home = canonicalPath(makeTempDir('seatbelt-reap-'));
+    const root = seatbeltTempRoot(home);
+    mkdirSync(root, { recursive: true });
+    const dir = (name: string) => {
+      mkdirSync(join(root, name));
+      writeFileSync(join(root, name, 'f'), 'x');
+      return join(root, name);
+    };
+    return { home, root, dir };
+  }
+
+  test('removes only real directories, named for a dead owner, directly in the root', () => {
+    const { home, root, dir } = layout();
+    const dead = dir('session-999991-abcdef');
+    const live = dir('session-999992-abcdef');
+    const own = dir(`${seatbeltSessionDirPrefix()}abcdef`);
+    const unnamed = dir('something-else');
+    const outside = canonicalPath(makeTempDir('seatbelt-reap-outside-'));
+    symlinkSync(outside, join(root, 'session-999993-abcdef'));
+    writeFileSync(join(root, 'session-999994-abcdef'), 'a file');
+    const alive = new Set([999992]);
+    expect(
+      reapStaleSeatbeltSessionDirs(home, { isAlive: (pid) => alive.has(pid) }),
+    ).toBe(1);
+    expect(existsSync(dead)).toBe(false);
+    for (const kept of [live, own, unnamed])
+      expect(existsSync(kept), kept).toBe(true);
+    expect(existsSync(outside)).toBe(true);
+    expect(existsSync(join(root, 'session-999994-abcdef'))).toBe(true);
+  });
+
+  test('keeps a directory another user owns', () => {
+    const { home, dir } = layout();
+    const foreign = dir('session-999995-abcdef');
+    expect(
+      reapStaleSeatbeltSessionDirs(home, {
+        isAlive: () => false,
+        uid: (process.getuid?.() ?? 0) + 1,
+      }),
+    ).toBe(0);
+    expect(existsSync(foreign)).toBe(true);
+  });
+
+  test('a real dead process is detected without injection', async () => {
+    const { home, dir } = layout();
+    const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+    await new Promise((resolve) => child.once('exit', resolve));
+    const stale = dir(`session-${child.pid}-abcdef`);
+    expect(reapStaleSeatbeltSessionDirs(home)).toBe(1);
+    expect(existsSync(stale)).toBe(false);
+  });
+
+  test('a missing root is nothing to reap', () => {
+    expect(
+      reapStaleSeatbeltSessionDirs(
+        canonicalPath(makeTempDir('seatbelt-none-')),
+      ),
+    ).toBe(0);
   });
 });
