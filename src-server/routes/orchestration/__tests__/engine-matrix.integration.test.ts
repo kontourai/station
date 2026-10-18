@@ -596,7 +596,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
           windowsHide: true,
           timeout: 15000,
           maxBuffer: 1024 * 1024,
-          env: { ...process.env, STATION_CREDENTIAL: 'matrix-test-credential' },
+          env: { ...process.env, STATION_CREDENTIAL: credential },
         },
       ),
     ).rejects.toMatchObject({ code: 2 });
