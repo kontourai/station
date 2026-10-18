@@ -2,14 +2,9 @@
  * @vitest-environment jsdom
  */
 
-import {
-  act,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { render } from './renderWithQueryClient';
 
 const useStreamingContent = vi.fn();
 const mobile = vi.hoisted(() => ({ current: false }));
