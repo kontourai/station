@@ -235,14 +235,17 @@ Full disclosure wording revision 2 resets existing acknowledgements because the
 earlier lede overstated anonymity: Full events are pseudonymous, with a monthly
 installation hash. `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` hashes this wording
 revision together with the event/property/envelope inventory. The existing
-`USAGE_TELEMETRY_INVENTORY_REVISION` export remains its compatibility name for
-receipts and the disclosure API. A saved operator Full choice remains pending
+`USAGE_TELEMETRY_INVENTORY_REVISION` export remains for compatibility but is
+deprecated in favor of the explicit acknowledgement name for receipts and the
+disclosure API. A saved operator Full choice remains pending
 until the accurate disclosure is acknowledged again.
 
 `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` hashes only the data inventory and
 belongs in batches and probes. Receiver parser names remain unchanged. A
 wording-only bump changes acknowledgement validity without changing wire
-compatibility. Lite notice revisions are independent.
+compatibility. Lite notice revisions are independent. Broker and Station must
+ship together when the data inventory wire revision changes: an older broker
+rejects the new revision, and this foundation has no legacy wire fallback.
 
 ### Choices while Do Not Track is active
 
@@ -253,7 +256,12 @@ choices and a save action named **Save operator choice as** the selected tier.
 Saving writes only that operator tier, without a disclosure acknowledgement.
 Saving Lite preserves a saved-Lite user's choice. Saving Full leaves Full
 pending: removing DNT shows the unacknowledged dialog again, and no Full event
-is admitted until the person allows it. These saves do not snooze the dialog;
+is admitted until the person allows it. Every successful Save closes the dialog
+and records a local, host-bound decision for the current disclosure revision,
+without acknowledging it. It stays closed across reloads while DNT is active.
+After DNT is removed, only saved Full re-prompts for confirmation; saved Off or
+Lite does not, since neither requires acknowledgement. A new disclosure revision
+re-prompts. This decision record is separate from the timed “Not now” snooze;
 the service and acknowledgement route also refuse acknowledgement under DNT.
 
 Known residual: operator and `access:manage` callers can submit full tier maps

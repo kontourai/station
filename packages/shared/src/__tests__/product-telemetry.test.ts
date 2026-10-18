@@ -7,7 +7,6 @@ import {
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
   parseStationDailyPing,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '../product-telemetry.js';
 
 const batch = () => ({
@@ -267,7 +266,7 @@ describe('Lite ping privacy boundary', () => {
     ).toBe(true);
     expect(
       hasCurrentLiteTelemetryNotice({
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       }),
     ).toBe(false);
     expect(hasCurrentLiteTelemetryNotice(undefined)).toBe(false);
@@ -368,9 +367,6 @@ test('a wording-only bump changes consent without changing batch or probe compat
     );
     expect(revised.FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION).not.toBe(
       FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
-    );
-    expect(revised.USAGE_TELEMETRY_INVENTORY_REVISION).toBe(
-      revised.FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
     );
     expect(revised.parseProductTelemetryBatch(batch()).inventory_revision).toBe(
       PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,

@@ -186,10 +186,55 @@ export function dismissUsageTelemetryDisclosure(
   for (const listener of dismissalListeners) listener();
 }
 
+// This is a local decision reminder, never a Full acknowledgement. Bind it to
+// the API base and disclosure revision so another API base or new wording
+// still prompts; two Stations behind one origin share it.
+const DNT_DECISIONS_STORAGE_KEY =
+  'station.usage-telemetry-disclosure.dnt-decisions';
+const dntDecisionsForPage = new Map<string, string>();
+
+function readDntDecision(apiBase: string): string | null {
+  const pageRevision = dntDecisionsForPage.get(apiBase);
+  if (pageRevision) return pageRevision;
+  try {
+    const raw = window.localStorage.getItem(DNT_DECISIONS_STORAGE_KEY);
+    const records: unknown = raw ? JSON.parse(raw) : null;
+    if (records && typeof records === 'object' && !Array.isArray(records)) {
+      const revision = (records as Record<string, unknown>)[apiBase];
+      if (typeof revision === 'string') return revision;
+    }
+  } catch {
+    // The page-lifetime record still closes Save when storage is unavailable.
+  }
+  return null;
+}
+
+function recordDntDecision(apiBase: string, inventoryRevision: string): void {
+  dntDecisionsForPage.set(apiBase, inventoryRevision);
+  try {
+    const raw = window.localStorage.getItem(DNT_DECISIONS_STORAGE_KEY);
+    const records: unknown = raw ? JSON.parse(raw) : {};
+    window.localStorage.setItem(
+      DNT_DECISIONS_STORAGE_KEY,
+      JSON.stringify({
+        ...(records && typeof records === 'object' && !Array.isArray(records)
+          ? records
+          : {}),
+        [apiBase]: inventoryRevision,
+      }),
+    );
+  } catch {
+    // Best-effort persistence, with the same page-lifetime fallback as snooze.
+  }
+  for (const listener of dismissalListeners) listener();
+}
+
 /** Module state and the snooze outlive a test; each case needs its own page. */
 export function resetUsageTelemetryDisclosureDismissal(): void {
   dismissedForPageLifetime = false;
+  dntDecisionsForPage.clear();
   try {
+    window.localStorage.removeItem(DNT_DECISIONS_STORAGE_KEY);
     window.localStorage.removeItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY);
   } catch {
     // Nothing persisted, nothing to clear.
@@ -278,6 +323,10 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     subscribeToDismissal,
     readDismissal,
   );
+  const decisionApiBase = scoped ? scope.apiBase : apiBase;
+  const dntDecision = useSyncExternalStore(subscribeToDismissal, () =>
+    readDntDecision(decisionApiBase),
+  );
   const query = useQuery({
     queryKey: scoped
       ? recoveryDisclosureKey(scope.apiBase, scope.identityKey)
@@ -306,8 +355,16 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
   // in render rather than through the store subscription because it needs the
   // query's answer; the subscription still forces the re-render whenever a
   // dismissal happens on this page.
+  const operator = query.data?.publishers?.operator;
+  const decidedUnderDnt =
+    dntDecision === query.data?.inventoryRevision &&
+    (operator?.reason === 'DNT' ||
+      operator?.userChoice === 'off' ||
+      operator?.userChoice === 'lite');
   const dismissed =
-    pageDismissed || isSnoozedFor(query.data?.inventoryRevision);
+    pageDismissed ||
+    isSnoozedFor(query.data?.inventoryRevision) ||
+    decidedUnderDnt;
   return {
     data: query.data,
     isError: query.isError,
@@ -776,6 +833,7 @@ function useUsageTelemetryDecision(
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
             if (operator?.reason === 'DNT') {
+              recordDntDecision(target.apiBase, data.inventoryRevision);
               onDecided?.();
               return;
             }
@@ -816,6 +874,7 @@ function useUsageTelemetryDecision(
             return;
           }
           if (operator?.reason === 'DNT') {
+            recordDntDecision(apiBase, data.inventoryRevision);
             queryClient.invalidateQueries({
               queryKey: ['usage-telemetry-disclosure'],
             });
