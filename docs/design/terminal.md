@@ -5,8 +5,8 @@
 > owned by [`TerminalService`](../../src-server/services/terminal/terminal-service.ts),
 > the [terminal WebSocket server](../../src-server/services/terminal/terminal-ws-server.ts),
 > and [`TerminalPanel`](../../src-ui/src/components/coding-layout/TerminalPanel.tsx).
-> Prior art was read at pingdotgg/t3code `13aa882c2`; claims about it are from
-> source inspection, not execution.
+> Station's implementation is written independently; no code is ported from
+> other products.
 
 ## Why
 
@@ -39,9 +39,7 @@ stack has structural problems that incremental fixes would not remove:
 6. One emulator everywhere Station renders a terminal: desktop, browser, and
    the mobile webview.
 
-## What we take from t3code
-
-Adopted, with Station names:
+## Design principles
 
 - Server-owned sessions behind a PTY adapter, with ordered per-session event
   queues and kill escalation that subscribes to exit before signalling.
@@ -57,9 +55,8 @@ Adopted, with Station names:
   per-terminal `execSync`.
 - Shell resolution with fallback only on not-found errors; zsh
   `-o nopromptsp`; `COLORTERM=truecolor`; scrubbed server-private variables.
-- The `libghostty-vt` WebAssembly emulator and its browser surface (input,
-  IME, selection, links, Canvas renderer), ported with attribution (both
-  projects are MIT).
+- Ghostty's official `libghostty-vt` emulator compiled to WebAssembly, with
+  a Station-owned browser surface (input, IME, selection, links, rendering).
 - Splits and groups, thread-scoped layout reconciled against the server's
   session list, keep-mounted recent drawers.
 - "Add to chat" as a composer chip with line ranges; URL and `path:line:col`
@@ -67,17 +64,17 @@ Adopted, with Station names:
 - Script runs whose completion is detected by a per-run random end marker
   that output cannot forge.
 
-## Where we go further
+## Performance and capability targets
 
-| t3code limitation | Station design |
+| Concern | Station design |
 | --- | --- |
-| Every attach resends up to 8 MiB of history | Resume from the client's last sequence number; full snapshot only when the journal no longer covers it |
-| Whole history file rewritten every 250 ms while busy | Append-only journal segments with background compaction |
-| One RPC per keystroke, JSON strings | Coalesced input, binary frames on one multiplexed socket |
-| Shells die with the server | Shells are supervisor workloads that outlive core server restarts and upgrades |
-| Re-opening with a changed cwd or env silently wipes history | Explicit restart with history kept as a prior segment |
-| No find in terminal | Search over the emulator's scrollback |
-| Agent cannot read or drive terminals | Shared-terminal read and visible run tools behind approval |
+| Reattach cost | Resume from the client's last sequence number; a full snapshot only when the journal no longer covers it |
+| History writes | Append-only journal segments with background compaction; never a whole-file rewrite |
+| Input and output encoding | Coalesced input and binary frames on one multiplexed socket; no JSON-escaped terminal data |
+| Server restarts | Shells are supervisor workloads that outlive core server restarts and upgrades |
+| Changing a session's cwd or environment | An explicit restart that keeps earlier history as a prior segment |
+| Finding text | Search over the emulator's scrollback |
+| Agent use | Shared-terminal read and visible run tools behind approval |
 
 ## Architecture
 
@@ -215,10 +212,24 @@ state never enters the render loop.
 
 ### Emulator
 
-Port t3code's `libghostty-vt` browser adapter into `src-ui` with its tests,
-pinned to the same Ghostty revision, built by a reproducible Zig script with
-the WebAssembly committed as a vendored asset and its revision checked by a
-test. Additions:
+Station writes its own browser adapter for Ghostty's official
+`libghostty-vt` C ABI, independently and from Ghostty's public headers and
+documentation. The WebAssembly is built from a pinned Ghostty revision by a
+reproducible Zig script, committed as a vendored asset with Ghostty's MIT
+license, and its revision is checked by a test. The adapter owns:
+
+- A per-terminal handle over the C ABI and a render snapshot of rows and
+  styles.
+- A renderer that batches backgrounds and style runs per frame, with React
+  state kept out of the render loop.
+- Browser input: keyboard encoding, IME and composition, paste, mouse
+  reporting, selection with multi-click, wheel and scrollbar, and focus.
+- Terminal replies (device attributes, status reports) written back to the
+  PTY, detached while replaying a journal.
+- A symbols-only Nerd Font loaded lazily so prompt glyphs render without a
+  local install.
+
+Station additions on top:
 
 - Themes from `--k-*` tokens, following light and dark changes.
 - Find in terminal.
@@ -231,10 +242,9 @@ the web surface.
 
 #### Accessibility
 
-The Ghostty surface draws to a canvas that is hidden from assistive
-technology; t3code's port labels only the input and the scrollbar, so a
-screen reader cannot read terminal output. xterm.js's screen reader mode
-covers this today, so shipping the port without an equivalent would be a
+A canvas-rendered terminal is invisible to assistive technology unless the
+adapter exposes its text separately. xterm.js's screen reader mode covers
+this today, so shipping the Ghostty surface without an equivalent would be a
 regression. The emulator phase does not ship until this exists:
 
 - **Accessible output buffer.** A visually hidden, focusable text mirror of
@@ -313,7 +323,7 @@ verification.
    workload phase; the in-process host lets this phase start in parallel.
 2. **Transport and client runtime:** multiplexed socket, resume, flow
    control, observe scope, relay and broker routes, SDK store.
-3. **Emulator:** Ghostty port, theming, find, links, context menu, and the
+3. **Emulator:** Station's Ghostty adapter, theming, find, links, context menu, and the
    accessibility requirements above.
 4. **Layout:** terminal pane, standalone route, Coding drawer with groups and
    splits, server-side layout state, shortcuts.
@@ -328,7 +338,8 @@ verification.
   journal sanitizing; cross-session and cross-project isolation; kill
   escalation; core server handoff with a live shell, run as child
   processes.
-- Client: the ported Ghostty suites, plus resume and flow-control tests
+- Client: adapter suites (C ABI layout against the pinned revision, input
+  encoding, selection, rendering, reply handling), plus resume and flow-control tests
   against a real server.
 - Accessibility: automated checks that the mirror matches rendered rows after
   cursor-addressed redraws, that announcements are coalesced under load, and
