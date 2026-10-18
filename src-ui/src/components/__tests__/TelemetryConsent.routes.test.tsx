@@ -354,6 +354,7 @@ test.each([undefined, '1'])(
 
 test('notice receipts follow visible presentation, survive remount, and require a new inventory; hidden notices never attest', async () => {
   const { client, loader, service, home } = await publisherFixture();
+  bridge.request.mockClear();
   const rect = vi
     .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
     .mockReturnValue({
@@ -384,7 +385,14 @@ test('notice receipts follow visible presentation, survive remount, and require 
     await screen.findByRole('complementary', {
       name: 'Lite telemetry notice for Operator',
     });
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    expect(
+      bridge.request.mock.calls.filter(([url]) =>
+        String(url).endsWith('/lite-notices'),
+      ),
+    ).toHaveLength(0);
     expect((await service.telemetryStatus()).liteNotices).toEqual({});
     modal.remove();
     await waitFor(async () =>
