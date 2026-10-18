@@ -5,6 +5,7 @@ import type {
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../components/Button';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { telemetryPublisherLabel } from '../../hooks/useTelemetryStatus';
 import '../../components/TelemetryPrivacy.css';
@@ -58,14 +59,18 @@ export function TelemetryOutbox({
       >
         Refresh {telemetryPublisherLabel(publisher)} outbox
       </Button>
-      {query.isLoading && <p role="status">Loading outbox…</p>}
+      {query.isLoading && (
+        <SkeletonBlock count={1} label="Reading telemetry history" />
+      )}
       {query.isError && (
-        <p role="alert">
-          The outbox could not be loaded. Use Refresh to try again.
-        </p>
+        <ErrorState
+          variant="compact"
+          title="The outbox could not be loaded"
+          description="Use Refresh to try again."
+        />
       )}
       {entries?.length === 0 && (
-        <p>No telemetry records for this publisher yet.</p>
+        <Empty variant="compact" label="This publisher's outbox is empty." />
       )}
       <ol className="telemetry-outbox__list">
         {entries?.map((entry, index) => (

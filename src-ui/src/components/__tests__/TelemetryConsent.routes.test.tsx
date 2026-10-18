@@ -486,7 +486,7 @@ test('outbox displays sent JSON but never exposes dropped payload bytes, and is 
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh Kontour outbox' }),
     );
-    await screen.findByText('No telemetry records for this publisher yet.');
+    await screen.findByText("This publisher's outbox is empty.");
     empty.unmount();
   } finally {
     view.unmount();

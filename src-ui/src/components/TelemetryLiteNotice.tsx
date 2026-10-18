@@ -11,6 +11,7 @@ import {
   useTelemetryStatus,
 } from '../hooks/useTelemetryStatus';
 import { Button } from './Button';
+import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import './TelemetryPrivacy.css';
 
 /** A committed, visible notice is the receipt owner; fetching status never records it. */
@@ -182,7 +183,7 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
           <p role="alert">The Off choice could not be saved. Try again.</p>
         )}
       </div>
-      <div className="telemetry-lite-notice__actions">
+      <ResponsiveSurfaceActions className="telemetry-lite-notice__actions">
         <Button
           variant="secondary"
           disabled={update.isPending}
@@ -193,7 +194,7 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
         <Button variant="secondary" onClick={close}>
           Dismiss notice
         </Button>
-      </div>
+      </ResponsiveSurfaceActions>
     </aside>
   );
 }

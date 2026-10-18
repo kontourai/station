@@ -1046,7 +1046,7 @@ function DisclosureDecisionActions({
   decision: UsageTelemetryDecision;
   keepRef?: Ref<HTMLButtonElement>;
 }) {
-  if (decision.feedback) return decision.feedback;
+  if (decision.feedback) return null;
   return (
     <>
       {!decision.dntChoice && (
@@ -1125,6 +1125,7 @@ export function UsageTelemetryDisclosureStep({
           the inventory it is listed in. */}
       <DisclosureDntChoices decision={decision} />
       {decision.notice}
+      {decision.feedback}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         <DisclosureDecisionActions decision={decision} />
       </ResponsiveSurfaceActions>
@@ -1205,6 +1206,7 @@ export function UsageTelemetryDisclosure({
           <DisclosureSummary data={data} chrome={STANDALONE_CHROME} />
           <DisclosureDntChoices decision={decision} />
           {decision.notice}
+          {decision.feedback}
         </div>
       </Dialog>
     );
@@ -1224,6 +1226,7 @@ export function UsageTelemetryDisclosure({
         <>
           <DisclosureDntChoices decision={decision} />
           {decision.notice}
+          {decision.feedback}
           <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
             <DisclosureDecisionActions decision={decision} />
           </ResponsiveSurfaceActions>

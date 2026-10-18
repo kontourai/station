@@ -2266,7 +2266,7 @@ describe('settings catalog completeness', () => {
   );
 
   test('discarding an optional reason does not attach it to an imported tier change', async () => {
-    window.history.replaceState({}, '', '/settings?view=telemetry');
+    window.history.replaceState({}, '', '/settings?view=overview');
     configSnapshot = {
       config: {
         ...INITIAL_CONFIG,
