@@ -1,3 +1,4 @@
+import { cpSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as esbuild from 'esbuild';
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
@@ -51,8 +52,17 @@ const shared = {
 const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
 
 await generateStationDocs({ check: true });
+mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
+for (const name of ['LICENSE', 'NOTICE']) {
+  cpSync(`packaging/licenses/cedar/${name}`, `${serverDir}/third-party/cedar/${name}`);
+}
 
 await Promise.all([
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/cedar-policy-probe.ts'],
+    outfile: `${serverDir}/cedar-policy-probe.js`,
+  }),
   esbuild.build({
     ...shared,
     entryPoints: [
