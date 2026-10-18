@@ -87,9 +87,12 @@ time; these deterministic tests are not a live-provider receipt.
 with longer diagnostic sessions. It does not replace the one-turn smoke or
 promote connection readiness. The matrix is opt-in, may incur provider charges,
 and live runs stay outside deterministic CI. Offline tests drive the real Hono
-orchestration routes and `OrchestrationService` over loopback HTTP, replacing
-only the provider adapter and read-only agent/connection configuration. They
-exercise real validation, conversation continuation, provenance projection,
+orchestration routes and `OrchestrationService` over loopback HTTP, behind the
+daemon's real ingress middleware. `EnvironmentSecurityService` mints the bearer
+credential, the production resolver derives the principal, and the production
+current-principal check guards requests. A headerless request receives 401.
+Only the provider adapter and read-only agent/connection configuration are
+faked. These tests exercise real validation, conversation continuation, provenance projection,
 output admission/storage/inspection and activation lifecycle. The test output
 observer is a fake engine-side observer; real-provider and rendered-browser
 qualification remain **NOT_VERIFIED** until an operator explicitly runs them.
@@ -153,6 +156,10 @@ identical. Stop uses the public `/api/orchestration/commands` route's
 `stopSession` command. Internal `startSession` and `sendTurn` commands are not
 accepted by that route. These observations prove the public API's activation transition, not an OS
 process exit or native provider-session identity. JSON retains those states.
+The offline adapter publishes an opaque `resumeCursor` through the provider
+session/turn contract. Its durable memory is keyed only by that cursor, never
+by Station's thread ID; stop clears hot memory. Recycle recall therefore
+requires Station to return the cursor on restart. Dropping it fails recall.
 Artifact support depends on the engine using Station's native output producer;
 an undeclared file cannot pass. The runner uses the output's exact event ID with
 `POST /outputs/:eventId/inspect`, requires the returned session/turn/output
@@ -181,12 +188,17 @@ supply that identity, while an explicitly vendor-qualified request also covers
 new families and vendor namespaces without a fixed registry. A bare unknown family cannot establish a reported prefix's vendor
 and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
 forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
-matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, and Vertex's
+matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, bare
+Bedrock vendor-dot forms such as `anthropic.claude-sonnet-4-5-20250929-v1:0`, and Vertex's
 `claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
 cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
 versions fail. Dots inside bare model IDs (for example `grok-4.1` or
 `qwen3.5-coder`) remain part of the model name. Only an explicit `vendor/`
-prefix or a known `region.vendor.` form establishes a vendor prefix.
+prefix, a known Bedrock vendor-dot prefix, or a known `region.vendor.` form
+establishes a vendor prefix. `moonshotai`/`moonshot`, `xai`/`x-ai` and
+`deepseek-ai`/`deepseek` name the same vendors. An undated `-v1:0` suffix is
+accepted only on a Bedrock vendor-dot form; bare `gpt-4.1-v1:0` and
+`claude-sonnet-4-5-v1:0` are distinct IDs, not accepted aliases.
 The accepted/rejected table in the
 [matrix tests](../../scripts/__tests__/station-engine-matrix.test.ts) pins this
 policy. All stored-output pages are read; partial results fail. Duplicate or
@@ -212,11 +224,16 @@ trusted local ES module. It may export either or both:
   valid. An optional positive integer `maxTurns` per scenario declares its
   per-model planning bound. Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario/model);
-  its printed count is an upper bound. Every managed foreground submission or continuation, background/delegated
-  submission, and `steerTurn`/`steerTurnOnce` command consumes both the printed
-  plan reservation and the hard run ceiling, including `ctx.api` and
-  `ctx.command` calls. The effective HTTP method and path are normalized before
-  counting; query strings and an explicit method cannot bypass the ceiling.
+  its printed count is an upper bound. Every POST through the managed API
+  reserves a turn, including unknown routes, handoff, delegation continuation,
+  Agent chat/invoke and steer commands. Only these known non-billable operations
+  are exempt: `stopSession`, `interruptTurn`, `inspectSteerInput`,
+  `setApprovalMode`, `discardDraft`, and session-output inspection. This is a
+  conservative request budget: an extension's other POSTs consume its declared
+  `maxTurns` reservation even if they do not invoke a model. Review those
+  reservations when adding extension setup operations. The effective HTTP
+  method and path are normalized; query strings and explicit methods cannot
+  bypass either the printed reservation or hard run ceiling.
   An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox.
   `ctx` provides the current `sessionId`, stable `conversationId`, `model`, `switchModel`,
@@ -234,6 +251,11 @@ trusted local ES module. It may export either or both:
 HTTP method: `ctx.api(path, undefined, 'DELETE')` performs DELETE cleanup. If the
 method is omitted, the command transport retains its GET default without a body
 and POST default with a body. Existing two-argument calls remain valid.
+`ctx.sessionId` is a getter: before the first send it is the proposed
+conversation ID, and after each send it is the runtime session ID in Station's
+receipt. Read it lazily when making an observation or API request; do not
+capture or destructure it before a send and reuse that value afterward.
+`ctx.conversationId` remains stable across those changes.
 
 The adapter catalog and orchestration return types explicitly retain optional
 `resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
@@ -253,7 +275,10 @@ failure text; JSON also retains concrete comparison models, the send plan/count,
 session/turn IDs and individual checks. New session-level `runtime.error` events
 without a turn ID retain their actual error text. The cursor starts empty for
 each new conversation and advances only through a completed-turn event. Startup
-errors belong to this run. Reads before later sends do not reset the cursor. Errors in the gap after a terminal,
+errors belong to this run. Reads before later sends do not reset the cursor.
+An error explicitly scoped to an earlier completed turn is not attributed to a
+new turn; the offline negative control pins that distinction. Unscoped startup
+errors on a freshly created matrix conversation are never excluded as history. Errors in the gap after a terminal,
 including errors emitted during `stopSession`, fail the next attempted scenario
 before another billable send.
 Exit 0 requires every row

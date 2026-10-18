@@ -20,16 +20,28 @@ function modelIdentity(value) {
       qualified,
     );
   const explicit = /^([a-z][a-z0-9-]*)\/(.+)$/.exec(qualified);
-  const prefix = regional ?? explicit;
-  return { model: prefix?.[2] ?? qualified, vendor: prefix?.[1] };
+  const dotted = /^(anthropic|amazon|meta|mistral|cohere|ai21)\.(.+)$/.exec(
+    qualified,
+  );
+  const prefix = regional ?? explicit ?? dotted;
+  const vendorAliases = new Map([
+    ['moonshotai', 'moonshot'],
+    ['xai', 'x-ai'],
+    ['deepseek-ai', 'deepseek'],
+  ]);
+  return {
+    model: prefix?.[2] ?? qualified,
+    vendor: vendorAliases.get(prefix?.[1]) ?? prefix?.[1],
+    bedrock: Boolean(regional ?? dotted),
+  };
 }
 
-function modelSnapshot(model) {
+function modelSnapshot(model, bedrock) {
   const match =
     /^(.*?)[-@](20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v(\d+(?::\d+)?))?$/.exec(model);
   return match
     ? { base: match[1], date: match[2].replaceAll('-', ''), version: match[3] }
-    : /^(.*?)-v(\d+:\d+)$/.test(model)
+    : bedrock && /^(.*?)-v(\d+:\d+)$/.test(model)
       ? {
           base: model.replace(/-v\d+:\d+$/, ''),
           version: /-v(\d+:\d+)$/.exec(model)[1],
@@ -48,8 +60,8 @@ export function checkServedModel(requested, reported) {
     (requestedVendor && b.vendor && b.vendor !== requestedVendor)
   )
     return 'fail';
-  const left = modelSnapshot(a.model);
-  const right = modelSnapshot(b.model);
+  const left = modelSnapshot(a.model, a.bedrock);
+  const right = modelSnapshot(b.model, b.bedrock);
   if (
     left.base !== right.base ||
     (left.date && right.date && left.date !== right.date) ||
@@ -382,12 +394,20 @@ export async function runMatrix({
       '',
     );
     const method = String(rest[0] ?? (body ? 'POST' : 'GET')).toUpperCase();
-    const billable =
-      /^\/api\/orchestration\/chat(?:\/(?:background|delegated|[^/]+\/continue))?$/.test(
-        pathname,
-      ) ||
+    const nonBillable =
       (pathname === '/api/orchestration/commands' &&
-        ['sendTurn', 'steerTurn', 'steerTurnOnce'].includes(body?.type));
+        [
+          'stopSession',
+          'interruptTurn',
+          'inspectSteerInput',
+          'setApprovalMode',
+          'discardDraft',
+        ].includes(body?.type)) ||
+      /^\/api\/orchestration\/sessions\/[^/]+\/outputs\/[^/]+\/inspect$/.test(
+        pathname,
+      );
+    // Unknown POST routes reserve a turn too: extensions must not bypass the ceiling.
+    const billable = !nonBillable;
     if (method === 'POST' && billable) {
       if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
@@ -405,6 +425,7 @@ export async function runMatrix({
       : 'Station API only; rendered UI NOT_VERIFIED',
     plan,
     rows,
+    sentTurns: 0,
   };
   const command = (value) =>
     checkedApi('/api/orchestration/commands', value).then((body) => body.data);

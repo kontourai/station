@@ -28,6 +28,8 @@ import type {
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { currentAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import { declareCurrentNativeOutput } from '../../../runtime/native-output-declaration.js';
 import {
@@ -36,25 +38,22 @@ import {
   runWithCurrentNativeOutputCall,
   runWithNativeOutputTurnContext,
 } from '../../../runtime/native-output-turn-grant.js';
-import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   continueExecutionTargetMessage,
   executeExecutionTargetMessage,
 } from '../../../tools/station-control-delegation.js';
 import { isRecord } from '../../../utils/is-record.js';
+import { createLogger } from '../../../utils/logger.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const makeTempDir = trackTempDirs();
 const exec = promisify(execFile);
-const principal = {
-  id: 'human:matrix:owner',
-  kind: 'human' as const,
-  display: 'Matrix owner',
-};
 const connection = {
   id: 'matrix-engine',
   kind: 'agent' as const,
@@ -106,6 +105,9 @@ class MatrixAdapter implements ProviderAdapterShape {
   missingModel = false;
   wrongFollowup = false;
   noOpStop = false;
+  timeout = false;
+  cleanupFailure = false;
+  extraStored = false;
   constructor(private readonly root: string) {}
   async listModelCatalog() {
     return {
@@ -116,11 +118,17 @@ class MatrixAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
     this.starts.push(input);
+    const cursor =
+      isRecord(input.resumeCursor) &&
+      typeof input.resumeCursor.matrixSessionId === 'string'
+        ? { matrixSessionId: input.resumeCursor.matrixSessionId }
+        : { matrixSessionId: randomUUID() };
     const session: ProviderSession = {
       provider: this.provider,
       threadId: input.threadId,
       cwd: input.cwd,
       model: input.modelId,
+      resumeCursor: cursor,
       status: 'ready',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -130,7 +138,7 @@ class MatrixAdapter implements ProviderAdapterShape {
       this.secrets.set(
         input.threadId,
         await readFile(
-          join(this.root, `${encodeURIComponent(input.threadId)}.secret`),
+          join(this.root, `${cursor.matrixSessionId}.secret`),
           'utf8',
         ),
       );
@@ -171,6 +179,9 @@ class MatrixAdapter implements ProviderAdapterShape {
   }
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
+    const cursor = this.sessions.get(input.threadId)?.resumeCursor;
+    if (!isRecord(cursor) || typeof cursor.matrixSessionId !== 'string')
+      throw new Error('No provider memory cursor');
     if (this.failSend) throw new Error('Engine send failed');
     const turnId = currentAuthorizedTurnCorrelation()?.turnId ?? randomUUID();
     const base = {
@@ -191,7 +202,7 @@ class MatrixAdapter implements ProviderAdapterShape {
     if (token) {
       this.secrets.set(input.threadId, token);
       await writeFile(
-        join(this.root, `${encodeURIComponent(input.threadId)}.secret`),
+        join(this.root, `${cursor.matrixSessionId}.secret`),
         token,
       );
     }
@@ -199,34 +210,39 @@ class MatrixAdapter implements ProviderAdapterShape {
       /Create (station-matrix-[\w-]+\.txt) containing exactly (STATION_MATRIX_ARTIFACT:[\w-]+)/.exec(
         input.input,
       );
-    if (artifact) {
+    const declaration =
+      artifact ??
+      (this.extraStored ? ['', 'extra-stored.txt', 'UNEXPECTED_OUTPUT'] : null);
+    if (declaration) {
       const session = this.sessions.get(input.threadId);
       if (!session?.cwd) throw new Error('No admitted workspace');
-      await writeFile(
-        join(session.cwd, artifact[1]),
-        this.wrongContent ? 'Wrong artifact contents' : artifact[2],
-      );
       const context =
         currentNativeOutputRelayCompanion()?.issueForRuntimeConfiguration(
           this,
           () => true,
         );
       if (!context) throw new Error('No native output declaration grant');
+      await writeFile(
+        join(session.cwd, declaration[1]),
+        this.wrongContent ? 'Wrong artifact contents' : declaration[2],
+      );
       await runWithNativeOutputTurnContext(context, () =>
         runWithCurrentNativeOutputCall(randomUUID(), () =>
           declareCurrentNativeOutput({
-            file: { path: artifact[1], mediaType: 'text/plain' },
+            file: { path: declaration[1], mediaType: 'text/plain' },
           }),
         ),
       );
       closeNativeOutputTurnContext(context);
-      this.rendered.set(turnId, [artifact[1]]);
+      if (artifact) this.rendered.set(turnId, [artifact[1]]);
     }
     const reply = /Reply with exactly STATION_SMOKE_OK/.test(input.input)
       ? 'STATION_SMOKE_OK'
       : this.wrongFollowup
         ? 'wrong recall'
         : (this.secrets.get(input.threadId) ?? 'forgot');
+    if (this.timeout)
+      return { threadId: input.threadId, turnId, resumeCursor: cursor };
     this.events.push({
       ...base,
       eventId: randomUUID(),
@@ -245,14 +261,16 @@ class MatrixAdapter implements ProviderAdapterShape {
             }),
       },
     });
-    return { threadId: input.threadId, turnId };
+    return { threadId: input.threadId, turnId, resumeCursor: cursor };
   }
   async stopSession(threadId: string) {
     this.stops.push(threadId);
+    if (this.cleanupFailure) throw new Error('Adapter stop failed');
+    const cursor = this.sessions.get(threadId)?.resumeCursor;
     if (this.stopError)
       this.emitError(threadId, 'Recycle transport disconnected');
-    if (this.forgetOnStop)
-      await rm(join(this.root, `${encodeURIComponent(threadId)}.secret`), {
+    if (this.forgetOnStop && isRecord(cursor))
+      await rm(join(this.root, `${cursor.matrixSessionId}.secret`), {
         force: true,
       });
     if (!this.noOpStop) {
@@ -298,6 +316,8 @@ describe('engine matrix through real foreground routes and orchestration', () =>
   let server: ReturnType<typeof serve>;
   let origin: string;
   let workspace: string;
+  let credential: string;
+  let security: EnvironmentSecurityService;
   let connections: (typeof connection)[];
   const requests: Array<{
     path: string;
@@ -314,6 +334,8 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     requests.length = 0;
     connections = [connection];
     adapter = new MatrixAdapter(root);
+    security = new EnvironmentSecurityService({ homeDir: join(root, 'home') });
+    credential = (await security.initialize()).credential;
     store = new EventStore(join(root, 'events.sqlite'));
     const bus = new EventBus();
     service = new OrchestrationService({
@@ -338,11 +360,6 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     });
     const app = new Hono();
     app.use('*', async (c, next) => {
-      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
-        credential: 'operator-credential',
-        authority: 'operator-credential',
-        source: 'bearer',
-      });
       const row = {
         path: c.req.path,
         method: c.req.method,
@@ -354,6 +371,28 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       requests.push(row);
       await next();
       row.status = c.res.status;
+    });
+    configureRuntimeHttp({
+      app: app as never,
+      eventBus: bus,
+      logger: createLogger({ name: 'matrix-auth', level: 'error' }),
+      security: {
+        verifyCredential: (candidate, request) =>
+          request
+            ? security.authorizeCredential(candidate, request)
+            : security.verifyCredential(candidate),
+        recognizeCredential: (candidate) =>
+          security.verifyCredential(candidate),
+        resolveGrantedScope: (candidate) =>
+          security.resolveGrantedScope(candidate),
+        resolveCredentialAuthority: (candidate) =>
+          security.verifyOperatorCredential(candidate)
+            ? 'operator-credential'
+            : undefined,
+      },
+    });
+    const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
+      environmentSecurityService: security,
     });
     app.get('/.well-known/station/v1', (c) =>
       c.json({ environmentId: 'matrix-host' }),
@@ -395,8 +434,9 @@ describe('engine matrix through real foreground routes and orchestration', () =>
         eventBus: bus,
         logger: { debug: vi.fn() },
         getUserId: () => 'matrix-owner',
-        resolvePrincipal: () => principal,
-        isRequestPrincipalCurrent: () => true,
+        resolvePrincipal,
+        isRequestPrincipalCurrent: (request) =>
+          isRuntimeRequestPrincipalCurrent(request, security),
         executeForegroundMessage: (input) =>
           executeExecutionTargetMessage(input, service),
         continueForegroundMessage: (input) =>
@@ -426,7 +466,10 @@ describe('engine matrix through real foreground routes and orchestration', () =>
   ) => {
     const response = await fetch(`${origin}${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${credential}`,
+      },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const result = await response.json();
@@ -473,6 +516,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     expect(result.rows).toHaveLength(10);
     expect(result.rows.every((row: any) => row.status === 'pass')).toBe(true);
     expect(adapter.turns).toHaveLength(12);
+    expect(result.sentTurns).toBe(12);
     expect(
       result.rows
         .filter((row: any) => row.scenario === 'model-switch')
@@ -501,7 +545,21 @@ describe('engine matrix through real foreground routes and orchestration', () =>
             row.turns[0].storedOutputs.length === 1,
         ),
     ).toBe(true);
-    expect(adapter.starts.length).toBeGreaterThan(2);
+    expect(adapter.starts).toHaveLength(4);
+    for (const first of adapter.starts.filter(
+      (start) => start.resumeCursor === undefined,
+    )) {
+      const resumed = adapter.starts.find(
+        (start) =>
+          start.threadId === first.threadId && start.resumeCursor !== undefined,
+      );
+      expect(resumed?.resumeCursor).toMatchObject({
+        matrixSessionId: expect.any(String),
+      });
+      expect(resumed?.resumeCursor).not.toEqual({
+        matrixSessionId: first.threadId,
+      });
+    }
     expect(
       requests
         .filter((row) => row.method === 'POST')
@@ -546,10 +604,141 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     expect(adapter.turns).toEqual([]);
   });
 
-  test('refuses an over-budget plan before a real engine start', async () => {
-    await expect(run({ maxTurns: 11 })).rejects.toThrow('Planned 12 turns');
+  test('refuses an over-budget plan with actionable guidance before a real engine start', async () => {
+    await expect(run({ maxTurns: 11 })).rejects.toThrow(
+      'Planned 12 turns exceeds --max-turns=11; refusing the entire run. Select fewer models with --model=ID (repeatable). You may explicitly raise --max-turns up to 1000; this plan requires 12.',
+    );
     expect(adapter.starts).toEqual([]);
     expect(adapter.turns).toEqual([]);
+  });
+
+  test('refuses a missing bearer with 401 at real daemon ingress', async () => {
+    const response = await fetch(`${origin}/api/connections/agents`);
+    expect(response.status).toBe(401);
+    expect(adapter.starts).toEqual([]);
+    expect((await api('/api/connections/agents')).success).toBe(true);
+  });
+
+  test('fails when stored outputs outnumber the independent rendered observation', async () => {
+    adapter.extraStored = true;
+    const result = await run({ modelIds: ['matrix-1'] });
+    expect(result.rows[0]).toMatchObject({
+      status: 'fail',
+      turns: [
+        expect.objectContaining({
+          checks: expect.objectContaining({ outputs: 'fail' }),
+          storedOutputs: ['extra-stored.txt'],
+          renderedOutputs: [],
+        }),
+      ],
+    });
+  });
+
+  test('reports turn completion timeout without retrying the send', async () => {
+    adapter.timeout = true;
+    const result = await run({ modelIds: ['matrix-1'], timeoutMs: 500 });
+    expect(result.rows[0]).toMatchObject({
+      status: 'fail',
+      failure:
+        'Turn completion timed out; provider termination is not confirmed',
+    });
+    expect(adapter.turns).toHaveLength(1);
+  });
+
+  test('retains a separate cleanup-failure row when stop is not confirmed', async () => {
+    adapter.cleanupFailure = true;
+    const result = await run({ modelIds: ['matrix-1'] });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'cleanup'),
+    ).toMatchObject({
+      status: 'fail',
+      failure: 'Cleanup not confirmed; session retained for recovery',
+    });
+  });
+
+  test('leaves recycle unverified when the loaded API cannot be read', async () => {
+    const result = await run({
+      modelIds: ['matrix-1'],
+      api: (path: string, body?: unknown, method?: string) =>
+        path === '/api/orchestration/sessions/loaded'
+          ? Promise.reject(new Error('Loaded API unavailable'))
+          : api(path, body, method),
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'recycle'),
+    ).toMatchObject({
+      status: 'unverified',
+      failure: 'unverified: API unload transition was not observed',
+      recycleEvidence: { loadedBefore: null, loadedAfterStop: null },
+    });
+  });
+
+  test('leaves recycle unverified when the loaded observation omits the resumed session', async () => {
+    let loadedReads = 0;
+    const result = await run({
+      modelIds: ['matrix-1'],
+      api: async (path: string, body?: unknown, method?: string) => {
+        const result = await api(path, body, method);
+        if (
+          path === '/api/orchestration/sessions/loaded' &&
+          ++loadedReads === 3
+        )
+          return { ...result, data: [] };
+        return result;
+      },
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'recycle'),
+    ).toMatchObject({
+      status: 'unverified',
+      failure: 'unverified: API resumed activation was not observed',
+      recycleEvidence: {
+        loadedBefore: true,
+        loadedAfterStop: false,
+        loadedAfterRecall: false,
+      },
+    });
+    expect(adapter.turns).toHaveLength(4);
+  });
+
+  test('does not attribute an error scoped to the completed turn to the next turn', async () => {
+    const result = await run({
+      modelIds: ['matrix-1'],
+      observeOutputs: async ({
+        sessionId,
+        turnId,
+      }: {
+        sessionId: string;
+        turnId: string;
+      }) => {
+        if (adapter.turns.length === 1) {
+          const event = {
+            eventId: randomUUID(),
+            provider: adapter.provider,
+            threadId: sessionId,
+            turnId,
+            method: 'runtime.error' as const,
+            severity: 'error' as const,
+            createdAt: new Date().toISOString(),
+            message: 'Old turn error replay',
+          };
+          adapter.events.push(event);
+          await vi.waitFor(async () => {
+            const events = (
+              await api(`/api/orchestration/sessions/${sessionId}/events`)
+            ).data;
+            expect(
+              Array.isArray(events) &&
+                events.some((entry) => entry.eventId === event.eventId),
+            ).toBe(true);
+          });
+        }
+        return { sessionId, turnId, names: adapter.rendered.get(turnId) ?? [] };
+      },
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'follow-up'),
+    ).toMatchObject({ status: 'pass', failure: null });
   });
 
   test('surfaces errors emitted during new-session startup', async () => {
@@ -795,9 +984,20 @@ describe('engine matrix through real foreground routes and orchestration', () =>
         .map((request) => request.method),
     ).toEqual(['DELETE']);
     expect(adapter.turns).toHaveLength(5);
+    expect(result.plan).toMatchObject({
+      extensionBudget: 'reserved-remaining-ceiling',
+      plannedTurnCount: 24,
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'model-switch'),
+    ).toMatchObject({
+      status: 'unverified',
+      failure: 'unverified: no second advertised model',
+      turns: [],
+    });
   });
 
-  const cli = async (args: string[], credential = 'matrix-test-credential') => {
+  const cli = async (args: string[], bearer = credential) => {
     const output = makeTempDir('matrix-reports-');
     const outcome = await exec(
       process.execPath,
@@ -820,7 +1020,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
         windowsHide: true,
         timeout: 15000,
         maxBuffer: 1024 * 1024,
-        env: { ...process.env, STATION_CREDENTIAL: credential },
+        env: { ...process.env, STATION_CREDENTIAL: bearer },
       },
     ).then(
       (value) => ({ ...value, code: 0 }),
@@ -840,15 +1040,27 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     };
   };
 
+  test('the CLI sends the minted bearer through real ingress for every matrix turn', async () => {
+    const outcome = await cli(['--model=matrix-1']);
+    expect(adapter.turns).toHaveLength(4);
+    expect(requests.some((request) => request.status === 401)).toBe(false);
+    expect(outcome.stdout).toContain('"rows"');
+    expect(
+      JSON.parse(outcome.stdout)
+        .rows.filter((row: any) => row.scenario !== 'model-switch')
+        .every((row: any) => row.turns[0].checks.response === 'pass'),
+    ).toBe(true);
+  });
+
   test('prints the plan, restricts the allowlist, writes both reports and redacts an engine-echoed credential', async () => {
-    adapter.startupError =
-      'Provider echoed matrix-test-credential; context unavailable';
+    adapter.startupError = `Provider echoed ${credential}; context unavailable`;
     const outcome = await cli([
       '--model=matrix-1',
       '--model=matrix-1',
       '--max-turns=4',
     ]);
     expect(outcome.code).toBe(1);
+    expect(outcome.stdout).toContain('"rows"');
     expect(JSON.parse(outcome.stderr)).toMatchObject({
       type: 'engine-matrix-plan',
       modelIds: ['matrix-1'],
@@ -861,7 +1073,7 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     expect(adapter.turns[0].modelId).toBe('matrix-1');
     expect(outcome.files).toHaveLength(2);
     for (const output of [outcome.stdout, outcome.stderr, ...outcome.files])
-      expect(output).not.toContain('matrix-test-credential');
+      expect(output).not.toContain(credential);
   });
 
   test('refuses short credentials before any real request', async () => {
@@ -873,7 +1085,15 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     expect(requests).toEqual([]);
   });
 
-  test.each(['continue', 'steer'] as const)(
+  test.each([
+    'continue',
+    'steer',
+    'handoff',
+    'delegation',
+    'agent-chat',
+    'agent-invoke',
+    'unknown',
+  ] as const)(
     'counts explicit POST methods and query strings for %s against the hard turn budget',
     async (kind) => {
       const result = await run({
@@ -885,10 +1105,17 @@ describe('engine matrix through real foreground routes and orchestration', () =>
             maxTurns: 1,
             async run(ctx: any) {
               await ctx.recall(ctx.model);
+              const paths = {
+                continue: `/api/orchestration/chat/${ctx.conversationId}/continue?probe=1`,
+                steer: '/api/orchestration/commands?probe=1',
+                handoff: `/api/orchestration/conversations/${ctx.conversationId}/handoff?probe=1`,
+                delegation: `/api/orchestration/delegations/${ctx.conversationId}/continue?probe=1`,
+                'agent-chat': '/api/agents/matrix/chat?probe=1',
+                'agent-invoke': '/api/agents/matrix/invoke?probe=1',
+                unknown: '/api/future-billable-route?probe=1',
+              };
               await ctx.api(
-                kind === 'continue'
-                  ? `/api/orchestration/chat/${ctx.conversationId}/continue?probe=1`
-                  : '/api/orchestration/commands?probe=1',
+                paths[kind],
                 kind === 'continue'
                   ? { message: 'Extra', clientTurnId: randomUUID() }
                   : {
@@ -902,11 +1129,13 @@ describe('engine matrix through real foreground routes and orchestration', () =>
           },
         ],
       });
-      expect(
-        result.rows.find((row: any) => row.scenario === 'budget-probe')
-          ?.failure,
-      ).toContain('Hard turn ceiling');
       expect(adapter.turns).toHaveLength(5);
+      expect(
+        result.rows.find((row: any) => row.scenario === 'budget-probe'),
+      ).toMatchObject({
+        status: 'fail',
+        failure: 'Hard turn ceiling reached; refusing another send',
+      });
       expect(
         requests.some(
           (row) =>
