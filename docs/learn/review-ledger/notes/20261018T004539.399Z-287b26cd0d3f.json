@@ -1,0 +1,11 @@
+{
+  "revision": "77888ce6a79cdb146cb8e1f36910ca42a8b8026f",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the explicit inventory publication limitation against runtime-routes.ts: the Session inventory App-read read/page adapters map found projections to unavailable. This fix qualifies metadata-based mounting from shipped definitions, not a production inventory publication success. Browser screenshot uses an authorized GET inventory snapshot with seeded occurrence metadata; Codex-default/no Station-control MCP connection is asserted. No publication guard is relaxed.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the explicit inventory publication limitation against runtime-routes.ts: the Session inventory App-read read/page adapters map found projections to unavailable. This fix qualifies metadata-based mounting from shipped definitions, not a production inventory publication success. Browser screenshot uses an authorized GET inventory snapshot with seeded occurrence metadata; Codex-default/no Station-control MCP connection is asserted. No publication guard is relaxed.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the host-design clarification: static App mounting and seeded inventory view evidence do not qualify production inventory publication. Existing module boundaries remain accurate; the runtime App-read guard is unchanged.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md"]}
+  ]
+}
