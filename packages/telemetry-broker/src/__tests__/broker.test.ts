@@ -294,14 +294,16 @@ test('anonymous lite and public traffic cannot spend authenticated ingest admiss
     100,
   );
   const reads = vi.spyOn(lite, 'publicAggregates').mockResolvedValue({
-    finalizedBeforeDay: new Date().toISOString().slice(0, 10),
+    databaseDay: new Date().toISOString().slice(0, 10),
     scope: 'weekly-fixed-domain-marginals',
     publisher: 'kontour',
     epsilonPerCount: 1 / 280,
-    epsilonPerPing: 1 / 7,
-    maximumHonestInstallWeekEpsilon: 1,
+    epsilonPerAddedPing: 1 / 7,
+    maximumPublicCoordinatesPerWeek: 0,
+    maximumNetworkWeekEpsilon: 0,
     nextCursor: null,
-    privacyUnit: 'one-received-ping-per-publisher-ISO-week',
+    privacyUnit: 'distinct-daily-network-key-per-value',
+    countUnit: 'network-days',
     weekBasis: 'ISO-8601-UTC-receiver-arrival',
     deliveryCoverage: 'unknown',
     cells: [],
@@ -345,14 +347,16 @@ test('public cache shares pending reads, retries failures, and refreshes at UTC 
     .spyOn(lite, 'publicAggregates')
     .mockReturnValueOnce(pending)
     .mockResolvedValue({
-      finalizedBeforeDay: new Date().toISOString().slice(0, 10),
+      databaseDay: new Date().toISOString().slice(0, 10),
       scope: 'weekly-fixed-domain-marginals',
       publisher: 'kontour',
       epsilonPerCount: 1 / 280,
-      epsilonPerPing: 1 / 7,
-      maximumHonestInstallWeekEpsilon: 1,
+      epsilonPerAddedPing: 1 / 7,
+      maximumPublicCoordinatesPerWeek: 0,
+      maximumNetworkWeekEpsilon: 0,
       nextCursor: null,
-      privacyUnit: 'one-received-ping-per-publisher-ISO-week',
+      privacyUnit: 'distinct-daily-network-key-per-value',
+      countUnit: 'network-days',
       weekBasis: 'ISO-8601-UTC-receiver-arrival',
       deliveryCoverage: 'unknown',
       cells: [],
@@ -433,20 +437,22 @@ test('public reads do not cache a database cutoff behind the receiver day', asyn
     scope: 'weekly-fixed-domain-marginals',
     publisher: 'kontour',
     epsilonPerCount: 1 / 280,
-    epsilonPerPing: 1 / 7,
-    maximumHonestInstallWeekEpsilon: 1,
+    epsilonPerAddedPing: 1 / 7,
+    maximumPublicCoordinatesPerWeek: 0,
+    maximumNetworkWeekEpsilon: 0,
     nextCursor: null,
-    privacyUnit: 'one-received-ping-per-publisher-ISO-week',
+    privacyUnit: 'distinct-daily-network-key-per-value',
+    countUnit: 'network-days',
     weekBasis: 'ISO-8601-UTC-receiver-arrival',
     deliveryCoverage: 'unknown',
     cells: [],
   };
   const reads = vi
     .spyOn(lite, 'publicAggregates')
-    .mockResolvedValueOnce({ ...result, finalizedBeforeDay: '2000-01-01' })
+    .mockResolvedValueOnce({ ...result, databaseDay: '2000-01-01' })
     .mockResolvedValue({
       ...result,
-      finalizedBeforeDay: new Date().toISOString().slice(0, 10),
+      databaseDay: new Date().toISOString().slice(0, 10),
     });
   const app = createProductBroker({ ...store, lite }, operatorKey);
   expect(

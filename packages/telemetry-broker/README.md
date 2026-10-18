@@ -267,8 +267,8 @@ Retention and finalization run at startup and in independent hourly jobs.
 Finalization commits per dimension, then separately erases contributor hashes and
 contribution arrays for each completed publisher/day in batches. The operator
 view is exact; published weekly marginals always include the full public domain
-with noise. The first public read also finalizes closed days
-before caching. Raw pings expire after 90 days, including UUID dedupe. Downtime
+with noise. Reads serve stored publications and finalized days only; they never
+run or wait for finalization. Raw pings expire after 90 days, including UUID dedupe. Downtime
 or a failed sweep delays finalization and erasure; these are periodic operations,
 not database TTL guarantees. See [Public aggregates](#public-aggregates) for
 migrations 5–6, privacy calibration, bounded jobs and key handling.
@@ -284,7 +284,7 @@ selects the daily salt and PostgreSQL assigns arrival timestamps. Keep their
 clocks aligned: a request waiting across midnight or a clock disagreement rolls
 back with `503 storage_busy` rather than accepting the wrong day's hash. Retry
 after the receiver and database agree on the UTC day. Public responses expose
-`finalizedBeforeDay` from PostgreSQL and are not cached when it disagrees with
+`databaseDay` from PostgreSQL and are not cached when it disagrees with
 the receiver's UTC day. Calendar-period boundaries must agree with sender-local
 first-active calculations before interpreting these estimates.
 
@@ -337,26 +337,37 @@ this bound before migration remain intact. A published week's domain is frozen;
 configuration additions first affect weeks not yet published. Revoking a source
 does not retract its historical public catalog or publications.
 
-A ping increments a coordinate at most once: seven scalar fields + at most five
-surfaces + eight engines + twenty public plugins = **L1 sensitivity 40** for
-add/remove-one-ping adjacency. Empty sets contribute one sentinel within those
-bounds. Per-count **ε=1/(7×40)=1/280** gives **ε≤1/7 per ping per publisher/week**.
-An honest install pings at most seven times per week, hence **per-install-week
-ε≤1**. Replacement adjacency costs twice the add/remove bound. This is not an
-enforced installation, person, lifetime or cross-publisher bound: the receiver
-has no installation identity, and retries with new IDs or malicious senders can
-exceed it. Multi-week and multi-publisher contributions compose.
+Published counts are **network-days**: for each value, sum the distinct daily
+IPv4/IPv6-/48 contributor counts (`clients`) over the seven UTC arrival days.
+Repeated pings from one daily key contribute at most one per value/day and seven
+per value/week, including eight sender-local daily pings that land in one UTC
+week. Installs sharing a network count once per value/day, so NAT causes an
+undercount of installations. Operator views retain both exact pings and clients.
+
+Adding/removing one ping changes at most seven scalar coordinates + five
+surfaces + eight engines + twenty public plugins = **L1 sensitivity 40**.
+Empty sets contribute one sentinel within those bounds. Per-count
+**ε=1/(7×40)=1/280** gives **ε≤1/7 per added ping**. If a network contributes at
+most 40 distinct coordinates per UTC day, its network-week L1 sensitivity is
+**7×40=280**, and **ε≤280/280=1**. The per-value cap alone does not enforce that
+40-coordinate premise: pings with different values can cover more coordinates.
+For arbitrary network traffic, a conservative bound is **7D/280 = D/40**, where
+D is the largest fixed published domain in the response's four-week window.
+`maximumPublicCoordinatesPerWeek` and `maximumNetworkWeekEpsilon` compute this
+bound from stored publication cells. There is no unconditional install-week
+ε≤1 claim or installation identity. Replacement adjacency doubles these
+add/remove bounds; multiple weeks and publishers compose.
 
 Every published count uses the pure ε-DP two-sided geometric mechanism, rounded
 and clamped nonnegative. Fixed support removes the prior threshold presence
 oracle. The implementation approximates ideal randomness with HMAC-SHA-256 and
 finite 52-bit uniforms; the mathematical pure-DP statement describes the ideal
 mechanism, with cryptographic/finite-precision qualifications for this code.
-Unclamped mean absolute error is `2a/(1-a²) ≈ 280` pings, `a=exp(-1/280)`;
-95% of absolute noise is at most 839 pings. Clamping reduces absolute error near
-zero but biases estimates upward. Utility assumes a value receives every ping:
+Unclamped mean absolute error is `2a/(1-a²) ≈ 280` network-days, `a=exp(-1/280)`;
+95% of absolute noise is at most 839 network-days. Clamping reduces absolute error near
+zero but biases estimates upward. Utility assumes each daily contributing network includes the value:
 
-| Daily pings | Weekly pings | Mean absolute noise | Relative MAE | 95% absolute noise / weekly total |
+| Daily networks | Weekly network-days | Mean absolute noise | Relative MAE | 95% absolute noise / weekly total |
 | ---: | ---: | ---: | ---: | ---: |
 | 100 | 700 | ≈280 | 40% | 839 / 120% |
 | 1,000 | 7,000 | ≈280 | 4% | 839 / 12% |
@@ -364,13 +375,14 @@ zero but biases estimates upward. Utility assumes a value receives every ping:
 
 Sparse values have much worse relative utility. Set histograms overlap and must
 not be summed to a total; dimensions cannot be joined. First-active flags count
-pings carrying the flag; they are not distinct weekly/monthly installations.
+network-days carrying the flag; they are not distinct weekly/monthly installations.
 Prior exact or thresholded snapshots cannot be made private retroactively.
 
 Each response has at most **200 cells** (`week`, `dimension`, `value`, `estimate`)
 and `nextCursor`. Follow `?cursor=<nextCursor>` until null. Cursors are bounded,
-validated keyset positions, not filters; unknown/duplicate query parameters or
-malformed cursors return 400. There is no 10,000-row published cap. The dashboard
+HMAC-authenticated keyset positions scoped to the publisher, not filters.
+Unknown/duplicate query parameters, malformed or forged cursors return 400.
+Unverified cursors cannot occupy or evict a cached public page. There is no 10,000-row published cap. The dashboard
 follows every page and selects its week/dimension locally. It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
 
@@ -380,7 +392,7 @@ Migration 6 transactionally adds `lite_publications` (one marker per publisher,
 ISO week) and `lite_published` (frozen domain cells and estimates). Migration is
 idempotent; older binaries refuse schema 6. The first finalizer after a week
 closes atomically claims its marker, snapshots public configuration, sums daily
-marginals, and stores every noisy cell. Existing markers are never updated;
+`clients` per value, and stores every noisy cell. Existing markers are never updated;
 re-finalization cannot change published estimates even if exact marginals change.
 Noise seeds include mechanism version, publisher, week, dimension and value,
 **never the count**. Releasing a changed count with the same seed would expose
@@ -400,13 +412,22 @@ publisher/day is skipped for that pass while other publishers/days continue.
 Separate 2,000-row transactions erase contributor hashes and contribution arrays
 only for publisher/days with no pending dimensions. A stuck dimension retains
 its own associations but does not block other publishers' erasure. The original
-failure still reaches the caller. Full/90-day raw retention runs independently;
+failure is recorded as a content-free code in the exact operator response's
+`finalizationDiagnostics`, with period, publisher and daily/weekly stage. The
+latest pass retains at most 100 failures in this process and reports the omitted
+count; restart clears diagnostics, while pending database jobs survive. Failed
+publisher/week publication transactions are also skipped for that pass. Full/90-day raw retention runs independently;
 if it expires inputs before finalization recovers, exact aggregates are incomplete.
 
-Hourly finalization and the first aggregate read publish closed weeks. Reads
-never acquire the ingest admission lock. Public pages share a bounded 128-page
-UTC-day cache; hits perform no database work. Failures or receiver/database day
-disagreement are not cached. Publication markers persist beyond the four-week
+Startup and hourly finalization publish only weeks whose end is at or before
+the pass's captured UTC-day cutoff, after closing the prior-day arrival fence.
+A Sunday pass that finishes on Monday cannot publish the newly closed week;
+the next pass waits for Sunday's arrivals and finalizes them first. Reads never
+invoke finalization or acquire the ingest admission lock. Public pages share a
+bounded 128-page cache refreshed at least every 60 seconds and at UTC midnight,
+so later background publications become visible. Hits perform no database work;
+at most eight transient misses share pending reads independently of cached pages.
+Failures or receiver/database day disagreement are not cached. Publication markers persist beyond the four-week
 read window. UTC arrival week can differ from sender-local first-active periods;
 keep receiver/database clocks aligned as described above.
 

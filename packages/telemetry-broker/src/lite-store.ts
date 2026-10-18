@@ -1,4 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import type {
   StationDailyPing,
   TelemetryPublisherId,
@@ -569,12 +574,42 @@ export class LiteRepository {
       return { inserted: 1 };
     });
   }
+  private finalizationFailures: {
+    period: string;
+    publisher: string;
+    stage: 'daily' | 'weekly';
+    code: string;
+  }[] = [];
+  private omittedFailures = 0;
+  private recordFailure(
+    period: string,
+    publisher: string,
+    stage: 'daily' | 'weekly',
+    error: unknown,
+  ) {
+    // Never expose SQL messages, which can contain contributor or rejected data.
+    const code =
+      error instanceof BrokerError
+        ? error.code
+        : error &&
+            typeof error === 'object' &&
+            'code' in error &&
+            typeof error.code === 'string' &&
+            /^[0-9A-Z]{5}$/.test(error.code)
+          ? error.code
+          : 'job_failed';
+    if (this.finalizationFailures.length < 100)
+      this.finalizationFailures.push({ period, publisher, stage, code });
+    else this.omittedFailures++;
+  }
   private finalizing?: Promise<string>;
   finalize(): Promise<string> {
     if (this.finalizing) return this.finalizing;
+    this.finalizationFailures = [];
+    this.omittedFailures = 0;
     const pending = this.finalizeClosedDays()
       .then(async (cutoff) => {
-        await this.publishWeeks();
+        await this.publishWeeks(cutoff);
         return cutoff;
       })
       .finally(() => {
@@ -596,7 +631,6 @@ export class LiteRepository {
       return rows[0].day;
     });
     const failures: { day: string; publisher: string }[] = [];
-    let firstError: unknown;
     // Each committed dimension is durable progress; a failed publisher/day cannot block others.
     while (
       await (async () => {
@@ -645,7 +679,7 @@ export class LiteRepository {
             return true;
           } catch (error) {
             failures.push({ day, publisher });
-            firstError ??= error;
+            this.recordFailure(day, publisher, 'daily', error);
             throw error;
           }
         }).catch((error) => {
@@ -675,105 +709,105 @@ export class LiteRepository {
     ) {
       /* bounded erasure batches */
     }
-    const remaining = await this.transaction((client) =>
-      client.query(
-        'SELECT 1 FROM station_telemetry.lite_finalization WHERE day<$1::date LIMIT 1',
-        [cutoff],
-      ),
-    );
-    if (firstError) throw firstError;
-    if (remaining.rows.length) throw new BrokerError('storage_busy');
     return cutoff;
   }
-  private async publishWeeks(): Promise<void> {
+  private async publishWeeks(cutoff: string): Promise<void> {
+    const failures: { week: string; publisher: string }[] = [];
     while (
-      await this.transaction(async (client) => {
-        // Catalogs are operator configuration, never derived from observed pings.
-        const jobs = await client.query<{ week: string; publisher: string }>(`
+      await (async () => {
+        let job: { week: string; publisher: string } | undefined;
+        return this.transaction(async (client) => {
+          // Catalogs are operator configuration, never derived from observed pings.
+          const jobs = await client.query<{ week: string; publisher: string }>(
+            `
         SELECT to_char(w.week,'YYYY-MM-DD') AS week,s.publisher
         FROM (SELECT DISTINCT publisher FROM station_telemetry.lite_sources) s
-        CROSS JOIN generate_series(date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')-interval '28 days',
-          date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')-interval '7 days',interval '7 days') w(week)
+        CROSS JOIN generate_series(date_trunc('week',$1::date::timestamp)-interval '28 days',
+          date_trunc('week',$1::date::timestamp)-interval '7 days',interval '7 days') w(week)
         WHERE NOT EXISTS (SELECT 1 FROM station_telemetry.lite_publications p WHERE p.week=w.week::date AND p.publisher=s.publisher)
         AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f WHERE f.publisher=s.publisher AND f.day>=w.week::date AND f.day<w.week::date+7)
-        ORDER BY w.week,s.publisher LIMIT 1`);
-        const job = jobs.rows[0];
-        if (!job) return false;
-        const { week, publisher } = job;
-        const claimed = await client.query(
-          'INSERT INTO station_telemetry.lite_publications VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING week',
-          [week, publisher],
-        );
-        if (!claimed.rows.length) return true;
-        const config = await client.query<{
-          registry_ids: string[];
-          release_versions: string[];
-        }>(
-          'SELECT registry_ids,release_versions FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
-          [publisher],
-        );
-        const counts = await client.query<{
-          dimension: string;
-          value: string;
-          pings: string;
-        }>(
-          `
-        SELECT dimension,value,sum(pings)::text AS pings FROM station_telemetry.lite_marginals
+        AND w.week::date+7 <= $1::date
+        AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS f(week text,publisher text) WHERE f.week=to_char(w.week,'YYYY-MM-DD') AND f.publisher=s.publisher)
+        ORDER BY w.week,s.publisher LIMIT 1`,
+            [cutoff, JSON.stringify(failures)],
+          );
+          job = jobs.rows[0];
+          if (!job) return false;
+          const { week, publisher } = job;
+          const claimed = await client.query(
+            'INSERT INTO station_telemetry.lite_publications VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING week',
+            [week, publisher],
+          );
+          if (!claimed.rows.length) return true;
+          const config = await client.query<{
+            registry_ids: string[];
+            release_versions: string[];
+          }>(
+            'SELECT registry_ids,release_versions FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
+            [publisher],
+          );
+          const counts = await client.query<{
+            dimension: string;
+            value: string;
+            clients: string;
+          }>(
+            `
+        SELECT dimension,value,sum(clients)::text AS clients FROM station_telemetry.lite_marginals
         WHERE publisher=$1 AND day >= $2::date AND day < $2::date+7 AND finalized
         AND dimension=ANY($3) GROUP BY dimension,value`,
-          [publisher, week, PUBLIC_FIELDS],
-        );
-        const totals = new Map(
-          counts.rows.map((row) => [
-            JSON.stringify([row.dimension, row.value]),
-            Number(row.pings),
-          ]),
-        );
-        const secret = await client.query<{ secret: Buffer }>(
-          'SELECT secret FROM station_telemetry.lite_noise_key WHERE singleton',
-        );
-        const domain = publicDomain(config.rows);
-        // Bounded insert batches; every coordinate, including true zero, is released exactly once.
-        for (let offset = 0; offset < domain.length; offset += 200) {
-          const cells = domain
-            .slice(offset, offset + 200)
-            .map(([dimension, value]) => ({
-              dimension,
-              value,
-              estimate: noisyCount(
-                secret.rows[0].secret,
-                publisher,
-                week,
+            [publisher, week, PUBLIC_FIELDS],
+          );
+          const totals = new Map(
+            counts.rows.map((row) => [
+              JSON.stringify([row.dimension, row.value]),
+              Number(row.clients),
+            ]),
+          );
+          const secret = await client.query<{ secret: Buffer }>(
+            'SELECT secret FROM station_telemetry.lite_noise_key WHERE singleton',
+          );
+          const domain = publicDomain(config.rows);
+          // Bounded insert batches; every coordinate, including true zero, is released exactly once.
+          for (let offset = 0; offset < domain.length; offset += 200) {
+            const cells = domain
+              .slice(offset, offset + 200)
+              .map(([dimension, value]) => ({
                 dimension,
                 value,
-                totals.get(JSON.stringify([dimension, value])) ?? 0,
-              ),
-            }));
-          await client.query(
-            `INSERT INTO station_telemetry.lite_published
+                estimate: noisyCount(
+                  secret.rows[0].secret,
+                  publisher,
+                  week,
+                  dimension,
+                  value,
+                  totals.get(JSON.stringify([dimension, value])) ?? 0,
+                ),
+              }));
+            await client.query(
+              `INSERT INTO station_telemetry.lite_published
           SELECT $1::date,$2,dimension,value,estimate FROM jsonb_to_recordset($3::jsonb) AS c(dimension text,value text,estimate bigint)`,
-            [week, publisher, JSON.stringify(cells)],
-          );
-        }
-        return true;
-      })
+              [week, publisher, JSON.stringify(cells)],
+            );
+          }
+          return true;
+        }).catch((error) => {
+          if (!job) throw error;
+          failures.push(job);
+          this.recordFailure(job.week, job.publisher, 'weekly', error);
+          return true;
+        });
+      })()
     ) {
       /* one atomic, immutable publisher/week */
     }
   }
   async publicAggregates(cursor?: string) {
-    parseCursor(cursor);
-    const finalizedBeforeDay = await this.finalize();
-    return {
-      ...(await this.aggregates('kontour', undefined, cursor)),
-      finalizedBeforeDay,
-    };
+    return this.aggregates('kontour', undefined, cursor);
   }
   async aggregates(publisher: string, key?: string, cursor?: string) {
     if (key !== undefined && !this.hasCredential(publisher, key))
       throw new BrokerError('source_unauthorized');
     const after = parseCursor(cursor);
-    await this.finalize();
     return this.transaction(async (client) => {
       if (key !== undefined) {
         const authority = await client.query(
@@ -782,6 +816,28 @@ export class LiteRepository {
         );
         if (!authority.rows.length)
           throw new BrokerError('source_unauthorized');
+      }
+      const { rows: keys } = await client.query<{
+        secret: Buffer;
+        day: string;
+      }>(
+        "SELECT secret,to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day FROM station_telemetry.lite_noise_key WHERE singleton",
+      );
+      const sign = (payload: string) =>
+        createHmac('sha256', keys[0].secret)
+          .update(
+            JSON.stringify(['station-lite-cursor-v1', publisher, payload]),
+          )
+          .digest();
+      if (cursor) {
+        const [payload, signature] = cursor.split('.');
+        const supplied = Buffer.from(signature, 'base64url');
+        if (
+          supplied.length !== 32 ||
+          supplied.toString('base64url') !== signature ||
+          !timingSafeEqual(sign(payload), supplied)
+        )
+          throw new BrokerError('invalid_cursor');
       }
       const rows = await client.query<{
         week: string;
@@ -797,6 +853,14 @@ export class LiteRepository {
         ORDER BY week,dimension,value LIMIT 201`,
         [publisher, ...(after ?? [null, null, null])],
       );
+      const bounds = await client.query<{ coordinates: number }>(
+        `SELECT COALESCE(max(coordinates),0)::int AS coordinates FROM (
+          SELECT count(*) AS coordinates FROM station_telemetry.lite_published
+          WHERE publisher=$1 AND week>=date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date-28
+          AND week<date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date GROUP BY week
+        ) weeks`,
+        [publisher],
+      );
       const cells = rows.rows
         .slice(0, 200)
         .map((row) => ({ ...row, estimate: Number(row.estimate) }));
@@ -804,24 +868,30 @@ export class LiteRepository {
       return {
         scope: 'weekly-fixed-domain-marginals',
         publisher,
-        privacyUnit: 'one-received-ping-per-publisher-ISO-week',
+        privacyUnit: 'distinct-daily-network-key-per-value',
+        countUnit: 'network-days',
+        databaseDay: keys[0].day,
         epsilonPerCount: PUBLIC_COUNT_EPSILON,
-        epsilonPerPing: PUBLIC_SENSITIVITY * PUBLIC_COUNT_EPSILON,
-        maximumHonestInstallWeekEpsilon: 1,
+        epsilonPerAddedPing: PUBLIC_SENSITIVITY * PUBLIC_COUNT_EPSILON,
+        maximumPublicCoordinatesPerWeek: bounds.rows[0].coordinates,
+        maximumNetworkWeekEpsilon:
+          7 * bounds.rows[0].coordinates * PUBLIC_COUNT_EPSILON,
         weekBasis: 'ISO-8601-UTC-receiver-arrival',
         deliveryCoverage: 'unknown',
         cells,
         nextCursor:
           rows.rows.length > 200 && last
-            ? Buffer.from(
-                JSON.stringify([last.week, last.dimension, last.value]),
-              ).toString('base64url')
+            ? (() => {
+                const payload = Buffer.from(
+                  JSON.stringify([last.week, last.dimension, last.value]),
+                ).toString('base64url');
+                return `${payload}.${sign(payload).toString('base64url')}`;
+              })()
             : null,
       };
     });
   }
   async exact(period: 'daily' | 'weekly') {
-    await this.finalize();
     return this.transaction(async (client) => {
       const rows =
         await client.query(`SELECT to_char(${period === 'daily' ? 'day' : "date_trunc('week',day)"},'YYYY-MM-DD') AS period,
@@ -832,6 +902,11 @@ export class LiteRepository {
       if (rows.rows.length > 10000) throw new BrokerError('query_limit');
       return {
         scope: 'operator-exact-marginals',
+        finalizationDiagnostics: {
+          failures: [...this.finalizationFailures],
+          omittedFailures: this.omittedFailures,
+          lifetime: 'latest-pass-this-process',
+        },
         period,
         contributorUnit:
           period === 'daily'
@@ -877,9 +952,14 @@ function marginals(ping: StationDailyPing): [string, string][] {
 function parseCursor(cursor?: string): [string, string, string] | undefined {
   if (cursor === undefined) return;
   try {
-    if (cursor.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(cursor))
+    if (
+      cursor.length > 1024 ||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(cursor)
+    )
       throw new Error();
-    const v: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+    const v: unknown = JSON.parse(
+      Buffer.from(cursor.split('.')[0], 'base64url').toString(),
+    );
     if (
       !Array.isArray(v) ||
       v.length !== 3 ||

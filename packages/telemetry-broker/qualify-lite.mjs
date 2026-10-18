@@ -466,6 +466,56 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       ).status,
       401,
     );
+    // Poison a real publisher/day after a publication exists. Reads must never retry it.
+    const poisoned = dailyPing();
+    await store.lite.ingest(other, poisoned, {
+      day: today,
+      hash: digest('poison-network'),
+    });
+    await pool.query(
+      "UPDATE station_telemetry.lite_pings SET received_at=$1::date::timestamp AT TIME ZONE 'UTC',contributions=jsonb_set(contributions,'{version}','{}'::jsonb) WHERE source_id=$2 AND event_id=$3",
+      [closedDay, other, poisoned.event_id],
+    );
+    await pool.query(
+      'UPDATE station_telemetry.lite_finalization SET day=$1 WHERE publisher=$2 AND day=$3',
+      [closedDay, publisher, today],
+    );
+    for (const [path, credential] of [
+      ['/v1/public/aggregates', undefined],
+      [`/v1/publishers/${encodeURIComponent(publisher)}/aggregates`, key],
+      ['/v1/operator/lite/daily', operatorKey],
+      ['/v1/operator/lite/weekly', operatorKey],
+    ])
+      assert.equal(
+        (await request(path, undefined, credential)).status,
+        200,
+        'poisoned day cannot turn stored reads into finalization',
+      );
+    await store.lite.finalize();
+    const diagnostic = await request(
+      '/v1/operator/lite/daily',
+      undefined,
+      operatorKey,
+    );
+    assert.ok(
+      diagnostic.body.finalizationDiagnostics.failures.some(
+        (f) =>
+          f.publisher === publisher &&
+          f.period === closedDay &&
+          f.code === '22023',
+      ),
+      'operator diagnoses the skipped poisoned day',
+    );
+    // Restore the fixture and prove the pending job can finish on the next pass.
+    await pool.query(
+      "UPDATE station_telemetry.lite_pings SET contributions=jsonb_set(contributions,'{version}','[\"1.2.3\"]'::jsonb) WHERE source_id=$1 AND event_id=$2",
+      [other, poisoned.event_id],
+    );
+    await store.lite.finalize();
+    assert.equal(
+      (await store.lite.exact('daily')).finalizationDiagnostics.failures.length,
+      0,
+    );
     await store.lite.revokePublisherKey(publisher);
     assert.equal(
       (

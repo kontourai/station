@@ -214,20 +214,19 @@ export async function qualifyResilience(
       "SELECT 1 FROM station_telemetry.lite_finalization WHERE day=$1 AND publisher=$2 AND dimension='version' FOR UPDATE",
       [day, publisher],
     );
-    await assert.rejects(
-      store.lite.finalize(),
-      (error) => {
-        console.log(
-          JSON.stringify({
-            control: 'scale-interruption',
-            code: error.code,
-            message: error.message,
-          }),
-        );
-        return error.code === '57014' || error.code === 'storage_timeout';
-      },
-      'blocked final dimension interrupts the pass',
+    await store.lite.finalize();
+    const diagnostics = (await store.lite.exact('daily'))
+      .finalizationDiagnostics;
+    assert.ok(
+      diagnostics.failures.some(
+        (f) =>
+          f.publisher === publisher &&
+          f.period === day &&
+          (f.code === '57014' || f.code === 'storage_timeout'),
+      ),
+      'blocked final dimension is recorded without failing independent jobs or reads',
     );
+    console.log(JSON.stringify({ control: 'scale-interruption', diagnostics }));
     const committed = await pool.query(
       'SELECT count(*) AS n FROM station_telemetry.lite_marginals WHERE day=$1 AND publisher=$2 AND finalized',
       [day, publisher],
@@ -325,7 +324,7 @@ export async function qualifyResilience(
   );
   const errors = (
     await pool.query(
-      `SELECT abs(p.estimate-m.pings)::float8 AS error
+      `SELECT abs(p.estimate-m.clients)::float8 AS error
     FROM station_telemetry.lite_published p JOIN station_telemetry.lite_marginals m
     ON p.publisher=m.publisher AND p.week=m.day AND p.dimension=m.dimension AND p.value=m.value
     WHERE p.publisher=$1 AND p.week=$2`,
@@ -343,6 +342,7 @@ export async function qualifyResilience(
       maxAbsoluteError: Math.max(...errors),
       epsilonPerCount: 1 / 280,
       epsilonPerAddedPing: 1 / 7,
+      countUnit: 'network-days',
     }),
   );
   // Real keys are known before a failed refresh. Expiry must be unavailable, not unauthorized.

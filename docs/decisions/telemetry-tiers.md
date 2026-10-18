@@ -131,31 +131,43 @@ version/distribution values collapse to `custom`. Every coordinate, even true
 zero, always receives noise. There is no true k=10 pre-filter or presence oracle.
 Catalogs must be public configuration independent of private observations.
 Publisher keys see only their publisher's domain. Bounded 200-cell keyset pages
-replace the prior 10,000-row published cap; cursors navigate, never filter.
+replace the prior 10,000-row published cap; publisher-scoped HMAC cursors navigate, never filter. Forged cursors return 400
+before they can occupy or evict cached pages.
+
+Published counts sum **distinct daily contributor keys per value** (`clients`),
+not raw pings. They measure network-days: each IPv4 or IPv6 /48 network contributes
+at most one per value/UTC day and seven per value/UTC week. Installs sharing a
+network count once per value/day, so NAT undercounts installations. Exact
+operator views retain pings and clients separately.
 
 Adding/removing one ping changes at most seven scalar counts plus five surfaces,
 eight engines and twenty public plugins: **sensitivity 40**. Per-count ε=1/280
-composes to **ε≤1/7 per ping, publisher and ISO week**. An honest install sends
-at most seven pings/week, hence **per-install-week ε≤1**; the receiver cannot
-verify installations or enforce that honest-client bound. Replacement costs
-at most twice the add/remove bound. Multiple weeks and publishers compose.
+composes to **ε≤1/7 per added ping**. For a network with at most 40 distinct
+coordinates per day, network-week L1 sensitivity is **7×40=280**, giving
+**ε≤1**. Distinct daily keys enforce the per-value cap, not that total-coordinate
+premise: variable pings can cover more than 40 values. The unconditional
+network-week bound is **7D/280=D/40** for a fixed public domain of D coordinates;
+responses compute a conservative bound from the largest stored domain in their
+four-week window. No installation identity or unconditional install-week ε≤1
+claim is available. Replacement doubles add/remove bounds. Multiple weeks and
+publishers compose.
 The ideal fixed-domain two-sided geometric mechanism is **pure ε-DP**. The
 persistent-key HMAC implementation uses finite 52-bit uniforms; cryptographic
 and finite-precision qualifications apply to the implementation. Prior exact
 or thresholded releases remain exposed.
 
-Unclamped expected absolute noise is ≈280 weekly pings (95% ≤839). Clamping at
+Unclamped expected absolute noise is ≈280 weekly network-days (95% ≤839). Clamping at
 zero improves absolute error near zero while introducing upward bias. Utility
-for a value present in every ping is:
+for a value present in every daily network contribution is:
 
-| Daily pings | Weekly pings | MAE | Relative MAE | 95% absolute error / weekly total |
+| Daily networks | Weekly network-days | MAE | Relative MAE | 95% absolute error / weekly total |
 | ---: | ---: | ---: | ---: | ---: |
 | 100 | 700 | ≈280 | 40% | 839 / 120% |
 | 1,000 | 7,000 | ≈280 | 4% | 839 / 12% |
 | 10,000 | 70,000 | ≈280 | 0.4% | 839 / 1.2% |
 
 Sparse values can be uninformative. Overlapping set histograms cannot be summed
-or joined. Calendar flags count pings carrying that flag, not distinct people.
+or joined. Calendar flags count network-days carrying that flag, not distinct people.
 
 Migration 6 stores immutable publisher/week markers and every published cell.
 Finalization sums exact daily marginals once per closed week and snapshots the

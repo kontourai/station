@@ -122,7 +122,13 @@ export function registerLiteRoutes(
   });
   const publicAdmission = receiverAdmission();
   let cachedDay = '';
+  let cacheUntil = 0;
   const pages = new Map<
+    string,
+    Promise<Awaited<ReturnType<LiteRepository['publicAggregates']>>>
+  >();
+  // Admission bounds this transient map to eight in-flight reads; it never evicts pages.
+  const pendingPages = new Map<
     string,
     Promise<Awaited<ReturnType<LiteRepository['publicAggregates']>>>
   >();
@@ -131,32 +137,41 @@ export function registerLiteRoutes(
     const cursor = cursorFor(c.req.url);
     c.header('Cache-Control', 'no-store');
     const today = new Date().toISOString().slice(0, 10);
-    if (cachedDay !== today) {
+    if (cachedDay !== today || Date.now() >= cacheUntil) {
       pages.clear();
       cachedDay = today;
+      cacheUntil = Date.now() + 60_000;
     }
     const page = cursor ?? '';
-    let response = pages.get(page);
+    let response = pages.get(page) ?? pendingPages.get(page);
     if (!response) {
       const refused = await publicAdmission(c, async () => {
-        const pending = store.publicAggregates(cursor).catch((error) => {
-          if (pages.get(page) === pending) pages.delete(page);
-          throw error;
-        });
-        if (pages.size >= 128) pages.delete(pages.keys().next().value!);
-        pages.set(page, pending);
+        const pending = store
+          .publicAggregates(cursor)
+          .then((result) => {
+            // Verify the signed cursor before it can occupy or evict a cache entry.
+            if (result.databaseDay === today && cachedDay === today) {
+              if (pages.size >= 128) pages.delete(pages.keys().next().value!);
+              pages.set(page, Promise.resolve(result));
+            }
+            return result;
+          })
+          .finally(() => {
+            if (pendingPages.get(page) === pending) pendingPages.delete(page);
+          });
+        pendingPages.set(page, pending);
         response = pending;
       });
       if (refused) return refused;
     }
     const result = await response!;
-    if (result.finalizedBeforeDay !== today) {
+    if (result.databaseDay !== today) {
       if (pages.get(page) === response) pages.delete(page);
       return c.json(result);
     }
     c.header(
       'Cache-Control',
-      `public, max-age=${Math.max(0, Math.floor((Date.parse(today) + 86400000 - Date.now()) / 1000))}`,
+      `public, max-age=${Math.max(0, Math.min(60, Math.floor((Date.parse(today) + 86400000 - Date.now()) / 1000)))}`,
     );
     return c.json(result);
   });

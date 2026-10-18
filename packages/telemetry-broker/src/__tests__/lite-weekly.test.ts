@@ -8,6 +8,7 @@ import {
   LiteRepository,
   migrateLite,
 } from '../lite-store.js';
+import { noisyCount } from '../noisy-count.js';
 import { PgProductRepository } from '../store.js';
 import { dailyPing, socketBindings } from './lite-fixture.js';
 
@@ -79,6 +80,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await db.close();
 });
 const auth = (key = operatorKey) => ({
@@ -133,6 +135,7 @@ test('padding probe always releases rare values, including zero, on identical fi
   // Nine independent attacker IPv4 keys; a tenth victim must not change shape.
   for (let i = 1; i <= 9; i++) await send(`198.51.100.${i}`, true);
   await closeDay();
+  await lite.finalize();
   const before = await readAll();
   const rare = before.find(
     (c) =>
@@ -190,6 +193,7 @@ test('padding probe always releases rare values, including zero, on identical fi
   for (let i = 1; i <= 9; i++) await send(`198.51.100.${i}`, true);
   await send('203.0.113.1', true);
   await closeDay();
+  await lite.finalize();
   const withVictim = await lite.aggregates('kontour');
   expect(
     (
@@ -223,7 +227,7 @@ test('padding probe always releases rare values, including zero, on identical fi
     publicCells.cells,
   );
   expect(publicCells.epsilonPerCount).toBe(1 / 280);
-  expect(publicCells.epsilonPerPing).toBe(1 / 7);
+  expect(publicCells.epsilonPerAddedPing).toBe(1 / 7);
   const own = await readAll(
     '/v1/publishers/publisher%3Aexample/aggregates',
     publisherKey,
@@ -245,6 +249,7 @@ test.each([
   async (_label, addresses) => {
     for (const address of addresses) await send(address);
     await closeDay();
+    await lite.finalize();
     for (const period of ['daily', 'weekly']) {
       for (const key of [undefined, publisherKey, `sto_${'x'.repeat(43)}`])
         expect(
@@ -299,7 +304,7 @@ test.each([
   },
 );
 
-test('release waits for the closed ISO week and sums pings from multiple days exactly once', async () => {
+test('release waits for the closed ISO week and sums network-days from multiple days exactly once', async () => {
   await send('198.51.100.1');
   await closeDay();
   await send('198.51.100.2');
@@ -311,6 +316,7 @@ test('release waits for the closed ISO week and sums pings from multiple days ex
   await closeDay(
     new Date(Date.parse(closedWeek) + 7 * 86400000).toISOString().slice(0, 10),
   );
+  await lite.finalize();
   const cells = await readAll();
   expect([...new Set(cells.map((c) => c.week))]).toHaveLength(4);
   expect(cells.every((c) => new Date(c.week).getUTCDay() === 1)).toBe(true);
@@ -332,6 +338,7 @@ test('release waits for the closed ISO week and sums pings from multiple days ex
 test('a published week cannot be finalized again when counts or operator catalogs change', async () => {
   await send('198.51.100.1');
   await closeDay();
+  await lite.finalize();
   const first = await readAll();
   await db.query(
     "UPDATE station_telemetry.lite_marginals SET pings=pings+100000 WHERE publisher='kontour'",
@@ -343,6 +350,7 @@ test('a published week cannot be finalized again when counts or operator catalog
     registryIds: ['new.plugin'],
     releaseVersions: ['9.9.9'],
   });
+  await lite.finalize();
   // Bypass the HTTP cache and use a reopened repository.
   const reopened = new LiteRepository(
     (operation) => db.transaction((tx) => operation(sqlClient(tx))),
@@ -374,6 +382,7 @@ test('bounded cursor pages cover more than ten thousand values without truncatio
     registryIds: Array.from({ length: 1000 }, (_, i) => `plugin.${i}`),
     releaseVersions: Array.from({ length: 1000 }, (_, i) => `v${i}`),
   });
+  await lite.finalize();
   let cursor: string | undefined;
   const cells = [];
   do {
@@ -496,4 +505,263 @@ test('a stale arrival-day salt rolls back raw insertion, jobs and capacity', asy
   expect(
     (await db.query('SELECT * FROM station_telemetry.lite_finalization')).rows,
   ).toEqual([]);
+});
+
+test('58 pings in one network-day publish one contribution; eight pings over a UTC week publish seven', async () => {
+  for (let i = 0; i < 58; i++) await send('198.51.100.58');
+  await closeDay();
+  for (let day = 0; day < 7; day++) {
+    const date = new Date(Date.parse(closedWeek) + day * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    for (let i = 0; i < (day === 0 ? 2 : 1); i++) {
+      await lite.ingest(
+        'third-party',
+        {
+          ...dailyPing(),
+          version: '2.0.0',
+          public_plugins_enabled: ['third.plugin'],
+        },
+        {
+          day: today,
+          hash: createHash('sha256')
+            .update(`daily-network-${day}`)
+            .digest('hex'),
+        },
+      );
+    }
+    await closeDay(date);
+  }
+  await lite.finalize();
+  const daily = await lite.exact('daily');
+  expect(daily.marginals).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    dimension: 'platform',
+    value: 'linux',
+    pings: '58',
+    contributors: '1',
+  });
+  const weekly = await lite.exact('weekly');
+  expect(weekly.marginals).toContainEqual({
+    period: closedWeek,
+    publisher: 'publisher:example',
+    dimension: 'platform',
+    value: 'linux',
+    pings: '8',
+    contributors: '7',
+  });
+  for (const [publisher, count] of [
+    ['kontour', 1],
+    ['publisher:example', 7],
+  ] as const) {
+    const cells = await db.query<{
+      dimension: string;
+      value: string;
+      estimate: number;
+    }>(
+      'SELECT dimension,value,estimate FROM station_telemetry.lite_published WHERE publisher=$1 AND week=$2 AND (dimension,value) IN (SELECT dimension,value FROM station_telemetry.lite_marginals WHERE publisher=$1 AND day=$2)',
+      [publisher, closedWeek],
+    );
+    expect(
+      cells.rows.some(
+        (c) =>
+          noisyCount(
+            Buffer.alloc(32, 7),
+            publisher,
+            closedWeek,
+            c.dimension,
+            c.value,
+            count,
+          ) > 0,
+      ),
+      'the fixture must exercise unclamped counts',
+    ).toBe(true);
+    for (const cell of cells.rows)
+      expect(Number(cell.estimate)).toBe(
+        noisyCount(
+          Buffer.alloc(32, 7),
+          publisher,
+          closedWeek,
+          cell.dimension,
+          cell.value,
+          count,
+        ),
+      );
+    const result = await lite.aggregates(publisher);
+    const domain = await db.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM station_telemetry.lite_published WHERE publisher=$1 AND week=$2',
+      [publisher, closedWeek],
+    );
+    expect(result.maximumPublicCoordinatesPerWeek).toBe(domain.rows[0].n);
+    expect(result.maximumNetworkWeekEpsilon).toBeCloseTo(
+      (7 * domain.rows[0].n) / 280,
+      12,
+    );
+    expect(result).not.toHaveProperty('maximumHonestInstallWeekEpsilon');
+  }
+});
+
+test('poisoned publisher/day does not block reads or healthy finalization; operator sees the failed job', async () => {
+  await send('198.51.100.1');
+  await closeDay();
+  await lite.finalize();
+  // Ensure the public request below is a cache miss, and poison real stored input.
+  await lite.ingest(
+    'third-party',
+    {
+      ...dailyPing(),
+      version: '2.0.0',
+      public_plugins_enabled: ['third.plugin'],
+    },
+    { day: today, hash: 'b'.repeat(64) },
+  );
+  await closeDay();
+  await db.query(
+    "UPDATE station_telemetry.lite_pings SET contributions=jsonb_set(contributions,'{version}', '{}'::jsonb) WHERE source_id='third-party'",
+  );
+  // A second healthy day must still finish and erase its contributor association.
+  await send('198.51.100.2');
+  const healthyDay = new Date(Date.parse(closedWeek) + 86400000)
+    .toISOString()
+    .slice(0, 10);
+  await closeDay(healthyDay);
+  // Reads must work even before the background job retries the poisoned day.
+  const finalizer = vi
+    .spyOn(lite, 'finalize')
+    .mockRejectedValue(new Error('must never finalize on read'));
+  for (const [path, key] of [
+    ['/v1/public/aggregates', undefined],
+    ['/v1/publishers/publisher%3Aexample/aggregates', publisherKey],
+    ['/v1/operator/lite/daily', operatorKey],
+    ['/v1/operator/lite/weekly', operatorKey],
+  ] as const)
+    expect((await app.request(path, key ? auth(key) : undefined)).status).toBe(
+      200,
+    );
+  expect(finalizer).not.toHaveBeenCalled();
+  finalizer.mockRestore();
+  await expect(lite.finalize()).resolves.toBe(today);
+  const exact = await (
+    await app.request('/v1/operator/lite/daily', auth())
+  ).json();
+  expect(exact.finalizationDiagnostics.failures).toContainEqual({
+    period: closedWeek,
+    publisher: 'publisher:example',
+    stage: 'daily',
+    code: '22023',
+  });
+  expect(exact.marginals).toContainEqual({
+    period: healthyDay,
+    publisher: 'kontour',
+    dimension: 'platform',
+    value: 'linux',
+    pings: '1',
+    contributors: '1',
+  });
+  expect(
+    (
+      await db.query<{ client_hash: unknown; contributions: unknown }>(
+        "SELECT client_hash,contributions FROM station_telemetry.lite_pings WHERE source_id='kontour'",
+      )
+    ).rows.every((r) => r.client_hash === null && r.contributions === null),
+  ).toBe(true);
+  expect(
+    (
+      await db.query<{ n: number }>(
+        "SELECT count(*) AS n FROM station_telemetry.lite_finalization WHERE publisher='publisher:example'",
+      )
+    ).rows[0].n,
+  ).toBeGreaterThan(0);
+});
+
+test('a Sunday cutoff cannot publish the week that closes while finalization is in flight', async () => {
+  // SQL's live clock is in a later week; the finalizer captured the preceding Sunday.
+  const sunday = new Date(Date.parse(closedWeek) + 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const fenced = new LiteRepository(
+    (operation) =>
+      db.transaction((tx) => {
+        const client = sqlClient(tx);
+        return operation({
+          async query<Row extends QueryResultRow = QueryResultRow>(
+            text: string,
+            values?: unknown[],
+          ) {
+            if (
+              text ===
+              "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day"
+            ) {
+              return client.query<Row>('SELECT $1::text AS day', [sunday]);
+            }
+            return client.query<Row>(text, values);
+          },
+        });
+      }),
+    100000,
+    1_073_741_824,
+  );
+  await fenced.finalize();
+  expect(
+    (
+      await db.query(
+        'SELECT week FROM station_telemetry.lite_publications WHERE week=$1',
+        [closedWeek],
+      )
+    ).rows,
+  ).toEqual([]);
+  // The next pass crosses the fence, includes Sunday's arrival, and publishes it once.
+  await send('198.51.100.1');
+  await closeDay(sunday);
+  await lite.finalize();
+  expect((await lite.exact('weekly')).marginals).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    dimension: 'platform',
+    value: 'linux',
+    pings: '1',
+    contributors: '1',
+  });
+  expect(
+    (
+      await db.query<{ n: number }>(
+        "SELECT count(*) AS n FROM station_telemetry.lite_publications WHERE publisher='kontour' AND week=$1",
+        [closedWeek],
+      )
+    ).rows[0].n,
+  ).toBe(1);
+});
+
+test('forged cursors return 400 without evicting a cached public page', async () => {
+  await lite.finalize();
+  const reads = vi.spyOn(lite, 'publicAggregates');
+  const first = await app.request('/v1/public/aggregates');
+  const page = await first.json();
+  expect(first.status).toBe(200);
+  expect(page.nextCursor).toBeTypeOf('string');
+  // Use a valid issued payload with a forged authentication tag (not merely bad syntax).
+  const payload = page.nextCursor.split('.')[0];
+  let elapsed = performance.now();
+  vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+  for (let i = 0; i < 130; i++) {
+    elapsed += 1000;
+    const signature = createHash('sha256')
+      .update(String(i))
+      .digest('base64url');
+    expect(
+      (
+        await app.request(
+          `/v1/public/aggregates?cursor=${payload}.${signature}`,
+        )
+      ).status,
+    ).toBe(400);
+  }
+  const calls = reads.mock.calls.length;
+  expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+  expect(reads).toHaveBeenCalledTimes(calls);
+  expect(
+    (await app.request(`/v1/public/aggregates?cursor=${page.nextCursor}`))
+      .status,
+  ).toBe(200);
 });
