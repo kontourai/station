@@ -5,7 +5,7 @@ import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
-const sessionFixture = () =>
+const sessionFixture = (sibling: 'above' | 'below' | null = null) =>
   scrollBrowserFixture(`
     import React, {useRef, useState} from 'react';
     import {createRoot} from 'react-dom/client';
@@ -15,7 +15,7 @@ const sessionFixture = () =>
       const [height, setHeight] = useState(2000);
       const [identity, setIdentity] = useState('session'), [ready, setReady] = useState(true);
       const {atLatest, jumpToLatest} = useSessionTranscriptScroll({identity,scrollRef,contentRef,ready,contentVersion:height});
-      return <>{!atLatest && <button onClick={jumpToLatest}>Jump to latest</button>}<button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button><div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}><div id="content" ref={contentRef} style={{height}}>Transcript</div></div></>;
+      return <>{!atLatest && <button onClick={jumpToLatest}>Jump to latest</button>}<button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button><div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}><div id="above" style={{height:${sibling === 'above' ? 200 : 0}}}/><div id="content" ref={contentRef} style={{height}}>Transcript</div><div id="below" style={{height:${sibling === 'below' ? 200 : 0}}}/></div></>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
   `);
@@ -491,3 +491,48 @@ test('a new session still opens at the tail after its loading content clamps the
     await browser.close();
   }
 });
+
+test.each(['above', 'below'] as const)(
+  'collapsing a transcript sibling %s preserves follow through the clamp and later growth',
+  async (position) => {
+    const { browser, page, errors } = await sessionFixture(position);
+    try {
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1900,
+      );
+      await page.locator(`#${position}`).evaluate((element) => {
+        element.style.height = '0px';
+      });
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1700,
+      );
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(false);
+      await page.getByRole('button', { name: 'Grow' }).click();
+      expect(await tailGap(page)).toBe(0);
+      // Newly mounted errors/attention/details are outside the transcript ref.
+      await page.locator(`#${position}`).evaluate((element) => {
+        const card = document.createElement('div');
+        card.style.height = '100px';
+        element.replaceWith(card);
+      });
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      expect(await tailGap(page)).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);

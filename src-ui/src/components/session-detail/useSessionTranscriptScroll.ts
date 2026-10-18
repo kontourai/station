@@ -111,12 +111,11 @@ export function useSessionTranscriptScroll({
       // A nested code scroller can consume a wheel without moving this port.
       if (event.target !== scroll) return;
       const top = scroll.scrollTop;
-      if (top < lastSeenTop.current - 1) {
+      if (scroll.scrollHeight - top - scroll.clientHeight <= 2) {
+        follow.current = true;
+      } else if (top < lastSeenTop.current - 1) {
         follow.current = false;
-      } else if (
-        scroll.scrollHeight - top - scroll.clientHeight <= 2 ||
-        (reachedWheelTail && top > lastSeenTop.current + 1)
-      ) {
+      } else if (reachedWheelTail && top > lastSeenTop.current + 1) {
         follow.current = true;
       }
       lastSeenTop.current = top;
@@ -133,12 +132,21 @@ export function useSessionTranscriptScroll({
     scroll.addEventListener('wheel', onWheel, { passive: true });
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
-    observer?.observe(content);
-    observer?.observe(scroll);
+    const observeContent = () => {
+      observer?.disconnect();
+      observer?.observe(scroll);
+      observer?.observe(content);
+      // Errors, attention and Details share the port, outside the transcript.
+      for (const child of scroll.children) observer?.observe(child);
+    };
+    observeContent();
+    const children = new MutationObserver(observeContent);
+    children.observe(scroll, { childList: true });
     return () => {
       scroll.removeEventListener('scroll', onScroll, true);
       scroll.removeEventListener('wheel', onWheel);
       observer?.disconnect();
+      children.disconnect();
     };
   }, [scrollRef, contentRef, pinToLatest]);
 
