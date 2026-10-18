@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { TurnProvenanceEnvelope } from '../../packages/contracts/src/turn-provenance.js';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   checkOutputs,
   checkServedConnection,
@@ -15,6 +15,7 @@ import {
 } from '../lib/engine-matrix.mjs';
 
 const exec = promisify(execFile);
+const makeTempDir = trackTempDirs();
 const script = fileURLToPath(
   new URL('../station-agent-smoke.mjs', import.meta.url),
 );
@@ -172,7 +173,7 @@ type Fault =
   | 'extra-stored';
 
 async function runCli(fault?: Fault) {
-  const directory = await mkdtemp(join(tmpdir(), 'station-matrix-'));
+  const directory = makeTempDir('station-matrix-');
   const requests: Array<{ url: string; body?: any }> = [];
   const sessions = new Map<
     string,
@@ -351,7 +352,6 @@ async function runCli(fault?: Fault) {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
-    await rm(directory, { recursive: true, force: true });
   }
 }
 
