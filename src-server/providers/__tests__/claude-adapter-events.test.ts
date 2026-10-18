@@ -94,6 +94,7 @@ describe('claude-adapter-events', () => {
   test.each([
     { kind: 'count', probe: true },
     { kind: 'name length', probe: true },
+    { kind: 'multi-byte name', probe: true },
     { kind: 'bytes', probe: true },
     { kind: 'ordinary session', probe: false },
   ])(
@@ -110,11 +111,15 @@ describe('claude-adapter-events', () => {
             'utf8',
           ).split('\n')[0],
         );
-      init.tools = Array.from(
-        { length: kind === 'bytes' ? 32 : 1200 },
-        (_, index) =>
-          `mcp__${serverId}__${kind === 'name length' ? 'x'.repeat(200) : kind === 'bytes' ? 'x'.repeat(60) : 'tool'}${index}`,
-      );
+      const prefix = `mcp__${serverId}__`;
+      init.tools =
+        kind === 'multi-byte name'
+          ? [prefix + '界'.repeat(128 - prefix.length)]
+          : Array.from(
+              { length: kind === 'bytes' ? 32 : 1200 },
+              (_, index) =>
+                `mcp__${serverId}__${kind === 'name length' ? 'x'.repeat(200) : kind === 'bytes' ? 'x'.repeat(60) : 'tool'}${index}`,
+            );
       init.model = 'claude-sonnet-4-6';
       init.permissionMode = 'auto';
       const record = makeRecord({
@@ -146,6 +151,13 @@ describe('claude-adapter-events', () => {
           },
         });
         if (probe) {
+          if (kind === 'multi-byte name') {
+            expect(init.tools[0].length).toBe(128);
+            expect(Buffer.byteLength(init.tools[0], 'utf8')).toBeGreaterThan(
+              128,
+            );
+            expect(configured?.metadata?.engineToolNames).toEqual([]);
+          }
           expect(configured?.metadata?.engineToolNamesTruncated).toBe(true);
           const names = configured?.metadata?.engineToolNames;
           expect(Array.isArray(names)).toBe(true);

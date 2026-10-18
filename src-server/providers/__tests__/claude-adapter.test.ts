@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
@@ -7421,10 +7422,57 @@ describe('ClaudeAdapter', () => {
   });
 
   test.each(['probe', 'ordinary', 'mismatched server'] as const)(
-    'only records probe-server tools for a resolved delivery Agent (%s)',
+    'records generated probe ids only for the matching delivery Agent (%s)',
     async (kind) => {
       const suffix = 'a'.repeat(32);
-      const serverId = `probe${suffix}`;
+      let serverId = `probe${suffix}`;
+      let slug = kind === 'ordinary' ? 'ordinary-agent' : `delivery-${suffix}`;
+      if (kind === 'probe') {
+        let createdServerId = '';
+        // Exercise the actual id generator without creating a skill package.
+        // Setup stays local, and the SDK stream below is mocked.
+        const prepared = await deliveryScenarios[0].prepare({
+          engine: 'codex',
+          connectionId: 'probe-engine',
+          cwd: '/tmp',
+          model: 'probe-model',
+          delivery: {},
+          deferCleanup: () => {},
+          setupApi: async (path, body) => {
+            if (path === '/integrations' && body && typeof body === 'object') {
+              const id = Reflect.get(body, 'id');
+              if (typeof id !== 'string')
+                throw new Error('Missing authored integration id');
+              createdServerId = id;
+              return { data: {} };
+            }
+            if (path === '/integrations')
+              return {
+                data: [
+                  {
+                    id: createdServerId,
+                    tools: [{ toolName: 'ping' }, { toolName: 'blocked' }],
+                  },
+                ],
+              };
+            if (path === `/integrations/${createdServerId}/reconnect`)
+              return { data: { probe: { ok: true } } };
+            if (
+              [
+                `/integrations/${createdServerId}/tools/apply`,
+                `/integrations/${createdServerId}/enabled`,
+                '/agents',
+              ].includes(path)
+            )
+              return { data: {} };
+            throw new Error(`Unexpected preparation route: ${path}`);
+          },
+        });
+        if (!prepared.state)
+          throw new Error('Probe preparation did not produce its ids');
+        serverId = prepared.state.serverId;
+        slug = prepared.state.skillId;
+      }
       mockQuery.mockReturnValue(
         createMockQuery([
           {
@@ -7445,7 +7493,7 @@ describe('ClaudeAdapter', () => {
         provider: 'claude',
         threadId: `probe-inventory-${kind}`,
         agent: {
-          slug: kind === 'ordinary' ? 'ordinary-agent' : `delivery-${suffix}`,
+          slug,
           toolServers: [
             {
               id: kind === 'mismatched server' ? 'another-server' : serverId,

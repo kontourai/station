@@ -799,6 +799,98 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     },
   );
 
+  test.each(['prepare', 'send'] as const)(
+    'SIGINT during %s refuses subsequent mutations and cleans owned resources',
+    async (phase) => {
+      // Keep the worker alive after exercising the runner's actual signal handler.
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockReturnValue(undefined as never);
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let interruptedAt: number | undefined;
+      const interrupt = () => {
+        interruptedAt = requests.length;
+        expect(process.emit('SIGINT')).toBe(true);
+      };
+      try {
+        const result = await run({
+          modelIds: ['matrix-1'],
+          maxTurns: phase === 'prepare' ? 6 : 5,
+          api: async (path: string, body?: unknown, method?: string) => {
+            const response = await api(path, body, method);
+            if (
+              phase === 'prepare' &&
+              path === '/integrations' &&
+              method === 'POST'
+            )
+              interrupt();
+            return response;
+          },
+          additionalScenarios:
+            phase === 'prepare'
+              ? deliveryScenarios
+              : [
+                  {
+                    id: 'interrupt-before-send',
+                    maxTurns: 1,
+                    async run(ctx: any) {
+                      interrupt();
+                      await ctx.recall(ctx.model);
+                    },
+                  },
+                ],
+        });
+        await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(130));
+        expect(interruptedAt).toBeDefined();
+        const afterInterrupt = requests.slice(interruptedAt);
+        expect(
+          afterInterrupt.filter(
+            (request) =>
+              request.method === 'POST' &&
+              !(
+                request.path === '/api/orchestration/commands' &&
+                isRecord(request.body) &&
+                request.body.type === 'stopSession'
+              ),
+          ),
+        ).toEqual([]);
+        expect(
+          result.rows.find(
+            (row) =>
+              row.scenario ===
+              (phase === 'prepare' ? 'delivery' : 'interrupt-before-send'),
+          ),
+        ).toMatchObject({
+          status: 'fail',
+          failure: expect.stringContaining('Run interrupted'),
+        });
+        expect(result.sentTurns).toBe(4);
+        expect(adapter.turns).toHaveLength(4);
+        if (phase === 'prepare') {
+          expect(
+            afterInterrupt.filter((request) => request.method === 'DELETE'),
+          ).toEqual([
+            expect.objectContaining({
+              path: expect.stringMatching(/^\/integrations\/probe/),
+              status: 200,
+            }),
+          ]);
+          expect(await loader.listIntegrations()).toEqual([]);
+          expect(
+            requests.some(
+              (request) =>
+                request.path === '/api/skills/local' &&
+                request.method === 'POST',
+            ),
+          ).toBe(false);
+        }
+      } finally {
+        exit.mockRestore();
+        stderr.mockRestore();
+      }
+    },
+  );
+
   test.skipIf(process.platform === 'win32')(
     'SIGINT mid-probe attempts all three DELETEs once before the CLI exits',
     async () => {
