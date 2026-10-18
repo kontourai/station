@@ -23,7 +23,6 @@ import type {
   HandoffOptions,
   HandoffOutcomeResult,
 } from './generation-manager.ts';
-import { lockProof } from './instance-lock.ts';
 import {
   encodeLine,
   isRecord,
@@ -71,8 +70,8 @@ export interface ControlServerOptions {
   handlers: ControlHandlers;
   platform?: NodeJS.Platform;
   log?: (message: string) => void;
-  /** The instance lock's nonce, for answering unauthenticated `lock.probe` requests. */
-  lockNonce?: () => string | null;
+  /** True while this process holds the instance lock's top epoch; gates replacing a stale socket file. */
+  mayReplaceStaleSocket?: () => boolean;
   /** The uid directories must belong to. Tests replace it to exercise the foreign-owner refusal. */
   currentUid?: () => number | undefined;
 }
@@ -102,14 +101,32 @@ function writeToken(tokenPath: string, token: string): void {
   renameSync(temp, tokenPath);
 }
 
-function probeSocket(path: string): Promise<boolean> {
+/**
+ * What is at a socket path: a listener (connect succeeded), nothing (refused
+ * or no such file), or something we cannot judge (any other error).
+ */
+function probeSocket(
+  path: string,
+): Promise<'listening' | 'nothing' | 'unknown'> {
   return new Promise((resolve) => {
     const socket = createConnection(path);
-    socket.once('connect', () => {
+    const timer = setTimeout(() => {
       socket.destroy();
-      resolve(true);
+      resolve('unknown');
+    }, 2_000);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve('listening');
     });
-    socket.once('error', () => resolve(false));
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      clearTimeout(timer);
+      resolve(
+        error.code === 'ECONNREFUSED' || error.code === 'ENOENT'
+          ? 'nothing'
+          : 'unknown',
+      );
+    });
   });
 }
 
@@ -137,6 +154,7 @@ export class ControlServer {
   private server: Server | null = null;
   private token = '';
   private bound = false;
+  private boundIdentity: { dev: number; ino: number } | null = null;
   private published = false;
   private readonly sockets = new Set<Socket>();
   private readonly platform: NodeJS.Platform;
@@ -156,6 +174,23 @@ export class ControlServer {
     ensurePrivateDir(dirname(endpoint.tokenPath), this.platform, currentUid);
     if (this.platform !== 'win32') {
       ensurePrivateDir(dirname(endpoint.path), this.platform, currentUid);
+    }
+    // The token file is written only once this process owns the endpoint, so a
+    // supervisor that loses the race never replaces the running one's token.
+    this.token = randomBytes(32).toString('hex');
+    await this.bind();
+  }
+
+  /**
+   * Binds the endpoint. An existing socket file is replaced only when the
+   * caller holds the instance lock's top epoch and connecting to the file is
+   * refused or finds nothing; a live listener or any other outcome refuses.
+   */
+  private async bind(): Promise<void> {
+    const { endpoint } = this.options;
+    const refuseListening = () =>
+      new Error(`a process is already listening at ${endpoint.path}`);
+    if (this.platform !== 'win32') {
       let existing: ReturnType<typeof lstatSync> | null = null;
       try {
         existing = lstatSync(endpoint.path);
@@ -168,44 +203,75 @@ export class ControlServer {
             `refusing to replace non-socket file at ${endpoint.path}`,
           );
         }
-        if (await probeSocket(endpoint.path)) {
+        const found = await probeSocket(endpoint.path);
+        if (found === 'listening') throw refuseListening();
+        if (found === 'unknown') {
           throw new Error(
-            `another supervisor is already listening at ${endpoint.path}`,
+            `cannot tell what is at ${endpoint.path}; refusing to replace it`,
+          );
+        }
+        if (!(this.options.mayReplaceStaleSocket?.() ?? false)) {
+          throw new Error(
+            `refusing to replace ${endpoint.path} without holding the instance lock`,
           );
         }
         unlinkSync(endpoint.path);
       }
-    } else if (await probeSocket(endpoint.path)) {
-      throw new Error(
-        `another supervisor is already listening at ${endpoint.path}`,
-      );
+    } else if ((await probeSocket(endpoint.path)) === 'listening') {
+      throw refuseListening();
     }
-    // The token file is written only once this process owns the endpoint, so a
-    // supervisor that loses the race never replaces the running one's token.
-    this.token = randomBytes(32).toString('hex');
     const server = createServer((socket) => this.accept(socket));
     server.maxConnections = CONTROL_MAX_CONNECTIONS;
     await new Promise<void>((resolve, reject) => {
       server.once('error', (error: NodeJS.ErrnoException) =>
-        reject(
-          error.code === 'EADDRINUSE'
-            ? new Error(
-                `another supervisor is already listening at ${endpoint.path}`,
-              )
-            : error,
-        ),
+        reject(error.code === 'EADDRINUSE' ? refuseListening() : error),
       );
       server.listen(endpoint.path, () => {
         server.removeAllListeners('error');
         resolve();
       });
     });
-    if (this.platform !== 'win32') chmodSync(endpoint.path, 0o600);
+    if (this.platform !== 'win32') {
+      chmodSync(endpoint.path, 0o600);
+      const bound = lstatSync(endpoint.path);
+      this.boundIdentity = { dev: bound.dev, ino: bound.ino };
+    }
     this.bound = true;
     server.on('error', (error) =>
       this.log(`control server error: ${String(error)}`),
     );
     this.server = server;
+  }
+
+  /**
+   * Whether the endpoint this process bound is still in place: on POSIX the
+   * socket file must exist with the same device and inode; on Windows the pipe
+   * server must still be listening.
+   */
+  socketIntact(): boolean {
+    if (!this.server) return false;
+    if (this.platform === 'win32') return this.server.listening;
+    return this.socketFileIsOurs();
+  }
+
+  private socketFileIsOurs(): boolean {
+    try {
+      const current = lstatSync(this.options.endpoint.path);
+      return (
+        current.dev === this.boundIdentity?.dev &&
+        current.ino === this.boundIdentity?.ino
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Re-binds the endpoint after its file was deleted or replaced; connections stay open. */
+  async rebind(): Promise<void> {
+    const previous = this.server;
+    this.server = null;
+    if (previous) previous.close();
+    await this.bind();
   }
 
   /**
@@ -225,9 +291,12 @@ export class ControlServer {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     const { endpoint } = this.options;
     // Remove only what this process created: never another supervisor's token or socket.
+    // The socket file only while it is still the one this process bound.
+    const ownSocket =
+      this.platform !== 'win32' && this.bound && this.socketFileIsOurs();
     for (const path of [
       this.published ? endpoint.tokenPath : null,
-      this.platform === 'win32' || !this.bound ? null : endpoint.path,
+      ownSocket ? endpoint.path : null,
     ]) {
       if (!path) continue;
       try {
@@ -280,10 +349,6 @@ export class ControlServer {
       }
       if (capabilities === null) {
         clearTimeout(helloTimer);
-        if (isRecord(message) && message.type === 'lock.probe') {
-          this.answerLockProbe(message, refuse, send, socket);
-          return;
-        }
         capabilities = this.handshake(message, refuse, send);
         return;
       }
@@ -307,30 +372,6 @@ export class ControlServer {
         if (line.trim().length > 0) onLine(line);
       }
     });
-  }
-
-  /**
-   * Proves this supervisor holds the instance lock without revealing the
-   * nonce: the answer is HMAC(nonce, challenge). Unauthenticated by design.
-   */
-  private answerLockProbe(
-    message: Record<string, unknown>,
-    refuse: (reason: RefusedReason) => void,
-    send: (message: ControlServerMessage) => void,
-    socket: Socket,
-  ): void {
-    const nonce = this.options.lockNonce?.() ?? null;
-    const { challenge } = message;
-    if (
-      !nonce ||
-      typeof challenge !== 'string' ||
-      !/^[0-9a-f]{16,128}$/.test(challenge)
-    ) {
-      refuse('bad-hello');
-      return;
-    }
-    send({ type: 'lock.proof', proof: lockProof(nonce, challenge) });
-    closeAfterReply(socket);
   }
 
   private handshake(

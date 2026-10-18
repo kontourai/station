@@ -18,5 +18,10 @@ export function supervisorBuildOptions(outfile) {
     // Node built-ins only: anything else failing to resolve is a build error,
     // never a runtime import from a node_modules that is not shipped.
     external: ['node:*'],
+    // Test-only knobs never reach the shipped bundle.
+    define: {
+      'process.env.STATION_SUPERVISOR_TEST_LOCK_DELAY_MS': 'undefined',
+      'process.env.STATION_SUPERVISOR_TEST_POST_ACQUIRE_DELAY_MS': 'undefined',
+    },
   };
 }

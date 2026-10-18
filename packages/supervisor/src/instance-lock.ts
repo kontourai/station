@@ -1,63 +1,74 @@
 /**
- * One supervisor per (home, instance), by lock epochs.
+ * One supervisor per (home, instance), by lock epochs and process identity.
  *
- * Why this is correct, without parsing `ps` or racing renames:
+ * Why this is correct. Three earlier designs decided liveness by *reaching*
+ * the holder (a probe, a socket connect); a holder that is alive but stopped,
+ * backlogged, or missing its socket file looked dead to all of them. This one
+ * never asks whether the holder can be reached, only whether it still exists:
  *
- * - Epochs. Lock files are `<run>/instance-<instance>.lock.<n>`, only ever
- *   created with `wx`, never renamed or rewritten. The OS lets exactly one
- *   process create a given n, so every epoch has exactly one winner. The
- *   current lock is the highest n present.
- * - Acquire. Read the highest n. With none, create n=1. If its holder is LIVE
- *   or LIVE-PENDING, refuse. If DEAD, create n+1; on EEXIST another starter
- *   won that epoch, so start over (and find its fresh lock LIVE-PENDING).
- * - Liveness. LIVE: the holder's control endpoint (recorded in the lock, so
- *   `--control` cannot hide it) answers `lock.probe{challenge}` with
- *   HMAC(nonce, challenge); the nonce never crosses the wire. A connection
- *   that is accepted but not answered in time, or fails for a reason other
- *   than "nothing listening", also counts as LIVE: fail closed. LIVE-PENDING:
- *   not proved, but the pid exists and the lock is younger than the pending
- *   grace, which covers a winner that has not bound its socket yet. DEAD:
- *   everything else, including a reused pid on a lock older than the grace.
- * - Ordering. The epoch winner binds its control socket next (only an epoch
- *   winner may unlink a stale socket, and the bind still refuses a live
- *   listener), then re-reads the highest epoch and refuses unless it is still
- *   its own. Only then does it publish the token, reap, and serve. If a slow
- *   winner was judged DEAD after the grace and a later epoch was created, the
- *   older winner sees the later epoch here and steps down; the later winner's
- *   bind refuses while the older one still listens. The worst case is that
- *   both refuse, never that both serve.
- * - Release. Delete only your own epoch file, and only if it still holds
- *   your nonce. The winner collects older epoch files.
+ * - Epochs. Lock files are `<run>/instance-<instance>.lock.<n>` with n written
+ *   without leading zeros (`[1-9]\d*`; anything else is ignored). They are
+ *   created only with `wx`, so each epoch has exactly one winner. The current
+ *   lock is the highest n. The top epoch is never deleted: a clean exit marks
+ *   it released (temp file + rename in the same directory, only while it still
+ *   holds our nonce and pid), so epochs only ever go up. Only the holder of
+ *   the top epoch collects epochs below it.
+ * - Content: `{pid, nonce, startFingerprint, createdAt, control, releasedAt?}`.
+ *   The fingerprint is the deterministic process start time from
+ *   generation-registry.ts (Linux: /proc starttime plus boot id; macOS: `ps`
+ *   pinned to TZ=UTC, LC_ALL=C; Windows: creation time ticks).
+ * - Liveness of the top epoch's holder:
+ *   LIVE if its pid exists and its current fingerprint equals the recorded one.
+ *   DEAD only if the epoch is released, the pid is gone, or the pid exists with
+ *   a known, different fingerprint (the pid was reused).
+ *   Unknown fingerprint (tool missing, timeout, unparseable), or a holder that
+ *   recorded none while its pid exists: LIVE. Fail closed.
+ *   An empty or half-written file: LIVE-PENDING while younger than the pending
+ *   grace (a winner between `wx` and its write), DEAD after it.
+ *   A stopped, flooded, or unreachable holder is still LIVE: that is the point.
+ * - Acquire: read the top; none means create 1; LIVE or LIVE-PENDING means
+ *   refuse; DEAD means create top+1, and on EEXIST start over (the winner of
+ *   that epoch is now LIVE).
+ * - Socket: an existing socket file is replaced only by the holder of the top
+ *   epoch, and only when connecting to it is refused or finds nothing. A
+ *   successful connect, or any other error, refuses. With the lock proving the
+ *   previous holder dead, a refused connect there is a leftover file.
+ * - After binding, and every self-check interval while serving, the holder
+ *   confirms the top epoch is still its own; if not it drains and exits. It
+ *   also re-binds its socket path if the file was deleted or replaced.
  *
- * On Windows the named pipe is also exclusive at the OS level; the epochs keep
- * the scheme and the nonce probe uniform across platforms.
+ * Accepted limits: a SIGSTOPped holder keeps the instance until it is
+ * continued or killed. Correctness rests on the fingerprint being stable for
+ * a process's lifetime and different for a new process with the same pid.
  */
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   fsyncSync,
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { createConnection } from 'node:net';
 import { join } from 'node:path';
-import { encodeLine, isRecord, NdjsonDecoder } from './ndjson.ts';
+import { type Fingerprint, processFingerprint } from './generation-registry.ts';
 
 export class SupervisorStartError extends Error {}
 
 const LOCK_PENDING_GRACE_MS = 30_000;
-const PROBE_TIMEOUT_MS = 2_000;
 const MAX_EPOCH = 1_000_000_000;
 
 interface LockContent {
   pid: number;
   nonce: string;
+  /** Empty when the holder could not fingerprint itself. */
+  startFingerprint: string;
   createdAt: number;
   control: string;
+  releasedAt?: number;
 }
 
 export interface InstanceLock {
@@ -66,18 +77,11 @@ export interface InstanceLock {
   path: string;
 }
 
-type ProbeResult = 'proved' | 'not-proved' | 'no-listener' | 'unanswered';
 type HolderState = 'live' | 'live-pending' | 'dead';
-
-export function lockProof(nonce: string, challenge: string): string {
-  return createHmac('sha256', Buffer.from(nonce, 'hex'))
-    .update(challenge)
-    .digest('hex');
-}
 
 function epochPattern(instance: string): RegExp {
   const escaped = instance.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^instance-${escaped}\\.lock\\.(\\d+)$`);
+  return new RegExp(`^instance-${escaped}\\.lock\\.([1-9]\\d*)$`);
 }
 
 function epochPath(runDir: string, instance: string, epoch: number): string {
@@ -90,7 +94,7 @@ function listEpochs(runDir: string, instance: string): number[] {
     .map((name) => pattern.exec(name)?.[1])
     .filter((digits): digits is string => digits !== undefined)
     .map(Number)
-    .filter((n) => Number.isSafeInteger(n) && n > 0 && n <= MAX_EPOCH);
+    .filter((n) => Number.isSafeInteger(n) && n <= MAX_EPOCH);
 }
 
 function highestEpoch(runDir: string, instance: string): number | null {
@@ -107,9 +111,11 @@ function readContent(path: string): LockContent | null {
       Number.isSafeInteger(parsed.pid) &&
       (parsed.pid as number) > 0 &&
       typeof parsed.nonce === 'string' &&
-      /^[0-9a-f]{32}$/.test(parsed.nonce) &&
+      parsed.nonce.length > 0 &&
+      typeof parsed.startFingerprint === 'string' &&
       typeof parsed.createdAt === 'number' &&
-      typeof parsed.control === 'string'
+      typeof parsed.control === 'string' &&
+      (parsed.releasedAt === undefined || typeof parsed.releasedAt === 'number')
     ) {
       return parsed as LockContent;
     }
@@ -128,85 +134,55 @@ function pidExists(pid: number): boolean {
   }
 }
 
-/** Asks the endpoint to prove it knows `nonce`, without sending the nonce. */
-function probe(
-  control: string,
-  nonce: string,
-  timeoutMs: number,
-): Promise<ProbeResult> {
-  return new Promise((resolve) => {
-    const challenge = randomBytes(32).toString('hex');
-    const expected = Buffer.from(lockProof(nonce, challenge), 'hex');
-    const socket = createConnection(control);
-    const decoder = new NdjsonDecoder(64 * 1024);
-    let settled = false;
-    const finish = (result: ProbeResult) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      resolve(result);
-    };
-    const timer = setTimeout(() => finish('unanswered'), timeoutMs);
-    socket.on('connect', () =>
-      socket.write(encodeLine({ type: 'lock.probe', challenge })),
-    );
-    socket.on('error', (error: NodeJS.ErrnoException) => {
-      // Only "nothing is listening there" is evidence of death; anything else fails closed.
-      finish(
-        error.code === 'ECONNREFUSED' || error.code === 'ENOENT'
-          ? 'no-listener'
-          : 'unanswered',
-      );
-    });
-    socket.on('close', () => finish('not-proved'));
-    socket.on('data', (chunk: Buffer) => {
-      try {
-        for (const line of decoder.push(chunk)) {
-          const message = JSON.parse(line) as unknown;
-          if (
-            isRecord(message) &&
-            message.type === 'lock.proof' &&
-            typeof message.proof === 'string' &&
-            /^[0-9a-f]{64}$/.test(message.proof) &&
-            timingSafeEqual(Buffer.from(message.proof, 'hex'), expected)
-          ) {
-            finish('proved');
-          } else {
-            finish('not-proved');
-          }
-          return;
-        }
-      } catch {
-        finish('not-proved');
-      }
-    });
-  });
-}
-
 async function judge(
   path: string,
   graceMs: number,
-  probeTimeoutMs: number,
-): Promise<{ state: HolderState; pid: number | null }> {
+  fingerprint: (pid: number) => Promise<Fingerprint>,
+): Promise<{ state: HolderState; pid: number | null; why: string }> {
   const content = readContent(path);
   if (!content) {
-    // A winner between `wx` and its write, or a crash in between: judge by age.
     let ageMs = Number.POSITIVE_INFINITY;
     try {
       ageMs = Date.now() - statSync(path).mtimeMs;
     } catch {
-      return { state: 'dead', pid: null };
+      return { state: 'dead', pid: null, why: 'lock file vanished' };
     }
-    return { state: ageMs < graceMs ? 'live-pending' : 'dead', pid: null };
+    return ageMs < graceMs
+      ? { state: 'live-pending', pid: null, why: 'lock is being written' }
+      : { state: 'dead', pid: null, why: 'lock was never completed' };
   }
-  const result = await probe(content.control, content.nonce, probeTimeoutMs);
-  if (result === 'proved' || result === 'unanswered')
-    return { state: 'live', pid: content.pid };
-  const young = Date.now() - content.createdAt < graceMs;
-  if (young && pidExists(content.pid))
-    return { state: 'live-pending', pid: content.pid };
-  return { state: 'dead', pid: content.pid };
+  if (content.releasedAt !== undefined) {
+    return { state: 'dead', pid: content.pid, why: 'released' };
+  }
+  if (!pidExists(content.pid))
+    return { state: 'dead', pid: content.pid, why: 'pid is gone' };
+  if (content.pid === process.pid) {
+    return { state: 'live', pid: content.pid, why: 'held by this process' };
+  }
+  if (content.startFingerprint === '') {
+    return {
+      state: 'live',
+      pid: content.pid,
+      why: 'pid exists; holder recorded no fingerprint',
+    };
+  }
+  const current = await fingerprint(content.pid);
+  if (current.status === 'gone')
+    return { state: 'dead', pid: content.pid, why: 'pid is gone' };
+  if (current.status === 'unknown') {
+    return {
+      state: 'live',
+      pid: content.pid,
+      why: `fingerprint unknown (${current.reason})`,
+    };
+  }
+  return current.value === content.startFingerprint
+    ? { state: 'live', pid: content.pid, why: 'same process' }
+    : {
+        state: 'dead',
+        pid: content.pid,
+        why: 'pid was reused by another process',
+      };
 }
 
 function create(path: string, content: LockContent): boolean {
@@ -229,16 +205,24 @@ function create(path: string, content: LockContent): boolean {
 export async function acquireInstanceLock(options: {
   runDir: string;
   instance: string;
-  /** This supervisor's control endpoint, where it will answer probes. */
+  /** This supervisor's control endpoint, recorded for diagnosis. */
   control: string;
   description: string;
   log: (message: string) => void;
   pendingGraceMs?: number;
-  probeTimeoutMs?: number;
+  fingerprint?: (pid: number) => Promise<Fingerprint>;
   /** Test-only: delay between judging the holder and creating the next epoch. */
   testDelayMs?: number;
 }): Promise<InstanceLock> {
   const graceMs = options.pendingGraceMs ?? LOCK_PENDING_GRACE_MS;
+  const fingerprint =
+    options.fingerprint ?? ((pid: number) => processFingerprint(pid));
+  const self = await fingerprint(process.pid);
+  if (self.status !== 'ok') {
+    options.log(
+      'could not fingerprint this process; the lock will count as live while the pid exists',
+    );
+  }
   const nonce = randomBytes(16).toString('hex');
   for (let attempt = 0; attempt < 32; attempt += 1) {
     const highest = highestEpoch(options.runDir, options.instance);
@@ -250,18 +234,14 @@ export async function acquireInstanceLock(options: {
         );
       }
       const holder = epochPath(options.runDir, options.instance, highest);
-      const { state, pid } = await judge(
-        holder,
-        graceMs,
-        options.probeTimeoutMs ?? PROBE_TIMEOUT_MS,
-      );
+      const { state, pid, why } = await judge(holder, graceMs, fingerprint);
       if (state !== 'dead') {
         throw new SupervisorStartError(
-          `another supervisor (pid ${pid ?? 'unknown'}) holds ${options.description} (epoch ${highest}, ${state}); refusing to start`,
+          `another supervisor (pid ${pid ?? 'unknown'}) holds ${options.description} (epoch ${highest}, ${state}: ${why}); refusing to start`,
         );
       }
       options.log(
-        `instance lock epoch ${highest} (pid ${pid ?? 'unknown'}) is dead; taking the next epoch`,
+        `instance lock epoch ${highest} (pid ${pid ?? 'unknown'}) is dead (${why}); taking the next epoch`,
       );
       next = highest + 1;
     }
@@ -271,16 +251,14 @@ export async function acquireInstanceLock(options: {
       );
     }
     const path = epochPath(options.runDir, options.instance, next);
-    if (
-      create(path, {
-        pid: process.pid,
-        nonce,
-        createdAt: Date.now(),
-        control: options.control,
-      })
-    ) {
-      return { epoch: next, nonce, path };
-    }
+    const content: LockContent = {
+      pid: process.pid,
+      nonce,
+      startFingerprint: self.status === 'ok' ? self.value : '',
+      createdAt: Date.now(),
+      control: options.control,
+    };
+    if (create(path, content)) return { epoch: next, nonce, path };
     // Another starter won epoch `next`; judge it on the next pass.
   }
   throw new SupervisorStartError(
@@ -288,24 +266,27 @@ export async function acquireInstanceLock(options: {
   );
 }
 
-/** True while `lock` is still the highest epoch and still holds our nonce. */
+/** True while `lock` is the highest epoch, still ours, and not released. */
 export function stillHolds(
   lock: InstanceLock,
   runDir: string,
   instance: string,
 ): boolean {
+  const content = readContent(lock.path);
   return (
     highestEpoch(runDir, instance) === lock.epoch &&
-    readContent(lock.path)?.nonce === lock.nonce
+    content?.nonce === lock.nonce &&
+    content.releasedAt === undefined
   );
 }
 
-/** Removes epoch files older than ours. */
+/** Removes epoch files below ours; call only while holding the top epoch. */
 export function collectOlderEpochs(
   lock: InstanceLock,
   runDir: string,
   instance: string,
 ): void {
+  if (highestEpoch(runDir, instance) !== lock.epoch) return;
   for (const epoch of listEpochs(runDir, instance)) {
     if (epoch >= lock.epoch) continue;
     try {
@@ -316,12 +297,30 @@ export function collectOlderEpochs(
   }
 }
 
-/** Deletes our own epoch file, and only while it still holds our nonce. */
+/**
+ * Marks our epoch released (never deletes it, so epochs never go backwards),
+ * and only while the file still holds our nonce and pid.
+ */
 export function releaseInstanceLock(lock: InstanceLock): void {
-  if (readContent(lock.path)?.nonce !== lock.nonce) return;
+  const content = readContent(lock.path);
+  if (!content || content.nonce !== lock.nonce || content.pid !== process.pid)
+    return;
+  if (content.releasedAt !== undefined) return;
+  const temp = `${lock.path}.${process.pid}.release`;
   try {
-    unlinkSync(lock.path);
+    const fd = openSync(temp, 'w', 0o600);
+    try {
+      writeSync(fd, JSON.stringify({ ...content, releasedAt: Date.now() }));
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temp, lock.path);
   } catch {
-    // Gone already.
+    try {
+      unlinkSync(temp);
+    } catch {
+      // Never created.
+    }
   }
 }

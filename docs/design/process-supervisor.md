@@ -133,31 +133,41 @@ product decisions.
   by default, below service managers' stop timeouts; the long voice cap
   applies only to handoffs.
 
-  One supervisor runs per home and instance, enforced by lock epochs. The
-  argument is written out in
+  One supervisor runs per home and instance, enforced by lock epochs and
+  process identity. The argument is written out in
   [`instance-lock.ts`](../../packages/supervisor/src/instance-lock.ts).
-  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, only ever
-    created with `wx` and never renamed, so each epoch n has exactly one
-    winner. The highest n is the current lock. Its content is the holder's
-    pid, a random nonce, its creation time, and its control endpoint, so a
-    different `--control` socket cannot hide a holder.
-  - The holder is live if its control endpoint answers an unauthenticated
-    `lock.probe` with HMAC(nonce, challenge); the nonce never crosses the
-    wire. An endpoint that accepts but does not answer, or fails for any
-    reason other than "nothing is listening", also counts as live. A
-    holder that cannot prove itself but whose pid exists and whose lock is
-    younger than 30 seconds is live-pending, which covers a winner that has
-    not bound its socket yet. Anything else is dead.
-  - A starter refuses while the holder is live or live-pending. If it is
-    dead, the starter creates the next epoch; if another starter created it
-    first, it starts over and finds that one live-pending.
-  - The winner binds its control socket, re-reads the highest epoch, and
-    steps down unless it is still its own. Only then does it publish the
-    token, reap, and serve. It collects older epoch files and, on a clean
-    exit, deletes its own epoch only while that file still holds its nonce.
-  - Nothing here depends on parsing process start times: an earlier design
-    compared `ps` output, which follows the time zone and locale, and let a
-    supervisor in another time zone take over a live holder.
+  - Lock files are `<home>/run/instance-<instance>.lock.<n>`, with n written
+    without leading zeros, created only with `wx`, so each epoch n has
+    exactly one winner. The highest n is the current lock. Its content is
+    the holder's pid, a random nonce, its process start fingerprint, its
+    creation time, and its control endpoint.
+  - The holder is live while its pid exists with the start fingerprint it
+    recorded. It is dead only when its epoch is marked released, its pid is
+    gone, or the pid now belongs to a process with a different fingerprint.
+    A fingerprint that cannot be read counts as live. An empty or
+    half-written lock counts as live for 30 seconds. Reaching the holder is
+    never part of the decision, so a holder that is stopped, has a full
+    accept backlog, or has lost its socket file is still live. A stopped
+    holder therefore keeps the instance until it is continued or killed.
+  - A starter refuses while the holder is live. If it is dead, the starter
+    creates the next epoch; if another starter created it first, it starts
+    over and finds that one live.
+  - The winner binds its control socket. An existing socket file is
+    replaced only by the holder of the top epoch, and only if connecting to
+    it is refused or finds nothing; a successful connect or any other error
+    refuses. The winner then confirms the top epoch is still its own,
+    collects older epochs, publishes the token, reaps, and serves.
+  - Every 5 seconds the holder confirms the top epoch is still its own,
+    draining and exiting with status 1 if not, and re-binds its socket path
+    if the file was deleted or replaced (on Windows, if the pipe server
+    stopped listening).
+  - A clean exit never deletes the top epoch. It marks its own epoch
+    released, by rewriting it through a temporary file, and only while the
+    file still holds its nonce and pid. Epoch numbers therefore never go
+    backwards.
+  - Earlier designs decided liveness by reaching the holder, or by comparing
+    `ps` output that follows the time zone and locale. Each let a second
+    supervisor take over a live one.
 
   A core must exit when its IPC channel disconnects, which is how it learns
   the supervisor has died. What backs that up differs by platform:

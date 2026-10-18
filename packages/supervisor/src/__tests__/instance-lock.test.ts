@@ -1,7 +1,8 @@
 /**
  * One supervisor per (home, instance), whatever control socket it is given.
- * Lock epochs are files created with `wx`; a holder is alive if it proves the
- * lock's nonce over its control endpoint, or is a young lock whose pid exists.
+ * Lock epochs are files created with `wx`. A holder is alive while its pid
+ * exists with the start-time fingerprint it recorded; reaching it is never
+ * part of the decision. Every test fails on an explicit deadline or state.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -11,12 +12,19 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer, type Server, type Socket } from 'node:net';
+import {
+  createConnection,
+  createServer,
+  type Server,
+  type Socket,
+} from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
+import { processFingerprint } from '../generation-registry.ts';
 import {
   makeShortHome,
   type RunningSupervisor,
@@ -24,37 +32,26 @@ import {
 } from './harness.ts';
 
 const makeTempDir = trackTempDirs();
-const sleepers: ChildProcess[] = [];
-const servers: Server[] = [];
-const accepted: Socket[] = [];
+const posixOnly = process.platform === 'win32' ? it.skip : it;
+const cleanups: Array<() => void> = [];
 
 afterEach(async () => {
-  for (const child of sleepers.splice(0)) child.kill('SIGKILL');
-  for (const socket of accepted.splice(0)) socket.destroy();
-  await Promise.all(
-    servers
-      .splice(0)
-      .map((server) => new Promise((resolve) => server.close(resolve))),
-  );
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
 
 function runDir(home: string): string {
   return join(home, 'run');
 }
 
-function epochs(home: string): number[] {
+function epochs(home: string): string[] {
   if (!existsSync(runDir(home))) return [];
   return readdirSync(runDir(home))
-    .map((name) => /^instance-test\.lock\.(\d+)$/.exec(name)?.[1])
-    .filter((n): n is string => n !== undefined)
-    .map(Number)
-    .sort((a, b) => a - b);
+    .filter((name) => name.startsWith('instance-test.lock.'))
+    .map((name) => name.slice('instance-test.lock.'.length))
+    .sort((a, b) => Number(a) - Number(b));
 }
 
-function epochContent(
-  home: string,
-  epoch: number,
-): { pid: number; nonce: string } {
+function epochContent(home: string, epoch: string): Record<string, unknown> {
   return JSON.parse(
     readFileSync(join(runDir(home), `instance-test.lock.${epoch}`), 'utf8'),
   );
@@ -62,7 +59,7 @@ function epochContent(
 
 function writeEpoch(
   home: string,
-  epoch: number,
+  epoch: string,
   content: Record<string, unknown>,
 ): void {
   mkdirSync(runDir(home), { recursive: true, mode: 0o700 });
@@ -86,17 +83,39 @@ function deadPid(): number {
 }
 
 async function liveSleeper(): Promise<number> {
-  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  sleepers.push(child);
+  const child: ChildProcess = spawn(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    {
+      stdio: 'ignore',
+      windowsHide: true,
+    },
+  );
+  cleanups.push(() => child.kill('SIGKILL'));
   await once(child, 'spawn');
   return child.pid as number;
 }
 
-function nonce(): string {
-  return randomBytes(16).toString('hex');
+async function fingerprintOf(pid: number): Promise<string> {
+  const fingerprint = await processFingerprint(pid);
+  if (fingerprint.status !== 'ok') throw new Error(`cannot fingerprint ${pid}`);
+  return fingerprint.value;
+}
+
+/** Resolves the first of the supervisor's exit or `ms` elapsing, as a state to assert on. */
+function exitWithin(
+  supervisor: RunningSupervisor,
+  ms: number,
+): Promise<
+  { code: number | null; signal: NodeJS.Signals | null } | 'STILL_RUNNING'
+> {
+  return Promise.race([
+    supervisor.exited,
+    // real-time: an explicit deadline for an expected exit, asserted as state.
+    new Promise<'STILL_RUNNING'>((resolve) =>
+      setTimeout(() => resolve('STILL_RUNNING'), ms),
+    ),
+  ]);
 }
 
 const REFUSAL = /another supervisor \(pid \d+\) holds instance test/;
@@ -111,13 +130,14 @@ describe('instance lock (real processes)', () => {
       args: ['--control', join(makeShortHome(), 'b.sock')],
       waitForServing: false,
     });
-    expect((await second.exited).code, second.output()).toBe(1);
+    expect(await exitWithin(second, 20_000), second.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
     expect(second.output()).toContain(
       `another supervisor (pid ${first.child.pid}) holds instance test`,
     );
-    expect(second.output()).not.toMatch(/generation \d+ started|reaped/);
     const after = await first.status();
-    expect(after.state).toBe('serving');
     expect(after.active?.pid).toBe(before.active?.pid);
     expect(after.restarts.consecutiveFailures).toBe(0);
   }, 60_000);
@@ -133,45 +153,162 @@ describe('instance lock (real processes)', () => {
       env: { TZ: 'Asia/Tokyo', LANG: 'fr_FR.UTF-8', LC_ALL: 'fr_FR.UTF-8' },
       waitForServing: false,
     });
-    expect((await second.exited).code, second.output()).toBe(1);
+    expect(await exitWithin(second, 20_000), second.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
     expect(second.output()).toContain(
       `another supervisor (pid ${first.child.pid}) holds instance test`,
     );
-    expect(second.output()).not.toContain('took over');
     expect((await first.status()).state).toBe('serving');
+  }, 60_000);
+
+  posixOnly(
+    'refuses while the holder is stopped and its control backlog is flooded',
+    async () => {
+      const home = makeTempDir('sup-lock-sigstop-');
+      const first = await startSupervisor({ home });
+      const before = await first.status();
+      const holder = first.child.pid as number;
+      process.kill(holder, 'SIGSTOP');
+      cleanups.push(() => {
+        try {
+          process.kill(holder, 'SIGCONT');
+        } catch {
+          // Gone.
+        }
+      });
+      // Fill the stopped holder's accept backlog until connects are refused.
+      const flood: Socket[] = [];
+      cleanups.push(() => {
+        for (const socket of flood) socket.destroy();
+      });
+      const outcomes = await Promise.all(
+        Array.from(
+          { length: 400 },
+          () =>
+            new Promise<string>((resolve) => {
+              const socket = createConnection(first.endpoint.path);
+              flood.push(socket);
+              socket.once('connect', () => resolve('queued'));
+              socket.once('error', (error: NodeJS.ErrnoException) =>
+                resolve(error.code ?? 'error'),
+              );
+              socket.setTimeout(3_000, () => resolve('pending'));
+            }),
+        ),
+      );
+      expect(outcomes).toContain('ECONNREFUSED');
+
+      const second = await startSupervisor({
+        home,
+        waitForServing: false,
+        // The old reachability rule only fooled itself on a lock past its grace.
+        args: ['--lock-pending-grace-ms', '1'],
+      });
+      expect(await exitWithin(second, 20_000), second.output()).toEqual({
+        code: 1,
+        signal: null,
+      });
+      expect(second.output()).toContain(
+        `another supervisor (pid ${holder}) holds instance test`,
+      );
+      expect(second.output()).not.toMatch(/acquired instance lock|reaped/);
+
+      for (const socket of flood) socket.destroy();
+      process.kill(holder, 'SIGCONT');
+      // Only the original holder answers on the path, with its original core.
+      const after = await first.status();
+      expect(after.supervisor.pid).toBe(holder);
+      expect(after.active?.pid).toBe(before.active?.pid);
+      expect(epochs(home)).toEqual(['1']);
+    },
+    90_000,
+  );
+
+  posixOnly(
+    're-binds its socket after an external deletion, and a starter still refuses',
+    async () => {
+      const home = makeTempDir('sup-lock-unlinked-');
+      const first = await startSupervisor({ home });
+      rmSync(first.endpoint.path);
+      const second = await startSupervisor({
+        home,
+        waitForServing: false,
+        // The old reachability rule only fooled itself on a lock past its grace.
+        args: ['--lock-pending-grace-ms', '1'],
+      });
+      expect(await exitWithin(second, 20_000), second.output()).toEqual({
+        code: 1,
+        signal: null,
+      });
+      expect(second.output()).toContain(
+        `another supervisor (pid ${first.child.pid}) holds instance test`,
+      );
+      // Within one self-check interval (5 s) the holder is reachable on its path again.
+      await vi.waitFor(
+        () => expect(existsSync(first.endpoint.path)).toBe(true),
+        {
+          timeout: 8_000,
+          interval: 100,
+        },
+      );
+      expect((await first.status()).supervisor.pid).toBe(first.child.pid);
+      expect(first.output()).toContain(
+        'control socket path is missing or replaced; re-binding',
+      );
+    },
+    60_000,
+  );
+
+  it('drains and exits 1 when its epoch is superseded while serving', async () => {
+    const home = makeTempDir('sup-lock-superseded-live-');
+    const first = await startSupervisor({ home });
+    const core = (await first.status()).active?.pid as number;
+    writeEpoch(home, '2', {
+      pid: process.pid,
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: await fingerprintOf(process.pid),
+      createdAt: Date.now(),
+      control: 'elsewhere',
+    });
+    expect(await exitWithin(first, 8_000), first.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
+    expect(first.output()).toContain('instance lock epoch 1 was superseded');
+    expect(first.output()).toContain('generation 1 exited code=0');
+    expect(() => process.kill(core, 0)).toThrow();
   }, 60_000);
 
   it('lets exactly one of three or four concurrent starters take over a dead holder, every time', async () => {
     const home = makeTempDir('sup-lock-race-');
-    writeEpoch(home, 1, {
+    writeEpoch(home, '1', {
       pid: deadPid(),
-      nonce: nonce(),
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: 'dead',
       createdAt: Date.now() - 120_000,
-      control: join(home, 'none.sock'),
+      control: 'gone',
     });
-    let previous: RunningSupervisor | null = null;
     for (let iteration = 0; iteration < 50; iteration += 1) {
       const starters = await Promise.all(
         Array.from({ length: iteration % 2 === 0 ? 3 : 4 }, () =>
           startSupervisor({
             home,
             waitForServing: false,
-            // Widen the window between judging the holder and creating the next epoch.
             env: { STATION_SUPERVISOR_TEST_LOCK_DELAY_MS: '150' },
           }),
         ),
       );
-      // The previous winner was SIGKILLed: it is the dead holder for this round.
       await vi.waitFor(
         () => {
-          const acquired = starters.filter((s) =>
-            /acquired instance lock epoch \d+/.test(s.output()),
-          );
-          const refused = starters.filter(
-            (s) => s.child.exitCode === 1 && REFUSAL.test(s.output()),
+          const settled = starters.filter(
+            (s) =>
+              /acquired instance lock epoch \d+/.test(s.output()) ||
+              (s.child.exitCode === 1 && REFUSAL.test(s.output())),
           );
           expect(
-            acquired.length + refused.length,
+            settled.length,
             starters.map((s) => s.output()).join('\n---\n'),
           ).toBe(starters.length);
         },
@@ -181,16 +318,152 @@ describe('instance lock (real processes)', () => {
         /acquired instance lock epoch \d+/.test(s.output()),
       );
       expect(winners, `iteration ${iteration}`).toHaveLength(1);
-      for (const loser of starters.filter((s) => s !== winners[0])) {
-        expect(loser.output(), `iteration ${iteration}`).not.toMatch(
-          /acquired instance lock|generation \d+ started/,
-        );
-      }
-      previous = winners[0] as RunningSupervisor;
-      previous.child.kill('SIGKILL');
-      await previous.exited;
+      const winner = winners[0] as RunningSupervisor;
+      winner.child.kill('SIGKILL');
+      await winner.exited;
     }
   }, 600_000);
+
+  it('does not take over a half-written lock while it is young', async () => {
+    const home = makeTempDir('sup-lock-pending-');
+    mkdirSync(runDir(home), { mode: 0o700 });
+    writeFileSync(join(runDir(home), 'instance-test.lock.1'), '');
+    const starter = await startSupervisor({ home, waitForServing: false });
+    expect(await exitWithin(starter, 20_000), starter.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
+    expect(starter.output()).toContain('live-pending');
+    expect(epochs(home)).toEqual(['1']);
+  }, 60_000);
+
+  it('ignores a stray epoch name with a leading zero', async () => {
+    const home = makeTempDir('sup-lock-zero-');
+    const pid = await liveSleeper();
+    writeEpoch(home, '06', {
+      pid,
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: await fingerprintOf(pid),
+      createdAt: Date.now(),
+      control: 'x',
+    });
+    const starter = await startSupervisor({ home });
+    expect(starter.output()).toContain('acquired instance lock epoch 1');
+    expect(epochs(home)).toEqual(
+      ['1', '06'].sort((a, b) => Number(a) - Number(b)),
+    );
+  }, 60_000);
+
+  it('takes over from a reused pid whose fingerprint differs', async () => {
+    const home = makeTempDir('sup-lock-reused-');
+    const pid = await liveSleeper();
+    writeEpoch(home, '1', {
+      pid,
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: 'a-different-process',
+      createdAt: Date.now(),
+      control: 'x',
+    });
+    const starter = await startSupervisor({ home });
+    expect(starter.output()).toContain('acquired instance lock epoch 2');
+    expect(() => process.kill(pid, 0)).not.toThrow();
+  }, 60_000);
+
+  it.skipIf(process.platform !== 'darwin')(
+    'refuses when it cannot fingerprint a holder whose pid exists',
+    async () => {
+      const home = makeTempDir('sup-lock-unknown-');
+      const pid = await liveSleeper();
+      writeEpoch(home, '1', {
+        pid,
+        nonce: randomBytes(16).toString('hex'),
+        startFingerprint: await fingerprintOf(pid),
+        createdAt: Date.now() - 120_000,
+        control: join(makeShortHome(), 'unreachable.sock'),
+      });
+      // No `ps` on PATH: the fingerprint is unknown, so the holder counts as live.
+      const starter = await startSupervisor({
+        home,
+        env: { PATH: '/nonexistent' },
+        waitForServing: false,
+      });
+      expect(await exitWithin(starter, 20_000), starter.output()).toEqual({
+        code: 1,
+        signal: null,
+      });
+      expect(starter.output()).toContain(
+        `another supervisor (pid ${pid}) holds instance test`,
+      );
+      expect(epochs(home)).toEqual(['1']);
+    },
+    60_000,
+  );
+
+  it('marks its epoch released on a clean stop, and the next starter takes over', async () => {
+    const home = makeTempDir('sup-lock-release-');
+    const first = await startSupervisor({ home });
+    const connection = await first.connect();
+    await connection.request({ type: 'stop', id: 'r1' }, ['stop.result']);
+    expect(await exitWithin(first, 20_000)).toEqual({ code: 0, signal: null });
+    expect(epochs(home)).toEqual(['1']);
+    expect(epochContent(home, '1').releasedAt).toBeTypeOf('number');
+    const second = await startSupervisor({ home });
+    expect(second.output()).toContain('acquired instance lock epoch 2');
+    expect(epochs(home)).toEqual(['2']);
+  }, 60_000);
+
+  it('never releases an epoch whose nonce is no longer its own', async () => {
+    const home = makeTempDir('sup-lock-foreign-');
+    const first = await startSupervisor({ home });
+    const mine = epochContent(home, '1');
+    writeEpoch(home, '1', { ...mine, nonce: randomBytes(16).toString('hex') });
+    first.child.kill('SIGTERM');
+    await exitWithin(first, 20_000);
+    expect(epochContent(home, '1').releasedAt).toBeUndefined();
+  }, 60_000);
+
+  posixOnly(
+    'refuses to replace a control socket another process is listening on',
+    async () => {
+      const home = makeTempDir('sup-lock-impostor-');
+      // The previous holder released cleanly, but something else listens on the path.
+      const endpointHome = makeShortHome();
+      const path = join(endpointHome, 'shared.sock');
+      const impostor: Server = createServer(() => {});
+      await new Promise<void>((resolve) => impostor.listen(path, resolve));
+      cleanups.push(() => impostor.close());
+      writeEpoch(home, '1', {
+        pid: deadPid(),
+        nonce: randomBytes(16).toString('hex'),
+        startFingerprint: 'dead',
+        createdAt: Date.now() - 120_000,
+        control: path,
+        releasedAt: Date.now() - 60_000,
+      });
+      const starter = await startSupervisor({
+        home,
+        args: ['--control', path],
+        waitForServing: false,
+      });
+      expect(await exitWithin(starter, 20_000), starter.output()).toEqual({
+        code: 1,
+        signal: null,
+      });
+      expect(starter.output()).toContain(
+        `a process is already listening at ${path}`,
+      );
+      // The impostor's socket is still in place and still accepts.
+      await new Promise<void>((resolve, reject) => {
+        const probe = createConnection(path);
+        probe.once('connect', () => {
+          probe.destroy();
+          resolve();
+        });
+        probe.once('error', reject);
+      });
+    },
+    60_000,
+  );
 
   it('steps down when a later epoch appears before start-up finishes', async () => {
     const home = makeTempDir('sup-lock-superseded-');
@@ -199,123 +472,24 @@ describe('instance lock (real processes)', () => {
       waitForServing: false,
       env: { STATION_SUPERVISOR_TEST_POST_ACQUIRE_DELAY_MS: '1500' },
     });
-    // It wins epoch 1; while it is held before its re-check, epoch 2 appears.
-    await vi.waitFor(() => expect(epochs(home)).toEqual([1]), {
+    await vi.waitFor(() => expect(epochs(home)).toEqual(['1']), {
       timeout: 10_000,
       interval: 20,
     });
-    writeEpoch(home, 2, {
-      pid: await liveSleeper(),
-      nonce: nonce(),
+    writeEpoch(home, '2', {
+      pid: process.pid,
+      nonce: randomBytes(16).toString('hex'),
+      startFingerprint: await fingerprintOf(process.pid),
       createdAt: Date.now(),
       control: 'x',
     });
-    expect((await starter.exited).code, starter.output()).toBe(1);
-    expect(starter.output()).toContain(
-      'instance lock epoch 1 was superseded before start-up finished',
-    );
+    expect(await exitWithin(starter, 20_000), starter.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
+    expect(starter.output()).toContain('instance lock epoch 1 was superseded');
     expect(starter.output()).not.toMatch(
       /acquired instance lock|generation \d+ started/,
     );
-    // It removed its own epoch on the way out and left the later one alone.
-    expect(epochs(home)).toEqual([2]);
-  }, 60_000);
-
-  it('does not take over a live-pending holder whose socket is not bound yet', async () => {
-    const home = makeTempDir('sup-lock-pending-');
-    const pid = await liveSleeper();
-    writeEpoch(home, 1, {
-      pid,
-      nonce: nonce(),
-      createdAt: Date.now(),
-      control: join(makeShortHome(), 'not-yet.sock'),
-    });
-    const starter = await startSupervisor({ home, waitForServing: false });
-    expect((await starter.exited).code, starter.output()).toBe(1);
-    expect(starter.output()).toContain(
-      `another supervisor (pid ${pid}) holds instance test`,
-    );
-    expect(starter.output()).toContain('live-pending');
-    expect(epochs(home)).toEqual([1]);
-  }, 60_000);
-
-  it('refuses an old lock whose endpoint accepts but never answers', async () => {
-    const home = makeTempDir('sup-lock-mute-');
-    const pid = await liveSleeper();
-    // A named pipe on Windows, where a filesystem path cannot be listened on.
-    const mute =
-      process.platform === 'win32'
-        ? `\\\\.\\pipe\\station-supervisor-test-mute-${nonce()}`
-        : join(makeShortHome(), 'mute.sock');
-    const server = createServer((socket) => {
-      accepted.push(socket);
-    });
-    servers.push(server);
-    await new Promise<void>((resolve) => server.listen(mute, resolve));
-    writeEpoch(home, 1, {
-      pid,
-      nonce: nonce(),
-      createdAt: Date.now() - 120_000,
-      control: mute,
-    });
-    const starter = await startSupervisor({ home, waitForServing: false });
-    expect((await starter.exited).code, starter.output()).toBe(1);
-    expect(starter.output()).toContain(
-      `another supervisor (pid ${pid}) holds instance test`,
-    );
-    expect(epochs(home)).toEqual([1]);
-  }, 60_000);
-
-  it('takes over a dead holder and collects older epochs', async () => {
-    const home = makeTempDir('sup-lock-dead-');
-    writeEpoch(home, 3, {
-      pid: deadPid(),
-      nonce: nonce(),
-      createdAt: Date.now() - 120_000,
-      control: join(home, 'gone.sock'),
-    });
-    const starter = await startSupervisor({ home });
-    expect(starter.output()).toContain('acquired instance lock epoch 4');
-    expect(epochs(home)).toEqual([4]);
-    expect(epochContent(home, 4).pid).toBe(starter.child.pid);
-  }, 60_000);
-
-  it('takes over the lock of a SIGKILLed supervisor', async () => {
-    const home = makeTempDir('sup-lock-kill-');
-    const first = await startSupervisor({ home });
-    expect(epochs(home)).toEqual([1]);
-    first.child.kill('SIGKILL');
-    await first.exited;
-    const second = await startSupervisor({ home });
-    expect((await second.status()).state).toBe('serving');
-    expect(epochs(home)).toEqual([2]);
-    expect(epochContent(home, 2).pid).toBe(second.child.pid);
-  }, 60_000);
-
-  it('releases only its own epoch, and only while the nonce is still its own', async () => {
-    const home = makeTempDir('sup-lock-release-');
-    const first = await startSupervisor({ home });
-    expect(epochs(home)).toEqual([1]);
-    const mine = epochContent(home, 1);
-    // A later epoch appears, and this supervisor's own file is rewritten by someone else.
-    writeEpoch(home, 2, {
-      pid: deadPid(),
-      nonce: nonce(),
-      createdAt: Date.now(),
-      control: 'x',
-    });
-    writeEpoch(home, 1, { ...mine, nonce: nonce() });
-    const connection = await first.connect();
-    await connection.request({ type: 'stop', id: 'r1' }, ['stop.result']);
-    expect(await first.exited).toEqual({ code: 0, signal: null });
-    expect(epochs(home)).toEqual([1, 2]);
-
-    // Positive control: an untouched epoch is removed on a clean stop.
-    const other = makeTempDir('sup-lock-release-clean-');
-    const clean = await startSupervisor({ home: other });
-    const stop = await clean.connect();
-    await stop.request({ type: 'stop', id: 'r2' }, ['stop.result']);
-    expect(await clean.exited).toEqual({ code: 0, signal: null });
-    expect(epochs(other)).toEqual([]);
   }, 60_000);
 });

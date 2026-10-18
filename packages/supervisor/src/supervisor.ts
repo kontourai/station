@@ -11,6 +11,7 @@ import {
   type GenerationLauncher,
   GenerationManager,
   type GenerationManagerOptions,
+  systemClock,
 } from './generation-manager.ts';
 import {
   GenerationRegistry,
@@ -31,14 +32,17 @@ import {
   SUPERVISOR_PROTOCOL,
   type SupervisorEvent,
 } from './protocol.ts';
+import { startSelfCheck } from './self-check.ts';
 
 export const SUPERVISOR_VERSION: string = packageJson.version;
 
 export interface SupervisorOptions {
   /** The initial core entry; must already be inside `buildRoot`. */
   entry: string;
-  /** How long a lock whose holder has not bound its socket yet counts as live. */
+  /** How long an empty or half-written lock file counts as live. */
   lockPendingGraceMs?: number;
+  /** How often the holder re-confirms its lock epoch and socket. */
+  selfCheckIntervalMs?: number;
   /** Every entry a handoff names must be a .js/.mjs file inside this directory. */
   buildRoot: string;
   endpoint: ControlEndpoint;
@@ -174,7 +178,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   });
 
   const control = new ControlServer({
-    lockNonce: () => lock?.nonce ?? null,
+    mayReplaceStaleSocket: () =>
+      lock !== null && stillHolds(lock, runDir, options.instance),
     endpoint: options.endpoint,
     instance: options.instance,
     version: SUPERVISOR_VERSION,
@@ -275,7 +280,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     // Then the socket: only an epoch winner gets here, so only it may replace
     // a stale socket file, and binding still refuses a live listener.
     await control.listen();
-    // Still ours? A slow winner judged dead after the grace steps down here.
+    // Still ours? Defense in depth: a later epoch here means step down.
     if (!stillHolds(held, runDir, options.instance)) {
       throw new SupervisorStartError(
         `instance lock epoch ${held.epoch} was superseded before start-up finished; refusing to start`,
@@ -293,6 +298,32 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     releaseLock();
     throw error;
   }
+  // While serving, keep confirming the lock is ours and the socket is in place.
+  const stopSelfCheck = startSelfCheck({
+    clock: systemClock,
+    intervalMs: options.selfCheckIntervalMs ?? 5_000,
+    log,
+    check: async () => {
+      if (shuttingDown) return;
+      if (!stillHolds(held, runDir, options.instance)) {
+        log(
+          `instance lock epoch ${held.epoch} was superseded; draining and exiting`,
+        );
+        stopSelfCheck();
+        await manager.stop();
+        await shutdown(1);
+        return;
+      }
+      if (control.socketIntact()) return;
+      log('control socket path is missing or replaced; re-binding');
+      try {
+        await control.rebind();
+        log(`control socket re-bound at ${options.endpoint.path}`);
+      } catch (error) {
+        log(`could not re-bind the control socket: ${String(error)}`);
+      }
+    },
+  });
   log(
     `supervisor ${SUPERVISOR_VERSION} (protocol ${SUPERVISOR_PROTOCOL.major}.${SUPERVISOR_PROTOCOL.minor}) instance=${options.instance} control=${options.endpoint.path}`,
   );

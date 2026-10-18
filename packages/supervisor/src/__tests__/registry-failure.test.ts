@@ -3,7 +3,7 @@
  * the supervisor keeps serving. A genuinely unexpected error is logged, the
  * active generation drained, and the supervisor exits nonzero.
  */
-import { chmodSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
@@ -119,9 +119,15 @@ describe('supervisor resilience (real processes)', () => {
       expect(exit, supervisor.output()).toEqual({ code: 0, signal: null });
       expect(supervisor.output()).toContain('received SIGHUP');
       expect(() => process.kill(core, 0)).toThrow();
-      expect(
-        readdirSync(join(home, 'run')).filter((name) => name.includes('.lock')),
-      ).toEqual([]);
+      // The lock is released: its top epoch stays on disk, marked released.
+      const locks = readdirSync(join(home, 'run')).filter((name) =>
+        /\.lock\.\d+$/.test(name),
+      );
+      expect(locks).toEqual(['instance-test.lock.1']);
+      const content = JSON.parse(
+        readFileSync(join(home, 'run', locks[0] as string), 'utf8'),
+      );
+      expect(content.releasedAt).toBeTypeOf('number');
     },
     60_000,
   );

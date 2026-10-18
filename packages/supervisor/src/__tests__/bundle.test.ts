@@ -28,6 +28,11 @@ describe('supervisor bundle', () => {
     expect(
       specifiers.filter((specifier) => !specifier?.startsWith('node:')),
     ).toEqual([]);
+    // Test-only knobs are compiled out of the shipped bundle.
+    expect(source).not.toContain('STATION_SUPERVISOR_TEST_LOCK_DELAY_MS');
+    expect(source).not.toContain(
+      'STATION_SUPERVISOR_TEST_POST_ACQUIRE_DELAY_MS',
+    );
 
     const result = spawnSync(process.execPath, [outfile, '--help'], {
       cwd: outDir,
