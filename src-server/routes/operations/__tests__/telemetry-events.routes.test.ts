@@ -552,3 +552,38 @@ test('uninstall aborts an already admitted Full send still waiting to reach the 
     expect.objectContaining({ outcome: 'dropped' }),
   ]);
 });
+
+test.each(['off', 'DNT'] as const)(
+  'a %s withdrawal aborts an admitted Full request before receiver delivery',
+  async (withdrawal) => {
+    const f = await fixture();
+    await f.install();
+    const fullConfig = {
+      ...f.config,
+      telemetryTier: { [id]: 'full' as const },
+    };
+    f.service.reconfigure(fullConfig);
+    const disclosure = await f.service.disclosure(id);
+    await f.service.acknowledgeDisclosure(
+      disclosure.inventoryRevision,
+      id,
+      disclosure.destination,
+    );
+    const gate = f.pauseNextSend();
+    const pending = f.count();
+    await gate.arrived;
+    try {
+      if (withdrawal === 'DNT') f.env.DO_NOT_TRACK = '1';
+      f.service.reconfigure(
+        withdrawal === 'DNT'
+          ? fullConfig
+          : { ...f.config, telemetryTier: { [id]: 'off' } },
+      );
+    } finally {
+      gate.release();
+    }
+    expect((await pending).status).toBe(200);
+    expect(f.received).toEqual([]);
+    expect((await f.service.telemetryStatus()).publishers[id].tier).toBe('off');
+  },
+);

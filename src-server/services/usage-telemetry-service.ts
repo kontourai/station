@@ -696,7 +696,9 @@ export class UsageTelemetryService {
         JSON.stringify(this.appConfig[key as keyof AppConfig]),
     );
     this.author?.reconfigure(appConfig);
+    const previousConfig = this.appConfig;
     this.appConfig = appConfig;
+    this.pluginPublishers?.reconfigure(previousConfig);
     if (recordSettingChange && changed && this.publisher === 'operator')
       void this.track('setting_category_changed', {
         category: choiceChanged || destinationChanged ? 'privacy' : 'other',

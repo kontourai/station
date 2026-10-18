@@ -129,6 +129,26 @@ export class PluginTelemetryService {
     this.stopped = true;
     for (const request of this.requests.keys()) request.abort();
   }
+  reconfigure(previous: AppConfig) {
+    const current = this.options.config();
+    const dnt =
+      resolveTelemetryConfiguration(current, this.options.env).publishers
+        .operator.reason === 'DNT';
+    const registryChanged =
+      JSON.stringify(previous.publicTelemetryRegistries) !==
+      JSON.stringify(current.publicTelemetryRegistries);
+    for (const [request, publisher] of this.requests) {
+      if (
+        dnt ||
+        registryChanged ||
+        previous.telemetryTier?.[publisher] !==
+          current.telemetryTier?.[publisher] ||
+        previous.telemetryPublisherPolicy?.[publisher] !==
+          current.telemetryPublisherPolicy?.[publisher]
+      )
+        request.abort();
+    }
+  }
   withdraw(publisher: TelemetryPublisherId) {
     for (const [request, owner] of this.requests)
       if (owner === publisher) request.abort();
