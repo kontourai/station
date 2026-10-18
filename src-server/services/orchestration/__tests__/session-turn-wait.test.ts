@@ -330,6 +330,7 @@ test.each([
   'exact-native',
   'session',
   'early-missing-native',
+  'raw-start-terminal',
 ] as const)(
   'real accepted B/N wait requires exact native custody for %s terminal',
   async (kind) => {
@@ -399,7 +400,42 @@ test.each([
         return value;
       });
     try {
-      if (kind === 'session') {
+      if (kind === 'raw-start-terminal') {
+        store.appendEvent({
+          ...base,
+          eventId: 'raw-start',
+          method: 'turn.started',
+          turnId: 'N',
+          prompt: 'legacy observation',
+        });
+        store.appendEvent({
+          ...base,
+          eventId: 'raw-complete',
+          method: 'turn.completed',
+          turnId: 'N',
+        });
+        await Promise.resolve();
+        expect(authority.hasPossibleEffect('t')).toEqual({
+          kind: 'available',
+          active: true,
+        });
+        expect(
+          store.listEvents('t').find((row) => row.id === 'raw-start')?.payload
+            .invocationId,
+        ).toBeUndefined();
+        expect(
+          store.listEvents('t').find((row) => row.id === 'raw-complete')
+            ?.payload.invocationId,
+        ).toBeUndefined();
+        expect(outcome).toBeUndefined();
+        store.appendEvent({
+          ...base,
+          eventId: 'exact-B-complete',
+          method: 'turn.completed',
+          turnId: 'N',
+          invocationId: capture.intent.invocationId,
+        });
+      } else if (kind === 'session') {
         const ended: CanonicalRuntimeEvent = {
           ...base,
           eventId: 'session-end',
@@ -448,7 +484,14 @@ test.each([
       } else
         await expect(waiting).resolves.toMatchObject({
           kind: 'settled',
-          settledTurn: { outcome: kind === 'session' ? 'exited' : 'error' },
+          settledTurn: {
+            outcome:
+              kind === 'session'
+                ? 'exited'
+                : kind === 'raw-start-terminal'
+                  ? 'completed'
+                  : 'error',
+          },
         });
     } finally {
       controller.abort();

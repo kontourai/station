@@ -399,6 +399,22 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       expect(cold.readForThread(ROOT)?.runningTools).toEqual([
         { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
       ]);
+      const raw = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        prompt: 'unproven legacy start',
+        createdAt: '2100-01-01T00:00:00Z',
+      });
+      expect(
+        store.listEvents(ROOT).find((row) => row.id === raw.eventId)?.payload
+          .invocationId,
+      ).toBeUndefined();
+      expect(cold.readForThread(ROOT)?.openTurn?.startedAt).toBe(
+        startB.createdAt,
+      );
+      expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+        { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+      ]);
       for (const invocationId of ['A', undefined]) {
         append(ROOT, {
           method: 'turn.completed',
@@ -506,6 +522,102 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
             row.payload.invocationId === 'B',
         ),
       ).toBe(true);
+    },
+  );
+
+  test.each([
+    'native-less',
+    'session',
+    'legacy-superseded',
+    'running',
+  ] as const)(
+    'error-only bounded reads agree with full fold for %s scope',
+    (scope) => {
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        ...(scope === 'legacy-superseded' ? {} : { invocationId: 'B' }),
+      });
+      const exact = append(ROOT, {
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'exact failure',
+        ...(scope === 'session'
+          ? {}
+          : {
+              turnId: 'N',
+              ...(scope === 'legacy-superseded' ? {} : { invocationId: 'B' }),
+            }),
+      });
+      if (scope === 'native-less')
+        append(ROOT, {
+          method: 'runtime.error',
+          invocationId: 'B',
+          severity: 'error',
+          message: 'later scoped missing native',
+        });
+      if (scope === 'legacy-superseded' || scope === 'running')
+        append(ROOT, {
+          method: 'turn.started',
+          turnId: 'new',
+          ...(scope === 'running' ? { invocationId: 'C' } : {}),
+        });
+      const session = store.readSessionByThread(ROOT);
+      if (!session) throw new Error('actual session prerequisite');
+      const full = store.listEvents(ROOT).map((row) => row.payload);
+      const fullState = projectSessionLifecycle({
+        session,
+        events: full,
+      }).lifecycleState;
+      expect(fullState).toBe(
+        scope === 'native-less' || scope === 'session' ? 'failed' : 'running',
+      );
+      for (const bounded of [
+        store.listSessionProjectionEvents(ROOT),
+        store.listSessionProjectionEventsForThreads([ROOT]).get(ROOT) ?? [],
+      ]) {
+        expect(
+          projectSessionLifecycle({
+            session,
+            events: bounded.map((row) => row.payload),
+          }).lifecycleState,
+        ).toBe(fullState);
+        if (scope === 'native-less')
+          expect(bounded.some((row) => row.id === exact.eventId)).toBe(true);
+      }
+    },
+  );
+
+  test.each(['provider', 'structured'] as const)(
+    'live activity admits a genuinely new %s start after B',
+    (kind) => {
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'B' });
+      projection.readForThread(ROOT);
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'B',
+        toolCallId: 'B-tool',
+        toolName: 'B tool',
+      });
+      const started = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'new',
+        ...(kind === 'provider'
+          ? { metadata: { trigger: 'provider' } }
+          : { invocationId: 'C' }),
+      });
+      expect(projection.readForThread(ROOT)?.openTurn).toMatchObject({
+        turnId: 'new',
+        startedAt: started.createdAt,
+      });
+      expect(projection.readForThread(ROOT)?.runningTools).toEqual([]);
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'new',
+        ...(kind === 'structured' ? { invocationId: 'C' } : {}),
+      });
+      expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     },
   );
 

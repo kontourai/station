@@ -1241,6 +1241,9 @@ test.each([
   'retired',
   'queued',
   'queued-consistent',
+  'queued-native-collision',
+  'queued-native-collision-consistent',
+  'raw-after-B',
   'queued-malformed',
   'queued-unknown',
   'consistent',
@@ -1266,6 +1269,12 @@ test.each([
       kind: 'applied',
     });
     const invocationId = capture.intent.invocationId;
+    const native = order.startsWith('queued-native-collision')
+      ? `invocation-${invocationId}`
+      : 'N';
+    expect(owned.claim.accepted(native, '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
     let parentBusy = false;
     const delivery = new DelegationResultDelivery({
       store,
@@ -1322,7 +1331,7 @@ test.each([
         ...base,
         eventId: 'A-start',
         method: 'turn.started',
-        turnId: 'N',
+        turnId: native,
         invocationId: 'A',
         prompt: 'A',
       });
@@ -1330,7 +1339,7 @@ test.each([
         ...base,
         eventId: 'A-done',
         method: 'turn.completed',
-        turnId: 'N',
+        turnId: native,
         invocationId: 'A',
         outputText: 'OLD A OUTPUT',
       });
@@ -1338,7 +1347,7 @@ test.each([
         ...base,
         eventId: 'B-start',
         method: 'turn.started',
-        turnId: 'N',
+        turnId: native,
         invocationId,
         prompt: 'B',
       });
@@ -1346,7 +1355,7 @@ test.each([
         ...base,
         eventId: 'late-A',
         method: 'turn.completed',
-        turnId: 'N',
+        turnId: native,
         invocationId: 'A',
         outputText: 'LATE OLD A OUTPUT',
       });
@@ -1358,12 +1367,39 @@ test.each([
       });
       await delivery.reconcile();
       expect(starts).toEqual([]);
+      if (order === 'raw-after-B') {
+        eventStore.appendEvent({
+          ...base,
+          eventId: 'raw-start',
+          method: 'turn.started',
+          turnId: native,
+          prompt: 'unproven legacy',
+        });
+        eventStore.appendEvent({
+          ...base,
+          eventId: 'raw-terminal',
+          method: 'turn.completed',
+          turnId: native,
+          outputText: 'UNPROVEN OUTPUT',
+        });
+        await delivery.reconcile();
+        expect(
+          eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect('child'),
+        ).toEqual({ kind: 'available', active: true });
+        expect(
+          eventStore
+            .listEvents('child')
+            .find((row) => row.id === 'raw-terminal')?.payload.invocationId,
+        ).toBeUndefined();
+        expect(starts).toEqual([]);
+        expect(store.listForChild('child')).toEqual([]);
+      }
       const done: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent =
         {
           ...base,
           eventId: 'B-done',
           method: 'turn.completed',
-          turnId: 'N',
+          turnId: native,
           invocationId,
           outputText: 'EXACT B OUTPUT',
         };
@@ -1397,7 +1433,8 @@ test.each([
         order === 'queued' ||
         order === 'queued-consistent' ||
         order === 'queued-malformed' ||
-        order === 'queued-unknown'
+        order === 'queued-unknown' ||
+        order.startsWith('queued-native-collision')
       ) {
         expect(
           eventStore['db']
@@ -1427,7 +1464,10 @@ test.each([
                 ? 'settled:child:unsupported-host-key'
                 : 'settled:child:invocation-unknown',
             );
-        } else if (order !== 'queued-consistent')
+        } else if (
+          order !== 'queued-consistent' &&
+          order !== 'queued-native-collision-consistent'
+        )
           eventStore.appendEvent(conflicting);
       }
       const raw = {
@@ -1443,7 +1483,12 @@ test.each([
           .all(),
       };
       await delivery.reconcile();
-      if (order !== 'consistent' && order !== 'queued-consistent') {
+      if (
+        order !== 'consistent' &&
+        order !== 'queued-consistent' &&
+        order !== 'queued-native-collision-consistent' &&
+        order !== 'raw-after-B'
+      ) {
         expect(starts).toEqual([]);
         expect(store.listForChild('child')).toEqual(raw.deliveries);
         expect(
