@@ -118,8 +118,8 @@ two-sided geometric noise. The schema permits 16 scalar/bucket increments plus
 57 per added/removed ping. Per-count ε=1/57 composes to ε≤1 per ping per publisher
 per UTC arrival day for fixed release support (replacement adjacency costs ≤2).
 Counts are rounded, clamped nonnegative estimates; the unclamped noise has
-expected absolute error of about 57 pings and 95% absolute error is at most 171 pings. Small values near k
-are often uninformative; 100k-scale values have roughly 0.171% 95% relative error.
+expected absolute error of about 57 pings and a 95th-percentile absolute error
+of 171 pings. Small values near k are often uninformative; 100k-scale values have roughly 0.171% 95% relative error.
 
 The hard true-count pre-filter itself is **not differential privacy**: adding a
 victim can change a value from absent to present. k−1 colluding keys plus the

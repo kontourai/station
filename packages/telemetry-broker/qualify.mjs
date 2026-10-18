@@ -451,6 +451,8 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
         operatorKey,
       )),
     );
+    // The library harness has no main-entrypoint credential refresh timer.
+    await store.refreshCredentials();
     const from = new Date(Date.now() - 86400000).toISOString();
     const to = new Date(Date.now() + 86400000).toISOString();
     const inventory = await (await fetch(`${base}/health/live`)).json();
