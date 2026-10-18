@@ -259,7 +259,7 @@ export async function qualifyResilience(
   assert.equal(
     (
       await pool.query(
-        "SELECT 1 FROM station_telemetry.lite_pings WHERE source_id=$1 AND received_at<$2::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)",
+        "SELECT 1 FROM station_telemetry.lite_pings WHERE source_id=$1 AND received_at<$2::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL) ORDER BY received_at LIMIT 1",
         [scaleSource, today],
       )
     ).rowCount,

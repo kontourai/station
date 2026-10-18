@@ -524,6 +524,11 @@ export class LiteRepository {
       const { rows } = await client.query<{ day: string }>(
         "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
       );
+      // Close the prior-day arrival fence even when no job is visible yet.
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.lite.day'),hashtext(to_char($1::date-1,'YYYY-MM-DD')))",
+        [rows[0].day],
+      );
       return rows[0].day;
     });
     // Each committed dimension is durable progress; retries skip completed work.
@@ -577,12 +582,9 @@ export class LiteRepository {
     while (
       await this.transaction(async (client) => {
         const result = await client.query(
-          `WITH batch AS MATERIALIZED (SELECT p.ctid FROM station_telemetry.lite_pings p
-         JOIN station_telemetry.lite_sources s ON s.id=p.source_id
+          `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.lite_pings
          WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
-         AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f
-          WHERE f.day=(p.received_at AT TIME ZONE 'UTC')::date AND f.publisher=s.publisher)
-         ORDER BY p.received_at LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
+         ORDER BY received_at LIMIT 2000 FOR UPDATE SKIP LOCKED)
          UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL
          WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
           [cutoff],
