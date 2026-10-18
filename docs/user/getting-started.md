@@ -57,7 +57,9 @@ In Station's web client, a completed MCP call can show its declared app directly
 below the tool row. No layout pin is needed. The integration must still be
 connected and permit rendering, and its current tool definition must declare a
 UI resource. Station's own inventory and Basis Apps use shipped resources and
-also work when Codex owns the default Agent without a Station-engine connection.
+can mount when Codex owns the default Agent without a Station-engine connection.
+Inventory App data publication is currently unavailable; frame mounting does not
+change that limitation.
 The result itself needs only the standard MCP content envelope. Reloading and
 opening the saved conversation mounts its retained preview again; Station does
 not call the tool or start a disconnected third-party server to display it.

@@ -341,7 +341,11 @@ current membership. The endpoint reads tool-definition `_meta.ui.resourceUri`
 disconnected or unusable third-party connections return no UI tools without starting a
 process. Station Control uses its shipped in-process tool registrations and App
 resources, so inventory and Basis previews also work when the default Agent is
-bound to Codex and no Station-engine MCP connection exists.
+bound to Codex and no Station-engine MCP connection exists. This qualifies
+frame mounting. The current runtime inventory App-read composition deliberately
+turns found projections into unavailable outcomes; this lane leaves that
+publication guard intact. Saved-result fixtures qualify the rendered inventory
+view, not successful production inventory tool execution.
 
 Candidates remain in ordinary batches until membership is confirmed. The
 query wrapper keeps the same ancestry while eligibility changes, preserving
@@ -361,7 +365,8 @@ is in the already-open or shipped in-process catalog. The synchronous policy rea
 uses the current bounded definition and applies enabled, disabled-tool and
 personal-credential restrictions just like membership. Replaying a terminal
 keeps its original stored stamp, including an absent stamp, independently of
-current catalog state; changed terminal content is still refused. A stamped event may retain its full envelope
+current catalog state; changed terminal content is still refused.
+A stamped event may retain its full envelope
 within the existing 24 KiB bound. Ordinary results, including forged result UI
 pointers, keep 84-character previews without waiting for catalog requests.
 Older readers ignore the additive field. Pre-stamp history reduced to text stays
