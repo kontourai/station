@@ -5,9 +5,8 @@
  * CEF host can do the same). Locators such as `role=button[name="Save"]`,
  * `text=Sign in` or `css=#email` use Playwright's own injected script,
  * installed into the page through `Runtime.evaluate` WITHOUT
- * `includeCommandLineAPI`. It runs in the page's main world, with the page's
- * own authority only, so a hostile page can interfere with its own
- * locators; it can do nothing a page cannot already do.
+ * `includeCommandLineAPI`. It runs in Station's isolated world in the root
+ * frame, sharing the document without exposing host or command-line APIs.
  *
  * `playwright-core` is an exact-pinned runtime dependency (the same release
  * as `@playwright/test`), and a test pins the digest of the script extracted

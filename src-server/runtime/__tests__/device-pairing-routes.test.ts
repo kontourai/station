@@ -68,7 +68,11 @@ import {
  * implementation, which on Windows sets and reads back both ACLs (and throws
  * if either is not current-user protected).
  */
-const windowsTrust = vi.hoisted(() => ({ real: false, hardened: 0 }));
+const windowsTrust = vi.hoisted(() => ({
+  real: false,
+  hardened: 0,
+  phase: 'idle',
+}));
 vi.mock(
   '@kontourai/station-shared/windows-path-trust',
   async (importOriginal) => {
@@ -76,21 +80,39 @@ vi.mock(
       await importOriginal<
         typeof import('@kontourai/station-shared/windows-path-trust')
       >();
+    const runTrust = (operation: string, run: () => void) => {
+      const call = ++windowsTrust.hardened;
+      const started = performance.now();
+      const report = (event: string) => {
+        if (process.platform === 'win32')
+          console.info(
+            `[local-grant-trust] ${JSON.stringify({ event, operation, call, phase: windowsTrust.phase, elapsedMs: Math.round(performance.now() - started) })}`,
+          );
+      };
+      report('started');
+      let outcome = 'threw';
+      try {
+        run();
+        outcome = 'returned';
+      } finally {
+        report(outcome);
+      }
+    };
     return {
       ...actual,
       ensureWindowsDirectoriesTrusted: (
         ...args: Parameters<typeof actual.ensureWindowsDirectoriesTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        windowsTrust.hardened += 1;
-        actual.ensureWindowsDirectoriesTrusted(...args);
+        runTrust('directory', () =>
+          actual.ensureWindowsDirectoriesTrusted(...args),
+        );
       },
       hardenWindowsPathsTrusted: (
         ...args: Parameters<typeof actual.hardenWindowsPathsTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        windowsTrust.hardened += 1;
-        actual.hardenWindowsPathsTrusted(...args);
+        runTrust('empty-file', () => actual.hardenWindowsPathsTrusted(...args));
       },
     };
   },
@@ -3276,13 +3298,25 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('writes the secret file 0600 and mints a different value on every configure (boot)', async () => {
+    const started = performance.now();
+    const phase = (name: string) => {
+      windowsTrust.phase = name;
+      if (process.platform === 'win32')
+        console.info(
+          `[local-grant-boot] ${JSON.stringify({ phase: name, elapsedMs: Math.round(performance.now() - started) })}`,
+        );
+    };
     windowsTrust.real = true;
     windowsTrust.hardened = 0;
     let first: ReturnType<typeof createHarness>;
     let second: ReturnType<typeof createHarness>;
     try {
+      phase('configure-first');
       first = createHarness({ localGrant: true });
+      phase('first-configured');
+      phase('configure-second');
       second = createHarness({ localGrant: true });
+      phase('second-configured');
     } finally {
       windowsTrust.real = false;
     }
@@ -3299,11 +3333,13 @@ describe('local self-authorization grant exchange (station#1715)', () => {
 
     // The first harness's own secret keeps working against its own instance;
     // rotation is per-process/per-configure, not a global invalidation.
+    phase('request-started');
     const response = await first.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
       first.json({ secret: firstSecret, deviceName: 'This Mac' }),
       LOOPBACK_PEER,
     );
+    phase('request-returned');
     expect(response.status).toBe(200);
   });
 });
