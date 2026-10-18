@@ -185,6 +185,7 @@ function append(
 async function begin(
   run: <C extends KernelCommand>(command: C) => Promise<KernelResult<C>>,
   linked = false,
+  inputDigest?: string,
 ) {
   if (linked)
     expect(
@@ -194,6 +195,7 @@ async function begin(
         owner,
         now: 1,
         tracking: 'tracked',
+        ...(inputDigest === undefined ? {} : { inputDigest }),
       }),
     ).toEqual({ kind: 'claimed', reclaimed: false });
   expect(
@@ -271,6 +273,44 @@ function fixture(
 for (const layout of ['json', 'columns'] as const)
   for (const via of ['execute', 'executeSync'] as const)
     describe(`${layout} ${via} real host facts`, () => {
+      it('preserves submitted digest through strict acceptance and full witnessed custody', async () => {
+        const f = fixture(layout, via);
+        const digest = 'station-turn-submission/v1:sha256:' + 'a'.repeat(64);
+        await begin(f.run, true, digest);
+        const dedup = await f.run({ type: 'turnDedup.read', key: 'k' });
+        if (dedup.kind !== 'found') throw new Error('begun dedup prerequisite');
+        expect(dedup.record).toMatchObject({
+          invocation: 'begun',
+          inputDigest: digest,
+        });
+        const accept = {
+          ...command,
+          expected: { ...expected, intent: { ...intent, dedupKey: 'k' } },
+          expectedDedup: dedup.record,
+        };
+        // On the integration baseline this reaches strict record validation,
+        // before any host-acceptance path or missing-witness branch.
+        expect(await f.run(accept)).toEqual({ kind: 'accepted' });
+        for (const inputDigest of [undefined, digest + 'changed']) {
+          const { inputDigest: _original, ...without } = dedup.record;
+          const expectedDedup =
+            inputDigest === undefined ? without : { ...without, inputDigest };
+          expect(await f.run({ ...accept, expectedDedup })).toEqual({
+            kind: 'stale',
+          });
+        }
+        append(f.db, fact('digest-terminal', 'N'));
+        expect(await f.run(observation(fact('digest-terminal', 'N')))).toEqual({
+          kind: 'applied',
+        });
+        const witness = hostFacts.readRetirement(f.db, 't', 'b');
+        expect(witness?.dedup).toEqual(dedup.record);
+        expect(await f.run(accept)).toEqual({
+          kind: 'terminal',
+          terminal: fact('digest-terminal', 'N'),
+        });
+        expect(await f.rows()).toEqual([]);
+      });
       it('selects after actual-target native eligibility, in code-point order, and acknowledges the exact witnessed event', async () => {
         const f = fixture(layout, via);
         await begin(f.run);

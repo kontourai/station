@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
   createSessionTurnBoundaryAuthority,
@@ -1179,6 +1180,225 @@ test('turn-boundary storage owns no inbox table: a store whose inbox was never o
     store.threadInboxStore();
     expect(inboxTables()).toEqual([{ name: 'monument_inbox_entries' }]);
   } finally {
+    store.close();
+  }
+});
+
+// These cases own actual Station event/audit/claim transaction composition.
+function begunIntent(store: EventStore, threadId: string, key?: string) {
+  const authority = store.sessionTurnBoundaryAuthority();
+  const reserved = authority.reserve!(threadId, '2030-01-01T00:00:00Z');
+  if (reserved.kind !== 'owner') throw new Error('reserved prerequisite');
+  const capture = captureTurnIntent(
+    {
+      threadId,
+      input: 'original input',
+      ...(key ? { clientTurnId: key } : {}),
+    },
+    { binding: {}, requiresFreshCompanions: false },
+  );
+  const dedup = key
+    ? store
+        .createTurnDeduplicator()
+        .claim({
+          threadId,
+          clientTurnId: key,
+          inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
+        })
+    : undefined;
+  if (dedup && dedup.kind !== 'owner')
+    throw new Error('private dedup prerequisite');
+  expect(
+    reserved.claim.prepareIntent!(
+      capture,
+      dedup?.kind === 'owner' ? dedup.claim : undefined,
+      '2030-01-01T00:00:01Z',
+    ),
+  ).toEqual({ kind: 'applied' });
+  expect(reserved.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+    kind: 'applied',
+  });
+  const event = (
+    id: string,
+    native: string | null = 'N',
+    invocationId = capture.intent.invocationId,
+  ): CanonicalRuntimeEvent => ({
+    method: 'turn.completed',
+    eventId: id,
+    provider: 'claude',
+    threadId,
+    createdAt: '1900-01-01T00:00:00Z',
+    invocationId,
+    ...(native === null ? {} : { turnId: native }),
+  });
+  return { authority, claim: reserved.claim, capture, event };
+}
+
+test('actual prepared claims accept reused native ids without old or untagged terminal authority', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const a = begunIntent(store, 'invocation-reuse', 'A');
+    expect(a.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const doneA = a.event('done-A');
+    store.appendEvent(doneA);
+    expect(a.authority.observe(doneA)).toEqual({ kind: 'applied' });
+    const b = begunIntent(store, 'invocation-reuse', 'B');
+    expect(b.claim.accepted('N', '2030-01-01T00:00:04Z')).toEqual({
+      kind: 'applied',
+    });
+    for (const invocationId of [a.capture.intent.invocationId, undefined]) {
+      const stale = {
+        ...doneA,
+        eventId: `late-${invocationId}`,
+        createdAt: '2100-01-01T00:00:00Z',
+        invocationId,
+      };
+      store.appendEvent(stale);
+      expect(b.authority.observe(stale)).toEqual({ kind: 'applied' });
+      expect(b.authority.hasPossibleEffect('invocation-reuse')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    }
+    const doneB = b.event('done-B');
+    store.appendEvent(doneB);
+    const beforeRead = store['db']
+      .prepare('SELECT * FROM orchestration_prepared_turns')
+      .all();
+    expect(b.authority.hasPossibleEffect('invocation-reuse')).toEqual({
+      kind: 'available',
+      active: false,
+    });
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_prepared_turns').all(),
+    ).toEqual(beforeRead);
+    expect(b.authority.observe(doneB)).toEqual({ kind: 'applied' });
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual([]);
+    const audit = store['db']
+      .prepare(
+        'SELECT terminal_retirement FROM orchestration_prepared_turns WHERE invocation_id = ?',
+      )
+      .get(b.capture.intent.invocationId);
+    expect(JSON.parse(String(audit?.terminal_retirement))).toMatchObject({
+      terminal: { terminalEventId: 'done-B' },
+      boundary: { createdSequence: expect.any(Number), purpose: 'turn' },
+      dedup: {
+        inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
+      },
+    });
+  } finally {
+    store.close();
+  }
+});
+
+test('early request-owned missing-native terminal keeps exact begun custody for late acknowledgement', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const b = begunIntent(store, 'early-exact', 'B');
+    const event = b.event('early-B', null);
+    store.appendEvent(event);
+    expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual([]);
+    expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(b.claim.terminalObserved('N')).toEqual({ kind: 'stale' });
+  } finally {
+    store.close();
+  }
+});
+
+test('host append rollback undoes exact event witness and deletion; delete trigger reaches witness first', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const b = begunIntent(store, 'atomic-terminal', 'B');
+    const event = b.event('atomic-B');
+    const before = store['db']
+      .prepare('SELECT * FROM orchestration_turn_boundaries')
+      .all();
+    store[
+      'db'
+    ].exec(`CREATE TRIGGER fail_terminal_delete BEFORE DELETE ON orchestration_turn_boundaries BEGIN
+      SELECT CASE WHEN (SELECT terminal_retirement FROM orchestration_prepared_turns WHERE boundary_id = OLD.boundary_id) IS NULL THEN RAISE(ABORT, 'witness not reached') END;
+      SELECT RAISE(ABORT, 'after witness'); END;`);
+    expect(() =>
+      store.appendEvent(event, [], () => {
+        const result = b.authority.observe(event);
+        if (result.kind !== 'applied')
+          throw new Error('terminal transaction unavailable');
+      }),
+    ).toThrow();
+    expect(store.hasEventId(event.eventId)).toBe(false);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual(before);
+    expect(
+      store['db']
+        .prepare('SELECT terminal_retirement FROM orchestration_prepared_turns')
+        .get()?.terminal_retirement,
+    ).toBeNull();
+    store['db'].exec('DROP TRIGGER fail_terminal_delete');
+    expect(() =>
+      store.appendEvent(event, [], () => {
+        expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+        throw new Error('outer abort');
+      }),
+    ).toThrow('outer abort');
+    expect(store.hasEventId(event.eventId)).toBe(false);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual(before);
+    store.appendEvent(event, [], () => {
+      expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    });
+    expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+  } finally {
+    store.close();
+  }
+});
+
+test('post-COMMIT acceptance loss retains the original full begin image across unknown retry', () => {
+  const store = new EventStore(':memory:');
+  const b = begunIntent(store, 'ack-loss', 'B');
+  const db = store['db'];
+  const original = db.exec.bind(db);
+  let lost = false;
+  const spy = vi.spyOn(db, 'exec').mockImplementation((sql) => {
+    const result = original(sql);
+    if (!lost && sql === 'COMMIT') {
+      lost = true;
+      throw new Error('committed acknowledgement lost');
+    }
+    return result;
+  });
+  try {
+    expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'unavailable',
+    });
+    spy.mockRestore();
+    expect(lost).toBe(true);
+    const event = b.event('ack-B');
+    store.appendEvent(event);
+    expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual([]);
+  } finally {
+    spy.mockRestore();
     store.close();
   }
 });
