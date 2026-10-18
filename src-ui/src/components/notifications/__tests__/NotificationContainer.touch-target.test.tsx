@@ -88,7 +88,7 @@ vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ dismissToast, dismissAllToasts }),
 }));
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
-  useAllActiveChats: () => ({}),
+  useActiveChatIds: () => [],
 }));
 vi.mock('../../../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to

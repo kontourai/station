@@ -20,15 +20,16 @@ import { terminalOps } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { TerminalHistory } from './terminal-history.js';
 import { resolveTerminalShellCandidates } from './terminal-shells.js';
 import { pollTerminalSubprocessActivity } from './terminal-subprocess-state.js';
 
 const logger = createLogger({ name: 'terminal-service' });
 
-const HISTORY_LINE_LIMIT = 5000;
 const PERSIST_DEBOUNCE_MS = 40;
 
-type SessionEntry = TerminalSessionState & {
+type SessionEntry = Omit<TerminalSessionState, 'history'> & {
+  history: TerminalHistory;
   process: IPtyProcess | null;
   unsubData: (() => void) | null;
   unsubExit: (() => void) | null;
@@ -49,6 +50,7 @@ export class TerminalService {
   private historyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private killTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private subprocessInterval: ReturnType<typeof setInterval> | null = null;
+  private subprocessPolling = false;
 
   constructor(
     private pty: IPtyAdapter,
@@ -57,7 +59,7 @@ export class TerminalService {
   ) {
     if (process.platform !== 'win32') {
       this.subprocessInterval = setInterval(
-        () => this.pollSubprocesses(),
+        () => void this.pollSubprocesses(),
         MS_PER_MINUTE, // Poll every 60s instead of 1s to reduce popup frequency
       );
     }
@@ -80,7 +82,8 @@ export class TerminalService {
     terminalOps.add(1, { operation: 'open' });
 
     const history =
-      existing?.history ?? (await this.historyStore.load(sessionId));
+      existing?.history ??
+      new TerminalHistory(await this.historyStore.load(sessionId));
 
     // archive#1497 — refuse an empty working directory instead of letting
     // node-pty decide. `unixTerminal.js` resolves `opt.cwd || process.cwd()`,
@@ -185,7 +188,7 @@ export class TerminalService {
     entry.status = 'running';
 
     entry.unsubData = proc.onData((data) => {
-      entry.history = this.trimHistory(entry.history + data);
+      entry.history.append(data);
       this.emit({ type: 'data', sessionId, data });
       this.schedulePersist(sessionId);
     });
@@ -309,7 +312,7 @@ export class TerminalService {
 
     return {
       process: this.toProcessSummary(entry),
-      history: entry.history,
+      history: entry.history.toString(),
     };
   }
 
@@ -330,7 +333,7 @@ export class TerminalService {
       sessionId: entry.sessionId,
       status: entry.status,
       pid: entry.pid,
-      history: entry.history,
+      history: entry.history.toString(),
       cols: entry.cols,
       rows: entry.rows,
     };
@@ -377,13 +380,6 @@ export class TerminalService {
     };
   }
 
-  private trimHistory(history: string): string {
-    const lines = history.split('\n');
-    return lines.length > HISTORY_LINE_LIMIT
-      ? lines.slice(-HISTORY_LINE_LIMIT).join('\n')
-      : history;
-  }
-
   private schedulePersist(sessionId: string): void {
     const existing = this.historyTimers.get(sessionId);
     if (existing) clearTimeout(existing);
@@ -400,16 +396,27 @@ export class TerminalService {
       this.historyTimers.delete(sessionId);
     }
     const entry = this.sessions.get(sessionId);
-    if (entry) await this.historyStore.save(sessionId, entry.history);
+    if (entry)
+      await this.historyStore.save(sessionId, entry.history.toString());
   }
 
-  private pollSubprocesses(): void {
-    for (const [sessionId, entry] of this.sessions) {
-      pollTerminalSubprocessActivity({
-        sessionId,
-        entry,
-        emit: (event) => this.emit(event),
-      });
+  private async pollSubprocesses(): Promise<void> {
+    if (this.subprocessPolling) return;
+    this.subprocessPolling = true;
+    try {
+      await Promise.all(
+        [...this.sessions].map(([sessionId, entry]) =>
+          pollTerminalSubprocessActivity({
+            sessionId,
+            entry,
+            emit: (event) => this.emit(event),
+            debug: (...args) =>
+              logger.debug('Terminal subprocess probe', { args }),
+          }),
+        ),
+      );
+    } finally {
+      this.subprocessPolling = false;
     }
   }
 }
