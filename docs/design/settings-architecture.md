@@ -47,6 +47,21 @@ routes do not depend on it, and disabling it does not remove an existing root.
 The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
+## Settings presentation
+
+The current [topic navigation](../../src-ui/src/views/settings/settings-pages.ts)
+keeps General, Appearance, Chat, Notifications & voice, Keyboard shortcuts,
+Devices, Privacy & sharing, My knowledge, and Advanced in one Settings surface.
+Storage scope remains separate from those topics.
+
+[Settings styles](../../src-ui/src/views/SettingsView.css) use the shared UI
+control and supporting-text tokens, consistent card insets, and wrapping controls
+on phones. Row summaries keep operational details under **Details**; account
+sync and approval precedence sit under **About these preferences**. Notification
+sound choices open under **Notification sounds** and still save and preview on
+this device. These presentation changes do not change settings persistence,
+permissions, or runtime defaults.
+
 ## Account preferences and device settings
 
 Personal display choices now belong to the authenticated person on this Station:
