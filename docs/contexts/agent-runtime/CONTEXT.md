@@ -88,7 +88,12 @@ model-only journal and real SQLite BLOB/projection adapters retain effective
 framework entry/request bytes, fence proven-dead recovery and withhold native
 success/tool-enabling output until completion commits. Its helpers construct
 real VoltAgent and Strands VercelModel consumers with scripted-transport
-conformance owners in the package. Actual tool bodies refuse and block the run.
+conformance owners in the package. Actual tool bodies refuse and block the run. A drain applies its finite initial
+outbox window across pages. Settled replay records compact at seven days from
+settlement and retain protection through thirty days, followed by an irreversible
+expired-generation marker. Raw audit and BLOB rows remain retained; the replay
+windows do not establish bounded disk usage. Current host authorization and
+callback quiescence still govern effects and explicit cancellation.
 
 Station's existing framework builder, `/chat`, FileMemory/history, approval
 registry, boot continuation and terminal writers have not adopted this package.

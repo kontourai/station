@@ -48,7 +48,8 @@
     "@ai-sdk/provider": "3.0.18",
     "@voltagent/core": "2.10.0",
     "@strands-agents/sdk": "1.19.0",
-    "ai": "6.0.300"
+    "ai": "6.0.300",
+    "@ai-sdk/provider-utils": "4.0.57"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/provider": {
@@ -62,9 +63,9 @@
     },
     "ai": {
       "optional": true
+    },
+    "@ai-sdk/provider-utils": {
+      "optional": true
     }
-  },
-  "devDependencies": {
-    "@ai-sdk/provider-utils": "4.0.57"
   }
 }

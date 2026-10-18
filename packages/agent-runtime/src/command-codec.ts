@@ -62,6 +62,7 @@ export const commandSchema = z.discriminatedUnion('type', [
       type: z.literal('listOutbox'),
       key: runKey,
       limit: z.number().int().positive().max(1024),
+      throughPosition: z.number().int().safe().min(-1).optional(),
     })
     .strict(),
   z

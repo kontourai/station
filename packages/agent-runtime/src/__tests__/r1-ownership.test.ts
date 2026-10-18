@@ -189,3 +189,93 @@ it('R1.4 memory reauthorizes after async body validation before staged commit', 
     kind: 'absent',
   });
 });
+it('memory fixed-open configuration rejects inherited objects and accessor authority without invoking it', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const options = {
+    volume: new ModelMemoryVolume(),
+    bodies: f.bodies,
+    host: f.host,
+    policy: DEFAULT_MODEL_POLICY,
+  };
+  Object.setPrototypeOf(options, { untrusted: true });
+  expect(() => openMemoryModelStorage(options)).toThrow('DURABLE_UNSUPPORTED');
+  const own = {
+    volume: new ModelMemoryVolume(),
+    bodies: f.bodies,
+    host: f.host,
+    policy: DEFAULT_MODEL_POLICY,
+  };
+  let reads = 0;
+  Object.defineProperty(own, 'host', {
+    enumerable: true,
+    get() {
+      reads++;
+      return f.host;
+    },
+  });
+  expect(() => openMemoryModelStorage(own)).toThrow('DURABLE_UNSUPPORTED');
+  expect(reads).toBe(0);
+});
+for (const kind of ['memory', 'sqlite'] as const)
+  for (const shape of [
+    'getter',
+    'toJSON',
+    'undefined',
+    'NaN',
+    'symbol',
+    'hidden',
+  ] as const)
+    it(`ownership ${kind} isolates liveness ${shape} mutation before any owned-record probe`, async () => {
+      const f = await fixture(kind);
+      cleanup.push(() => f.close());
+      let calls = 0;
+      let invoked = 0;
+      const context = {
+        liveness(view: import('@kontourai/monument').OwnerIdentity) {
+          calls++;
+          if (shape === 'getter')
+            Object.defineProperty(view, 'pid', {
+              enumerable: true,
+              get() {
+                invoked++;
+                return 123;
+              },
+            });
+          if (shape === 'toJSON')
+            Object.assign(view, {
+              toJSON() {
+                invoked++;
+                return {};
+              },
+            });
+          if (shape === 'undefined') Object.assign(view, { birth: undefined });
+          if (shape === 'NaN') Object.assign(view, { pid: NaN });
+          if (shape === 'symbol')
+            Object.defineProperty(view, Symbol('injected'), { value: 'x' });
+          if (shape === 'hidden')
+            Object.defineProperty(view, 'hidden', { value: 'x' });
+          return 'live' as const;
+        },
+      };
+      const result = await f.storage
+        .execute(
+          operation({
+            type: 'pin',
+            key,
+            expected: f.opened.snapshot.fence,
+            pin: f.pin,
+          }),
+          context,
+        )
+        .then(
+          (answer) => answer.kind,
+          () => 'rejected',
+        );
+      expect(calls).toBe(1);
+      expect(invoked).toBe(0);
+      expect(result).toBe('applied');
+      expect(
+        await f.storage.execute({ type: 'read', key }, f.context),
+      ).toMatchObject({ snapshot: { fence: { owner } } });
+    });

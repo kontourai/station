@@ -34,6 +34,7 @@ const options: LanguageModelV3CallOptions = {
 async function streamFixture(
   supplied: readonly LanguageModelV3StreamPart[] = parts,
   storageTransform?: (storage: ModelStorage) => ModelStorage,
+  tools: import('../codecs.js').VoltEntry['tools'] = [],
 ) {
   const f = await fixture();
   await f.storage.close();
@@ -63,7 +64,7 @@ async function streamFixture(
         authoredDigest: `sha256:${'c'.repeat(64)}`,
         messages,
         generation: {},
-        tools: [],
+        tools,
       }),
   });
   const calls: LanguageModelV3CallOptions[] = [];
@@ -473,11 +474,26 @@ it('pinned public Zod schema sidecar preserves enumerable schema on the actual f
     configurable: false,
   });
   expect(d).toHaveProperty('value');
-  const f = await streamFixture();
+  const capturedSchema = JSON.parse(JSON.stringify(schema));
+  const f = await streamFixture(parts, undefined, [
+    {
+      type: 'function',
+      name: 'probe',
+      description: '',
+      inputSchema: capturedSchema,
+    },
+  ]);
   cleanup.push(() => f.close());
   const request = {
     ...options,
-    tools: [{ type: 'function' as const, name: 'probe', inputSchema: schema }],
+    tools: [
+      {
+        type: 'function' as const,
+        name: 'probe',
+        description: '',
+        inputSchema: schema,
+      },
+    ],
   };
   await f.control.run(async () => {
     const response = await f.guarded.doStream(request);
@@ -488,6 +504,7 @@ it('pinned public Zod schema sidecar preserves enumerable schema on the actual f
   expect(f.calls[0]?.tools?.[0]).toEqual({
     type: 'function',
     name: 'probe',
+    description: '',
     inputSchema: JSON.parse(JSON.stringify(schema)),
   });
   expect(
@@ -523,11 +540,18 @@ it('pinned public Zod schema sidecar preserves enumerable schema on the actual f
       Promise.resolve(
         bindDurableAiSdkModel({ model: f.model, runtime, entry }).doStream({
           ...request,
-          tools: [{ type: 'function', name: 'probe', inputSchema: changed }],
+          tools: [
+            {
+              type: 'function',
+              name: 'probe',
+              description: '',
+              inputSchema: changed,
+            },
+          ],
         }),
       ),
     ),
-  ).rejects.toThrow('DURABLE_REQUEST_CHANGED');
+  ).rejects.toThrow('DURABLE_ENTRY_CHANGED');
   expect(f.calls).toHaveLength(1);
 });
 it.each([
@@ -582,7 +606,14 @@ it.each([
         configurable: false,
       });
     }
-    const f = await streamFixture();
+    const f = await streamFixture(parts, undefined, [
+      {
+        type: 'function',
+        name: 'probe',
+        description: '',
+        inputSchema: JSON.parse(JSON.stringify(native)),
+      },
+    ]);
     cleanup.push(() => f.close());
     await expect(
       f.control.run(() =>
@@ -682,8 +713,8 @@ it('text delta is not projected before its own partial COMMIT acknowledgment', a
     ).toEqual([0, 1]);
   } finally {
     release.resolve();
+    await done;
   }
-  await done;
   expect(observed).toEqual([
     'stream-start',
     'text-start',

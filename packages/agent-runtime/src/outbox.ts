@@ -13,26 +13,47 @@ export async function drainModelOutbox(
   key: RunKey,
   context: ModelContext,
 ): Promise<void> {
-  const listed = await storage.execute(
+  let page = await storage.execute(
     { type: 'listOutbox', key, limit: 1024 },
     context,
   );
-  if (listed.kind !== 'listed')
+  if (page.kind !== 'listed')
     throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
-  for (const entry of listed.entries) {
-    await sink.apply(entry);
-    const fields = {
-      type: 'acknowledge' as const,
-      key,
-      projectionId: entry.id,
-      projectionDigest: hash(entry),
-      operationId: randomUUID(),
-    };
-    const ack = await storage.execute(
-      { ...fields, digest: commandDigest(fields) },
+  const throughPosition = page.throughPosition;
+  const seen = new Set<string>();
+  if (!Number.isSafeInteger(throughPosition) || throughPosition < -1)
+    throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
+  if (!page.entries.length) return;
+  for (let pages = 0; pages <= throughPosition; pages++) {
+    if (page.kind !== 'listed' || page.throughPosition !== throughPosition)
+      throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
+    if (!page.entries.length) return;
+    for (const entry of page.entries) {
+      if (seen.has(entry.id) || seen.size >= throughPosition + 1)
+        throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
+      seen.add(entry.id);
+      await sink.apply(entry);
+      const fields = {
+        type: 'acknowledge' as const,
+        key,
+        projectionId: entry.id,
+        projectionDigest: hash(entry),
+        operationId: randomUUID(),
+      };
+      const ack = await storage.execute(
+        { ...fields, digest: commandDigest(fields) },
+        context,
+      );
+      if (ack.kind === 'refused')
+        throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
+    }
+    page = await storage.execute(
+      { type: 'listOutbox', key, limit: 1024, throughPosition },
       context,
     );
-    if (ack.kind === 'refused')
+    if (page.kind !== 'listed' || page.throughPosition !== throughPosition)
       throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
+    if (!page.entries.length) return;
   }
+  throw new RuntimeError('DURABLE_OUTBOX_UNAVAILABLE');
 }

@@ -576,6 +576,9 @@ importers:
       '@ai-sdk/provider':
         specifier: 3.0.18
         version: 3.0.18
+      '@ai-sdk/provider-utils':
+        specifier: 4.0.57
+        version: 4.0.57(zod@4.6.5)
       '@kontourai/monument':
         specifier: 0.1.0
         version: link:../monument
@@ -591,10 +594,6 @@ importers:
       zod:
         specifier: 4.6.5
         version: 4.6.5
-    devDependencies:
-      '@ai-sdk/provider-utils':
-        specifier: 4.0.57
-        version: 4.0.57(zod@4.6.5)
 
   packages/basis-pane:
     dependencies:

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  arrayData,
   bindingSchema,
   canonical,
   decode,
@@ -212,7 +213,7 @@ export function requestBytes(value: unknown): Uint8Array {
   delete raw.headers;
   delete raw.abortSignal;
   if (Array.isArray(raw.tools))
-    raw.tools = raw.tools.map((tool) => {
+    raw.tools = arrayData(raw.tools).map((tool) => {
       const data = ownFields(tool, Object.keys(functionSchema.shape));
       data.inputSchema = schemaData(data.inputSchema);
       return data;
@@ -220,7 +221,7 @@ export function requestBytes(value: unknown): Uint8Array {
   // SDK conversion commonly creates optional own fields whose value is
   // undefined. Only those known fields may be omitted, including nested ones.
   const clean = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(clean);
+    if (Array.isArray(item)) return arrayData(item).map(clean);
     if (item && typeof item === 'object') {
       const fields = ownFields(item, Object.keys(item));
       return Object.fromEntries(
@@ -426,13 +427,18 @@ export const partSchema = z.discriminatedUnion('type', [
 ]);
 export type WirePart = z.infer<typeof partSchema>;
 export function normalizePart(value: unknown): WirePart {
-  if (!value || typeof value !== 'object' || !('type' in value))
-    return unsupported();
+  const discriminated = ownFields(value, [
+    ...new Set(partSchema.options.flatMap((s) => Object.keys(s.shape))),
+    'providerMetadata',
+    'providerExecuted',
+    'dynamic',
+    'title',
+  ]);
   const shape = partSchema.options.find(
-    (s) => s.shape.type.value === value.type,
+    (s) => s.shape.type.value === discriminated.type,
   );
   if (!shape) return unsupported();
-  const raw = ownFields(value, [
+  const raw = ownFields(discriminated, [
     ...Object.keys(shape.shape),
     'providerMetadata',
     'providerExecuted',
@@ -459,7 +465,7 @@ export function normalizePart(value: unknown): WirePart {
   }
   if (raw.type === 'stream-start') {
     if (!Array.isArray(raw.warnings)) return unsupported();
-    raw.warnings = raw.warnings.map((w) => {
+    raw.warnings = arrayData(raw.warnings).map((w) => {
       const v = ownFields(w, ['type', 'feature', 'details', 'message']);
       if (v.type === 'other' && typeof v.message === 'string')
         return { type: 'other', message: 'Runtime warning details omitted.' };

@@ -9,6 +9,7 @@ import {
   specSchema,
   text,
 } from './encoding.js';
+import type { RetiredRecord } from './retention.js';
 export const attemptRecordSchema = z
   .object({
     attempt: attemptSchema,
@@ -103,7 +104,11 @@ export const resultSchema = z.union([
     .strict(),
   z.object({ kind: z.literal('absent') }).strict(),
   z
-    .object({ kind: z.literal('listed'), entries: z.array(projectionSchema) })
+    .object({
+      kind: z.literal('listed'),
+      entries: z.array(projectionSchema),
+      throughPosition: z.number().int().safe().min(-1),
+    })
     .strict(),
 ]);
 export const receiptSchema = z
@@ -117,11 +122,13 @@ export const receiptSchema = z
 export type Receipt = z.infer<typeof receiptSchema>;
 export interface ModelState {
   runs: Map<string, RunRecord>;
+  retired: Map<string, RetiredRecord>;
   receipts: Map<string, Receipt>;
   outbox: Map<string, OutboxRecord>;
 }
 export const emptyState = (): ModelState => ({
   runs: new Map(),
+  retired: new Map(),
   receipts: new Map(),
   outbox: new Map(),
 });

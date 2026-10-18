@@ -5,40 +5,7 @@ const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const c of cleanup.splice(0).reverse()) await c();
 });
-it('R1.3 public cancel settles an already pending downstream read before acknowledging cancelled', async () => {
-  let prefix!: ReadableStreamDefaultController<
-    import('@ai-sdk/provider').LanguageModelV3StreamPart
-  >;
-  const f = await runtimeFixture({
-    stream(c) {
-      prefix = c;
-    },
-  });
-  cleanup.push(() => f.close());
-  const response = await f.control.run(() =>
-    Promise.resolve(f.guarded.doStream(nativeOptions)),
-  );
-  const reader = response.stream.getReader();
-  let settled = false;
-  const pending = reader.read().then(
-    () => {
-      settled = true;
-      return 'eof';
-    },
-    () => {
-      settled = true;
-      return 'cancelled';
-    },
-  );
-  await f.control.cancel();
-  expect(f.upstreamCancelled).toBe(true);
-  expect(settled).toBe(true);
-  expect(await pending).toBe('cancelled');
-  expect(
-    await f.storage.execute({ type: 'read', key: f.entry.key }, f.context),
-  ).toMatchObject({ snapshot: { state: 'cancelled' } });
-  void prefix;
-});
+
 for (const change of ['revoke', 'writer', 'cancel'] as const)
   it(`R1.4 final body read ${change} refuses provider after a real begin grant`, async () => {
     const entered = deferred();
@@ -87,3 +54,90 @@ for (const change of ['revoke', 'writer', 'cancel'] as const)
     expect(f.calls).toHaveLength(0);
     if (cancellation) await cancellation;
   });
+it('R1.3 cancel wins before EOF and quiesces the consumer without completed evidence', async () => {
+  const f = await runtimeFixture({
+    stream(c) {
+      c.enqueue({ type: 'stream-start', warnings: [] });
+    },
+  });
+  cleanup.push(() => f.close());
+  const observed: string[] = [];
+  const waiting = deferred();
+  const consumed = f.control
+    .run(async () => {
+      const { stream } = await f.guarded.doStream(nativeOptions);
+      const reader = stream.getReader();
+      const first = await reader.read();
+      observed.push(first.value!.type);
+      waiting.resolve();
+      return reader.read();
+    })
+    .then(
+      () => 'completed',
+      () => 'cancelled',
+    );
+  await waiting.promise;
+  await f.control.cancel();
+  expect(await consumed).toBe('cancelled');
+  expect(observed).toEqual(['stream-start']);
+  expect(
+    await f.storage.execute(
+      { type: 'listOutbox', key: f.entry.key, limit: 10 },
+      f.context,
+    ),
+  ).toMatchObject({ entries: [{ kind: 'partial' }, { kind: 'aborted' }] });
+});
+it('R1.3 committed complete wins the race but public cancel withholds held finish and settles native callbacks', async () => {
+  const committed = deferred();
+  const release = deferred();
+  const f = await runtimeFixture({
+    storage(s) {
+      return {
+        async execute(c, ctx) {
+          const result = await s.execute(c, ctx);
+          if (c.type === 'complete' && result.kind !== 'refused') {
+            committed.resolve();
+            await release.promise;
+          }
+          return result;
+        },
+        close: () => s.close(),
+      };
+    },
+  });
+  cleanup.push(() => f.close());
+  const observed: string[] = [];
+  const consumed = f.control
+    .run(async () => {
+      const { stream } = await f.guarded.doStream(nativeOptions);
+      const reader = stream.getReader();
+      while (true) {
+        const item = await reader.read();
+        if (item.done) return 'eof';
+        observed.push(item.value.type);
+      }
+    })
+    .then(
+      () => 'completed',
+      () => 'cancelled',
+    );
+  await committed.promise;
+  const cancelled = f.control.cancel();
+  release.resolve();
+  await cancelled;
+  expect(await consumed).toBe('cancelled');
+  expect(observed).not.toContain('finish');
+  expect(
+    await f.storage.execute({ type: 'read', key: f.entry.key }, f.context),
+  ).toMatchObject({ snapshot: { state: 'cancelled' } });
+  expect(
+    await f.storage.execute(
+      { type: 'listOutbox', key: f.entry.key, limit: 10 },
+      f.context,
+    ),
+  ).toMatchObject({
+    entries: expect.arrayContaining([
+      expect.objectContaining({ kind: 'completed' }),
+    ]),
+  });
+});

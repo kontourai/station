@@ -14,6 +14,30 @@ export function unsupported(): never {
 export function digestBytes(bytes: Uint8Array): Digest {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
+/** Own dense array elements, inspected before any caller property is read. */
+export function arrayData(value: unknown): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype)
+    return unsupported();
+  const length = Object.getOwnPropertyDescriptor(value, 'length');
+  const size: unknown = length?.value;
+  if (
+    !length ||
+    !('value' in length) ||
+    length.enumerable ||
+    typeof size !== 'number' ||
+    !Number.isSafeInteger(size) ||
+    size < 0 ||
+    Reflect.ownKeys(value).length !== size + 1
+  )
+    return unsupported();
+  const result: unknown[] = [];
+  for (let index = 0; index < size; index++) {
+    const item = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!item?.enumerable || !('value' in item)) return unsupported();
+    result.push(item.value);
+  }
+  return result;
+}
 // JSON is an immutable wire representation. Accessors, prototypes and omitted
 // meaningful values are refused before schema decoding or canonicalization.
 export function canonical(value: unknown): string {
@@ -24,8 +48,9 @@ export function canonical(value: unknown): string {
     if (typeof item === 'number' && Number.isFinite(item))
       return JSON.stringify(item);
     if (Array.isArray(item)) {
-      if (Object.keys(item).length !== item.length) return unsupported();
-      return `[${item.map((x) => visit(x, depth + 1)).join(',')}]`;
+      return `[${arrayData(item)
+        .map((x) => visit(x, depth + 1))
+        .join(',')}]`;
     }
     if (
       !item ||

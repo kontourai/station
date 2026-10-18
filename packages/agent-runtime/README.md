@@ -39,17 +39,31 @@ connection's `agent_runtime_` namespace. Opening requires WAL, FULL synchronous
 mode and foreign keys; wrappers validate them and do not change host pragmas.
 External/nested transactions, future/partial schema and unsupported writers
 refuse. Body COMMIT precedes journal adoption; an orphan body grants nothing.
-Journal, operation receipt and outbox commit in one real transaction. Closing
+Journal, operation receipt and outbox commit in one real transaction.
+An optional generic participant `maintenance` stage joins actual compaction
+writes when the triggering command returns expired; normal `commit` still
+excludes refusals. Both run before COMMIT and roll back on failure. Closing
 a wrapper does not close the host connection.
 
 The SQLite projection sink retains raw partial audit and stable abort markers.
+A drain captures the initial committed outbox high-water position and applies
+that finite window across pages, leaving concurrent later appends for the next
+call. `listOutbox` returns `throughPosition`; later page requests retain it.
 Its ready view requires a settled run and every required outbox disposition
 applied and acknowledged. It returns only completed tapes in request order.
 It is a response projection, with no editable conversation/history API. No
 unresolved row is evicted. Defaults are 128 open runs, 1024 calls/run, 32 MiB
 per body/request/response, 16 MiB committed partials/attempt, 7-day settled
 replay and 30-day generation protection. Fixed bounds may be reduced at open.
-There is no public GC/deletion API; retained generations never reopen by age.
+Settled command replay compacts only on an authorized write to that exact
+generation after all required outbox dispositions are acknowledged and the real
+SQLite sink has applied them. At seven days from settlement, bulky run and
+receipt answers become a tombstone; at thirty days from the same settlement,
+it becomes a minimal irreversible expired-generation marker. Old operation
+identities/digests keep conflict protection and never regain effect grants.
+Raw audit, outbox and immutable BLOB rows remain retained; these replay windows
+do not bound their disk usage. Reads never perform maintenance. There is no
+public GC/deletion API; generations never reopen by age.
 
 The reduced codec supports text/reasoning and known finite native settings.
 `providerOptions` must be absent or empty. Request-defined headers, files,
@@ -73,3 +87,11 @@ Station FileMemory, `/chat`, approvals, boot recovery, terminal custody,
 capability profiles, performance or release. See [CONTEXT.md](CONTEXT.md) for
 owners and [ADR 0005](../../docs/adr/0005-require-a-second-consumer-before-extraction.md)
 for the package boundary.
+
+First native dispatch compares the complete supported tool/schema order and
+sampling/configuration template with the retained entry, including known
+framework defaults. Volt tool schemas use the same pinned public Zod/AI SDK
+conversion as the real constructor. Fresh admission, selected implementation,
+writer generation and cancellation are checked after the final body-read await
+at the provider call. Staged memory owns detached commands/results and private
+participant views, then reauthorizes after asynchronous body validation.

@@ -91,3 +91,66 @@ it('R1.5 native part discriminator accessor is never invoked', async () => {
   expect(getters).toBe(0);
   expect(result).toBe('refused');
 });
+for (const shape of ['index-getter', 'hidden', 'symbol', 'prototype'] as const)
+  it(`R1.5 native request rejects ${shape} schema array with an otherwise matching template`, async () => {
+    const { z } = await import('zod');
+    const { zodSchema } = await import('@ai-sdk/provider-utils');
+    const converted = await zodSchema(
+      z.object({ value: z.enum(['one']) }).strict(),
+    ).jsonSchema;
+    const original = JSON.parse(JSON.stringify(converted));
+    let getters = 0;
+    const values = ['one'];
+    if (shape === 'index-getter')
+      Object.defineProperty(values, '0', {
+        enumerable: true,
+        get() {
+          getters++;
+          return 'one';
+        },
+      });
+    if (shape === 'hidden')
+      Object.defineProperty(values, 'secret', { value: 'bad' });
+    if (shape === 'symbol')
+      Object.defineProperty(values, Symbol('bad'), { value: 'bad' });
+    if (shape === 'prototype')
+      Object.setPrototypeOf(values, { map: Array.prototype.map });
+    const schema = {
+      ...converted,
+      properties: { value: { type: 'string' as const, enum: values } },
+    };
+    const f = await runtimeFixture({
+      entryTools: [
+        {
+          type: 'function',
+          name: 'probe',
+          description: '',
+          inputSchema: original,
+        },
+      ],
+    });
+    cleanup.push(() => f.close());
+    const outcome = await f.control
+      .run(() =>
+        Promise.resolve(
+          f.guarded.doStream({
+            ...nativeOptions,
+            tools: [
+              {
+                type: 'function',
+                name: 'probe',
+                description: '',
+                inputSchema: schema,
+              },
+            ],
+          }),
+        ),
+      )
+      .then(
+        () => 'accepted',
+        () => 'refused',
+      );
+    expect(getters).toBe(0);
+    expect(outcome).toBe('refused');
+    expect(f.calls).toHaveLength(0);
+  });

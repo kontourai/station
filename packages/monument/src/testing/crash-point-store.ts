@@ -95,6 +95,8 @@ export interface AtomicParticipant<
 > {
   readonly name: string;
   readonly observeReads?: boolean;
+  /** Actual internal maintenance writes, after an otherwise refused command. */
+  maintenance?(value: { readonly command: AtomicCommand<P> }, host: Host): void;
   admit?(
     command: AtomicCommand<P>,
     host: Host,
@@ -168,14 +170,16 @@ export async function openAtomicCrashPointStore<
         open(): void;
       }
     | undefined;
+  const failCommit = () => {
+    if (!failArmed) return;
+    const error = failArmed;
+    failArmed = undefined;
+    throw error;
+  };
   const failure: AtomicParticipant<P, Host, Refusal> = {
     name: 'crash-point-store',
-    commit() {
-      if (!failArmed) return;
-      const error = failArmed;
-      failArmed = undefined;
-      throw error;
-    },
+    commit: failCommit,
+    maintenance: failCommit,
   };
   const participants = [...(options.participants ?? []), failure];
   const openIncarnation = async (): Promise<Incarnation<P, Context>> => ({

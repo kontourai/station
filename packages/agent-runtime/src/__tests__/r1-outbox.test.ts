@@ -105,3 +105,98 @@ it('R1.6 one drain applies more than 1024 real settled projections and reaches r
     tapes: [tape],
   });
 });
+it('R1.6 initial outbox window leaves a legitimate same-run concurrent append for the next drain', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const sink = openSqliteRuntimeProjection({
+    database: f.database,
+    bodies: f.bodies,
+    host: f.host,
+    policy: DEFAULT_MODEL_POLICY,
+  });
+  cleanup.push(() => sink.close());
+  const pinned = await f.storage.execute(
+    operation({
+      type: 'pin',
+      key,
+      expected: f.opened.snapshot.fence,
+      pin: f.pin,
+    }),
+    f.context,
+  );
+  if (pinned.kind === 'refused') throw Error('pin prerequisite');
+  const begun = await f.storage.execute(
+    operation({
+      type: 'begin',
+      key,
+      expected: pinned.fence,
+      requestId: f.pin.requestId,
+    }),
+    f.context,
+  );
+  if (begun.kind !== 'execute') throw Error('begin prerequisite');
+  let fence = begun.fence;
+  for (const [sequence, part] of [
+    { type: 'stream-start' as const, warnings: [] },
+    { type: 'text-start' as const, id: 'a' },
+  ].entries()) {
+    const body = await f.bodies.put('runtime-ai-sdk-v3-part/1', encode(part));
+    const ack = await f.storage.execute(
+      operation({
+        type: 'partial',
+        key,
+        expected: fence,
+        attempt: begun.attempt,
+        sequence,
+        body,
+      }),
+      f.context,
+    );
+    if (ack.kind === 'refused') throw Error('partial prerequisite');
+    fence = ack.fence;
+  }
+  let appended = false;
+  await drainModelOutbox(
+    f.storage,
+    {
+      ...sink,
+      async apply(entry) {
+        if (!appended) {
+          appended = true;
+          const body = await f.bodies.put(
+            'runtime-ai-sdk-v3-part/1',
+            encode({ type: 'text-delta', id: 'a', delta: 'LATE' }),
+          );
+          const ack = await f.storage.execute(
+            operation({
+              type: 'partial',
+              key,
+              expected: fence,
+              attempt: begun.attempt,
+              sequence: 2,
+              body,
+            }),
+            f.context,
+          );
+          if (ack.kind === 'refused')
+            throw Error('concurrent append prerequisite');
+        }
+        await sink.apply(entry);
+      },
+    },
+    key,
+    f.context,
+  );
+  expect((await sink.readAudit(key)).map((p) => p.sequence)).toEqual([0, 1]);
+  const remaining = await f.storage.execute(
+    { type: 'listOutbox', key, limit: 10 },
+    f.context,
+  );
+  expect(remaining).toMatchObject({
+    kind: 'listed',
+    throughPosition: 2,
+    entries: [{ sequence: 2 }],
+  });
+  await drainModelOutbox(f.storage, sink, key, f.context);
+  expect((await sink.readAudit(key)).map((p) => p.sequence)).toEqual([0, 1, 2]);
+});

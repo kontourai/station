@@ -18,8 +18,8 @@ afterEach(async () => {
 });
 const day = 86400000;
 const epoch = Date.UTC(2026, 0, 1);
-async function settled() {
-  const f = await fixture();
+async function settled(participants: Parameters<typeof fixture>[1] = []) {
+  const f = await fixture('sqlite', participants);
   cleanup.push(() => f.close());
   const sink = openSqliteRuntimeProjection({
     database: f.database,
@@ -82,7 +82,24 @@ it('retention compacts at seven days and irreversibly refuses after thirty while
     f.database.prepare('SELECT count(*) AS n FROM agent_runtime_bodies').get()
       ?.n,
   );
+  vi.setSystemTime(epoch + 7 * day - 1);
+  expect(
+    await f.storage.execute(
+      operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+      f.context,
+    ),
+  ).toMatchObject({ kind: 'existing' });
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
+  ).toBe(1);
   vi.setSystemTime(epoch + 7 * day);
+  expect(await f.storage.execute({ type: 'read', key }, f.context)).toEqual({
+    kind: 'refused',
+    reason: 'expired',
+  });
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
+  ).toBe(1);
   const originalSpec = f.opened.snapshot.spec;
   const open = operation({ type: 'open', spec: originalSpec, owner });
   expect(await f.storage.execute(open, f.context)).toEqual({
@@ -103,6 +120,14 @@ it('retention compacts at seven days and irreversibly refuses after thirty while
     f.database.prepare('SELECT count(*) AS n FROM agent_runtime_bodies').get()
       ?.n,
   ).toBe(before);
+  expect(
+    JSON.parse(
+      String(
+        f.database.prepare('SELECT record FROM agent_runtime_retired').get()
+          ?.record,
+      ),
+    ).kind,
+  ).toBe('tombstone');
   vi.setSystemTime(epoch + 30 * day);
   expect(await f.storage.execute(open, f.context)).toEqual({
     kind: 'refused',
@@ -115,6 +140,14 @@ it('retention compacts at seven days and irreversibly refuses after thirty while
     ),
   ).toEqual({ kind: 'refused', reason: 'expired' });
   expect(await sink.readAudit(key)).toEqual(audit);
+  expect(
+    JSON.parse(
+      String(
+        f.database.prepare('SELECT record FROM agent_runtime_retired').get()
+          ?.record,
+      ),
+    ).kind,
+  ).toBe('expired');
 });
 it('retention keeps unacked and lagging sink authority and rolls maintenance back after actual decision writes', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -186,4 +219,162 @@ for (const kind of ['memory', 'sqlite'] as const)
         f.context,
       ),
     ).toMatchObject({ kind: 'existing' });
+  });
+it('maintenance participant observes actual compacted rows and never runs on reads or ordinary refusals', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(epoch);
+  const observed: { type: string; runs: number; expiredReceipts: number }[] =
+    [];
+  const { f, sink } = await settled([
+    {
+      name: 'host-retention',
+      maintenance({ command }, db) {
+        observed.push({
+          type: command.type,
+          runs: Number(
+            db.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
+          ),
+          expiredReceipts: Number(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM agent_runtime_receipts WHERE json_extract(record,'$.answer.reason')='expired'",
+              )
+              .get()?.n,
+          ),
+        });
+      },
+    },
+  ]);
+  await drainModelOutbox(f.storage, sink, key, f.context);
+  vi.setSystemTime(epoch + 7 * day);
+  await f.storage.execute({ type: 'read', key }, f.context);
+  await f.storage.execute({ type: 'listOutbox', key, limit: 10 }, f.context);
+  expect(observed).toEqual([]);
+  const conflict = {
+    ...f.opened.snapshot.spec,
+    entry: { ...f.opened.snapshot.spec.entry, sourceCutoff: 'WRONG' },
+  };
+  expect(
+    await f.storage.execute(
+      operation({ type: 'open', spec: conflict, owner }),
+      f.context,
+    ),
+  ).toEqual({ kind: 'refused', reason: 'conflict' });
+  expect(observed).toEqual([]);
+  // Six real receipts: open, pin, begin, complete, finish and projection acknowledgment.
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_receipts').get()
+      ?.n,
+  ).toBe(6);
+  await f.storage.execute(
+    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+    f.context,
+  );
+  expect(observed).toEqual([{ type: 'open', runs: 0, expiredReceipts: 6 }]);
+  await f.storage.execute(
+    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+    f.context,
+  );
+  expect(observed).toHaveLength(1);
+});
+it('acknowledgment alone cannot compact when the real sink disposition is lagging', async () => {
+  const { hash } = await import('../encoding.js');
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(epoch);
+  const { f, sink } = await settled();
+  const list = await f.storage.execute(
+    { type: 'listOutbox', key, limit: 10 },
+    f.context,
+  );
+  if (list.kind !== 'listed') throw Error('outbox prerequisite');
+  for (const entry of list.entries)
+    await f.storage.execute(
+      operation({
+        type: 'acknowledge',
+        key,
+        projectionId: entry.id,
+        projectionDigest: hash(entry),
+      }),
+      f.context,
+    );
+  vi.setSystemTime(epoch + 7 * day);
+  await f.storage.execute(
+    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+    f.context,
+  );
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
+  ).toBe(1);
+  expect(await sink.readModelContext(key)).toEqual({ kind: 'unavailable' });
+  for (const entry of list.entries) await sink.apply(entry);
+  await f.storage.execute(
+    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+    f.context,
+  );
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
+  ).toBe(0);
+});
+for (const kind of ['memory', 'sqlite'] as const)
+  it(`retention ${kind} maintenance observes the real expired command and detaches its view`, async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(epoch);
+    const f = await fixture(kind);
+    cleanup.push(() => f.close());
+    const cancelled = await f.storage.execute(
+      operation({ type: 'cancel', key, expected: f.opened.snapshot.fence }),
+      f.context,
+    );
+    if (cancelled.kind === 'refused') throw Error('cancel prerequisite');
+    await f.storage.close();
+    let stages = 0;
+    const crash = await openAtomicCrashPointStore<
+      ModelProtocol,
+      ModelContext,
+      never,
+      Refused
+    >({
+      open: (o) =>
+        Promise.resolve(
+          f.open([
+            {
+              name: 'actual-retention',
+              maintenance({ command }) {
+                stages++;
+                expect(command.type).toBe('open');
+                Object.assign(
+                  command.type === 'open' ? command.spec.entry : {},
+                  { sourceCutoff: 'VIEW-MUTATION' },
+                );
+              },
+            },
+            ...(o?.participants ?? []),
+          ]),
+        ),
+      async dispose() {},
+    });
+    cleanup.push(() => crash.dispose());
+    vi.setSystemTime(epoch + 7 * day);
+    const command = operation({
+      type: 'open',
+      spec: f.opened.snapshot.spec,
+      owner,
+    });
+    crash.failNextCommit(Error('maintenance rollback'));
+    await expect(crash.storage.execute(command, f.context)).rejects.toThrow(
+      'maintenance rollback',
+    );
+    // A read at the expired window correctly refuses; inspect rollback before
+    // the replay cutoff, then restore the clock before the maintenance retry.
+    vi.setSystemTime(epoch + 6 * day);
+    expect(
+      await crash.storage.execute({ type: 'read', key }, f.context),
+    ).toMatchObject({ snapshot: { spec: { entry: { sourceCutoff: 'A' } } } });
+    vi.setSystemTime(epoch + 7 * day);
+    expect(await crash.storage.execute(command, f.context)).toEqual({
+      kind: 'refused',
+      reason: 'expired',
+    });
+    expect(stages).toBe(2);
+    expect(command.spec.entry.sourceCutoff).toBe('A');
   });

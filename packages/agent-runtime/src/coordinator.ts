@@ -15,7 +15,9 @@ import {
   readTape,
   requestBytes,
   requestSchema,
+  type StrandsEntry,
   tapeBytes,
+  type VoltEntry,
   validateParts,
   type WirePart,
 } from './codecs.js';
@@ -55,6 +57,10 @@ interface Session {
   attempt?: Attempt;
   promise?: Promise<LanguageModelV3StreamResult>;
   wakePull?: () => void;
+  cancelOutput?: () => void;
+  operationDone?: Promise<void>;
+  cancellation?: Promise<void>;
+  writerGeneration: string;
   retainedBytes: Uint8Array;
 }
 interface Internals {
@@ -142,6 +148,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
   const mint = (
     input: Omit<RestoredEntry, 'entryBytes'>,
     bytes: Uint8Array,
+    writerGeneration: string,
   ): RestoredEntry => {
     const result = Object.freeze({
       ...freezeIdentity(structuredClone(input)),
@@ -149,6 +156,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
     });
     internals.sessions.set(result, {
       entry: result,
+      writerGeneration,
       fence: input.fence,
       pins: [...input.pins],
       ordinal: 0,
@@ -204,6 +212,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
           mode: 'capture',
         },
         bytes,
+        admission.writerGeneration,
       );
     },
     async restore(input) {
@@ -237,6 +246,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
           mode: 'restore',
         },
         bytes,
+        input.admission.writerGeneration,
       );
     },
     bind(entry) {
@@ -250,6 +260,10 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
           checkedAdmission(options, entry, 'execute');
           session.running = true;
           session.consumed = true;
+          let settle!: () => void;
+          session.operationDone = new Promise<void>((resolve) => {
+            settle = resolve;
+          });
           try {
             return await scope.run(session, operation);
           } catch (error) {
@@ -260,6 +274,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
             throw error;
           } finally {
             session.running = false;
+            settle();
           }
         },
         async finish(status) {
@@ -276,15 +291,21 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
           });
         },
         async cancel() {
-          if (session.cancelling) return;
-          checkedAdmission(options, entry, 'cancel');
-          session.cancelling = true;
-          session.abort.abort();
-          session.wakePull?.();
-          if (session.promise) await session.promise.catch(() => {});
-          if (session.reader) await session.reader.cancel();
-          if (session.pumping) await session.pumping.catch(() => {});
-          await ownedWrite(internals, session, { type: 'cancel' });
+          if (session.cancellation) return session.cancellation;
+          session.cancellation = (async () => {
+            checkedAdmission(options, entry, 'cancel');
+            session.cancelling = true;
+            session.abort.abort();
+            session.wakePull?.();
+            session.cancelOutput?.();
+            if (session.promise) await session.promise.catch(() => {});
+            if (session.reader) await session.reader.cancel();
+            if (session.pumping) await session.pumping.catch(() => {});
+            if (scope.getStore() !== session && session.operationDone)
+              await session.operationDone;
+            await ownedWrite(internals, session, { type: 'cancel' });
+          })();
+          return session.cancellation;
         },
       };
       return session.control;
@@ -313,6 +334,53 @@ export function denyNativeTool(
 export function retainedEntry(runtime: ModelRuntime, entry: RestoredEntry) {
   const [, session] = known(runtime, entry);
   return entryData(entry.entry.body.codec, session.retainedBytes);
+}
+async function nativeToolTemplate(data: VoltEntry | StrandsEntry) {
+  if (!('messages' in data))
+    return data.tools.map((tool) => ({
+      type: 'function',
+      name: tool.name,
+      description: tool.description ?? '',
+      inputSchema: tool.inputSchema,
+      ...(tool.strict === undefined ? {} : { strict: tool.strict }),
+      ...(tool.providerOptions === undefined
+        ? {}
+        : { providerOptions: tool.providerOptions }),
+    }));
+  if (!data.tools.length) return [];
+  // Use the same pinned public schema conversion as the actual Volt Agent.
+  const [{ z }, { zodSchema }] = await Promise.all([
+    import('zod'),
+    import('@ai-sdk/provider-utils'),
+  ]);
+  return Promise.all(
+    data.tools.map(async (tool) => {
+      const converted = await zodSchema(z.fromJSONSchema(tool.inputSchema))
+        .jsonSchema;
+      const normalized = requestSchema.parse(
+        JSON.parse(
+          new TextDecoder().decode(
+            requestBytes({
+              prompt: [
+                {
+                  role: 'user',
+                  content: [{ type: 'text', text: 'schema-template' }],
+                },
+              ],
+              tools: [
+                {
+                  ...tool,
+                  description: tool.description ?? '',
+                  inputSchema: converted,
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      return normalized.tools![0]!;
+    }),
+  );
 }
 export function guardedModel(input: {
   model: LanguageModelV3;
@@ -414,13 +482,26 @@ export function guardedModel(input: {
         const reconstructed = requestSchema.parse(
           JSON.parse(new TextDecoder().decode(bytes)),
         );
-        if (!same(reconstructed.prompt, expectedPrompt))
-          throw new RuntimeError('DURABLE_ENTRY_CHANGED');
         const generation =
           'messages' in data ? data.generation : data.vercelConfig;
-        for (const [name, value] of Object.entries(generation))
-          if (!same(value, Reflect.get(reconstructed, name)))
-            throw new RuntimeError('DURABLE_ENTRY_CHANGED');
+        const expectedTools = await nativeToolTemplate(data);
+        const template = {
+          ...generation,
+          prompt: expectedPrompt,
+          tools: expectedTools,
+          toolChoice: { type: 'auto' },
+          providerOptions: {},
+          includeRawChunks: false,
+        };
+        const candidate = {
+          ...reconstructed,
+          tools: reconstructed.tools ?? [],
+          toolChoice: reconstructed.toolChoice ?? { type: 'auto' },
+          providerOptions: reconstructed.providerOptions ?? {},
+          includeRawChunks: reconstructed.includeRawChunks ?? false,
+        };
+        if (!same(candidate, template))
+          throw new RuntimeError('DURABLE_ENTRY_CHANGED');
         let pin = session.pins[session.ordinal];
         if (pin) {
           if (
@@ -490,6 +571,19 @@ export function guardedModel(input: {
             ),
           ),
         );
+        const currentAdmission = checkedAdmission(
+          internals.options,
+          entry,
+          'execute',
+        );
+        if (
+          currentAdmission.writerGeneration !== session.writerGeneration ||
+          model.provider !== data.binding.provider ||
+          model.modelId !== data.binding.modelId ||
+          model.specificationVersion !== 'v3'
+        )
+          throw new RuntimeError('DURABLE_IMPLEMENTATION_CHANGED');
+        assertNativeEntry(runtime, entry);
         const native = await model.doStream({
           ...pinnedOptions,
           abortSignal: session.abort.signal,
@@ -509,6 +603,9 @@ export function guardedModel(input: {
         let sequence = 0;
         const downstream = new ReadableStream<LanguageModelV3StreamPart>({
           start(controller) {
+            session.cancelOutput = () => {
+              controller.error(new RuntimeError('DURABLE_CANCELLED'));
+            };
             session.pumping = (async () => {
               try {
                 while (!session.cancelling) {

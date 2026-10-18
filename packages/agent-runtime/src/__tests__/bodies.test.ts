@@ -61,17 +61,24 @@ it('body insert failure rolls back without an acknowledgment or adopted request'
 it('a damaged immutable ref cannot be adopted by pin', async () => {
   const f = await fixture();
   cleanup.push(() => f.close());
+  const original = await f.bodies.read(f.pin.request);
+  const trigger = String(
+    f.database
+      .prepare(
+        "SELECT sql FROM sqlite_schema WHERE name='agent_runtime_immutable_body'",
+      )
+      .get()?.sql,
+  );
   f.database.exec('DROP TRIGGER agent_runtime_immutable_body');
   f.database
     .prepare('UPDATE agent_runtime_bodies SET bytes=? WHERE digest=?')
     .run(
       Buffer.from(
-        new TextDecoder()
-          .decode(await f.bodies.read(f.pin.request))
-          .replace('COMPOSED-A', 'COMPOSED-B'),
+        new TextDecoder().decode(original).replace('COMPOSED-A', 'COMPOSED-B'),
       ),
       f.pin.request.digest,
     );
+  f.database.exec(trigger);
   await expect(
     f.storage.execute(
       operation({
@@ -135,7 +142,7 @@ it('journal receipt and outbox roll back when SQLite fails the final emitting ta
   ).toBe(3);
   expect(
     await f.storage.execute({ type: 'listOutbox', key, limit: 10 }, f.context),
-  ).toEqual({ kind: 'listed', entries: [] });
+  ).toEqual({ kind: 'listed', entries: [], throughPosition: -1 });
   f.database.exec('DROP TRIGGER runtime_outbox_failure');
   expect(await f.storage.execute(c, f.context)).toMatchObject({
     kind: 'applied',
@@ -153,7 +160,7 @@ it('unsupported nested transaction and future schema refuse without changing hos
   ).rejects.toThrow('DURABLE_NESTED_TRANSACTION');
   f.database.exec('ROLLBACK');
   f.database.exec(
-    'PRAGMA ignore_check_constraints=ON; UPDATE agent_runtime_meta SET schema_version=2; PRAGMA ignore_check_constraints=OFF;',
+    'PRAGMA ignore_check_constraints=ON; UPDATE agent_runtime_meta SET schema_version=3; PRAGMA ignore_check_constraints=OFF;',
   );
   expect(() =>
     openSqliteModelStorage({
@@ -193,6 +200,116 @@ it('fixed participant sees actual decision rows before throwing and rolls them b
     ),
   ).rejects.toThrow('participant after writes');
   expect(seen).toBe(2);
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_receipts').get()
+      ?.n,
+  ).toBe(1);
+});
+it('an already-open host wrapper refuses current future writer schema and disabled foreign keys', async () => {
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  f.database.exec(
+    'PRAGMA ignore_check_constraints=ON;UPDATE agent_runtime_meta SET schema_version=3;PRAGMA ignore_check_constraints=OFF;',
+  );
+  await expect(
+    f.storage.execute({ type: 'read', key }, f.context),
+  ).rejects.toThrow('DURABLE_WRITER_UNSUPPORTED');
+  await expect(f.bodies.read(f.pin.request)).rejects.toThrow(
+    'DURABLE_WRITER_UNSUPPORTED',
+  );
+  f.database.exec(
+    'PRAGMA ignore_check_constraints=ON;UPDATE agent_runtime_meta SET schema_version=2;PRAGMA ignore_check_constraints=OFF;PRAGMA foreign_keys=OFF;',
+  );
+  await expect(
+    f.storage.execute({ type: 'read', key }, f.context),
+  ).rejects.toThrow('DURABLE_SQLITE_POLICY_REQUIRED');
+  f.database.exec(
+    'PRAGMA foreign_keys=ON;DROP TRIGGER agent_runtime_immutable_body;',
+  );
+  await expect(
+    f.storage.execute({ type: 'read', key }, f.context),
+  ).rejects.toThrow('DURABLE_SCHEMA_UNSUPPORTED');
+});
+it('global neighboring conversation occupancy and capacity survive transaction-local delta writes', async () => {
+  const { openSqliteModelStorage } = await import('../sqlite.js');
+  const { DEFAULT_MODEL_POLICY } = await import('../index.js');
+  const f = await fixture();
+  cleanup.push(() => f.close());
+  const storage = openSqliteModelStorage({
+    database: f.database,
+    host: f.host,
+    policy: { ...DEFAULT_MODEL_POLICY, maxOpenRuns: 1 },
+  });
+  cleanup.push(() => storage.close());
+  const original = f.opened.snapshot.spec;
+  expect(
+    await storage.execute(
+      operation({
+        type: 'open',
+        spec: { ...original, key: { ...key, invocationId: 'neighbor' } },
+        owner: { ...f.opened.snapshot.fence.owner, id: 'neighbor' },
+      }),
+      f.context,
+    ),
+  ).toEqual({ kind: 'refused', reason: 'busy' });
+  expect(
+    await storage.execute(
+      operation({
+        type: 'open',
+        spec: { ...original, key: { ...key, conversationId: 'second' } },
+        owner: { ...f.opened.snapshot.fence.owner, id: 'second' },
+      }),
+      f.context,
+    ),
+  ).toEqual({ kind: 'refused', reason: 'capacity' });
+  expect(
+    await f.storage.execute({ type: 'read', key }, f.context),
+  ).toMatchObject({ snapshot: { spec: original } });
+});
+it('a participant cannot leave a newly adopted BLOB damaged behind a restored schema', async () => {
+  const f = await fixture('sqlite', [
+    {
+      name: 'host-body-corruption',
+      commit({ command }, db) {
+        if (command.type !== 'pin') return;
+        const trigger = String(
+          db
+            .prepare(
+              "SELECT sql FROM sqlite_schema WHERE name='agent_runtime_immutable_body'",
+            )
+            .get()?.sql,
+        );
+        const row = db
+          .prepare('SELECT bytes FROM agent_runtime_bodies WHERE digest=?')
+          .get(command.pin.request.digest);
+        if (!(row?.bytes instanceof Uint8Array))
+          throw Error('actual body prerequisite');
+        const changed = Buffer.from(
+          new TextDecoder()
+            .decode(row.bytes)
+            .replace('COMPOSED-A', 'COMPOSED-B'),
+        );
+        db.exec('DROP TRIGGER agent_runtime_immutable_body');
+        db.prepare(
+          'UPDATE agent_runtime_bodies SET bytes=? WHERE digest=?',
+        ).run(changed, command.pin.request.digest);
+        db.exec(trigger);
+      },
+    },
+  ]);
+  cleanup.push(() => f.close());
+  await expect(
+    f.storage.execute(
+      operation({
+        type: 'pin',
+        key,
+        expected: f.opened.snapshot.fence,
+        pin: f.pin,
+      }),
+      f.context,
+    ),
+  ).rejects.toThrow('DURABLE_BODY_DAMAGED');
+  expect(await f.bodies.read(f.pin.request)).toBeInstanceOf(Uint8Array);
   expect(
     f.database.prepare('SELECT count(*) AS n FROM agent_runtime_receipts').get()
       ?.n,

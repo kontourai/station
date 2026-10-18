@@ -123,6 +123,21 @@ export function decideModel(
       admission.writerGeneration !== run.writerGeneration)
   )
     return refuse('unsupported');
+  const retired = state.retired.get(id);
+  if (
+    retired &&
+    (!same(admission.binding, retired.binding) ||
+      admission.writerGeneration !== retired.writerGeneration)
+  )
+    return refuse('unsupported');
+  if (command.type === 'read' && retired) return refuse('expired');
+  if (
+    command.type === 'read' &&
+    run?.settledAt !== null &&
+    run?.settledAt !== undefined &&
+    now >= run.settledAt + policy.settledRetentionMs
+  )
+    return refuse('expired');
   if (command.type === 'read')
     return run
       ? {
@@ -138,16 +153,40 @@ export function decideModel(
       command.limit > 1024
     )
       return refuse('unsupported');
+    const rows = [...state.outbox.values()].filter((row) =>
+      same(row.projection.key, key),
+    );
+    const maximum = rows.reduce((n, row) => Math.max(n, row.position), -1);
+    const throughPosition = command.throughPosition ?? maximum;
+    if (
+      !Number.isSafeInteger(throughPosition) ||
+      throughPosition < -1 ||
+      throughPosition > maximum
+    )
+      return refuse('unsupported');
     return {
       kind: 'listed',
-      entries: [...state.outbox.values()]
-        .filter((x) => same(x.projection.key, key) && !x.acknowledged)
+      throughPosition,
+      entries: rows
+        .filter((row) => !row.acknowledged && row.position <= throughPosition)
         .sort((a, b) => a.position - b.position)
         .slice(0, command.limit)
-        .map((x) => x.projection),
+        .map((row) => row.projection),
     };
   }
   if (!same(command.digest, commandDigest(command))) return refuse('conflict');
+  if (retired) {
+    const receipt = state.receipts.get(canonical([id, command.operationId]));
+    if (
+      receipt &&
+      (receipt.digest !== command.digest ||
+        receipt.commandType !== command.type)
+    )
+      return refuse('conflict');
+    if (command.type === 'open' && hash(command.spec) !== retired.specDigest)
+      return refuse('conflict');
+    return refuse('expired');
+  }
   const receiptId = canonical([id, command.operationId]);
   const receipt = state.receipts.get(receiptId);
   if (receipt) {
@@ -266,7 +305,7 @@ export function decideModel(
   };
   if (command.type === 'takeOver') {
     if (command.owner.id === run.fence.owner.id) return refuse('conflict');
-    const verdict = context.liveness(run.fence.owner);
+    const verdict = context.liveness(structuredClone(run.fence.owner));
     if (verdict !== 'dead')
       return refuse(verdict === 'live' ? 'busy' : 'unknown-owner');
     for (const p of run.pins) for (const a of p.attempts) abort(state, run, a);
@@ -281,7 +320,7 @@ export function decideModel(
           ?.pin ?? null,
     });
   }
-  if (context.liveness(run.fence.owner) !== 'live')
+  if (context.liveness(structuredClone(run.fence.owner)) !== 'live')
     return refuse('unknown-owner');
   if (command.type === 'pin') {
     const existing = run.pins.find(

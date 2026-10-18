@@ -8,7 +8,9 @@ only public Monument contracts and pinned optional framework APIs.
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
 fences, receipts and stable projection identity. `memory.ts` stages changes;
 `sqlite.ts` owns real host-connection transactions, immutable BLOBs, namespace
-validation and the projection sink. `codecs.ts` owns fixed entry/request/part/tape
+validation and the projection sink. `retention.ts` owns exact-generation settled
+replay compaction, tombstones and irreversible expired markers; raw audit and
+BLOBs remain retained. `codecs.ts` owns fixed entry/request/part/tape
 validation and the bounded Zod non-wire sidecar interpretation. `coordinator.ts`
 owns private invocation bindings, grant consumption, backpressure, held suffix,
 fatal latch and explicit cancellation. The framework entries create actual
@@ -19,7 +21,10 @@ port, receipts, rollback and projection), `bodies.test.ts` (actual SQLite body
 and transaction faults), `stream.test.ts` (barriers, normalization, binding,
 cancellation and codec refusals), `frameworks.test.ts` (real Volt/Strands callers,
 retained composition, actual callback denial and subsequent ready-view prompt),
-and `body-process.test.ts` (SIGKILL before/after BLOB COMMIT). Simulated crash,
+and `body-process.test.ts` (SIGKILL before/after BLOB COMMIT). The `r1-*` owners
+cover detached memory custody, complete native templates, current admission,
+public cancellation/races, inert descriptor validation, finite multi-page
+outbox windows, retention rollback and native binding/registration negatives. Simulated crash,
 disk reopen, process death, framework integration and provider qualification
 remain different evidence tiers.
 

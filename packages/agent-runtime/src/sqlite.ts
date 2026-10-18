@@ -42,6 +42,7 @@ import {
   receiptSchema,
   runRecordSchema,
 } from './records.js';
+import { maintainGeneration, retiredSchema } from './retention.js';
 import type {
   Bodies,
   BodyRef,
@@ -56,10 +57,11 @@ import type {
 } from './types.js';
 
 const SCHEMA = `
-CREATE TABLE agent_runtime_meta (id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version=1), writer_format TEXT NOT NULL CHECK(writer_format='runtime-model/1')) STRICT;
-INSERT INTO agent_runtime_meta VALUES(1,1,'runtime-model/1');
+CREATE TABLE agent_runtime_meta (id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version=2), writer_format TEXT NOT NULL CHECK(writer_format='runtime-model/1')) STRICT;
+INSERT INTO agent_runtime_meta VALUES(1,2,'runtime-model/1');
 CREATE TABLE agent_runtime_bodies(codec TEXT NOT NULL, digest TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>0 AND byte_length<=33554432), bytes BLOB NOT NULL CHECK(length(bytes)=byte_length), format INTEGER NOT NULL CHECK(format=1), PRIMARY KEY(codec,digest)) STRICT;
 CREATE TABLE agent_runtime_runs(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
+CREATE TABLE agent_runtime_retired(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
 CREATE TABLE agent_runtime_receipts(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
 CREATE TABLE agent_runtime_outbox(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
 CREATE TABLE agent_runtime_projection(id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
@@ -69,6 +71,7 @@ const expectedTables = [
   'agent_runtime_meta',
   'agent_runtime_bodies',
   'agent_runtime_runs',
+  'agent_runtime_retired',
   'agent_runtime_receipts',
   'agent_runtime_outbox',
   'agent_runtime_projection',
@@ -99,54 +102,79 @@ function transaction<T>(
     active.delete(database);
   }
 }
-function prepare(database: DatabaseSync, policy: ModelPolicy) {
-  idle(database);
-  fixedPolicy(policy);
+function validateDurability(database: DatabaseSync) {
   if (
     database.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'wal' ||
     database.prepare('PRAGMA synchronous').get()?.synchronous !== 2 ||
     database.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1
   )
     throw new RuntimeError('DURABLE_SQLITE_POLICY_REQUIRED');
+}
+function validateNamespace(database: DatabaseSync, policy: ModelPolicy) {
+  validateDurability(database);
+  const tables = database
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE name LIKE 'agent_runtime_%' AND type='table'",
+    )
+    .all()
+    .map((r) => r.name)
+    .sort();
+  if (!same(tables, expectedTables))
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+  const expectedSQL = SCHEMA.split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith('CREATE TABLE'));
+  const actualSQL = database
+    .prepare(
+      "SELECT sql FROM sqlite_schema WHERE type='table' AND name LIKE 'agent_runtime_%' ORDER BY name",
+    )
+    .all()
+    .map((row) => row.sql);
+  if (!same([...actualSQL].sort(), expectedSQL.sort()))
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+  const meta = database.prepare('SELECT * FROM agent_runtime_meta').all();
+  if (
+    meta.length !== 1 ||
+    meta[0]?.schema_version !== 2 ||
+    meta[0]?.writer_format !== policy.writerFormat
+  )
+    throw new RuntimeError('DURABLE_WRITER_UNSUPPORTED');
+  const ddl = database
+    .prepare(
+      "SELECT sql FROM sqlite_schema WHERE name='agent_runtime_immutable_body'",
+    )
+    .get();
+  if (
+    ddl?.sql !==
+    SCHEMA.slice(SCHEMA.indexOf('CREATE TRIGGER')).trim().slice(0, -1)
+  )
+    throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+}
+function runtimeTransaction<T>(
+  database: DatabaseSync,
+  policy: ModelPolicy,
+  write: boolean,
+  operation: () => T,
+): T {
+  return transaction(database, write, () => {
+    validateNamespace(database, policy);
+    const result = operation();
+    validateNamespace(database, policy);
+    return result;
+  });
+}
+function prepare(database: DatabaseSync, policy: ModelPolicy) {
+  idle(database);
+  fixedPolicy(policy);
+  validateDurability(database);
   transaction(database, true, () => {
-    const tables = database
+    const existing = database
       .prepare(
         "SELECT name FROM sqlite_schema WHERE name LIKE 'agent_runtime_%' AND type='table'",
       )
-      .all()
-      .map((r) => r.name)
-      .sort();
-    if (!tables.length) database.exec(SCHEMA);
-    else if (!same(tables, expectedTables))
-      throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
-    const expectedSQL = SCHEMA.split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith('CREATE TABLE'));
-    const actualSQL = database
-      .prepare(
-        "SELECT sql FROM sqlite_schema WHERE type='table' AND name LIKE 'agent_runtime_%' ORDER BY name",
-      )
-      .all()
-      .map((row) => row.sql);
-    if (!same([...actualSQL].sort(), expectedSQL.sort()))
-      throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
-    const meta = database.prepare('SELECT * FROM agent_runtime_meta').all();
-    if (
-      meta.length !== 1 ||
-      meta[0]?.schema_version !== 1 ||
-      meta[0]?.writer_format !== policy.writerFormat
-    )
-      throw new RuntimeError('DURABLE_WRITER_UNSUPPORTED');
-    const ddl = database
-      .prepare(
-        "SELECT sql FROM sqlite_schema WHERE name='agent_runtime_immutable_body'",
-      )
-      .get();
-    if (
-      ddl?.sql !==
-      SCHEMA.slice(SCHEMA.indexOf('CREATE TRIGGER')).trim().slice(0, -1)
-    )
-      throw new RuntimeError('DURABLE_SCHEMA_UNSUPPORTED');
+      .all();
+    if (!existing.length) database.exec(SCHEMA);
+    validateNamespace(database, policy);
   });
 }
 function readBody(
@@ -201,7 +229,7 @@ export function openSqliteRuntimeBodies(options: {
         digest: digestBytes(copy),
         byteLength: copy.length,
       };
-      transaction(database, true, () => {
+      runtimeTransaction(database, policy, true, () => {
         const old = database
           .prepare(
             'SELECT byte_length,bytes FROM agent_runtime_bodies WHERE codec=? AND digest=?',
@@ -224,7 +252,7 @@ export function openSqliteRuntimeBodies(options: {
     },
     async read(ref) {
       check();
-      return transaction(database, false, () =>
+      return runtimeTransaction(database, policy, false, () =>
         readBody(database, policy, ref),
       );
     },
@@ -234,7 +262,22 @@ export function openSqliteRuntimeBodies(options: {
   };
 }
 const stored = z.object({ id: z.string(), record: z.string() });
-function loadState(database: DatabaseSync): ModelState {
+type RecordImage = { text: string; probe: string };
+type BeforeImage = {
+  runs: Map<string, RecordImage>;
+  retired: Map<string, RecordImage>;
+  receipts: Map<string, RecordImage>;
+  outbox: Map<string, RecordImage>;
+};
+// Only strict-decoded private records reach this transaction-local probe.
+// Host callbacks receive detached views; changed records retain canonical writes.
+function recordImage(text: string, record: object): RecordImage {
+  return { text, probe: JSON.stringify(record) };
+}
+function unchanged(image: RecordImage | undefined, record: object): boolean {
+  return image !== undefined && image.probe === JSON.stringify(record);
+}
+function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
   const result = emptyState();
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_runs')
@@ -246,15 +289,25 @@ function loadState(database: DatabaseSync): ModelState {
     if (value.id !== keyOf(record.spec.key))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.runs.set(value.id, record);
+    before?.runs.set(value.id, recordImage(value.record, record));
+  }
+  for (const row of database
+    .prepare('SELECT id,record FROM agent_runtime_retired')
+    .all()) {
+    const value = stored.parse(row);
+    const retired = retiredSchema.parse(JSON.parse(value.record));
+    if (keyOf(retired.key) !== value.id || result.runs.has(value.id))
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+    result.retired.set(value.id, retired);
+    before?.retired.set(value.id, recordImage(value.record, retired));
   }
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_receipts')
     .all()) {
     const value = stored.parse(row);
-    result.receipts.set(
-      value.id,
-      receiptSchema.parse(JSON.parse(value.record)),
-    );
+    const record = receiptSchema.parse(JSON.parse(value.record));
+    result.receipts.set(value.id, record);
+    before?.receipts.set(value.id, recordImage(value.record, record));
   }
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_outbox')
@@ -267,7 +320,20 @@ function loadState(database: DatabaseSync): ModelState {
     )
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.outbox.set(value.id, record);
+    before?.outbox.set(value.id, recordImage(value.record, record));
   }
+  const positions = new Map<string, number[]>();
+  for (const row of result.outbox.values()) {
+    const id = keyOf(row.projection.key);
+    const list = positions.get(id) ?? [];
+    list.push(row.position);
+    positions.set(id, list);
+  }
+  for (const list of positions.values())
+    if (
+      list.sort((a, b) => a - b).some((position, index) => position !== index)
+    )
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
   return result;
 }
 function validateLinks(
@@ -275,6 +341,7 @@ function validateLinks(
   policy: ModelPolicy,
   state: ModelState,
 ) {
+  const auditRefs = new Map<string, BodyRef>();
   for (const run of state.runs.values()) {
     const entry = entryData(
       run.spec.entry.body.codec,
@@ -307,7 +374,7 @@ function validateLinks(
         for (const part of attempt.partials) {
           if (part.codec !== 'runtime-ai-sdk-v3-part/1')
             throw new RuntimeError('DURABLE_RECORD_DAMAGED');
-          readBody(database, policy, part);
+          auditRefs.set(canonical(part), part);
         }
         if (attempt.tape) {
           const tape = readTape(readBody(database, policy, attempt.tape));
@@ -335,7 +402,9 @@ function validateLinks(
     }
   }
   for (const { projection } of state.outbox.values())
-    if (projection.body) readBody(database, policy, projection.body);
+    if (projection.body)
+      auditRefs.set(canonical(projection.body), projection.body);
+  for (const ref of auditRefs.values()) readBody(database, policy, ref);
 }
 export function openSqliteModelStorage(options: {
   database: DatabaseSync;
@@ -354,7 +423,7 @@ export function openSqliteModelStorage(options: {
   const { database } = options;
   const policy = fixedPolicy(options.policy);
   prepare(database, policy);
-  transaction(database, false, () =>
+  runtimeTransaction(database, policy, false, () =>
     validateLinks(database, policy, loadState(database)),
   );
   let closed = false;
@@ -366,14 +435,19 @@ export function openSqliteModelStorage(options: {
     ): Promise<ModelResult<C>> {
       if (closed) throw new RuntimeError('DURABLE_STORAGE_CLOSED');
       validateCommand(command);
-      return transaction(
+      command = structuredClone(command);
+      return runtimeTransaction(
         database,
+        policy,
         !isRead(command) || participants.some((p) => p.observeReads),
         () => {
           const key = command.type === 'open' ? command.spec.key : command.key;
           let admission: CurrentAdmission;
           try {
-            admission = options.host(key, operationFor(command));
+            admission = options.host(
+              structuredClone(key),
+              operationFor(command),
+            );
             canonical(admission);
             bindingSchema.parse(admission.binding);
             if (!admission.writerGeneration)
@@ -381,7 +455,13 @@ export function openSqliteModelStorage(options: {
           } catch {
             return { kind: 'refused', reason: 'unavailable' };
           }
-          const state = loadState(database);
+          const before: BeforeImage = {
+            runs: new Map(),
+            retired: new Map(),
+            receipts: new Map(),
+            outbox: new Map(),
+          };
+          const state = loadState(database, before);
           validateLinks(database, policy, state);
           for (const ref of commandBodies(command))
             readBody(database, policy, ref);
@@ -389,8 +469,21 @@ export function openSqliteModelStorage(options: {
             (p) => !isRead(command) || p.observeReads,
           );
           for (const participant of participantsForCommand)
-            if (participant.admit?.(command, database))
+            if (participant.admit?.(structuredClone(command), database))
               throw new RuntimeError('DURABLE_PARTICIPANT_REFUSED');
+          const maintained = maintainGeneration(
+            command,
+            state,
+            policy,
+            admission,
+            Date.now(),
+            (projection) =>
+              database
+                .prepare(
+                  'SELECT record FROM agent_runtime_projection WHERE id=?',
+                )
+                .get(projection.id)?.record === canonical(projection),
+          );
           const result = decideModel(command, {
             state,
             context,
@@ -399,32 +492,82 @@ export function openSqliteModelStorage(options: {
             now: Date.now(),
             readBody: (ref) => readBody(database, policy, ref),
           });
-          if (result.kind === 'refused') return result;
+          const verifyParticipantState = () => {
+            if (participantsForCommand.length)
+              validateLinks(database, policy, loadState(database));
+          };
+          if (result.kind === 'refused' && !maintained) {
+            verifyParticipantState();
+            return result;
+          }
           if (!isRead(command)) {
+            for (const [id, record] of state.retired) {
+              const image = before.retired.get(id);
+              if (unchanged(image, record)) continue;
+              const value = canonical(record);
+              if (image?.text === value) continue;
+              database
+                .prepare('DELETE FROM agent_runtime_runs WHERE id=?')
+                .run(id);
+              database
+                .prepare(
+                  'INSERT INTO agent_runtime_retired VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
+                )
+                .run(id, value);
+            }
             const putRun = database.prepare(
               'INSERT INTO agent_runtime_runs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
             );
-            for (const [id, record] of state.runs)
-              putRun.run(id, canonical(record));
+            for (const [id, record] of state.runs) {
+              const image = before.runs.get(id);
+              if (unchanged(image, record)) continue;
+              const value = canonical(record);
+              if (image?.text !== value) putRun.run(id, value);
+            }
             const putReceipt = database.prepare(
               'INSERT INTO agent_runtime_receipts VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
             );
-            for (const [id, record] of state.receipts)
-              putReceipt.run(id, canonical(record));
+            for (const [id, record] of state.receipts) {
+              const image = before.receipts.get(id);
+              if (unchanged(image, record)) continue;
+              const value = canonical(record);
+              if (image?.text !== value) putReceipt.run(id, value);
+            }
             const putOutbox = database.prepare(
               'INSERT INTO agent_runtime_outbox VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
             );
-            for (const [id, record] of state.outbox)
-              putOutbox.run(id, canonical(record));
+            for (const [id, record] of state.outbox) {
+              const image = before.outbox.get(id);
+              if (unchanged(image, record)) continue;
+              const value = canonical(record);
+              if (image?.text !== value) putOutbox.run(id, value);
+            }
+          }
+          if (result.kind === 'refused') {
+            for (const participant of participantsForCommand) {
+              const returned: unknown = participant.maintenance?.(
+                { command: structuredClone(command) },
+                database,
+              );
+              if (returned !== undefined)
+                throw new RuntimeError('DURABLE_ASYNC_PARTICIPANT');
+            }
+            verifyParticipantState();
+            return result;
           }
           for (const participant of participantsForCommand) {
+            const participantResult: ModelResult<ModelCommand> =
+              structuredClone(result);
+            if (participantResult.kind === 'refused')
+              throw new RuntimeError('DURABLE_PARTICIPANT_REFUSED');
             const returned: unknown = participant.commit?.(
-              { command, result },
+              { command: structuredClone(command), result: participantResult },
               database,
             );
             if (returned !== undefined)
               throw new RuntimeError('DURABLE_ASYNC_PARTICIPANT');
           }
+          verifyParticipantState();
           return result;
         },
       );
@@ -451,14 +594,32 @@ export function openSqliteRuntimeProjection(options: {
   const check = (key: RunKey) => {
     if (closed) throw new RuntimeError('DURABLE_STORAGE_CLOSED');
     runKey.parse(key);
-    idle(database);
-    const admission = options.host(key, 'project');
+    const admission = options.host(structuredClone(key), 'project');
     bindingSchema.parse(admission.binding);
-    const run = loadState(database).runs.get(keyOf(key));
+    const id = keyOf(key);
+    const runRow = database
+      .prepare('SELECT record FROM agent_runtime_runs WHERE id=?')
+      .get(id);
+    const retiredRow = database
+      .prepare('SELECT record FROM agent_runtime_retired WHERE id=?')
+      .get(id);
+    const run = runRow
+      ? runRecordSchema.parse(JSON.parse(z.string().parse(runRow.record)))
+      : undefined;
+    const retired = retiredRow
+      ? retiredSchema.parse(JSON.parse(z.string().parse(retiredRow.record)))
+      : undefined;
     if (
-      !run ||
-      !same(admission.binding, run.spec.binding) ||
-      admission.writerGeneration !== run.writerGeneration
+      (run && keyOf(run.spec.key) !== id) ||
+      (retired && keyOf(retired.key) !== id) ||
+      (run && retired)
+    )
+      throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+    if (
+      (!run && !retired) ||
+      !same(admission.binding, run?.spec.binding ?? retired?.binding) ||
+      admission.writerGeneration !==
+        (run?.writerGeneration ?? retired?.writerGeneration)
     )
       throw new RuntimeError('DURABLE_UNAVAILABLE');
     return run;
@@ -467,11 +628,16 @@ export function openSqliteRuntimeProjection(options: {
     async apply(entry) {
       canonical(entry);
       projectionSchema.parse(entry);
-      check(entry.key);
-      transaction(database, true, () => {
+      runtimeTransaction(database, policy, true, () => {
+        check(entry.key);
         if (projectionId(entry) !== entry.id)
           throw new RuntimeError('DURABLE_CONFLICT');
-        const expected = loadState(database).outbox.get(entry.id);
+        const row = database
+          .prepare('SELECT record FROM agent_runtime_outbox WHERE id=?')
+          .get(entry.id);
+        const expected = row
+          ? outboxRecordSchema.parse(JSON.parse(z.string().parse(row.record)))
+          : undefined;
         if (!expected || !same(expected.projection, entry))
           throw new RuntimeError('DURABLE_CONFLICT');
         if (entry.body) readBody(database, policy, entry.body);
@@ -487,22 +653,28 @@ export function openSqliteRuntimeProjection(options: {
       });
     },
     async readAudit(key) {
-      check(key);
-      return transaction(database, false, () =>
-        database
+      return runtimeTransaction(database, policy, false, () => {
+        check(key);
+        return database
           .prepare('SELECT record FROM agent_runtime_projection ORDER BY rowid')
           .all()
           .map((row) =>
             projectionSchema.parse(JSON.parse(z.string().parse(row.record))),
           )
-          .filter((p) => same(p.key, key)),
-      );
+          .filter((p) => same(p.key, key));
+      });
     },
     async readModelContext(key) {
-      check(key);
-      return transaction(database, false, () => {
+      return runtimeTransaction(database, policy, false, () => {
+        check(key);
         const state = loadState(database);
-        const run = state.runs.get(keyOf(key))!;
+        const run = state.runs.get(keyOf(key));
+        if (
+          !run ||
+          (run.settledAt !== null &&
+            Date.now() >= run.settledAt + policy.settledRetentionMs)
+        )
+          return { kind: 'unavailable' };
         if (run.state === 'open' || run.state === 'running')
           return { kind: 'unavailable' };
         for (const row of state.outbox.values())

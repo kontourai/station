@@ -167,8 +167,19 @@ export type ModelProtocol = {
       | Refused;
   };
   listOutbox: {
-    command: { type: 'listOutbox'; key: RunKey; limit: number };
-    result: { kind: 'listed'; entries: readonly Projection[] } | Refused;
+    command: {
+      type: 'listOutbox';
+      key: RunKey;
+      limit: number;
+      throughPosition?: number;
+    };
+    result:
+      | {
+          kind: 'listed';
+          entries: readonly Projection[];
+          throughPosition: number;
+        }
+      | Refused;
   };
   acknowledge: {
     command: Operation & {

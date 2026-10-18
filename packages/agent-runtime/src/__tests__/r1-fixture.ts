@@ -25,6 +25,7 @@ export async function runtimeFixture(
   options: {
     bodies?: (b: Bodies) => Bodies;
     storage?: (s: ModelStorage) => ModelStorage;
+    entryTools?: import('../codecs.js').VoltEntry['tools'];
     stream?: (
       c: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
     ) => void;
@@ -57,7 +58,7 @@ export async function runtimeFixture(
         authoredDigest: `sha256:${'c'.repeat(64)}`,
         messages,
         generation: {},
-        tools: [],
+        tools: options.entryTools ?? [],
       }),
   });
   const calls: LanguageModelV3CallOptions[] = [];

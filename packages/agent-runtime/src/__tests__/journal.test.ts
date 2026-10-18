@@ -83,7 +83,7 @@ for (const kind of ['memory', 'sqlite'] as const)
           { type: 'listOutbox', key, limit: 10 },
           f.context,
         ),
-      ).toEqual({ kind: 'listed', entries: [] });
+      ).toEqual({ kind: 'listed', entries: [], throughPosition: -1 });
       expect(await crash.storage.execute(command, f.context)).toMatchObject({
         kind: 'applied',
       });
@@ -222,7 +222,7 @@ for (const kind of ['memory', 'sqlite'] as const)
           { type: 'listOutbox', key, limit: 10 },
           f.context,
         ),
-      ).toEqual({ kind: 'listed', entries: [] });
+      ).toEqual({ kind: 'listed', entries: [], throughPosition: -1 });
       expect(await crash.storage.execute(partial, f.context)).toMatchObject({
         kind: 'applied',
       });

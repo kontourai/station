@@ -26,6 +26,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
     'name',
     'order',
     'additional-generation',
+    'omitted-generation',
   ] as const)
     it(`R1.2 ${framework} refuses first native ${fault} mismatch with network zero`, async () => {
       const f = await fixture();
@@ -50,7 +51,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
         admission: host,
         liveness: () => 'live',
       });
-      const tools = [
+      const tools: import('../codecs.js').VoltEntry['tools'] = [
         {
           type: 'function' as const,
           name: 'one',
@@ -95,7 +96,8 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
                     parts: [{ type: 'text', text: 'INPUT' }],
                   },
                 ],
-                generation: {},
+                generation:
+                  fault === 'omitted-generation' ? { temperature: 0.2 } : {},
                 tools,
               })
             : captureStrandsEntry(f.bodies, {
@@ -106,7 +108,8 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
                 prefix: [],
                 effectiveInput: 'INPUT',
                 systemPrompt: '',
-                vercelConfig: {},
+                vercelConfig:
+                  fault === 'omitted-generation' ? { temperature: 0.2 } : {},
                 tools,
               }),
       });
@@ -135,7 +138,21 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
         const c = createDurableVoltConsumer({ runtime, entry, model });
         if (fault === 'additional-generation')
           Object.assign(c.raw, { temperature: 0.6 });
-        else {
+        else if (fault === 'omitted-generation') {
+          const selected = c.raw.model;
+          if (
+            !selected ||
+            typeof selected !== 'object' ||
+            !('specificationVersion' in selected) ||
+            selected.specificationVersion !== 'v3'
+          )
+            throw Error('real native model prerequisite');
+          const dispatch = selected.doStream.bind(selected);
+          selected.doStream = (options) => {
+            const { temperature: _temperature, ...rest } = options;
+            return dispatch(rest);
+          };
+        } else {
           c.raw.removeTools(['one', 'two']);
           const supplied =
             fault === 'order'
@@ -163,7 +180,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
             supplied.map((t) =>
               createTool({
                 name: t.name,
-                description: t.description,
+                description: t.description ?? '',
                 parameters: z.fromJSONSchema(t.inputSchema),
                 execute: async () => 'not reached',
               }),
@@ -191,6 +208,13 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
           c.agent.model.updateConfig({
             ...c.agent.model.getConfig(),
             temperature: 0.6,
+          });
+        } else if (fault === 'omitted-generation') {
+          if (!(c.agent.model instanceof VercelModel))
+            throw Error('real Vercel prerequisite');
+          c.agent.model.updateConfig({
+            ...c.agent.model.getConfig(),
+            temperature: undefined,
           });
         } else {
           const supplied =
@@ -221,7 +245,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const)
               (t) =>
                 new FunctionTool({
                   name: t.name,
-                  description: t.description,
+                  description: t.description ?? '',
                   inputSchema: t.inputSchema,
                   callback: () => 'not reached',
                 }),
