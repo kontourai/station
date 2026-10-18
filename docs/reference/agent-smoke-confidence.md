@@ -186,11 +186,11 @@ trusted local ES module. It may export either or both:
 - `scenarios: [{ id, async run(ctx) { /* probe */ } }]`: append unique scenario
   IDs after the built-ins. The existing `additionalScenarios` interface remains
   valid. An optional positive integer `maxTurns` per scenario declares its
-  per-model planning estimate. Without estimates, the plan reserves the
+  per-model planning bound. Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario/model);
   its printed count is an upper bound. Every managed `sendTurn` command still
-  consumes the hard run ceiling, including `ctx.api` and `ctx.command` calls.
-  An extension exceeding that ceiling gets an explicit failure before another
+  consumes both the printed plan reservation and the hard run ceiling, including `ctx.api` and `ctx.command` calls.
+  An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox. `ctx` provides `sessionId`, `model`, `switchModel`,
   `nonce`, `artifactName`, `artifactContent`, `api(path, optionalPostBody)`,
   `command(command)`,

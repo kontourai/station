@@ -349,7 +349,7 @@ export async function runMatrix({
   let sentTurns = 0;
   const checkedApi = async (path, body) => {
     if (path === '/api/orchestration/commands' && body?.type === 'sendTurn') {
-      if (sentTurns >= maxTurns)
+      if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
       sentTurns++;
     }

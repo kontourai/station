@@ -731,20 +731,23 @@ describe('matrix CLI against a loopback stub API (no providers)', () => {
     },
   );
 
-  it('enforces the runtime ceiling if an extension exceeds its declared estimate', async () => {
-    const { code, result, requests } = await runCli('overspend', {
-      args: ['--max-turns=14'],
-    });
-    expect(code).toBe(1);
-    expect(
-      requests.filter((request) => request.body?.type === 'sendTurn'),
-    ).toHaveLength(14);
-    expect(
-      result.rows.some((row: any) =>
-        row.failure?.includes('Hard turn ceiling'),
-      ),
-    ).toBe(true);
-  });
+  it.each([14, 24])(
+    'enforces the printed plan if an extension exceeds its declaration (ceiling %s)',
+    async (ceiling) => {
+      const { code, result, requests } = await runCli('overspend', {
+        args: [`--max-turns=${ceiling}`],
+      });
+      expect(code).toBe(1);
+      expect(
+        requests.filter((request) => request.body?.type === 'sendTurn'),
+      ).toHaveLength(14);
+      expect(
+        result.rows.some((row: any) =>
+          row.failure?.includes('Hard turn ceiling'),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it('keeps legacy additionalScenarios valid and reserves the remaining ceiling for unknown extension sends', async () => {
     const { code, result, stderr } = await runCli('legacy-extension');
