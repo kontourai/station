@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildHtmlReplyDocument } from '@kontourai/station-shared/html-reply-document';
@@ -41,6 +41,7 @@ export class HtmlReplyPreview {
       executablePath,
       launchTimeoutMs: 15_000,
       jsHeapLimitMb: 128,
+      denyHostResolution: true,
       egressPolicy: {
         listeners: () => ({ ports: [], hostnames: [] }),
         interfaceAddresses: () => [],
@@ -61,6 +62,19 @@ export class HtmlReplyPreview {
       const work = async () => {
         directory = await mkdtemp(join(tmpdir(), 'station-html-preview-'));
         if (expired) throw new HtmlReplyRefusal('HTML preview expired');
+        // The launch flag alone does not enforce this in every Chrome build.
+        // Preferences apply to every realm, including fresh srcdoc windows.
+        await mkdir(join(directory, 'Default'));
+        await writeFile(
+          join(directory, 'Default', 'Preferences'),
+          JSON.stringify({
+            webrtc: {
+              ip_handling_policy: 'disable_non_proxied_udp',
+              multiple_routes_enabled: false,
+              nonproxied_udp_enabled: false,
+            },
+          }),
+        );
         const target = await host.openTarget({
           profileDir: directory,
           viewport: { width, height: page.height, deviceScaleFactor: 1 },

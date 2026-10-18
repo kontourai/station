@@ -157,3 +157,42 @@ The trusted confirmation names the visual reply, delays Open by 500 ms, and
 Cancel mutes further link requests from that mounted reply. Message provenance
 alone never establishes user intent. Preview now has operate scope and bounded-
 write classification because it launches a browser process.
+
+## Preview host enforcement amendment
+
+The viewer-side RTC residual is accepted by the owner. It does not authorize
+network access from Station's disposable preview browser. The HTTP egress proxy
+and Chromium's non-proxied-UDP preference alone did not prevent ICE UDP. Preview
+now seeds its fresh profile with Chrome's `webrtc.ip_handling_policy` set to
+`disable_non_proxied_udp`, with multiple routes and non-proxied UDP disabled.
+This applies across realms, including nested srcdoc and closed shadow roots;
+it does not depend on hiding constructors. The existing launch flag alone was
+insufficient. Browser DNS is denied with host-resolver rules; the deny-all HTTP
+proxy refuses destinations before invoking the host DNS resolver. TCP remains
+subject to that proxy. These options are specific to preview and do not change
+Browser-pane profiles or the accepted viewer residual. Failed CDP experiments
+were discarded rather than shipped as a complete guard.
+The real socket regression requires both loopback and a non-loopback interface;
+missing prerequisites fail rather than becoming a skipped success.
+
+Built-in Station/default Agents attach the full station-control catalog and its
+auto-approved bounded writes. Authored Agents require attachment. ACP supports a
+whole-server attachment only; per-tool filtering is refused. Link requests use
+transient browser activation from interaction with the reply (roughly five
+seconds), not proof that the person clicked the requested link.
+
+### ACP publication identities
+
+ACP preserves the engine's reported `name`, falling back to `title`; ACP itself
+does not require a universal MCP name spelling. codex-acp reports
+`Tool: station-control/html_render` as its title; claude-agent-acp reports
+`mcp__station-control__html_render` as the standard name. Both exact forms are
+accepted by the snapshot and transcript matchers; arbitrary html_render suffixes
+remain rejected. Regression tests drive these engine-shaped updates through the
+ACP mapper and canonical newest-window projection.
+
+Behavior sources inspected: [codex-acp thread.rs](https://github.com/zed-industries/codex-acp/blob/296069e841634cd4bb9bc4515602d836e49231ec/src/thread.rs),
+[claude-agent-acp renderer](https://github.com/zed-industries/claude-agent-acp/blob/dbf386d8d35d2bc30f17f11f15d1a4305c9d391f/src/tool-calls/renderer.ts).
+Other ACP engines may report different titles; their successful publication does
+not establish that an unqualified title identifies station-control. Live engine
+qualification is reported separately from this adapter regression.

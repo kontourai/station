@@ -35,40 +35,23 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${address.port}/parent`);
       const attack = `<script>(()=>{const results=[];const attempt=(realm,label)=>{try{const PC=realm.RTCPeerConnection||realm.webkitRTCPeerConnection;const pc=new PC({iceServers:[{urls:'stun:127.0.0.1:${port}'}]});pc.createDataChannel('probe');pc.createOffer().then(o=>pc.setLocalDescription(o));results.push(label+' OPEN')}catch{results.push(label+' blocked')}};attempt(window,'direct');try{Object.defineProperty(window,'RTCPeerConnection',{value:parent.RTCPeerConnection})}catch{};const child=document.createElement('iframe');child.src='about:blank';document.body.append(child);try{attempt(child.contentWindow,'child')}catch{results.push('child blocked')}try{attempt(window[0],'indexed child')}catch{results.push('indexed child blocked')}document.body.dataset.rtcResults=JSON.stringify(results); })()</script>`;
-      await page.evaluate(() => {
-        document.body.dataset.links = '0';
-        addEventListener('message', (event) => {
-          if (event.data?.type === 'html-reply-link')
-            document.body.dataset.links = String(
-              Number(document.body.dataset.links) + 1,
-            );
-        });
-      });
+      await page.evaluate(`(()=>{
+        document.body.dataset.links='0';
+        addEventListener('message',event=>{if(event.data?.type==='html-reply-link')document.body.dataset.links=String(Number(document.body.dataset.links)+1)});
+      })()`);
       for (const path of ['/html-reply/frame', '/mcp-ui/proxy']) {
-        await page.evaluate(
-          ({ origin, path, html }) => {
-            document.body.replaceChildren();
-            const frame = document.createElement('iframe');
-            frame.src = origin + path;
-            frame.onload = () =>
-              frame.contentWindow?.postMessage(
-                path.startsWith('/html')
-                  ? { type: 'html-reply-load', html }
-                  : {
-                      jsonrpc: '2.0',
-                      method: 'ui/notifications/sandbox-resource-ready',
-                      params: { html },
-                    },
-                origin,
-              );
-            document.body.append(frame);
-          },
-          {
-            origin: `http://127.0.0.1:${address.port}`,
-            path,
-            html: `${attack}<a href="https://example.com/">Continue</a><script>for(let i=0;i<6;i++)parent.postMessage({type:'html-reply-link',url:'https://example.com/'},'*')</script>`,
-          },
-        );
+        const payload = {
+          origin: `http://127.0.0.1:${address.port}`,
+          path,
+          html: `${attack}<a href="https://example.com/">Continue</a><script>for(let i=0;i<6;i++)parent.postMessage({type:'html-reply-link',url:'https://example.com/'},'*')</script>`,
+        };
+        await page.evaluate(`(()=>{
+          const {origin,path,html}=${JSON.stringify(payload)};
+          document.body.replaceChildren();
+          const frame=document.createElement('iframe');frame.src=origin+path;
+          frame.onload=()=>frame.contentWindow.postMessage(path.startsWith('/html')?{type:'html-reply-load',html}:{jsonrpc:'2.0',method:'ui/notifications/sandbox-resource-ready',params:{html}},origin);
+          document.body.append(frame);
+        })()`);
         await expect
           .poll(
             () => page.frames().some((frame) => frame.url() === 'about:srcdoc'),
@@ -84,25 +67,21 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         expect(packets, `${engine} ${path} UDP listener received packets`).toBe(
           0,
         );
-        expect(
-          await inner.evaluate(() => document.body.dataset.rtcResults),
-        ).toBe(
+        expect(await inner.evaluate('document.body.dataset.rtcResults')).toBe(
           JSON.stringify([
             'direct blocked',
             'child blocked',
             'indexed child blocked',
           ]),
         );
-        expect(await inner.evaluate(() => typeof RTCPeerConnection)).toBe(
+        expect(await inner.evaluate('typeof RTCPeerConnection')).toBe(
           'undefined',
         );
         if (path.startsWith('/html')) {
-          expect(await page.evaluate(() => document.body.dataset.links)).toBe(
-            '0',
-          );
+          expect(await page.evaluate('document.body.dataset.links')).toBe('0');
           await inner.getByRole('link', { name: 'Continue' }).click();
           await expect
-            .poll(() => page.evaluate(() => document.body.dataset.links))
+            .poll(() => page.evaluate('document.body.dataset.links'))
             .toBe('1');
         }
       }
@@ -110,11 +89,10 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         .frames()
         .find((frame) => frame.url() === 'about:srcdoc');
       if (!inner) throw new Error('Missing MCP sandbox');
-      await inner.evaluate((port) => {
-        const child = document.createElement('iframe');
-        child.srcdoc = `<script>const pc=new RTCPeerConnection({iceServers:[{urls:'stun:127.0.0.1:${port}'}]});pc.createDataChannel('residual');pc.createOffer().then(o=>pc.setLocalDescription(o));</script>`;
-        document.body.append(child);
-      }, port);
+      const nestedHtml = `<script>const pc=new RTCPeerConnection({iceServers:[{urls:'stun:127.0.0.1:${port}'}]});pc.createDataChannel('residual');pc.createOffer().then(o=>pc.setLocalDescription(o));</script>`;
+      await inner.evaluate(
+        `(()=>{const child=document.createElement('iframe');child.srcdoc=${JSON.stringify(nestedHtml)};document.body.append(child)})()`,
+      );
       await expect.poll(() => packets, { timeout: 5000 }).toBeGreaterThan(0);
       process.stdout.write(
         `${engine}: direct HTML/MCP UDP=0; nested srcdoc residual UDP=${packets}\n`,

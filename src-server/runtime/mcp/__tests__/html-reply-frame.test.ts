@@ -8,6 +8,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { createMcpUiFrameApp } = await import('../mcp-ui-frame-server.js');
 
 function proxy() {
+  const userActivation = { isActive: false };
   const parent = { postMessage: vi.fn() };
   const child = {
     title: '',
@@ -31,6 +32,7 @@ function proxy() {
   if (!script) throw new Error('Missing proxy bootstrap');
   runInNewContext(script, {
     parent,
+    navigator: { userActivation },
     URL,
     TextEncoder,
     document: { createElement: () => child, body: { append } },
@@ -43,7 +45,7 @@ function proxy() {
     origin = 'https://station.example',
     source: unknown = parent,
   ) => receive({ data, origin, source });
-  return { parent, child, append, dispatch };
+  return { parent, child, append, dispatch, userActivation };
 }
 
 describe('HTML reply sandbox bridge', () => {
@@ -66,7 +68,7 @@ describe('HTML reply sandbox bridge', () => {
     const response = await app.request('/html-reply/frame');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-security-policy')).toBe(
-      "frame-ancestors https://station.example; frame-src 'self'",
+      "frame-ancestors https://station.example; frame-src 'none'",
     );
     expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect((await app.request('/images/secret.png')).status).toBe(404);
@@ -117,6 +119,27 @@ describe('HTML reply sandbox bridge', () => {
     );
     p.dispatch(
       { type: 'html-reply-link', url: 'javascript:alert(1)' },
+      'null',
+      p.child.contentWindow,
+    );
+    expect(p.parent.postMessage).not.toHaveBeenCalled();
+    p.dispatch(
+      { type: 'html-reply-link', url: 'https://example.com/' },
+      'null',
+      p.child.contentWindow,
+    );
+    expect(p.parent.postMessage).not.toHaveBeenCalled();
+    p.userActivation.isActive = true;
+    p.dispatch(
+      { type: 'html-reply-link', url: 'javascript:alert(1)' },
+      'null',
+      p.child.contentWindow,
+    );
+    p.dispatch(
+      {
+        type: 'html-reply-link',
+        url: 'https://example.com/' + 'x'.repeat(2048),
+      },
       'null',
       p.child.contentWindow,
     );

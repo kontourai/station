@@ -267,6 +267,8 @@ export type ChromiumLauncher = (request: {
 export interface ChromiumServerHostOptions {
   /** Trusted disposable renderers only; bounds V8 heap, not total process RSS. */
   jsHeapLimitMb?: 128;
+  /** Disposable previews: refuse browser-side DNS resolution, including ICE. */
+  denyHostResolution?: boolean;
   executablePath: string;
   /**
    * The profile's egress policy (Station listeners plus the actor's reach,
@@ -676,6 +678,9 @@ export class ChromiumServerHost implements BrowserHost {
             profileDir,
             proxyServer: proxy.proxyServerArg,
           }),
+          ...(this.options.denyHostResolution
+            ? ['--host-resolver-rules=MAP * ~NOTFOUND']
+            : []),
           ...(this.options.jsHeapLimitMb
             ? ['--js-flags=--max-old-space-size=128']
             : []),

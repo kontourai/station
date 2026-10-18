@@ -242,8 +242,10 @@ A skill can also declare itself runnable as a slash command, which is how a reus
 
 Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
 
-For a visual reply, attach station-control and select `html_preview` and
-`html_render`. Preview self-contained HTML, inspect the returned screenshot,
+The built-in Station Agent receives visual replies through its default
+station-control attachment. For an authored Claude/Codex Agent, attach
+station-control and select `html_preview` and `html_render`; ACP must attach the
+whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
 height and console output, then publish the same HTML. Pages appear at the tool
 result and survive reload. Use the host theme CSS variables. App/session access
 and ordinary network loads are blocked. WebRTC isolation is incomplete: nested

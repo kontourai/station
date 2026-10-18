@@ -2,6 +2,9 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { CanonicalRuntimeEvent } from '../../../providers/adapter-shape.js';
+import { mapAcpSessionUpdate } from '../../../providers/adapters/acp-adapter-events.js';
+import { AcpToolUpdateSupervisor } from '../../../providers/adapters/acp-tool-update-supervisor.js';
 import { EventStore } from '../event-store.js';
 
 const makeTempDir = trackTempDirs();
@@ -88,3 +91,90 @@ test('conversation page quota covers successive publishing sessions without trun
     store.close();
   }
 });
+
+test.each([
+  ['Tool: station-control/html_render', undefined, true],
+  ['Display title', 'mcp__station-control__html_render', true],
+  ['Tool: attacker/html_render', undefined, false],
+  ['html_render', undefined, false],
+] as const)(
+  'ACP lifecycle %s / %s persists only a qualified publication reference',
+  (title, name, allowed) => {
+    const store = new EventStore(
+      join(makeTempDir('html-acp-reference-'), 'events.sqlite'),
+    );
+    const session = {
+      provider: 'acp' as const,
+      threadId: 'acp-publisher',
+      status: 'running' as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.upsertSession(session);
+    const reference = {
+      version: 1,
+      pageId: '00000000-0000-4000-8000-000000000001',
+      sessionId: session.threadId,
+    };
+    const publish = (event: CanonicalRuntimeEvent) => {
+      store.appendEvent(event);
+    };
+    const supervisor = new AcpToolUpdateSupervisor(session, publish);
+    const ctx = {
+      provider: 'acp' as const,
+      session,
+      activeTurnId: 'turn',
+      publish,
+      toolUpdateSupervisor: supervisor,
+    };
+    try {
+      store.appendEvent({
+        eventId: 'turn-start',
+        provider: 'acp',
+        threadId: session.threadId,
+        method: 'turn.started',
+        turnId: 'turn',
+        prompt: 'Publish',
+        createdAt: new Date().toISOString(),
+      });
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call',
+          title,
+          ...(name ? { name } : {}),
+        },
+        ctx,
+      );
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call',
+          status: 'completed',
+          rawOutput: {
+            content: [
+              { type: 'text', text: JSON.stringify({ htmlReply: reference }) },
+            ],
+          },
+        },
+        ctx,
+      );
+      const completed = store
+        .listConversationEventWindowByTurn([session.threadId], {
+          turnLimit: 1,
+          direction: 'newest',
+        })
+        .events.find((row) => row.method === 'tool.completed');
+      expect(completed?.payload.method).toBe('tool.completed');
+      if (completed?.payload.method !== 'tool.completed')
+        throw new Error('Missing ACP completion');
+      expect(completed.payload.toolName).toBe(name ?? title);
+      expect(completed.payload.htmlReply).toEqual(
+        allowed ? reference : undefined,
+      );
+    } finally {
+      supervisor.settleUnresolvedAtSessionEnd();
+      store.close();
+    }
+  },
+);

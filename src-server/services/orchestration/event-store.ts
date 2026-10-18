@@ -1675,7 +1675,7 @@ function snapshotEvent(
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      /^(?:mcp__station-control__|station-control[_/])html_render$/.test(
+      /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
         payload.toolName,
       )
         ? htmlReplyReference(payload.output)

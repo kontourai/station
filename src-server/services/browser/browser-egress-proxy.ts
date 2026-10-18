@@ -217,6 +217,8 @@ export class BrowserEgressProxy {
     const host = rawHost.replace(/^\[|\]$/g, '');
     if (host === '' || !Number.isInteger(port) || port < 1 || port > 65_535)
       return { ok: false, refusal: 'invalid-target' };
+    if (this.options.policy.reach.kind === 'none')
+      return { ok: false, refusal: 'non-public-address' };
     let addresses: string[];
     const bareName = host.toLowerCase().replace(/\.$/, '');
     if (isIP(host) !== 0) {

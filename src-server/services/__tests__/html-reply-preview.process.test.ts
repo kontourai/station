@@ -1,4 +1,6 @@
+import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
@@ -121,3 +123,55 @@ test('preview navigation and fetch cannot reach a loopback listener', async () =
     );
   }
 }, 40000);
+
+test('preview blocks ICE UDP in nested srcdoc and declarative closed shadow frames on loopback and LAN', async () => {
+  const lan = Object.values(networkInterfaces())
+    .flat()
+    .find((value) => value?.family === 'IPv4' && !value.internal)?.address;
+  expect(
+    lan,
+    'a real non-loopback interface is required for this host-egress test',
+  ).toBeDefined();
+  if (!lan) throw new Error('Missing non-loopback interface');
+  const sockets = [];
+  const packets = [0, 0];
+  const destinations = [];
+  try {
+    for (const [index, address] of ['127.0.0.1', lan].entries()) {
+      const socket = createSocket('udp4');
+      sockets.push(socket);
+      socket.on('message', () => packets[index]++);
+      await new Promise<void>((resolve, reject) => {
+        socket.once('error', reject);
+        socket.bind(0, address, resolve);
+      });
+      destinations.push(`stun:${address}:${socket.address().port}`);
+    }
+    const iceServers = JSON.stringify(destinations.map((urls) => ({ urls })));
+    const child = (label: string) =>
+      `<script>try{const pc=new RTCPeerConnection({iceServers:${iceServers}});pc.createDataChannel('probe');pc.createOffer().then(o=>pc.setLocalDescription(o));parent.postMessage({rtcProbe:'${label}',value:'OPEN'},'*')}catch{parent.postMessage({rtcProbe:'${label}',value:typeof RTCPeerConnection},'*')}</script>`;
+    const attr = (value: string) =>
+      value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+    const html = `<script>addEventListener('message',e=>{if(e.data?.rtcProbe)console.log('rtc-probe',e.data.rtcProbe,e.data.value)});const f=document.createElement('iframe');f.srcdoc=${JSON.stringify(child('nested')).replaceAll('<', '\\u003c')};document.body.append(f);</script><div><template shadowrootmode="closed"><iframe srcdoc="${attr(child('closed-shadow'))}"></iframe></template></div>`;
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-rtc-'));
+    const result = await service.render({ html, height: 400 }, 800, 'dark');
+    expect(result.contentHeight).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(
+      packets,
+      'preview must emit no ICE packets to loopback or the host LAN interface',
+    ).toEqual([0, 0]);
+    for (const label of ['nested', 'closed-shadow'])
+      expect(
+        result.console.some(
+          (entry) => entry.text === `rtc-probe ${label} OPEN`,
+        ),
+        `${label} executed its RTC attempt in a fresh realm`,
+      ).toBe(true);
+    process.stdout.write(
+      `Preview ICE listener results: loopback=${packets[0]}, LAN=${packets[1]} (${lan}); nested + closed-shadow RTC attempts executed\n`,
+    );
+  } finally {
+    for (const socket of sockets) socket.close();
+  }
+}, 30000);

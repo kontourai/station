@@ -206,3 +206,19 @@ test.each([
     ]).some((block) => block.type === 'html-reply'),
   ).toBe(false);
 });
+
+test.each([
+  'Tool: station-control/html_render',
+  'mcp__station-control__html_render',
+])('mounts a qualified ACP tool result: %s', (toolName) => {
+  const htmlReply = {
+    version: 1,
+    sessionId: 's',
+    pageId: '00000000-0000-4000-8000-000000000001',
+  };
+  expect(
+    splitToolCallRuns([
+      toolCall({ toolName, output: JSON.stringify({ htmlReply }) }),
+    ]).some((block) => block.type === 'html-reply'),
+  ).toBe(true);
+});

@@ -111,7 +111,9 @@ export function splitToolCallRuns<P extends ToolCallLike>(
       pending.push({ part, index });
       const name = part.toolName ?? part.name ?? part.type;
       if (
-        /^(?:mcp__station-control__|station-control[_/])html_render$/.test(name)
+        /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
+          name,
+        )
       ) {
         const reference =
           htmlReplyReference(part) ??
