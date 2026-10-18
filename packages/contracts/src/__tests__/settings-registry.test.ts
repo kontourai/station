@@ -131,6 +131,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'fleetContribution',
         // #1521 — candidate registry signature policy; applied separately.
         'registryTrust',
+        'telemetryTier',
         'templateVariables',
         // station#2652 — the first-run "About you" answers.
         'userProfile',
@@ -300,6 +301,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'runtime',
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',
+        'telemetryTier',
         // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
         // the `=== true` wiring in orchestration-service.ts — absent is off.
         'usageLimitAutoResume',

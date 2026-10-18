@@ -3,43 +3,13 @@
   "exceptions": [
     {
       "scope": "root",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6228009161: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z for this exact scope/advisory. Registry/advisory review on 2026-10-17 lists latest http-cache-semantics 4.3.0 and no first patched release. Prior integrity-verified reproduction in #3150 shows max-stale can reuse a shared Set-Cookie response despite a security-zeroed TTL in 4.2.0 and 4.3.0; exclusion from the advisory range is not verified remediation. Threat: an unauthenticated caller obtaining another user response from a shared cache. Production graph is present; Station endpoint exploitability/non-reachability remains unproved. Reassess upstream releases and graph changes; remove only after verified mitigation. Keep #3150 open.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-18"
-    },
-    {
-      "scope": "root",
       "package": "braces",
       "advisory": "GHSA-vfj7-8cjw-p6xm",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6228009161: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z. Registry/advisory review on 2026-10-17 still identifies latest braces 3.0.3 as affected, with no first patched release. Threat: untrusted deeply nested brace expansion exhausting the Node process stack. Production dependency presence is known; a reachable Station exploit or non-reachability remains unproved. No graph or policy workaround is proposed. Reassess upstream releases and graph/entry-point changes; remove only after verified mitigation. Keep #3150 open.",
+      "reason": "Brian Anderson explicitly approved this exact renewal, on 2026-10-18, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6244355601: temporary risk acceptance until exclusive 2026-10-25T00:00:00Z. Registry/advisory review on 2026-10-18 still identifies latest braces 3.0.3 as affected, with no first patched release. Threat: untrusted deeply nested brace expansion exhausting the Node process stack. Production dependency presence is known; a reachable Station exploit or non-reachability remains unproved. No graph or policy workaround is proposed. Reassess upstream releases and graph/entry-point changes; remove only after verified mitigation. Keep #3150 open.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-18"
-    },
-    {
-      "scope": "sdk",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6228009161: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z for this exact scope/advisory. Registry/advisory review on 2026-10-17 lists latest http-cache-semantics 4.3.0 and no first patched release. Prior integrity-verified reproduction in #3150 shows max-stale can reuse a shared Set-Cookie response despite a security-zeroed TTL in 4.2.0 and 4.3.0; exclusion from the advisory range is not verified remediation. Threat: an unauthenticated caller obtaining another user response from a shared cache. Production graph is present; Station endpoint exploitability/non-reachability remains unproved. Reassess upstream releases and graph changes; remove only after verified mitigation. Keep #3150 open.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-18"
-    },
-    {
-      "scope": "shared",
-      "package": "http-cache-semantics",
-      "advisory": "GHSA-ch52-4w7c-c8xp",
-      "severity": "high",
-      "owner": "station-maintainers",
-      "reason": "Brian Anderson explicitly approved this exact renewal, recorded at https://github.com/kontourai/station/issues/3150#issuecomment-6228009161: temporary risk acceptance until exclusive 2026-10-18T00:00:00Z for this exact scope/advisory. Registry/advisory review on 2026-10-17 lists latest http-cache-semantics 4.3.0 and no first patched release. Prior integrity-verified reproduction in #3150 shows max-stale can reuse a shared Set-Cookie response despite a security-zeroed TTL in 4.2.0 and 4.3.0; exclusion from the advisory range is not verified remediation. Threat: an unauthenticated caller obtaining another user response from a shared cache. Production graph is present; Station endpoint exploitability/non-reachability remains unproved. Reassess upstream releases and graph changes; remove only after verified mitigation. Keep #3150 open.",
-      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-18"
+      "expires": "2026-10-25"
     }
   ],
   "residuals": [

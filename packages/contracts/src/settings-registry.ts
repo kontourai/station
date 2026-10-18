@@ -220,13 +220,24 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
+    key: 'telemetryTier',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Telemetry tiers',
+    help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
+    description:
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite collection is not available yet.',
+    defaultValue: { kontour: 'lite', operator: 'lite' },
+  }),
+  defineSetting({
     key: 'telemetryEnabled',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Usage telemetry',
-    help: 'Station sends the documented anonymous product-usage events only while this is on and a telemetry endpoint is configured.',
+    userFacing: false,
+    label: 'Legacy usage telemetry',
+    help: 'Legacy input migrates to per-publisher telemetry tiers when the configuration is loaded.',
     description:
-      'Allow Station to send the documented anonymous product-usage events when this Station has a telemetry endpoint configured. No endpoint is configured by default, so nothing is sent.',
+      'Deprecated compatibility input: false becomes Off; true becomes Full only with a current disclosure, otherwise Lite.',
     defaultValue: true,
     envFallback: 'STATION_PRODUCT_TELEMETRY_ENABLED',
     envAliases: ['STATION_TELEMETRY_ENABLED'],

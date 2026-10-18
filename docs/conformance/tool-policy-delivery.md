@@ -2,13 +2,13 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.289; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.300; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.289.
+inspected or executed. They are not new provider results for SDK 0.3.300.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -98,6 +98,39 @@ has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+### Codex approval policy and reviewer
+
+The session-level engine Ask mode is separate from the authored per-tool Ask
+rules below. Selecting it does not make Codex enforce those rules.
+
+Station's Codex Ask mode selects `approvalPolicy: untrusted` and
+`sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
+A `workspace` session with no Station mode sends only `sandbox:
+workspace-write` and no `approvalPolicy`, so Codex's own approval
+configuration governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
+These policies determine when Codex requests approval. They do not select who
+reviews a sandbox escalation. Station leaves Codex's `approvalsReviewer`
+unchanged on thread start, resume, native adoption by fork, and subsequent
+turns. Codex configuration and managed requirements therefore govern that
+reviewer. An untrusted-command prompt and a sandbox escalation can take
+different approval paths.
+
+With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
+escalations automatically without opening a Station approval card. The Ask
+chip confirms the approval-policy mapping only; Station does not currently
+report the effective reviewer. Its picker and chip disclosure name that gap.
+Ask alone is not evidence that a person must approve every sandbox escalation.
+See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
+
+This mapping was checked against Codex CLI 0.162.1's generated app-server
+schema, which still accepts `untrusted` and exposes a separate
+`approvalsReviewer` request field. Newer OpenAI documentation retires
+`untrusted`; that does not establish behavior for every installed CLI version.
+A future reviewer selector must respect supported protocol versions and managed
+requirements, surface refusals, and preserve the sandbox boundary. Changing
+approval policy or selecting Full access is not a substitute for selecting a
+reviewer.
+
 ## Project source policy
 
 Project policy is a source ceiling, separate from per-action approval.
@@ -124,7 +157,8 @@ gate; the new surface permits scoped authoring and requests only.
 
 ## Explicit per-tool Ask
 
-`tools.askBeforeUse` is delivered by Station and Claude. New picker choices
+`tools.askBeforeUse` is an authored per-tool rule, separate from the
+session-level engine approval mode above. It is delivered by Station and Claude. New picker choices
 use `mcp/<server>/<action>` approval keys and source defaults use
 `mcp/<server>/*`. Station derives these from loader provenance; Claude uses
 an unambiguous SDK-owned MCP identity. Ambiguous SDK names with additional or overlapping
@@ -199,6 +233,10 @@ with a real turn in `permissionMode: 'default'`:
   `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
   user tier carries no such precondition: `~/.claude/settings.json` applies to
   every session regardless, because the operator wrote it for themselves.
+  A full-access session Station runs inside its Seatbelt profile (#2494) reads
+  both the user tier and that trust from a Station-owned configuration
+  directory instead, never the operator's
+  ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 
 So this reaches a workspace the operator has already trusted in Claude Code —
 their own repositories, normally. That makes it a same-user threat model:
@@ -342,8 +380,10 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
-SDK 0.3.289 forwards reason type, reason code and interaction fields, but not
-`classifier_approvable`. A test runs the real installed SDK against a stand-in
+SDK 0.3.289 was observed forwarding reason type, reason code and interaction
+fields, but not `classifier_approvable`. The current 0.3.300 type contract exposes
+`requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
+reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
 retained by the tap
 (`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request

@@ -1,0 +1,7 @@
+{
+  "revision": "cd761b8ec151c1e162f5624fb57ecc5750ce6127",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Generated index: added entries for the new terminal.md and process-supervisor.md proposals; titles match their H1s; no other entries changed.","inputs":["docs/design/README.md"]}
+  ]
+}

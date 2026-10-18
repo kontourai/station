@@ -160,9 +160,6 @@ describe('Monitoring new-event highlight (delta2 MEDIUM-3)', () => {
 });
 
 describe('Monitoring auto-follow (delta2 MEDIUM-2)', () => {
-  beforeAll(() => {
-    Element.prototype.scrollIntoView = vi.fn();
-  });
   afterEach(() => {
     cleanup();
     monitoring.events = [];
@@ -172,10 +169,13 @@ describe('Monitoring auto-follow (delta2 MEDIUM-2)', () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     monitoring.events = [row('10:00', '2026-08-21T10:00:00.000Z')];
-    const { rerender } = render(<MonitoringViewWithBoundary />);
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-
-    scrollIntoView.mockClear();
+    const { container, rerender } = render(<MonitoringViewWithBoundary />);
+    await waitFor(() =>
+      expect(container.querySelectorAll('.log-entry')).toHaveLength(1),
+    );
+    const log = container.querySelector<HTMLElement>('.log-stream')!;
+    Object.defineProperty(log, 'scrollHeight', { value: 600 });
+    expect(log.scrollTop).toBe(0);
     monitoring.events = [
       row('10:00', '2026-08-21T10:00:00.000Z'),
       row('10:01', '2026-08-21T10:01:00.000Z'),
@@ -184,6 +184,7 @@ describe('Monitoring auto-follow (delta2 MEDIUM-2)', () => {
 
     // Auto Follow is on by default; the new row is below the viewport and the
     // scroll button stays suppressed, so the view has to follow it.
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    await waitFor(() => expect(log.scrollTop).toBe(log.scrollHeight));
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });

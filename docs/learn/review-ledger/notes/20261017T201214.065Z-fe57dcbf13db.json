@@ -1,0 +1,21 @@
+{
+  "revision": "8dc4cc260070a250a3a66204dabf373a39d2e2d6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared inbox anatomy and touch-card claims against the InboxGroupList delta: Earlier pages in groups of 20; the same InboxRow, metadata, status, marks and New chat action remain. Existing prose remains accurate; focused host paging tests executed, physical-device behavior not claimed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed the SplitPaneLayout delta against its list/detail and loading/empty/error description. Optional listOutro adds pagination inside the scroll region only for Activity; other callers omit it. Existing skeleton description remains accurate.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Connections callers and list/readiness guidance against the optional SplitPaneLayout listOutro delta. Connections supplies no listOutro; query, navigation, detail and connection actions are unchanged. No prose change or new provider proof.","inputs":["docs/guides/connections.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the InboxGroupList paging delta against shared sheet, focus and 44px target requirements. Reuses Button, keeps it focused while paging and transfers focus to the first added row on the last page. New targets have an unconditional 44px minimum. Existing guidance remains accurate; no physical-device claim.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed Connections walkthrough and selected-row/hover claims against the SplitPaneLayout listOutro delta. Only Activity supplies the new slot; Connections and its selected-row CSS are unchanged. Existing historical capture qualifications remain accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed UI connection-check and evidence-limit claims against the optional SplitPaneLayout listOutro delta. Connection consumers omit the slot and the smoke path is unchanged. No new live-provider evidence or prose correction.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Activity/history and chat reopening claims against shared inbox paging. Earlier remains available through successive Show more actions; Activity search covers the whole loaded collection before paging, and selected deep links remain visible. Shared row open handlers and external-session behavior are unchanged. Existing guide remains accurate; focused mounted paging tests executed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the Connections capture qualification against the SplitPaneLayout listOutro delta. The optional pagination slot is supplied only by Activity; Connections omits it and the captured selection/chrome claims are unchanged. Retains the historical fixture-only evidence and capture identity; no new provider or screenshot claim.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

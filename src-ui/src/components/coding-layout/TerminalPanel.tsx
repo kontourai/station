@@ -27,6 +27,9 @@ import {
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
 
+/** Server events that belong to one terminal session (`TerminalEvent`). */
+const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
+
 export function TerminalPanel({
   projectSlug,
   workingDir,
@@ -215,6 +218,13 @@ export function TerminalPanel({
         if (authGate.consume(event.data as string)) return;
         try {
           const msg = JSON.parse(event.data as string);
+          // Defense in depth: session events for any other session (or before
+          // this panel's snapshot names its own) never reach this terminal.
+          if (
+            SESSION_EVENT_TYPES.has(msg.type) &&
+            (!sessionId || msg.sessionId !== sessionId)
+          )
+            return;
           if (msg.type === 'snapshot') {
             sessionId = msg.sessionId;
             setConnected(true);

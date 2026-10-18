@@ -1,0 +1,7 @@
+{
+  "revision": "a833c409930b072c1531eea1e0534a098f3d4865",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Traced hosted failures 39063616470 and 39054151685 to valid Nightly creation during API reads after the frozen entry clock. Reviewed dynamic observation-time validation after run/job reads and final freshness ages, with fixed numeric clock compatibility. Real HTTP production-clock regression fails before repair; 46 focused cases pass including mid-read creation/completion, threshold crossing and genuinely future refusal. No tolerance, retry, dispatch or source/publication authority change. Independent review approves; hosted execution of corrected revision remains unverified.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]}
+  ]
+}
