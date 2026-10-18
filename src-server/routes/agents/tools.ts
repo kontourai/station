@@ -474,12 +474,19 @@ export function createToolRoutes(
       param(c, 'serverId'),
     );
     const tools = catalog.available
-      ? catalog.tools
-          .filter((tool) => {
-            const uri = extractMCPAppsToolMetadata(tool).resourceUri;
-            return uri && uri.length <= 2048 && /^ui:\/\/[^\s]+$/.test(uri);
-          })
-          .map((tool) => tool.originalName)
+      ? catalog.tools.flatMap((tool) => {
+          if (
+            !tool ||
+            typeof tool !== 'object' ||
+            !('originalName' in tool) ||
+            typeof tool.originalName !== 'string'
+          )
+            return [];
+          const uri = extractMCPAppsToolMetadata(tool).resourceUri;
+          return uri && uri.length <= 2048 && /^ui:\/\/[^\s]+$/.test(uri)
+            ? [tool.originalName]
+            : [];
+        })
       : [];
     return c.json({ success: true, data: tools });
   });
