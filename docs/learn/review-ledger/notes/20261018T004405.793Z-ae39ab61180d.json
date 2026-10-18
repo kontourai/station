@@ -1,0 +1,7 @@
+{
+  "revision": "47c6f5e77346160903550821d017944f08b1606a",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the test-only follow-up: nonce isolation now asserts both authored scripts remain present and every parsed script lacks the Station shell nonce, instead of coupling the test to an exact script count. The shared trusted RTC bootstrap adds a script; host/security prose remains accurate and the actual 38-test host suite passed. Nested-srcdoc WebRTC residual remains explicitly documented; this does not assert complete network isolation.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]}
+  ]
+}
