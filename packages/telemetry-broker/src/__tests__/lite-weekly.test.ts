@@ -387,7 +387,15 @@ test('bounded cursor pages cover more than ten thousand values without truncatio
     new Set(cells.map((c) => JSON.stringify([c.week, c.dimension, c.value])))
       .size,
   ).toBe(cells.length);
-  for (const suffix of ['?cursor=bad', '?platform=linux', '?cursor=a&cursor=b'])
+  for (const suffix of [
+    '?cursor=' +
+      Buffer.from(JSON.stringify(['2026-02-30', 'platform', 'linux'])).toString(
+        'base64url',
+      ),
+    '?cursor=bad',
+    '?platform=linux',
+    '?cursor=a&cursor=b',
+  ])
     expect((await app.request(`/v1/public/aggregates${suffix}`)).status).toBe(
       400,
     );

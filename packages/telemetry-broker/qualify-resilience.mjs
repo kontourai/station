@@ -407,6 +407,7 @@ export async function qualifyResilience(
   }
   return [
     'real PostgreSQL: eight concurrent random bad-key floods preserve all twenty valid commits',
-    '100k closed-day pings: interrupted/resumed dimension finalization, independent retention, complete hash erasure, no public-read ingest lock',
+    '100k closed-day pings: interrupted/resumed dimension finalization, independent publisher/day erasure and retention, complete hash erasure, no public-read ingest lock',
+    'real valid Full/publisher keys: failed refresh beyond 60 seconds returns 503 credentials_stale',
   ];
 }

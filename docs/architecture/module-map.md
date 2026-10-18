@@ -4296,19 +4296,26 @@ IDs mapped to publisher/channel pairs, without installation credentials.
 deduplicates raw pings and records bounded contribution arrays and dimension
 jobs. Closed-day finalization uses grouped SQL in separately committed dimension
 transactions; retries resume pending jobs and later batches erase contributor
-associations. Retention commits independently. Both public and publisher values
-require ten distinct daily network keys (IPv4 or IPv6 /48), followed by fixed
-geometric noise with ε=1/57 per count and ε≤1 per added/removed ping on fixed
-release support. The hard k pre-filter itself reveals threshold crossings, so
-the complete response is not pure ε-DP. The persistent restricted HMAC key keeps
-public/publisher/restarted reads identical. Migration 5 replaces secondary
-suppression and client-value rows with jobs and the noise key. Counters are
-bucketed; set histograms overlap. Public reads never take the ingest advisory
-lock, and successful reads cache until UTC midnight. Cached credential digests
-route unknown keys into pre-auth refusal without storage; known product and
-publisher keys have per-credential post-auth budgets and storage rechecks.
-See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
-for composition, threshold, key rotation and low-volume accuracy limits.
+associations for completed publisher/days, even if another publisher's dimension
+fails. Retention commits independently. Operator `sto_` routes read exact daily
+marginals and weekly sums; weekly contributor counts are contributor-days because
+daily salts prevent cross-day deduplication.
+
+Public and publisher views release only four closed ISO UTC weeks over ten
+profile/adoption fields, excluding counters/friction. The fixed public domain
+contains enum values and each publisher's operator-configured public versions
+and registry IDs, including zero-count values. There is no true k pre-filter.
+Sensitivity is 40 per added/removed ping; ε=1/280 per count composes to ε≤1/7 per
+ping and ε≤1 per honest install-week at seven pings. The ideal geometric mechanism
+is pure ε-DP; HMAC and finite-precision sampling qualify this implementation.
+Migration 6 atomically freezes each publisher/week marker, domain and noisy
+estimates; re-finalization is forbidden. Keyset pages contain at most 200 cells.
+Public reads never take the ingest advisory lock, and successful pages cache
+until UTC midnight. Cached credential digests route unknown keys into pre-auth
+refusal without storage; known product and publisher keys have per-credential
+post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
+returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)
+for composition, fixed domains, key/publication custody and low-volume utility.
 
 **Composition and limits.** The
 [Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
@@ -4323,6 +4330,8 @@ rows do not guarantee physical database-file shrinkage.
 [live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
 database to exercise commit/replay, revocation, capacity, corrupt live schemas
 and stalled transport recovery. Its [Lite checks](../../packages/telemetry-broker/qualify-lite.mjs)
-also exercise strict rejection, privacy, suppression and publisher isolation.
+also exercise strict rejection, operator-only exact counts, weekly fixed domains,
+immutable publication, privacy, publisher isolation, stale credentials and
+independent erasure during a blocked dimension.
 Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.
