@@ -1,11 +1,11 @@
 {
   "kind": "local-telemetry-ui-qualification",
-  "implementationRevision": "e5b6c519bfcc9a97c2ed44ff997eee596e5cefa4",
+  "implementationRevision": "355d3f502cea58ffdcecf2d9e41df07d30d090d3",
   "baseRevision": "3f889efa11a826710c8bd43f39e1e8920720a350",
   "gallery": {
     "schemaVersion": 1,
     "runId": null,
-    "capturedAt": "2026-10-18T13:51:29.802Z",
+    "capturedAt": "2026-10-18T13:57:31.490Z",
     "expected": 68,
     "selection": [
       "telemetry-lite-notice-desktop",
@@ -608,7 +608,7 @@
   },
   "faultInjection": {
     "baseline": {
-      "revision": "e5b6c519bfcc9a97c2ed44ff997eee596e5cefa4",
+      "revision": "355d3f502cea58ffdcecf2d9e41df07d30d090d3",
       "command": "npm run test:focused -- src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
       "testsPassed": 7
     },
@@ -629,11 +629,19 @@
     "restoration": {
       "testsPassed": 7,
       "workingTreeClean": true
-    }
+    },
+    "requalifiedAfterNoticeCacheRepair": true
   },
   "limits": [
     "Local controlled component/route and browser evidence only",
     "No native packaged-shell, hosted exact-head CI, real publisher delivery, receiver deployment or release qualification",
     "Kontour Full UI remains unavailable; registry publisher registration remains another lane"
-  ]
+  ],
+  "noticeRemountRegression": {
+    "productionBaseline": "ded32e2e544",
+    "testAddedInWorkingTree": true,
+    "baseline": "FAIL: current notice reappears on remount from stale status cache",
+    "fixedRevision": "355d3f502cea58ffdcecf2d9e41df07d30d090d3",
+    "fixed": "PASS: keep current controls, suppress remount replay, preserve new-revision notice and working inline Off"
+  }
 }
