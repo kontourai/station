@@ -38,15 +38,7 @@ import { _getApiBase } from './api';
  */
 export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
 
-// TanStack erases query data to unknown; keep that adaptation out of domain code.
-export function adaptQueryStructuralSharing<T>(
-  share: (previous: T | undefined, next: T) => T,
-): (previous: unknown, next: unknown) => T {
-  return (previous, next) => share(previous as T | undefined, next as T);
-}
-
-export interface QueryConfig<T> {
-  structuralSharing?: UseQueryOptions<T>['structuralSharing'];
+export interface QueryConfig<_T> {
   staleTime?: number;
   gcTime?: number;
   enabled?: boolean;
@@ -143,6 +135,28 @@ export function useApiQuery<T = any>(
 }
 
 /**
+ * TanStack erases sharing inputs to unknown; this query has no select step,
+ * so its cached and fetched data share the queryFn return type.
+ */
+export function useApiQueryWithSharing<T>(
+  queryKey: (string | number | object | null)[],
+  queryFn: (signal?: AbortSignal) => Promise<T>,
+  share: (previous: T | undefined, next: T) => T,
+  config?: Omit<QueryConfig<T>, 'structuralSharing'>,
+) {
+  return useApiQueryWithMountPolicy(
+    queryKey,
+    queryFn,
+    {
+      ...config,
+      structuralSharing: (previous: unknown, next: unknown) =>
+        share(previous as T | undefined, next as T),
+    },
+    undefined,
+  );
+}
+
+/**
  * `refetchOnMount` policy for a read whose contents change OUTSIDE this
  * client: a plugin installed from the CLI, another tab or device, an agent
  * (#2319, #2345).
@@ -197,7 +211,9 @@ function useApiQueryWithMountPolicy<T>(
   // `useQuery` callers in this package (`developerRuntime.ts`) already do this.
   queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,
-  config: QueryConfig<T> | undefined,
+  config:
+    | (QueryConfig<T> & Pick<UseQueryOptions<T>, 'structuralSharing'>)
+    | undefined,
   defaultRefetchOnMount: typeof refetchOnMountWhenInvalidated | undefined,
 ) {
   const queryClient = useQueryClient();
