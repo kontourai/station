@@ -6,6 +6,7 @@ vi.mock('../api', () => ({
 
 import {
   DevicePairingRequiredError,
+  nativePushRegistrationStatus,
   registerNativePush,
   unregisterNativePush,
 } from '../query-domains/chatRuntimeDevice';
@@ -92,6 +93,55 @@ describe('native push registration', () => {
     expect(fetch).toHaveBeenCalledWith(
       'http://example.test/api/system/native-push',
       expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('reads the device registration status with GET on the registration path', async () => {
+    mockJsonResponse({ registered: true, registrationId: 'r'.repeat(22) });
+    await expect(nativePushRegistrationStatus()).resolves.toEqual({
+      registered: true,
+      registrationId: 'r'.repeat(22),
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      'http://example.test/api/system/native-push',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    mockJsonResponse({ registered: false, registrationId: null, extra: 1 });
+    await expect(nativePushRegistrationStatus()).resolves.toEqual({
+      registered: false,
+      registrationId: null,
+    });
+  });
+
+  it.each([404, 405])(
+    'answers null for a Station without the status route (%i)',
+    async (status) => {
+      mockJsonResponse({ success: false, error: 'Not found' }, status);
+      await expect(nativePushRegistrationStatus()).resolves.toBeNull();
+    },
+  );
+
+  it.each([
+    ['no fields', {}],
+    ['registered without an id', { registered: true, registrationId: null }],
+    ['an id without registered', { registered: false, registrationId: 'r' }],
+    ['an empty id', { registered: true, registrationId: '' }],
+    ['a non-boolean registered', { registered: 'yes', registrationId: 'r' }],
+  ])('refuses a malformed status (%s)', async (_label, payload) => {
+    mockJsonResponse(payload);
+    await expect(nativePushRegistrationStatus()).rejects.toThrow(
+      'Malformed native push registration status',
+    );
+  });
+
+  it('maps an unpaired status read to DevicePairingRequiredError and surfaces other failures', async () => {
+    mockJsonResponse({ error: 'device_pairing_required' }, 403);
+    await expect(nativePushRegistrationStatus()).rejects.toBeInstanceOf(
+      DevicePairingRequiredError,
+    );
+    mockJsonResponse({ error: 'native_push_unavailable' }, 503);
+    await expect(nativePushRegistrationStatus()).rejects.toThrow(
+      'Failed to read native push registration: 503',
     );
   });
 

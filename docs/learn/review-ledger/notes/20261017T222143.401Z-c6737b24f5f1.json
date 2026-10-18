@@ -1,0 +1,7 @@
+{
+  "revision": "d0d225852bc184a3d73095c1d58cd48771e68192",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated BrowserSessionService documentation at d0d225852bc1 after docs:mcp:generate: snapshot refs now require a bound lease and no human hold during the read; selects are hit-tested and respect inherited fieldset disablement; media requests are audited when sent and reset by the binder on human claims. The introductory manual and other topic bodies remain unchanged; generated static strings are not runtime/provider qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

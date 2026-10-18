@@ -899,6 +899,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Device tools' REST side: only internal requests with bound, opted-in
+  // callers are admitted. Paired credentials need terminal authority even
+  // to reach the route, which then refuses them as non-internal.
+  {
+    id: '/api/device-agent:terminal-operate',
+    method: '*',
+    prefix: '/api/device-agent',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
   // #90 browser tools' REST side: Station's own station-control tool code
   // is its only caller (the routes answer 404 to anything that is not the
   // internal principal). Declared so no credential reaches it by default;
@@ -3652,6 +3662,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sends session titles and project names off the machine to this phone.
     { method: 'POST', path: '/api/system/native-push/register' },
     { method: 'DELETE', path: '/api/system/native-push' },
+    // Whether the caller's own device is still registered (its registration
+    // id, never a token or key): the family read tier, like the reads below.
+    { method: 'GET', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`

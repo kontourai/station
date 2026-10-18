@@ -1,0 +1,7 @@
+{
+  "revision": "049ca5b373283025a2fdb4f19ba6a139f7bffd15",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Registered confined-homes as a state root in STATION_HOME_ROOTS (rollback/backup treat it like app-homes). This document lists no individual home roots; its rollback/backup classification claims are unchanged.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

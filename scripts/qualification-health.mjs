@@ -45,11 +45,16 @@ function publishedLeg(jobs, leg) {
   );
 }
 
-/** Observe qualification without starting a run or retrying a repair. */
+/**
+ * Observe qualification without starting a run or retrying a repair.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {number | (() => number)} [clock] A live clock, or a fixed observation time.
+ */
 export async function checkQualificationHealth(
   env = process.env,
-  now = Date.now(),
+  clock = Date.now,
 ) {
+  const currentTime = typeof clock === 'function' ? clock : () => clock;
   const options = { env };
   const issues = await listGithub(
     'issues?state=all&labels=bug,P1',
@@ -96,7 +101,7 @@ export async function checkQualificationHealth(
   )
     throw new Error('Invalid retained Nightly identity');
 
-  const since = new Date(now - 48 * HOUR).toISOString();
+  const since = new Date(currentTime() - 48 * HOUR).toISOString();
   const runs = (
     await listGithub(
       `actions/workflows/main-qualification.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
@@ -114,6 +119,7 @@ export async function checkQualificationHealth(
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const observed = [];
   for (const run of runs) {
+    const now = currentTime();
     if (
       !Number.isSafeInteger(run.id) ||
       !/^[0-9a-f]{40}$/.test(run.head_sha) ||
@@ -126,6 +132,7 @@ export async function checkQualificationHealth(
       'jobs',
       options,
     );
+    const observedAt = currentTime();
     const gates = jobs.filter((job) => job.name === QUALIFICATION_GATE_JOB);
     const gate = gates.length === 1 ? gates[0] : null;
     const starts = jobs
@@ -133,12 +140,12 @@ export async function checkQualificationHealth(
         (job) => job.name.startsWith('qualification / ') && job.started_at,
       )
       .map((job) => Date.parse(job.started_at));
-    if (starts.some((at) => !Number.isFinite(at) || at > now))
+    if (starts.some((at) => !Number.isFinite(at) || at > observedAt))
       throw new Error('Invalid qualification job start');
     const passed =
       gate?.conclusion === 'success' && gate.status === 'completed';
     const completed = passed ? Date.parse(gate.completed_at) : null;
-    if (passed && (!Number.isFinite(completed) || completed > now))
+    if (passed && (!Number.isFinite(completed) || completed > observedAt))
       throw new Error('Invalid qualification completion');
     observed.push({
       run,
@@ -193,6 +200,7 @@ export async function checkQualificationHealth(
   );
   const canonicalNightly = new Map();
   for (const run of nightlyRuns) {
+    const now = currentTime();
     const created = Date.parse(run.created_at);
     const updated = Date.parse(run.updated_at);
     if (
@@ -252,6 +260,7 @@ export async function checkQualificationHealth(
       )
     )
       throw new Error('Invalid Nightly current-attempt job identity');
+    const observedAt = currentTime();
     const sourceGate = jobs.filter(
       (job) => job.name === '1 · Source gate (lint, typecheck, browser smoke)',
     );
@@ -263,11 +272,12 @@ export async function checkQualificationHealth(
     if (
       passed &&
       (!Number.isFinite(Date.parse(sourceGate[0].completed_at)) ||
-        Date.parse(sourceGate[0].completed_at) > now)
+        Date.parse(sourceGate[0].completed_at) > observedAt)
     )
       throw new Error('Invalid Nightly source completion');
     nightlyObserved.push({ run, jobs, passed, created });
   }
+  const now = currentTime();
   const recoveries = nightlyObserved.filter(
     (item) => item.run.status === 'completed',
   );
