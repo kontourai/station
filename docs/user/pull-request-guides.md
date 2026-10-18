@@ -49,7 +49,9 @@ request a batch of 1–20 exact project/forge/repository/PR targets, and
 `read_pull_request_guide` to inspect the result. An over-limit batch is rejected
 before any request starts. Set `force: true` to rewrite an existing current-head
 guide; otherwise it is reused. Capacity is checked before reading a forge
-snapshot. Each admitted request starts independently; a batch
+snapshot. Refused requests return an MCP error; a batch with any refusal is
+marked as an error and retains every per-target result. Each admitted request
+starts independently; a batch
 can contain both starts and capacity refusals. These tools do not post reviews,
 change source files, or approve a pull request.
 
