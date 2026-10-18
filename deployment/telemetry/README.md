@@ -70,7 +70,8 @@ their own evidence; a live health response is not storage readiness.
 
 That source-key provisioning applies to the **opt-in full event stream**.
 The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
-instead accepts strict `station_daily` observations through a public source ID
+instead accepts strict `station_daily` and fixed-enum `TelemetryFeedback` bodies
+through a public source ID
 mapped by the operator to one publisher/channel. It never needs an installation
 secret. Publisher read keys are separate `stq_` credentials provisioned through
 the operator boundary. Do not route lite traffic through the authenticated
@@ -80,7 +81,11 @@ The broker's **owner analytics are exact** at `/v1/operator/lite/daily` and
 `/weekly`, authenticated with the private operator `sto_` key. Keep these routes
 private at ingress. Daily counts include exact distinct IPv4/IPv6-/48
 contributors; weekly counts sum contributor-days, because daily salts prevent
-cross-day deduplication. Publisher `stq_` keys cannot read exact analytics.
+cross-day deduplication. Publisher `stq_` keys cannot read exact analytics. Feedback
+counts are grouped by publisher/action/reason and receiver UTC day or week over
+the retained 90-day window, including partial current periods. Daily contributor
+hashes serve only dedupe and are erased after the day closes. Feedback is never
+included in public or third-party publisher aggregates in this PR.
 
 `/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
 Publisher keys receive only their own publisher's weekly publication. The ten

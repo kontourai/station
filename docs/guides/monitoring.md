@@ -24,6 +24,12 @@ The companion receiver additionally accepts identifier-free `station_daily`
 Lite pings through public publisher/channel source IDs. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily
 distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+90-day cutoff. Public and third-party publisher views exclude feedback.
 IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
 Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
 trusted connector CIDRs so clients do not share the connector key; only a trusted

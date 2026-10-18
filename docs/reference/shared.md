@@ -48,6 +48,11 @@ collection, consent, durable storage or deployed service.
 public registry/release catalogs. `custom` versions and `unknown` channel,
 distribution and layouts values are explicit sentinels; unknown object keys
 remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
 
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
