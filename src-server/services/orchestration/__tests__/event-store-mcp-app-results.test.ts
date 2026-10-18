@@ -192,3 +192,42 @@ test.each(['ordinary', 'error', 'invalid-uri', 'ambiguous', 'forged'] as const)(
     }
   },
 );
+
+test('terminal replay keeps its original App stamp through disconnect, declaration change and store reopen', () => {
+  const path = join(makeTempDir('mcp-app-replay-'), 'events.sqlite');
+  let store = new EventStore(path);
+  let uri: string | undefined = 'ui://demo/chart';
+  store.setMcpAppResourceResolver(() => uri);
+  const event = {
+    provider: 'codex' as const,
+    threadId: 'apps',
+    turnId: 'turn',
+    createdAt: '2026-10-17T12:00:00.000Z',
+    eventId: 'terminal',
+    method: 'tool.completed' as const,
+    itemId: 'call',
+    toolCallId: 'call',
+    toolName: 'demo/chart',
+    status: 'success' as const,
+    output: { content: [{ type: 'text', text: 'Chart data' }] },
+  };
+  try {
+    const sequence = store.appendEvent(event);
+    expect(store.appendEvent(event)).toBe(sequence);
+    uri = undefined;
+    expect(store.appendEvent(event)).toBe(sequence);
+    uri = 'ui://replacement/chart';
+    expect(store.appendEvent(event)).toBe(sequence);
+    store.close();
+    store = new EventStore(path);
+    expect(store.appendEvent(event)).toBe(sequence);
+    expect(store.listEvents('apps')[0]?.payload).toMatchObject({
+      mcpAppResourceUri: 'ui://demo/chart',
+    });
+    expect(() =>
+      store.appendEvent({ ...event, output: { content: [] } }),
+    ).toThrow('replay does not match');
+  } finally {
+    store.close();
+  }
+});

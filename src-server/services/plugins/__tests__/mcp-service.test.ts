@@ -78,6 +78,12 @@ const connectMCPMock = vi.mocked(connectMCP);
 function createMockConfigLoader() {
   const loader = withAtomicUpdate({
     getProjectHomeDir: () => MCP_TEMP_ROOT,
+    readIntegrationAppDefinition: vi.fn(() => ({
+      id: 'mcp-1',
+      kind: 'mcp',
+      transport: 'stdio',
+      enabled: true,
+    })),
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),
@@ -2379,6 +2385,60 @@ describe('MCPService', () => {
       await rm(home, { recursive: true, force: true });
     }
   });
+
+  test.each([
+    'disabled-server',
+    'disabled-tool',
+    'principal-credentials',
+  ] as const)(
+    'completion stamping and membership both obey current %s policy',
+    async (policy) => {
+      const home = await mkdtemp(join(tmpdir(), 'mcp-app-policy-'));
+      try {
+        const loader = new ConfigLoader({ projectHomeDir: home });
+        await loader.saveIntegration('mcp-1', {
+          id: 'mcp-1',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'node',
+          args: ['unused'],
+        });
+        const tool = {
+          name: 'mcp-1_render',
+          originalName: 'render',
+          serverId: 'mcp-1',
+          _meta: { ui: { resourceUri: 'ui://mcp-1/panel' } },
+        };
+        const service = new MCPService(
+          loader,
+          new Map([['mcp-1', { tools: [tool], isUsable: () => true }]]) as any,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Map(),
+          mockLogger,
+        );
+        expect(service.getOpenMCPAppResourceUri('mcp-1/render')).toBe(
+          'ui://mcp-1/panel',
+        );
+        await loader.updateIntegration('mcp-1', (def) => ({
+          ...def,
+          ...(policy === 'disabled-server'
+            ? { enabled: false }
+            : policy === 'disabled-tool'
+              ? { disabledTools: ['render'] }
+              : { credentialOwnership: { owner: 'principal' as const } }),
+        }));
+        expect(
+          service.getOpenMCPAppResourceUri('mcp-1/render'),
+        ).toBeUndefined();
+        const catalog = await service.getOpenMCPUIToolCatalog('mcp-1');
+        expect(catalog.available ? catalog.tools : []).toEqual([]);
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('history UI discovery uses definition-only metadata on the active connection without a parallel spawn', async () => {
     connectMCPMock.mockClear();

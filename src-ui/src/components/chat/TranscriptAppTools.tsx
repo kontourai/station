@@ -46,8 +46,6 @@ function useTranscriptAppTools(
   return useMemo(() => new Set(key.split('\n').filter(Boolean)), [key]);
 }
 
-const NO_APP_TOOLS: ReadonlySet<string> = new Set();
-
 type Calls = ReadonlyArray<Parameters<typeof transcriptMcpToolRef>[0]>;
 
 /** Ordinary prose/local tools do not acquire remote-data dependencies. */
@@ -58,8 +56,6 @@ export function TranscriptAppTools({
   calls: Calls;
   children: (tools: ReadonlySet<string>) => ReactNode;
 }) {
-  if (!calls.some((call) => transcriptMcpToolRef(call)))
-    return children(NO_APP_TOOLS);
   return (
     <ResolvedTranscriptAppTools calls={calls}>
       {children}

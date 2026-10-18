@@ -331,13 +331,22 @@ completed, non-error MCP result with a stable tool-call ID. The
 canonical `server/tool` or explicit `server`/`originalName` identity, without
 guessing from flattened underscores.
 It requires an untruncated successful MCP result envelope with a `content` array.
-That is only a cheap candidate filter: membership in the already-open server's
-UI-tool catalog is mandatory. The browser caches one `GET
+That is only a cheap candidate filter: membership in the server's connected or
+shipped in-process UI-tool catalog is mandatory. The browser caches one `GET
 /integrations/:serverId/ui-tools` request per server for five minutes, shared by
-rows and batching. The endpoint reads tool-definition `_meta.ui.resourceUri`
+rows and batching. This is a stale snapshot, not a polling interval: newly declared
+Apps can wait until a stale query refetches on mount/focus. Reloading fetches the
+current membership. The endpoint reads tool-definition `_meta.ui.resourceUri`
 (or its legacy flat spelling); a result pointer alone grants nothing. Unknown,
-disconnected or unusable connections return no UI tools without starting a
-process. Candidates remain in ordinary batches until membership is confirmed.
+disconnected or unusable third-party connections return no UI tools without starting a
+process. Station Control uses its shipped in-process tool registrations and App
+resources, so inventory and Basis previews also work when the default Agent is
+bound to Codex and no Station-engine MCP connection exists.
+
+Candidates remain in ordinary batches until membership is confirmed. The
+query wrapper keeps the same ancestry while eligibility changes, preserving
+row state and the streaming wait clock. Membership discovery uses the same
+read-tier device permission as passive resolution and resource reads.
 
 The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
 This is a source path, not real-provider qualification. Claude-provider MCP calls
@@ -348,7 +357,11 @@ accepted; ambiguous underscore names are never split.
 
 At ingress, EventStore discards incoming `mcpAppResourceUri` claims and stamps
 that optional field only for successful content envelopes whose tool definition
-is in the already-open catalog. A stamped event may retain its full envelope
+is in the already-open or shipped in-process catalog. The synchronous policy read
+uses the current bounded definition and applies enabled, disabled-tool and
+personal-credential restrictions just like membership. Replaying a terminal
+keeps its original stored stamp, including an absent stamp, independently of
+current catalog state; changed terminal content is still refused. A stamped event may retain its full envelope
 within the existing 24 KiB bound. Ordinary results, including forged result UI
 pointers, keep 84-character previews without waiting for catalog requests.
 Older readers ignore the additive field. Pre-stamp history reduced to text stays
@@ -358,7 +371,8 @@ The frame sends recorded input/result notifications without invoking
 `/initial-result` or the embedded-result fallback. Definition-only tools work;
 result metadata is not required. Resolution and resource requests carry
 `x-station-mcp-transcript: preview`, restricting catalog/read operations to
-already-open connections, with no compatibility-catalog fallback. A disconnect
+already-open third-party connections or shipped Station Control resources,
+with no compatibility-catalog fallback. A disconnect
 between membership and resource fetch cannot launch a replacement server.
 Unknown or unavailable resolution adds no card. Rendering revocation deliberately
 shows an operator-policy card for a catalog-confirmed App. Unresolved native

@@ -56,9 +56,15 @@ Existing installations retain their choice and previously imported history.
 In Station's web client, a completed MCP call can show its declared app directly
 below the tool row. No layout pin is needed. The integration must still be
 connected and permit rendering, and its current tool definition must declare a
-UI resource. The result itself needs only the standard MCP content envelope.
-Reloading mounts a retained preview again; Station does not call the tool or
-start a disconnected server to display it.
+UI resource. Station's own inventory and Basis Apps use shipped resources and
+also work when Codex owns the default Agent without a Station-engine connection.
+The result itself needs only the standard MCP content envelope. Reloading and
+opening the saved conversation mounts its retained preview again; Station does
+not call the tool or start a disconnected third-party server to display it.
+
+App membership is cached for five minutes. New declarations may wait for a
+stale query to refetch on mount or focus; reload to refresh the catalog. Read-only
+paired devices may discover and view previews.
 
 The Codex adapter preserves complete MCP results with canonical server/tool
 identity. Claude-provider MCP calls cannot mount: their output is summarized to

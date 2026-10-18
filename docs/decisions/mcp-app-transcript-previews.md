@@ -10,18 +10,23 @@ evidence:
 # MCP app transcript previews
 
 Completed MCP calls may mount the existing hardened web host alongside their
-transcript row only when the already-open server's tool definition declares an
+transcript row only when the server's already-open or shipped in-process tool definition declares an
 App. A cheap successful-content-envelope and provider-identity filter precedes
-membership in a per-server UI-tool catalog, cached for five minutes. Unknown or
+membership in a per-server UI-tool catalog, cached for five minutes. Metadata
+changes can wait for a stale mount/focus refetch; a reload refreshes membership. Unknown or
 disconnected servers produce no membership and no card. History discovery,
-resolution and resource reads never start stdio servers. Result `_meta.ui` is
+resolution and resource reads never start stdio servers. Station Control uses
+its shipped definitions and HTML directly, including on a Codex-default install
+without a Station-engine client connection. Discovery is a read-tier operation. Result `_meta.ui` is
 neither required nor authority to mount, retain an envelope or read a URI.
 
 At completion, EventStore overwrites any incoming `mcpAppResourceUri` with a
 Station-owned stamp from the already-open catalog. Only stamped successful MCP
 results fitting the existing 24 KiB event bound retain their full envelope in
 windows. Ordinary results retain diagnostic previews independent of catalog
-lookup timing. This additive optional runtime-event field leaves older readers
+lookup timing. Replayed terminals preserve the stored stamp even after
+disconnect or declaration changes. The completion and membership readers apply
+the same current enabled/disabled-tool/personal-credential policy. This additive optional runtime-event field leaves older readers
 compatible. Pre-stamp history whose output was reduced to text stays ordinary.
 Rendering rechecks the current catalog and render policy through the hardened
 path; this is current-resource semantics, not a historical HTML snapshot.

@@ -1,4 +1,5 @@
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { TranscriptAppTools } from '../components/chat/TranscriptAppTools';
 import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 /**
  * @vitest-environment jsdom
@@ -21,7 +22,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
@@ -136,7 +137,12 @@ describe('MCPToolUIFrame', () => {
         message.parts.flatMap(conversationPartToContentParts),
       );
     const requests: string[] = [];
-    fetchMock.mockImplementation((url: string) => {
+    const previewHeaders: (string | null)[] = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/ui/chart') || url.endsWith('/resource'))
+        previewHeaders.push(
+          new Headers(init?.headers).get('x-station-mcp-transcript'),
+        );
       requests.push(url);
       if (url.endsWith('/ui-tools'))
         return Promise.resolve(response(['chart']));
@@ -242,6 +248,12 @@ describe('MCPToolUIFrame', () => {
       mounted.unmount();
     }
     expect(requests.filter((url) => url.endsWith('/resource'))).toHaveLength(2);
+    expect(previewHeaders).toEqual([
+      'preview',
+      'preview',
+      'preview',
+      'preview',
+    ]);
     expect(
       requests.every(
         (url) =>
@@ -250,6 +262,39 @@ describe('MCPToolUIFrame', () => {
           url.endsWith('/resource'),
       ),
     ).toBe(true);
+  });
+
+  test('keeps one mounted subtree and its state while an ordinary MCP call completes and resumes', async () => {
+    fetchMock.mockResolvedValue(response([]));
+    let mounts = 0;
+    function StatefulRow() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      const [expanded, setExpanded] = useState(false);
+      return (
+        <button onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Expanded row' : 'Collapsed row'}
+        </button>
+      );
+    }
+    const client = new QueryClient();
+    const tree = (result?: unknown) => (
+      <QueryClientProvider client={client}>
+        <TranscriptAppTools
+          calls={[{ toolCallId: 'ordinary', toolName: 'demo/read', result }]}
+        >
+          {() => <StatefulRow />}
+        </TranscriptAppTools>
+      </QueryClientProvider>
+    );
+    const view = render(tree());
+    fireEvent.click(screen.getByText('Collapsed row'));
+    view.rerender(tree({ content: [] }));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    view.rerender(tree());
+    expect(screen.getByText('Expanded row')).toBeTruthy();
+    expect(mounts).toBe(1);
   });
 
   test('keeps completed app calls in the streaming transcript outside the batch sheet', async () => {

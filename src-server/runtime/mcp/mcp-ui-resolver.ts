@@ -75,7 +75,7 @@ export async function resolveMCPToolUIRef(
   }
 
   const connection = service.getConnectionStatus?.(agentSlug, parsed.serverId);
-  if (connection && !connection.connected) {
+  if (!options.openOnly && connection && !connection.connected) {
     return recordResolution({
       status: 'missing_server',
       ref,

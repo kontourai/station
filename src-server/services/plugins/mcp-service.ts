@@ -1,4 +1,5 @@
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
+import { stationControlAppCatalog } from '../../tools/station-control-mcp-server.js';
 
 /**
  * MCP Service - handles MCP tool management and connection status
@@ -1391,36 +1392,33 @@ export class MCPService {
   async getOpenMCPUIToolCatalog(
     serverId: string,
   ): Promise<MCPUIToolCatalogResult> {
-    const conn = this.mcpConfigs.get(serverId);
-    if (!conn || conn.isUsable?.() === false) return { available: false };
-    try {
-      const def = await this.configLoader.loadIntegration(serverId);
-      if (
-        def.enabled === false ||
-        def.credentialOwnership ||
-        conn !== this.mcpConfigs.get(serverId) ||
-        conn.isUsable?.() === false
-      )
-        return { available: false };
-      return {
-        available: true,
-        tools: conn.tools.filter(
-          (tool) =>
-            !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
-        ),
-      };
-    } catch {
+    const def = this.configLoader.readIntegrationAppDefinition(serverId);
+    if (!def || def.enabled === false || def.credentialOwnership)
       return { available: false };
-    }
+    const tools = this.openAppTools(serverId, def);
+    return tools ? { available: true, tools } : { available: false };
   }
 
-  /** Synchronous completion-time hint. Rendering rechecks the current catalog/policy. */
+  private openAppTools(serverId: string, def: ToolDef) {
+    const conn = this.mcpConfigs.get(serverId);
+    const tools = isBuiltinStationControl(serverId, def)
+      ? stationControlAppCatalog().tools
+      : conn && conn.isUsable?.() !== false
+        ? conn.tools
+        : undefined;
+    return tools?.filter(
+      (tool) =>
+        !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
+    );
+  }
+
   getOpenMCPAppResourceUri(ref: string): string | undefined {
     const parsed = parseMcpToolRef(ref);
     if (!parsed) return undefined;
-    const conn = this.mcpConfigs.get(parsed.serverId);
-    if (!conn || conn.isUsable?.() === false) return undefined;
-    const tool = conn.tools.find(
+    const def = this.configLoader.readIntegrationAppDefinition(parsed.serverId);
+    if (!def || def.enabled === false || def.credentialOwnership)
+      return undefined;
+    const tool = this.openAppTools(parsed.serverId, def)?.find(
       (tool) => tool.originalName === parsed.toolName,
     );
     const uri = extractMCPAppsToolMetadata(tool).resourceUri;
@@ -1482,6 +1480,30 @@ export class MCPService {
     _meta?: Record<string, unknown>;
     ui?: MCPAppsUiMetadata;
   }> {
+    const def =
+      serverId === 'station-control'
+        ? this.configLoader.readIntegrationAppDefinition(serverId)
+        : undefined;
+    if (def && isBuiltinStationControl(serverId, def)) {
+      if (def.enabled === false || def.credentialOwnership)
+        throw new MCPServerDisabledError('MCP App unavailable');
+      const catalog = await this.getOpenMCPUIToolCatalog(serverId);
+      if (
+        !catalog.available ||
+        !catalog.tools.some(
+          (tool) => extractMCPAppsToolMetadata(tool).resourceUri === uri,
+        )
+      )
+        throw new StationOwnedToolServerError(
+          'MCP App resource is not declared by an enabled tool',
+        );
+      const resource = stationControlAppCatalog().resources.find(
+        (resource) => resource.uri === uri,
+      );
+      if (!resource)
+        throw new StationOwnedToolServerError('MCP App resource unavailable');
+      return { ...resource, ui: extractMCPAppsResourceMetadata(resource) };
+    }
     return this.withMcpUiConnection(
       serverId,
       'resource-read',

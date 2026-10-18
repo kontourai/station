@@ -676,12 +676,17 @@ Discovery metadata is a browsing snapshot, not execution authority.
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`
 with raw tool names whose definitions declare valid `ui://` resources. It reads
-only already-open, usable Station connections, excluding disabled tools. Unknown
+already-open, usable third-party connections and shipped in-process Station
+Control definitions, excluding disabled tools. The endpoint requires
+`orchestration:read`, like passive resolution and resource reads. Unknown
 or disconnected servers return an empty list; this endpoint never starts one.
 The browser shares this inert membership snapshot per server for five minutes.
+Metadata changes can wait until a stale query refetches on mount/focus; reloading
+refreshes it. This cache is never execution authority.
 
 Transcript resolver/resource requests use `x-station-mcp-transcript: preview` to
-require an already-open connection throughout discovery and resource loading.
+require already-open third-party connections or shipped Station Control
+resources throughout discovery and resource loading.
 They do not use compatibility catalogs or open transient connections. Resource
 reads still re-resolve the current tool declaration and render policy; membership
 is never execution or resource-read authority.

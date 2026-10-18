@@ -19,7 +19,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
 `ToolCompletedEvent.mcpAppResourceUri` is an optional Station-owned completion
-stamp from an already-open MCP tool-definition catalog. EventStore replaces
+stamp from an already-open or shipped in-process MCP tool-definition catalog. EventStore replaces
 incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).

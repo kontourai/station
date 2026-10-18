@@ -3417,7 +3417,16 @@ export class EventStore {
     // Never accept a provider/import's claim to this Station-owned field.
     if (projectedEvent.method === 'tool.completed') {
       delete projectedEvent.mcpAppResourceUri;
+      const replay = this.db
+        .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
+        .get(projectedEvent.eventId) as { payload: string } | undefined;
+      const storedStamp = replay
+        ? JSON.parse(replay.payload).mcpAppResourceUri
+        : undefined;
+      if (replay && typeof storedStamp === 'string')
+        projectedEvent.mcpAppResourceUri = storedStamp;
       if (
+        !replay &&
         projectedEvent.status === 'success' &&
         !projectedEvent.error &&
         !projectedEvent.outputReceipt?.truncated &&

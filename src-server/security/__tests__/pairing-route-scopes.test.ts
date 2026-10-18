@@ -1129,6 +1129,29 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ).toBe(true);
   });
 
+  test('allows read-only paired devices to discover transcript UI tools but not integration configuration', async () => {
+    const resolver = {
+      verifyCredential: async () => true,
+      identifyDevice: () => null,
+      resolveGrantedScope: async () => pairingScopePresetString('read-only'),
+    };
+    const scope = requiredPairingScope(
+      'GET',
+      '/integrations/station-control/ui-tools',
+    );
+    expect(scope).toBe('orchestration:read');
+    await expect(
+      credentialAuthorizedForScope(resolver, scope!, 'paired-reader'),
+    ).resolves.toBe(true);
+    await expect(
+      credentialAuthorizedForScope(
+        resolver,
+        requiredPairingScope('GET', '/integrations/station-control')!,
+        'paired-reader',
+      ),
+    ).resolves.toBe(false);
+  });
+
   test('makes integration detail and embedded tool execution explicit operate decisions', () => {
     expect(matchPairingScopeRule('GET', '/integrations/mcp-1')).toMatchObject({
       origin: 'explicit',
