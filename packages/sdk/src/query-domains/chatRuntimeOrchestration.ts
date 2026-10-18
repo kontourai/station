@@ -57,6 +57,7 @@ import {
 import { StationRequestTimeoutError } from '../client/request-deadline';
 import { isStationAnswer } from '../client/station-envelope';
 import {
+  adaptQueryStructuralSharing,
   type MutationOptions,
   type QueryConfig,
   resolveApiBase,
@@ -1281,7 +1282,7 @@ export function useOrchestrationSessionsQuery(
       gcTime: config?.gcTime,
       enabled: config?.enabled,
       refetchInterval: config?.refetchInterval,
-      structuralSharing: shareSessionReadModel,
+      structuralSharing: adaptQueryStructuralSharing(shareSessionReadModel),
     },
   );
 }
