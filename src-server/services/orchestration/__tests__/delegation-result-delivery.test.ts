@@ -1236,167 +1236,192 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
   });
 });
 
-test('real result delivery selects the exact settled invocation before its bounded output read', async () => {
-  const eventStore = new EventStore(':memory:');
-  const store = eventStore.delegationResultStore();
-  const starts: string[] = [];
-  const owned = eventStore.sessionTurnBoundaryAuthority().reserve!(
-    'child',
-    '2030-01-01T00:00:00Z',
-  );
-  if (owned.kind !== 'owner') throw new Error('result claim prerequisite');
-  const capture = captureTurnIntent(
-    { threadId: 'child', input: 'B' },
-    { binding: {}, requiresFreshCompanions: false },
-  );
-  expect(
-    owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
-  ).toEqual({ kind: 'applied' });
-  expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
-    kind: 'applied',
-  });
-  const invocationId = capture.intent.invocationId;
-  const delivery = new DelegationResultDelivery({
-    store,
-    foldEvents: (threadId) =>
-      eventStore
-        .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
-        .map((stored) => ({
-          sequence: stored.sequence,
-          event: stored.payload,
-        })),
-    headSequence: (threadId) =>
-      eventStore.readSessionInventoryHighWater(threadId),
-    turnEvents: (threadId, turnId, methods, limit, invocationId) =>
-      eventStore.listTurnEventsByMethods(
-        threadId,
-        turnId,
-        methods,
-        limit,
-        invocationId,
-      ),
-    conversationOf: (threadId) => threadId,
-    currentSessionId: (id) => id,
-    coordinatorBusy: () => {
-      const read = eventStore
-        .sessionTurnBoundaryAuthority()
-        .hasPossibleEffect('child');
-      return read.kind !== 'available' || read.active;
-    },
-    sessionOwnerId: () => 'owner',
-    start: async ({ text }) => {
-      starts.push(text);
-      return {
-        outcome: 'started',
-        conversationId: 'parent',
-        sessionId: 'parent',
-        turnId: 'parent-turn',
-      };
-    },
-    steer: async () => ({ outcome: 'unsupported-engine' }),
-    subscribe: () => () => {},
-    logger: { warn() {} },
-    retryDelaysMs: [],
-  });
-  const base = {
-    provider: 'claude',
-    threadId: 'child',
-    createdAt: '2030-01-01T00:00:00Z',
-  };
-  try {
-    eventStore.appendEvent({
-      ...base,
-      eventId: 'A-start',
-      method: 'turn.started',
-      turnId: 'N',
-      invocationId: 'A',
-      prompt: 'A',
-    });
-    eventStore.appendEvent({
-      ...base,
-      eventId: 'A-done',
-      method: 'turn.completed',
-      turnId: 'N',
-      invocationId: 'A',
-      outputText: 'OLD A OUTPUT',
-    });
-    eventStore.appendEvent({
-      ...base,
-      eventId: 'B-start',
-      method: 'turn.started',
-      turnId: 'N',
-      invocationId,
-      prompt: 'B',
-    });
-    eventStore.appendEvent({
-      ...base,
-      eventId: 'late-A',
-      method: 'turn.completed',
-      turnId: 'N',
-      invocationId: 'A',
-      outputText: 'LATE OLD A OUTPUT',
-    });
-    store.arm({
-      childConversationId: 'child',
-      taskId: 'child',
-      parentConversationId: 'parent',
-      actor: { userId: 'owner', attribution: 'verified-bound' },
-    });
-    await delivery.reconcile();
-    expect(starts).toEqual([]);
-    const conflicting = {
-      ...base,
-      eventId: 'B-conflict',
-      method: 'turn.completed',
-      turnId: 'M',
-      invocationId,
-    };
-    eventStore['db']
-      .prepare(
-        `INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?,?)`,
-      )
-      .run(
-        conflicting.eventId,
-        base.provider,
-        base.threadId,
-        'M',
-        conflicting.method,
-        JSON.stringify(conflicting),
-        base.createdAt,
-        5,
-        5,
-      );
-    eventStore.appendEvent({
-      ...base,
-      eventId: 'B-done',
-      method: 'turn.completed',
-      turnId: 'N',
-      invocationId,
-      outputText: 'EXACT B OUTPUT',
-    });
-    await delivery.reconcile();
-    expect(starts).toEqual([]);
-    eventStore['db']
-      .prepare("DELETE FROM orchestration_events WHERE id='B-conflict'")
-      .run();
-    const exact = eventStore
-      .listEvents('child')
-      .find((row) => row.id === 'B-done');
-    if (!exact) throw new Error('result terminal prerequisite');
-    expect(
-      eventStore.sessionTurnBoundaryAuthority().observe(exact.payload),
-    ).toEqual({ kind: 'applied' });
-    await delivery.reconcile();
-    expect(starts).toHaveLength(1);
-    expect(starts[0]).toContain('EXACT B OUTPUT');
-    expect(starts[0]).not.toContain('OLD A OUTPUT');
-    await delivery.reconcile();
-    expect(starts).toHaveLength(1);
-    expect(store.listForChild('child')[0]?.transitionKey).toContain(
-      `invocation-${invocationId}`,
+test.each(['retained', 'retired', 'consistent'] as const)(
+  'real result delivery validates %s invocation scope before its first bounded output effect',
+  async (order) => {
+    const eventStore = new EventStore(':memory:');
+    const store = eventStore.delegationResultStore();
+    const starts: string[] = [];
+    const owned = eventStore.sessionTurnBoundaryAuthority().reserve!(
+      'child',
+      '2030-01-01T00:00:00Z',
     );
-  } finally {
-    delivery.stop();
-    eventStore.close();
-  }
-});
+    if (owned.kind !== 'owner') throw new Error('result claim prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 'child', input: 'B' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    expect(
+      owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+    ).toEqual({ kind: 'applied' });
+    expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+      kind: 'applied',
+    });
+    const invocationId = capture.intent.invocationId;
+    const delivery = new DelegationResultDelivery({
+      store,
+      foldEvents: (threadId) =>
+        eventStore
+          .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
+          .map((stored) => ({
+            sequence: stored.sequence,
+            event: stored.payload,
+          })),
+      headSequence: (threadId) =>
+        eventStore.readSessionInventoryHighWater(threadId),
+      turnEvents: (threadId, turnId, methods, limit, invocationId) =>
+        eventStore.listTurnEventsByMethods(
+          threadId,
+          turnId,
+          methods,
+          limit,
+          invocationId,
+        ),
+      conversationOf: (threadId) => threadId,
+      currentSessionId: (id) => id,
+      coordinatorBusy: () => {
+        const read = eventStore
+          .sessionTurnBoundaryAuthority()
+          .hasPossibleEffect('child');
+        return read.kind !== 'available' || read.active;
+      },
+      sessionOwnerId: () => 'owner',
+      start: async ({ text }) => {
+        starts.push(text);
+        return {
+          outcome: 'started',
+          conversationId: 'parent',
+          sessionId: 'parent',
+          turnId: 'parent-turn',
+        };
+      },
+      steer: async () => ({ outcome: 'unsupported-engine' }),
+      subscribe: () => () => {},
+      logger: { warn() {} },
+      retryDelaysMs: [],
+    });
+    const base = {
+      provider: 'claude',
+      threadId: 'child',
+      createdAt: '2030-01-01T00:00:00Z',
+    };
+    try {
+      eventStore.appendEvent({
+        ...base,
+        eventId: 'A-start',
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'A',
+        prompt: 'A',
+      });
+      eventStore.appendEvent({
+        ...base,
+        eventId: 'A-done',
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+        outputText: 'OLD A OUTPUT',
+      });
+      eventStore.appendEvent({
+        ...base,
+        eventId: 'B-start',
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId,
+        prompt: 'B',
+      });
+      eventStore.appendEvent({
+        ...base,
+        eventId: 'late-A',
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+        outputText: 'LATE OLD A OUTPUT',
+      });
+      store.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'owner', attribution: 'verified-bound' },
+      });
+      await delivery.reconcile();
+      expect(starts).toEqual([]);
+      const done: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent =
+        {
+          ...base,
+          eventId: 'B-done',
+          method: 'turn.completed',
+          turnId: 'N',
+          invocationId,
+          outputText: 'EXACT B OUTPUT',
+        };
+      const conflicting: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent =
+        {
+          ...base,
+          eventId: 'B-conflict',
+          method: 'turn.completed',
+          turnId: 'M',
+          invocationId,
+        };
+      if (order === 'retained') eventStore.appendEvent(conflicting);
+      eventStore.appendEvent(done);
+      if (order === 'retired') {
+        expect(
+          eventStore['db']
+            .prepare('SELECT * FROM orchestration_turn_boundaries')
+            .all(),
+        ).toEqual([]);
+        const witness = eventStore['db']
+          .prepare(
+            'SELECT terminal_retirement FROM orchestration_prepared_turns',
+          )
+          .get() as { terminal_retirement: string };
+        expect(
+          JSON.parse(witness.terminal_retirement).terminal.terminalEventId,
+        ).toBe('B-done');
+        eventStore.appendEvent(conflicting);
+      }
+      const raw = {
+        events: eventStore['db']
+          .prepare('SELECT * FROM orchestration_events')
+          .all(),
+        audit: eventStore['db']
+          .prepare('SELECT * FROM orchestration_prepared_turns')
+          .all(),
+        boundary: eventStore['db']
+          .prepare('SELECT * FROM orchestration_turn_boundaries')
+          .all(),
+      };
+      await delivery.reconcile();
+      if (order !== 'consistent') {
+        expect(starts).toEqual([]);
+        expect(
+          eventStore['db'].prepare('SELECT * FROM orchestration_events').all(),
+        ).toEqual(raw.events);
+        expect(
+          eventStore['db']
+            .prepare('SELECT * FROM orchestration_prepared_turns')
+            .all(),
+        ).toEqual(raw.audit);
+        expect(
+          eventStore['db']
+            .prepare('SELECT * FROM orchestration_turn_boundaries')
+            .all(),
+        ).toEqual(raw.boundary);
+        return;
+      }
+      await delivery.reconcile();
+      expect(starts).toHaveLength(1);
+      expect(starts[0]).toContain('EXACT B OUTPUT');
+      expect(starts[0]).not.toContain('OLD A OUTPUT');
+      await delivery.reconcile();
+      expect(starts).toHaveLength(1);
+      expect(store.listForChild('child')[0]?.transitionKey).toContain(
+        `invocation-${invocationId}`,
+      );
+    } finally {
+      delivery.stop();
+      eventStore.close();
+    }
+  },
+);

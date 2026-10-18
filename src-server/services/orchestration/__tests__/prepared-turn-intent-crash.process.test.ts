@@ -18,6 +18,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
+import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
 const THREAD = 'prepared-turn-owner';
 const KEY = 'prepared-turn-key';
@@ -86,6 +87,7 @@ async function killedOwner(
     | 'array-subclass'
     | 'non-enumerable'
     | 'dense-array',
+  cwd?: string,
 ) {
   const expected =
     phase === 'sparse-array' ||
@@ -112,6 +114,7 @@ async function killedOwner(
       KEY,
       INPUT,
       AMBIENT,
+      ...(cwd === undefined ? [] : [cwd]),
     ],
     {
       cwd: process.cwd(),
@@ -839,6 +842,168 @@ test.each(['accepted', 'early-terminal'] as const)(
       expect(retained?.capture.adapterInput.input).toBe('original bytes');
     } finally {
       spy.mockRestore();
+    }
+  },
+  90_000,
+);
+
+test.each(['fresh', 'resume'] as const)(
+  'acknowledged %s refusal releases only its local invocation and workspace; failed settlement retains it',
+  async (mode) => {
+    for (const settlement of ['applied', 'abort', 'ack-lost'] as const) {
+      const cwd = makeTempDir(`refusal-${mode}-${settlement}-`);
+      const path = join(cwd, 'events.sqlite');
+      if (mode === 'resume') await killedOwner(path, 'prepared', cwd);
+      const store = new EventStore(path);
+      stores.push(store);
+      class RefusingAdapter extends LiveResumeAdapter {
+        override async listSessions() {
+          return (await super.listSessions()).map((row) => ({ ...row, cwd }));
+        }
+        override async startSession(
+          input: Parameters<GateTestAdapter['startSession']>[0],
+        ) {
+          this.events.push({
+            method: 'session.started',
+            eventId: 'refusal-session',
+            provider: 'claude',
+            threadId: input.threadId,
+            sessionId: input.threadId,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              ...input.metadata,
+              nativeResumeBindingKey: 'b'.repeat(64),
+            },
+          });
+          return {
+            ...(await super.startSession(input)),
+            cwd,
+            resumeCursor: { sessionId: 'prepared-native-session' },
+          };
+        }
+      }
+      const adapter = new RefusingAdapter();
+      adapter.result = 'refused';
+      const service = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(adapter),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug() {}, warn() {} },
+      });
+      services.push(service);
+      service.initialize();
+      const owner = sessionReadAuthorityFromRequest(
+        'prepared-owner',
+        undefined,
+        undefined,
+      );
+      if (mode === 'fresh') {
+        await service.dispatch(
+          {
+            type: 'startSession',
+            input: {
+              threadId: THREAD,
+              provider: 'claude',
+              cwd,
+              metadata: { userId: 'prepared-owner' },
+            },
+          },
+          { userId: 'prepared-owner' },
+        );
+        await vi.waitFor(() =>
+          expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner'),
+        );
+      }
+      const identity = await resolveWorkspaceIdentity(cwd, 'local');
+      if (identity.kind === 'remote')
+        throw new Error('local workspace prerequisite');
+      const originalExec = DatabaseSync.prototype.exec;
+      let thrown = false;
+      const spy = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (this: DatabaseSync, sql: string) {
+          const result = originalExec.call(this, sql);
+          if (
+            settlement === 'ack-lost' &&
+            !thrown &&
+            sql === 'COMMIT' &&
+            this.prepare(
+              "SELECT 1 FROM orchestration_turn_boundaries WHERE state='settled'",
+            ).get()
+          ) {
+            thrown = true;
+            throw new Error('settlement COMMIT acknowledgement lost');
+          }
+          return result;
+        });
+      if (settlement === 'abort')
+        store['db'].exec(
+          "CREATE TRIGGER refuse_settlement BEFORE UPDATE ON orchestration_turn_boundaries WHEN NEW.state='settled' BEGIN SELECT RAISE(ABORT,'settlement unavailable'); END",
+        );
+      try {
+        const invocationId =
+          mode === 'resume'
+            ? String(storedIntent(path).row.invocation_id)
+            : undefined;
+        const dispatch =
+          mode === 'resume'
+            ? service.resumePreparedTurnIntent(THREAD, invocationId!, owner)
+            : service.dispatch(
+                {
+                  type: 'sendTurn',
+                  input: {
+                    threadId: THREAD,
+                    clientTurnId: KEY,
+                    input: INPUT,
+                    ambientContext: AMBIENT,
+                  },
+                },
+                { userId: 'prepared-owner' },
+              );
+        if (settlement === 'applied')
+          await expect(dispatch).rejects.toThrow('No provider-visible effect.');
+        else
+          await expect(dispatch).rejects.toMatchObject({
+            outcome: 'indeterminate',
+          });
+        expect(adapter.sent).toHaveLength(1);
+        const audit = store['db']
+          .prepare(
+            'SELECT state FROM orchestration_turn_boundaries WHERE thread_id=?',
+          )
+          .get(THREAD) as { state: string };
+        expect(audit.state).toBe(
+          settlement === 'abort' ? 'invoking' : 'settled',
+        );
+        if (settlement === 'applied') {
+          expect(service.hasActiveTurn(THREAD)).toBe(false);
+          await expect(
+            service.runWorkspaceRestore(identity.key, async () => 'restored'),
+          ).resolves.toBe('restored');
+          await expect(
+            service.dispatch(
+              {
+                type: 'sendTurn',
+                input: {
+                  threadId: THREAD,
+                  clientTurnId: KEY,
+                  input: INPUT,
+                  ambientContext: AMBIENT,
+                },
+              },
+              { userId: 'prepared-owner' },
+            ),
+          ).rejects.toMatchObject({ code: 'client_turn_settled' });
+          expect(adapter.sent).toHaveLength(1);
+        } else {
+          expect(service.hasActiveTurn(THREAD)).toBe(true);
+          await expect(
+            service.runWorkspaceRestore(identity.key, async () => 'unsafe'),
+          ).rejects.toThrow('workspace_has_active_turn');
+        }
+      } finally {
+        spy.mockRestore();
+      }
     }
   },
   90_000,

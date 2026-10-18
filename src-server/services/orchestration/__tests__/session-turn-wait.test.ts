@@ -1,5 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import { EventStore } from '../event-store.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import {
   evaluateSessionWait,
   SESSION_WAIT_MAX_PER_CALLER,
@@ -321,3 +323,118 @@ test('wait settlement carries exact invocation to result consumers when native i
     },
   });
 });
+
+test.each([
+  'wrong-native',
+  'missing-native',
+  'exact-native',
+  'session',
+] as const)(
+  'real accepted B/N wait requires exact native custody for %s terminal',
+  async (kind) => {
+    const store = new EventStore(':memory:');
+    const authority = store.sessionTurnBoundaryAuthority();
+    const owned = authority.reserve!('t', '2030-01-01T00:00:00Z');
+    if (owned.kind !== 'owner') throw new Error('wait reserve prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 't', input: 'B' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    expect(
+      owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+    ).toEqual({ kind: 'applied' });
+    expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(owned.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const base = {
+      provider: 'claude',
+      threadId: 't',
+      createdAt: '2030-01-01T00:00:04Z',
+    };
+    store.appendEvent({
+      ...base,
+      eventId: 'B-start',
+      method: 'turn.started',
+      turnId: 'N',
+      invocationId: capture.intent.invocationId,
+      prompt: 'B',
+    });
+    const ports: SessionTurnWaitPorts = {
+      foldEvents: () =>
+        store
+          .listEvents('t')
+          .map((row) => ({ sequence: row.sequence, event: row.payload })),
+      headSequence: () => store.readSessionInventoryHighWater('t'),
+      coordinatorBusy: () => {
+        const read = authority.hasPossibleEffect('t');
+        return read.kind !== 'available' || read.active;
+      },
+      subscribe: (_thread, listener) =>
+        store.observeCommits({
+          eventCommitted() {
+            listener();
+          },
+        }),
+    };
+    const controller = new AbortController();
+    let outcome: unknown;
+    const waiting = new SessionTurnWaiter(ports)
+      .wait({
+        callerSessionId: 'caller',
+        threadId: 't',
+        until: 'turn-settled',
+        afterEventCursor: 1,
+        timeoutMs: 10000,
+        signal: controller.signal,
+      })
+      .then((value) => {
+        outcome = value;
+        return value;
+      });
+    try {
+      if (kind === 'session') {
+        const ended: CanonicalRuntimeEvent = {
+          ...base,
+          eventId: 'session-end',
+          method: 'session.exited',
+          sessionId: 't',
+          exitCode: 0,
+        };
+        store.appendEvent(ended);
+        expect(authority.observe(ended)).toEqual({ kind: 'applied' });
+      } else
+        store.appendEvent({
+          ...base,
+          eventId: 'B-error',
+          method: 'runtime.error',
+          severity: 'error',
+          message: kind,
+          invocationId: capture.intent.invocationId,
+          ...(kind === 'missing-native'
+            ? {}
+            : { turnId: kind === 'wrong-native' ? 'M' : 'N' }),
+        });
+      await Promise.resolve();
+      if (kind === 'wrong-native' || kind === 'missing-native') {
+        expect(authority.hasPossibleEffect('t')).toEqual({
+          kind: 'available',
+          active: true,
+        });
+        expect(outcome).toBeUndefined();
+        controller.abort();
+        await expect(waiting).resolves.toEqual({ kind: 'aborted' });
+      } else
+        await expect(waiting).resolves.toMatchObject({
+          kind: 'settled',
+          settledTurn: { outcome: kind === 'session' ? 'exited' : 'error' },
+        });
+    } finally {
+      controller.abort();
+      await waiting;
+      store.close();
+    }
+  },
+);

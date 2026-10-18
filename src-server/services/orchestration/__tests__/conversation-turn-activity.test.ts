@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChildWorkProjection } from '../child-work-projection.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
-import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
+import {
+  activeTurnIdForEvents,
+  projectSessionLifecycle,
+} from '../session-lifecycle-service.js';
 
 /**
  * #2309: the conversation activity projection, driven through a REAL event
@@ -351,6 +354,160 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     append(ROOT, { method: 'turn.completed', turnId: 't1' });
     expect(projection.readForThread(ROOT)?.openTurn?.turnId).toBe('t2');
   });
+
+  test.each(['direct', 'primed'] as const)(
+    'invocation %s cold seed selects B start/tools and rejects late A terminal and tool mutation',
+    (path) => {
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'A',
+        createdAt: '2030-01-01T00:00:00Z',
+      });
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'old-only',
+        toolName: 'Old',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      const startB = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'B',
+        createdAt: '2030-01-02T00:00:00Z',
+      });
+      const toolB = append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'B',
+        toolCallId: 'shared-tool',
+        toolName: 'B tool',
+      });
+      const cold = freshProjection();
+      if (path === 'primed')
+        cold.primeThreads(store.listSessionProjectionEventsForThreads([ROOT]));
+      expect(cold.readForThread(ROOT)?.openTurn).toMatchObject({
+        turnId: 'N',
+        startedAt: startB.createdAt,
+      });
+      expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+        { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+      ]);
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'late-A-tool',
+        toolName: 'Old delayed',
+      });
+      append(ROOT, {
+        method: 'tool.completed',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'shared-tool',
+        toolName: 'Old same id',
+        status: 'success',
+      });
+      expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+        { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+      ]);
+      for (const invocationId of ['A', undefined]) {
+        append(ROOT, {
+          method: 'turn.completed',
+          turnId: 'N',
+          invocationId,
+          createdAt: '2100-01-01T00:00:00Z',
+        });
+        expect(cold.readForThread(ROOT)?.openTurn?.turnId).toBe('N');
+      }
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'B',
+        createdAt: '1900-01-01T00:00:00Z',
+      });
+      expect(cold.readForThread(ROOT)?.openTurn).toBeUndefined();
+    },
+  );
+
+  test.each(['single', 'batch'] as const)(
+    'bounded %s projection retains exact B terminal and error before native ranking',
+    (path) => {
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'A' });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'B' });
+      append(ROOT, {
+        method: 'runtime.error',
+        turnId: 'N',
+        invocationId: 'B',
+        severity: 'error',
+        message: 'B failed',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'B',
+      });
+      append(ROOT, {
+        method: 'runtime.error',
+        turnId: 'N',
+        invocationId: 'A',
+        severity: 'error',
+        message: 'old A failed',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      append(ROOT, {
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'idle',
+      });
+      append(ROOT, {
+        method: 'content.text-delta',
+        turnId: 'N',
+        invocationId: 'A',
+        itemId: 'old',
+        delta: 'late',
+      });
+      const session = store.readSessionByThread(ROOT);
+      if (!session) throw new Error('bounded projection session prerequisite');
+      const full = store.listEvents(ROOT).map((row) => row.payload);
+      const bounded =
+        path === 'single'
+          ? store.listSessionProjectionEvents(ROOT)
+          : (store.listSessionProjectionEventsForThreads([ROOT]).get(ROOT) ??
+            []);
+      expect(
+        projectSessionLifecycle({ session, events: full }).lifecycleState,
+      ).toBe('idle');
+      expect(
+        projectSessionLifecycle({
+          session,
+          events: bounded.map((row) => row.payload),
+        }).lifecycleState,
+      ).toBe('idle');
+      expect(
+        bounded.some(
+          (row) =>
+            row.payload.method === 'turn.completed' &&
+            row.payload.invocationId === 'B',
+        ),
+      ).toBe(true);
+    },
+  );
 
   test('sees writers that bypass the service publish path: appendEventIfAbsent closes the turn', () => {
     append(ROOT, { method: 'turn.started', turnId: 'turn-b' });

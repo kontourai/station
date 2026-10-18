@@ -9,8 +9,15 @@ import { EventBus } from '../../event-bus.js';
 import { EventStore } from '../../event-store.js';
 import { OrchestrationService } from '../../orchestration-service.js';
 
-const [databasePath, phase, threadId, clientTurnId, input, ambientContext] =
-  process.argv.slice(2);
+const [
+  databasePath,
+  phase,
+  threadId,
+  clientTurnId,
+  input,
+  ambientContext,
+  cwd,
+] = process.argv.slice(2);
 if (!databasePath || !threadId || !clientTurnId || !input)
   throw new Error('Missing prepared-intent child input.');
 
@@ -35,6 +42,7 @@ class InterruptedAdapter extends GateTestAdapter {
     });
     return {
       ...(await super.startSession(value)),
+      ...(value.cwd === undefined ? {} : { cwd: value.cwd }),
       resumeCursor: { sessionId: 'prepared-native-session' },
     };
   }
@@ -73,6 +81,7 @@ await service.dispatch(
     input: {
       threadId,
       provider: 'claude',
+      ...(cwd === undefined ? {} : { cwd }),
       metadata: { userId: 'prepared-owner' },
     },
   },
