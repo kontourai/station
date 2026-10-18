@@ -1,0 +1,9 @@
+{
+  "revision": "f925dd28a7c5e6860ad9cb03ae510d07cf82796e",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the managed model callback through the real VoltAgent adapter, provider-visible schema bounds and prompt, 36-line schema and normalization failure mapping, head coverage, and named scrollable excerpts. All 204 seam cases passed at f925dd28a7c before mutation; adapter, Strands, excerpt refinement, SDK limit-copy and guardian malformed-output mutants each failed and were restored. Final-head live provider, WebKit/native, hosted and release behavior are not qualified by these deterministic tests.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/pull-requests/pull-request-review-guide-errors.ts","src-server/services/pull-requests/pull-request-review-guide-normalize.ts","src-server/services/pull-requests/pull-request-review-guide.ts","src-ui/src/components/coding-layout/PullRequestGuide.tsx"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed only the structured-output/guardian delta: actual VoltAgent 2.10 three-argument API and Strands 1.19 Zod input, real model-boundary tests, unchanged guardian policy/modes/grants/normalization, and restored real allow/deny/defer verdicts. Malformed verdicts remain defer; removing the blank-reason rejection fails the real-adapter guardian test. Previous guide coverage/limits remain partial; this does not qualify native providers or real tool execution.","inputs":["docs/guides/agents.md","src-server/services/approvals/approval-guardian.ts","src-server/runtime/frameworks/voltagent-adapter.ts","src-server/runtime/frameworks/strands-adapter.ts"]}
+  ]
+}
