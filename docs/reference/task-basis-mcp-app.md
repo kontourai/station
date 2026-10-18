@@ -31,7 +31,7 @@ authority is currently unavailable on this path.
 [BasisMcpWorkspacePane](../../src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx)
 supplies the narrow host adapter to
 [MCPToolUIFrame](../../src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx).
-The iframe asks that adapter for pages; its CSP blocks direct network access.
+The iframe asks that adapter for pages; its CSP blocks ordinary network loads. The shared [MCP sandbox network limitation](../decisions/html-replies.md#review-amendment-network-and-link-boundaries) applies: nested srcdoc can still send WebRTC ICE UDP.
 Ordinary read-only App calls do not gain this special Task capability. The
 [route](../../src-server/routes/orchestration/tasks.ts) rechecks current
 principal and returned Session identities after owner reads.

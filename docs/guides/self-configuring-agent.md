@@ -23,8 +23,8 @@ example does not grant one implicitly.
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
-connection supports tool servers. Publishing is a bounded write and respects
-the engine's approval policy. The [visual replies guide](../user/html-replies.md)
+connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
+and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
 owns limits, theme variables, Chromium prerequisites and page deletion semantics.
 
 ## What `station-control` gives you

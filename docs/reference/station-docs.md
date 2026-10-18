@@ -245,9 +245,11 @@ Station speaks the Model Context Protocol for tools. An integration is an MCP se
 For a visual reply, attach station-control and select `html_preview` and
 `html_render`. Preview self-contained HTML, inspect the returned screenshot,
 height and console output, then publish the same HTML. Pages appear at the tool
-result and survive reload. Use the host theme CSS variables; network requests
-and app/session access are blocked inside the page sandbox. Publishing is a
-bounded write and respects engine tool approval. Chromium is needed only for
+result and survive reload. Use the host theme CSS variables. App/session access
+and ordinary network loads are blocked. WebRTC isolation is incomplete: nested
+srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not
+ask viewers for secrets. Preview and publishing are bounded writes and respect
+engine tool approval. Chromium is needed only for
 preview. See the [visual replies guide](../user/html-replies.md) for byte,
 image, viewport, time and retention limits.
 
