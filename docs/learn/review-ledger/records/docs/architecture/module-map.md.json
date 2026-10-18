@@ -1088,7 +1088,9 @@
 
     "packages/telemetry-broker/src/noisy-count.ts",
 
-    "packages/telemetry-broker/qualify-resilience.mjs"
+    "packages/telemetry-broker/qualify-resilience.mjs",
+
+    "packages/telemetry-broker/src/public-domain.ts"
   ],
 
   "checks": [
