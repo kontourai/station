@@ -1,8 +1,10 @@
+import { AssertionError, ok as assertContract } from 'node:assert/strict';
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -44,14 +46,94 @@ const terminal = (event: CanonicalRuntimeEvent) =>
   event.method === 'turn.aborted' ||
   event.method === 'runtime.error';
 
-// Each entry is a reproduced adapter defect, not permission to omit the check.
-// Keep the same assertions under it.fails: fixing the adapter makes this suite red
-// until its known-gap designation is removed.
-const gaps = {
-  active: new Set(['codex', 'bedrock', 'ollama']),
-  interrupt: new Set(['claude', 'codex', 'acp']),
-  attachment: new Set(['codex', 'muse', 'station-agent', 'bedrock', 'ollama']),
-};
+// #3834 asks whether concurrent sends must refuse, supersede, or overwrite.
+// Until decided, pin each adapter's actual behavior without calling it a defect.
+const concurrent = {
+  codex: 'overwrite',
+  bedrock: 'supersede',
+  ollama: 'supersede',
+} as const;
+const attachmentGaps = new Set([
+  'codex',
+  'muse',
+  'station-agent',
+  'bedrock',
+  'ollama',
+]);
+
+interface GapObservation {
+  satisfied: boolean;
+  healthy(): void;
+}
+
+/** Only this exact assertion may be inverted; setup/other failures must stay red. */
+function knownGap(
+  category: 'DEFECT' | 'HARDENING',
+  name: string,
+  failure: string,
+  observe: () => Promise<GapObservation>,
+) {
+  describe(`${category}: ${name}`, () => {
+    let observation: GapObservation | undefined;
+    let preparationError: unknown;
+    const unexpectedSignatures: unknown[] = [];
+    afterAll(() => {
+      expect(
+        unexpectedSignatures,
+        `Only the pinned gap assertion may fail: ${failure}`,
+      ).toEqual([]);
+    });
+    beforeAll(() => {
+      process.stdout.write(
+        `[adapter-conformance] ${category}: ${name}; pinned failure: ${failure}\n`,
+      );
+    });
+    beforeEach(async () => {
+      observation = undefined;
+      preparationError = undefined;
+      try {
+        observation = await observe();
+      } catch (error) {
+        preparationError = error;
+      }
+    });
+    it('passing prerequisites remain normal assertions', () => {
+      if (preparationError) throw preparationError;
+      expect(observation).toBeDefined();
+      observation!.healthy();
+    });
+    it.fails(`known gap: ${failure}`, async ({ annotate, onTestFinished }) => {
+      // Vitest also inverts teardown errors. Audit the complete raw error list
+      // after teardown, then assert it outside the it.fails inversion.
+      onTestFinished(({ task }) => {
+        const errors = task.result?.errors ?? [];
+        if (
+          errors.length !== 1 ||
+          errors[0].name !== 'AssertionError' ||
+          errors[0].message !== failure
+        ) {
+          unexpectedSignatures.push(
+            errors.map(({ name, message }) => ({ name, message })),
+          );
+        }
+      });
+      if (preparationError || !observation) {
+        await annotate(
+          `Unexpected preparation failure: ${String(preparationError)}`,
+        );
+        return; // Unexpected success makes it.fails RED, never masks the error.
+      }
+      try {
+        assertContract(observation.satisfied, failure);
+      } catch (error) {
+        if (error instanceof AssertionError && error.message === failure)
+          throw error;
+        await annotate(`Unexpected gap failure: ${String(error)}`);
+        // A different error must also become an unexpected success (RED).
+      }
+    });
+  });
+}
 
 function exempt(adapter: string, reason: string) {
   // The focused/default reporter hides skipped names. Emit every reason even there.
@@ -61,15 +143,29 @@ function exempt(adapter: string, reason: string) {
   it.skip(reason, () => {});
 }
 
-for (const name of ADAPTERS) {
-  describe(`ProviderAdapterShape conformance: ${name}`, () => {
+const registrations = [
+  ...ADAPTERS.map((name) => ({
+    name,
+    label: name as string,
+    transport: 'serve' as const,
+  })),
+  {
+    name: 'muse' as const,
+    label: 'muse exec fallback',
+    transport: 'exec-fallback' as const,
+  },
+];
+for (const { name, label, transport } of registrations) {
+  describe(`ProviderAdapterShape conformance: ${label}`, () => {
     beforeAll(() => {
-      for (const [category, adapters] of Object.entries(gaps)) {
-        if (adapters.has(name))
-          process.stdout.write(
-            `[adapter-conformance] ${name}: KNOWN GAP ${category} (it.fails; see named contract assertion)\n`,
-          );
-      }
+      if (name in concurrent)
+        process.stdout.write(
+          `[adapter-conformance] CONTRACT-UNDECIDED #3834: ${label} concurrent send = ${concurrent[name as keyof typeof concurrent]}\n`,
+        );
+      if (name === 'muse')
+        process.stdout.write(
+          `[adapter-conformance] Muse production transport: ${transport}\n`,
+        );
     });
     let engine: ConformanceEngine;
     let root: string;
@@ -139,7 +235,7 @@ for (const name of ADAPTERS) {
         (command, args, options) =>
           new ConformanceClaudeChild(command, args, options),
       );
-      engine = createConformanceEngine(name, cwd);
+      engine = createConformanceEngine(name, cwd, transport);
       signal = new AbortController();
       reader = (async () => {
         for await (const event of engine.adapter.streamEvents({
@@ -202,51 +298,287 @@ for (const name of ADAPTERS) {
       expect(await engine.adapter.hasSession(THREAD)).toBe(false);
     });
 
-    const interruptTest = gaps.interrupt.has(name) ? it.fails : it;
-    interruptTest(
-      `interrupt — adapter-shape.ts ProviderInterruptTurnResult: "Target-specific result"; cancelled requires terminal delivery and suppresses late engine text${gaps.interrupt.has(name) ? ' [KNOWN GAP: late text is published after cancelled]' : ''}`,
-      async () => {
-        const turn = await send();
-        engine.text('before-stop');
-        await expect.poll(() => texts().length).toBe(1);
-        const result = await engine.adapter.interruptTurn(THREAD, turn.turnId);
-        expect(result).toEqual({ outcome: 'cancelled', turnId: turn.turnId });
-        expect(engine.stopped(), 'stop reached the engine transport').toBe(
-          true,
-        );
-        await settle(1);
-        expect(terminals()[0]).toMatchObject({
-          method: 'turn.aborted',
-          turnId: turn.turnId,
-        });
-        engine.late();
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        expect(texts().map((event) => event.delta)).toEqual(['before-stop']);
-        expect(terminals()).toHaveLength(1);
-      },
-    );
+    const quiet = () => new Promise((resolve) => setTimeout(resolve, 30));
+    const textAttributionIsValid = (
+      late: CanonicalRuntimeEvent[],
+      stoppedTurn: string,
+    ) => {
+      const all = published();
+      return late.every(
+        (event) =>
+          event.turnId &&
+          event.turnId !== stoppedTurn &&
+          all
+            .slice(0, all.indexOf(event))
+            .some(
+              (start) =>
+                start.method === 'turn.started' &&
+                start.turnId === event.turnId,
+            ),
+      );
+    };
+    const stop = async () => {
+      const turn = await send();
+      engine.text('before-stop');
+      await expect.poll(() => texts().length).toBe(1);
+      const result = await engine.adapter.interruptTurn(THREAD, turn.turnId);
+      return { turn, result };
+    };
+    it('interrupt — target-specific cancellation reaches the engine and publishes its terminal before the captured engine response', async () => {
+      const { turn, result } = await stop();
+      expect(result).toEqual({ outcome: 'cancelled', turnId: turn.turnId });
+      expect(engine.stopped(), 'stop reached the engine transport').toBe(true);
+      await settle(1);
+      expect(terminals()[0]).toMatchObject({
+        method: 'turn.aborted',
+        turnId: turn.turnId,
+      });
+      // Codex sends turn/completed status:interrupted; Claude emits its
+      // error_during_execution result; ACP resolves prompt(stopReason:cancelled).
+      engine.settleInterrupt();
+      await quiet();
+      if (name !== 'codex')
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toHaveLength(1);
+      // Codex's duplicate after its captured response is isolated below.
+    });
 
-    const activeTest = gaps.active.has(name) ? it.fails : it;
-    activeTest(
-      `pre-effect refusal — adapter-shape.ts SendTurnRefusedError: "no engine was invoked, no prompt was sent, and no turn.started was published"${gaps.active.has(name) ? ' [KNOWN GAP: running turn is accepted instead of refused]' : ''}`,
-      async () => {
-        await send();
-        const before = engine.inputs().length;
-        const starts = started().length;
-        const refused = beginSend({
-          threadId: THREAD,
-          input: 'must not reach engine',
+    if (name === 'claude') {
+      it('interrupt — #2324 permits a NEW engine-opened turn after the interrupted result; every new delta has that started turn id', async () => {
+        const { turn, result } = await stop();
+        expect(result.outcome).toBe('cancelled');
+        expect(engine.stopped()).toBe(true);
+        engine.settleInterrupt();
+        await quiet();
+        const offset = published().length;
+        engine.late();
+        await expect.poll(() => started().length).toBe(2);
+        await expect.poll(() => texts().length).toBe(2);
+        const late = published()
+          .slice(offset)
+          .filter((event) => event.method === 'content.text-delta');
+        expect(late).toHaveLength(1);
+        expect(textAttributionIsValid(late, turn.turnId)).toBe(true);
+        expect(started()[1].turnId).not.toBe(turn.turnId);
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toHaveLength(1);
+        engine.complete();
+        await settle(2);
+      });
+      knownGap(
+        'DEFECT',
+        'Claude text in the interrupt-ack/result window',
+        'Claude must not publish text on the aborted turn between interrupt acknowledgement and result',
+        async () => {
+          const { turn, result } = await stop();
+          const offset = published().length;
+          engine.late();
+          await quiet(); // The old message is still open: result withheld.
+          const late = published()
+            .slice(offset)
+            .filter((event) => event.method === 'content.text-delta');
+          engine.settleInterrupt();
+          await quiet();
+          return {
+            satisfied: textAttributionIsValid(late, turn.turnId),
+            healthy: () => {
+              expect(result).toEqual({
+                outcome: 'cancelled',
+                turnId: turn.turnId,
+              });
+              expect(engine.stopped()).toBe(true);
+              expect(
+                terminals().filter((event) => event.turnId === turn.turnId),
+              ).toHaveLength(1);
+              expect(terminals()[0]).toMatchObject({
+                method: 'turn.aborted',
+                turnId: turn.turnId,
+              });
+            },
+          };
+        },
+      );
+    }
+    if (name === 'codex') {
+      knownGap(
+        'DEFECT',
+        'Codex duplicate terminal after captured interrupted notification',
+        'Codex must publish only one terminal for the captured client interrupt sequence',
+        async () => {
+          const { turn, result } = await stop();
+          const before = terminals().filter(
+            (event) => event.turnId === turn.turnId,
+          );
+          engine.settleInterrupt();
+          await quiet();
+          const after = terminals().filter(
+            (event) => event.turnId === turn.turnId,
+          );
+          return {
+            satisfied: after.length === 1,
+            healthy: () => {
+              expect(result).toEqual({
+                outcome: 'cancelled',
+                turnId: turn.turnId,
+              });
+              expect(
+                engine.stopped(),
+                'stop reached the engine transport',
+              ).toBe(true);
+              expect(before).toEqual([
+                expect.objectContaining({
+                  method: 'turn.aborted',
+                  turnId: turn.turnId,
+                }),
+              ]);
+              expect(after.every((event) => event.turnId === turn.turnId)).toBe(
+                true,
+              );
+            },
+          };
+        },
+      );
+    }
+    if (name === 'codex') {
+      knownGap(
+        'HARDENING',
+        'Codex adapter has no guard if the engine sends a late delta (not present in the three client-interrupt captures)',
+        'Codex must suppress an engine delta for an already aborted turn',
+        async () => {
+          const { turn, result } = await stop();
+          const initial = terminals().filter(
+            (event) => event.turnId === turn.turnId,
+          );
+          engine.settleInterrupt();
+          await quiet();
+          const offset = published().length;
+          engine.late();
+          await quiet();
+          const late = published()
+            .slice(offset)
+            .filter((event) => event.method === 'content.text-delta');
+          return {
+            satisfied: textAttributionIsValid(late, turn.turnId),
+            healthy: () => {
+              expect(result).toEqual({
+                outcome: 'cancelled',
+                turnId: turn.turnId,
+              });
+              expect(
+                engine.stopped(),
+                'stop reached the engine transport',
+              ).toBe(true);
+              expect(initial).toHaveLength(1);
+              expect(terminals()[0]).toMatchObject({
+                method: 'turn.aborted',
+                turnId: turn.turnId,
+              });
+            },
+          };
+        },
+      );
+    }
+    if (name === 'acp') {
+      for (const phase of [
+        'before prompt resolves',
+        'after prompt resolves',
+      ] as const) {
+        knownGap(
+          'DEFECT',
+          `ACP unscoped post-cancel text ${phase}`,
+          `ACP must attribute or suppress post-cancel text ${phase}`,
+          async () => {
+            const { turn, result } = await stop();
+            if (phase === 'after prompt resolves') {
+              engine.settleInterrupt();
+              await quiet();
+            }
+            const offset = published().length;
+            engine.late();
+            await quiet();
+            const late = published()
+              .slice(offset)
+              .filter((event) => event.method === 'content.text-delta');
+            if (phase === 'before prompt resolves') {
+              engine.settleInterrupt();
+              await quiet();
+            }
+            return {
+              satisfied:
+                phase === 'before prompt resolves'
+                  ? late.every((event) => event.turnId === turn.turnId)
+                  : late.every(
+                      (event) =>
+                        event.turnId &&
+                        started().some(
+                          (start) => start.turnId === event.turnId,
+                        ),
+                    ),
+              healthy: () => {
+                expect(result).toEqual({
+                  outcome: 'cancelled',
+                  turnId: turn.turnId,
+                });
+                expect(engine.stopped()).toBe(true);
+                expect(
+                  terminals().filter((event) => event.turnId === turn.turnId),
+                ).toHaveLength(1);
+                expect(terminals()[0]).toMatchObject({
+                  method: 'turn.aborted',
+                  turnId: turn.turnId,
+                });
+              },
+            };
+          },
+        );
+      }
+    }
+
+    it(`concurrent send — #3834 actual behavior: ${name in concurrent ? concurrent[name as keyof typeof concurrent] : 'refuse'}`, async () => {
+      const first = await send();
+      const behavior =
+        name in concurrent
+          ? concurrent[name as keyof typeof concurrent]
+          : 'refuse';
+      const second = beginSend({
+        threadId: THREAD,
+        input: 'second concurrent send',
+      });
+      await expect
+        .poll(() => second.settled || engine.inputs().length === 2)
+        .toBe(true);
+      if (behavior === 'refuse') {
+        expect(second.error).toBeInstanceOf(SendTurnRefusedError);
+        expect(engine.inputs()).toHaveLength(1);
+        expect(started()).toHaveLength(1);
+        expect(terminals()).toHaveLength(0);
+        engine.complete();
+        await settle(1);
+      } else {
+        expect(second.error).toBeUndefined();
+        await expect.poll(() => started().length).toBe(2);
+        expect(engine.inputs()).toHaveLength(2);
+        const secondId = started()[1].turnId;
+        expect(secondId).not.toBe(first.turnId);
+        if (behavior === 'supersede')
+          expect(terminals()).toEqual([
+            expect.objectContaining({
+              method: 'turn.aborted',
+              turnId: first.turnId,
+              reason: 'superseded',
+            }),
+          ]);
+        else expect(terminals()).toHaveLength(0); // Codex overwrites its active pointer.
+        engine.complete();
+        await settle(behavior === 'supersede' ? 2 : 1);
+        expect(terminals().at(-1)).toMatchObject({
+          method: 'turn.completed',
+          turnId: secondId,
         });
-        await expect
-          .poll(() => refused.settled || engine.inputs().length > before)
-          .toBe(true);
-        // A plain error is indeterminate, never accepted as a pre-effect refusal.
-        expect(refused.error).toBeInstanceOf(SendTurnRefusedError);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        expect(engine.inputs()).toHaveLength(before);
-        expect(started()).toHaveLength(starts);
-      },
-    );
+      }
+    });
 
     if (name === 'claude') {
       exempt(
@@ -254,36 +586,78 @@ for (const name of ADAPTERS) {
         'EXEMPT undeclared attachment — Claude declares both image-input and file-input; the contract has no third attachment kind',
       );
     } else {
-      const attachmentTest = gaps.attachment.has(name) ? it.fails : it;
-      attachmentTest(
-        `capability refusal — adapter-shape.ts AttachmentInputUnsupportedError: "pre-effect refusal ... carrying a structured code"${gaps.attachment.has(name) ? ' [KNOWN GAP: absent capability is ignored or refused without attachment_input_unsupported]' : ''}`,
-        async () => {
-          const attachment = engine.adapter.metadata.capabilities.includes(
-            'image-input',
-          )
-            ? FILE
-            : IMAGE;
-          const capability =
-            attachment.kind === 'image' ? 'image-input' : 'file-input';
+      const observeAttachment = async () => {
+        const attachment = engine.adapter.metadata.capabilities.includes(
+          'image-input',
+        )
+          ? FILE
+          : IMAGE;
+        const refused = beginSend({
+          threadId: THREAD,
+          input: 'refuse',
+          attachments: [attachment],
+        });
+        await expect
+          .poll(() => refused.settled || engine.inputs().length > 0)
+          .toBe(true);
+        await quiet();
+        return {
+          refused,
+          capability:
+            attachment.kind === 'image' ? 'image-input' : 'file-input',
+        };
+      };
+      if (attachmentGaps.has(name)) {
+        knownGap(
+          'DEFECT',
+          `${label} unsupported attachment refusal`,
+          `${label} must refuse undeclared attachments pre-effect with attachment_input_unsupported`,
+          async () => {
+            const { refused, capability } = await observeAttachment();
+            const code =
+              refused.error &&
+              typeof refused.error === 'object' &&
+              'code' in refused.error
+                ? refused.error.code
+                : undefined;
+            return {
+              satisfied:
+                code === 'attachment_input_unsupported' &&
+                engine.inputs().length === 0 &&
+                started().length === 0,
+              healthy: () => {
+                expect(engine.adapter.metadata.capabilities).not.toContain(
+                  capability,
+                );
+                if (name === 'codex' || name === 'muse') {
+                  expect(refused.error).toBeInstanceOf(Error);
+                  expect((refused.error as Error).message).toBe(
+                    `${name === 'codex' ? 'Codex' : 'Muse Code'} cannot take non-image files. Paste the file's text into the message instead.`,
+                  );
+                  expect(engine.inputs()).toHaveLength(0);
+                  expect(started()).toHaveLength(0);
+                } else {
+                  expect(refused.error).toBeUndefined();
+                  expect(engine.inputs()).toHaveLength(1);
+                  expect(started()).toHaveLength(1);
+                }
+              },
+            };
+          },
+        );
+      } else {
+        it('capability refusal — AttachmentInputUnsupportedError is pre-effect and carries attachment_input_unsupported', async () => {
+          const { refused, capability } = await observeAttachment();
           expect(engine.adapter.metadata.capabilities).not.toContain(
             capability,
           );
-          const refused = beginSend({
-            threadId: THREAD,
-            input: 'refuse',
-            attachments: [attachment],
-          });
-          await expect
-            .poll(() => refused.settled || engine.inputs().length > 0)
-            .toBe(true);
           expect(refused.error).toMatchObject({
             code: 'attachment_input_unsupported',
           });
-          await new Promise((resolve) => setTimeout(resolve, 10));
           expect(engine.inputs()).toHaveLength(0);
           expect(started()).toHaveLength(0);
-        },
-      );
+        });
+      }
     }
 
     if (name === 'acp') {
@@ -324,6 +698,41 @@ for (const name of ADAPTERS) {
         expect(engine.adapter.metadata.capabilities).toContain('image-input');
         await send([IMAGE]);
         expect(engine.receivedImage()).toEqual(PNG);
+        engine.complete();
+        await settle(1);
+      });
+    }
+
+    if (
+      name === 'claude' ||
+      (name === 'muse' && transport === 'exec-fallback')
+    ) {
+      it('fixture fidelity — real adapter receives message/block framing or unique monotonic Muse records', async () => {
+        await send();
+        engine.text('one');
+        engine.text('two');
+        await expect.poll(() => texts().length).toBe(2);
+        const messages = engine.wireMessages!();
+        if (name === 'claude') {
+          const kinds = messages
+            .filter((message) => message.type === 'stream_event')
+            .map((message) => (message.event as { type: string }).type);
+          expect(kinds).toEqual([
+            'message_start',
+            'content_block_start',
+            'content_block_delta',
+            'content_block_delta',
+          ]);
+        } else {
+          const records = messages.filter(
+            (message) => message.payload_type === 'run.output.delta',
+          );
+          expect(records).toHaveLength(2);
+          expect(new Set(records.map((record) => record.id)).size).toBe(2);
+          expect(Number(records[1].sequence)).toBeGreaterThan(
+            Number(records[0].sequence),
+          );
+        }
         engine.complete();
         await settle(1);
       });
@@ -390,6 +799,9 @@ for (const name of ADAPTERS) {
           outcome: 'termination-unconfirmed',
           turnId: turn.turnId,
         });
+        expect(engine.stopped()).toBe(transport === 'serve');
+        if (transport === 'serve') expect(terminals()).toHaveLength(0);
+        engine.settleInterrupt();
         await settle(1);
         expect(terminals()[0]).not.toMatchObject({
           method: 'turn.completed',
@@ -443,7 +855,7 @@ for (const name of ADAPTERS) {
     } else {
       exempt(
         name,
-        `EXEMPT host-file outputs — ${name} does not resolve engine-reported output paths into host files at this seam; Session Outputs workspace-file declarations belong to runtime/native-output-declaration, outside ProviderAdapterShape`,
+        `EXEMPT host-path confinement — ${label}: ${name === 'claude' || name === 'acp' ? 'ToolCompletedEvent.attachments accepts engine-supplied inline bytes; no engine path is dereferenced by this projection. The inline-image allowlist/byte validation is separate from host-path confinement.' : 'this adapter does not dereference an engine-reported output path.'} Session Outputs workspace-file declarations are validated by the native output runtime, outside this seam.`,
       );
     }
   });

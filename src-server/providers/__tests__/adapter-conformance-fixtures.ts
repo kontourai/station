@@ -15,6 +15,7 @@ import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 import { BedrockLLMProvider } from '../llm/bedrock-llm-provider.js';
 import type { AdapterName } from './adapter-contract-test-utils.js';
 import { FakeClaudeChild } from './claude-engine-process-test-utils.js';
+import { loadClaudeProviderTurnFixture } from './claude-provider-turns-fixtures.js';
 import { FakeCodexProcess } from './codex-adapter-wire-harness.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
@@ -22,6 +23,10 @@ import {
   MUSE_ECHO_OUTPUT_DELTA,
   MUSE_ECHO_RUN_TERMINAL,
 } from './muse-adapter-fixtures.js';
+import {
+  FakeMuseServeHost,
+  loadMuseServeCapture,
+} from './muse-serve-replay.js';
 
 export const THREAD = 'conformance-thread';
 export const PNG = Buffer.from(
@@ -52,6 +57,10 @@ export interface ConformanceEngine {
   text(value: string): void;
   complete(): void;
   late(): void;
+  /** Deliver the engine-owned terminal/response after interrupt admission. */
+  settleInterrupt(): void;
+  wireMessages?(): ReadonlyArray<Record<string, unknown>>;
+  readonly transport?: 'serve' | 'exec-fallback';
   receivedImage(): Buffer | undefined;
   stopped(): boolean;
   refuseImage?(): void;
@@ -65,6 +74,8 @@ export interface ConformanceEngine {
 export class ConformanceClaudeChild extends FakeClaudeChild {
   static current: ConformanceClaudeChild;
   interrupted = false;
+  readonly messages: Array<Record<string, unknown>> = [];
+  private messageOpen = false;
   readonly prompts: Array<{ message: { content: unknown } }> = [];
   constructor(
     command: string,
@@ -97,35 +108,88 @@ export class ConformanceClaudeChild extends FakeClaudeChild {
                       output_style: 'normal',
                       available_output_styles: ['normal'],
                     }
-                  : {},
+                  : message.request.subtype === 'interrupt'
+                    ? { still_queued: [] }
+                    : {},
             },
           });
           if (message.request.subtype === 'interrupt') {
             this.interrupted = true;
-            this.complete();
+            // The CLI result follows the control acknowledgement (capture S5).
           }
         }
         end = buffered.indexOf('\n');
       }
     });
   }
-  frame(message: unknown) {
+  frame(message: Record<string, unknown>) {
+    this.messages.push(message);
     this.stdout.write(`${JSON.stringify(message)}\n`);
   }
-  text(text: string) {
+  private stream(event: unknown) {
     this.frame({
       type: 'stream_event',
       session_id: 'native-claude',
       uuid: randomUUID(),
       parent_tool_use_id: null,
-      event: {
-        type: 'content_block_delta',
-        index: 0,
-        delta: { type: 'text_delta', text },
-      },
+      event,
     });
   }
+  text(text: string) {
+    if (!this.messageOpen) {
+      this.messageOpen = true;
+      this.stream({
+        type: 'message_start',
+        message: {
+          id: `msg_${randomUUID()}`,
+          type: 'message',
+          role: 'assistant',
+          model: 'test-model',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      });
+      this.stream({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      });
+    }
+    this.stream({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text },
+    });
+  }
+  private closeMessage() {
+    if (!this.messageOpen) return;
+    this.stream({ type: 'content_block_stop', index: 0 });
+    this.stream({
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      usage: { output_tokens: 1 },
+    });
+    this.stream({ type: 'message_stop' });
+    this.messageOpen = false;
+  }
+  interruptedResult() {
+    // The captured interrupted stream ends abruptly with its result.
+    this.messageOpen = false;
+    // The recorded SDK result, not a successful end_turn (capture line 54,
+    // zero-based frame 53). Identity is remapped to this fake session.
+    const result = loadClaudeProviderTurnFixture(
+      'interrupt-provider-turn',
+    ).find(
+      ({ msg }) =>
+        msg?.type === 'result' && msg.subtype === 'error_during_execution',
+    )?.msg;
+    if (!result) throw new Error('Missing recorded Claude interrupt result');
+    this.frame({ ...result, session_id: 'native-claude', uuid: randomUUID() });
+  }
   complete() {
+    this.closeMessage();
     this.frame({
       type: 'result',
       subtype: 'success',
@@ -187,6 +251,7 @@ function bedrockFrame(type: string, body: unknown): Buffer {
 export function createConformanceEngine(
   name: AdapterName,
   cwd: string,
+  museTransport: 'serve' | 'exec-fallback' = 'serve',
 ): ConformanceEngine {
   const startInput = { threadId: THREAD, cwd, modelId: 'test-model' };
   if (name === 'claude') {
@@ -195,9 +260,11 @@ export function createConformanceEngine(
       adapter,
       start: () => adapter.startSession({ ...startInput, provider: 'claude' }),
       inputs: () => ConformanceClaudeChild.current?.prompts ?? [],
+      wireMessages: () => ConformanceClaudeChild.current.messages,
       text: (value) => ConformanceClaudeChild.current.text(value),
       complete: () => ConformanceClaudeChild.current.complete(),
       late: () => ConformanceClaudeChild.current.text('late-after-stop'),
+      settleInterrupt: () => ConformanceClaudeChild.current.interruptedResult(),
       receivedImage: () => {
         const content =
           ConformanceClaudeChild.current.prompts.at(-1)?.message.content;
@@ -264,6 +331,21 @@ export function createConformanceEngine(
         });
       },
       late: () => text('late-after-stop'),
+      settleInterrupt: () => {
+        frame({
+          method: 'turn/completed',
+          params: {
+            threadId: 'native-codex',
+            turn: {
+              id: nativeTurn,
+              status: 'interrupted',
+              items: [],
+              itemsView: 'notLoaded',
+              error: null,
+            },
+          },
+        });
+      },
       receivedImage: () => {
         const image = prompts
           .at(-1)
@@ -333,6 +415,7 @@ export function createConformanceEngine(
       text,
       complete: () => process.resolvePrompt('end_turn'),
       late: () => text('late-after-stop'),
+      settleInterrupt: () => process.resolvePrompt('cancelled'),
       receivedImage: () => {
         const image = process.promptContents
           .at(-1)
@@ -347,12 +430,167 @@ export function createConformanceEngine(
       },
     };
   }
+  if (name === 'muse' && museTransport === 'serve') {
+    const host = new FakeMuseServeHost();
+    const prompts: Array<Array<{ type: string; base64Data?: string }>> = [];
+    let nativeTurn = '';
+    let item = '';
+    let sequence = 0;
+    let itemStarted = false;
+    let interruptedTerminalSent = false;
+    let unconfirmed = false;
+    const capture = loadMuseServeCapture('approval-unanswered-workflow-cancel');
+    const init = capture.find(({ msg }) => msg.id === 1 && msg.result)?.msg
+      .result;
+    const start = capture.find(({ msg }) => msg.id === 2 && msg.result)?.msg
+      .result as { session: Record<string, unknown> };
+    const notify = (method: string, params: Record<string, unknown>) => {
+      sequence++;
+      host.writeFrame({
+        jsonrpc: '2.0',
+        method,
+        params: {
+          sessionId: 'native-muse',
+          viewCursor: `v:native-muse:${sequence}`,
+          ...params,
+        },
+        emittedAtMs: Date.now(),
+      });
+    };
+    const settleInterrupt = () => {
+      if (!interruptedTerminalSent) {
+        interruptedTerminalSent = true;
+        notify('turn/completed', { turnId: nativeTurn, terminal: 'cancelled' });
+      }
+    };
+    let consumed = 0;
+    const write = host.stdin.write;
+    host.stdin.write = (chunk) => {
+      const accepted = write(chunk);
+      for (const request of host.sent.slice(consumed)) {
+        consumed++;
+        if (request.id === undefined) continue;
+        const params = request.params ?? {};
+        let result: unknown = {};
+        if (request.method === 'initialize') result = init;
+        else if (request.method === 'session/start')
+          result = {
+            session: {
+              ...start.session,
+              sessionId: 'native-muse',
+              workspaceRoot: cwd,
+              modelId: 'test-model',
+              approvalMode: { mode: params.approvalMode, source: 'startup' },
+            },
+            viewCursor: 'v:native-muse:1',
+          };
+        else if (request.method === 'turn/start') {
+          prompts.push(
+            params.input as Array<{ type: string; base64Data?: string }>,
+          );
+          nativeTurn = String(params.commandId);
+          item = `message-${prompts.length}`;
+          itemStarted = false;
+          interruptedTerminalSent = false;
+          result = {
+            commandId: nativeTurn,
+            status: 'accepted',
+            turnId: nativeTurn,
+            startedNewTurn: true,
+            disposition: 'started',
+          };
+        } else if (request.method === 'turn/interrupt')
+          result = {
+            commandId: params.commandId,
+            status: 'accepted',
+            turnId: nativeTurn,
+          };
+        queueMicrotask(() => {
+          host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+          if (request.method === 'turn/start')
+            notify('turn/started', {
+              turnId: nativeTurn,
+              commandId: nativeTurn,
+            });
+          if (request.method === 'turn/interrupt' && !unconfirmed)
+            settleInterrupt();
+        });
+      }
+      return accepted;
+    };
+    const adapter = new MuseAdapter({
+      env: {},
+      serve: {
+        spawnHost: () => ({ process: host }),
+        terminateHost: async () => {
+          host.exit(0);
+        },
+        interruptSettleMs: 30,
+      },
+      processFactory: () => {
+        throw new Error(
+          'Serve conformance must not silently fall back to exec',
+        );
+      },
+    });
+    const text = (value: string) => {
+      if (!itemStarted) {
+        itemStarted = true;
+        notify('item/started', {
+          item: {
+            itemId: item,
+            kind: 'agentMessage',
+            turnId: nativeTurn,
+            revision: 1,
+            status: 'inProgress',
+            text: '',
+          },
+        });
+      }
+      notify('item/delta', { itemId: item, field: 'text', delta: value });
+    };
+    return {
+      adapter,
+      transport: 'serve',
+      start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
+      inputs: () => prompts,
+      text,
+      complete: () =>
+        notify('turn/completed', { turnId: nativeTurn, terminal: 'completed' }),
+      late: () => text('late-after-stop'),
+      settleInterrupt,
+      receivedImage: () => {
+        const image = prompts.at(-1)?.find((part) => part.type === 'image');
+        return image?.base64Data
+          ? Buffer.from(image.base64Data, 'base64')
+          : undefined;
+      },
+      stopped: () =>
+        host.sent.some(({ method }) => method === 'turn/interrupt'),
+      unconfirmTermination: () => {
+        unconfirmed = true;
+      },
+      cleanup: async () => {
+        settleInterrupt();
+        await adapter.stopAll();
+      },
+    };
+  }
   if (name === 'muse') {
     const processes: FakeMuseProcess[] = [];
     const prompts: string[][] = [];
     let unconfirmed = false;
+    let sequence = 0;
+    const messages: Array<Record<string, unknown>> = [];
     const adapter = new MuseAdapter({
       env: {},
+      serve: {
+        spawnHost: () => {
+          throw new Error(
+            'Simulated unavailable muse serve: exercise the production exec fallback',
+          );
+        },
+      },
       processFactory: (args) => {
         const process = new FakeMuseProcess();
         processes.push(process);
@@ -364,7 +602,13 @@ export function createConformanceEngine(
         process.kill();
       },
     });
-    const frame = (line: string) => processes.at(-1)!.stdout.write(`${line}\n`);
+    const frame = (line: string) => {
+      const record = JSON.parse(line);
+      record.id = randomUUID();
+      record.sequence = ++sequence;
+      messages.push(record);
+      processes.at(-1)!.stdout.write(`${JSON.stringify(record)}\n`);
+    };
     const text = (value: string) => {
       const message = JSON.parse(MUSE_ECHO_OUTPUT_DELTA);
       message.payload.text = value;
@@ -372,8 +616,10 @@ export function createConformanceEngine(
     };
     return {
       adapter,
+      transport: 'exec-fallback',
       start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
       inputs: () => prompts,
+      wireMessages: () => messages,
       stopped: () => processes.at(-1)?.killed === true,
       text,
       complete: () => {
@@ -381,6 +627,7 @@ export function createConformanceEngine(
         processes.at(-1)!.exit(0);
       },
       late: () => text('late-after-stop'),
+      settleInterrupt: () => {},
       receivedImage: () => {
         const args = prompts.at(-1)!;
         const index = args.indexOf('--image');
@@ -510,6 +757,7 @@ export function createConformanceEngine(
       }
     },
     late: () => text('late-after-stop'),
+    settleInterrupt: () => {},
     receivedImage: () => {
       const input = requests.at(-1)?.body.input;
       if (!Array.isArray(input)) return;
