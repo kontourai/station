@@ -22,6 +22,7 @@ import * as transport from '../../../services/plugin-telemetry-transport.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import * as pluginPermissions from '../../../services/plugins/plugin-permissions.js';
+import * as telemetryAdmission from '../../../services/plugins/plugin-telemetry-admission.js';
 import { registryPackageSignaturePayload } from '../../../services/plugins/registry-supply-chain.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../../services/plugins/registry-trust-policy.js';
 import { TelemetryLocalState } from '../../../services/telemetry-local-state.js';
@@ -919,6 +920,18 @@ test('one plugin minting 2000 Pane capabilities cannot block another plugin', as
   const f = await fixture({ secondPlugin: true });
   await f.install();
   await f.installSecond();
+  // This case owns token quotas; catalog freshness has separate signed-install coverage.
+  const bindings = await telemetryAdmission.pluginTelemetryBindings(
+    {
+      homeDir: f.home,
+      journal: f.deps.packageMcpJournal,
+      trustPolicy: f.deps.registryTrustPolicyAuthority,
+    },
+    f.config,
+  );
+  vi.spyOn(telemetryAdmission, 'pluginTelemetryBindings').mockResolvedValue(
+    bindings,
+  );
   const oldest = await f.capability();
   const body = { events: [{ event: 'closed', attributes: {} }] };
   const countWith = (capability: string) =>
