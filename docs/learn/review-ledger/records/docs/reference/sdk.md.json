@@ -662,7 +662,11 @@
 
     "src-server/routes/orchestration/attachment-staging.ts",
 
-    "packages/shared/src/delegation-files.ts"
+    "packages/shared/src/delegation-files.ts",
+
+    "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
+
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx"
   ],
 
   "checks": [
