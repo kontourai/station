@@ -81,16 +81,17 @@ k-suppressed daily per-dimension marginals only). The private Compose profile do
 these on the Internet. A public deployment must independently qualify TLS,
 ingress access/error logging without client IP/user-agent retention, proxy/NAT
 rate-limit behavior, database capacity, restart and backup/restore. The process
-uses IPv4 addresses or IPv6 /64s for a daily salted HMAC and ignores forwarded
-IP headers. Behind a proxy all clients share one key and limit. Daily hashes
-are stored only until periodic closed-day finalization; the salt stays in memory.
-Migration 3 discards legacy joint cells and retains finalized marginals. Both
-public and publisher reads require ten distinct daily network keys per value;
-one IP sending ten pings cannot qualify. A botnet of at least ten distinct /64s
-or IPv4 addresses can still pad the counts. Run a single receiver process:
-restarts change the salt and can count one network again on the same day.
-Public reads use a UTC-day cache without taking the ingest lock; publication
-can lag finalization until the next refresh. Raw retention and hash deletion
+uses IPv4 addresses or IPv6 /64s for daily rate limits, but IPv4 addresses or
+IPv6 /48s for distinct-contributor HMACs; forwarded headers are ignored.
+Migration 4 discards prior marginals that cannot establish /48 counts or safe
+complements. Finalization requires ten distinct daily keys per visible value
+and either zero uncovered pings or ten distinct contributors to each dimension's
+uncovered remainder, suppressing additional values as needed. Set histograms
+overlap and cannot be summed to a total. An attacker controlling k−1 distinct
+contributor keys can still pad a victim. Run a single receiver process:
+restarts change the salt and inflate same-day distinct counts. The first public
+read finalizes closed days before caching; cached reads take no ingest lock.
+Clock-disagreement responses are not cached. Raw retention and hash deletion
 are periodic, and downtime delays them. No ingress, endpoint
 variable or production data flow is enabled by this source change.
 

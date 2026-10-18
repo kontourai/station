@@ -27,7 +27,7 @@ export function registerLiteRoutes(
     // Forwarded headers never select a key; only the daily HMAC reaches storage.
     const client = createHmac('sha256', salt)
       .update(
-        networkKey(c.env?.incoming?.socket.remoteAddress ?? 'unavailable'),
+        networkKey(c.env?.incoming?.socket.remoteAddress ?? 'unavailable', 64),
       )
       .digest('hex');
     const count = clients.get(client) ?? 0;
@@ -38,7 +38,17 @@ export function registerLiteRoutes(
     clients.delete(client);
     if (clients.size >= 10000) clients.delete(clients.keys().next().value!);
     clients.set(client, count + 1);
-    c.set('dailyClient', { day, hash: client });
+    c.set('dailyClient', {
+      day,
+      hash: createHmac('sha256', salt)
+        .update(
+          networkKey(
+            c.env?.incoming?.socket.remoteAddress ?? 'unavailable',
+            48,
+          ),
+        )
+        .digest('hex'),
+    });
     await next();
   });
   app.use(
@@ -87,13 +97,14 @@ export function registerLiteRoutes(
       /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
         c.req.header('authorization') ?? '',
       )?.[1] ?? '';
+    if (!key) return c.json({ error: 'source_unauthorized' }, 401);
     c.header('Cache-Control', 'no-store');
     return c.json(await store.aggregates(c.req.param('publisher'), key));
   });
   const publicAdmission = receiverAdmission();
   let cachedDay = '';
   let cached:
-    | Promise<Awaited<ReturnType<LiteRepository['aggregates']>>>
+    | Promise<Awaited<ReturnType<LiteRepository['publicAggregates']>>>
     | undefined;
   app.get('/v1/public/aggregates', async (c) => {
     c.header('X-Content-Type-Options', 'nosniff');
@@ -108,7 +119,7 @@ export function registerLiteRoutes(
     let response = cached;
     if (!response) {
       const refused = await publicAdmission(c, async () => {
-        const pending = store.aggregates('kontour').catch((error) => {
+        const pending = store.publicAggregates().catch((error) => {
           if (cached === pending) cached = undefined;
           throw error;
         });
@@ -117,6 +128,11 @@ export function registerLiteRoutes(
       if (refused) return refused;
     }
     const result = await response!;
+    // A receiver/database clock disagreement must not cache an unfinished day.
+    if (result.finalizedBeforeDay !== today) {
+      if (cached === response) cached = undefined;
+      return c.json(result);
+    }
     c.header(
       'Cache-Control',
       `public, max-age=${Math.max(0, Math.floor((Date.parse(today) + 86400000 - Date.now()) / 1000))}`,
@@ -140,7 +156,7 @@ export function registerLiteRoutes(
   );
 }
 
-function networkKey(address: string): string {
+function networkKey(address: string, prefix: 48 | 64): string {
   if (isIP(address) !== 6) return isIP(address) === 4 ? address : 'unavailable';
   const [left, right] = address.split('::');
   const words = (part: string) =>
@@ -177,7 +193,7 @@ function networkKey(address: string): string {
       numbers[7] & 255,
     ].join('.');
   return `${numbers
-    .slice(0, 4)
+    .slice(0, prefix / 16)
     .map((n) => n.toString(16))
-    .join(':')}::/64`;
+    .join(':')}::/${prefix}`;
 }

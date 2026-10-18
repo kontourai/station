@@ -25,17 +25,54 @@ export function createProductBroker(
     Variables: { dailyClient: { day: string; hash: string } };
   }>();
   const fullAdmission = receiverAdmission();
+  const preAuthAdmission = receiverAdmission();
+  const credentials = new Map<string, ReturnType<typeof receiverAdmission>>();
   const liteAdmission = receiverAdmission();
   const publicPageAdmission = receiverAdmission();
-  app.use('*', (c, next) => {
+  app.use('*', async (c, next) => {
     if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
       return next();
+    if (
+      (c.req.method === 'POST' &&
+        ['/v1/product/events', '/v1/product/probes'].includes(c.req.path)) ||
+      (c.req.method === 'GET' &&
+        /^\/v1\/product\/receipts\/[^/]+$/.test(c.req.path))
+    ) {
+      const key = c.req.header('x-api-key') ?? '';
+      let authenticated = false;
+      if (/^stp_[A-Za-z0-9_-]{43}$/.test(key)) {
+        try {
+          await store.authenticate(key);
+          authenticated = true;
+        } catch (error) {
+          if (
+            !(error instanceof BrokerError) ||
+            error.code !== 'source_unauthorized'
+          )
+            throw error;
+        }
+      }
+      if (!authenticated)
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, next);
+    }
     return (
       c.req.path.startsWith('/v1/lite/')
         ? liteAdmission
         : c.req.path.startsWith('/public/')
           ? publicPageAdmission
-          : fullAdmission
+          : c.req.path.startsWith('/v1/operator/') &&
+              c.req.header('authorization') === `Bearer ${operatorKey}`
+            ? fullAdmission
+            : preAuthAdmission
     )(c, next);
   });
   app.use(

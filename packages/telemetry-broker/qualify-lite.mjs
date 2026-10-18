@@ -292,6 +292,10 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       'UPDATE station_telemetry.lite_clients SET day=$1 WHERE day=$2',
       [closedDay, today],
     );
+    await pool.query(
+      "UPDATE station_telemetry.lite_pings SET received_at=$1::date::timestamp AT TIME ZONE 'UTC' WHERE received_at >= $2::date::timestamp AT TIME ZONE 'UTC'",
+      [closedDay, today],
+    );
     await store.retain();
     assert.equal(
       (await pool.query('SELECT * FROM station_telemetry.lite_clients'))
@@ -306,13 +310,11 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     assert.equal('representedPings' in day, false, 'no joint-derived total');
     assert.deepEqual(
       day.distributions.platform,
-      { linux: 20 },
-      'nine macOS pings from one network suppressed',
+      undefined,
+      'unsafe platform complement secondarily suppressed',
     );
-    assert.deepEqual(day.distributions.home_replaced, { false: 20 });
-    assert.deepEqual(day.distributions.public_plugins_enabled, {
-      'public.plugin': 19,
-    });
+    assert.equal(day.distributions.home_replaced, undefined);
+    assert.equal(day.distributions.public_plugins_enabled, undefined);
     assert.equal(day.distributions.engine_connect_failures['codex:2-3'], 29);
     assert.deepEqual(day.distributions.safe_mode_entered, { 1: 29 });
     assert.deepEqual(day.distributions.first_active_this_week, { true: 29 });

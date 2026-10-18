@@ -41,6 +41,7 @@ const commit: ProductCommit = {
   storedAt: '2026-10-10T12:00:02.000Z',
 };
 const store = {
+  authenticate: vi.fn<ProductRepository['authenticate']>(),
   ingest: vi.fn<ProductRepository['ingest']>(),
   probe: vi.fn<ProductRepository['probe']>(),
   createSource: vi.fn<ProductRepository['createSource']>(),
@@ -279,9 +280,8 @@ describe('bounded receiver admission', () => {
           .status,
       ).toBe(401);
     const limited = await app.request('/v1/product/events', post(batch()));
-    expect(limited.status).toBe(429);
-    expect(limited.headers.get('retry-after')).toBe('1');
-    expect(store.ingest).not.toHaveBeenCalled();
+    expect(limited.status).toBe(202);
+    expect(store.ingest).toHaveBeenCalledOnce();
     expect((await app.request('/health/live')).status).toBe(200);
   });
 });
@@ -294,11 +294,12 @@ test('anonymous lite and public traffic cannot spend authenticated ingest admiss
     100,
     100,
   );
-  const reads = vi.spyOn(lite, 'aggregates').mockResolvedValue({
+  const reads = vi.spyOn(lite, 'publicAggregates').mockResolvedValue({
+    finalizedBeforeDay: new Date().toISOString().slice(0, 10),
     scope: 'daily-per-dimension-marginals',
     publisher: 'kontour',
     minimumDistinctDailyClients: 10,
-    privacyUnit: 'daily-salted-IPv4-or-IPv6-/64',
+    privacyUnit: 'daily-salted-IPv4-or-IPv6-/48',
     dayBasis: 'UTC-receiver-arrival',
     deliveryCoverage: 'unknown',
     days: [],
@@ -334,18 +335,19 @@ test('public cache shares pending reads, retries failures, and refreshes at UTC 
   );
   let refuse!: (reason: Error) => void;
   const pending = new Promise<
-    Awaited<ReturnType<LiteRepository['aggregates']>>
+    Awaited<ReturnType<LiteRepository['publicAggregates']>>
   >((_, reject) => {
     refuse = reject;
   });
   const reads = vi
-    .spyOn(lite, 'aggregates')
+    .spyOn(lite, 'publicAggregates')
     .mockReturnValueOnce(pending)
     .mockResolvedValue({
+      finalizedBeforeDay: new Date().toISOString().slice(0, 10),
       scope: 'daily-per-dimension-marginals',
       publisher: 'kontour',
       minimumDistinctDailyClients: 10,
-      privacyUnit: 'daily-salted-IPv4-or-IPv6-/64',
+      privacyUnit: 'daily-salted-IPv4-or-IPv6-/48',
       dayBasis: 'UTC-receiver-arrival',
       deliveryCoverage: 'unknown',
       days: [],
@@ -370,113 +372,242 @@ test('public cache shares pending reads, retries failures, and refreshes at UTC 
   }
 });
 
-test('daily marginals suppress fewer than ten distinct network keys, resist padding, bucket counts, and apply the same policy to publishers', async () => {
-  const db = new PGlite();
-  const sqlClient = (connection: Pick<PGliteInterface, 'query' | 'exec'>) => ({
-    async query<Row extends QueryResultRow = QueryResultRow>(
-      text: string,
-      values?: unknown[],
-    ) {
-      if (text.includes(';')) {
-        await connection.exec(text);
-        return { rows: [], rowCount: 0 };
-      }
-      const result = await connection.query<Row>(text, values);
-      return { rows: result.rows, rowCount: result.affectedRows ?? 0 };
-    },
-  });
-  const client = sqlClient(db);
-  const lite = new LiteRepository(
-    (operation) => db.transaction((tx) => operation(sqlClient(tx))),
-    1000,
-    1_073_741_824,
-  );
-  try {
-    await db.exec(
-      'CREATE SCHEMA station_telemetry; CREATE TABLE station_telemetry.migrations(version integer PRIMARY KEY,digest text NOT NULL)',
-    );
-    await migrateLite(client);
-    await db.transaction((tx) => assertLiteSchema(sqlClient(tx)));
-    await lite.createSource({
-      id: 'kontour-stable',
-      publisher: 'kontour',
-      channel: 'stable',
-      registryIds: ['public.plugin'],
-      releaseVersions: ['1.2.3'],
+test.each([1, 10])(
+  'secondary suppression protects the complement with %i minority pings, including sets and publisher reads',
+  async (minorityPings) => {
+    const db = new PGlite();
+    const sqlClient = (
+      connection: Pick<PGliteInterface, 'query' | 'exec'>,
+    ) => ({
+      async query<Row extends QueryResultRow = QueryResultRow>(
+        text: string,
+        values?: unknown[],
+      ) {
+        if (text.includes(';')) {
+          await connection.exec(text);
+          return { rows: [], rowCount: 0 };
+        }
+        const result = await connection.query<Row>(text, values);
+        return { rows: result.rows, rowCount: result.affectedRows ?? 0 };
+      },
     });
-    await lite.createSource({
-      id: 'publisher-stable',
-      publisher: 'publisher:example',
-      channel: 'stable',
-      registryIds: ['public.plugin'],
-      releaseVersions: ['1.2.3'],
-    });
-    const publisherKey = `stq_${'q'.repeat(43)}`;
-    await lite.setPublisherKey(
-      'publisher:example',
-      createHash('sha256').update(publisherKey).digest('hex'),
+    const client = sqlClient(db);
+    const lite = new LiteRepository(
+      (operation) => db.transaction((tx) => operation(sqlClient(tx))),
+      1000,
+      1_073_741_824,
     );
-    await expect(
-      lite.ingest('kontour-stable', dailyPing(), {
-        day: '2000-01-01',
-        hash: 'a'.repeat(64),
-      }),
-    ).rejects.toMatchObject({ code: 'storage_busy' });
-    expect(
-      (await db.query('SELECT pings FROM station_telemetry.lite_capacity'))
-        .rows,
-    ).toEqual([{ pings: 0 }]);
-    const app = createProductBroker({ ...store, lite }, operatorKey);
-    const send = (
-      address: string,
-      platform: 'linux' | 'darwin',
-      count: number,
-      source = 'kontour-stable',
-    ) =>
-      app.request(
-        `/v1/lite/${source}`,
-        post({ ...dailyPing(), platform, safe_mode_entered: count }),
-        socketBindings(address),
+    try {
+      await db.exec(
+        'CREATE SCHEMA station_telemetry; CREATE TABLE station_telemetry.migrations(version integer PRIMARY KEY,digest text NOT NULL)',
       );
-    // Common marginals reach k despite each observation having a different counter.
-    for (let i = 0; i < 10; i++)
-      expect((await send(`198.51.100.${i + 1}`, 'linux', 100 + i)).status).toBe(
-        202,
+      await migrateLite(client);
+      await migrateLite(client);
+      await db.transaction((tx) => assertLiteSchema(sqlClient(tx)));
+      await lite.createSource({
+        id: 'kontour-stable',
+        publisher: 'kontour',
+        channel: 'stable',
+        registryIds: ['public.plugin'],
+        releaseVersions: ['1.2.3'],
+      });
+      await lite.createSource({
+        id: 'publisher-stable',
+        publisher: 'publisher:example',
+        channel: 'stable',
+        registryIds: ['public.plugin'],
+        releaseVersions: ['1.2.3'],
+      });
+      const publisherKey = `stq_${'q'.repeat(43)}`;
+      await lite.setPublisherKey(
+        'publisher:example',
+        createHash('sha256').update(publisherKey).digest('hex'),
       );
-    // Reviewer's padding probe: one victim plus nine pings from one attacker network.
-    expect((await send('203.0.113.1', 'darwin', 0)).status).toBe(202);
-    for (let i = 0; i < 9; i++)
-      expect((await send('203.0.113.2', 'darwin', 0)).status).toBe(202);
-    for (let i = 0; i < 9; i++)
+      await expect(
+        lite.ingest('kontour-stable', dailyPing(), {
+          day: '2000-01-01',
+          hash: 'a'.repeat(64),
+        }),
+      ).rejects.toMatchObject({ code: 'storage_busy' });
       expect(
-        (await send(`192.0.2.${i + 1}`, 'darwin', 1, 'publisher-stable'))
-          .status,
+        (await db.query('SELECT pings FROM station_telemetry.lite_capacity'))
+          .rows,
+      ).toEqual([{ pings: 0 }]);
+      const app = createProductBroker({ ...store, lite }, operatorKey);
+      const send = (
+        address: string,
+        platform: 'linux' | 'darwin',
+        count: number,
+        source = 'kontour-stable',
+      ) =>
+        app.request(
+          `/v1/lite/${source}`,
+          post({
+            ...dailyPing(),
+            platform,
+            safe_mode_entered: count,
+            public_plugins_enabled:
+              platform === 'darwin' ? [] : ['public.plugin'],
+            surfaces_today: platform === 'darwin' ? ['cli'] : ['web', 'cli'],
+          }),
+          socketBindings(address),
+        );
+      // Common marginals reach k despite each observation having a different counter.
+      for (let i = 0; i < 10; i++)
+        expect(
+          (await send(`198.51.100.${i + 1}`, 'linux', 100 + i)).status,
+        ).toBe(202);
+      // Reviewer's padding probe: one victim plus nine pings from one attacker network.
+      expect((await send('203.0.113.1', 'darwin', 0)).status).toBe(202);
+      for (let i = 1; i < minorityPings; i++)
+        expect((await send('203.0.113.2', 'darwin', 0)).status).toBe(202);
+      for (let i = 0; i < 9; i++)
+        expect(
+          (await send(`192.0.2.${i + 1}`, 'darwin', 1, 'publisher-stable'))
+            .status,
+        ).toBe(202);
+      await lite.createSource({
+        id: 'ipv6',
+        publisher: 'publisher:ipv6',
+        channel: 'stable',
+        registryIds: ['public.plugin'],
+        releaseVersions: ['1.2.3'],
+      });
+      // One /56 can supply many rate-limit /64s but only one contributor /48.
+      for (let i = 0; i < 10; i++)
+        expect(
+          (
+            await send(
+              `2001:db8:1234:${i.toString(16)}::1`,
+              'darwin',
+              1,
+              'ipv6',
+            )
+          ).status,
+        ).toBe(202);
+      // Time travel only the fixture database, then use the production finalizer.
+      await db.exec(
+        `UPDATE station_telemetry.lite_marginals SET day=day-1,publishable=true; UPDATE station_telemetry.lite_clients SET day=day-1; UPDATE station_telemetry.lite_pings SET received_at=received_at-interval '1 day'`,
+      );
+      expect((await lite.aggregates('kontour')).days).toEqual([]);
+      // First public read finalizes yesterday before caching; no hourly sweep has run.
+      expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+      expect(
+        (await db.query('SELECT * FROM station_telemetry.lite_clients')).rows,
+      ).toHaveLength(0);
+      expect((await lite.aggregates('publisher:ipv6')).days).toEqual([]);
+      const result = await lite.aggregates('kontour');
+      expect(result.days).toHaveLength(1);
+      expect(result.days[0].distributions.platform).toBeUndefined();
+      expect(
+        result.days[0].distributions.public_plugins_enabled,
+      ).toBeUndefined();
+      expect(result.days[0].distributions.surfaces_today).toEqual({
+        cli: 10 + minorityPings,
+        web: 10,
+      });
+      expect(result.days[0].distributions.safe_mode_entered).toBeUndefined();
+      expect(result.days[0].distributions.first_active_this_week).toEqual({
+        true: 10 + minorityPings,
+      });
+      expect(result.days[0]).not.toHaveProperty('representedPings');
+      expect(
+        (await (await app.request('/v1/public/aggregates')).json()).days,
+      ).toEqual(result.days);
+      expect(
+        (
+          await db.query(
+            'SELECT client_hash,contributions FROM station_telemetry.lite_pings WHERE client_hash IS NOT NULL OR contributions IS NOT NULL',
+          )
+        ).rows,
+      ).toEqual([]);
+      expect(
+        (await lite.aggregates('publisher:example', publisherKey)).days,
+      ).toEqual([]);
+      await expect(
+        lite.aggregates('kontour', publisherKey),
+      ).rejects.toMatchObject({ code: 'source_unauthorized' });
+    } finally {
+      await db.close();
+    }
+  },
+);
+
+test.each(['404', 'bad-key', 'publisher'])(
+  'anonymous %s traffic cannot exhaust authenticated per-credential admission',
+  async (traffic) => {
+    const transaction = vi.fn(async () => {
+      throw new BrokerError('source_unauthorized');
+    });
+    const lite = new LiteRepository(transaction, 100, 100);
+    store.authenticate.mockImplementation(async (key) => {
+      if (key !== sourceKey && key !== `stp_${'c'.repeat(43)}`)
+        throw new BrokerError('source_unauthorized');
+    });
+    const app = createProductBroker({ ...store, lite }, operatorKey);
+    for (let i = 0; i < 61; i++) {
+      const response = await (traffic === '404'
+        ? app.request('/unknown')
+        : traffic === 'bad-key'
+          ? app.request(
+              '/v1/product/events',
+              post(batch(), `stp_${'z'.repeat(43)}`),
+            )
+          : app.request('/v1/publishers/kontour/aggregates'));
+      expect(response.status).toBe(
+        i < 60 ? (traffic === '404' ? 404 : 401) : 429,
+      );
+    }
+    expect(transaction).not.toHaveBeenCalled();
+    for (let i = 0; i < 60; i++)
+      expect(
+        (await app.request('/v1/product/events', post(batch()))).status,
       ).toBe(202);
-    // Time travel only the fixture database, then use the production finalizer.
-    await db.exec(
-      'UPDATE station_telemetry.lite_marginals SET day=day-1; UPDATE station_telemetry.lite_clients SET day=day-1',
-    );
-    await db.transaction((tx) => lite.finalize(sqlClient(tx)));
     expect(
-      (await db.query('SELECT * FROM station_telemetry.lite_clients')).rows,
-    ).toHaveLength(0);
-    const result = await lite.aggregates('kontour');
-    expect(result.days).toHaveLength(1);
-    expect(result.days[0].distributions.platform).toEqual({ linux: 10 });
-    expect(result.days[0].distributions.safe_mode_entered).toEqual({
-      '21+': 10,
-    });
-    expect(result.days[0].distributions.first_active_this_week).toEqual({
-      true: 20,
-    });
-    expect(result.days[0]).not.toHaveProperty('representedPings');
+      (await app.request('/v1/product/events', post(batch()))).status,
+    ).toBe(429);
     expect(
-      (await lite.aggregates('publisher:example', publisherKey)).days,
-    ).toEqual([]);
-    await expect(
-      lite.aggregates('kontour', publisherKey),
-    ).rejects.toMatchObject({ code: 'source_unauthorized' });
-  } finally {
-    await db.close();
-  }
+      (
+        await app.request(
+          '/v1/product/events',
+          post(batch(), `stp_${'c'.repeat(43)}`),
+        )
+      ).status,
+    ).toBe(202);
+  },
+);
+
+test('public reads do not cache a database cutoff behind the receiver day', async () => {
+  const lite = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const result = {
+    scope: 'daily-per-dimension-marginals',
+    publisher: 'kontour',
+    minimumDistinctDailyClients: 10,
+    privacyUnit: 'daily-salted-IPv4-or-IPv6-/48',
+    dayBasis: 'UTC-receiver-arrival',
+    deliveryCoverage: 'unknown',
+    days: [],
+  };
+  const reads = vi
+    .spyOn(lite, 'publicAggregates')
+    .mockResolvedValueOnce({ ...result, finalizedBeforeDay: '2000-01-01' })
+    .mockResolvedValue({
+      ...result,
+      finalizedBeforeDay: new Date().toISOString().slice(0, 10),
+    });
+  const app = createProductBroker({ ...store, lite }, operatorKey);
+  expect(
+    (await app.request('/v1/public/aggregates')).headers.get('cache-control'),
+  ).toBe('no-store');
+  expect(
+    (await app.request('/v1/public/aggregates')).headers.get('cache-control'),
+  ).toMatch(/^public/);
+  expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+  expect(reads).toHaveBeenCalledTimes(2);
 });

@@ -221,7 +221,9 @@ Tier choice and notice belong to the sender; this route does not infer consent
 or promote a publisher to `full`.
 
 Lite admission allows 60 attempts per daily network key, with at most 10,000
-in-memory entries. IPv4 keys use the address; IPv6 keys use the /64 prefix.
+in-memory entries. IPv4 rate-limit keys use the address; IPv6 rate-limit keys use the /64 prefix.
+Distinct-contributor keys use IPv4 addresses or the coarser IPv6 /48 prefix,
+so rotating the 256 /64s in one /56 still supplies one contributor key.
 IPv4-mapped IPv6 aliases use the same IPv4 key. The least recently used entry
 is evicted at capacity, so new clients remain admissible; eviction can reset
 an old client's attempt budget, but never changes its daily contributor hash.
@@ -231,9 +233,10 @@ SQL, logs, errors, marginals or receipts. Forwarded-IP headers are ignored.
 Behind a proxy all clients share one key; NAT also merges contributors.
 
 Run one receiver process. Restart changes the salt and can count the same
-network again that day; multiple processes have independent salts and limits.
-This is not a unique-person count or a Sybil defense. A botnet of at least ten
-distinct IPv6 /64s (or IPv4 addresses) can pad any marginal past k. A proxy-aware
+network again that day, inflating distinct contributor counts; multiple processes
+have independent salts and limits.
+This is not a unique-person count or a Sybil defense. An attacker controlling at least k−1 distinct contributor keys can still pad
+one victim past k; /48 grouping raises the cost but provides no authenticity. A proxy-aware
 deployment needs a separately reviewed trusted ingress boundary, with access
 logging disabled/sanitized there. This package does not qualify infrastructure
 logging. OHTTP and DAP/Prio remain deferred.
@@ -246,7 +249,12 @@ drops the legacy joint-cell table and adds logged `lite_marginals`,
 they cannot prove distinct contributors; old raw rows remain subject to retention
 but are not reconstructed into publishable marginals. Full-tier rows are
 unchanged. Older binaries refuse migration 3. Back up the entire schema and
-validate upgrades against a restored private copy.
+validate upgrades against a restored private copy. Migration 4 adds a
+`publishable` flag to marginals and nullable `client_hash`/`contributions` columns
+to raw pings. It discards all pre-migration marginals and contributor rows:
+/64-era counts and erased associations cannot prove /48 counts or safe
+complements. Existing raw rows, capacity counts and UUID dedupe survive, but
+legacy rows do not become publishable. Older binaries refuse migration 4.
 
 Each first insertion atomically updates one row per (UTC arrival day, publisher,
 dimension, value). It increments pings and increments the contributor count only
@@ -254,14 +262,18 @@ when that daily client hash has not already contributed to that value. The
 separate contributor table contains day-scoped HMACs, never raw addresses or a
 cross-day join key. Numeric counts use `0`, `1`, `2-5`, `6-20`, `21+` before
 rollup; contract fields already expressed as buckets retain those buckets.
-There are no retained joint cells. The maintained capacity counter replaces a
+The raw ping temporarily carries its daily contributor hash and marginal-value
+sets so finalization can count distinct contributors to a suppressed remainder.
+Those associations are erased at finalization; there are no retained joint cells. The maintained capacity counter replaces a
 per-ingest raw-table count; raw deletion decrements it in the same transaction.
 Admission retains the one-million-lite-ping, 10,000-source/publisher-key and
 approximate 1 GiB limits.
 
 Retention runs at startup and hourly. Under the ingest admission lock it
-finalizes closed days and drops their contributor hashes; only finalized
-marginals are published and retained indefinitely. Raw pings expire after 90
+finalizes closed days, computes secondary suppression, and drops their contributor
+hashes and raw contribution associations in the same transaction. Only finalized,
+publishable marginals are exposed and retained indefinitely. The first public
+read of a new UTC day also runs finalization before filling the cache. Raw pings expire after 90
 days, including UUID dedupe. Downtime or a failed sweep delays finalization and
 erasure; these are periodic operations, not database TTL guarantees.
 
@@ -271,7 +283,13 @@ month** to estimate WAU/MAU. They are not rolling seven/thirty-day unique counts
 and are not exact: retries across period boundaries, late delivery, lost pings,
 state resets, multiple publishers and dishonest clients affect them. The receiver
 uses UTC arrival day because the strict foundation ping has no producer date.
-It does not add an undisclosed date field. Calendar-period boundaries must agree
+It does not add an undisclosed date field. The receiver's Node clock selects the
+daily salt and PostgreSQL assigns arrival timestamps. Keep their clocks aligned:
+a request waiting across midnight or a clock disagreement rolls back with
+`503 storage_busy` rather than accepting the wrong day's hash. Retry after the
+receiver and database agree on the UTC day. Public responses expose
+`finalizedBeforeDay` from PostgreSQL and are not cached when it disagrees with
+the receiver's UTC day. Calendar-period boundaries must agree
 with sender-local first-active calculations before interpreting these estimates.
 
 All allowed profile dimensions have histograms: version/channel/platform/arch,
@@ -288,8 +306,26 @@ last 30 closed UTC arrival days. Each (day, dimension, value) must have at least
 **ten distinct daily client hashes**. The metric is still received pings;
 k measures contributing network keys, not pings or verified installations.
 One victim ping plus nine attacker pings from one IP supplies at most two keys
-and stays suppressed. A common platform value can publish even when every
-observation differs in other fields. Publisher reads use exactly the same rule.
+and stays suppressed. Controlling k−1 distinct contributor keys still lets an
+attacker pad a victim; this policy is not differential privacy or a Sybil defense. A common platform value can publish even when every
+observation differs in other fields, subject to secondary suppression below.
+Publisher reads use exactly the same rule.
+
+For every dimension, the finalizer counts pings contributing to **no published
+value**. This remainder must be empty or backed by at least k distinct daily
+contributor keys. Otherwise it suppresses additional values, smallest ping count
+first (ties by value), until the condition holds or no values remain. No `other`
+bucket is emitted. Thus 10 linux plus 1 darwin does not publish linux:10 beside
+channel stable:11; likewise, a first-active true:20 total cannot expose a
+sub-k platform remainder beside linux:10. For single-valued dimensions, every
+visible sum omits either zero pings or a group backed by at least k contributors.
+
+Set dimensions use the same uncovered-ping remainder, including the `none`
+sentinel for empty sets. A ping with any published value is covered even if
+another of its values is suppressed. A ping can appear in several visible
+values, so summing a set histogram double-counts overlapping membership and
+cannot recover a population total. This rule does not hide all correlations or
+differences between overlapping groups.
 
 No joint cells, raw grand total, suppressed remainder, arbitrary range,
 dimension filter or cohort query is exposed. Query strings are rejected.
@@ -300,10 +336,10 @@ outside knowledge, correlated dimensions, malicious submissions or multiple
 release policies. Missing values/days mean suppressed or unavailable data,
 never zero use.
 
-The successful public response is cached per UTC day in process memory; reads
-after the first do not query storage or take the ingest advisory lock. A day
-finalized after that cache fills appears at the next UTC-day refresh. Failures
-are not cached. Responses include `nosniff` and a cache lifetime ending at UTC
+The successful public response is cached per UTC day in process memory after
+closed-day finalization succeeds and its PostgreSQL cutoff agrees with the
+receiver day; later reads do not query storage or take the ingest advisory lock.
+Failures and clock-disagreement responses are not cached. Responses include `nosniff` and a cache lifetime ending at UTC
 midnight. Publisher credentials are checked on every read, so revocation is
 immediate. `/public/` serves a static dashboard with text-node rendering and a
 CSP permitting no third-party scripts, analytics or network requests.
@@ -321,7 +357,14 @@ use the existing operator authorization boundary.
 `GET /v1/publishers/:publisher/aggregates` requires that publisher's Bearer
 `stq_` credential and returns only its own k-suppressed marginals for the last
 30 closed days. Operator/source keys and a different publisher's key are refused.
-Publisher credentials never ingest. Both query endpoints cap work at 10,000
+Publisher credentials never ingest. Missing or malformed publisher credentials
+are refused before any database transaction. Pre-authentication failures and
+unknown routes share a budget separate from authenticated product ingestion;
+404s, bad product keys and unauthenticated publisher reads cannot consume an
+authenticated credential's tokens. Product keys are checked against storage
+before their individual bounded admission budget is consumed; authentication
+queries themselves still use database resources. A bounded LRU retains up to
+10,000 credential budgets, so eviction or restart resets a credential's budget. Both query endpoints cap work at 10,000
 marginal values and refuse over-limit queries rather than truncating them.
 
 ### Verification

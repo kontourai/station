@@ -6,8 +6,8 @@ table{border-collapse:collapse;width:100%;background:white}th,td{text-align:left
 section{margin:2rem 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{line-height:1.2}
 </style><script src="/public/dashboard.js" defer></script></head><body>
 <h1>Station public telemetry</h1><p>Kontour publisher · last 30 closed UTC receipt days.</p>
-<p>Counts describe received pings, not people. Each published dimension value requires at least ten distinct daily network keys (IPv4 addresses or IPv6 /64s).
-Sparse values are omitted; dimensions are independent and cannot be joined. Missing days mean no publishable data, not zero use.</p>
+<p>Counts describe received pings, not people. Each published dimension value requires at least ten distinct daily network keys (IPv4 addresses or IPv6 /48s).
+Sparse values and values exposing a sparse remainder are omitted. Set histograms overlap and cannot be summed to a total; dimensions cannot be joined. Missing days mean no publishable data, not zero use.</p>
 <p id="status" role="status">Loading aggregates…</p><main id="results"></main>
 <p><a href="/v1/public/aggregates">Read the aggregate JSON</a></p></body></html>`;
 

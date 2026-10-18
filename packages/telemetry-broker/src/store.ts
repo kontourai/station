@@ -38,6 +38,7 @@ export interface ProductRepository {
     key: string,
     batch: ProductTelemetryBatch,
   ): Promise<ProductTelemetryCommitReceipt>;
+  authenticate(key: string): Promise<void>;
   probe(key: string): Promise<ProductTelemetryProbeReceipt>;
   createSource(
     id: string,
@@ -299,11 +300,12 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 3 ||
+      rows.length !== 4 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
-      rows[2].version !== 3
+      rows[2].version !== 3 ||
+      rows[3].version !== 4
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);
@@ -311,6 +313,11 @@ export class PgProductRepository implements ProductRepository {
   async ready(): Promise<void> {
     await this.transaction(async (client) => {
       await this.assertSchema(client);
+    });
+  }
+  async authenticate(key: string): Promise<void> {
+    await this.transaction(async (client) => {
+      await this.source(client, key);
     });
   }
   async probe(key: string): Promise<ProductTelemetryProbeReceipt> {

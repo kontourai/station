@@ -4294,12 +4294,17 @@ accepts the foundation's strict `station_daily` contract through public source
 IDs mapped to publisher/channel pairs, without installation credentials.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
 deduplicates raw pings and accumulates separate daily marginals per dimension.
-Both public Kontour reads and publisher-scoped reads suppress a value unless
-ten distinct daily network hashes contributed. IPv4 uses an address; IPv6 uses
-a /64. Numeric counters are bucketed before rollup. Periodic finalization drops
-closed-day contributor hashes and retains marginals; raw pings expire after
-90 days. Public reads use a UTC-day cache without the ingest lock, and anonymous
-traffic has separate admission budgets from authenticated ingest. Botnet padding,
+Both public Kontour reads and publisher-scoped reads require ten distinct daily
+network hashes per visible value. IPv4 uses an address; IPv6 contributors use a
+/48, separately from /64 rate limits. Secondary suppression removes more values
+until pings with no published value in a dimension are absent or backed by ten
+distinct contributors. Set histograms overlap and cannot be summed to a total.
+Numeric counters are bucketed before rollup. Finalization drops closed-day hashes
+and raw contribution associations; raw pings expire after 90 days. Migration 4
+discards older marginals that cannot prove the new policy. The first public read
+finalizes closed days before caching; cached reads take no ingest lock.
+Pre-auth traffic has a separate budget, while authenticated ingest consumes
+per-credential budgets only after authentication. Botnet padding,
 proxy/NAT sharing, restart effects and publication timing are explained in the
 [receiver guide](../../packages/telemetry-broker/README.md#lite-observations).
 
