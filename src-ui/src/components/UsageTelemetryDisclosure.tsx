@@ -187,7 +187,8 @@ export function dismissUsageTelemetryDisclosure(
 }
 
 // This is a local decision reminder, never a Full acknowledgement. Bind it to
-// the host and disclosure revision so another host or new wording still prompts.
+// the API base and disclosure revision so another API base or new wording
+// still prompts; two Stations behind one origin share it.
 const DNT_DECISIONS_STORAGE_KEY =
   'station.usage-telemetry-disclosure.dnt-decisions';
 const dntDecisionsForPage = new Map<string, string>();
