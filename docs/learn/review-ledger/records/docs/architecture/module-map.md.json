@@ -1090,7 +1090,15 @@
 
     "packages/telemetry-broker/qualify-resilience.mjs",
 
-    "packages/telemetry-broker/src/public-domain.ts"
+    "packages/telemetry-broker/src/public-domain.ts",
+
+    "src-server/routes/device-agent.ts",
+
+    "src-server/services/devices/device-agent-authority.ts",
+
+    "src-server/services/devices/device-automation.ts",
+
+    "src-server/tools/station-control-device-tools.ts"
   ],
 
   "checks": [

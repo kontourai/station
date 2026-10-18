@@ -3921,8 +3921,16 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 `station-browser-mcp-server.ts` registers `station-control-browser-tools.ts`;
 `browser-agent.ts` re-derives the verified caller, and
 `browser-agent-authority.ts` mints the exact Project/profile grant consumed by
-`BrowserAutomation`. Control operations capture a lease fence and check it
-around asynchronous steps. JavaScript evaluation additionally needs the
+`BrowserAutomation`. Hover, pointer drag, native select and color-scheme
+emulation use that same authority path and record attributable actions. Select
+runs prototype-based DOM access in an isolated world; it does not grant general
+page evaluation. Select is hit-tested and respects inherited fieldset disability.
+Human claims clear existing snapshot refs, including after hand-back; snapshots
+overlapping any human hold or lacking a bound lease produce no usable refs.
+Media requests are audited when sent, including interrupted requests. The
+live-surface binder resets target-local color emulation on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+records the authority constraints and proposed cross-engine binding. Control
+operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
@@ -4057,6 +4065,21 @@ The separate [Device producer](../../src-server/services/devices/device-live-sur
 feeds the shared live-surface path. The Tools drawer uses its own typed
 [service](../../src-server/services/devices/device-tools.ts), device
 access and control-conflict checks; it is not a generic extension of capture.
+[DeviceAutomation](../../src-server/services/devices/device-automation.ts) binds
+local station-control device tools to the same session, producer and lease.
+[Agent routes](../../src-server/routes/device-agent.ts) re-derive a bound caller;
+[device grants](../../src-server/services/devices/device-agent-authority.ts)
+recheck recorded owner/Project, current role, and per-device shares. Human takeover
+fences agent input; grants are rechecked per event, and each operation releases
+control after the last overlapping call by that agent finishes. Pointer/key
+holds must finish within one input batch; incomplete gestures and unsupported
+kinds are refused before delivery. Input batches are serialized; observations
+may overlap. Failed dispatch cancels held input by releasing its fence.
+Input reports the post-completion lease.
+Live device tools require the operator Agent access opt-in;
+closing for everyone additionally requires operator standing and creator identity.
+Automatic pane reveal and remote-host agent tools remain
+outside this first slice.
 
 **Evidence.** `mobile-device-host.test.ts`, `mobile-device.routes.test.ts`,
 `device-live-surface-producer.test.ts` and SDK tests exercise helper fixtures,
