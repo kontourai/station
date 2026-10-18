@@ -5928,6 +5928,8 @@ export function configureRuntimeRoutes(
       try {
         const result = await agent.generateObject(prompt, {
           structuredOutputSchema: zodSchema(guideOutputSchema),
+          // Schema failures are deterministic; preserve the first cause for Rewrite.
+          maxRetries: 0,
           signal,
           abortSignal: signal,
           maxOutputTokens: 16000,

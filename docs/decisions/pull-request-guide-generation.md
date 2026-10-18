@@ -93,3 +93,17 @@ and narrative may depend on that range, and a partial tour would conceal the
 failure. Nothing is published on failure; any prior guide remains intact. Valid
 guides still cover every changed file through explicit anchors/files or the final
 unexplained-files stop.
+
+
+## Preserve validation failures without automatic retries
+
+Disable VoltAgent's per-generation retry loop for review guides (`maxRetries: 0`).
+The default loop retries schema failures without corrective input, spends the same
+180-second service budget, and returns its last error. That can replace an earlier
+25-line failure with a generic schema error or a timeout after several long calls.
+A guide now makes one generation attempt and preserves that attempt's specific
+validation failure. This chooses zero automatic corrective retries, within the
+limit of at most one, rather than paying for another deterministic failure.
+Operators can explicitly Rewrite or choose another model. Other generation
+callers and their retry behavior are unchanged. Existing preparation, cancellation
+and service deadline checks still bound the entire run.

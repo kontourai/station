@@ -62,4 +62,7 @@ without rereading the forge snapshot. It reads the full guide once the run settl
 Failures distinguish invalid model output, missing commits, oversized changes,
 Git timeouts, storage limits, and changed access. Saved-guide read failures and
 disabled-guide requests have separate messages from model failures. The preparation and model request
-share a three-minute time budget.
+share a three-minute time budget. Guide generation disables VoltAgent's automatic model retries:
+an excerpt-length failure is reported after the first attempt instead of being
+replaced by a later generic error or timeout. Use **Rewrite guide** to try again,
+or choose a model that follows the excerpt bounds.
