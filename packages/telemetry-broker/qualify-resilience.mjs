@@ -114,6 +114,7 @@ export async function qualifyResilience(
     releaseVersions: ['1.2.3'],
   });
   // Obtain the exact validated/normalized production contribution shape from one real ingest.
+  /** @type {import('@kontourai/station-contracts/product-telemetry').StationDailyPing} */
   const ping = {
     event: 'station_daily',
     event_id: randomUUID(),
