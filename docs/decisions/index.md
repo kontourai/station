@@ -10,4 +10,5 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [device-agent-control](./device-agent-control.md) | current | Bound agents control local device live surfaces through the shared lease |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
