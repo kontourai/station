@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-18T12:42:31Z | nightly-desktop | 0.1.11-nightly.2482.1 | `b28c84d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T12:42:28Z | nightly-android | 0.1.11-nightly.2482.1 | `b28c84d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T11:55:55Z | nightly-npm | 0.8.0-nightly.2482.39124399487 | `b28c84d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39124399487) |
 | 2026-10-18T06:50:13Z | nightly-npm | 0.8.0-nightly.2482.39104631066 | `64d458b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39104631066) |
@@ -299,6 +300,52 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-18T12:42:31Z · nightly-desktop · 0.1.11-nightly.2482.1
+
+- Ship SHA: `b28c84df811e27f9de6d28e7cd40cd541d89f68e`
+- Artifact built at: `2026-10-18T11:54:03.488Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 39124399487)
+
+### Changelog
+
+Commits since `597e0e6` ([full sha](https://github.com/kontourai/station/commit/597e0e68889b2249d8bad509d6afaea54025391b)):
+
+**Features**
+
+- [#3795](https://github.com/kontourai/station/pull/3795) feat(cli): retain stable turn keys across explicit retries
+- [#3811](https://github.com/kontourai/station/pull/3811) feat(supervisor): add the Station process supervisor package
+- [#3804](https://github.com/kontourai/station/pull/3804) feat(confinement): confine full-access Claude sessions with macOS Seatbelt (#2494 slice 2)
+- [#3735](https://github.com/kontourai/station/pull/3735) feat(policy): embed Cedar behind a fail-closed server evaluator
+- [#3706](https://github.com/kontourai/station/pull/3706) feat(orchestration): index event-derived parent naming
+- [#3786](https://github.com/kontourai/station/pull/3786) feat(telemetry): tiered consent foundation and ADR
+- [#3803](https://github.com/kontourai/station/pull/3803) feat(confinement): provider contract and Codex sandbox record (#2494 slice 1)
+- [#3779](https://github.com/kontourai/station/pull/3779) feat(browser): add leased pointer, select and media tools
+- [#3782](https://github.com/kontourai/station/pull/3782) feat(devices): add bound agent tools under the shared control lease
+
+**Fixes**
+
+- [#3802](https://github.com/kontourai/station/pull/3802) fix(ci): align terminal guardrail proof with async subprocess probe
+- [#3781](https://github.com/kontourai/station/pull/3781) fix(terminal): scope websocket events and commands to owning session
+- [#3787](https://github.com/kontourai/station/pull/3787) fix(ui): prevent scroll and layout jumps
+- [#3743](https://github.com/kontourai/station/pull/3743) fix(chat): distinguish Codex approval policy from inherited reviewer
+- [#3774](https://github.com/kontourai/station/pull/3774) fix(ci): validate health evidence at observation time
+- [#3700](https://github.com/kontourai/station/pull/3700) fix(release): deliver reviewed package versions and consumed declaration
+- [#3751](https://github.com/kontourai/station/pull/3751) fix(coding): include untracked additions in Task worktree diffs
+
+**Docs**
+
+- [#3784](https://github.com/kontourai/station/pull/3784) docs(design): propose process supervisor and integrated terminal redesign
+
+**Other**
+
+- [#3736](https://github.com/kontourai/station/pull/3736) build(deps): consolidate all nine open Dependabot updates
+- [#3796](https://github.com/kontourai/station/pull/3796) perf(typecheck): select tsc, tsc-ts or Bun with a switchable default
+- [#3794](https://github.com/kontourai/station/pull/3794) chore(security): renew four advisory exceptions through 2026-10-25 (#3150)
+- [#3793](https://github.com/kontourai/station/pull/3793) test(ui): align tests with #3787 scroll and render changes
+- [#3772](https://github.com/kontourai/station/pull/3772) perf(terminal): bound replay history and yield subprocess probes
+- [#3777](https://github.com/kontourai/station/pull/3777) perf(activity): bound history lists and visible conflict queries
 
 ## 2026-10-18T12:42:28Z · nightly-android · 0.1.11-nightly.2482.1
 
