@@ -80,7 +80,10 @@ function windowsFingerprintScript(pid: number): string {
     'if ($null -ne $p) { try { $t = $p.StartTime } catch { $t = $null } }',
     'if ($null -eq $t) { try { $c = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $id"; if ($null -ne $c) { $t = $c.CreationDate } } catch { $t = $null } }',
     "if ($null -eq $t) { Write-Output 'UNKNOWN no start time readable'; exit 0 }",
-    "Write-Output ('OK ' + [math]::Floor($t.ToUniversalTime().Ticks / 10))",
+    // Exact integer truncation: dividing would give a double, which loses
+    // precision at this size and prints in scientific notation.
+    '$k = [string]$t.ToUniversalTime().Ticks',
+    "Write-Output ('OK ' + $k.Substring(0, $k.Length - 1))",
   ].join('; ');
 }
 
