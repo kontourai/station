@@ -1,8 +1,9 @@
+import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   afterEach,
   beforeEach,
@@ -137,6 +138,12 @@ describe('CLI core commands over HTTP', () => {
   let stdoutWrite: MockInstance;
   let _consoleLog: MockInstance;
   const orchestrationCommands: Array<Record<string, unknown>> = [];
+  const chatRequests: Array<{
+    path: string;
+    message: string;
+    conversationId?: string;
+    clientTurnId?: string;
+  }> = [];
   const authorizationHeaders: Array<string | undefined> = [];
   // Populated per-`beforeEach` below. Lets a test assert the *client*
   // actually tore down its SSE connection (rather than the mock server
@@ -584,6 +591,16 @@ describe('CLI core commands over HTTP', () => {
         method === 'POST' &&
         (url.pathname === '/api/orchestration/chat' || continueChatMatch)
       ) {
+        chatRequests.push({
+          path: url.pathname,
+          message: body.message,
+          conversationId: body.conversationId,
+          clientTurnId: body.clientTurnId,
+        });
+        if (body.message === 'trigger lost acceptance') {
+          res.destroy();
+          return;
+        }
         // #1796: the real refusal's shape, for a device without the grant.
         if (body.message === 'refuse full access') {
           res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -946,6 +963,7 @@ describe('CLI core commands over HTTP', () => {
     state.detailOmitsSession = new Set<string>();
     structuredErrorPaths.clear();
     orchestrationCommands.length = 0;
+    chatRequests.length = 0;
     authorizationHeaders.length = 0;
   });
 
@@ -985,6 +1003,146 @@ describe('CLI core commands over HTTP', () => {
     expect(stdoutWrite).toHaveBeenCalledWith('Echo: ');
     expect(stdoutWrite).toHaveBeenCalledWith('hello http world');
   });
+
+  test.each([['chat'], ['agents', 'chat']])(
+    '%j gives each new user turn a distinct key and returns it without an API echo',
+    async (...command) => {
+      const { runCli } = await import('../cli.js');
+      for (let turn = 0; turn < 2; turn += 1) {
+        await runCli([
+          ...command,
+          'station',
+          'same message',
+          '--json',
+          `--api-base=${apiBase}`,
+        ]);
+        expect(chatRequests[turn].clientTurnId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        expect(
+          JSON.parse(String(_consoleLog.mock.calls.at(-1)?.[0])),
+        ).toMatchObject({
+          clientTurnId: chatRequests[turn].clientTurnId,
+          conversationId: chatRequests[turn].conversationId,
+          text: 'Echo: same message',
+        });
+      }
+      expect(chatRequests).toHaveLength(2);
+      expect(chatRequests[1].clientTurnId).not.toBe(
+        chatRequests[0].clientTurnId,
+      );
+      expect(chatRequests[1].conversationId).not.toBe(
+        chatRequests[0].conversationId,
+      );
+    },
+  );
+
+  test.each([undefined, 'runtime-thread'])(
+    'two deliberate retries retain the exact caller key and conversation binding (%s)',
+    async (conversationId) => {
+      const { runCli } = await import('../cli.js');
+      const key = '  retry:opaque/key?é  ';
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await runCli([
+          'chat',
+          'codex',
+          'same retry',
+          '--json',
+          `--client-turn-id=${key}`,
+          ...(conversationId ? [`--session=${conversationId}`] : []),
+          `--api-base=${apiBase}`,
+        ]);
+        expect(
+          JSON.parse(String(_consoleLog.mock.calls.at(-1)?.[0])),
+        ).toMatchObject({
+          clientTurnId: key,
+          ...(conversationId ? { conversationId } : {}),
+        });
+      }
+      expect(chatRequests).toHaveLength(2);
+      expect(chatRequests[0].clientTurnId).toBe(key);
+      expect(chatRequests[1]).toEqual(chatRequests[0]);
+      expect(chatRequests[0].path).toBe(
+        conversationId
+          ? `/api/orchestration/chat/${conversationId}/continue`
+          : '/api/orchestration/chat',
+      );
+    },
+  );
+
+  test.each([
+    '--client-turn-id',
+    '--client-turn-id=',
+    '--client-turn-id=   ',
+    `--client-turn-id=${'x'.repeat(201)}`,
+  ])('rejects invalid caller key %s before HTTP', async (flag) => {
+    const { runCli } = await import('../cli.js');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      runCli(['chat', 'codex', 'hi', flag, `--api-base=${apiBase}`]),
+    ).rejects.toThrow(/--client-turn-id/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(chatRequests).toEqual([]);
+  });
+
+  test('the executable retains a lost acceptance handle in one JSON error and never resends', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-cli-turn-key-'));
+    try {
+      const result = await new Promise<{
+        code: number | null;
+        stdout: string;
+        stderr: string;
+      }>((resolveResult, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            '--import',
+            'tsx',
+            resolve('packages/cli/src/bin.ts'),
+            'chat',
+            'codex',
+            'trigger lost acceptance',
+            '--json',
+            `--api-base=${apiBase}`,
+          ],
+          {
+            env: {
+              ...process.env,
+              STATION_HOME: home,
+              STATION_INSTANCE_NAME: 'cli-stable-key-test',
+            },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          },
+        );
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on('data', (chunk) => {
+          stderr += chunk;
+        });
+        child.once('error', reject);
+        child.once('close', (code) => resolveResult({ code, stdout, stderr }));
+      });
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(chatRequests).toHaveLength(1);
+      expect(result.stderr.trim().split('\n')).toHaveLength(1);
+      expect(result.stderr).toMatch(/^\{"success":false,/);
+      const failure = JSON.parse(result.stderr);
+      expect(failure).toMatchObject({
+        success: false,
+        error: expect.any(String),
+        clientTurnId: chatRequests[0].clientTurnId,
+        conversationId: chatRequests[0].conversationId,
+      });
+      expect(failure.clientTurnId).toEqual(expect.any(String));
+      expect(failure.conversationId).toEqual(expect.any(String));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30000);
 
   test('representative generic verbs render structured API error codes, never objects', async () => {
     const { runCli } = await import('../cli.js');
