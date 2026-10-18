@@ -202,7 +202,8 @@ Never trust the edge ranges or the whole Docker subnet: the trust decision is
 about the receiver's immediate socket peer. Keep one receiver process.
 
 The ingress rules allow only `/v1/lite/<source>` (one bounded public slug),
-`/v1/public/aggregates`, `/public/*` and `/health/live` on the chosen hostname.
+`/v1/public/aggregates`, the current `/public/*` assets (`/public/` and
+`/public/dashboard.js`), and `/health/live` on the chosen hostname.
 Everything else terminates at `http_status:404`, including `/v1/operator/*`,
 `/v1/publishers/*` and all Full-tier product routes. No receiver or database port
 is published on a non-loopback host address. Provision sources and inspect

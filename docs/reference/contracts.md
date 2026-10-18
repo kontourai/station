@@ -181,6 +181,9 @@ provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
 fingerprinting belong to the [shared helper](shared.md#product-telemetry).
 Legacy payloads have no v1 guarantees and the strict parser rejects them.
+`StationDailyPing` permits explicit `unknown` channel, distribution and layout
+facts; `custom` remains the version sentinel. Receiver sources still select a
+single channel, and public catalog admission remains receiver-owned.
 See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
 
 ## Import examples

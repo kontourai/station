@@ -4314,7 +4314,14 @@ request concurrency are bounded; uncertainty returns a failure.
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
-IDs mapped to publisher/channel pairs, without installation credentials.
+IDs mapped to publisher/channel pairs, without installation credentials. The
+[startup-validated proxy policy](../../packages/telemetry-broker/src/client-address.ts)
+trusts no forwarded address by default. Only explicit connector socket CIDRs can
+select `CF-Connecting-IP`; malformed values use the peer and increment a
+content-free operator counter. The selected address feeds both daily HMACs and
+never reaches SQL or logs. Without configuration, all tunneled clients share the
+connector key. The receiver admits the sender's `unknown` channel/distribution/
+layouts sentinels and `custom` version; a source still fixes its channel.
 [Lite storage](../../packages/telemetry-broker/src/lite-store.ts) atomically
 deduplicates raw pings and records bounded contribution arrays and dimension
 jobs. Closed-day finalization uses grouped SQL in separately committed dimension

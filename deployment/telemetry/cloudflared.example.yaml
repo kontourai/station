@@ -11,7 +11,7 @@ ingress:
     path: '^/v1/public/aggregates$'
     service: http://receiver:43891
   - hostname: telemetry.example.com
-    path: '^/public/.*$'
+    path: '^/public/(dashboard[.]js)?$'
     service: http://receiver:43891
   - hostname: telemetry.example.com
     path: '^/health/live$'

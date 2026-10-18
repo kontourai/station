@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
+import { execFileSyncBounded } from '../../scripts/lib/bounded-capture.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedProcess,
@@ -13,8 +21,8 @@ import {
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
 
-// This diagnostic deliberately requires a built Station server with custom/unknown
-// build metadata. It never replaces the clean-source receiver qualifier.
+// This diagnostic deliberately requires a built Station server with a custom
+// version fixture. It never replaces the clean-source receiver qualifier.
 const connectionString =
   process.env.STATION_TELEMETRY_QUALIFICATION_DATABASE_URL;
 assert.ok(
@@ -96,7 +104,7 @@ async function until(label, operation, timeout = 120_000) {
     if (result) return result;
     for (const child of children)
       assert.ok(
-        child.execution.isAlive(),
+        child.expectedStop || child.execution.isAlive(),
         `${child.label} exited while waiting for ${label}`,
       );
     await new Promise((yes) => setTimeout(yes, 100));
@@ -174,26 +182,76 @@ try {
     }
   });
   await listen(relay);
-  launch(
-    'station',
-    [
-      '/usr/bin/sandbox-exec',
-      '-p',
-      '(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))',
-      process.execPath,
-      station,
-    ],
-    {
-      STATION_HOME: home,
-      STATION_ROOT: join(root, 'instances'),
-      STATION_INSTANCE_ID: 'telemetry-receiver-proxy-qa',
-      STATION_HOST: '127.0.0.1',
-      PORT: '0',
-      STATION_CHANNEL: 'unknown',
-      STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: '1',
-      STATION_PRODUCT_TELEMETRY_ENDPOINT: `http://127.0.0.1:${relay.address().port}/v1/lite/${source}`,
-    },
+  // macOS refuses setuid /bin/ps inside sandbox-exec. A private, unprivileged
+  // ad-hoc-signed copy retains the real process birth probe for Station locks.
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  const ps = join(bin, 'ps');
+  await writeFile(ps, await readFile('/bin/ps'));
+  await chmod(ps, 0o755);
+  execFileSyncBounded('/usr/bin/codesign', ['--force', '--sign', '-', ps], {
+    windowsHide: true,
+  });
+  const startStation = async (label) => {
+    const stationExecution = launch(
+      label,
+      [
+        '/usr/bin/sandbox-exec',
+        '-p',
+        '(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))',
+        process.execPath,
+        station,
+      ],
+      {
+        PATH: `${bin}:${process.env.PATH}`,
+        STATION_HOME: home,
+        STATION_ROOT: join(root, 'instances'),
+        STATION_INSTANCE_ID: 'telemetry-receiver-proxy-qa',
+        STATION_HOST: '127.0.0.1',
+        PORT: '0',
+        STATION_CHANNEL: 'dev',
+        STATION_PRODUCT_TELEMETRY_ENDPOINT: `http://127.0.0.1:${relay.address().port}/v1/lite/${source}`,
+      },
+    );
+    let stationPort;
+    let banner = '';
+    stationExecution.child.stdout.on('data', (chunk) => {
+      banner = (banner + chunk.toString('utf8')).slice(-16384);
+      const match = /HTTP Server: {2}http:\/\/127\.0\.0\.1:(\d+)/.exec(banner);
+      if (match) stationPort = Number(match[1]);
+    });
+    await until('Station readiness', () => stationPort);
+    return { execution: stationExecution, port: stationPort };
+  };
+  const seed = await startStation('station-seed');
+  const dailyPath = join(home, 'config/telemetry-daily.json');
+  await until('daily accumulator', async () => {
+    try {
+      return JSON.parse(await readFile(dailyPath, 'utf8'));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      return false;
+    }
+  });
+  children.find((c) => c.execution === seed.execution).expectedStop = true;
+  const stopped = await terminateSuiteExecution(seed.execution, {
+    terminationGraceMs: 15_000,
+    terminationForceMs: 2000,
+    waitForSuiteSettlement,
+  });
+  assert.ok(
+    stopped.settled && !stopped.escalated && stopped.errors.length === 0,
+    'seed Station shutdown',
   );
+  const previous = JSON.parse(await readFile(dailyPath, 'utf8'));
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  // Exercise the real next-day sender without waiting until midnight. Preserve
+  // its generated accumulator; model a prior build without channel metadata.
+  previous.day = yesterday;
+  previous.lastActiveDay = yesterday;
+  previous.ping.channel = 'unknown';
+  await writeFile(dailyPath, JSON.stringify(previous), { mode: 0o600 });
+  const { port: stationPort } = await startStation('station');
   const ping = await until('real Station station_daily delivery', () =>
     exchanges.find((e) => e.payload?.event === 'station_daily'),
   );
@@ -211,11 +269,8 @@ try {
   const environment = JSON.parse(
     await readFile(join(home, 'security/environment.json'), 'utf8'),
   );
-  const runtime = JSON.parse(
-    await readFile(join(home, 'runtime.json'), 'utf8'),
-  );
-  const stationBase = `http://127.0.0.1:${runtime.port}`;
-  const lower = await fetch(`${stationBase}/api/config/app`, {
+  const stationBase = `http://127.0.0.1:${stationPort}`;
+  const lower = await fetch(`${stationBase}/config/app`, {
     method: 'PUT',
     headers: {
       authorization: `Bearer ${environment.credential}`,

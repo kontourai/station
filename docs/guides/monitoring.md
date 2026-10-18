@@ -25,6 +25,12 @@ Lite pings through public publisher/channel source IDs. Its owner view is exact:
 operator `sto_` endpoints return daily marginals and weekly sums, including daily
 distinct-network counts (weekly contributor-days; not cross-day unique people).
 IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
 
 Public dashboards and scoped publisher keys receive only **weekly noisy
 estimates** over ten profile/adoption fields. The fixed public domain includes

@@ -122,7 +122,8 @@ while holding DDL locks through the operation.
 Authenticated routes, anonymous lite ingest, and public page reads have separate
 8-active-request budgets and token buckets of 60 requests, restoring one per second.
 Public aggregate cache misses have their own budget; successful fills are reused
-for the rest of the UTC day, including concurrent reads, without storage work. Rate exhaustion returns 429
+for at most 60 seconds, reset at UTC midnight, including concurrent reads without
+storage work. Rate exhaustion returns 429
 with `Retry-After`; concurrency exhaustion returns 503. Process liveness remains
 available. Bodies are capped at 128 KiB. The standalone server permits 64
 connections and sets 5-second socket/request/header timeouts.
@@ -177,6 +178,43 @@ all database rows plus captured logs for a trusted `CF-Connecting-IP` sentinel.
 It does not certify Station execution, persistent deployment, backup
 restore or native shells. Those remain separate from focused HTTP tests and
 live-store qualification.
+
+### Built Station sender diagnostic
+
+`node packages/telemetry-broker/qualify-sender.mjs` is a separate macOS diagnostic
+against tmpfs PostgreSQL 16, not part of receiver-only qualification. Set
+`STATION_TELEMETRY_QUALIFICATION_DATABASE_URL`, build the receiver from a clean
+commit, and preserve that `dist` directory before testing a scratch sender merge.
+`STATION_TELEMETRY_RECEIVER_DIST` can select that frozen directory;
+`STATION_TELEMETRY_SENDER_SERVER` selects the built Station server (default
+`dist-server/command-station.js`). Missing prerequisites fail.
+
+If #3791 is not on main, use an uncommitted `git merge --no-commit --no-ff
+origin/feat/telemetry-lite-ping` in the isolated lane; resolve documentation
+conflicts for the diagnostic only. Temporarily replace the root package version
+with a non-SemVer fixture such as `receiver-interop-custom`, run
+`npm run build:server`, restore that version, then abort the scratch merge.
+Do not commit the merge or claim its dirty metadata fixture as release evidence.
+The sender build needs the managed dependencies already installed in that lane.
+
+The runner boots a real built Station twice in an isolated home and instance.
+It stops the first process before moving its generated accumulator to yesterday
+and marking that prior build's channel unavailable (`unknown`). The next real
+sender serializes it; invalid build version maps to `custom`, while distribution
+and layouts retain `unknown`. A loopback relay captures exact request/response
+bodies and supplies a trusted CF header. The receiver is a real built Unix
+entrypoint with its own database. The runner checks 202 acceptance, feedback's
+current 400 refusal, finalized operator marginals and contributor-hash erasure.
+It makes no assertion that a feedback payload was delivered successfully.
+
+Station runs under `sandbox-exec` with outbound networking limited to loopback.
+Because macOS refuses setuid `/bin/ps` there, the fixture uses a private,
+unprivileged ad-hoc-signed copy for the real process-birth lock probe. The runner
+retains owned failed homes/databases for diagnosis and removes successful ones.
+The outer tmpfs PostgreSQL container remains the caller's cleanup responsibility.
+This establishes built sender/receiver interoperability for the daily ping;
+Cloudflare, container images, persistent deployment and native shells remain
+separate acceptance work.
 
 ## Lite observations
 
