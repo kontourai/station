@@ -491,7 +491,12 @@ test.each([1, 10])(
       );
       expect((await lite.aggregates('kontour')).days).toEqual([]);
       // First public read finalizes yesterday before caching; no hourly sweep has run.
-      expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+      const firstPublicRead = await app.request('/v1/public/aggregates');
+      expect(firstPublicRead.status).toBe(200);
+      expect(
+        (await firstPublicRead.json()).days,
+        'first public read includes yesterday before caching',
+      ).toHaveLength(1);
       expect(
         (await db.query('SELECT * FROM station_telemetry.lite_clients')).rows,
       ).toHaveLength(0);
