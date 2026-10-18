@@ -1708,7 +1708,9 @@ test.each([
 ] as const)(
   'real service never-tagged producer uses actual custody for %s wait/result effects',
   async (mode) => {
-    const eventStore = new EventStore(':memory:');
+    const eventStore = new EventStore(
+      join(makeTempDir('weak-producer-custody-'), 'events.sqlite'),
+    );
     const eventBus = new EventBus();
     class WeakAdapter extends GateTestAdapter {
       readonly sent: Parameters<GateTestAdapter['sendTurn']>[0][] = [];
