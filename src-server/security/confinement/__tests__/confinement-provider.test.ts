@@ -9,6 +9,7 @@ import type { ConfinementMechanism } from '@kontourai/station-contracts/executio
 import { describe, expect, test } from 'vitest';
 import { codexSandboxConfinementProvider } from '../../../providers/adapters/codex-confinement.js';
 import {
+  assertRequiredConfinementObserved,
   type ConfinementProvider,
   observedConfinementRecord,
   readConfinementRecord,
@@ -115,19 +116,27 @@ describe('resolveConfinement', () => {
 });
 
 describe('observedConfinementRecord', () => {
-  test('a required mechanism that never engaged has failed, not opted out', () => {
-    expect(
-      observedConfinementRecord(
-        {
-          requiredLevel: 'os-profile',
-          policyBasis: 'workspace-floor',
-          mechanism: 'codex-sandbox',
-          level: 'os-profile',
-          workspaceAccess: 'mounted',
-        },
-        'no-mechanism',
-      ),
-    ).toMatchObject({ posture: 'configured-but-failed', required: true });
+  test('a required start where nothing was engaged names no mechanism, and is still refused', () => {
+    const record = observedConfinementRecord(
+      {
+        requiredLevel: 'os-profile',
+        policyBasis: 'workspace-floor',
+        mechanism: 'codex-sandbox',
+        level: 'os-profile',
+        workspaceAccess: 'mounted',
+      },
+      'no-mechanism',
+    );
+    expect(record).toEqual({
+      level: 'host',
+      required: true,
+      posture: 'no-mechanism',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+    });
+    expect(() => assertRequiredConfinementObserved(record, 'codex')).toThrow(
+      expect.objectContaining({ code: 'confinement_not_observed' }),
+    );
   });
 });
 

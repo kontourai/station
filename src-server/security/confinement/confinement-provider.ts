@@ -274,31 +274,29 @@ export function noMechanismConfinementRecord(
 
 /**
  * The record of a start whose plan engaged a mechanism, from the posture its
- * provider observed. A required mechanism that reports it never engaged has
- * failed, not opted out; an unrequired one that never engaged is honestly
- * `host`.
+ * provider derived from the engine's report. It says only what happened: a
+ * start where nothing was engaged is `host` / `no-mechanism` with no
+ * mechanism named, required or not. A required one is still refused
+ * (`assertRequiredConfinementObserved`), because its posture is not
+ * `confined`.
  */
 export function observedConfinementRecord(
   plan: ConfinementPlan,
   observed: ConfinementPosture,
 ): ExecutionConfinementRecord {
   const required = plan.requiredLevel !== 'host';
-  const posture =
-    observed === 'no-mechanism' && required
-      ? 'configured-but-failed'
-      : observed;
-  if (posture === 'no-mechanism')
+  if (observed === 'no-mechanism')
     return {
       level: 'host',
       required,
-      posture,
+      posture: observed,
       workspaceAccess: 'mounted',
       policyBasis: plan.policyBasis,
     };
   return {
     level: plan.level,
     required,
-    posture,
+    posture: observed,
     mechanism: plan.mechanism,
     workspaceAccess: plan.workspaceAccess,
     policyBasis: plan.policyBasis,
@@ -309,11 +307,13 @@ export function observedConfinementRecord(
 export function assertRequiredConfinementObserved(
   record: ExecutionConfinementRecord,
   engine: EngineId,
+  /** What the engine reported instead, and how to fix it, when known. */
+  detail?: string,
 ): void {
   if (record.required && record.posture !== 'confined')
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This ${engine} session requires ${record.level} confinement, but the started engine did not report it applied (${record.posture}). The session was not started.`,
+      `This ${engine} session requires ${record.level} confinement, but the started engine did not report it applied (${record.posture}). ${detail ? `${detail} ` : ''}The session was not started.`,
     );
 }
 

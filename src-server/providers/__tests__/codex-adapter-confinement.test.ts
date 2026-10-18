@@ -134,8 +134,11 @@ async function start(input: {
   approvalMode?: 'ask' | 'auto' | 'never';
   confinement: StationConfinement;
   plan?: ConfinementPlan;
-  /** Codex's reported sandbox; `null` removes it from the response. */
-  reported?: unknown;
+  /**
+   * Codex's reported sandbox; `null` removes it from the response. A
+   * function answers from the request Station sent.
+   */
+  reported?: unknown | ((params: Record<string, unknown>) => unknown);
   /**
    * Codex's reported approval policy. Absent: what Station sent, as Codex
    * echoes an accepted request (the capture's own `never`, when it sent
@@ -181,8 +184,12 @@ async function start(input: {
     input.reportedApprovalPolicy ??
     request.params.approvalPolicy ??
     CAPTURED.approvalPolicy;
-  if (input.reported === null) delete result.sandbox;
-  else if (input.reported !== undefined) result.sandbox = input.reported;
+  const reported =
+    typeof input.reported === 'function'
+      ? input.reported(request.params)
+      : input.reported;
+  if (reported === null) delete result.sandbox;
+  else if (reported !== undefined) result.sandbox = reported;
   respond(process, request, result);
   const outcome = await started.then(
     () => ({ ok: true as const }),
@@ -424,6 +431,26 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       },
     );
 
+    test('the refusal names the operator-configured roots outside the workspace and how to fix it (D3)', async () => {
+      const cargo = join(homedir(), '.cargo');
+      const run = await start({
+        threadId: 'broad-cargo',
+        approvalMode: 'never',
+        confinement: 'workspace',
+        plan: REQUIRED,
+        reported: workspaceWrite(['/workspace/repo/build', cargo]),
+      });
+      expect(run.outcome.ok).toBe(false);
+      const message = (run.outcome as { error: Error }).error.message;
+      expect(message).toContain(
+        `writable roots outside the workspace: ${cargo}.`,
+      );
+      expect(message).not.toContain('/workspace/repo/build');
+      expect(message).toContain('writable_roots');
+      expect(message).toContain('host session');
+      await run.cleanup();
+    });
+
     test('an unrequired start whose workspaceWrite opens the filesystem root is recorded configured-but-failed, and still runs', async () => {
       const run = await start({
         threadId: 'broad-unrequired',
@@ -444,19 +471,88 @@ describe('#2494: Codex confinement posture is read back from its response', () =
   });
 
   describe('the approval policy Codex reports also decides the requirement (F5)', () => {
-    test('a workspace session Station sent no knobs to, which Codex runs at never unsandboxed, is refused', async () => {
+    /**
+     * D1: an operator config of `approval_policy = "never"` and
+     * `sandbox_mode = "danger-full-access"`, with no Station mode. Codex
+     * applies a sandbox Station asks for at thread level, and its own
+     * configuration otherwise.
+     */
+    const operatorConfigSandbox = (params: Record<string, unknown>) =>
+      params.sandbox === 'workspace-write'
+        ? CAPTURED.sandbox
+        : { type: 'dangerFullAccess' };
+
+    test.each([
+      ['start', false],
+      ['resume', true],
+    ] as const)(
+      'a workspace %s Station sent no mode to asks Codex for workspace-write, leaves approvals to Codex, and runs confined',
+      async (label, resume) => {
+        const run = await start({
+          threadId: `codex-config-never-${label}`,
+          confinement: 'workspace',
+          plan: NOT_REQUIRED_WORKSPACE,
+          reportedApprovalPolicy: 'never',
+          reported: operatorConfigSandbox,
+          resume,
+        });
+        expect(run.request.params.sandbox).toBe('workspace-write');
+        expect(run.request.params).not.toHaveProperty('approvalPolicy');
+        expect(run.outcome).toEqual({ ok: true });
+        expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual({
+          level: 'os-profile',
+          required: true,
+          posture: 'confined',
+          mechanism: 'codex-sandbox',
+          workspaceAccess: 'mounted',
+          policyBasis: 'workspace-floor',
+        });
+        await run.cleanup();
+      },
+    );
+
+    test.each([
+      ['start', false],
+      ['resume', true],
+    ] as const)(
+      'a workspace %s Codex still reports wider than the workspace-write Station asked for, at never, is refused',
+      async (label, resume) => {
+        const run = await start({
+          threadId: `codex-config-never-wider-${label}`,
+          confinement: 'workspace',
+          plan: NOT_REQUIRED_WORKSPACE,
+          reportedApprovalPolicy: 'never',
+          reported: { type: 'dangerFullAccess' },
+          resume,
+        });
+        expect(run.request.params.sandbox).toBe('workspace-write');
+        expect(run.outcome.ok).toBe(false);
+        expect(
+          (run.outcome as { error: ConfinementRefusedError }).error.code,
+        ).toBe('confinement_not_observed');
+        expect(run.sessionStarted).toBeUndefined();
+        await run.cleanup();
+      },
+    );
+
+    test('a host start Station sent no mode to asks for no sandbox and records only what Codex reported', async () => {
       const run = await start({
-        threadId: 'codex-config-never-full',
-        confinement: 'workspace',
-        plan: NOT_REQUIRED_WORKSPACE,
+        threadId: 'codex-host-no-mode',
+        confinement: 'host',
+        plan: NOT_REQUIRED_HOST,
         reportedApprovalPolicy: 'never',
-        reported: { type: 'dangerFullAccess' },
+        reported: operatorConfigSandbox,
       });
-      expect(run.request.params).not.toHaveProperty('approvalPolicy');
-      expect(run.outcome.ok).toBe(false);
-      expect(
-        (run.outcome as { error: ConfinementRefusedError }).error.code,
-      ).toBe('confinement_not_observed');
+      expect(run.request.params).not.toHaveProperty('sandbox');
+      expect(run.outcome).toEqual({ ok: true });
+      // Nothing engaged, Codex reported full access: no mechanism is named.
+      expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual({
+        level: 'host',
+        required: false,
+        posture: 'no-mechanism',
+        workspaceAccess: 'mounted',
+        policyBasis: 'operator-policy',
+      });
       await run.cleanup();
     });
 

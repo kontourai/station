@@ -751,7 +751,15 @@ The record's `policyBasis` is `operator-policy` for a `host` start and
 `workspace-floor` for every other start. For Codex the requirement also
 follows the approval policy Codex reports in its thread response: a
 `workspace` session Codex reports at `never` (from its own configuration,
-when Station sent no knobs) is required too.
+when Station sent no knobs) is required too. So that such a session still runs,
+a `workspace` Codex start, resume or adoption fork that Station sends no mode to
+asks Codex for `sandbox: workspace-write` at thread level and leaves
+`approvalPolicy` unset, so Codex's own configuration keeps governing approvals.
+An operator configuration of `approval_policy = "never"` and
+`sandbox_mode = "danger-full-access"` therefore runs confined from the start
+(on `main` it ran unconfined until each turn pulled it back to workspace-write).
+It is refused only when Codex still reports something wider than the
+workspace-write Station asked for.
 
 **Resolution and refusal.** `prepareStart` resolves the confinement beside
 the stamp. It runs after the reserved-key strip and after the start's final
@@ -791,13 +799,22 @@ or `thread/fork` response:
   roots (the cwd, `TMPDIR` and `/tmp`, governed by its exclude flags) are part
   of what `workspaceWrite` means and are accepted. Network access is not
   judged. Paths are compared lexically; symlinks are not resolved.
+  - **Intended fail-closed change:** a required `workspace` `never` session
+    on a host whose operator configured extra Codex `writable_roots` outside
+    the workspace (for example `~/.cargo`) is refused. The refusal lists
+    those roots and says how to fix it: remove them from Codex's
+    `sandbox_workspace_write.writable_roots`, or run the session as the
+    operator (a `host` session).
 - `dangerFullAccess`, an `externalSandbox`, or no report is not confined. It is
   `configured-but-failed` when Station asked for a sandbox, else
-  `no-mechanism`. A `host` session at full access is therefore `host` /
+  `no-mechanism`, which names no mechanism and no level above `host`: the
+  record says what was requested and reported, never a mechanism nothing
+  engaged. A `host` session at full access is therefore `host` /
   `no-mechanism`, recorded as policy.
 - A required start that is not reported `confined` is refused
-  (`confinement_not_observed`). The start is not announced, and the process is
-  stopped.
+  (`confinement_not_observed`). The refusal runs before `session.started` is
+  published (the `SessionStartRefusedError` contract depends on that), and the
+  process is stopped.
 - Codex labels the response `sandbox` field legacy in favour of
   `activePermissionProfile`; reading the profile is a follow-up.
 
