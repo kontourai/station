@@ -210,6 +210,9 @@ No existing diagnostic code is renamed or removed.
 
 | Diagnostic code | Kind | Retryable |
 | --- | --- | --- |
+| `foreground_invocation_unavailable` | `conflict` | `false` |
+| `delegation_attempt_capacity` | `busy` | `true` |
+| `continuation_place_refused` | `input_unsupported` | `false` |
 | `adoption_continuation_in_progress` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
@@ -269,12 +272,16 @@ No existing diagnostic code is renamed or removed.
 | `transcript-line-skipped` | `warning` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
-recursively discovers string `*_CODE` declarations in contracts and server code,
+recursively discovers string `*_CODE` declarations and string-literal `code` class
+fields in contracts and server code,
 including private constants and newly added files. Known out-of-scope constants
 are explicitly allowed by file, name and value: directory/command grants and
 Station Control containment are caller authority, Flow unreachable-gate claims
 are evidence governance, and person/native-title control codes do not represent
-turn execution or session startup. The guard refuses a new unclassified constant.
+turn execution or session startup. Class-field exclusions separately name application
+configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
+a new unclassified constant or class-field code. Object-literal API/validation codes
+are outside this inventory; strict `runtime.error` construction is checked separately.
 Existing server import paths forward the relocated contract constants.
 
 The same guard requires every literal server `runtime.error` constructor to

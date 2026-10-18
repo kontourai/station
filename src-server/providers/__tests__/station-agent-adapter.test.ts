@@ -2700,6 +2700,13 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
         retriable: true,
         details: { httpStatus: statusCode },
       });
+      if (statusCode === 401 || statusCode === 403) {
+        expect(error).toMatchObject({
+          kind: 'auth',
+          retryable: false,
+          failurePhase: 'failed',
+        });
+      }
       const serialized = JSON.stringify(events);
       expect(serialized).not.toContain('sk-live-SECRET');
       expect(serialized).not.toContain('api.example.test');

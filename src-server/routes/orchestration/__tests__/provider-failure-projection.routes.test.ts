@@ -4,6 +4,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { ProviderSessionStartingError } from '../../../providers/adapter-shape.js';
+import { AdoptionEngineNotReadyError } from '../../../services/orchestration/attached-session-adoption.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   OrchestrationCommandDispatchError,
@@ -18,6 +19,14 @@ afterEach(async () => {
 });
 
 const routes = [
+  [
+    'foreground',
+    '/chat',
+    {
+      message: 'Continue',
+      target: { environment: { kind: 'current' }, agent: 'codex' },
+    },
+  ],
   [
     'handoff',
     '/conversations/conversation%3Afailure/handoff',
@@ -40,6 +49,46 @@ const routes = [
 ] as const;
 
 describe('failure classification HTTP projections', () => {
+  it('projects an engine-not-ready refusal from adoption dispatch', async () => {
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+      eventBus,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    services.push(service);
+    const failure = new AdoptionEngineNotReadyError(
+      'codex',
+      'credentials missing',
+    );
+    const dispatch = vi
+      .spyOn(service, 'dispatchWithReceipt')
+      .mockRejectedValue(failure);
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'failure-owner',
+    });
+    const response = await app.request('/commands', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'adoptSession',
+        sourceThreadId: 'external:codex:source',
+        idempotencyKey: '77777777-7777-4777-8777-777777777777',
+      }),
+    });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: 'continuation_engine_not_ready',
+      kind: 'unavailable',
+      retryable: true,
+      failurePhase: 'refused',
+    });
+  });
+
   it.each(routes)(
     '%s preserves a computed pre-effect refusal',
     async (name, path, body) => {
@@ -70,6 +119,9 @@ describe('failure classification HTTP projections', () => {
       const dispatch = vi
         .spyOn(service, 'dispatchWithReceipt')
         .mockRejectedValue(failure);
+      const foreground = vi.fn(async () => {
+        throw failure;
+      });
       const handoff = vi.fn(async () => {
         throw failure;
       });
@@ -80,6 +132,7 @@ describe('failure classification HTTP projections', () => {
         eventBus,
         logger: { debug: vi.fn() },
         getUserId: () => 'failure-owner',
+        executeForegroundMessage: foreground,
         handoffConversation: handoff,
         continueForegroundMessage: continuation,
       });
@@ -89,11 +142,13 @@ describe('failure classification HTTP projections', () => {
         body: JSON.stringify(body),
       });
       expect(
-        name === 'handoff'
-          ? handoff
-          : name === 'continue'
-            ? continuation
-            : dispatch,
+        name === 'foreground'
+          ? foreground
+          : name === 'handoff'
+            ? handoff
+            : name === 'continue'
+              ? continuation
+              : dispatch,
       ).toHaveBeenCalledTimes(1);
       expect(response.status).toBe(name === 'handoff' ? 409 : 400);
       const envelope = await response.json();
@@ -144,6 +199,9 @@ describe('failure classification HTTP projections', () => {
       const dispatch = vi
         .spyOn(service, 'dispatchWithReceipt')
         .mockRejectedValue(failure);
+      const foreground = vi.fn(async () => {
+        throw failure;
+      });
       const handoff = vi.fn(async () => {
         throw failure;
       });
@@ -154,6 +212,7 @@ describe('failure classification HTTP projections', () => {
         eventBus,
         logger: { debug: vi.fn() },
         getUserId: () => 'failure-owner',
+        executeForegroundMessage: foreground,
         handoffConversation: handoff,
         continueForegroundMessage: continuation,
       });
@@ -163,11 +222,13 @@ describe('failure classification HTTP projections', () => {
         body: JSON.stringify(body),
       });
       expect(
-        name === 'handoff'
-          ? handoff
-          : name === 'continue'
-            ? continuation
-            : dispatch,
+        name === 'foreground'
+          ? foreground
+          : name === 'handoff'
+            ? handoff
+            : name === 'continue'
+              ? continuation
+              : dispatch,
       ).toHaveBeenCalledTimes(1);
       expect(response.status).toBe(name === 'receipt' ? 400 : 409);
       const envelope = await response.json();

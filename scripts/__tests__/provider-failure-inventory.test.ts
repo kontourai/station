@@ -6,6 +6,19 @@ import { PROVIDER_FAILURE_KINDS } from '../../packages/contracts/src/provider-fa
 
 const root = resolve(import.meta.dirname, '../..');
 const exclusions = {
+  'packages/contracts/src/agent-identity.ts:ReservedStationIdentityError.code':
+    [
+      'STATION_ID_RESERVED',
+      'Reserved agent identity configuration, not provider execution.',
+    ],
+  'packages/contracts/src/layout.ts:InvalidLayoutOwnerError.code': [
+    'INVALID_LAYOUT_OWNER',
+    'Layout ownership validation.',
+  ],
+  'packages/contracts/src/layout.ts:RetiredLayoutKeyError.code': [
+    'RETIRED_LAYOUT_KEY',
+    'Layout compatibility validation.',
+  ],
   'src-server/security/coding-authority.ts:WORKING_DIRECTORY_NOT_GRANTED_CODE':
     [
       'working-directory-not-granted',
@@ -31,6 +44,241 @@ const exclusions = {
       'runtime_title_unsupported',
       'Optional title capability; no failed turn or start.',
     ],
+  'src-server/domain/agent-registry.ts:DefaultAgentMutationError.code': [
+    'DEFAULT_AGENT_MUTATION_FORBIDDEN',
+    'Agent configuration and connection binding mutation, not turn execution.',
+  ],
+  'src-server/domain/agent-registry.ts:ReservedAgentIdentityError.code': [
+    'AGENT_ID_RESERVED',
+    'Agent configuration and connection binding mutation, not turn execution.',
+  ],
+  'src-server/domain/agent-registry.ts:EngineConnectionBindingCollisionError.code':
+    [
+      'ENGINE_CONNECTION_BINDING_COLLISION',
+      'Agent configuration and connection binding mutation, not turn execution.',
+    ],
+  'src-server/domain/agent-registry.ts:DeclinedEngineConnectionError.code': [
+    'ENGINE_CONNECTION_DECLINED',
+    'Agent configuration and connection binding mutation, not turn execution.',
+  ],
+  'src-server/domain/agent-workflow-errors.ts:WorkflowInvalidError.code': [
+    'workflow_invalid',
+    'Workflow configuration CRUD and content validation.',
+  ],
+  'src-server/domain/agent-workflow-errors.ts:WorkflowNotFoundError.code': [
+    'workflow_not_found',
+    'Workflow configuration CRUD and content validation.',
+  ],
+  'src-server/domain/agent-workflow-errors.ts:WorkflowExistsError.code': [
+    'workflow_exists',
+    'Workflow configuration CRUD and content validation.',
+  ],
+  'src-server/domain/agent-workflow-errors.ts:WorkflowUnsafeContentError.code':
+    [
+      'workflow_unsafe_content',
+      'Workflow configuration CRUD and content validation.',
+    ],
+  'src-server/domain/config-loader-agents.ts:AgentConfigNotFoundError.code': [
+    'AGENT_CONFIG_NOT_FOUND',
+    'Installed agent configuration availability before provider admission.',
+  ],
+  'src-server/domain/config-loader-agents.ts:PluginAgentInvocationUnavailableError.code':
+    [
+      'plugin_agent_invocation_unavailable',
+      'Installed agent configuration availability before provider admission.',
+    ],
+  'src-server/domain/project-file-transactions.ts:FileStorageConflictError.code':
+    ['file_storage_conflict', 'Project file transaction/storage failure.'],
+  'src-server/domain/project-file-transactions.ts:FileStorageNotFoundError.code':
+    ['file_storage_not_found', 'Project file transaction/storage failure.'],
+  'src-server/domain/project-file-transactions.ts:FileStorageUnavailableError.code':
+    ['file_storage_unavailable', 'Project file transaction/storage failure.'],
+  'src-server/domain/project-identity-record.ts:ProjectIdentityValidationError.code':
+    ['project_identity_invalid', 'Project identity record validation.'],
+  'src-server/domain/pty-adapter.ts:PtyUnavailableError.code': [
+    'PTY_UNAVAILABLE',
+    'Interactive terminal capability, not provider execution.',
+  ],
+  'src-server/knowledge-store/errors.ts:MissingEvidenceError.code': [
+    'MISSING_EVIDENCE',
+    'Knowledge evidence lookup or store mutation.',
+  ],
+  'src-server/knowledge-store/errors.ts:KnowledgeRecordNotFoundError.code': [
+    'NOT_FOUND',
+    'Knowledge evidence lookup or store mutation.',
+  ],
+  'src-server/knowledge-store/errors.ts:AmbiguousIdError.code': [
+    'AMBIGUOUS_ID',
+    'Knowledge evidence lookup or store mutation.',
+  ],
+  'src-server/knowledge-store/errors.ts:SlugConflictError.code': [
+    'SLUG_CONFLICT',
+    'Knowledge evidence lookup or store mutation.',
+  ],
+  'src-server/knowledge-store/errors.ts:ReadOnlyStoreError.code': [
+    'READ_ONLY',
+    'Knowledge evidence lookup or store mutation.',
+  ],
+  'src-server/providers/registries/json-manifest-registry.ts:RegistrySourceConfinementError.code':
+    [
+      'REGISTRY_SOURCE_NOT_CONFINED',
+      'Registry installation provenance/format, not provider execution.',
+    ],
+  'src-server/providers/registries/registry-install-aliases.ts:RegistryInstallAliasFormatError.code':
+    [
+      'REGISTRY_INSTALL_ALIASES_REGENERATION_REQUIRED',
+      'Registry installation provenance/format, not provider execution.',
+    ],
+  'src-server/routes/agents/native-invocation.ts:NativeInvocationIndeterminateError.code':
+    [
+      'native_invocation_indeterminate',
+      'Native Agent API invocation outcome, separate from engine turn delivery.',
+    ],
+  'src-server/routes/agents/native-invocation.ts:NativeInvocationPartialError.code':
+    [
+      'native_invocation_partial',
+      'Native Agent API invocation outcome, separate from engine turn delivery.',
+    ],
+  'src-server/routes/agents/native-invocation.ts:NativeInvocationStorageUnavailableError.code':
+    [
+      'native_invocation_storage_unavailable',
+      'Native Agent API invocation outcome, separate from engine turn delivery.',
+    ],
+  'src-server/routes/chat/conversation-message-reader.ts:ConversationLineageTooLongError.code':
+    ['conversation_lineage_too_long', 'Conversation lineage read bound.'],
+  'src-server/runtime/agents/delegation.ts:DelegationDepthLimitError.code': [
+    'delegation_depth_exceeded',
+    'Delegation lineage policy/admission, not provider turn execution.',
+  ],
+  'src-server/runtime/agents/request-delegation.ts:DelegationLineageUnavailableError.code':
+    [
+      'delegation_lineage_unavailable',
+      'Delegation lineage policy/admission, not provider turn execution.',
+    ],
+  'src-server/runtime/bootstrap/hosted-persistence-boundary.ts:HostedPersistenceBoundaryError.code':
+    [
+      'HOSTED_PERSISTENCE_BOUNDARY_REJECTED',
+      'Hosted persistence bootstrap policy.',
+    ],
+  'src-server/services/agents/agent-service.ts:UnknownEngineIdentityError.code':
+    ['UNKNOWN_ENGINE_IDENTITY', 'Agent engine configuration validation.'],
+  'src-server/services/agents/agent-service.ts:StationEngineIsAppSettingError.code':
+    ['STATION_ENGINE_IS_APP_SETTING', 'Agent engine configuration validation.'],
+  'src-server/services/automation/automation-store.ts:AutomationPolicyUnavailableError.code':
+    ['policy_unavailable', 'Automation policy or definition validation.'],
+  'src-server/services/automation/automation-store.ts:AutomationValidationError.code':
+    ['invalid_automation', 'Automation policy or definition validation.'],
+  'src-server/services/devices/device-shares.ts:DeviceHostBusyError.code': [
+    'device-host-busy',
+    'Device host sharing contention.',
+  ],
+  'src-server/services/execution-target/execution-target-resolver.ts:ExecutionWorkspaceOutsideProjectError.code':
+    [
+      'execution_workspace_outside_project',
+      'Project workspace containment authority before provider admission.',
+    ],
+  'src-server/services/layouts/personal-layout-service.ts:PersonalLayoutConflictError.code':
+    ['PERSONAL_LAYOUT_EXISTS', 'Personal layout mutation conflict.'],
+  'src-server/services/orchestration/delegation-attempt-claim-store.ts:DelegationAttemptPendingError.code':
+    [
+      'delegation_attempt_pending',
+      'Delegation attempt idempotency claim state, not an engine failure.',
+    ],
+  'src-server/services/orchestration/delegation-attempt-claim-store.ts:DelegationAttemptExistsError.code':
+    [
+      'delegation_attempt_exists',
+      'Delegation attempt idempotency claim state, not an engine failure.',
+    ],
+  'src-server/services/orchestration/delegation-attempt-claim-store.ts:DelegationAttemptConflictError.code':
+    [
+      'delegation_attempt_conflict',
+      'Delegation attempt idempotency claim state, not an engine failure.',
+    ],
+  'src-server/services/orchestration/event-store.ts:TurnDigestLineageTooLongError.code':
+    [
+      'session_digest_lineage_too_long',
+      'Event-store integrity or digest lineage read bound.',
+    ],
+  'src-server/services/orchestration/event-store.ts:EventStoreIntegrityError.code':
+    [
+      'STATION_EVENT_STORE_CORRUPT',
+      'Event-store integrity or digest lineage read bound.',
+    ],
+  'src-server/services/orchestration/native-memory-continuity.ts:NativeMemoryContinuityUnavailableError.code':
+    [
+      'native_memory_continuity_unavailable',
+      'Native memory continuity preparation, not provider execution.',
+    ],
+  'src-server/services/orchestration/orchestration-service.ts:DraftDiscardRefusedError.code':
+    ['not_a_draft', 'Draft lifecycle operation, not a failed turn or start.'],
+  'src-server/services/orchestration/orchestration-service.ts:DraftDiscardBusyError.code':
+    ['draft_busy', 'Draft lifecycle operation, not a failed turn or start.'],
+  'src-server/services/orchestration/orchestration-service.ts:DraftDiscardedError.code':
+    [
+      'draft_discarded',
+      'Draft lifecycle operation, not a failed turn or start.',
+    ],
+  'src-server/services/orchestration/session-digest.ts:DigestTurnTooLargeError.code':
+    ['session_digest_turn_too_large', 'Digest projection size bound.'],
+  'src-server/services/plugins/plugin-installation-service.ts:PluginInstallationPending.code':
+    [
+      'plugin-projection-pending',
+      'Plugin lifecycle, policy or visibility mutation.',
+    ],
+  'src-server/services/plugins/plugin-lifecycle-proposals.ts:PluginProposalLimitError.code':
+    ['proposal-limit', 'Plugin lifecycle, policy or visibility mutation.'],
+  'src-server/services/plugins/plugin-lifecycle-proposals.ts:PluginProposalNotFoundError.code':
+    ['proposal-not-found', 'Plugin lifecycle, policy or visibility mutation.'],
+  'src-server/services/plugins/plugin-lifecycle-proposals.ts:PluginProposalNotOpenError.code':
+    ['proposal-not-open', 'Plugin lifecycle, policy or visibility mutation.'],
+  'src-server/services/plugins/plugin-permissions.ts:PluginGrantMutationSupersededError.code':
+    [
+      'plugin_grant_mutation_superseded',
+      'Plugin lifecycle, policy or visibility mutation.',
+    ],
+  'src-server/services/plugins/plugin-visibility-service.ts:PluginVisibilityInputError.code':
+    [
+      'PLUGIN_VISIBILITY_INVALID_TARGET',
+      'Plugin lifecycle, policy or visibility mutation.',
+    ],
+  'src-server/services/projects/project-service.ts:ProjectWorktreeDirectoryError.code':
+    [
+      'project_worktree_directory_invalid',
+      'Project repository configuration/provisioning validation.',
+    ],
+  'src-server/services/projects/worktree-provisioning-service.ts:WorktreeRepositoryConfigError.code':
+    [
+      'repository-config-refused',
+      'Project repository configuration/provisioning validation.',
+    ],
+  'src-server/services/scheduling/scheduler-ledger.ts:SchedulerStorageUnavailableError.code':
+    [
+      'SCHEDULER_STORAGE_UNAVAILABLE',
+      'Scheduler ledger persistence integrity.',
+    ],
+  'src-server/services/scheduling/scheduler-ledger.ts:SchedulerStorageCorruptError.code':
+    ['SCHEDULER_STORAGE_CORRUPT', 'Scheduler ledger persistence integrity.'],
+  'src-server/tools/station-control-delegation.ts:DelegatedInputRequestChangedError.code':
+    [
+      'input_request_changed',
+      'Delegation input-request binding validation before provider dispatch.',
+    ],
+  'src-server/tools/station-control-delegation.ts:DelegatedInputBindingModelChangeError.code':
+    [
+      'input_binding_model_change',
+      'Delegation input-request binding validation before provider dispatch.',
+    ],
+  'src-server/tools/station-control-delegation.ts:DelegatedInputBindingUnsupportedError.code':
+    [
+      'input_binding_unsupported',
+      'Delegation input-request binding validation before provider dispatch.',
+    ],
+  'src-server/tools/station-control-shared.ts:StationControlCallerRequiredError.code':
+    ['station_control_caller_required', 'Station Control caller authority.'],
+  'src-server/utils/sqlite-wal.ts:WalJournalModeUnavailableError.code': [
+    'WAL_JOURNAL_MODE_UNAVAILABLE',
+    'SQLite storage setup, not provider execution.',
+  ],
 } as const;
 
 // These reconstruct legacy observations or pass a predicate input; neither publishes an event.
@@ -72,18 +320,22 @@ const sources = ['packages/contracts/src', 'src-server']
   );
 
 describe('provider failure source boundaries', () => {
-  it('maps every string diagnostic constant in contracts and the server, including new files', () => {
+  it('maps every string diagnostic constant and class-field code, including new files', () => {
     const seenExclusions = new Set<string>();
     let count = 0;
     const unmapped: string[] = [];
     for (const source of sources) {
       const path = relative(root, source.fileName).split(sep).join('/');
       const visit = (node: ts.Node) => {
-        if (
+        const constant =
           ts.isVariableDeclaration(node) &&
           ts.isIdentifier(node.name) &&
-          /_CODE$/.test(node.name.text)
-        ) {
+          /_CODE$/.test(node.name.text);
+        const classCode =
+          ts.isPropertyDeclaration(node) &&
+          (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) &&
+          node.name.text === 'code';
+        if (constant || classCode) {
           let value = node.initializer;
           while (
             value &&
@@ -94,7 +346,10 @@ describe('provider failure source boundaries', () => {
             value = value.expression;
           if (value && ts.isStringLiteralLike(value)) {
             count++;
-            const id = `${path}:${node.name.text}`;
+            const name = classCode
+              ? `${node.parent.name?.text ?? '<anonymous>'}.code`
+              : node.name.getText(source);
+            const id = `${path}:${name}`;
             const excluded = (
               exclusions as Readonly<Record<string, readonly string[]>>
             )[id];

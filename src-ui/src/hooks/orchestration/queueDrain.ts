@@ -1,3 +1,4 @@
+import { CONTINUATION_WORKSPACE_REFUSAL_CODES } from '@kontourai/station-contracts/execution-target';
 import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
@@ -5,6 +6,10 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  ADOPTION_CONTINUATION_IN_PROGRESS_CODE,
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
@@ -58,16 +63,16 @@ const PROVIDER_REJECTION_CODES: ReadonlySet<string> = new Set([
 ]);
 
 const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
-  'resource_engine_start_capacity',
-  'adoption_continuation_in_progress',
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+  ADOPTION_CONTINUATION_IN_PROGRESS_CODE,
   // A direct conversation can be lazily bound when its queued follow-up is
   // retried. Dropping the message here discarded the only user-owned copy
   // before that binding could happen.
-  'continuation_workspace_direct_mismatch',
+  CONTINUATION_WORKSPACE_REFUSAL_CODES[5],
   // A conversation that was NEVER bound to a workspace: the
   // caller can continue it as it is or bind one, so the follow-up must be
   // retained for that retry, not discarded as a permanent rejection.
-  'continuation_workspace_unbound',
+  CONTINUATION_WORKSPACE_REFUSAL_CODES[6],
 ]);
 
 /**
@@ -491,7 +496,7 @@ export function drainQueuedMessageOnTurnCompleted(
   };
   const remainingMetadata = chat.queuedMessageMetadata?.slice(1);
   const continueUnbound =
-    chat.queuedMessageFailure?.code === 'continuation_workspace_unbound';
+    chat.queuedMessageFailure?.code === CONTINUATION_WORKSPACE_REFUSAL_CODES[6];
   // A fresh attempt clears the previous refusal: the reason on screen must
   // describe THIS attempt, never a stale one.
   activeChatsStore.updateChat(threadId, {
