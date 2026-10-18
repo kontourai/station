@@ -1790,7 +1790,7 @@ function telemetryConsentScreens(): Screen[] {
                 .getByText(
                   pending
                     ? /Your saved operator choice is Full, awaiting acknowledgement/
-                    : /Saving a choice here replaces your saved operator choice/,
+                    : /DO_NOT_TRACK is active: nothing is sent/,
                 )
                 .first(),
             ).toBeVisible();

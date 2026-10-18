@@ -1,7 +1,7 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryPublisherStatus,
   type TelemetryTier,
-  type TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
   authenticatedFetch,
@@ -61,10 +61,7 @@ type Disclosure = {
    * environment has already turned off.
    */
   telemetryEnabled?: boolean;
-  publishers?: Record<
-    'kontour' | 'operator',
-    TelemetryTierResolution & { userChoice?: TelemetryTier }
-  >;
+  publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   /**
    * Which link of that chain won. `'env'` is the one that matters: the value
    * is in force but nothing durable records it, so keeping it has to write it
@@ -458,7 +455,9 @@ function DisclosureSummary({
   return (
     <>
       <p className={chrome.lede}>
-        {usageTelemetryDisclosureSummary(data.endpointConfigured)}
+        {data.publishers?.operator.reason === 'DNT'
+          ? 'DO_NOT_TRACK is active: nothing is sent. Save an operator choice of Off, Lite, or Full. Full will still require confirmation after DO_NOT_TRACK is removed.'
+          : usageTelemetryDisclosureSummary(data.endpointConfigured)}
       </p>
       <details className={chrome.inventory}>
         <summary>See exactly what is sent</summary>
@@ -555,6 +554,7 @@ interface UsageTelemetryDecision {
   keep: () => void;
   /** Make the other one true. */
   change: () => void;
+  saveLite?: () => void;
   /** The failure to disclose beside the actions, when there is one. */
   notice: ReactNode;
   /** The receipt failed, so the keeping action is a retry. */
@@ -634,7 +634,10 @@ function useUsageTelemetryDecision(
   const queryClient = useQueryClient();
   const recoveryConfigWrite = useMutation({
     mutationFn: async (
-      target: RecoveryDecisionTarget & { next: boolean; tierAware: boolean },
+      target: RecoveryDecisionTarget & {
+        next: TelemetryTier;
+        tierAware: boolean;
+      },
     ) => {
       const response = await mutateJson(
         `${target.apiBase}/config/app`,
@@ -644,8 +647,8 @@ function useUsageTelemetryDecision(
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
         target.tierAware
-          ? { telemetryTier: { operator: target.next ? 'full' : 'off' } }
-          : { telemetryEnabled: target.next },
+          ? { telemetryTier: { operator: target.next } }
+          : { telemetryEnabled: target.next === 'full' },
       );
       // Guarded when the target carries a scope: the decode re-asserts
       // the intent-time capture is still current after the bytes arrive.
@@ -716,7 +719,7 @@ function useUsageTelemetryDecision(
   const keepMustRecord =
     tierAware || (configEnabled === undefined && data?.enabledSource === 'env');
 
-  const decide = (next: boolean) => {
+  const decide = (next: TelemetryTier) => {
     if (busy || !data) return;
     setSettingError(false);
     if (scoped) {
@@ -730,7 +733,7 @@ function useUsageTelemetryDecision(
         identityKey: scope.identityKey,
         requestScope: scope.requestScope,
       };
-      if (next === enabled && !keepMustRecord) {
+      if ((next === 'full') === enabled && !keepMustRecord) {
         // Nothing to write: the choice is the state the host is already
         // in, and something durable already says so.
         acknowledgeRecovery.mutate({
@@ -760,6 +763,10 @@ function useUsageTelemetryDecision(
             queryClient.invalidateQueries({
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
+            if (operator?.reason === 'DNT') {
+              onDecided?.();
+              return;
+            }
             acknowledgeRecovery.mutate({
               ...target,
               inventoryRevision: data.inventoryRevision,
@@ -770,7 +777,7 @@ function useUsageTelemetryDecision(
       );
       return;
     }
-    if (next === enabled && !keepMustRecord) {
+    if ((next === 'full') === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
       acknowledgeProtected.mutate(data.inventoryRevision);
@@ -778,8 +785,8 @@ function useUsageTelemetryDecision(
     }
     updateProtected.mutate(
       tierAware
-        ? { telemetryTier: { operator: next ? 'full' : 'off' } }
-        : { telemetryEnabled: next },
+        ? { telemetryTier: { operator: next } }
+        : { telemetryEnabled: next === 'full' },
       {
         onSuccess: (result) => {
           // A key the server declines comes back in `ignoredKeys` on a 2xx,
@@ -794,6 +801,13 @@ function useUsageTelemetryDecision(
             )
           ) {
             setSettingError(true);
+            return;
+          }
+          if (operator?.reason === 'DNT') {
+            queryClient.invalidateQueries({
+              queryKey: ['usage-telemetry-disclosure'],
+            });
+            onDecided?.();
             return;
           }
           acknowledgeProtected.mutate(data.inventoryRevision);
@@ -835,8 +849,9 @@ function useUsageTelemetryDecision(
                 }
             : usageTelemetryDecisionLabels(enabled),
     busy,
-    keep: () => decide(enabled),
-    change: () => decide(!enabled),
+    keep: () => decide(enabled ? 'full' : 'off'),
+    change: () => decide(enabled ? 'off' : 'full'),
+    saveLite: operator?.reason === 'DNT' ? () => decide('lite') : undefined,
     notice: settingError ? (
       <p className="usage-telemetry-disclosure__error" role="alert">
         The usage telemetry setting could not be saved.
@@ -852,13 +867,6 @@ function useUsageTelemetryDecision(
               saves Off before acknowledging this inventory.
             </p>
           )}
-        {operator?.reason === 'DNT' && (
-          <p className="usage-telemetry-disclosure__lede">
-            DO_NOT_TRACK is active: telemetry is Off. Saving a choice here
-            replaces your saved operator choice; telemetry stays Off while
-            DO_NOT_TRACK is active.
-          </p>
-        )}
         {acknowledgeErrorNotice(
           acknowledgeError,
           scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
@@ -889,6 +897,15 @@ function DisclosureDecisionActions({
       >
         {decision.labels.change}
       </Button>
+      {decision.saveLite && (
+        <Button
+          variant="secondary"
+          aria-busy={decision.busy}
+          onClick={decision.saveLite}
+        >
+          Save operator choice as Lite
+        </Button>
+      )}
       <Button
         ref={keepRef}
         variant="primary"

@@ -11,8 +11,9 @@ Station settings preserves these choices. Kontour Full is unavailable until
 its own disclosure exists.
 
 DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
-labels its Off action **Save operator choice as Off** and explains that this
-explicit action replaces the saved operator choice while DNT keeps telemetry Off.
+offers **Save operator choice as Off**, **Save operator choice as Lite**, and
+**Save operator choice as Full**. These actions replace the saved operator tier
+without acknowledging; DNT keeps telemetry Off.
 
 A standard paired device may lower tiers; only the operator or a device with
 `access:manage` may raise them. Agents cannot change telemetry choices or
@@ -67,9 +68,15 @@ command is reserved for the later transparency lane.
 
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
-Full disclosure wording revision 2 participates in the inventory hash. Existing
+Full disclosure wording revision 2 participates only in the acknowledgement hash;
+batches and probes use the separate data inventory revision. Existing
 acknowledgements were reset because the earlier lede overstated anonymity; the
 accurate pseudonymous disclosure must be acknowledged again before Full resumes.
+Under DNT, the disclosure offers Off, Lite, and Full saves without writing an
+acknowledgement. Full saved this way remains pending; after DNT is removed the
+dialog appears again and sends nothing until Full is allowed. The acknowledgement
+API returns 409 while DNT is active.
+
 See the [decision and full-map concurrency limitation](../decisions/telemetry-tiers.md#consent-repair-after-foundation-review).
 
 When an operator configures `STATION_PRODUCT_TELEMETRY_ENDPOINT`, Station POSTs

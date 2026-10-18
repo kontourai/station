@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   hasCurrentLiteTelemetryNotice,
   LITE_TELEMETRY_INVENTORY_REVISION,
   monthlyTelemetryId,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
   parseStationDailyPing,
   USAGE_TELEMETRY_INVENTORY_REVISION,
@@ -10,7 +12,7 @@ import {
 
 const batch = () => ({
   schema_version: 1,
-  inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+  inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   distinct_id: 'a'.repeat(64),
   events: [
     {
@@ -341,4 +343,52 @@ test('Full feature fields require public catalog membership rather than private 
   expect(() =>
     parseProductTelemetryBatch(publicClient, [], ['1.2.3']),
   ).not.toThrow();
+});
+
+test('a wording-only bump changes consent without changing batch or probe compatibility', async () => {
+  vi.resetModules();
+  vi.doMock(
+    '@kontourai/station-contracts/product-telemetry',
+    async (importOriginal) => {
+      const original =
+        await importOriginal<
+          typeof import('@kontourai/station-contracts/product-telemetry')
+        >();
+      return {
+        ...original,
+        FULL_DISCLOSURE_WORDING_REVISION:
+          original.FULL_DISCLOSURE_WORDING_REVISION + 1,
+      };
+    },
+  );
+  try {
+    const revised = await import('../product-telemetry.js');
+    expect(revised.PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION).toBe(
+      PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+    );
+    expect(revised.FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION).not.toBe(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
+    expect(revised.USAGE_TELEMETRY_INVENTORY_REVISION).toBe(
+      revised.FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
+    expect(revised.parseProductTelemetryBatch(batch()).inventory_revision).toBe(
+      PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+    );
+    const probe = {
+      protocol: 'station-product-probe/v1',
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+    };
+    expect(revised.parseProductTelemetryProbeRequest(probe)).toEqual(probe);
+    const receipt = {
+      ...probe,
+      sourceId: '11111111-2222-4333-8444-555555555555',
+      checkedAt: '2026-10-10T12:00:00.000Z',
+      storage: 'postgres-schema-v1',
+    };
+    expect(revised.parseProductTelemetryProbeReceipt(receipt)).toEqual(receipt);
+  } finally {
+    vi.doUnmock('@kontourai/station-contracts/product-telemetry');
+    vi.resetModules();
+  }
 });

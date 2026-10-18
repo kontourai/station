@@ -2,6 +2,9 @@ export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
   'productTelemetryAcknowledgement';
 
+// Revision 2 corrects the disclosure's earlier overstatement of anonymity.
+export const FULL_DISCLOSURE_WORDING_REVISION = 2;
+
 export const TELEMETRY_TIERS = ['off', 'lite', 'full'] as const;
 export type TelemetryTier = (typeof TELEMETRY_TIERS)[number];
 export type TelemetryPublisherId =
@@ -14,6 +17,11 @@ export type TelemetryTierChoices = Partial<
 export interface TelemetryTierResolution {
   tier: TelemetryTier;
   reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';
+}
+
+/** A publisher's effective resolution alongside its separately saved choice. */
+export interface TelemetryPublisherStatus extends TelemetryTierResolution {
+  userChoice?: TelemetryTier;
 }
 
 /** Policies affect defaults only; an identifying stream is never a default. */
