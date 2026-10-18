@@ -10,3 +10,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
