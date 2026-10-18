@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
+import { findInvocationTerminal } from '../adapter.js';
 import type {
   KernelCommand,
   KernelResult,
@@ -8,7 +9,6 @@ import type {
 import {
   assertInvocationTerminalQuery,
   assertInvocationTerminalRetirement,
-  findInvocationTerminal,
   sameTerminalData,
 } from '../decisions/invocation-terminal.js';
 import type {
@@ -88,8 +88,32 @@ CREATE TABLE events(id TEXT PRIMARY KEY, thread_id TEXT, invocation_id TEXT, met
 CREATE TABLE intents(invocation_id TEXT PRIMARY KEY, boundary_id TEXT, thread_id TEXT, envelope TEXT, body BLOB, retirement TEXT);
 INSERT INTO intents VALUES ('B','b','t','unchanged envelope',X'0001ff',NULL);
 `;
+function decodeHostEvent(row: Record<string, unknown>): InvocationTerminalFact {
+  return {
+    threadId: String(row.thread_id),
+    invocationId: String(row.invocation_id),
+    terminalEventId: String(row.id),
+    terminalCreatedAt: String(row.created_at),
+    retire:
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        String(row.method),
+      ) &&
+      row.recovery === 0 &&
+      row.deferred === 0 &&
+      row.session_start_indeterminate === 0,
+    ...(row.native_id === null
+      ? {}
+      : { providerTurnId: String(row.native_id) }),
+  };
+}
 /** Real canonical columns and existing intent row; never a second terminal store. */
 const hostFacts: SqliteInvocationTerminalFacts = {
+  readObservation(database, thread, event) {
+    const row = database
+      .prepare('SELECT * FROM events WHERE thread_id = ? AND id = ?')
+      .get(thread, event) as Record<string, unknown> | undefined;
+    return row ? decodeHostEvent(row) : undefined;
+  },
   find(database, query) {
     assertInvocationTerminalQuery(query);
     const rows = database
@@ -97,24 +121,7 @@ const hostFacts: SqliteInvocationTerminalFacts = {
       .all(query.threadId, query.invocationId) as Array<
       Record<string, unknown>
     >;
-    const terminals = rows.map(
-      (row): InvocationTerminalFact => ({
-        threadId: String(row.thread_id),
-        invocationId: String(row.invocation_id),
-        terminalEventId: String(row.id),
-        terminalCreatedAt: String(row.created_at),
-        retire:
-          ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
-            String(row.method),
-          ) &&
-          row.recovery === 0 &&
-          row.deferred === 0 &&
-          row.session_start_indeterminate === 0,
-        ...(row.native_id === null
-          ? {}
-          : { providerTurnId: String(row.native_id) }),
-      }),
-    );
+    const terminals = rows.map(decodeHostEvent);
     return findInvocationTerminal(terminals, query);
   },
   readRetirement(database, thread, boundary) {
@@ -677,10 +684,13 @@ it('bundle configuration has exact own functions, host mode and intent binding, 
     terminalFacts: 'host',
     terminalSeen: () => false,
   };
+  const { readObservation: _read, ...threeMembers } = hostFacts;
   for (const invalid of [
+    threeMembers,
     { ...hostFacts, constructor: () => {} },
     { ...hostFacts, toString: () => '' },
     { ...hostFacts, recordRetirement: async () => {} },
+    { ...hostFacts, readObservation: async () => undefined },
     {
       ...hostFacts,
       find: function* () {
@@ -761,7 +771,7 @@ for (const failure of [false, true])
       boundary: { owner, createdAt: '1', updatedAt: '2' },
     };
     for (const [id, state, thread, native, captured, audit] of [
-      ['active', 'invoking', 'active', null, null, null],
+      ['active', 'invoking', 'active', null, 'v3-B', null],
       ['accepted', 'accepted', 'legacy', '', null, null],
       [
         'passive',
@@ -787,9 +797,25 @@ for (const failure of [false, true])
         captured ? 'input' : null,
         captured ? 'envelope' : null,
         captured ? 'body' : null,
-        null,
+        id === 'active' ? 'v3-key' : null,
         audit,
       );
+    db.exec(`CREATE TABLE monument_turn_dedup(dedup_key TEXT PRIMARY KEY, value TEXT, created_at INTEGER NOT NULL, owner_json TEXT);
+      CREATE TABLE monument_turn_dedup_expired(dedup_key TEXT PRIMARY KEY, expired_at INTEGER NOT NULL);`);
+    const linkedBytes = JSON.stringify({
+      ...owner,
+      invocation: 'begun',
+      preparedInvocationId: 'v3-B',
+      preparedUpdatedAt: '0',
+      retainedHostField: 'preserved bytes',
+    });
+    db.prepare('INSERT INTO monument_turn_dedup VALUES (?,?,?,?)').run(
+      'v3-key',
+      null,
+      7,
+      linkedBytes,
+    );
+    const linkedBefore = db.prepare('SELECT * FROM monument_turn_dedup').all();
     const before = db
       .prepare('SELECT * FROM monument_turn_boundaries ORDER BY boundary_id')
       .all();
@@ -822,6 +848,9 @@ for (const failure of [false, true])
           )
           .all(),
       ).toEqual(before);
+      expect(db.prepare('SELECT * FROM monument_turn_dedup').all()).toEqual(
+        linkedBefore,
+      );
       return;
     }
     let storage = openSqliteKernelStorage({ database: db });
@@ -851,6 +880,23 @@ for (const failure of [false, true])
     await storage.close();
     storage = openSqliteKernelStorage({ database: db });
     cleanup.push(() => storage.close());
+    expect(db.prepare('SELECT * FROM monument_turn_dedup').all()).toEqual(
+      linkedBefore,
+    );
+    expect(
+      storage.executeSync({ type: 'turnDedup.read', key: 'v3-key' }, context),
+    ).toEqual({
+      kind: 'found',
+      record: {
+        key: 'v3-key',
+        value: null,
+        createdAt: 7,
+        owner,
+        invocation: 'begun',
+        preparedInvocationId: 'v3-B',
+        preparedUpdatedAt: '0',
+      },
+    });
     expect(
       storage.executeSync(
         {
@@ -1066,6 +1112,17 @@ it('owned terminal codecs reject column/JSON mismatches and unknown scoped kinds
   db.prepare(
     "UPDATE monument_turn_terminals SET eligible=1 WHERE fact_kind='invocation'",
   ).run();
+  db.exec('PRAGMA ignore_check_constraints = ON');
+  db.prepare(
+    "UPDATE monument_turn_terminals SET fact_kind='future' WHERE fact_kind='invocation'",
+  ).run();
+  await expect(storage.execute(command, context)).rejects.toThrow(
+    'Unknown terminal row kind',
+  );
+  db.prepare(
+    "UPDATE monument_turn_terminals SET fact_kind='invocation' WHERE fact_kind='future'",
+  ).run();
+  db.exec('PRAGMA ignore_check_constraints = OFF');
   expect(await storage.execute(command, context)).toEqual({
     kind: 'terminal',
     terminal: fact('eN', 'N'),
@@ -1098,14 +1155,24 @@ for (const shape of [
   'incomplete',
   'async',
   'unknown-field',
+  'accessor',
 ] as const)
   it(`inherited ${shape} invocation bundle rejects at open before any callback or participant write`, () => {
     const db = new DatabaseSync(':memory:');
     cleanup.push(() => db.close());
     db.exec(schema);
+    const tablesBefore = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+      )
+      .all();
     let callbacks = 0;
     let admissions = 0;
     const own: SqliteInvocationTerminalFacts = {
+      readObservation: () => {
+        callbacks++;
+        return undefined;
+      },
       find: () => {
         callbacks++;
         return { kind: 'absent' };
@@ -1139,7 +1206,14 @@ for (const shape of [
         intentColumns,
         terminalSeen: () => false,
       },
-      { invocationTerminals: candidate },
+      shape === 'accessor'
+        ? Object.defineProperty({}, 'invocationTerminals', {
+            get() {
+              callbacks++;
+              return candidate;
+            },
+          })
+        : { invocationTerminals: candidate },
     );
     expect(Object.hasOwn(binding, 'invocationTerminals')).toBe(false);
     expect(() => {
@@ -1162,6 +1236,13 @@ for (const shape of [
     }).toThrow(/Invocation terminal/);
     expect(callbacks).toBe(0);
     expect(admissions).toBe(0);
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+        )
+        .all(),
+    ).toEqual(tablesBefore);
     expect(
       db.prepare('SELECT envelope, retirement FROM intents').get(),
     ).toEqual({ envelope: 'unchanged envelope', retirement: null });
@@ -1265,3 +1346,74 @@ for (const layout of ['json', 'columns'] as const)
       expect(f.db.prepare('SELECT * FROM intents').all()).toEqual(before);
     });
   }
+
+it('exact raw response validation aborts admission writes and never runs participant commit', async () => {
+  let response: unknown;
+  let commits = 0;
+  const f = fixture('columns', 'executeSync');
+  await begin(f.run, true);
+  const actual = fact('raw-event', 'N', false);
+  append(f.db, actual);
+  await f.storage.close();
+  const storage = openSqliteKernelStorage({
+    database: f.db,
+    tables: {
+      turnBoundary: {
+        ...f.binding,
+        invocationTerminals: {
+          ...hostFacts,
+          readObservation: () => response as InvocationTerminalFact | undefined,
+        },
+      },
+    },
+    participants: [
+      {
+        name: 'instrument exact raw read',
+        admit(_command, db) {
+          db.prepare("UPDATE intents SET envelope='admitted mutation'").run();
+        },
+        commit() {
+          commits++;
+        },
+      },
+    ],
+  });
+  cleanup.push(() => storage.close());
+  const before = f.db.prepare('SELECT * FROM intents').all();
+  let accessors = 0;
+  for (const invalid of [
+    undefined,
+    null,
+    {},
+    Promise.resolve(actual),
+    Object.create(actual),
+    { ...actual, threadId: 'wrong' },
+    { ...actual, invocationId: 'wrong' },
+    { ...actual, terminalEventId: 'wrong' },
+    { ...actual, providerTurnId: undefined },
+    { ...actual, terminalCreatedAt: 'changed' },
+    { ...actual, retire: true },
+    { ...actual, unexpected: true },
+    Object.defineProperty({ ...actual }, 'retire', {
+      get() {
+        accessors++;
+        return false;
+      },
+    }),
+  ]) {
+    response = invalid;
+    expect(() => storage.executeSync(observation(actual), context)).toThrow();
+    expect(f.db.prepare('SELECT * FROM intents').all()).toEqual(before);
+    expect(commits).toBe(0);
+    expect(f.db.prepare('SELECT state FROM boundaries').get()).toEqual({
+      state: 'invoking',
+    });
+  }
+  expect(accessors).toBe(0);
+  response = actual;
+  expect(storage.executeSync(observation(actual), context)).toEqual({
+    kind: 'applied',
+  });
+  expect(commits).toBe(1);
+  expect(hostFacts.readRetirement(f.db, 't', 'b')).toBeUndefined();
+});

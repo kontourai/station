@@ -440,6 +440,7 @@ replay permission.
 Host mode exclusively uses canonical events and the host's existing intent/audit
 row. Opt in with `intentColumns` and a fixed-at-open `invocationTerminals`
 bundle: synchronous `find(database, query)`,
+`readObservation(database, threadId, terminalEventId)`,
 `readRetirement(database, threadId, boundaryId)` and
 `recordRetirement(database, witness)`. The last operation writes the witness on
 the same connection and transaction, validates the intent association, and
@@ -448,7 +449,11 @@ nested command or schedule asynchronous repair. Failures roll back all joined
 writes. No kernel terminal table is created or maintained in host mode. Missing
 bundles refuse invocation commands before participant admission or writes;
 legacy bindings and commands remain usable. Kernel mode rejects host bundles.
-Adapter authors have equivalent `KernelInvocationTerminalFacts` in `./adapter`;
+Adapter authors have equivalent `KernelInvocationTerminalFacts` in `./adapter`.
+That entry also exports the existing pure `findInvocationTerminal(facts, query)`:
+a host can pass its complete decoded canonical scope to share consistency,
+eligibility and code-point selection. It accepts and returns inert data and
+performs no storage or origin inference. No other internal predicate is exposed;
 commands and provider/SDK data contain no callbacks.
 
 `find` accepts own inert data only: required nonempty `threadId`/`invocationId`,
@@ -468,8 +473,15 @@ by native policy and exact event, then select the smallest eligible event ID in
 code-point order, independent of insertion/time. A host must inspect genuine
 canonical terminal methods and exclude recovery, deferred/nonterminal and
 Session-start-indeterminate markers. A callback's found tag supplies no producer
-origin proof. Ordinary observation verifies returned evidence agrees with all
-supplied terminal fields.
+origin proof. Ordinary host observation always reads the exact canonical event through
+`readObservation`, including `retire: false` and an absent boundary. This raw
+read uses only thread/event identity, never supplied-content filters. Missing,
+Promise, malformed or mismatched returned facts reject; every asserted field,
+including native presence and eligibility, must agree. The read verifies the
+observation; the separate unchanged `find` still owns complete-set disposition.
+A verified conflicting eligible observation can apply with no retirement when
+`find` returns unknown. Three-member intermediate bundles are unsupported;
+legacy bindings with the bundle entirely absent retain their old commands.
 
 ### Retention and qualification limits
 

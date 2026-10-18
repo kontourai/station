@@ -100,6 +100,11 @@ export interface SqliteRequestKeyTable {
 
 /** Private synchronous storage operations on the host's existing transaction. */
 export interface SqliteInvocationTerminalFacts {
+  readonly readObservation: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    terminalEventId: string,
+  ) => InvocationTerminalFact | undefined;
   readonly find: (
     database: SqliteKernelDatabase,
     query: InvocationTerminalQuery,
@@ -434,6 +439,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
   const boundary = tables.turnBoundary;
+  let invocationTerminals: SqliteInvocationTerminalFacts | undefined;
   if (
     boundary &&
     boundary !== 'unused' &&
@@ -476,13 +482,15 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
         );
       const bundle = boundary.invocationTerminals;
       if (
+        !bundle ||
         !isSynchronousTerminalBundle(bundle) ||
         boundary.terminalFacts !== 'host' ||
         !boundary.intentColumns
       )
         throw new SqliteKernelConfigurationError(
-          'Invocation terminal bundle requires host mode, intentColumns and all three own functions.',
+          'Invocation terminal bundle requires host mode, intentColumns and all four own functions.',
         );
+      invocationTerminals = Object.freeze({ ...bundle });
     }
 
     if (
@@ -552,14 +560,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               ...tables.turnBoundary,
               table: identifier(tables.turnBoundary.table),
               intentColumns: resolveIntentColumns(tables.turnBoundary),
-              ...(Object.hasOwn(tables.turnBoundary, 'invocationTerminals') &&
-              tables.turnBoundary.invocationTerminals
-                ? {
-                    invocationTerminals: Object.freeze({
-                      ...tables.turnBoundary.invocationTerminals,
-                    }),
-                  }
-                : {}),
+              ...(invocationTerminals ? { invocationTerminals } : {}),
               ...(tables.turnBoundary.creationSequence
                 ? {
                     creationSequence: {
@@ -1730,6 +1731,12 @@ export function openSqliteKernelStorage(
             ...(boundary.invocationTerminals
               ? {
                   invocationTerminals: {
+                    readObservation: (thread: string, event: string) =>
+                      boundary.invocationTerminals!.readObservation(
+                        db,
+                        thread,
+                        event,
+                      ),
                     find: (query: InvocationTerminalQuery) =>
                       boundary.invocationTerminals!.find(db, query),
                     readRetirement: (thread: string, id: string) =>

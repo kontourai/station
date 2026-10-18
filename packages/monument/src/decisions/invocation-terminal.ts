@@ -36,8 +36,13 @@ export function terminalDataObject(
 /** Async/generator callbacks cannot join the synchronous transaction protocol. */
 export function isSynchronousTerminalBundle(value: unknown): boolean {
   return (
-    terminalDataObject(value, ['find', 'readRetirement', 'recordRetirement']) &&
-    ['find', 'readRetirement', 'recordRetirement'].every(
+    terminalDataObject(value, [
+      'find',
+      'readObservation',
+      'readRetirement',
+      'recordRetirement',
+    ]) &&
+    ['find', 'readObservation', 'readRetirement', 'recordRetirement'].every(
       (key) =>
         typeof value[key] === 'function' &&
         Object.prototype.toString.call(value[key]) === '[object Function]',

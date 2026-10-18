@@ -164,7 +164,11 @@ witnesses in the existing terminal area; SQLite schema four transactionally
 preserves legacy strings and all other machine data. Witness precedes deletion
 in the same transaction, and raw listing contains no completed fence. Host mode
 uses only its canonical events and existing prepared-intent audit row via the
-fixed-at-open synchronous find/readRetirement/recordRetirement bundle. The host
+fixed-at-open synchronous find/readObservation/readRetirement/recordRetirement
+bundle. The raw read verifies every field of an actual retained observation,
+including false eligibility and absent boundaries; find separately owns eligible
+complete-set disposition. Missing/malformed/Promise/mismatched observations
+reject without a fallback or shadow source. The host
 must provide the complete bundle and intent binding; legacy commands remain
 available without it. No second store, public capability or async repair exists.
 

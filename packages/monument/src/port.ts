@@ -75,6 +75,10 @@ export interface KernelContext {
 
 /** Private storage composition: all operations join the same transaction. */
 export interface KernelInvocationTerminalFacts {
+  readObservation(
+    threadId: string,
+    terminalEventId: string,
+  ): InvocationTerminalFact | undefined;
   find(query: InvocationTerminalQuery): InvocationTerminalRead;
   readRetirement(
     threadId: string,

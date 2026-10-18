@@ -376,20 +376,17 @@ function dispatch(
         assertInvocationTerminalFact(asserted);
         if (!facts) tx.turnTerminals.addInvocation(asserted);
         else if (source) {
-          const query = {
-            threadId: asserted.threadId,
-            invocationId: asserted.invocationId,
-            allowMissingProviderTurnId: true,
-            terminalEventId: asserted.terminalEventId,
-          };
-          const read = source.find(query);
-          assertInvocationTerminalRead(read, query);
-          if (read.kind === 'found' && !sameTerminalData(read.fact, asserted))
+          const observed = source.readObservation(
+            asserted.threadId,
+            asserted.terminalEventId,
+          );
+          if (observed === undefined)
+            throw new TypeError('Observed invocation terminal is unavailable.');
+          assertInvocationTerminalFact(observed);
+          if (!sameTerminalData(observed, asserted))
             throw new TypeError(
               'Observed invocation terminal differs from retained event.',
             );
-          if (asserted.retire && read.kind === 'absent')
-            throw new TypeError('Observed invocation terminal is unavailable.');
         }
       }
       if (command.providerTurnId !== undefined && !facts)
@@ -751,23 +748,21 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
     facts &&
     (command.type === 'turnBoundary.acceptInvocation' ||
       (command.type === 'turnBoundary.observeTerminal' &&
-        'invocationId' in command)) &&
-    (!Object.hasOwn(facts, 'invocationTerminals') ||
-      !isSynchronousTerminalBundle(facts.invocationTerminals))
-  )
-    throw new TypeError(
-      'Invocation terminals require an own synchronous source bundle.',
-    );
-  if (
-    facts &&
-    !facts.invocationTerminals &&
-    (command.type === 'turnBoundary.acceptInvocation' ||
-      (command.type === 'turnBoundary.observeTerminal' &&
         'invocationId' in command))
-  )
-    throw new TypeError(
-      'Invocation terminal operations require a complete host source.',
+  ) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      facts,
+      'invocationTerminals',
     );
+    if (
+      !descriptor ||
+      !Object.hasOwn(descriptor, 'value') ||
+      !isSynchronousTerminalBundle(descriptor.value)
+    )
+      throw new TypeError(
+        'Invocation terminals require an own synchronous source bundle.',
+      );
+  }
   if (
     command.type === 'turnBoundary.acceptInvocation' ||
     (command.type === 'turnBoundary.observeTerminal' &&
