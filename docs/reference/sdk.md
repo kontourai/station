@@ -3483,9 +3483,13 @@ cannot hold (attachments, a target other than the conversation's binding),
 can refuse a send before its keyed dispatch begins with
 `provider_turn_in_progress` or `provider_session_starting`; that message can
 wait for the Session to be free. On a current Station, a begun keyed send
-that is definitively refused instead answers HTTP `409` with `client_turn_settled` and its actual
-disposition. Never retry that key or generate a replacement key automatically.
-A deliberate new user request requires a new key.
+refused with one of those busy codes answers HTTP `409` with
+`client_turn_settled` and its actual disposition only when authorized inspection
+of the original key proves its retained settlement. Other first definitive
+adapter refusals preserve their original actionable error envelope even when
+the key has closed. A subsequent authorized lookup or same-key retry reports
+the retained closed-key `409`. Never retry a settled key or generate a
+replacement key automatically. A deliberate new user request requires a new key.
 `listConversationInbox(apiBase, conversationId)` lists the held messages and
 `cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
 one, or dismisses one that is `unconfirmed` or `refused`.

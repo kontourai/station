@@ -1418,9 +1418,14 @@ app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
 the conversation's current Session has a turn open (the persisted fold or the
 live coordinator) or earlier follow-ups are still waiting, and also when the
 dispatch is refused before entry with `provider_turn_in_progress` or
-`provider_session_starting`. A definitively refused begun keyed dispatch instead
-returns the authoritative `client_turn_settled` HTTP409 and is never queued again
-under that key. Fresh-input placement may proceed after guarded interrupted
+`provider_session_starting`. A begun keyed refusal with one of those busy codes
+returns `client_turn_settled` HTTP409 only when the same authorized inspection
+of the original key proves its retained settlement. Other first definitive
+adapter refusals preserve their original actionable error envelope even when
+the key has closed; a subsequent authorized lookup or same-key retry reports
+the retained closed-key409. A settled key is never queued again, and Station
+does not automatically generate a replacement key. Fresh-input placement may
+proceed after guarded interrupted
 recovery when the actual durable possible-effect read is available/inactive,
 the local coordinator is clear, and the shared structured anchor still names
 the fold's open slot. A newer provider or legacy anchor keeps its normal busy
