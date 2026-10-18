@@ -1,0 +1,7 @@
+{
+  "revision": "3d6eacd46bbb3696dec6ca448d2ffc83438f054a",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-checked after 3d6eacd, which changes only comments in terminal-ws-server.ts to state that ownership checks scope commands and output to sessions a socket opened and are not per-project authorization. This doc's terminal claims (listener admission, first-frame auth, terminal:operate scope, relay refusal) are unaffected; no prose change.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/terminal/terminal-ws-server.ts"]}
+  ]
+}
