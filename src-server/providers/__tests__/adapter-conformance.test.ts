@@ -12,6 +12,7 @@ import {
   vi,
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { ConformanceEngine } from './adapter-conformance-fixtures.js';
 import {
   ConformanceClaudeChild,
@@ -240,7 +241,7 @@ for (const name of ADAPTERS) {
           .poll(() => refused.settled || engine.inputs().length > before)
           .toBe(true);
         // A plain error is indeterminate, never accepted as a pre-effect refusal.
-        expect(refused.error).toMatchObject({ name: 'SendTurnRefusedError' });
+        expect(refused.error).toBeInstanceOf(SendTurnRefusedError);
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(engine.inputs()).toHaveLength(before);
         expect(started()).toHaveLength(starts);
@@ -307,7 +308,7 @@ for (const name of ADAPTERS) {
           attachments: [{ ...IMAGE, dataUrl: 'invalid' }],
         });
         await expect.poll(() => refused.settled).toBe(true);
-        expect(refused.error).toMatchObject({ name: 'SendTurnRefusedError' });
+        expect(refused.error).toBeInstanceOf(SendTurnRefusedError);
         expect(engine.inputs()).toHaveLength(0);
         expect(started()).toHaveLength(0);
       });
