@@ -39,7 +39,7 @@ function modelIdentity(value) {
 function modelSnapshot(model, bedrock) {
   const match =
     /^(.*?)[-@](20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v(\d+(?::\d+)?))?$/.exec(model);
-  return match
+  return match && (bedrock || !match[3])
     ? { base: match[1], date: match[2].replaceAll('-', ''), version: match[3] }
     : bedrock && /^(.*?)-v(\d+:\d+)$/.test(model)
       ? {
@@ -336,6 +336,62 @@ async function inspectArtifact(
   return contentCheck;
 }
 
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function requestShape(path, body, method) {
+  return {
+    pathname: new URL(path, 'http://station.invalid').pathname.replace(
+      /\/+$/,
+      '',
+    ),
+    method: String(method ?? (body ? 'POST' : 'GET')).toUpperCase(),
+  };
+}
+
+function isTurnSubmission(pathname, body) {
+  return (
+    /^\/api\/orchestration\/(?:chat(?:\/(?:background|delegated|[^/]+\/continue))?|conversations\/[^/]+\/handoff|delegations\/[^/]+\/continue)$/.test(
+      pathname,
+    ) ||
+    /^\/(?:api\/)?agents\/[^/]+\/(?:chat|invoke)$/.test(pathname) ||
+    (pathname === '/api/orchestration/commands' &&
+      ['steerTurn', 'steerTurnOnce'].includes(body?.type))
+  );
+}
+
+// Audited handlers: docs/reference/agent-smoke-confidence.md#setup-api-allowlist.
+const SETUP_API_ROUTES = [
+  ['POST', /^\/integrations(?:\/[^/]+\/(?:reconnect|tools\/apply|enabled))?$/],
+  ['POST', /^\/(?:agents|api\/skills\/local)$/],
+  ['GET', /^\/integrations(?:\/[^/]+)?$/],
+  ['GET', /^\/api\/skills(?:\/[^/]+)?$/],
+  ['GET', /^\/agents$/],
+  ['GET', /^\/api\/agents(?:\/[^/]+)?$/],
+  ['DELETE', /^\/(?:integrations|api\/skills|agents)\/[^/]+$/],
+];
+
+function setupRouteAllowed(path, pathname, method) {
+  if (
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.startsWith('//')
+  )
+    return false;
+  let decoded;
+  try {
+    const segments = pathname
+      .split('/')
+      .map((segment) => decodeURIComponent(segment));
+    if (segments.some((segment) => /[\\/%]/.test(segment))) return false;
+    decoded = segments.join('/');
+  } catch {
+    return false;
+  }
+  return SETUP_API_ROUTES.some(
+    ([verb, route]) => verb === method && route.test(decoded),
+  );
+}
+
 /** Additional scenarios use the same send/recall verdict path; #3824 can register here. */
 export async function runMatrix({
   api,
@@ -388,14 +444,18 @@ export async function runMatrix({
   if (!agent || !matchesConnection(agent) || agent.available === false)
     throw new Error('Select --agent=ID bound to the connection under test');
   let sentTurns = 0;
+  let reservedBillableRequests = 0;
+  const setupApi = async (path, body, ...rest) => {
+    const { pathname, method } = requestShape(path, body, rest[0]);
+    if (!setupRouteAllowed(path, pathname, method))
+      throw new Error(`Setup API route refused: ${method} ${pathname}`);
+    return api(path, body, ...rest);
+  };
   const checkedApi = async (path, body, ...rest) => {
-    const pathname = new URL(path, 'http://station.invalid').pathname.replace(
-      /\/+$/,
-      '',
-    );
-    const method = String(rest[0] ?? (body ? 'POST' : 'GET')).toUpperCase();
+    const { pathname, method } = requestShape(path, body, rest[0]);
     const nonBillable =
-      (pathname === '/api/orchestration/commands' &&
+      method === 'POST' &&
+      ((pathname === '/api/orchestration/commands' &&
         [
           'stopSession',
           'interruptTurn',
@@ -403,16 +463,17 @@ export async function runMatrix({
           'setApprovalMode',
           'discardDraft',
         ].includes(body?.type)) ||
-      /^\/api\/orchestration\/sessions\/[^/]+\/outputs\/[^/]+\/inspect$/.test(
-        pathname,
-      );
-    // Unknown POST routes reserve a turn too: extensions must not bypass the ceiling.
+        /^\/api\/orchestration\/sessions\/[^/]+\/outputs\/[^/]+\/inspect$/.test(
+          pathname,
+        ));
+    // Unknown mutations reserve budget too; setup has its own audited channel.
     const billable = !nonBillable;
-    if (method === 'POST' && billable) {
-      if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
+    if (MUTATING_METHODS.has(method) && billable) {
+      if (reservedBillableRequests >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
-      sentTurns++;
+      reservedBillableRequests++;
     }
+    if (method === 'POST' && isTurnSubmission(pathname, body)) sentTurns++;
     return api(path, body, ...rest);
   };
   /** @type {{scenario: string, status: string, failure: string | null, turns: object[]}[]} */
@@ -426,6 +487,7 @@ export async function runMatrix({
     plan,
     rows,
     sentTurns: 0,
+    reservedBillableRequests: 0,
   };
   const command = (value) =>
     checkedApi('/api/orchestration/commands', value).then((body) => body.data);
@@ -464,6 +526,7 @@ export async function runMatrix({
           artifactContent: `STATION_MATRIX_ARTIFACT:${randomUUID()}`,
           command,
           api: checkedApi,
+          setupApi,
           recall: (requested) =>
             ctx.send(
               'Reply with exactly the secret from the first message. Do not use tools.',
@@ -715,6 +778,7 @@ export async function runMatrix({
     }
   }
   result.sentTurns = sentTurns;
+  result.reservedBillableRequests = reservedBillableRequests;
   return result;
 }
 
@@ -727,6 +791,7 @@ export function renderMatrix(result) {
     `# Engine verification matrix — ${result.generatedAt.slice(0, 10)}`,
     '',
     `Generated: ${result.generatedAt}. Evidence: ${result.evidence}.`,
+    `Turn submissions sent: ${result.sentTurns ?? 'unverified'}. Billable request reservations: ${result.reservedBillableRequests ?? 'unverified'}.`,
     'A missing model or rendered-output observation is unverified. This report does not alter the catalog.',
     '',
     '| Engine | Connection | Requested model | Scenario | Verdict | Engine-inferred connection | Served as | Failure |',

@@ -196,7 +196,7 @@ versions fail. Dots inside bare model IDs (for example `grok-4.1` or
 `qwen3.5-coder`) remain part of the model name. Only an explicit `vendor/`
 prefix, a known Bedrock vendor-dot prefix, or a known `region.vendor.` form
 establishes a vendor prefix. `moonshotai`/`moonshot`, `xai`/`x-ai` and
-`deepseek-ai`/`deepseek` name the same vendors. An undated `-v1:0` suffix is
+`deepseek-ai`/`deepseek` name the same vendors. A `-vN:M` suffix, with or without a preceding date, is
 accepted only on a Bedrock vendor-dot form; bare `gpt-4.1-v1:0` and
 `claude-sonnet-4-5-v1:0` are distinct IDs, not accepted aliases.
 The accepted/rejected table in the
@@ -224,21 +224,19 @@ trusted local ES module. It may export either or both:
   valid. An optional positive integer `maxTurns` per scenario declares its
   per-model planning bound. Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario/model);
-  its printed count is an upper bound. Every POST through the managed API
-  reserves a turn, including unknown routes, handoff, delegation continuation,
-  Agent chat/invoke and steer commands. Only these known non-billable operations
-  are exempt: `stopSession`, `interruptTurn`, `inspectSteerInput`,
-  `setApprovalMode`, `discardDraft`, and session-output inspection. This is a
-  conservative request budget: an extension's other POSTs consume its declared
-  `maxTurns` reservation even if they do not invoke a model. Review those
-  reservations when adding extension setup operations. The effective HTTP
-  method and path are normalized; query strings and explicit methods cannot
-  bypass either the printed reservation or hard run ceiling.
+  its printed count is an upper bound. `ctx.api` is the billable channel:
+  POST, PUT, PATCH and DELETE requests reserve budget, including unknown routes.
+  Only POST `stopSession`, `interruptTurn`, `inspectSteerInput`,
+  `setApprovalMode`, `discardDraft`, and session-output inspection are exempt.
+  Use `ctx.setupApi` for the audited preparation and cleanup operations below;
+  they consume no turn reservation. The effective method and path are normalized;
+  query strings and explicit methods cannot bypass the ceiling.
   An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox.
   `ctx` provides the current `sessionId`, stable `conversationId`, `model`, `switchModel`,
   `nonce`, `artifactName`, `artifactContent`,
-  `api(path, optionalBody, optionalMethod)`, `command(command)`,
+  `api(path, optionalBody, optionalMethod)`,
+  `setupApi(path, optionalBody, optionalMethod)`, `command(command)`,
   `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent)` and
   `recall(model)`. `send` returns the checked turn, including `turnId`, for
   subsequent API observations. Throw on a failed additional assertion; return a
@@ -251,11 +249,51 @@ trusted local ES module. It may export either or both:
 HTTP method: `ctx.api(path, undefined, 'DELETE')` performs DELETE cleanup. If the
 method is omitted, the command transport retains its GET default without a body
 and POST default with a body. Existing two-argument calls remain valid.
+`ctx.setupApi` uses the same signature and defaults but forwards only the
+method/path pairs in the setup allowlist. It requires a Station-relative path
+and rejects encoded separators or ambiguous nested encoding. Turn routes,
+MCP tool execution, unknown writes and unlisted reads are refused before the
+transport is called. Preparation and cleanup in #3832 should use this channel;
+turns continue through `send`/`recall` or the billable `api` channel. An extension
+with `maxTurns: 2` may perform all six setup POSTs and then send two turns
+without inflating its printed billable bound. Setup can launch MCP processes
+and change configuration; it retains ordinary server auth and command authority.
 `ctx.sessionId` is a getter: before the first send it is the proposed
 conversation ID, and after each send it is the runtime session ID in Station's
 receipt. Read it lazily when making an observation or API request; do not
 capture or destructure it before a send and reuse that value afterward.
 `ctx.conversationId` remains stable across those changes.
+
+### Setup API allowlist
+
+Only these existing methods are allowed. GET/DELETE counterparts use the
+resource routes, not invented GET/DELETE versions of the action subroutes.
+Re-audit the handlers before widening this list.
+
+| Method and path | Handler | Why it does not submit a turn |
+| --- | --- | --- |
+| POST `/integrations` | [tools.ts](../../src-server/routes/agents/tools.ts):422 | Saves integration configuration with `enabled: false`. |
+| POST `/integrations/:id/reconnect` | [tools.ts](../../src-server/routes/agents/tools.ts):894 | Probes MCP tools and reloads configuration when enabled. |
+| POST `/integrations/:id/tools/apply` | [tools.ts](../../src-server/routes/agents/tools.ts):999 | Persists disabled-tool policy and reloads configuration. |
+| POST `/integrations/:id/enabled` | [tools.ts](../../src-server/routes/agents/tools.ts):908 | Persists enabled state and reloads configuration. |
+| POST `/api/skills/local` | [skills.ts](../../src-server/routes/agents/skills.ts):145 | Creates local skill package files. |
+| POST `/agents` | [agents.ts](../../src-server/routes/agents/agents.ts):362 | Saves a definition with deferred configuration activation. |
+| GET `/integrations`, `/integrations/:id` | [tools.ts](../../src-server/routes/agents/tools.ts):342,460 | Reads configuration, status and tool catalog. |
+| DELETE `/integrations/:id` | [tools.ts](../../src-server/routes/agents/tools.ts):869 | Deletes the integration and releases its runtime resources. |
+| GET `/api/skills`, `/api/skills/:name` | [skills.ts](../../src-server/routes/agents/skills.ts):97,116 | Reads installed skills and package metadata. |
+| DELETE `/api/skills/:name` | [skills.ts](../../src-server/routes/agents/skills.ts):324 | Removes owned skill files. |
+| GET `/agents` | [agents.ts](../../src-server/routes/agents/agents.ts):261 | Lists the agent catalog. |
+| GET `/api/agents`, `/api/agents/:slug` | [enriched-agents.ts](../../src-server/routes/agents/enriched-agents.ts):973,999 | Reads enriched agent configuration. |
+| DELETE `/agents/:slug` | [agents.ts](../../src-server/routes/agents/agents.ts):557 | Deletes configuration with deferred activation. |
+
+Integration activation uses configuration reload/rollback
+([tools.ts](../../src-server/routes/agents/tools.ts):268 and
+[station-runtime.ts](../../src-server/runtime/bootstrap/station-runtime.ts):1668),
+not foreground-message or turn dispatch. MCP probing can connect a tool-server
+process. The setup-channel test stubs those setup side effects and validates
+POST bodies against the real route schemas; all model/control requests still
+use the real authenticated orchestration app. It proves budget isolation and
+refusal at the channel boundary, not live MCP startup or delivery.
 
 The adapter catalog and orchestration return types explicitly retain optional
 `resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
@@ -272,7 +310,14 @@ dated Markdown matrix in `docs/reference/engine-matrix-runs/` by default.
 Use `--output-dir=PATH` for private receipts. Both include engine, connection,
 launch selector, scenario, verdict, engine-inferred connection, served-as and
 failure text; JSON also retains concrete comparison models, the send plan/count,
-session/turn IDs and individual checks. New session-level `runtime.error` events
+session/turn IDs and individual checks. Both formats show two distinct counts:
+`reservedBillableRequests` counts non-exempt mutating requests handed to the
+transport, including unknown routes and failures. `sentTurns` counts POST
+submissions to known foreground, continuation, handoff, delegation, agent
+chat/invoke and steer routes actually handed to the transport. It excludes
+configuration writes and rejected reservations. These are submission attempts,
+not proof of provider acceptance or completion; per-turn checks supply that
+evidence. Setup calls affect neither count. New session-level `runtime.error` events
 without a turn ID retain their actual error text. The cursor starts empty for
 each new conversation and advances only through a completed-turn event. Startup
 errors belong to this run. Reads before later sends do not reset the cursor.

@@ -92,6 +92,10 @@ describe('engine matrix verdicts', () => {
     ['deepseek-ai/deepseek-v3.1', 'deepseek/deepseek-v3.1', 'pass'],
     ['gpt-4.1', 'gpt-4.1-v1:0', 'fail'],
     ['claude-sonnet-4-5', 'claude-sonnet-4-5-v1:0', 'fail'],
+    ['claude-sonnet-4-5', 'claude-sonnet-4-5-20250929-v1:0', 'fail'],
+    ['gpt-4.1', 'gpt-4.1-2025-04-14-v1:0', 'fail'],
+    ['claude-3-7-sonnet', 'anthropic/claude-3-7-sonnet-20250219-v1:0', 'fail'],
+    ['anthropic/claude-3-7-sonnet-20250219-v1:0', 'claude-3-7-sonnet', 'fail'],
     ['kimi-k2.5', 'xai/kimi-k2.5', 'fail'],
     ['grok-4.1', 'moonshotai/grok-4.1', 'fail'],
     ['deepseek-v3.1', 'moonshotai/deepseek-v3.1', 'fail'],
@@ -156,6 +160,8 @@ describe('engine matrix verdicts', () => {
       renderMatrix({
         generatedAt: '2026-10-18T12:00:00.000Z',
         evidence: 'stub-api; no providers',
+        sentTurns: 2,
+        reservedBillableRequests: 3,
         rows: [
           {
             engine: 'fake',
@@ -173,6 +179,7 @@ describe('engine matrix verdicts', () => {
         '# Engine verification matrix — 2026-10-18',
         '',
         'Generated: 2026-10-18T12:00:00.000Z. Evidence: stub-api; no providers.',
+        'Turn submissions sent: 2. Billable request reservations: 3.',
         'A missing model or rendered-output observation is unverified. This report does not alter the catalog.',
         '',
         '| Engine | Connection | Requested model | Scenario | Verdict | Engine-inferred connection | Served as | Failure |',

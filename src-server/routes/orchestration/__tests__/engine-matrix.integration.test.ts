@@ -50,6 +50,13 @@ import {
 } from '../../../tools/station-control-delegation.js';
 import { isRecord } from '../../../utils/is-record.js';
 import { createLogger } from '../../../utils/logger.js';
+import {
+  agentCreateSchema,
+  integrationEnabledSchema,
+  integrationSchema,
+  integrationToolsApplySchema,
+  localSkillCreateSchema,
+} from '../../schemas/schemas.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const makeTempDir = trackTempDirs();
@@ -1084,6 +1091,247 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     );
     expect(requests).toEqual([]);
   });
+
+  const setupOperations = [
+    {
+      path: '/integrations',
+      body: {
+        id: 'matrix-setup',
+        displayName: 'Matrix setup',
+        kind: 'mcp',
+        transport: 'sse',
+        endpoint: 'http://127.0.0.1:1/mcp',
+      },
+      schema: integrationSchema,
+    },
+    {
+      path: '/integrations/matrix-setup/reconnect',
+      body: {},
+      schema: undefined,
+    },
+    {
+      path: '/integrations/matrix-setup/tools/apply',
+      body: { disabledTools: [] },
+      schema: integrationToolsApplySchema,
+    },
+    {
+      path: '/integrations/matrix-setup/enabled',
+      body: { enabled: true },
+      schema: integrationEnabledSchema,
+    },
+    {
+      path: '/api/skills/local',
+      body: { name: 'matrix-setup', body: 'Recall the diagnostic nonce.' },
+      schema: localSkillCreateSchema,
+    },
+    {
+      path: '/agents',
+      body: {
+        name: 'Matrix setup',
+        slug: 'matrix-setup',
+        prompt: 'Follow the diagnostic prompt.',
+      },
+      schema: agentCreateSchema,
+    },
+  ];
+
+  // Setup side effects are stubbed; all turn/control requests still reach the real server.
+  const setupTransport = () =>
+    vi.fn(
+      async (path: string, body?: unknown, method = body ? 'POST' : 'GET') => {
+        const setup = setupOperations.find(
+          (operation) => operation.path === path,
+        );
+        if (method === 'POST' && setup) {
+          setup.schema?.parse(body);
+          return { success: true, data: {} };
+        }
+        if (
+          (method === 'GET' &&
+            ['/integrations', '/api/skills', '/agents'].includes(path)) ||
+          (['GET', 'DELETE'].includes(method) &&
+            [
+              '/integrations/matrix-setup',
+              '/api/skills/matrix-setup',
+              '/agents/matrix-setup',
+            ].includes(path))
+        )
+          return { success: true, data: {} };
+        return api(path, body, method);
+      },
+    );
+
+  test('six setup POSTs and cleanup reserve no turn budget for a two-turn extension', async () => {
+    const transport = setupTransport();
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 6,
+      additionalScenarios: [
+        {
+          id: 'prepared-probe',
+          maxTurns: 2,
+          async run(ctx: any) {
+            for (const operation of setupOperations)
+              await ctx.setupApi(operation.path, operation.body);
+            for (const path of [
+              '/integrations',
+              '/integrations/matrix-setup',
+              '/api/skills',
+              '/api/skills/matrix-setup',
+              '/agents',
+              '/api/agents',
+              '/api/agents/matrix',
+            ])
+              await ctx.setupApi(path);
+            await ctx.recall(ctx.model);
+            await ctx.recall(ctx.model);
+            for (const path of [
+              '/integrations/matrix-setup',
+              '/api/skills/matrix-setup',
+              '/agents/matrix-setup',
+            ])
+              await ctx.setupApi(path, undefined, 'DELETE');
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'prepared-probe'),
+    ).toMatchObject({ status: 'pass', failure: null });
+    expect(result.plan).toMatchObject({
+      builtInTurns: 4,
+      plannedTurnCount: 6,
+      maxTurns: 6,
+    });
+    expect(result.sentTurns).toBe(6);
+    expect(result.reservedBillableRequests).toBe(6);
+    expect(adapter.turns).toHaveLength(6);
+    expect(
+      transport.mock.calls.filter(
+        ([path, body, method]) =>
+          (method ?? (body ? 'POST' : 'GET')) === 'POST' &&
+          setupOperations.some((operation) => operation.path === path),
+      ),
+    ).toHaveLength(6);
+    expect(
+      transport.mock.calls.filter(([, , method]) => method === 'DELETE'),
+    ).toHaveLength(3);
+  });
+
+  test('setup refuses turn routes, unknown writes and path smuggling before transport', async () => {
+    const transport = setupTransport();
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'setup-denials',
+          maxTurns: 1,
+          async run(ctx: any) {
+            const paths = [
+              `/api/orchestration/chat/${ctx.conversationId}/continue`,
+              '/api/orchestration/chat',
+              '/api/orchestration/chat/background',
+              '/api/orchestration/chat/delegated',
+              `/api/orchestration/conversations/${ctx.conversationId}/handoff`,
+              `/api/orchestration/delegations/${ctx.conversationId}/continue`,
+              '/api/agents/matrix/chat',
+              '/api/agents/matrix/invoke',
+              '/agents/matrix/chat',
+              '/api/orchestration/commands',
+              '/integrations/matrix-setup/ui/call',
+              '/api/skills/matrix-setup/run',
+              '/api/future-route',
+              '/integrations/matrix%2fui/reconnect',
+              '//other.invalid/agents',
+            ];
+            for (const path of paths)
+              await expect(
+                ctx.setupApi(
+                  path,
+                  { message: 'Extra', clientTurnId: randomUUID() },
+                  'POST',
+                ),
+              ).rejects.toThrow('Setup API route refused');
+            for (const method of ['PUT', 'PATCH', 'DELETE'])
+              await expect(
+                ctx.setupApi('/api/future-route', {}, method),
+              ).rejects.toThrow('Setup API route refused');
+            await expect(
+              ctx.setupApi('/api/orchestration/chat', undefined, 'GET'),
+            ).rejects.toThrow('Setup API route refused');
+            await ctx.recall(ctx.model);
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'setup-denials'),
+    ).toMatchObject({ status: 'pass', failure: null });
+    expect(adapter.turns).toHaveLength(5);
+    expect(result.reservedBillableRequests).toBe(5);
+    expect(
+      transport.mock.calls.some(
+        ([, body]) => isRecord(body) && body.message === 'Extra',
+      ),
+    ).toBe(false);
+  });
+
+  test('billable configuration requests reserve budget without counting as turn sends', async () => {
+    const result = await run({
+      api: setupTransport(),
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'raw-configuration',
+          maxTurns: 1,
+          async run(ctx: any) {
+            const operation = setupOperations.find(
+              (entry) => entry.path === '/agents',
+            )!;
+            await ctx.api(operation.path, operation.body);
+          },
+        },
+      ],
+    });
+    expect(result.sentTurns).toBe(4);
+    expect(result.reservedBillableRequests).toBe(5);
+    expect(adapter.turns).toHaveLength(4);
+  });
+
+  test.each(['PUT', 'PATCH', 'DELETE'])(
+    'counts unknown %s mutations on the billable channel',
+    async (method) => {
+      const result = await run({
+        modelIds: ['matrix-1'],
+        maxTurns: 5,
+        additionalScenarios: [
+          {
+            id: 'mutation-cap',
+            maxTurns: 1,
+            async run(ctx: any) {
+              await ctx.recall(ctx.model);
+              await ctx.api('/api/future-route?probe=1', {}, method);
+            },
+          },
+        ],
+      });
+      expect(
+        result.rows.find((row: any) => row.scenario === 'mutation-cap'),
+      ).toMatchObject({
+        status: 'fail',
+        failure: 'Hard turn ceiling reached; refusing another send',
+      });
+      expect(result.reservedBillableRequests).toBe(5);
+      expect(result.sentTurns).toBe(5);
+      expect(
+        requests.some((request) => request.path === '/api/future-route'),
+      ).toBe(false);
+    },
+  );
 
   test.each([
     'continue',
