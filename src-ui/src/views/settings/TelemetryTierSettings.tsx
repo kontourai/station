@@ -32,8 +32,8 @@ export function TelemetryTierSettings({
             label={label}
             description={
               publisher === 'kontour'
-                ? 'Off sends nothing. Lite allows identifier-free aggregates when an author destination is built in. Kontour Full is unavailable.'
-                : 'Off sends nothing. Lite allows identifier-free aggregates. Full requires acknowledgement of the current event inventory.'
+                ? 'Off sends nothing. Lite sending is not available yet. Kontour Full is unavailable.'
+                : 'Off sends nothing. Lite sending is not available yet. Full sends pseudonymous events with an installation hash that rotates monthly and is never linked to an account by Station. Full requires acknowledgement of the current event inventory.'
             }
             control={
               <select
@@ -66,9 +66,13 @@ export function TelemetryTierSettings({
                 ? 'Effective: Off — DO_NOT_TRACK is active. Saved choices are not changed.'
                 : status?.reason === 'disclosure'
                   ? 'Effective: Lite — Full is awaiting disclosure acknowledgement.'
-                  : status
-                    ? `Effective: ${status.tier} (${status.reason})`
-                    : 'Effective state loads from this Station.'}
+                  : status?.reason === 'environment'
+                    ? publisher === 'operator'
+                      ? `Effective: ${status.tier} (environment). Environment defaults cannot enable Full. Choose Full here and acknowledge the disclosure to send Full events.`
+                      : `Effective: ${status.tier} (environment). Kontour Full is unavailable.`
+                    : status
+                      ? `Effective: ${status.tier} (${status.reason})`
+                      : 'Effective state loads from this Station.'}
             </span>
           </SettingsPageRow>
         );

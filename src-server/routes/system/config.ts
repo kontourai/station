@@ -435,6 +435,27 @@ export function createConfigRoutes(
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (Object.hasOwn(body as object, 'telemetryTier')) {
+        const tiers = (body as Record<string, unknown>).telemetryTier;
+        if (
+          !tiers ||
+          typeof tiers !== 'object' ||
+          Array.isArray(tiers) ||
+          Object.entries(tiers).some(
+            ([publisher, tier]) =>
+              !['kontour', 'operator'].includes(publisher) ||
+              !['off', 'lite', 'full'].includes(tier),
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+            },
+            400,
+          );
+      }
 
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`

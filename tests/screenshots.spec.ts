@@ -1778,7 +1778,7 @@ function telemetryConsentScreens(): Screen[] {
             });
             await expect(dialog).toBeVisible();
             await expect(
-              dialog.getByRole('button', { name: 'Keep usage telemetry off' }),
+              dialog.getByRole('button', { name: 'Turn off usage telemetry' }),
             ).toBeVisible();
             await expect(
               dialog

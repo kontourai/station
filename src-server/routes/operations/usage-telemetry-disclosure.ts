@@ -195,6 +195,15 @@ export function createUsageTelemetryDisclosureRoutes(
     return c.json({ success: true, data: await service.disclosure(publisher) });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
+    if (requestMayBeAnAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Agents cannot acknowledge telemetry consent. The operator can review it in Settings.',
+        },
+        403,
+      );
     const service = resolve();
     if (!service)
       return c.json(

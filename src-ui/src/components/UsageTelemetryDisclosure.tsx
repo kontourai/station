@@ -356,10 +356,11 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   return (
     <>
       <p className="usage-telemetry-disclosure__lede">
-        Station sends the following anonymous product-usage events only when a
-        telemetry endpoint is configured. It never sends conversation content,
-        filesystem paths, repository names, hostnames, branches, account
-        identities, or other free text.
+        Full telemetry sends the following pseudonymous product-usage events
+        only when a telemetry endpoint is configured. Its installation hash
+        rotates monthly and is never linked to an account by Station. It never
+        sends conversation content, filesystem paths, repository names,
+        hostnames, branches, account identities, or other free text.
       </p>
       {data.envelope && (
         <p className="usage-telemetry-disclosure__lede">{data.envelope}</p>
@@ -483,7 +484,7 @@ export function usageTelemetryDisclosureSummary(
   endpointConfigured: boolean | undefined,
 ): string {
   const lede =
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured';
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured';
   if (endpointConfigured === false)
     return `${lede}; none is configured here, so nothing is sent.`;
   if (endpointConfigured === true)
@@ -810,9 +811,22 @@ function useUsageTelemetryDecision(
       tierAware && savedChoice === 'full' && operator?.reason === 'disclosure'
         ? {
             keep: 'Allow Full usage telemetry',
-            change: 'Keep usage telemetry off',
+            change: 'Turn off usage telemetry',
           }
-        : usageTelemetryDecisionLabels(enabled),
+        : tierAware
+          ? enabled
+            ? {
+                keep: 'Keep Full usage telemetry on',
+                change: 'Turn off usage telemetry',
+              }
+            : {
+                keep:
+                  savedChoice === 'off' || operator?.tier === 'off'
+                    ? 'Keep usage telemetry off'
+                    : 'Turn off usage telemetry',
+                change: 'Allow Full usage telemetry',
+              }
+          : usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () => decide(enabled),
     change: () => decide(!enabled),
@@ -827,7 +841,7 @@ function useUsageTelemetryDecision(
           operator?.reason === 'disclosure' && (
             <p className="usage-telemetry-disclosure__lede">
               Your saved operator choice is Full, awaiting acknowledgement. Full
-              events are not sent until you allow them. Keeping telemetry off
+              events are not sent until you allow them. Turning telemetry off
               saves Off before acknowledging this inventory.
             </p>
           )}

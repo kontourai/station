@@ -5,17 +5,23 @@ Station product telemetry is server-side only and sends no prompts, paths, repos
 Settings → Telemetry offers separate Kontour and Operator Off/Lite/Full
 choices. Off is always available. Effective state and its reason are shown
 separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
-choice waits at Lite until the current disclosure is acknowledged. **Keep
-usage telemetry off** saves operator Off before acknowledging. Resetting
+choice waits at Lite until the current disclosure is acknowledged. **Turn
+off usage telemetry** saves operator Off before acknowledging. Resetting
 Station settings preserves these choices. The current Settings control keeps
 Kontour Full unavailable until the UI lane connects its separate author disclosure;
 the server exposes that destination-bound disclosure API.
 
 A standard paired device may lower tiers; only the operator or a device with
-`access:manage` may raise them. Agents cannot change telemetry choices.
+`access:manage` may raise them. Agents cannot change telemetry choices or
+acknowledge the disclosure, even with `access:manage`.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
-defaults, reported as `environment`, and cannot grant Full. Explicit stored
-choices take precedence over environment defaults; DO_NOT_TRACK always wins.
+defaults, reported as `environment`, and cannot grant Full. Hosts that previously
+relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
+receipt now resolve to Lite and stop Full delivery. There is no Lite sender in
+this foundation. To resume Full events, explicitly choose operator Full in
+Settings or run `station telemetry set operator full`, then acknowledge the
+current disclosure in Settings. Explicit stored choices take precedence over
+environment defaults; DO_NOT_TRACK always wins.
 After migration only `telemetryTier` is persisted. Legacy boolean writes are
 translated into tier changes under the same authorization rules.
 
@@ -59,7 +65,7 @@ before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
-`policy`, `default`, `user`, `disclosure`) from a running Station. Use
+`policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
 `station telemetry set operator off` or `station telemetry set kontour lite`
 to save a single publisher choice. Requesting Full without its receipt remains
 Lite. These commands support the normal target/credential flags. The status API also
@@ -88,7 +94,9 @@ legacy or conflicting variables without printing their values. Aliases remain
 supported until a separate release decision removes them; neither destination
 ever falls back to the other destination's key.
 
-The Full payload carries SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
+Full telemetry is pseudonymous, not anonymous. Its installation hash rotates
+monthly and is never linked to an account by Station. The Full payload carries
+SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
 ## Daily aggregates and observation limits

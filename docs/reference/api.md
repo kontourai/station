@@ -1182,7 +1182,11 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
 preserved. Raising a tier requires the operator or `access:manage`; a standard
-paired device may lower it. Agents are refused. Full without a current publisher disclosure remains effectively Lite.
+paired device may lower it. Agents are refused. `telemetryTier` must be an object
+with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
+return a validation error with 400 before mutation. Full without a current
+publisher disclosure remains effectively Lite. Agents also receive 403 from
+`POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority.

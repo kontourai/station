@@ -666,6 +666,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           return [key, key === 'region' && value === '' ? null : value];
         }),
     ) as Partial<AppConfig>;
+    // The server merges publishers independently. Do not replay an untouched
+    // publisher from a draft that predates a withdrawal on another device.
+    if (changed.telemetryTier) {
+      changed.telemetryTier = Object.fromEntries(
+        Object.entries(changed.telemetryTier).filter(
+          ([publisher, tier]) =>
+            tier !==
+            savedConfig.telemetryTier?.[publisher as 'kontour' | 'operator'],
+        ),
+      );
+      if (Object.keys(changed.telemetryTier).length === 0)
+        delete changed.telemetryTier;
+    }
     const { logLevel, ...plainChanges } = changed;
     const plainWrite =
       Object.keys(plainChanges).length > 0

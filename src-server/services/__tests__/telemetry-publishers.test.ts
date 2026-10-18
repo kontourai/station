@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
   type ProductTelemetryBatch,
   type StationDailyPing,
   TELEMETRY_OUTBOX_LIMITS,
@@ -758,14 +759,17 @@ test('outbox evicts oldest entries at both the 30-day and actual serialized 5 Mi
   });
 });
 
-test('an internal agent cannot attest a Lite notice or submit user feedback through the real API', async () => {
+test('an internal agent cannot attest notice, send feedback, or acknowledge either publisher through the real API', async () => {
   const sink = await receiver();
+  const author = await receiver();
+  build.endpoint = author.endpoint;
   const { live, home } = await service(
     sink.endpoint,
     {},
     { STATION_STDOUT_HANDSHAKE: '1' },
   );
   await live.stationStarted();
+  const fullRevision = (await live.disclosure()).inventoryRevision;
   let agent = true;
   const app = new Hono();
   app.use('*', async (c, next) => {
@@ -788,6 +792,22 @@ test('an internal agent cannot attest a Lite notice or submit user feedback thro
       {
         publisher: 'operator',
         inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      },
+    ],
+    [
+      '/disclosure/acknowledgements',
+      {
+        inventoryRevision: fullRevision,
+        acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+      },
+    ],
+    [
+      '/disclosure/acknowledgements',
+      {
+        publisher: 'kontour',
+        destination: author.endpoint,
+        inventoryRevision: fullRevision,
+        acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       },
     ],
   ] as const;
@@ -813,4 +833,5 @@ test('an internal agent cannot attest a Lite notice or submit user feedback thro
   await live.flushDaily();
   expect(sink.payloads).toHaveLength(2);
   expect(daily(sink.payloads)).toHaveLength(1);
+  expect(author.payloads).toEqual([]);
 });
