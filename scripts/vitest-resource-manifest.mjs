@@ -127,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
+  'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
   // Claude handshake; skips loudly where Seatbelt cannot apply (non-macOS).
   'src-server/security/confinement/__tests__/seatbelt.process.test.ts',

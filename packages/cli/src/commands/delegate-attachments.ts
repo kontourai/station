@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
@@ -42,7 +43,7 @@ export async function loadDelegateAttachments(
   const attachments: ChatAttachmentInput[] = [];
   for (const path of paths) {
     if (!path.trim()) throw new Error('--attach requires a non-empty path.');
-    const file = await open(path, 'r');
+    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
     let bytes: Buffer;
     try {
       const stat = await file.stat();

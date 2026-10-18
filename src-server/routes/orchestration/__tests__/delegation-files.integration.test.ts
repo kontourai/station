@@ -1,3 +1,4 @@
+import { closeSync, constants, openSync } from 'node:fs';
 import {
   mkdir,
   readdir,
@@ -10,6 +11,7 @@ import {
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -24,6 +26,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { parseCoreArgs } from '../../../../packages/cli/src/commands/core-api.js';
 import { runDelegateCommand } from '../../../../packages/cli/src/commands/delegate.js';
+import { execFileSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -287,6 +290,117 @@ describe('CLI delegation files through staging, route and real orchestration', (
         'Read the attached exact values.',
       ]),
     );
+
+  // Windows has no POSIX mkfifo; symlink privileges are also platform-dependent.
+  test.skipIf(process.platform === 'win32').each(['fifo', 'symlink'] as const)(
+    'the CLI promptly refuses %s input pointing to a FIFO with a coded invalid-data error',
+    async (kind) => {
+      const fifo = join(root, 'input.fifo');
+      execFileSyncBounded('mkfifo', [fifo], {
+        windowsHide: true,
+        timeout: 2000,
+      });
+      const path = kind === 'fifo' ? fifo : join(root, 'link.txt');
+      if (kind === 'symlink') await symlink(fifo, path);
+      const prepare = vi.spyOn(staging, 'prepare');
+      const pending = run([path]).then(
+        () => ({ code: 'unexpected_success' }),
+        (error: unknown) => error,
+      );
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = { code: 'refusal_deadline_exceeded' };
+      let observed: unknown;
+      try {
+        observed = await Promise.race([
+          pending,
+          new Promise((resolve) => {
+            timer = setTimeout(() => resolve(deadline), 1000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+        if (observed === deadline) {
+          // Unblock a regressed open so the assertion fails without stranding a worker.
+          const writer = openSync(
+            fifo,
+            constants.O_RDWR | constants.O_NONBLOCK,
+          );
+          try {
+            await pending;
+          } finally {
+            closeSync(writer);
+          }
+        }
+      }
+      expect(observed).toMatchObject({ code: 'delegation_files_invalid_data' });
+      expect(prepare).not.toHaveBeenCalled();
+      expect(dispatchDelegate).not.toHaveBeenCalled();
+    },
+    5000,
+  );
+
+  test.each(['project-portable', 'project-portable-prepared'] as const)(
+    'the executor directly refuses staged files for %s before writing',
+    async (kind) => {
+      const ref = stage();
+      const owner = { principalId: principal.id };
+      const stagedFiles = {
+        resolve: vi.fn((binding: { threadId: string; clientTurnId: string }) =>
+          staging.bindAndHydrate(owner, [ref], binding),
+        ),
+        accept: vi.fn(),
+        release: vi.fn(),
+      };
+      await expect(
+        delegateTask(
+          {
+            prompt: 'Read the attached values',
+            target: {
+              environment: { kind: 'current' },
+              agent: agentId('reviewer'),
+              workspace:
+                kind === 'project-portable'
+                  ? {
+                      kind,
+                      portableProjectId: 'portable-project',
+                      resourceId: 'git:repo',
+                    }
+                  : {
+                      kind,
+                      portableProjectId: 'portable-project',
+                      resourceId: 'git:repo',
+                      preparation: {
+                        protocol: 'station.execution-preparation/v1',
+                        mode: 'existing-realization',
+                        version: {
+                          scheme: 'git-commit',
+                          value: 'a'.repeat(40),
+                        },
+                        guarantees: ['version-matched-when-checked'],
+                      },
+                    },
+            },
+            stagedFiles,
+            authorizeReceiverExecution: portableAdmission,
+          },
+          service,
+          remote,
+        ),
+      ).rejects.toMatchObject({ code: 'delegation_files_unsupported' });
+      expect(stagedFiles.resolve).not.toHaveBeenCalled();
+      expect(stagedFiles.accept).not.toHaveBeenCalled();
+      expect(stagedFiles.release).not.toHaveBeenCalled();
+      expect(portableAdmission).not.toHaveBeenCalled();
+      expect(adapter.sessions.size).toBe(0);
+      expect(turns).toHaveLength(0);
+      expect(await readdir(workspace)).toEqual([]);
+      expect(
+        (await readdir(root)).filter((name) =>
+          name.startsWith('.station-delegate-'),
+        ),
+      ).toEqual([]);
+    },
+  );
 
   test('places a 64-character hex file byte for byte in the delegate workspace under its own name', async () => {
     const path = join(root, 'revision.txt');

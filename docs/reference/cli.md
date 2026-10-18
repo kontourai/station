@@ -1166,7 +1166,9 @@ different Station, select it directly with the existing authenticated
 forwarding boundary. An uncertain delegation response is not permission to resend.
 
 The CLI follows a symlink to a regular file, uploads the target's bytes, and
-keeps the **link's basename**. It pre-checks basename collisions before uploading.
+keeps the **link's basename**. Non-regular files, including FIFOs and symlinks to
+FIFOs, are refused without waiting for a writer (`delegation_files_invalid_data`).
+It pre-checks basename collisions before uploading.
 If staging or delegation fails, it cancels its prepared stages without replacing
 the original failure. Cancellation only discards upload objects; it never removes
 workspace files that an uncertain invocation may be using.
