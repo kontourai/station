@@ -13,9 +13,11 @@ import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { createLogger } from '../../utils/logger.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
@@ -754,4 +756,61 @@ test('outbox evicts oldest entries at both the 30-day and actual serialized 5 Mi
     action: 'tier-lowered',
     reason: 'privacy',
   });
+});
+
+test('an internal agent cannot attest a Lite notice or submit user feedback through the real API', async () => {
+  const sink = await receiver();
+  const { live, home } = await service(
+    sink.endpoint,
+    {},
+    { STATION_STDOUT_HANDSHAKE: '1' },
+  );
+  await live.stationStarted();
+  let agent = true;
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: agent ? 'internal' : 'credential',
+      credential: 'fixture-caller',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/', createUsageTelemetryDisclosureRoutes(live));
+  const actions = [
+    [
+      '/feedback',
+      { publisher: 'operator', action: 'tier-lowered', reason: 'privacy' },
+    ],
+    [
+      '/lite-notices',
+      {
+        publisher: 'operator',
+        inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+      },
+    ],
+  ] as const;
+  const submit = (path: string, body: object) =>
+    app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  for (const [path, body] of actions)
+    expect((await submit(path, body)).status).toBe(403);
+  expect(sink.payloads).toEqual([]);
+  const state = JSON.parse(
+    await readFile(join(home, 'config', 'telemetry-daily.json'), 'utf8'),
+  );
+  expect(state.notices.operator).toBeUndefined();
+  expect((await live.outbox()).some((entry) => 'action' in entry.payload)).toBe(
+    false,
+  );
+  agent = false;
+  for (const [path, body] of actions)
+    expect((await submit(path, body)).status).toBe(200);
+  await live.flushDaily();
+  expect(sink.payloads).toHaveLength(2);
+  expect(daily(sink.payloads)).toHaveLength(1);
 });

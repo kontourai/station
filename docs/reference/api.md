@@ -1188,7 +1188,8 @@ covers operator only; author Full uses a separate destination-bound receipt. `GE
 returns the bounded local payload ledger with `orchestration:read` authority.
 `POST /api/usage-telemetry/feedback` accepts exactly publisher, action and a fixed
 enum reason, and `POST /api/usage-telemetry/lite-notices` records publisher and the
-shown inventoryRevision. Both writes require `access:manage`. See the exact
+shown inventoryRevision. Both writes require `access:manage` and refuse agent
+principals. See the exact
 feedback enum and notice behavior in the usage reference. The
 [usage reference](usage-telemetry.md) owns the program and deployment limits.
 

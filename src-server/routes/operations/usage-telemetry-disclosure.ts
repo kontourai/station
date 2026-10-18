@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   checkOtelTelemetryConnection,
@@ -27,6 +28,16 @@ export function createUsageTelemetryDisclosureRoutes(
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
+  for (const path of ['/feedback', '/lite-notices']) {
+    app.use(path, async (c, next) => {
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          { success: false, error: { code: 'telemetry_user_action_required' } },
+          403,
+        );
+      await next();
+    });
+  }
   app.use('/feedback', bodyLimit({ maxSize: 1024 }));
   app.use('/lite-notices', bodyLimit({ maxSize: 1024 }));
   app.get('/outbox', async (c) => {

@@ -113,6 +113,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 | version | `custom`: no authoritative public-release version catalog is wired to this sender. |
 | channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; its omitted unknown result falls back to `source-checkout`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
+| first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
 | engines_used_today | Existing engine-turn terminal observations. |
 | paired_devices_bucket | The pairing service's current device store. |
 | distribution/public_plugins_enabled | `none` / empty set: no authoritative public telemetry catalog or distribution manifest consumer exists. Layout-source profiles are not distribution identities. |
@@ -146,6 +147,9 @@ It is an audit log, not a retry spool. Suppressed Full records have an empty
 secret. Full retry failures can appear as dropped attempts followed by a sent
 record with the same event IDs. A Lite/feedback `sent` record means HTTP 2xx;
 only Full's commit receipt proves the receiver acknowledged event storage.
+
+Agent principals cannot submit user feedback or attest that a Lite notice was
+shown. Both writes require the existing `access:manage` authority.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action (`tier-lowered` or `plugin-uninstalled`) and reason (`privacy`,
