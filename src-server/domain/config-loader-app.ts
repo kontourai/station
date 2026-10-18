@@ -22,7 +22,7 @@ import {
   NULLABLE_APP_CONFIG_KEYS,
 } from '@kontourai/station-contracts/settings-registry';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
 import { APP_CONFIG_SEED } from './app-config-seed.js';
 import { validator } from './validator.js';
@@ -389,7 +389,8 @@ async function loadAppConfigFileInternal(
           receipt !== null &&
           typeof receipt === 'object' &&
           'inventoryRevision' in receipt &&
-          receipt.inventoryRevision === USAGE_TELEMETRY_INVENTORY_REVISION &&
+          receipt.inventoryRevision ===
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION &&
           'acknowledgedAt' in receipt &&
           typeof receipt.acknowledgedAt === 'string';
       } catch {

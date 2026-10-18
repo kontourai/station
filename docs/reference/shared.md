@@ -33,7 +33,8 @@ owning declarations; import the canonical type rather than copying an interface.
 exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
 inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
 the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
-remains the acknowledgement compatibility export. Wording changes leave batch
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
 and probe compatibility unchanged. It provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid

@@ -61,7 +61,10 @@ export const FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION = createHash('sha256')
   )
   .digest('hex');
 
-/** Existing disclosure API/receipt name; never use this for wire admission. */
+/**
+ * Existing disclosure API/receipt name; never use this for wire admission.
+ * @deprecated Use FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION.
+ */
 export const USAGE_TELEMETRY_INVENTORY_REVISION =
   FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION;
 

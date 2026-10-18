@@ -13,7 +13,10 @@ its own disclosure exists.
 DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
 offers visible Off, Lite, and Full radio choices and a **Save operator choice
 as** action for the selected tier. Saving replaces the operator tier without
-acknowledging; DNT keeps telemetry Off.
+acknowledging; DNT keeps telemetry Off. Save closes the dialog and remembers the
+current revision for this host across reloads while DNT remains active. Removing
+DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
+no acknowledgement.
 
 A standard paired device may lower tiers; only the operator or a device with
 `access:manage` may raise them. Agents cannot change telemetry choices or
