@@ -57,7 +57,7 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
   });
   const [seen, setSeen] = useState<string[]>([]);
   const [closed, setClosed] = useState<string[]>([]);
-  const element = useRef<HTMLDivElement>(null);
+  const element = useRef<HTMLElement>(null);
   const [presented, setPresented] = useState<{
     publisher: TelemetryPublisherId;
     targetKey: string;
@@ -221,8 +221,7 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
     void client.invalidateQueries({ queryKey: ['telemetry-status'] });
   };
   return (
-    <div
-      role="region"
+    <section
       aria-live="polite"
       ref={element}
       className="telemetry-lite-notice"
@@ -264,6 +263,6 @@ export function TelemetryLiteNotice({ enabled = true }: { enabled?: boolean }) {
           Dismiss notice
         </Button>
       </ResponsiveSurfaceActions>
-    </div>
+    </section>
   );
 }
