@@ -506,6 +506,7 @@ export function mergeAppConfigUpdate(
     } else if (key === 'telemetryEnabled' && typeof value === 'boolean') {
       // Older consent clients remain able to withdraw. Enabling never manufactures a receipt.
       merged.telemetryTier = {
+        ...existing.telemetryTier,
         kontour: existing.telemetryTier?.kontour ?? (value ? 'lite' : 'off'),
         operator: value ? 'full' : 'off',
         ...updates.telemetryTier,
@@ -517,7 +518,16 @@ export function mergeAppConfigUpdate(
   // Older clients can PUT an entire readback including an unchanged tier map.
   // Withdrawal must win over that copied map, independent of JSON field order.
   if (updates.telemetryEnabled === false) {
-    merged.telemetryTier = { kontour: 'off', operator: 'off' };
+    merged.telemetryTier = Object.fromEntries(
+      [
+        ...new Set([
+          'kontour',
+          'operator',
+          ...Object.keys(existing.telemetryTier ?? {}),
+          ...Object.keys(updates.telemetryTier ?? {}),
+        ]),
+      ].map((id) => [id, 'off']),
+    );
   }
 
   delete merged.telemetryEnabled;

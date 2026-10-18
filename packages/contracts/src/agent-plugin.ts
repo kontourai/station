@@ -1,3 +1,4 @@
+import type { PublisherTelemetryDeclaration } from './plugin-telemetry.js';
 import type { SkillExperienceContributionV1 } from './skill-experience.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
@@ -150,6 +151,7 @@ export interface StationPluginGenericOverlayV1 {
 export interface StationAgentPluginExtensionV1
   extends StationPluginGenericOverlayV1 {
   schemaVersion: '1.0';
+  telemetry?: PublisherTelemetryDeclaration;
   title?: string;
   sdkVersion?: string;
   entrypoint?: string;

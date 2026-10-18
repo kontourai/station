@@ -2,6 +2,7 @@ import {
   TELEMETRY_TIERS,
   type TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import {
   configureApiCredential,
   parseCoreArgs,
@@ -26,12 +27,12 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   const [action = 'status', publisher, tier, ...extra] = parsed.positionals;
   if (action === 'set') {
     if (
-      !['kontour', 'operator'].includes(publisher) ||
+      !isTelemetryPublisherId(publisher) ||
       !TELEMETRY_TIERS.some((value) => value === tier) ||
       extra.length
     )
       throw new Error(
-        'Usage: station telemetry set <kontour|operator> <off|lite|full>',
+        'Usage: station telemetry set <kontour|operator|publisher:id> <off|lite|full>',
       );
     if (publisher === 'kontour' && tier === 'full')
       throw new Error(
@@ -45,10 +46,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
     if (
       publisher !== undefined ||
       (parsed.flags.publisher !== undefined &&
-        !['kontour', 'operator'].includes(String(parsed.flags.publisher)))
+        !isTelemetryPublisherId(parsed.flags.publisher))
     )
       throw new Error(
-        'Usage: station telemetry outbox [--publisher=kontour|operator]',
+        'Usage: station telemetry outbox [--publisher=kontour|operator|publisher:id]',
       );
   } else if (action !== 'status' || publisher !== undefined) {
     throw new Error(

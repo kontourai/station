@@ -136,46 +136,55 @@ describe('telemetry commands', () => {
     expect(consoleLog).toHaveBeenCalledWith('kontour: off (DNT)');
     expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
   });
-  test('set sends one publisher through the live configuration API then reports effective state', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: { telemetryTier: { kontour: 'off', operator: 'full' } },
-      }),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          publishers: {
-            kontour: { tier: 'off', reason: 'user' },
-            operator: { tier: 'lite', reason: 'disclosure' },
+  test.each(['operator', 'publisher:writer'])(
+    'set %s sends one publisher through the live configuration API then reports effective state',
+    async (publisher) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: { telemetryTier: { kontour: 'off', [publisher]: 'full' } },
+        }),
+      );
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: {
+            publishers: {
+              kontour: { tier: 'off', reason: 'user' },
+              [publisher]: { tier: 'lite', reason: 'disclosure' },
+            },
           },
-        },
-      }),
-    );
-    const { runTelemetryCommand } = await import('../commands/telemetry.js');
-    await runTelemetryCommand([
-      'set',
-      'operator',
-      'full',
-      '--api-base=http://127.0.0.1:43129',
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      'http://127.0.0.1:43129/config/app',
-    );
-    expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      telemetryTier: { operator: 'full' },
-    });
-    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
-  });
-  test.each([['--publisher=operator'], ['--publisher', 'operator']])(
+        }),
+      );
+      const { runTelemetryCommand } = await import('../commands/telemetry.js');
+      await runTelemetryCommand([
+        'set',
+        publisher,
+        'full',
+        '--api-base=http://127.0.0.1:43129',
+      ]);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://127.0.0.1:43129/config/app',
+      );
+      expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+      expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+        telemetryTier: { [publisher]: 'full' },
+      });
+      expect(consoleLog).toHaveBeenCalledWith(
+        `${publisher}: lite (disclosure)`,
+      );
+    },
+  );
+  test.each([
+    ['operator', '--publisher=operator'],
+    ['operator', '--publisher', 'operator'],
+    ['publisher:writer', '--publisher', 'publisher:writer'],
+  ])(
     'outbox prints the server ledger with publisher filter %j',
-    async (...filter) => {
+    async (publisher, ...filter) => {
       const entries = [
         {
-          publisher: 'operator',
+          publisher,
           tier: 'lite',
           outcome: 'dropped',
           reason: 'off',
@@ -193,7 +202,7 @@ describe('telemetry commands', () => {
         '--api-base=http://127.0.0.1:43129',
       ]);
       expect(fetchMock.mock.calls[0][0]).toBe(
-        'http://127.0.0.1:43129/api/usage-telemetry/outbox?publisher=operator',
+        `http://127.0.0.1:43129/api/usage-telemetry/outbox?publisher=${encodeURIComponent(publisher)}`,
       );
       expect(consoleLog).toHaveBeenCalledWith(JSON.stringify(entries));
     },

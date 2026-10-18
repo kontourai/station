@@ -24,6 +24,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
+| [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
@@ -4326,3 +4327,25 @@ rows do not guarantee physical database-file shrinkage.
 database to exercise commit/replay, revocation, capacity, corrupt live schemas
 and stalled transport recovery. Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.
+
+
+## PluginTelemetryPublisher
+
+[PluginTelemetryService](../../src-server/services/plugin-telemetry-service.ts)
+projects declared SDK counts through the authenticated kernel telemetry route.
+[Admission](../../src-server/services/plugins/plugin-telemetry-admission.ts) binds
+selected immutable plugin code to the applied signature receipt, its verified
+registry item ID and the operator's public-catalog classification. Declaration
+validation runs during install before activation. A caller's plugin header is
+attribution, not a grant to change tiers or consent.
+
+The service uses the foundation tier resolver, monthly identity helper, atomic
+publisher daily state and shared bounded outbox. Daily reservations precede I/O;
+there is no backlog or automatic retry. Current installation/trust, effective tier,
+notice or Full receipt are checked before dispatch. The central uninstall
+transaction retires persistent snapshots and receipts; runtime also aborts requests
+already waiting to dispatch. Explicit fixed-enum feedback can send before removal.
+The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.routes.test.ts)
+install a signed fixture, invoke the SDK and real kernel routes, and observe a
+loopback receiver. They do not qualify a deployed broker or physical UI journey.
+Distribution manifests and broker `plugin_daily` acceptance remain separate work.

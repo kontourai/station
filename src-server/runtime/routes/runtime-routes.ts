@@ -2829,7 +2829,10 @@ export function configureRuntimeRoutes(
       },
     ),
   );
-  context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
+  context.app.route(
+    '/api/telemetry',
+    createTelemetryRoutes(() => context.getUsageTelemetry?.()),
+  );
   // The UI mounts its disclosure on every shell, but this function runs inside
   // initializeRuntime, BEFORE StationRuntime constructs usageTelemetry — so
   // `context.usageTelemetry` is undefined here by construction (that was the
@@ -2910,6 +2913,11 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       {
+        onTelemetryRemoval: async (publisher, reason) => {
+          await context
+            .getUsageTelemetry?.()
+            ?.pluginUninstalled(publisher, reason);
+        },
         consentChannel: context.consentChannel,
         packageMcpJournal,
         registryTrustPolicyAuthority: context.orchestrationEventStore

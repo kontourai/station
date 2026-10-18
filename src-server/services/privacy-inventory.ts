@@ -64,6 +64,24 @@ const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
     ],
   },
   {
+    id: 'plugin-publisher-analytics',
+    storeDataType: 'Other Usage Data',
+    linkedToIdentity: false,
+    usedForTracking: false,
+    purpose: 'Analytics',
+    collection:
+      'Signed public-registry plugins may declare bounded enum/count-bucket events. The kernel verifies current installation, applied signature identity and the operator public-catalog classification. Lite requires that publisher notice and sends one identifier-free completed-previous-day plugin_daily v1 with bucketed marginal event/property histograms, schema/data/inventory revisions, publisher and random deduplication ID. No raw day, timestamp or installation key is sent. Full requires explicit per-publisher choice and current destination/inventory acknowledgement; plugin_event v1 adds declared event/bucketed properties, server timestamp and a publisher-specific monthly pseudonymous installation hash. DO_NOT_TRACK forces Off. Operator policies only lower defaults. Uninstall withdraws pending counts and receipts; an optional explicit fixed-enum reason sends before removal, capped once per publisher per UTC day and suppressed by DNT. Delivery outcomes use the shared bounded 30-day/5-MiB local outbox. Distribution manifest loading and broker acceptance are deferred.',
+    destination:
+      'Only the signed plugin declaration HTTPS destination without credentials, query or fragment. The SDK contacts the Station kernel, which sends without operator credentials. Direct receivers see network metadata including source IP. Full identities are derived from the existing random installation secret, publisher ID and UTC month; never account-derived. Kernel consent surfaces cannot be rebranded.',
+    evidence: [
+      'packages/contracts/src/plugin-telemetry.ts',
+      'packages/shared/src/plugin-telemetry.ts',
+      'src-server/services/plugin-telemetry-service.ts',
+      'src-server/services/plugins/plugin-telemetry-admission.ts',
+      'src-server/services/plugins/plugin-install-transaction.ts',
+    ],
+  },
+  {
     id: 'otel-observability',
     storeDataType: 'Performance and Diagnostics',
     // archive#2484 replaced the hostname/user-derived custom ID with a random

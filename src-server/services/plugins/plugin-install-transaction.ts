@@ -1,5 +1,8 @@
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
+import { retirePluginTelemetry } from '../plugin-telemetry-service.js';
 import { assertPluginNameSegment } from './plugin-name.js';
+import { assertPluginTelemetryAdmission } from './plugin-telemetry-admission.js';
 
 export { assertPluginNameSegment } from './plugin-name.js';
 
@@ -455,6 +458,7 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallTransactionDeps {
+  beforeTelemetryRemoval?: (publisher: TelemetryPublisherId) => Promise<void>;
   /** Explicit private installer owner, never request data or ambient state. */
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
@@ -3719,6 +3723,12 @@ async function installPluginFromSourceUnderContext(
             options?.registryKey,
             priorTrust?.receipt ?? undefined,
           );
+    if (manifest.telemetry)
+      assertPluginTelemetryAdmission(
+        manifest.telemetry,
+        registryAcquisition,
+        (await observeAppConfigFile(projectHomeDir))?.publicTelemetryRegistries,
+      );
     if (options?.requireRegistryClaim && !registryAcquisition)
       throw new RegistryAcquisitionRefused();
     if (registryAcquisition && !isAgentPlugin)
@@ -4751,6 +4761,24 @@ async function uninstallPluginUnderPublication(
     throw new Error(
       'Plugin installation changed before removal; reload before retrying',
     );
+  if (manifest.telemetry && priorJournal?.state === 'observed') {
+    const trust = deps.packageMcpJournal!.registryAcquisition(
+      priorJournal.installation,
+    );
+    if (
+      trust.state === 'observed' &&
+      trust.receipt?.signer &&
+      trust.receipt.registryId === manifest.telemetry.publisher
+    ) {
+      const publisher: TelemetryPublisherId = `publisher:${trust.receipt.registryId}`;
+      try {
+        await deps.beforeTelemetryRemoval?.(publisher);
+      } catch {
+        logger.warn('Plugin uninstall feedback unavailable');
+      }
+      await retirePluginTelemetry(projectHomeDir, publisher);
+    }
+  }
   const priorWasReady =
     priorJournal?.state === 'observed' &&
     deps.packageMcpJournal!.admissionOpen(priorJournal.installation);

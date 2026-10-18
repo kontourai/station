@@ -701,7 +701,7 @@ by every installed agent version.
 
 ### `telemetry`
 
-Read effective per-publisher tiers from a running Station or save a built-in
+Read effective per-publisher tiers from a running Station or save a
 publisher's choice through its authenticated configuration API:
 
 ```sh
@@ -709,6 +709,8 @@ station telemetry status
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
+station telemetry set publisher:writer off
+station telemetry outbox --publisher publisher:writer
 ```
 
 Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,

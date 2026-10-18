@@ -1009,7 +1009,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         expect(await response.json()).toEqual({
           success: false,
           error:
-            'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+            'telemetryTier must be an object with valid publisher IDs and off/lite/full values.',
         });
         expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
           before,

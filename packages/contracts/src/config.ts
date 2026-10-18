@@ -68,7 +68,11 @@ export interface AppConfig {
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
   /** Per-publisher explicit choices; absent publishers default to Lite. */
-  telemetryTier?: Pick<TelemetryTierChoices, 'kontour' | 'operator'>;
+  telemetryTier?: TelemetryTierChoices;
+  /** Operator classification of public catalog source keys; absent means none. */
+  publicTelemetryRegistries?: string[];
+  /** Lower publisher defaults only; never grants Full or replaces user choice. */
+  telemetryPublisherPolicy?: TelemetryTierChoices;
   /** @deprecated Compatibility input, migrated when app.json is loaded. */
   telemetryEnabled?: boolean;
   /** Saved full product POST destination; takes precedence over environment fallback. */

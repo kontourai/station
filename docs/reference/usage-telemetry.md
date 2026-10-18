@@ -518,3 +518,43 @@ A public or custom plugin was disabled after a crash.
 - `engine_connect_failures`: {"domain":"engine-count-buckets","arrayMax":8}
 - `safe_mode_entered`: {"domain":"count","max":65535}
 - `plugin_disabled_after_crash`: {"domain":"count","max":65535}
+
+
+## Plugin publishers
+
+Signed public-registry plugins can declare their own bounded event/property
+inventory and HTTPS destination. See [Publisher analytics](../guides/plugins.md#publisher-analytics)
+for manifest syntax, receipt boundaries, counts and receiver payloads. Installation
+requires both applied signature trust and an operator public-catalog classification
+in `publicTelemetryRegistries`; absent classification refuses the declaration.
+Distribution manifests remain design-only and will share the declaration schema
+and tier resolver.
+
+Publishers appear in the existing status map as `publisher:<verified registry item
+id>`. `station telemetry set publisher:writer off` stores an independent choice;
+`station telemetry outbox --publisher publisher:writer` filters the shared ledger.
+The status API keeps its top-level built-in inventory fields. Each plugin publisher
+adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,
+`fullInventoryRevision` and `liteNoticeShown` to its tier/reason/source/choice entry.
+The UI lane consumes these entries generically; this lane does not implement UI.
+
+Use that publisher's `liteInventoryRevision` with the existing Lite notice POST.
+Its disclosure and acknowledgement use `?publisher=publisher:writer` and the
+existing acknowledgement body, including the displayed `destination`. Built-in
+operator or Kontour receipts do not authorize it. Headless servers show a separate
+log notice for each discovered plugin publisher; desktop sidecars require the UI
+receipt. Full uses the existing installation secret with a publisher-specific
+monthly ID. DO_NOT_TRACK applies to every publisher.
+
+Operator `telemetryPublisherPolicy` maps publisher IDs to tiers. It lowers defaults
+through `resolveTelemetryTier`, never raises the Lite default or grants Full.
+Saved choices win; setting a user choice Off still wins over a Full/Lite policy.
+Changing public registry classification or withdrawing applied signature trust
+stops admission and dispatch. Kernel choice/disclosure surfaces remain unbrandable.
+Uninstall stops queued sends, withdraws accumulators/receipts, and accepts an
+optional fixed-enum reason on the uninstall request before removal. The ordinary
+standalone feedback route cannot manufacture an uninstall action.
+
+`plugin_daily` and `plugin_event` have an independent data revision. The reusable
+strict daily parser is in `@kontourai/station-shared/plugin-telemetry`; broker
+acceptance is deferred. No endpoint is enabled by these changes.

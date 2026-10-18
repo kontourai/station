@@ -29,6 +29,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./plugin-telemetry": "./src/plugin-telemetry.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
     "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",

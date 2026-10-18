@@ -1375,3 +1375,14 @@ See the [connection factory](../../packages/shared/src/mcp-connection.ts),
 [custody owner](../../packages/shared/src/mcp-local-custody.ts),
 [CLI caller](../../packages/cli/src/dev/mcp.ts), and
 [Station MCP composition](../../src-server/runtime/mcp/mcp-manager.ts).
+
+
+## Plugin publisher telemetry
+
+`@kontourai/station-shared/plugin-telemetry` is a Node-only leaf for strict
+`parsePublisherTelemetryDeclaration`, `parsePluginDailyPing(payload, declaration)`,
+count bucketing and inventory fingerprints. It exports
+`PLUGIN_TELEMETRY_DATA_REVISION` separately from Station's built-in data revision.
+The parser is reusable by a future broker lane; importing it does not enable
+broker acceptance. See [Publisher analytics](../guides/plugins.md#publisher-analytics)
+and the [owning source](../../packages/shared/src/plugin-telemetry.ts).

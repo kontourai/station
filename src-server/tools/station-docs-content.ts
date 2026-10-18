@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '3f8b54930c07b41510d1e09186c34dab820136d9b92b28f68ef2256afba76fc5';
+  '2720d15afdfbfdf2ed2b7124da2d6960970a998e8200873f759ea33da3ae7177';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1200,7 +1200,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Scheduling, events, notifications, and voice',
     summary:
       'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.',
-    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-canonicalusageexport: CanonicalUsageExport\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
+    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-plugintelemetrypublisher: PluginTelemetryPublisher\n- architecture-canonicalusageexport: CanonicalUsageExport\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
     tags: ['architecture', 'background'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1301,6 +1301,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-background',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'producttelemetryreceiver',
+  },
+  {
+    id: 'architecture-plugintelemetrypublisher',
+    title: 'PluginTelemetryPublisher',
+    summary:
+      'Interface, composition, invariants, and documented evidence for PluginTelemetryPublisher.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## PluginTelemetryPublisher\n\n[PluginTelemetryService](../../src-server/services/plugin-telemetry-service.ts)\nprojects declared SDK counts through the authenticated kernel telemetry route.\n[Admission](../../src-server/services/plugins/plugin-telemetry-admission.ts) binds\nselected immutable plugin code to the applied signature receipt, its verified\nregistry item ID and the operator's public-catalog classification. Declaration\nvalidation runs during install before activation. A caller's plugin header is\nattribution, not a grant to change tiers or consent.\n\nThe service uses the foundation tier resolver, monthly identity helper, atomic\npublisher daily state and shared bounded outbox. Daily reservations precede I/O;\nthere is no backlog or automatic retry. Current installation/trust, effective tier,\nnotice or Full receipt are checked before dispatch. The central uninstall\ntransaction retires persistent snapshots and receipts; runtime also aborts requests\nalready waiting to dispatch. Explicit fixed-enum feedback can send before removal.\nThe [route tests](../../src-server/routes/operations/__tests__/telemetry-events.routes.test.ts)\ninstall a signed fixture, invoke the SDK and real kernel routes, and observe a\nloopback receiver. They do not qualify a deployed broker or physical UI journey.\nDistribution manifests and broker `plugin_daily` acceptance remain separate work.",
+    tags: ['architecture', 'background', 'PluginTelemetryPublisher'],
+    parentId: 'architecture-background',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'plugintelemetrypublisher',
   },
   {
     id: 'architecture-canonicalusageexport',

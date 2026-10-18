@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
   PRODUCT_TELEMETRY_ENVELOPE,
@@ -40,6 +41,8 @@ import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
 import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
+import { PluginTelemetryService } from './plugin-telemetry-service.js';
+import type { PluginTelemetryCatalogOptions } from './plugins/plugin-telemetry-admission.js';
 import type { TelemetrySecretResolver } from './secrets/secret-binding-administration.js';
 import { TelemetryPublisherService } from './telemetry-publisher-service.js';
 import {
@@ -66,6 +69,7 @@ const REQUEST_TIMEOUT_MS = 1_000;
 type BufferedEvent = ProductTelemetryObservation;
 
 interface UsageTelemetryServiceOptions {
+  pluginTelemetry?: PluginTelemetryCatalogOptions;
   homeDir: string;
   appConfig: AppConfig;
   version: string;
@@ -142,6 +146,7 @@ export class UsageTelemetryService {
   private probing: Promise<TelemetryConnectionProbeStatus> | undefined;
   private probeAbort: AbortController | undefined;
   private readonly publishers: TelemetryPublisherService;
+  private readonly pluginPublishers?: PluginTelemetryService;
   private readonly author?: UsageTelemetryService;
   constructor(
     private readonly options: UsageTelemetryServiceOptions,
@@ -206,6 +211,14 @@ export class UsageTelemetryService {
         facts: options.dailyFacts,
         fetch: this.fetchImpl,
       });
+    if (publisher === 'operator' && options.pluginTelemetry)
+      this.pluginPublishers = new PluginTelemetryService({
+        homeDir: options.homeDir,
+        catalog: options.pluginTelemetry,
+        config: () => this.appConfig,
+        env,
+        fetch: this.fetchImpl,
+      });
     if (
       publisher === 'operator' &&
       resolveTelemetryConfiguration(options.appConfig, env).authorEndpoint
@@ -245,25 +258,32 @@ export class UsageTelemetryService {
       },
     );
   }
-  async outbox(publisher?: 'kontour' | 'operator') {
+  async outbox(publisher?: TelemetryPublisherId) {
     await this.flushDropped();
     await this.author?.flushDropped();
     return this.publishers.local.outbox(publisher);
   }
   async submitFeedback(payload: TelemetryFeedback): Promise<boolean> {
-    return this.publishers.feedback(payload);
+    return payload.publisher.startsWith('publisher:')
+      ? (this.pluginPublishers?.feedback(payload) ?? false)
+      : this.publishers.feedback(payload);
   }
   async recordTierLowering(
-    publisher: 'kontour' | 'operator',
+    publisher: TelemetryPublisherId,
     reason?: TelemetryFeedback['reason'],
   ): Promise<void> {
-    await this.publishers.tierLowered(publisher, reason);
+    if (publisher !== 'kontour' && publisher !== 'operator')
+      await this.pluginPublishers?.tierLowered(publisher, reason);
+    else await this.publishers.tierLowered(publisher, reason);
   }
   async recordLiteNotice(
-    publisher: 'kontour' | 'operator',
+    publisher: TelemetryPublisherId,
     revision: string,
   ): Promise<void> {
-    await this.publishers.recordNotice(publisher, revision);
+    if (publisher !== 'kontour' && publisher !== 'operator') {
+      if (!this.pluginPublishers) throw new Error('Publisher unavailable');
+      await this.pluginPublishers.recordNotice(publisher, revision);
+    } else await this.publishers.recordNotice(publisher, revision);
     this.ensureTimer();
   }
   async loadDisclosureReceipt(): Promise<boolean> {
@@ -298,9 +318,17 @@ export class UsageTelemetryService {
   }
   async acknowledgeDisclosure(
     inventoryRevision: string,
-    publisher: 'kontour' | 'operator' = 'operator',
+    publisher: TelemetryPublisherId = 'operator',
     destination?: string,
   ): Promise<void> {
+    if (publisher !== 'kontour' && publisher !== 'operator') {
+      if (!this.pluginPublishers) throw new Error('Publisher unavailable');
+      return this.pluginPublishers.acknowledge(
+        publisher,
+        inventoryRevision,
+        destination,
+      );
+    }
     if (this.resolvedConfiguration().publishers[publisher].reason === 'DNT')
       throw new Error(
         'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
@@ -369,24 +397,41 @@ export class UsageTelemetryService {
     await this.loadDisclosureReceipt();
     return {
       ...this.resolvedConfiguration(),
+      publishers: {
+        ...this.resolvedConfiguration().publishers,
+        ...(await this.pluginPublishers?.status()),
+      },
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,
       fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
     };
   }
-  async disclosure(publisher?: 'kontour' | 'operator'): Promise<{
-    publisher?: 'kontour';
+  async disclosure(publisher?: TelemetryPublisherId): Promise<{
+    publisher?: TelemetryPublisherId;
     destination?: string;
     acknowledged: boolean;
     inventoryRevision: string;
-    events: typeof USAGE_TELEMETRY_EVENTS;
+    events: Record<
+      string,
+      {
+        description: string;
+        properties: Record<
+          string,
+          { domain: readonly string[] | string; maxLength?: number }
+        >;
+      }
+    >;
     envelope: string;
     acknowledgementProtocol: number;
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
-    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
+    publishers: ResolvedTelemetryConfiguration['publishers'];
   }> {
+    if (publisher && publisher !== 'operator' && publisher !== 'kontour') {
+      if (!this.pluginPublishers) throw new Error('Publisher unavailable');
+      return this.pluginPublishers.disclosure(publisher);
+    }
     await this.loadDisclosureReceipt();
     const resolved = this.resolvedConfiguration();
     if (publisher === 'kontour' && this.publisher === 'operator') {
@@ -803,7 +848,35 @@ export class UsageTelemetryService {
       this.warn('Usage telemetry event dropped.', error);
     }
   }
+  async countPluginTelemetry(
+    plugin: string,
+    events: Array<{
+      event: string;
+      attributes: Record<string, string | number>;
+    }>,
+  ) {
+    if (!this.pluginPublishers) throw new Error('Plugin telemetry unavailable');
+    await this.pluginPublishers.count(plugin, events);
+    this.ensureTimer();
+  }
+  async pluginUninstalled(
+    publisher: TelemetryPublisherId,
+    reason?: TelemetryFeedback['reason'],
+  ) {
+    try {
+      await this.pluginPublishers?.tierLowered(
+        publisher,
+        reason,
+        'plugin-uninstalled',
+      );
+    } finally {
+      this.pluginPublishers?.withdraw(publisher);
+    }
+  }
   async stationStarted(): Promise<void> {
+    await this.pluginPublishers?.notice(
+      (this.options.env ?? process.env).STATION_STDOUT_HANDSHAKE !== '1',
+    );
     if (this.publisher === 'operator' && !this.started) {
       this.started = true;
       try {
@@ -838,7 +911,9 @@ export class UsageTelemetryService {
       this.timer ||
       !this.acceptingTracks ||
       (!this.active &&
-        (this.publisher === 'kontour' || !this.publishers.canSendDaily()))
+        (this.publisher === 'kontour' ||
+          (!this.pluginPublishers?.configured &&
+            !this.publishers.canSendDaily())))
     )
       return;
     this.timer = this.setIntervalImpl(() => {
@@ -1064,9 +1139,14 @@ export class UsageTelemetryService {
   async flushDaily(): Promise<void> {
     if (this.publisher !== 'operator' || !this.acceptingTracks) return;
     if (this.dailyFlushing) return this.dailyFlushing;
-    this.dailyFlushing = this.publishers.flushDaily().finally(() => {
-      this.dailyFlushing = undefined;
-    });
+    this.dailyFlushing = Promise.all([
+      this.publishers.flushDaily(),
+      this.pluginPublishers?.flushDaily(),
+    ])
+      .then(() => undefined)
+      .finally(() => {
+        this.dailyFlushing = undefined;
+      });
     return this.dailyFlushing;
   }
   async flush(): Promise<void> {
@@ -1101,6 +1181,7 @@ export class UsageTelemetryService {
       const authorShutdown = this.author?.shutdown(signal);
       if (this.publisher === 'operator') {
         this.publishers.stop();
+        this.pluginPublishers?.stop();
         await this.dailyFlushing?.catch((error) =>
           this.warn('Usage telemetry daily shutdown failed.', error),
         );

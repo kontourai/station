@@ -22,8 +22,8 @@ The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 Each publisher has its own Off, Lite, or Full choice. `kontour` is the app author;
 `operator` is the existing configured product receiver; `publisher:<registry id>`
 identifies a plugin or distribution publisher. The two built-in choices are
-stored in `telemetryTier` in Station configuration. Plugin publisher registration
-and storage are future work. Sinks are independent: an operator endpoint never
+stored in `telemetryTier` in Station configuration. Plugin publisher registration and storage use verified signed public-registry
+installations; distribution manifest loading remains future work. Sinks are independent: an operator endpoint never
 replaces, disables or grants consent to an author endpoint.
 
 Off stops automatic telemetry for that publisher. Explicit feedback for a recent
@@ -224,3 +224,17 @@ receipts independently of wording revision 2. Tier-change requests can include a
 optional fixed-enum reason, sent once before the lower choice is applied,
 including Off. Standalone feedback requires a lowering within 10 minutes and is
 limited to one per publisher per UTC day. DNT permits neither path.
+
+
+### Plugin publisher implementation
+
+Plugin telemetry declarations now use the shared bounded publisher schema. Because
+registry signature receipts do not classify catalog visibility, operators must
+explicitly list public catalog source keys in `publicTelemetryRegistries`.
+Signature verification and matching registry item identity are independently
+required. `telemetryPublisherPolicy` feeds the foundation resolver and can only
+lower defaults. The authoring API uses a Pane-scoped `useTelemetry()` or explicit
+`createPluginTelemetry(apiBase, pluginName)`; the old global plugin label is empty
+by design and cannot identify concurrent Panes. Kernel consent surfaces retain
+their ownership and appearance. Broker acceptance and distribution manifest
+loading remain deferred; no deployment or real endpoint is enabled.

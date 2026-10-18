@@ -3,6 +3,7 @@ import {
   TELEMETRY_FEEDBACK_REASONS,
   type TelemetryFeedback,
 } from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
@@ -42,11 +43,7 @@ export function createUsageTelemetryDisclosureRoutes(
   app.on('POST', '/lite-notices', bodyLimit({ maxSize: 1024 }));
   app.get('/outbox', async (c) => {
     const publisher = c.req.query('publisher');
-    if (
-      publisher !== undefined &&
-      publisher !== 'kontour' &&
-      publisher !== 'operator'
-    )
+    if (publisher !== undefined && !isTelemetryPublisherId(publisher))
       return c.json(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
@@ -68,7 +65,7 @@ export function createUsageTelemetryDisclosureRoutes(
       Array.isArray(body) ||
       Object.keys(body).sort().join(',') !== 'action,publisher,reason' ||
       !('publisher' in body) ||
-      (body.publisher !== 'kontour' && body.publisher !== 'operator') ||
+      !isTelemetryPublisherId(body.publisher) ||
       !('action' in body) ||
       (body.action !== 'tier-lowered' &&
         body.action !== 'plugin-uninstalled') ||
@@ -101,7 +98,7 @@ export function createUsageTelemetryDisclosureRoutes(
       Array.isArray(body) ||
       Object.keys(body).sort().join(',') !== 'inventoryRevision,publisher' ||
       !('publisher' in body) ||
-      (body.publisher !== 'kontour' && body.publisher !== 'operator') ||
+      !isTelemetryPublisherId(body.publisher) ||
       !('inventoryRevision' in body) ||
       typeof body.inventoryRevision !== 'string'
     )
@@ -116,7 +113,12 @@ export function createUsageTelemetryDisclosureRoutes(
         503,
       );
     const status = await service.telemetryStatus();
-    if (body.inventoryRevision !== status.liteInventoryRevision)
+    if (
+      body.inventoryRevision !==
+      (body.publisher === 'kontour' || body.publisher === 'operator'
+        ? status.liteInventoryRevision
+        : status.publishers[body.publisher]?.liteInventoryRevision)
+    )
       return c.json(
         { success: false, error: { code: 'telemetry_notice_changed' } },
         409,
@@ -173,11 +175,7 @@ export function createUsageTelemetryDisclosureRoutes(
   });
   app.get('/disclosure', async (c) => {
     const publisher = c.req.query('publisher');
-    if (
-      publisher !== undefined &&
-      publisher !== 'operator' &&
-      publisher !== 'kontour'
-    )
+    if (publisher !== undefined && !isTelemetryPublisherId(publisher))
       return c.json(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
@@ -195,6 +193,11 @@ export function createUsageTelemetryDisclosureRoutes(
       return c.json(
         { success: false, error: { code: 'telemetry_unconfigured' } },
         409,
+      );
+    if (publisher && !(await service.telemetryStatus()).publishers[publisher])
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
       );
     return c.json({ success: true, data: await service.disclosure(publisher) });
   });
@@ -250,7 +253,7 @@ export function createUsageTelemetryDisclosureRoutes(
         400,
       );
     const publisher = 'publisher' in body ? body.publisher : 'operator';
-    if (publisher !== 'operator' && publisher !== 'kontour')
+    if (!isTelemetryPublisherId(publisher))
       return c.json(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
@@ -263,9 +266,14 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_unconfigured' } },
         409,
       );
+    if (!(await service.telemetryStatus()).publishers[publisher])
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
     const disclosure = await service.disclosure(publisher);
     if (
-      publisher === 'kontour' &&
+      publisher !== 'operator' &&
       (!('destination' in body) || body.destination !== disclosure.destination)
     )
       return c.json(
@@ -290,7 +298,7 @@ export function createUsageTelemetryDisclosureRoutes(
         },
         409,
       );
-    if (publisher === 'kontour')
+    if (publisher !== 'operator')
       await service.acknowledgeDisclosure(
         body.inventoryRevision,
         publisher,

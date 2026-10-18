@@ -947,3 +947,15 @@ This profile does not replace existing continuity capabilities or migrate existi
 provider-specific execution paths. Durable inbox placement, accepted-through
 context delivery and crash-durable model/tool steps have separate implementation
 owners. Profile claims must change with their adapter behavior and proof.
+
+
+## Publisher analytics declarations
+
+`@kontourai/station-contracts/plugin-telemetry` owns
+`PublisherTelemetryDeclaration`, `PluginDailyPing` and `PluginTelemetryEvent`.
+The declaration is reusable by future distribution manifests. The
+[shared parser](../../packages/shared/src/plugin-telemetry.ts) owns runtime bounds,
+canonical inventory fingerprints and the independent plugin data revision.
+`parsePluginDailyPing(payload, declaration)` requires exact declared event/property
+histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
+See [Publisher analytics](../guides/plugins.md#publisher-analytics).

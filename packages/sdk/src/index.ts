@@ -330,6 +330,7 @@ export {
   useSlashCommands,
   // Statistics
   useStats,
+  useTelemetry,
   // Toast notifications
   useToast,
   // Tool approval
@@ -1362,7 +1363,7 @@ export {
   useStarterWorkObservationQuery,
   useStarterWorkQuery,
 } from './starter-work';
-export { telemetry } from './telemetry';
+export { createPluginTelemetry, telemetry } from './telemetry';
 export * from './types';
 export {
   unifiedSearchQueries,

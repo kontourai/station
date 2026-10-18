@@ -226,6 +226,7 @@
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",
+        "PluginTelemetryPublisher",
         "CanonicalUsageExport",
         "Native notification feed"
       ],

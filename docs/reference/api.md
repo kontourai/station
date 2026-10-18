@@ -1183,7 +1183,7 @@ Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
 preserved. Raising a tier requires the operator or `access:manage`; a standard
 paired device may lower it. Agents are refused. `telemetryTier` must be an object
-with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
+with `kontour`, `operator` or valid `publisher:<id>` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. Full without a current
 publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
@@ -1202,6 +1202,22 @@ per UTC day; unavailable feedback returns 409.
 `POST /api/usage-telemetry/lite-notices` records publisher and the
 shown inventoryRevision. Both writes require `access:manage` and refuse agent
 principals. See the exact feedback enum and notice behavior in the usage reference.
+Verified plugin publishers use the same map and endpoints. Each publisher entry
+also carries its destination, Lite inventory/revision, Full revision and notice
+status; use its own revision for a shown-notice receipt. Full acknowledgements
+include its displayed destination. `POST /api/telemetry/events` accepts at most 100
+bounded `{event, attributes}` records with plugin header attribution. The kernel
+rejects undeclared names/properties/values and unverified installations. It counts
+locally at Lite and sends the declared publisher payload at acknowledged Full;
+raw observations are no longer logged. `DELETE /api/plugins/:name` can carry
+`?telemetryFeedbackReason=<fixed reason>` to submit feedback before removal.
+The standalone feedback endpoint cannot authorize an uninstall action.
+
+Operator-only `publicTelemetryRegistries` classifies eligible public catalog source
+keys; applied signature trust remains independently required.
+`telemetryPublisherPolicy` can only lower defaults. These inputs never raise a
+user's choice or authorize Full. See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
 The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks

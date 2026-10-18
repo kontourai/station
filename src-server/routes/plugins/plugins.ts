@@ -1,3 +1,7 @@
+import type {
+  TelemetryFeedbackReason,
+  TelemetryPublisherId,
+} from '@kontourai/station-contracts/product-telemetry';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
@@ -64,6 +68,10 @@ export function createPluginRoutes(
   logger: Logger,
   eventBus?: EventBus,
   runtime?: {
+    onTelemetryRemoval?: (
+      publisher: TelemetryPublisherId,
+      reason?: TelemetryFeedbackReason,
+    ) => Promise<void>;
     installationHost?: PluginInstallationHost;
     registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
     packageMcpJournal?: PackageMcpAdmissionJournal;
@@ -334,6 +342,7 @@ export function createPluginRoutes(
     projectVisiblePlugins,
   });
   registerPluginLifecycleRoutes(app, {
+    onTelemetryRemoval: runtime?.onTelemetryRemoval,
     registryTrustPolicyAuthority: runtime?.registryTrustPolicyAuthority,
     // #2067: `GET /check-updates` is operator-only; this is what refuses.
     ...(runtime?.visibility

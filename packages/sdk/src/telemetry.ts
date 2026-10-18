@@ -1,3 +1,7 @@
+import { createPluginTelemetry } from './client/plugin-telemetry';
+
+export { createPluginTelemetry } from './client/plugin-telemetry';
+
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { _getApiBaseSnapshot, _getPluginName } from './api-core';
 import { getClientRawEgressPolicy } from './client/http';
@@ -23,7 +27,7 @@ type BufferedTelemetryEvent = {
 const buffer: BufferedTelemetryEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 10_000;
-const MAX_BUFFERED_EVENTS = 1000;
+const MAX_BUFFERED_EVENTS = 100;
 let flushInFlight: Promise<void> | null = null;
 
 function flush(): Promise<void> {
@@ -95,7 +99,11 @@ function scheduleFlush() {
 }
 
 export const telemetry = {
-  track(event: string, attributes: Record<string, string | number> = {}) {
+  /** Capture the Station and plugin explicitly; never borrows another Pane's identity. */
+  forPlugin(pluginName: string) {
+    return createPluginTelemetry(_getApiBaseSnapshot(), pluginName);
+  },
+  count(event: string, attributes: Record<string, string | number> = {}) {
     if (buffer.length === MAX_BUFFERED_EVENTS) return;
     const apiBase = _getApiBaseSnapshot();
     const policy = getClientRawEgressPolicy();
@@ -122,6 +130,10 @@ export const telemetry = {
     });
     scheduleFlush();
   },
+  /** @deprecated Declare events and use count. Undeclared observations are rejected by the kernel. */
+  track(event: string, attributes: Record<string, string | number> = {}) {
+    telemetry.count(event, attributes);
+  },
   flush,
 };
 
@@ -134,13 +146,13 @@ export function instrument<T extends (...args: any[]) => Promise<any>>(
     try {
       const result = await fn(...args);
       telemetry.track(`sdk.${name}`, {
-        duration_ms: Math.round(performance.now() - start),
+        duration: performance.now() - start < 100 ? 'fast' : 'slow',
         status: 'ok',
       });
       return result;
     } catch (err) {
       telemetry.track(`sdk.${name}`, {
-        duration_ms: Math.round(performance.now() - start),
+        duration: performance.now() - start < 100 ? 'fast' : 'slow',
         status: 'error',
       });
       throw err;
