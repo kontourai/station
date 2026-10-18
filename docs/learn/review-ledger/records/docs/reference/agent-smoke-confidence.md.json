@@ -54,7 +54,13 @@
 
     "scripts/lib/engine-matrix.mjs",
 
-    "scripts/__tests__/station-engine-matrix.test.ts"
+    "scripts/__tests__/station-engine-matrix.test.ts",
+
+    "scripts/engine-delivery-probes.ts",
+
+    "scripts/fixtures/delivery-probe-mcp.mjs",
+
+    "scripts/__tests__/engine-delivery-probes.test.ts"
   ],
 
   "checks": [

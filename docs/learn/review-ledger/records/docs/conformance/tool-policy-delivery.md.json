@@ -102,7 +102,13 @@
 
     "src-ui/src/utils/approvalMode.ts",
 
-    "src-ui/src/components/badges/ComposerModeSheet.tsx"
+    "src-ui/src/components/badges/ComposerModeSheet.tsx",
+
+    "scripts/engine-delivery-probes.ts",
+
+    "scripts/fixtures/delivery-probe-mcp.mjs",
+
+    "scripts/__tests__/engine-delivery-probes.test.ts"
   ],
 
   "checks": [

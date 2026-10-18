@@ -1,0 +1,7 @@
+{
+  "revision": "55c6318b8f46347771da109597e233f158e04e4e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the new #3824 section against the registered delivery scenario and exact-turn event/output verdict path. MCP negative controls are checked against Station discovered inventory and a real fixture tools/list; ACP restriction and native-tool-control gaps remain explicit. Skill support follows the canonical engine matrix. No current SDK live permission-precedence or provider result is claimed; historical observations remain unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/engine-delivery-probes.ts","scripts/fixtures/delivery-probe-mcp.mjs","scripts/__tests__/engine-delivery-probes.test.ts"]}
+  ]
+}
