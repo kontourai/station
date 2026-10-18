@@ -174,3 +174,5 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+- [Cedar policy foundation](reference/cedar-policy.md) — server-local evaluator contract, bounds and packaged probe.

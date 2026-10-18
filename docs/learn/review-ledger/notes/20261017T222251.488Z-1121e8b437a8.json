@@ -1,0 +1,7 @@
+{
+  "revision": "ab1284c99e2f426d790cd082e6a82e4eeae37149",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated MobileDeviceHost topic and digest delta: finally release, per-event device grant checks, operator Agent access opt-in and operator-only creator close. The 115-topic catalog and delivery contracts remain unchanged; generated via docs:mcp:generate. Device/runtime service doubles and 17 independently injected/restored faults provide focused evidence, not live-device/provider qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

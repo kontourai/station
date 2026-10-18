@@ -1,0 +1,7 @@
+{
+  "revision": "60740f749e6ecc0ab057c26433f25b8852c2e734",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed merged package manifest delta against canonical contract ownership and export map: adopted Flow 5.2.0 and Surface ^6.0.1; direct domain subpath exports and pure authorization-neutral boundary ownership remain as described. Existing Surface not-chosen migration is retained. Managed install, literal lock synchronization, server-test typechecking and focused integration controls passed. This is package-contract integration evidence, not provider/native/registry qualification.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]}
+  ]
+}

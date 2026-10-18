@@ -462,7 +462,11 @@
 
     "src-server/services/plugins/tool-library-catalog.ts",
 
-    "src-server/services/plugins/tool-library-service.ts"
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "packages/cli/src/commands/telemetry.ts"
   ],
 
   "checks": [

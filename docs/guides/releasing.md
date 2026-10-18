@@ -217,6 +217,10 @@ successful Nightly verifies source and records actual native or registry-bound
 CLI publication; its recovery summary links both runs. Manual recovery does not
 prove the hourly schedule is functioning. Recent cadence or
 unchanged-source skips are healthy schedule activity, not publication proof.
+Timestamp validation uses the observation clock as API reads complete, so a
+run created or updated during the scan is not mistaken for future evidence.
+Final freshness ages use the end-of-scan observation time. Truly future or
+malformed timestamps still fail without clearing the issue.
 These are conservative escalation bounds, not promised runner admission or
 publication deadlines. The issue identifies the run and exact source for its
 owner; the observer does not dispatch, retry or cancel work.

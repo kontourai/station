@@ -60,7 +60,25 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts",
+
+    "src-server/domain/config-loader-app.ts",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "packages/cli/src/commands/telemetry.ts",
+
+    "src-ui/src/views/settings/TelemetryTierSettings.tsx",
+
+    "src-ui/src/views/settings/StationConfigSection.tsx",
+
+    "src-ui/src/views/settings/station-reset.ts",
+
+    "src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx",
+
+    "src-server/routes/system/__tests__/config.routes.test.ts",
+
+    "src-ui/src/components/UsageTelemetryDisclosure.css"
   ],
 
   "checks": [
