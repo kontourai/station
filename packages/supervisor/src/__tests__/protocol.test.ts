@@ -1,8 +1,8 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import * as esbuild from 'esbuild';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { supervisorBuildOptions } from '../../build-options.mjs';
 import { ControlRefusedError, connectControl } from '../control-client.ts';
@@ -146,11 +146,14 @@ describe('supervisor control protocol (real processes)', () => {
       id: 'e1',
     });
     expect(await supervisor.handoff()).toMatchObject({ outcome: 'committed' });
-    expect(events).toContainEqual({
-      type: 'handoff',
-      phase: 'committed',
-      generation: 2,
-    });
+    // The event travels on the subscriber's own connection; it may land after the result.
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({
+        type: 'handoff',
+        phase: 'committed',
+        generation: 2,
+      }),
+    );
     subscriber.close();
 
     const oversized = await supervisor.connect();
@@ -221,12 +224,15 @@ describe('supervisor control protocol (real processes)', () => {
   it('refuses a second supervisor for the same home and instance', async () => {
     const home = makeTempDir('sup-second-');
     const first = await startSupervisor({ home });
+    const token = readFileSync(first.endpoint.tokenPath, 'utf8');
     const second = await startSupervisor({ home, waitForServing: false });
     const exit = await second.exited;
     expect(exit.code).toBe(1);
     expect(second.output()).toContain(
       'another supervisor is already listening',
     );
+    // The loser never replaced the running supervisor's token.
+    expect(readFileSync(first.endpoint.tokenPath, 'utf8')).toBe(token);
     // The first one still answers with its own token.
     expect((await first.status()).supervisor.pid).toBe(first.child.pid);
   }, 60_000);

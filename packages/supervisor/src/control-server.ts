@@ -88,9 +88,8 @@ function ensurePrivateDir(dir: string, platform: NodeJS.Platform): void {
   if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
 }
 
-/** Writes the token atomically with mode 0600 and returns it. */
-function writeToken(tokenPath: string): string {
-  const token = randomBytes(32).toString('hex');
+/** Writes the token atomically with mode 0600. */
+function writeToken(tokenPath: string, token: string): void {
   const temp = `${tokenPath}.${process.pid}.tmp`;
   const fd = openSync(temp, 'w', 0o600);
   try {
@@ -101,7 +100,6 @@ function writeToken(tokenPath: string): string {
   }
   if (process.platform !== 'win32') chmodSync(temp, 0o600);
   renameSync(temp, tokenPath);
-  return token;
 }
 
 function probeSocket(path: string): Promise<boolean> {
@@ -174,18 +172,33 @@ export class ControlServer {
         }
         unlinkSync(endpoint.path);
       }
+    } else if (await probeSocket(endpoint.path)) {
+      throw new Error(
+        `another supervisor is already listening at ${endpoint.path}`,
+      );
     }
-    this.token = writeToken(endpoint.tokenPath);
+    // The token file is written only once this process owns the endpoint, so a
+    // supervisor that loses the race never replaces the running one's token.
+    this.token = randomBytes(32).toString('hex');
     const server = createServer((socket) => this.accept(socket));
     server.maxConnections = CONTROL_MAX_CONNECTIONS;
     await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
+      server.once('error', (error: NodeJS.ErrnoException) =>
+        reject(
+          error.code === 'EADDRINUSE'
+            ? new Error(
+                `another supervisor is already listening at ${endpoint.path}`,
+              )
+            : error,
+        ),
+      );
       server.listen(endpoint.path, () => {
-        server.off('error', reject);
+        server.removeAllListeners('error');
         resolve();
       });
     });
     if (this.platform !== 'win32') chmodSync(endpoint.path, 0o600);
+    writeToken(endpoint.tokenPath, this.token);
     server.on('error', (error) =>
       this.log(`control server error: ${String(error)}`),
     );

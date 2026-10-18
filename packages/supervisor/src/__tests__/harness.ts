@@ -8,7 +8,7 @@ import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { type ControlConnection, connectControl } from '../control-client.ts';
@@ -52,10 +52,9 @@ export function writeCoreVariant(
         `process.env[${JSON.stringify(key)}] = ${JSON.stringify(value)};`,
     )
     .join('\n');
-  writeFileSync(
-    path,
-    `${assignments}\nawait import(${JSON.stringify(FAKE_CORE)});\n`,
-  );
+  // A file URL: on Windows an absolute path is not a valid import specifier.
+  const target = JSON.stringify(pathToFileURL(FAKE_CORE).href);
+  writeFileSync(path, `${assignments}\nawait import(${target});\n`);
   return path;
 }
 
