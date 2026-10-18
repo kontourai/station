@@ -25,7 +25,7 @@ export function useSessionTranscriptScroll({
 }) {
   const follow = useRef(!preserveReading);
   const lastSeenTop = useRef(0);
-  const wheelReachesTail = useRef(false);
+  const readerReachesTail = useRef(false);
   const reader = useRef(identity);
   const readyRef = useRef(ready);
   readyRef.current = ready;
@@ -43,7 +43,7 @@ export function useSessionTranscriptScroll({
   const jumpToLatest = () => {
     if (!scrollRef.current) return;
     follow.current = true;
-    wheelReachesTail.current = false;
+    readerReachesTail.current = false;
     pinToLatest();
     setAtLatest(true);
   };
@@ -53,11 +53,11 @@ export function useSessionTranscriptScroll({
     if (reader.current !== identity) {
       reader.current = identity;
       follow.current = !preserveReading;
-      wheelReachesTail.current = false;
+      readerReachesTail.current = false;
     }
     if (preserveReading && !preserving.current) {
       follow.current = false;
-      wheelReachesTail.current = false;
+      readerReachesTail.current = false;
     }
     preserving.current = preserveReading;
     if (follow.current) {
@@ -94,9 +94,34 @@ export function useSessionTranscriptScroll({
     const content = contentRef.current;
     if (!scroll || !content) return;
     lastSeenTop.current = scroll.scrollTop;
+    let lastSeenHeight = scroll.scrollHeight;
+    let observedHeight = lastSeenHeight;
+    let lastGrowthDelta = 0;
+    const measureHeight = () => {
+      const height = scroll.scrollHeight;
+      if (height !== observedHeight) {
+        lastGrowthDelta = Math.max(0, height - observedHeight);
+        observedHeight = height;
+      }
+      return height;
+    };
+    const beginReaderInput = () => {
+      // Only growth after this input can explain arriving at an outdated tail.
+      readerReachesTail.current = false;
+      measureHeight();
+      lastGrowthDelta = 0;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      beginReaderInput();
+      readerReachesTail.current =
+        event.target === scroll &&
+        !event.defaultPrevented &&
+        event.key === 'End';
+    };
     const onWheel = (event: WheelEvent) => {
+      beginReaderInput();
       // Remember a pixel wheel's tail intent across a delayed scroll event.
-      wheelReachesTail.current =
+      readerReachesTail.current =
         !event.defaultPrevented &&
         !event.ctrlKey &&
         !event.shiftKey &&
@@ -106,22 +131,34 @@ export function useSessionTranscriptScroll({
           scroll.scrollHeight - scroll.clientHeight - 2;
     };
     const onScroll = (event: Event) => {
-      const reachedWheelTail = wheelReachesTail.current;
-      wheelReachesTail.current = false;
+      const reachedReaderTail = readerReachesTail.current;
+      readerReachesTail.current = false;
       // A nested code scroller can consume a wheel without moving this port.
       if (event.target !== scroll) return;
       const top = scroll.scrollTop;
-      if (scroll.scrollHeight - top - scroll.clientHeight <= 2) {
+      const height = measureHeight();
+      const distance = height - top - scroll.clientHeight;
+      // Native anchoring can move a paused reader down by exactly the growth.
+      const anchored =
+        height > lastSeenHeight &&
+        Math.abs(top - lastSeenTop.current - (height - lastSeenHeight)) <= 1;
+      if (distance <= 2) {
         follow.current = true;
       } else if (top < lastSeenTop.current - 1) {
         follow.current = false;
-      } else if (reachedWheelTail && top > lastSeenTop.current + 1) {
+      } else if (
+        top > lastSeenTop.current + 1 &&
+        (reachedReaderTail || (!anchored && distance <= lastGrowthDelta + 2))
+      ) {
         follow.current = true;
+        pinToLatest();
       }
-      lastSeenTop.current = top;
+      lastSeenTop.current = scroll.scrollTop;
+      lastSeenHeight = scroll.scrollHeight;
       setAtLatest(follow.current);
     };
     const resize = () => {
+      measureHeight();
       if (readyRef.current && follow.current) pinToLatest();
       setAtLatest(follow.current);
     };
@@ -130,6 +167,8 @@ export function useSessionTranscriptScroll({
       capture: true,
     });
     scroll.addEventListener('wheel', onWheel, { passive: true });
+    scroll.addEventListener('keydown', onKeyDown);
+    scroll.addEventListener('pointerdown', beginReaderInput, { passive: true });
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
     const observeContent = () => {
@@ -145,6 +184,8 @@ export function useSessionTranscriptScroll({
     return () => {
       scroll.removeEventListener('scroll', onScroll, true);
       scroll.removeEventListener('wheel', onWheel);
+      scroll.removeEventListener('keydown', onKeyDown);
+      scroll.removeEventListener('pointerdown', beginReaderInput);
       observer?.disconnect();
       children.disconnect();
     };
@@ -155,7 +196,7 @@ export function useSessionTranscriptScroll({
     jumpToLatest,
     pauseFollowing: () => {
       follow.current = false;
-      wheelReachesTail.current = false;
+      readerReachesTail.current = false;
       setAtLatest(false);
     },
   };

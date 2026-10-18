@@ -22,7 +22,7 @@ const sessionFixture = (sibling: 'above' | 'below' | null = null) =>
 
 async function startGrowth(
   page: Page,
-  interval: number,
+  interval: number | 'frame',
   ticks: number,
   selector = '#content',
 ) {
@@ -32,18 +32,23 @@ async function startGrowth(
       let height = content.offsetHeight;
       let count = 0;
       document.documentElement.dataset.growing = 'true';
-      const timer = setInterval(() => {
+      let timer: number;
+      const step = () => {
         height += 20;
         content.style.height = `${height}px`;
         if (++count === ticks) {
-          clearInterval(timer);
+          if (interval !== 'frame') clearInterval(timer);
           requestAnimationFrame(() =>
             requestAnimationFrame(() => {
               document.documentElement.dataset.growing = 'false';
             }),
           );
+        } else if (interval === 'frame') {
+          requestAnimationFrame(step);
         }
-      }, interval);
+      };
+      if (interval === 'frame') requestAnimationFrame(step);
+      else timer = window.setInterval(step, interval);
     },
     { interval, ticks, selector },
   );
@@ -529,6 +534,46 @@ test.each(['above', 'below'] as const)(
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
+      expect(await tailGap(page)).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);
+
+test.each([
+  { key: 'End', interval: 100, ticks: 15, up: 300 },
+  { key: 'End', interval: 'frame' as const, ticks: 90, up: 300 },
+  { key: 'ArrowDown', interval: 100, ticks: 15, up: 12 },
+  { key: 'PageDown', interval: 100, ticks: 15, up: 100 },
+  { key: 'Space', interval: 100, ticks: 15, up: 100 },
+])(
+  '$key resumes follow during $interval growth',
+  async ({ key, interval, ticks, up }) => {
+    const { browser, page, errors } = await sessionFixture();
+    try {
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1700,
+      );
+      await page.locator('#scroll').focus();
+      await page.locator('#scroll').hover();
+      await page.mouse.wheel(0, -up);
+      await page.waitForFunction(
+        (up) => document.querySelector('#scroll')?.scrollTop === 1700 - up,
+        up,
+      );
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(true);
+      await startGrowth(page, interval, ticks);
+      await page.keyboard.press(key);
+      await page.waitForTimeout(500);
+      expect(await tailGap(page)).toBe(0);
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(false);
+      await finishGrowth(page);
       expect(await tailGap(page)).toBe(0);
       expect(errors).toEqual([]);
     } finally {
