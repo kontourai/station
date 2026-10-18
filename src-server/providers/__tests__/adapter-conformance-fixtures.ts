@@ -17,6 +17,7 @@ import type { AdapterName } from './adapter-contract-test-utils.js';
 import { FakeClaudeChild } from './claude-engine-process-test-utils.js';
 import { loadClaudeProviderTurnFixture } from './claude-provider-turns-fixtures.js';
 import { FakeCodexProcess } from './codex-adapter-wire-harness.js';
+import { CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT } from './codex-collab-fixtures.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
 import {
@@ -332,17 +333,24 @@ export function createConformanceEngine(
       },
       late: () => text('late-after-stop'),
       settleInterrupt: () => {
+        // All three 0.155.1 client-interrupt captures deliver the RPC reply
+        // before this interrupted notification. Retain the captured fields;
+        // only remap identity to this fake session/turn.
+        const captured = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT.map((line) =>
+          JSON.parse(line),
+        ).find(
+          ({ msg }) =>
+            msg?.method === 'turn/completed' &&
+            msg.params?.turn?.status === 'interrupted',
+        )?.msg;
+        if (!captured)
+          throw new Error('Missing captured Codex interrupted terminal');
         frame({
-          method: 'turn/completed',
+          ...captured,
           params: {
+            ...captured.params,
             threadId: 'native-codex',
-            turn: {
-              id: nativeTurn,
-              status: 'interrupted',
-              items: [],
-              itemsView: 'notLoaded',
-              error: null,
-            },
+            turn: { ...captured.params.turn, id: nativeTurn },
           },
         });
       },

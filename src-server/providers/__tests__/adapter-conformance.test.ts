@@ -342,6 +342,16 @@ for (const { name, label, transport } of registrations) {
           terminals().filter((event) => event.turnId === turn.turnId),
         ).toHaveLength(1);
       // Codex's duplicate after its captured response is isolated below.
+      if (name !== 'claude' && name !== 'codex' && name !== 'acp') {
+        // These transports already suppress old-turn output after stopping.
+        // Keep their passing guard outside every known-gap inversion.
+        engine.late();
+        await quiet();
+        expect(texts().map((event) => event.delta)).toEqual(['before-stop']);
+        expect(
+          terminals().filter((event) => event.turnId === turn.turnId),
+        ).toHaveLength(1);
+      }
     });
 
     if (name === 'claude') {
@@ -372,7 +382,21 @@ for (const { name, label, transport } of registrations) {
         'Claude text in the interrupt-ack/result window',
         'Claude must not publish text on the aborted turn between interrupt acknowledgement and result',
         async () => {
-          const { turn, result } = await stop();
+          // Match the capture: the client turn completes, then the engine
+          // opens a task-notification turn of its own before it is interrupted.
+          await send();
+          engine.text('setup');
+          engine.complete();
+          await settle(1);
+          engine.text('before-stop');
+          await expect.poll(() => started().length).toBe(2);
+          await expect.poll(() => texts().length).toBe(2);
+          const providerStart = started()[1];
+          const turn = { turnId: providerStart.turnId! };
+          const result = await engine.adapter.interruptTurn(
+            THREAD,
+            turn.turnId,
+          );
           const offset = published().length;
           engine.late();
           await quiet(); // The old message is still open: result withheld.
@@ -388,11 +412,15 @@ for (const { name, label, transport } of registrations) {
                 outcome: 'cancelled',
                 turnId: turn.turnId,
               });
+              expect(providerStart.metadata?.trigger).toBe('provider');
+              expect(engine.inputs()).toHaveLength(1);
               expect(engine.stopped()).toBe(true);
               expect(
                 terminals().filter((event) => event.turnId === turn.turnId),
               ).toHaveLength(1);
-              expect(terminals()[0]).toMatchObject({
+              expect(
+                terminals().find((event) => event.turnId === turn.turnId),
+              ).toMatchObject({
                 method: 'turn.aborted',
                 turnId: turn.turnId,
               });
