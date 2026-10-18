@@ -88,11 +88,20 @@ accounting. No destination is configured by default.
 
 | field | type | default | description |
 |---|---|---|---|
-| `telemetryEnabled` | boolean | `true` | Enables disclosed product observations only when a destination and current disclosure acknowledgement exist. A saved toggle precedes the canonical environment setting and its legacy alias. |
+| `telemetryTier` | map of `kontour`/`operator` to `off`/`lite`/`full` | Lite per absent publisher | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; only operator Full has a sender in this foundation. Updating one publisher preserves the other. Standard paired devices may lower tiers; raises require the operator or `access:manage`. Reset preserves choices. |
+| `telemetryEnabled` | boolean | deprecated | A stored legacy false migrates to both Off; stored true migrates to operator Full with a current receipt, otherwise Lite, and Kontour Lite. A legacy write of false withdraws both publishers; true requests operator Full, still gated by disclosure. Writes follow the same authorization rules, and the legacy key is never persisted beside `telemetryTier`. |
 | `productTelemetryEndpoint` | HTTP(S) URL | unset | Full product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
 | `productTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact product grant for the selected destination. Missing, revoked or ungranted references fail without environment fallback. |
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
+
+`DO_NOT_TRACK` except empty/`0` forces every product publisher Off, including saved
+choices. Legacy `STATION_PRODUCT_TELEMETRY_ENABLED` and `STATION_TELEMETRY_ENABLED`
+remain fallbacks (`false` means Off). Distribution/operator policy inputs only
+lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
+is a build-time server-banner constant, empty in source, never a runtime enabling
+variable. It is exposed in resolved telemetry configuration independently of the
+operator address and currently has no sender. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an

@@ -205,6 +205,58 @@ describe('proof:repo-guardrails protects detailed chat context provenance', () =
   });
 });
 
+describe('proof:repo-guardrails protects asynchronous terminal subprocess polling', () => {
+  test('requires the asynchronous polling entrypoint', () => {
+    const declaration = 'export async function pollTerminalSubprocessActivity';
+    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+      path: 'src-server/services/terminal/terminal-subprocess-state.ts',
+      mutate: (source) => {
+        expect(source.split(declaration)).toHaveLength(2);
+        return source.replace(declaration, declaration.replace('async ', ''));
+      },
+    });
+    expect(output).toContain(
+      `terminal-subprocess-state.ts must include ${declaration}.`,
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(output).not.toContain('Missing required guardrail source');
+    expect(status).toBe(1);
+  });
+
+  test('requires the asynchronous execFile pgrep invocation', () => {
+    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+      path: 'src-server/services/terminal/terminal-subprocess-state.ts',
+      mutate: (source) => {
+        expect(source.split("'pgrep'")).toHaveLength(2);
+        return source.replace("'pgrep'", "'retired-probe'");
+      },
+    });
+    expect(output).toContain(
+      "terminal-subprocess-state.ts must probe Unix children asynchronously with execFile('pgrep', ['-P', String(pid)]).",
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(output).not.toContain('Missing required guardrail source');
+    expect(status).toBe(1);
+  });
+
+  test.each([
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: deliberate source fixture
+    'execSync(`pgrep -P ${pid}`);',
+    "execSync(\n  'pgrep -P 123',\n);",
+  ])('rejects a reintroduced synchronous Unix probe: %s', (probe) => {
+    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+      path: 'src-server/services/terminal/terminal-subprocess-state.ts',
+      mutate: (source) => `${source}\n${probe}\n`,
+    });
+    expect(output).toContain(
+      'terminal-subprocess-state.ts must not synchronously probe Unix children with execSync.',
+    );
+    expect(output).not.toContain('must probe Unix children asynchronously');
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(status).toBe(1);
+  });
+});
+
 describe('proof:repo-guardrails fails closed on a missing source', () => {
   test('MonitoringView retains the shared session diagnostics query', () => {
     const { status, output } = runProofCopy(undefined, undefined, undefined, {

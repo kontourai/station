@@ -12,6 +12,10 @@ import {
   AGENT_PROFILE_CAPABILITIES,
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
+import {
+  type ExecutionConfinementRecord,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type {
   EnvironmentRef,
   ExecutionModelRequest,
@@ -84,6 +88,7 @@ import {
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
+import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -943,6 +948,33 @@ function capabilityDeliveryReport(
     };
   }
   return report;
+}
+
+/**
+ * #2494: the confinement record on the session's latest `session.started`,
+ * or `undefined` when it recorded none (or something that is not one).
+ */
+export function startedSessionConfinement(
+  events: readonly unknown[],
+): ExecutionConfinementRecord | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      (event as { method?: unknown }).method !== 'session.started'
+    )
+      continue;
+    const metadata = (event as { metadata?: unknown }).metadata;
+    return metadata && typeof metadata === 'object'
+      ? readConfinementRecord(
+          (metadata as Record<string, unknown>)[
+            STATION_CONFINEMENT_RECORD_METADATA_KEY
+          ],
+        )
+      : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -6108,6 +6140,10 @@ export async function delegateTask(
     // otherwise-successful dispatch, and `delegate status` re-derives the same
     // view from the same events on every read.
     let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+    // #2494: the receipt is resolved before the session exists, so the
+    // confinement the started process was observed under is read back from
+    // the session's own start record here, beside the delivery disclosure.
+    let confinement: ExecutionConfinementRecord | undefined;
     try {
       const detail = await orchestrationService.readSession(
         sessionId,
@@ -6116,15 +6152,19 @@ export async function delegateTask(
       capabilityDelivery = delegatedCapabilityDelivery(
         (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
       );
+      confinement = startedSessionConfinement(detail?.events ?? []);
     } catch {
       capabilityDelivery = undefined;
+      confinement = undefined;
     }
     return {
       ...handleFor(input, target, project, sessionId),
       target: { kind: 'agent', id: resolved.agentId },
-      resolution: preparationReceipt
-        ? { ...resolved.receipt, preparation: preparationReceipt }
-        : resolved.receipt,
+      resolution: {
+        ...resolved.receipt,
+        ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
+        ...(confinement ? { confinement } : {}),
+      },
       provider: resolved.provider,
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };

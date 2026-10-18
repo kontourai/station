@@ -1,0 +1,7 @@
+{
+  "revision": "40249edf61afe8d8738ee33d1528640231946fe6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-checked after classifying packages/supervisor control-server.test.ts as a non-repo directory walk in path-read-pin-boundary.test.ts. The guide's claims near line 1493 concern classifying direct child-process users in the vitest resource manifest, not directory-walk classification; no prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

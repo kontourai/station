@@ -1,0 +1,7 @@
+{
+  "revision": "67220947e7480e1d22a6ffc31e0ffd60810c3c48",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round 2: only typecheck-host-slots.test.ts changed (parity test skips hosts without a tsc-ts build; fallback test skips when the local default is not tsc-ts). The guide's claims, including that a test fails when tsc-ts and typescript versions differ, remain accurate; flipping the default to tsc verified green (48 passed, 1 skipped).","inputs":["docs/guides/testing.md","scripts/__tests__/typecheck-host-slots.test.ts"]}
+  ]
+}

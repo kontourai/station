@@ -1,0 +1,7 @@
+{
+  "revision": "bfd490d256a23ee6f36da378f512c325dff5884e",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed parent discovery through OrchestrationService.readThreadUsageTree and EventStore.listSessionsNamingParents: per-event start/configured naming index, atomic backfill/append/deletion, unchanged context precedence and matching-start lineage provenance. Naming grants no lifecycle authority and cannot recover the exact initiating Session or detached lifetime. Existing usage totals, scope, and unreadable delegate rules are unchanged. Focused parity, peer rollback, migration failure/retry, real caller query-plan, usage-tree and route tests cover local storage/read behavior only; no provider, cascade, idle or restart-stop qualification.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts","src-server/domain/migrations/016-session-parent-mentions.ts"]}
+  ]
+}

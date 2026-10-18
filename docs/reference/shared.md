@@ -35,7 +35,12 @@ carries no MCP tool or session bridge and does not publish or store pages.
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
-fingerprints the canonical event/envelope inventory and provides
+exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
+inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
+the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
+and probe compatibility unchanged. It provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid
 timestamps, unclassified properties and invalid build provenance. It accepts

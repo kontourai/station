@@ -2,12 +2,14 @@ import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { listProviders } from '../../providers/registries/registry.js';
+import { reapStaleSeatbeltSessionDirs } from '../../security/confinement/seatbelt.js';
 import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
 import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 
 /** archive#2204: bound engine-spawn artifacts even when ACP bootstrap fails. */
 const ENGINE_SPAWN_TMP_REAP_INTERVAL_MS = 5 * 60_000;
@@ -98,11 +100,19 @@ export function scheduleRuntimeEngineSpawnTmpReaping(
   const setIntervalImpl = context.setIntervalImpl || setInterval;
   const reap =
     context.reap ||
-    (() =>
-      reapEngineSpawnTmpDir(
-        engineSpawnTmpDirPath(),
-        ENGINE_SPAWN_TMP_MAX_AGE_MS,
-      ));
+    (() => {
+      try {
+        reapEngineSpawnTmpDir(
+          engineSpawnTmpDirPath(),
+          ENGINE_SPAWN_TMP_MAX_AGE_MS,
+        );
+      } finally {
+        // #2494: confined sessions' temp directories whose owner process is
+        // gone (from boot, and on the same schedule), whether or not the
+        // sweep above failed.
+        reapStaleSeatbeltSessionDirs(resolveHomeDir());
+      }
+    });
   const runReap = () => {
     void Promise.resolve()
       .then(reap)
