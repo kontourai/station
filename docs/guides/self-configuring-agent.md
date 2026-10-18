@@ -489,9 +489,11 @@ these rules.
    worker wrote.
    An agent that delegates through its own Session-bound Station Control
    connection (Claude Code, Codex, or an ACP engine) does not need to poll for
-   a child it started on this Station. When the child's turn ends, Station delivers its
-   result to the delegating conversation once. An idle conversation gets a
-   new turn. A running one is steered if its engine accepts mid-turn input;
+   a child it started on this Station. After Station verifies the child's eligible
+   settlement, it attempts delivery of the result to the delegating conversation.
+   Unproved terminal association is held; a raw native completion alone is not
+   proof of requested-work settlement. The result keeps one delivery identity
+   across retries. An idle conversation gets a new turn. A running one is steered if its engine accepts mid-turn input;
    otherwise the result waits until that turn ends. The new turn or steer
    carries the same owner attribution as the `delegate_task` call: a Codex or
    ACP token is not proof of who presented it, so their results arrive
