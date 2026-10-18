@@ -46,7 +46,15 @@
 
     "src-ui/src/views/ProviderSettingsView.tsx",
 
-    "tests/connections-crud.spec.ts"
+    "tests/connections-crud.spec.ts",
+
+    "scripts/station-engine-matrix.mjs",
+
+    "scripts/lib/agent-smoke-client.mjs",
+
+    "scripts/lib/engine-matrix.mjs",
+
+    "scripts/__tests__/station-engine-matrix.test.ts"
   ],
 
   "checks": [
