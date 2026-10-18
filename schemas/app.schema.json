@@ -199,7 +199,7 @@
     },
     "telemetryEnabled": {
       "type": "boolean",
-      "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
+      "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off both built-in publishers."
     },
     "productTelemetryEndpoint": {
       "type": "string",

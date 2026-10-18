@@ -95,6 +95,27 @@ afterEach(() => {
 });
 
 describe('telemetry commands', () => {
+  test('environment-limited status explains how to restore Full delivery', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'lite', reason: 'environment' },
+            operator: { tier: 'lite', reason: 'environment' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
+    expect(consoleLog).toHaveBeenCalledWith('kontour: lite (environment)');
+    expect(consoleLog).toHaveBeenCalledTimes(2);
+    expect(consoleLog).toHaveBeenCalledWith(
+      'operator: lite (environment); environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.',
+    );
+  });
+
   test('status prints effective publisher tiers and DNT/disclosure reasons from the server', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -157,6 +178,9 @@ describe('telemetry commands', () => {
     await expect(
       runTelemetryCommand(['set', 'operator', 'true']),
     ).rejects.toThrow('Usage:');
+    await expect(
+      runTelemetryCommand(['set', 'kontour', 'full']),
+    ).rejects.toThrow('Kontour Full is unavailable');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

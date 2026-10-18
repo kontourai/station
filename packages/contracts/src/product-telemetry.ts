@@ -13,7 +13,7 @@ export type TelemetryTierChoices = Partial<
 >;
 export interface TelemetryTierResolution {
   tier: TelemetryTier;
-  reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure';
+  reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';
 }
 
 /** Policies affect defaults only; an identifying stream is never a default. */

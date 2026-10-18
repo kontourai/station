@@ -1,0 +1,7 @@
+{
+  "revision": "c2884fe1689abcf5eaf6989442aad78ceab0fcb8",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Merged current main597e0e68889b2249d8bad509d6afaea54025391b with PR3743 head1cbba0dcd78c18e9a1bf9c96cd8f06344936a558 at committed mergec2884fe1689abcf5eaf6989442aad78ceab0fcb8. Preserved incoming Project source ceilings and authored tools.askBeforeUse rules plus Codex session policy versus inherited-reviewer disclosure. Traced source-qualified Ask precedence and guardian-denial/approval-channel handling through shared selection and pre-tool policy, unsupported external Ask startup refusal, Agent editor Engine controlled label, and unchanged Codex start/resume/fork/turn mapping. Restored union of actual branch/incoming source references via canonical recorder. Session engine Ask does not make Codex enforce authored per-tool rules. No reviewer/default/confinement change, no new effective-status implementation3741, no provider/model/runtime qualification. R2unqualified,R3pretool nonexecution,R6subset Taskdiffgap remain historical; previous source approvals/tests apply only to their original heads. Fresh combined-source focused checks and independent review follow separately.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-approval-mode.ts","src-server/providers/adapters/codex-adapter-notifications.ts","src-server/providers/adapters/codex-adapter.ts","src-ui/src/utils/approvalMode.ts","src-ui/src/components/badges/ComposerModeSheet.tsx"]}
+  ]
+}

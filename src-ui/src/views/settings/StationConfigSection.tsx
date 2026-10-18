@@ -16,6 +16,10 @@
  * reader who follows `?view=` lands somewhere the row is not.
  */
 
+import type {
+  TelemetryTier,
+  TelemetryTierResolution,
+} from '@kontourai/station-contracts/product-telemetry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -31,6 +35,7 @@ import { renderSettingRow } from './registry-row';
 import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 import type { SettingsSectionId } from './settings-catalog';
+import { TelemetryTierSettings } from './TelemetryTierSettings';
 
 /**
  * The Station-document keys each section renders, in render order.
@@ -59,7 +64,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'distributionProfile',
   ],
   telemetry: [
-    'telemetryEnabled',
+    'telemetryTier',
     'productTelemetryEndpoint',
     'productTelemetryKeyRef',
     'otelTelemetryEndpoint',
@@ -153,6 +158,7 @@ export function StationConfigSection({
   embedded = false,
   containerScope,
   projectOverride,
+  telemetryPublishers,
 }: {
   /** Which section's keys to render; see `STATION_SETTING_KEYS_BY_SECTION`. */
   section: StationSettingsSectionId;
@@ -176,10 +182,23 @@ export function StationConfigSection({
    */
   containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
+  telemetryPublishers?: Record<
+    'kontour' | 'operator',
+    TelemetryTierResolution & { userChoice?: TelemetryTier }
+  >;
 }) {
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
   ).map((key) => {
+    if (key === 'telemetryTier')
+      return (
+        <TelemetryTierSettings
+          key={key}
+          config={config}
+          onChange={onChange}
+          publishers={telemetryPublishers}
+        />
+      );
     const definition = REGISTRY_BY_KEY.get(key);
     if (!definition) return null;
     // A project may override only the keys the contract lists, and only

@@ -1,4 +1,8 @@
-import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
+import {
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryTier,
+  type TelemetryTierResolution,
+} from '@kontourai/station-contracts/product-telemetry';
 import {
   authenticatedFetch,
   getJson,
@@ -57,6 +61,10 @@ type Disclosure = {
    * environment has already turned off.
    */
   telemetryEnabled?: boolean;
+  publishers?: Record<
+    'kontour' | 'operator',
+    TelemetryTierResolution & { userChoice?: TelemetryTier }
+  >;
   /**
    * Which link of that chain won. `'env'` is the one that matters: the value
    * is in force but nothing durable records it, so keeping it has to write it
@@ -348,10 +356,11 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   return (
     <>
       <p className="usage-telemetry-disclosure__lede">
-        Station sends the following anonymous product-usage events only when a
-        telemetry endpoint is configured. It never sends conversation content,
-        filesystem paths, repository names, hostnames, branches, account
-        identities, or other free text.
+        Full telemetry sends the following pseudonymous product-usage events
+        only when a telemetry endpoint is configured. Its installation hash
+        rotates monthly and is never linked to an account by Station. It never
+        sends conversation content, filesystem paths, repository names,
+        hostnames, branches, account identities, or other free text.
       </p>
       {data.envelope && (
         <p className="usage-telemetry-disclosure__lede">{data.envelope}</p>
@@ -475,7 +484,7 @@ export function usageTelemetryDisclosureSummary(
   endpointConfigured: boolean | undefined,
 ): string {
   const lede =
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured';
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured';
   if (endpointConfigured === false)
     return `${lede}; none is configured here, so nothing is sent.`;
   if (endpointConfigured === true)
@@ -624,7 +633,9 @@ function useUsageTelemetryDecision(
   const recoveryConfig = useRecoveryConfig();
   const queryClient = useQueryClient();
   const recoveryConfigWrite = useMutation({
-    mutationFn: async (target: RecoveryDecisionTarget & { next: boolean }) => {
+    mutationFn: async (
+      target: RecoveryDecisionTarget & { next: boolean; tierAware: boolean },
+    ) => {
       const response = await mutateJson(
         `${target.apiBase}/config/app`,
         'PUT',
@@ -632,7 +643,9 @@ function useUsageTelemetryDecision(
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
-        { telemetryEnabled: target.next },
+        target.tierAware
+          ? { telemetryTier: { operator: target.next ? 'full' : 'off' } }
+          : { telemetryEnabled: target.next },
       );
       // Guarded when the target carries a scope: the decode re-asserts
       // the intent-time capture is still current after the bytes arrive.
@@ -675,26 +688,33 @@ function useUsageTelemetryDecision(
   });
   const [settingError, setSettingError] = useState(false);
 
-  // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
-  // true`), rebuilt over the FRESHER read of its first link. The `?? true` is
-  // the same last link of that chain, for a peer too old to report the field.
   const config = (scoped ? recoveryConfig.data : protectedConfig.data) as
-    | { telemetryEnabled?: boolean }
+    | {
+        telemetryEnabled?: boolean;
+        telemetryTier?: { operator?: TelemetryTier };
+      }
     | undefined;
-  const configEnabled = config?.telemetryEnabled;
-  const enabled = configEnabled ?? data?.telemetryEnabled ?? true;
+  const tierAware =
+    data?.publishers !== undefined || config?.telemetryTier !== undefined;
+  const operator = data?.publishers?.operator;
+  const savedChoice = config?.telemetryTier?.operator ?? operator?.userChoice;
+  const configEnabled = tierAware
+    ? savedChoice !== undefined
+      ? savedChoice === 'full'
+      : undefined
+    : config?.telemetryEnabled;
+  const enabled = tierAware
+    ? operator?.reason === 'DNT'
+      ? false
+      : (configEnabled ?? data?.telemetryEnabled ?? false)
+    : (configEnabled ?? data?.telemetryEnabled ?? true);
   const busy = scoped
     ? recoveryConfigWrite.isPending || acknowledgeRecovery.isPending
     : updateProtected.isPending || acknowledgeProtected.isPending;
-  // Keeping a state usually writes nothing — it is already the case. The
-  // exception is a state the ENVIRONMENT is holding with nothing durable
-  // behind it: "Keep usage telemetry off" on a host whose only reason for
-  // being off is `STATION_TELEMETRY_ENABLED` would be a decision that
-  // disappears the day that variable does. Read from the config query's own
-  // answer first, so a value recorded since the disclosure was fetched is
-  // never re-written.
+  // Persist every tier-aware decision before acknowledging: a receipt must never
+  // activate a latent Full choice after the person declined it.
   const keepMustRecord =
-    configEnabled === undefined && data?.enabledSource === 'env';
+    tierAware || (configEnabled === undefined && data?.enabledSource === 'env');
 
   const decide = (next: boolean) => {
     if (busy || !data) return;
@@ -720,7 +740,7 @@ function useUsageTelemetryDecision(
         return;
       }
       recoveryConfigWrite.mutate(
-        { ...target, next },
+        { ...target, next, tierAware },
         {
           onSuccess: (result) => {
             // A key the server declines comes back in `ignoredKeys` on a
@@ -729,7 +749,9 @@ function useUsageTelemetryDecision(
             // and the reader told it was turned off.
             if (
               result.ignoredKeys?.some(
-                (ignored) => ignored.key === 'telemetryEnabled',
+                (ignored) =>
+                  ignored.key ===
+                  (tierAware ? 'telemetryTier' : 'telemetryEnabled'),
               )
             ) {
               setSettingError(true);
@@ -755,7 +777,9 @@ function useUsageTelemetryDecision(
       return;
     }
     updateProtected.mutate(
-      { telemetryEnabled: next },
+      tierAware
+        ? { telemetryTier: { operator: next ? 'full' : 'off' } }
+        : { telemetryEnabled: next },
       {
         onSuccess: (result) => {
           // A key the server declines comes back in `ignoredKeys` on a 2xx,
@@ -764,7 +788,9 @@ function useUsageTelemetryDecision(
           // reader told it was turned off.
           if (
             result.ignoredKeys?.some(
-              (ignored) => ignored.key === 'telemetryEnabled',
+              (ignored) =>
+                ignored.key ===
+                (tierAware ? 'telemetryTier' : 'telemetryEnabled'),
             )
           ) {
             setSettingError(true);
@@ -781,7 +807,33 @@ function useUsageTelemetryDecision(
     ? acknowledgeRecovery.isError
     : acknowledgeProtected.isError;
   return {
-    labels: usageTelemetryDecisionLabels(enabled),
+    labels:
+      operator?.reason === 'DNT'
+        ? {
+            keep: 'Save operator choice as Off',
+            change: 'Save operator choice as Full',
+          }
+        : tierAware &&
+            savedChoice === 'full' &&
+            operator?.reason === 'disclosure'
+          ? {
+              keep: 'Allow Full usage telemetry',
+              change: 'Turn off usage telemetry',
+            }
+          : tierAware
+            ? enabled
+              ? {
+                  keep: 'Keep Full usage telemetry on',
+                  change: 'Turn off usage telemetry',
+                }
+              : {
+                  keep:
+                    savedChoice === 'off' || operator?.tier === 'off'
+                      ? 'Keep usage telemetry off'
+                      : 'Turn off usage telemetry',
+                  change: 'Allow Full usage telemetry',
+                }
+            : usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () => decide(enabled),
     change: () => decide(!enabled),
@@ -790,10 +842,28 @@ function useUsageTelemetryDecision(
         The usage telemetry setting could not be saved.
       </p>
     ) : (
-      acknowledgeErrorNotice(
-        acknowledgeError,
-        scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
-      )
+      <>
+        {tierAware &&
+          savedChoice === 'full' &&
+          operator?.reason === 'disclosure' && (
+            <p className="usage-telemetry-disclosure__lede">
+              Your saved operator choice is Full, awaiting acknowledgement. Full
+              events are not sent until you allow them. Turning telemetry off
+              saves Off before acknowledging this inventory.
+            </p>
+          )}
+        {operator?.reason === 'DNT' && (
+          <p className="usage-telemetry-disclosure__lede">
+            DO_NOT_TRACK is active: telemetry is Off. Saving a choice here
+            replaces your saved operator choice; telemetry stays Off while
+            DO_NOT_TRACK is active.
+          </p>
+        )}
+        {acknowledgeErrorNotice(
+          acknowledgeError,
+          scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
+        )}
+      </>
     ),
     retry: acknowledgeError,
   };
@@ -884,8 +954,8 @@ export function UsageTelemetryDisclosureStep({
           discovers action surfaces by scanning source for exactly this
           attribute, and an indirection it cannot read drops this file out of
           the inventory it is listed in. */}
+      {decision.notice}
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
-        {decision.notice}
         <DisclosureDecisionActions decision={decision} />
       </ResponsiveSurfaceActions>
     </div>
@@ -954,7 +1024,6 @@ export function UsageTelemetryDisclosure({
         historyMode="none"
         footer={
           <>
-            {decision.notice}
             <Button variant="secondary" onClick={dismiss}>
               Not now
             </Button>
@@ -964,6 +1033,7 @@ export function UsageTelemetryDisclosure({
       >
         <div data-testid="usage-telemetry-disclosure-modal">
           <DisclosureSummary data={data} chrome={STANDALONE_CHROME} />
+          {decision.notice}
         </div>
       </Dialog>
     );
@@ -980,10 +1050,12 @@ export function UsageTelemetryDisclosure({
       {data.acknowledged ? (
         <p>You acknowledged this inventory.</p>
       ) : (
-        <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
+        <>
           {decision.notice}
-          <DisclosureDecisionActions decision={decision} />
-        </ResponsiveSurfaceActions>
+          <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
+            <DisclosureDecisionActions decision={decision} />
+          </ResponsiveSurfaceActions>
+        </>
       )}
     </section>
   );

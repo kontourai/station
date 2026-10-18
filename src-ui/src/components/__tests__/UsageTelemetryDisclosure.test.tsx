@@ -1,4 +1,8 @@
 /** @vitest-environment jsdom */
+import type {
+  TelemetryTier,
+  TelemetryTierResolution,
+} from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -290,6 +294,10 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
 ) {
   return new Response(
@@ -300,6 +308,7 @@ function inventoryResponse(
         endpointConfigured: derived.endpointConfigured ?? false,
         telemetryEnabled: derived.telemetryEnabled ?? true,
         enabledSource: derived.enabledSource ?? 'default',
+        publishers: derived.publishers,
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -322,6 +331,10 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -394,7 +407,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -417,13 +430,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; one is configured on this Station.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured.',
   );
 });
 
@@ -606,6 +619,10 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<
+      'kontour' | 'operator',
+      TelemetryTierResolution & { userChoice?: TelemetryTier }
+    >;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -635,7 +652,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();
@@ -876,3 +893,57 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
   ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
 });
+
+test.each(['full', 'lite'] as const)(
+  'under DNT, saving Off explicitly replaces the saved %s operator choice before acknowledgement',
+  async (savedChoice) => {
+    const view = renderModal({
+      telemetryEnabled: false,
+      publishers: {
+        kontour: { tier: 'off', reason: 'DNT', userChoice: 'lite' },
+        operator: { tier: 'off', reason: 'DNT', userChoice: savedChoice },
+      },
+    });
+    const saveOff = await screen.findByRole('button', {
+      name: 'Save operator choice as Off',
+    });
+    expect(
+      screen.getByText(
+        /Saving a choice here replaces your saved operator choice/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Save operator choice as Full' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Keep usage telemetry off' }),
+    ).toBeNull();
+    fireEvent.click(saveOff);
+    expect(updateConfig.mock.calls.map((call) => call[0])).toEqual([
+      { telemetryTier: { operator: 'off' } },
+    ]);
+    expect(
+      authenticatedFetch.mock.calls.filter((call) =>
+        String(call[0]).endsWith('/acknowledgements'),
+      ),
+    ).toEqual([]);
+    await act(async () => {
+      updateConfig.mock.calls[0][1]?.onSuccess?.({});
+    });
+    await waitFor(() =>
+      expect(authenticatedFetch).toHaveBeenLastCalledWith(
+        ACKNOWLEDGEMENTS_URL,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: 'rev',
+          }),
+        },
+      ),
+    );
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+  },
+);

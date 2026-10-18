@@ -279,7 +279,14 @@ export class UsageTelemetryService {
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
+    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
+    await this.loadDisclosureReceipt();
+    const resolved = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    );
     return {
       acknowledged: await this.loadDisclosureReceipt(),
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
@@ -295,12 +302,8 @@ export class UsageTelemetryService {
         )
         .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
-      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
-      // canonical/legacy product environment fallbacks and the default. A client that
-      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
-      // the environment has switched off, and offer to turn off something
-      // that is already off.
-      telemetryEnabled: this.enabled,
+      telemetryEnabled: resolved.publishers.operator.tier === 'full',
+      publishers: resolved.publishers,
       enabledSource: this.enabledSource,
     };
   }

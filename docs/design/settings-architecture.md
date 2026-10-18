@@ -188,7 +188,9 @@ feature flags (env-derived ones shown **read-only with provenance**, e.g.
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
-Telemetry destinations and SecretBinding references also use S1. Product
+Per-publisher product-telemetry choices also use S1. Settings shows effective
+DNT/disclosure status alongside the stored choice, and resets preserve those
+choices. Telemetry destinations and SecretBinding references also use S1. Product
 observations need their own disclosure; operator metrics/traces use a separate
 collector configuration. Saved references require explicit instance destination
 grants and never store key material in `app.json`. Product changes fence the
