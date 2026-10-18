@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveTelemetryTier } from '@kontourai/station-contracts/product-telemetry';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -173,7 +173,7 @@ describe('persisted telemetry migration', () => {
                 acknowledgedAt: '2026-10-17T00:00:00.000Z',
                 inventoryRevision:
                   receipt === 'current'
-                    ? USAGE_TELEMETRY_INVENTORY_REVISION
+                    ? FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION
                     : 'old',
               }),
         );

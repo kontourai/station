@@ -24,7 +24,10 @@ import { ConfigLoader } from '../../../domain/config-loader.js';
 import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
+import {
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+  USAGE_TELEMETRY_EVENTS,
+} from '../../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import {
   beginOtelExport,
@@ -181,14 +184,24 @@ function configurationRuntime(
 
 const makeTempDir = trackTempDirs();
 
-const disclosure = {
+const disclosure: Awaited<ReturnType<UsageTelemetryService['disclosure']>> = {
   acknowledged: false,
   inventoryRevision: 'inventory-revision',
+  events: USAGE_TELEMETRY_EVENTS,
+  envelope: 'Published envelope',
+  acknowledgementProtocol: 2,
+  endpointConfigured: false,
+  telemetryEnabled: false,
+  enabledSource: 'config',
   publishers: {
-    operator: { tier: 'lite', reason: 'default', source: 'default' },
+    operator: {
+      tier: 'lite',
+      reason: 'disclosure',
+      userChoice: 'full',
+      source: 'config',
+    },
     kontour: { tier: 'lite', reason: 'default', source: 'default' },
   },
-  events: { station_started: { description: 'Starts', properties: {} } },
 };
 
 describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () => {
@@ -552,7 +565,9 @@ describe('persisted telemetry configuration during Agent activation', () => {
         | undefined;
       let saving: Promise<Response> | undefined;
       try {
-        await live.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+        await live.acknowledgeDisclosure(
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        );
         await live.stationStarted();
         await live.flush();
         const acknowledged = await live.deliveryStatus();
@@ -854,7 +869,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       });
       try {
         await priorProcess.acknowledgeDisclosure(
-          USAGE_TELEMETRY_INVENTORY_REVISION,
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
         );
       } finally {
         await priorProcess.shutdown();

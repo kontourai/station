@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import { createUsageTelemetryDisclosureRoutes } from '../usage-telemetry-disclosure.js';
 
@@ -50,7 +50,7 @@ test('status uses the live service configuration, respects DNT and never sends',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       acknowledgementProtocol: 2,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
     }),
   });
   expect(acknowledgement.status).toBe(409);
@@ -106,7 +106,7 @@ test('an agent with manage scope cannot acknowledge a pending stored Full choice
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         acknowledgementProtocol: 2,
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       }),
     });
   expect((await subject.disclosure()).acknowledged).toBe(false);
@@ -134,7 +134,7 @@ test('environment-only opt-in stays Lite and reports environment even with a cur
     env: { STATION_PRODUCT_TELEMETRY_ENABLED: 'true' },
     fetch: vi.fn(),
   });
-  await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+  await subject.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
   const response =
     await createUsageTelemetryDisclosureRoutes(subject).request('/status');
   expect(response.status).toBe(200);

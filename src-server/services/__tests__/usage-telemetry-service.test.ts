@@ -24,8 +24,8 @@ import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import { FileSecretBindingAdministration } from '../secrets/secret-binding-administration.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   renderUsageTelemetryInventory,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '../usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
@@ -124,7 +124,9 @@ async function service(
     options.env?.STATION_PRODUCT_TELEMETRY_ENDPOINT ||
     options.env?.STATION_TELEMETRY_ENDPOINT
   )
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
   return subject;
 }
 
@@ -157,10 +159,14 @@ describe('UsageTelemetryService', () => {
       });
       if (dnt) {
         await expect(
-          subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION),
+          subject.acknowledgeDisclosure(
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+          ),
         ).rejects.toThrow('DO_NOT_TRACK');
       } else {
-        await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+        await subject.acknowledgeDisclosure(
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        );
       }
       await subject.stationStarted();
       await subject.flush();
@@ -934,7 +940,9 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -988,7 +996,9 @@ describe('UsageTelemetryService', () => {
         reason: 'disclosure',
         userChoice: 'full',
       });
-      await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      await subject.acknowledgeDisclosure(
+        FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+      );
       await subject.stationStarted();
       await subject.shutdown();
       expect((await subject.disclosure()).acknowledged).toBe(true);
@@ -1002,7 +1012,7 @@ describe('UsageTelemetryService', () => {
       join(root, 'config', 'usage-telemetry-disclosure.json'),
       JSON.stringify({
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       }),
     );
     const subject = new UsageTelemetryService({
@@ -1533,7 +1543,7 @@ describe('UsageTelemetryService', () => {
       setInterval: vi.fn() as any,
     };
     const first = new UsageTelemetryService(opts);
-    await first.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await first.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await first.stationStarted();
     await first.shutdown();
     const raw = (
@@ -1722,7 +1732,9 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -1756,7 +1768,7 @@ describe('UsageTelemetryService', () => {
       new UsageTelemetryService(options),
       new UsageTelemetryService(options),
     ];
-    await one.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await one.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await Promise.all([one.stationStarted(), two.stationStarted()]);
     await Promise.all([one.shutdown(), two.shutdown()]);
     const persisted = (
@@ -1847,7 +1859,7 @@ test('Full saved under DNT remains pending after DNT removal and sends only afte
   });
   try {
     await expect(
-      subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION),
+      subject.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION),
     ).rejects.toThrow('DO_NOT_TRACK');
     await expect(
       access(join(root, 'config', 'usage-telemetry-disclosure.json')),
@@ -1865,7 +1877,9 @@ test('Full saved under DNT remains pending after DNT removal and sends only afte
     await subject.stationStarted();
     await subject.flush();
     expect(fetch).not.toHaveBeenCalled();
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.flush();
     expect(fetch).toHaveBeenCalledTimes(1);
