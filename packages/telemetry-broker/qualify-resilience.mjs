@@ -222,7 +222,9 @@ export async function qualifyResilience(
     await locker.query('ROLLBACK');
     locker.release();
   }
-  await store.lite.finalize();
+  const reopened = new store.constructor(pool);
+  await reopened.migrate();
+  await reopened.lite.finalize();
   const elapsedMs = Math.round(performance.now() - started);
   assert.equal(
     (
@@ -257,6 +259,11 @@ export async function qualifyResilience(
     'set-based finalization counted every synthetic ping',
   );
   const first = await store.lite.aggregates(publisher);
+  assert.deepEqual(
+    (await reopened.lite.aggregates(publisher)).days,
+    first.days,
+    'repository reopen preserves the secret and estimates',
+  );
   assert.deepEqual(
     (await store.lite.aggregates(publisher)).days,
     first.days,

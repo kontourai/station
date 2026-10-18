@@ -550,6 +550,20 @@ test.each([1, 10])(
         (await lite.aggregates('kontour')).days,
         'uncached repeat reads use identical noise',
       ).toEqual(result.days);
+      const kontourKey = `stq_${'k'.repeat(43)}`;
+      await lite.setPublisherKey(
+        'kontour',
+        createHash('sha256').update(kontourKey).digest('hex'),
+      );
+      const publisherRead = await app.request(
+        '/v1/publishers/kontour/aggregates',
+        { headers: { authorization: `Bearer ${kontourKey}` } },
+      );
+      expect(publisherRead.status).toBe(200);
+      expect(
+        (await publisherRead.json()).days,
+        'public and publisher views reuse the same noisy counts',
+      ).toEqual(result.days);
       expect(result.days[0]).not.toHaveProperty('representedPings');
       expect(
         (await (await app.request('/v1/public/aggregates')).json()).days,
