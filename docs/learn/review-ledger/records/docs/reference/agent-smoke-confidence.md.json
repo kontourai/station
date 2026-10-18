@@ -118,7 +118,22 @@
 
     "scripts/lib/matrix-cleanup.mjs",
 
-    "src-server/providers/__tests__/claude-adapter-events.test.ts"
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+
+
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/agents/agent-service.ts"
+
+
   ],
 
   "checks": [

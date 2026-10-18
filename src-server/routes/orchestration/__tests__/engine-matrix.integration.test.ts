@@ -66,6 +66,13 @@ import { createLogger } from '../../../utils/logger.js';
 import { createAgentRoutes } from '../../agents/agents.js';
 import { createSkillRoutes } from '../../agents/skills.js';
 import { createToolRoutes } from '../../agents/tools.js';
+import {
+  agentCreateSchema,
+  integrationEnabledSchema,
+  integrationSchema,
+  integrationToolsApplySchema,
+  localSkillCreateSchema,
+} from '../../schemas/schemas.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const makeTempDir = trackTempDirs();
@@ -579,179 +586,217 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       ...extra,
     });
 
-  test('runs the full delivery probe through real skill, MCP, policy and foreground routes, then DELETEs all resources', async () => {
-    const deliveryErrors: unknown[] = [];
-    const deliver: NonNullable<MatrixAdapter['deliveryTurn']> = async (
-      input,
-      turnId,
-    ) => {
-      if (
-        !input.input.startsWith('Use the delivery-') &&
-        !input.input.startsWith('Call ping')
-      )
-        return undefined;
-      const start = [...adapter.starts]
-        .reverse()
-        .find((entry) => entry.threadId === input.threadId);
-      // Station's native engine loads its authored Agent at invocation, rather
-      // than receiving the external-adapter ResolvedAgentDefinition channel.
-      const slug = start?.metadata?.agentSlug;
-      if (typeof slug !== 'string')
-        throw new Error('No admitted Agent identity');
-      expect(slug).toMatch(/^delivery-/);
-      const spec = await loader.loadAgent(slug);
-      const serverId = spec.tools?.mcpServers?.find((id) =>
-        id.startsWith('probe'),
-      );
-      if (!serverId) throw new Error('No configured MCP server');
-      const server = await loader.loadIntegration(serverId);
-      expect(server.disabledTools).toEqual(['blocked']);
-      expect(
-        server.probe?.toolNames?.map((name) =>
-          originalMcpToolName(server.id, name),
-        ),
-      ).toEqual(expect.arrayContaining(['ping', 'blocked']));
-      if (input.input.startsWith('Use the delivery-')) {
-        const skillId = spec.skills?.[0];
-        if (!skillId) throw new Error('Skill did not reach the authored Agent');
-        const skill = await skills.getSkill(skillId);
-        const result = await exec(
-          process.execPath,
-          [join(skill.path, 'scripts/probe.mjs')],
-          { cwd: workspace, windowsHide: true, timeout: 5000 },
-        );
-        const artifact = (await readdir(workspace)).find((name) =>
-          /^delivery-.*\.txt$/.test(name),
-        );
-        if (!artifact) throw new Error('Skill script did not write its output');
-        const context =
-          currentNativeOutputRelayCompanion()?.issueForRuntimeConfiguration(
-            adapter,
-            () => true,
-          );
-        if (!context) throw new Error('No delivery output grant');
-        try {
-          await runWithNativeOutputTurnContext(context, () =>
-            runWithCurrentNativeOutputCall(randomUUID(), () =>
-              declareCurrentNativeOutput({
-                file: { path: artifact, mediaType: 'text/plain' },
-              }),
-            ),
-          );
-        } finally {
-          closeNativeOutputTurnContext(context);
-        }
-        adapter.rendered.set(turnId, [artifact]);
-        expect(
-          await readFile(join(skill.path, 'SKILL.md'), 'utf8'),
-        ).not.toContain(result.stdout.trim());
-        expect(input.input).not.toContain(result.stdout.trim());
-        return result.stdout.trim();
-      }
-      if (!server?.command)
-        throw new Error('MCP did not reach session resolution');
-      const client = new Client({ name: 'matrix-delivery', version: '1' });
-      try {
-        await client.connect(
-          new StdioClientTransport({
-            command: server.command,
-            args: server.args,
-            stderr: 'pipe',
-          }),
-        );
-        expect(
-          (await client.listTools()).tools.map((tool) => tool.name),
-        ).toContain('blocked');
-        const toolCallId = randomUUID();
-        const event = {
-          provider: adapter.provider,
-          threadId: input.threadId,
-          turnId,
-          createdAt: new Date().toISOString(),
-          toolCallId,
-          itemId: toolCallId,
-          toolName: `mcp__${server.id}__ping`,
-        };
-        adapter.events.push({
-          ...event,
-          eventId: randomUUID(),
-          method: 'tool.started',
-          arguments: {},
-        });
-        const response = await client.callTool({ name: 'ping', arguments: {} });
-        expect(response).toMatchObject({
-          content: [{ text: 'DELIVERY_PING_OK' }],
-        });
-        adapter.events.push({
-          ...event,
-          eventId: randomUUID(),
-          method: 'tool.completed',
-          status: 'success',
-          output: JSON.stringify(response),
-        });
-        return 'DELIVERY_PING_OK';
-      } finally {
-        await client.close();
-      }
-    };
-    adapter.deliveryTurn = async (input, turnId) => {
-      try {
-        return await deliver(input, turnId);
-      } catch (error) {
-        deliveryErrors.push(error);
-        throw error;
-      }
-    };
-    const result = await run({ additionalScenarios: deliveryScenarios });
-    expect(deliveryErrors).toEqual([]);
-    const row = result.rows.find((entry) => entry.scenario === 'delivery');
-    expect(row, JSON.stringify(result.rows)).toMatchObject({
-      status: 'unverified',
-      delivery: {
-        skills: { probe: 'unverified' },
-        script: { probe: 'unverified' },
-        toolServers: { probe: 'pass' },
-        disabledTool: { probe: 'unverified' },
-        nativeToolPolicy: { probe: 'unverified' },
-      },
-    });
-    expect(row?.turns).toHaveLength(2);
-    expect(row?.turns[0].storedOutputs).toEqual([
-      expect.stringMatching(/^delivery-[a-f0-9]+\.txt$/),
-    ]);
-    expect(result.rows.some((entry) => entry.status === 'fail')).toBe(false);
-    expect(result.plan.plannedTurnCount).toBe(14);
-    expect(result.sentTurns).toBe(14);
-    expect(
-      requests
-        .filter(
-          (request) =>
-            request.path.startsWith('/integrations') ||
-            request.path.startsWith('/api/skills') ||
-            request.path.startsWith('/agents'),
+  test.each([
+    { models: undefined, misroute: false, turns: 14 },
+    { models: ['matrix-1'], misroute: false, turns: 6 },
+    { models: ['matrix-1'], misroute: true, turns: 5 },
+  ])(
+    'runs the real delivery lifecycle and isolates setup budget ($turns sends, misroute=$misroute)',
+    async ({ models, misroute, turns }) => {
+      const deliveryErrors: unknown[] = [];
+      const deliver: NonNullable<MatrixAdapter['deliveryTurn']> = async (
+        input,
+        turnId,
+      ) => {
+        if (
+          !input.input.startsWith('Use the delivery-') &&
+          !input.input.startsWith('Call ping')
         )
-        .every((request) => request.status! < 300),
-    ).toBe(true);
-    const deletes = requests.filter((request) => request.method === 'DELETE');
-    expect(deletes.map((request) => request.path)).toEqual([
-      expect.stringMatching(/^\/agents\/delivery-/),
-      expect.stringMatching(/^\/api\/skills\/delivery-/),
-      expect.stringMatching(/^\/integrations\/probe/),
-    ]);
-    expect(deletes.every((request) => request.status === 200)).toBe(true);
-    expect(await loader.listIntegrations()).toEqual([]);
-    expect(await loader.agentExists(deletes[0].path.split('/').at(-1)!)).toBe(
-      false,
-    );
-    expect(
-      skills.listSkills().some((entry) => entry.name.startsWith('delivery-')),
-    ).toBe(false);
-    expect(
-      adapter.starts.filter((start) =>
-        String(start.metadata?.agentSlug).startsWith('delivery-'),
-      ),
-    ).toHaveLength(1);
-  });
+          return undefined;
+        const start = [...adapter.starts]
+          .reverse()
+          .find((entry) => entry.threadId === input.threadId);
+        // Station's native engine loads its authored Agent at invocation, rather
+        // than receiving the external-adapter ResolvedAgentDefinition channel.
+        const slug = start?.metadata?.agentSlug;
+        if (typeof slug !== 'string')
+          throw new Error('No admitted Agent identity');
+        expect(slug).toMatch(/^delivery-/);
+        const spec = await loader.loadAgent(slug);
+        const serverId = spec.tools?.mcpServers?.find((id) =>
+          id.startsWith('probe'),
+        );
+        if (!serverId) throw new Error('No configured MCP server');
+        const server = await loader.loadIntegration(serverId);
+        expect(server.disabledTools).toEqual(['blocked']);
+        expect(
+          server.probe?.toolNames?.map((name) =>
+            originalMcpToolName(server.id, name),
+          ),
+        ).toEqual(expect.arrayContaining(['ping', 'blocked']));
+        if (input.input.startsWith('Use the delivery-')) {
+          const skillId = spec.skills?.[0];
+          if (!skillId)
+            throw new Error('Skill did not reach the authored Agent');
+          const skill = await skills.getSkill(skillId);
+          const result = await exec(
+            process.execPath,
+            [join(skill.path, 'scripts/probe.mjs')],
+            { cwd: workspace, windowsHide: true, timeout: 5000 },
+          );
+          const artifact = (await readdir(workspace)).find((name) =>
+            /^delivery-.*\.txt$/.test(name),
+          );
+          if (!artifact)
+            throw new Error('Skill script did not write its output');
+          const context =
+            currentNativeOutputRelayCompanion()?.issueForRuntimeConfiguration(
+              adapter,
+              () => true,
+            );
+          if (!context) throw new Error('No delivery output grant');
+          try {
+            await runWithNativeOutputTurnContext(context, () =>
+              runWithCurrentNativeOutputCall(randomUUID(), () =>
+                declareCurrentNativeOutput({
+                  file: { path: artifact, mediaType: 'text/plain' },
+                }),
+              ),
+            );
+          } finally {
+            closeNativeOutputTurnContext(context);
+          }
+          adapter.rendered.set(turnId, [artifact]);
+          expect(
+            await readFile(join(skill.path, 'SKILL.md'), 'utf8'),
+          ).not.toContain(result.stdout.trim());
+          expect(input.input).not.toContain(result.stdout.trim());
+          return result.stdout.trim();
+        }
+        if (!server?.command)
+          throw new Error('MCP did not reach session resolution');
+        const client = new Client({ name: 'matrix-delivery', version: '1' });
+        try {
+          await client.connect(
+            new StdioClientTransport({
+              command: server.command,
+              args: server.args,
+              stderr: 'pipe',
+            }),
+          );
+          expect(
+            (await client.listTools()).tools.map((tool) => tool.name),
+          ).toContain('blocked');
+          const toolCallId = randomUUID();
+          const event = {
+            provider: adapter.provider,
+            threadId: input.threadId,
+            turnId,
+            createdAt: new Date().toISOString(),
+            toolCallId,
+            itemId: toolCallId,
+            toolName: `mcp__${server.id}__ping`,
+          };
+          adapter.events.push({
+            ...event,
+            eventId: randomUUID(),
+            method: 'tool.started',
+            arguments: {},
+          });
+          const response = await client.callTool({
+            name: 'ping',
+            arguments: {},
+          });
+          expect(response).toMatchObject({
+            content: [{ text: 'DELIVERY_PING_OK' }],
+          });
+          adapter.events.push({
+            ...event,
+            eventId: randomUUID(),
+            method: 'tool.completed',
+            status: 'success',
+            output: JSON.stringify(response),
+          });
+          return 'DELIVERY_PING_OK';
+        } finally {
+          await client.close();
+        }
+      };
+      adapter.deliveryTurn = async (input, turnId) => {
+        try {
+          return await deliver(input, turnId);
+        } catch (error) {
+          deliveryErrors.push(error);
+          throw error;
+        }
+      };
+      const result = await run({
+        modelIds: models,
+        maxTurns: models ? 6 : 24,
+        additionalScenarios: misroute
+          ? deliveryScenarios.map((scenario) => ({
+              ...scenario,
+              prepare: (ctx: any) =>
+                scenario.prepare({
+                  ...ctx,
+                  setupApi: (path: string, body?: unknown, method?: string) =>
+                    path === '/integrations'
+                      ? ctx.api(path, body, method)
+                      : ctx.setupApi(path, body, method),
+                }),
+            }))
+          : deliveryScenarios,
+      });
+      expect(deliveryErrors).toEqual([]);
+      const row = result.rows.find((entry) => entry.scenario === 'delivery');
+      if (misroute)
+        expect(row).toMatchObject({
+          status: 'fail',
+          failure: 'Hard turn ceiling reached; refusing another send',
+        });
+      else
+        expect(row, JSON.stringify(result.rows)).toMatchObject({
+          status: 'unverified',
+          delivery: {
+            skills: { probe: 'unverified' },
+            script: { probe: 'unverified' },
+            toolServers: { probe: 'pass' },
+            disabledTool: { probe: 'unverified' },
+            nativeToolPolicy: { probe: 'unverified' },
+          },
+        });
+      expect(row?.turns).toHaveLength(2);
+      expect(row?.turns[0].storedOutputs).toEqual([
+        expect.stringMatching(/^delivery-[a-f0-9]+\.txt$/),
+      ]);
+      expect(result.rows.some((entry) => entry.status === 'fail')).toBe(
+        misroute,
+      );
+      expect(result.plan.plannedTurnCount).toBe(models ? 6 : 14);
+      expect(result.sentTurns).toBe(turns);
+      expect(result.reservedBillableRequests).toBe(models ? 6 : 14);
+      expect(adapter.turns).toHaveLength(turns);
+      expect(
+        requests
+          .filter(
+            (request) =>
+              request.path.startsWith('/integrations') ||
+              request.path.startsWith('/api/skills') ||
+              request.path.startsWith('/agents'),
+          )
+          .every((request) => request.status! < 300),
+      ).toBe(true);
+      const deletes = requests.filter((request) => request.method === 'DELETE');
+      expect(deletes.map((request) => request.path)).toEqual([
+        expect.stringMatching(/^\/agents\/delivery-/),
+        expect.stringMatching(/^\/api\/skills\/delivery-/),
+        expect.stringMatching(/^\/integrations\/probe/),
+      ]);
+      expect(deletes.every((request) => request.status === 200)).toBe(true);
+      expect(await loader.listIntegrations()).toEqual([]);
+      expect(await loader.agentExists(deletes[0].path.split('/').at(-1)!)).toBe(
+        false,
+      );
+      expect(
+        skills.listSkills().some((entry) => entry.name.startsWith('delivery-')),
+      ).toBe(false);
+      expect(
+        adapter.starts.filter((start) =>
+          String(start.metadata?.agentSlug).startsWith('delivery-'),
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   test.skipIf(process.platform === 'win32')(
     'SIGINT mid-probe attempts all three DELETEs once before the CLI exits',
@@ -1453,6 +1498,247 @@ describe('engine matrix through real foreground routes and orchestration', () =>
     );
     expect(requests).toEqual([]);
   });
+
+  const setupOperations = [
+    {
+      path: '/integrations',
+      body: {
+        id: 'matrix-setup',
+        displayName: 'Matrix setup',
+        kind: 'mcp',
+        transport: 'sse',
+        endpoint: 'http://127.0.0.1:1/mcp',
+      },
+      schema: integrationSchema,
+    },
+    {
+      path: '/integrations/matrix-setup/reconnect',
+      body: {},
+      schema: undefined,
+    },
+    {
+      path: '/integrations/matrix-setup/tools/apply',
+      body: { disabledTools: [] },
+      schema: integrationToolsApplySchema,
+    },
+    {
+      path: '/integrations/matrix-setup/enabled',
+      body: { enabled: true },
+      schema: integrationEnabledSchema,
+    },
+    {
+      path: '/api/skills/local',
+      body: { name: 'matrix-setup', body: 'Recall the diagnostic nonce.' },
+      schema: localSkillCreateSchema,
+    },
+    {
+      path: '/agents',
+      body: {
+        name: 'Matrix setup',
+        slug: 'matrix-setup',
+        prompt: 'Follow the diagnostic prompt.',
+      },
+      schema: agentCreateSchema,
+    },
+  ];
+
+  // Setup side effects are stubbed; all turn/control requests still reach the real server.
+  const setupTransport = () =>
+    vi.fn(
+      async (path: string, body?: unknown, method = body ? 'POST' : 'GET') => {
+        const setup = setupOperations.find(
+          (operation) => operation.path === path,
+        );
+        if (method === 'POST' && setup) {
+          setup.schema?.parse(body);
+          return { success: true, data: {} };
+        }
+        if (
+          (method === 'GET' &&
+            ['/integrations', '/api/skills', '/agents'].includes(path)) ||
+          (['GET', 'DELETE'].includes(method) &&
+            [
+              '/integrations/matrix-setup',
+              '/api/skills/matrix-setup',
+              '/agents/matrix-setup',
+            ].includes(path))
+        )
+          return { success: true, data: {} };
+        return api(path, body, method);
+      },
+    );
+
+  test('six setup POSTs and cleanup reserve no turn budget for a two-turn extension', async () => {
+    const transport = setupTransport();
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 6,
+      additionalScenarios: [
+        {
+          id: 'prepared-probe',
+          maxTurns: 2,
+          async run(ctx: any) {
+            for (const operation of setupOperations)
+              await ctx.setupApi(operation.path, operation.body);
+            for (const path of [
+              '/integrations',
+              '/integrations/matrix-setup',
+              '/api/skills',
+              '/api/skills/matrix-setup',
+              '/agents',
+              '/api/agents',
+              '/api/agents/matrix',
+            ])
+              await ctx.setupApi(path);
+            await ctx.recall(ctx.model);
+            await ctx.recall(ctx.model);
+            for (const path of [
+              '/integrations/matrix-setup',
+              '/api/skills/matrix-setup',
+              '/agents/matrix-setup',
+            ])
+              await ctx.setupApi(path, undefined, 'DELETE');
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'prepared-probe'),
+    ).toMatchObject({ status: 'pass', failure: null });
+    expect(result.plan).toMatchObject({
+      builtInTurns: 4,
+      plannedTurnCount: 6,
+      maxTurns: 6,
+    });
+    expect(result.sentTurns).toBe(6);
+    expect(result.reservedBillableRequests).toBe(6);
+    expect(adapter.turns).toHaveLength(6);
+    expect(
+      transport.mock.calls.filter(
+        ([path, body, method]) =>
+          (method ?? (body ? 'POST' : 'GET')) === 'POST' &&
+          setupOperations.some((operation) => operation.path === path),
+      ),
+    ).toHaveLength(6);
+    expect(
+      transport.mock.calls.filter(([, , method]) => method === 'DELETE'),
+    ).toHaveLength(3);
+  });
+
+  test('setup refuses turn routes, unknown writes and path smuggling before transport', async () => {
+    const transport = setupTransport();
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'setup-denials',
+          maxTurns: 1,
+          async run(ctx: any) {
+            const paths = [
+              `/api/orchestration/chat/${ctx.conversationId}/continue`,
+              '/api/orchestration/chat',
+              '/api/orchestration/chat/background',
+              '/api/orchestration/chat/delegated',
+              `/api/orchestration/conversations/${ctx.conversationId}/handoff`,
+              `/api/orchestration/delegations/${ctx.conversationId}/continue`,
+              '/api/agents/matrix/chat',
+              '/api/agents/matrix/invoke',
+              '/agents/matrix/chat',
+              '/api/orchestration/commands',
+              '/integrations/matrix-setup/ui/call',
+              '/api/skills/matrix-setup/run',
+              '/api/future-route',
+              '/integrations/matrix%2fui/reconnect',
+              '//other.invalid/agents',
+            ];
+            for (const path of paths)
+              await expect(
+                ctx.setupApi(
+                  path,
+                  { message: 'Extra', clientTurnId: randomUUID() },
+                  'POST',
+                ),
+              ).rejects.toThrow('Setup API route refused');
+            for (const method of ['PUT', 'PATCH', 'DELETE'])
+              await expect(
+                ctx.setupApi('/api/future-route', {}, method),
+              ).rejects.toThrow('Setup API route refused');
+            await expect(
+              ctx.setupApi('/api/orchestration/chat', undefined, 'GET'),
+            ).rejects.toThrow('Setup API route refused');
+            await ctx.recall(ctx.model);
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'setup-denials'),
+    ).toMatchObject({ status: 'pass', failure: null });
+    expect(adapter.turns).toHaveLength(5);
+    expect(result.reservedBillableRequests).toBe(5);
+    expect(
+      transport.mock.calls.some(
+        ([, body]) => isRecord(body) && body.message === 'Extra',
+      ),
+    ).toBe(false);
+  });
+
+  test('billable configuration requests reserve budget without counting as turn sends', async () => {
+    const result = await run({
+      api: setupTransport(),
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'raw-configuration',
+          maxTurns: 1,
+          async run(ctx: any) {
+            const operation = setupOperations.find(
+              (entry) => entry.path === '/agents',
+            )!;
+            await ctx.api(operation.path, operation.body);
+          },
+        },
+      ],
+    });
+    expect(result.sentTurns).toBe(4);
+    expect(result.reservedBillableRequests).toBe(5);
+    expect(adapter.turns).toHaveLength(4);
+  });
+
+  test.each(['PUT', 'PATCH', 'DELETE'])(
+    'counts unknown %s mutations on the billable channel',
+    async (method) => {
+      const result = await run({
+        modelIds: ['matrix-1'],
+        maxTurns: 5,
+        additionalScenarios: [
+          {
+            id: 'mutation-cap',
+            maxTurns: 1,
+            async run(ctx: any) {
+              await ctx.recall(ctx.model);
+              await ctx.api('/api/future-route?probe=1', {}, method);
+            },
+          },
+        ],
+      });
+      expect(
+        result.rows.find((row: any) => row.scenario === 'mutation-cap'),
+      ).toMatchObject({
+        status: 'fail',
+        failure: 'Hard turn ceiling reached; refusing another send',
+      });
+      expect(result.reservedBillableRequests).toBe(5);
+      expect(result.sentTurns).toBe(5);
+      expect(
+        requests.some((request) => request.path === '/api/future-route'),
+      ).toBe(false);
+    },
+  );
 
   test.each([
     'continue',

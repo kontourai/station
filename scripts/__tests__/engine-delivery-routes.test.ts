@@ -114,7 +114,7 @@ describe('delivery setup/cleanup through real routes and persistence', () => {
       const cleanupErrors: unknown[] = [];
       try {
         const operation = scenarios[0].prepare({
-          api,
+          setupApi: api,
           engine: 'claude',
           connectionId: 'fixture-engine',
           cwd: home,

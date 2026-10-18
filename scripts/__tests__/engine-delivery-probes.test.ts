@@ -895,6 +895,7 @@ describe('engine delivery probes', () => {
       ],
     });
     expect(result.sentTurns).toBe(6);
+    expect(result.reservedBillableRequests).toBe(6);
     expect(result.rows.every((row) => row.model === 'claude-opus-4-5')).toBe(
       true,
     );

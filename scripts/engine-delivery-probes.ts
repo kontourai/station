@@ -29,7 +29,7 @@ type Evidence = {
   checks?: string[];
 };
 type Setup = {
-  api: Api;
+  setupApi: Api;
   engine: string;
   connectionId: string;
   cwd: string;
@@ -321,9 +321,9 @@ export const scenarios = [
       if (endpoint && ctx.engine === 'acp')
         return { skipReason: 'ACP authored MCP passthrough is stdio-only' };
       ctx.deferCleanup(`tool server ${serverId}`, () =>
-        ctx.api(`/integrations/${serverId}`, undefined, 'DELETE'),
+        ctx.setupApi(`/integrations/${serverId}`, undefined, 'DELETE'),
       );
-      await ctx.api(
+      await ctx.setupApi(
         '/integrations',
         endpoint
           ? {
@@ -347,7 +347,11 @@ export const scenarios = [
       // Probe via Station's actual MCP handshake before enabling or sending chat.
       let probed: { probe?: { ok: boolean; error?: string } };
       try {
-        probed = await data(ctx.api, `/integrations/${serverId}/reconnect`, {});
+        probed = await data(
+          ctx.setupApi,
+          `/integrations/${serverId}/reconnect`,
+          {},
+        );
       } catch (error) {
         if (endpoint)
           return {
@@ -366,7 +370,7 @@ export const scenarios = [
       }
       const integrations = await data<
         Array<{ id: string; tools: Array<{ toolName: string }> }>
-      >(ctx.api, '/integrations');
+      >(ctx.setupApi, '/integrations');
       const inventory =
         integrations
           .find((entry) => entry.id === serverId)
@@ -379,22 +383,24 @@ export const scenarios = [
           'Probe tool id missing from Station tool inventory; refusing vacuous disable check',
         );
       if (policy)
-        await ctx.api(`/integrations/${serverId}/tools/apply`, {
+        await ctx.setupApi(`/integrations/${serverId}/tools/apply`, {
           disabledTools: [disabledId(ctx.engine)],
         });
-      await ctx.api(`/integrations/${serverId}/enabled`, { enabled: true });
+      await ctx.setupApi(`/integrations/${serverId}/enabled`, {
+        enabled: true,
+      });
       if (skill) {
         ctx.deferCleanup(`skill ${skillId}`, () =>
-          ctx.api(`/api/skills/${skillId}`, undefined, 'DELETE'),
+          ctx.setupApi(`/api/skills/${skillId}`, undefined, 'DELETE'),
         );
         const body = `Resolve the bundled scripts/probe.mjs relative to this SKILL.md, then run Node with that script path while keeping the session working directory. It prints a receipt and writes ${artifact}. Call Station's declare_output with {"file":{"path":"${artifact}"}}. Reply with the receipt printed by the script. Do not substitute reading the script for running it.`;
-        await ctx.api('/api/skills/local', {
+        await ctx.setupApi('/api/skills/local', {
           name: skillId,
           body,
           description: 'Temporary engine delivery probe',
         });
         const installed = await data<{ path: string }>(
-          ctx.api,
+          ctx.setupApi,
           `/api/skills/${skillId}`,
         );
         // The current skill API authors SKILL.md but has no resource-upload API.
@@ -417,9 +423,9 @@ export const scenarios = [
       }
       // Register compensation before POST: an acknowledgement may be lost.
       ctx.deferCleanup(`agent ${skillId}`, () =>
-        ctx.api(`/agents/${skillId}`, undefined, 'DELETE'),
+        ctx.setupApi(`/agents/${skillId}`, undefined, 'DELETE'),
       );
-      await ctx.api('/agents', {
+      await ctx.setupApi('/agents', {
         name: skillId,
         slug: skillId,
         prompt:
