@@ -1,0 +1,7 @@
+{
+  "revision": "c17d25a18499790ed036c7106ead3934e36b18f2",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Lockfile delta adds only tsc-ts@0.0.2 plus seven optional @tsc-ts platform executables; no lifecycle scripts, allowBuilds, overrides, Node/pnpm pin or workspace membership change. Release-age policy (1,440 min, Kontour exemption only) is unchanged: this lock was resolved with a one-time command-line waiver approved by the owner, and the frozen managed install refused it exactly as lines 53-54 state until the same waiver was supplied. No prose change needed.","inputs":["docs/design/pnpm-workspace-installation.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
