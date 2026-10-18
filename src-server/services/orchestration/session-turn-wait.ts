@@ -40,6 +40,7 @@ export interface SessionTurnWaitPorts {
 export interface SessionSettledTurn {
   readonly turnId?: string;
   readonly sequence: number;
+  readonly invocationId?: string;
   readonly outcome: 'completed' | 'aborted' | 'error' | 'exited';
 }
 
@@ -84,17 +85,21 @@ export function evaluateSessionWait(
     events.at(-1)?.sequence ?? 0,
   );
   let open: string | undefined;
+  let invocationId: string | undefined;
   let settled: SessionSettledTurn | undefined;
   for (const { sequence, event } of events) {
     const before = open;
-    open = advanceOpenTurnId(open, event);
+    open = advanceOpenTurnId(open, event, invocationId);
     if (before !== undefined && open === undefined && sequence > cursor) {
       settled = {
         ...(before ? { turnId: before } : {}),
+        ...(invocationId === undefined ? {} : { invocationId }),
         sequence,
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };
     }
+    if (event.method === 'turn.started') invocationId = event.invocationId;
+    else if (open === undefined) invocationId = undefined;
   }
   const busy = open !== undefined || ports.coordinatorBusy(threadId);
   const view: SessionWaitState = {

@@ -7693,6 +7693,16 @@ export class OrchestrationService {
                               claimOutcome = 'retain';
                               throw new SessionTurnStartIndeterminateError();
                             }
+                            if (turnInput.invocationId)
+                              this.clientOriginTurns.bindInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.markTurnBegun(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground
@@ -7794,9 +7804,26 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          turnInput.invocationId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
+                        }
+                        if (turnInput.invocationId) {
+                          const settled = boundary.accepted(
+                            accepted.turnId,
+                            new Date().toISOString(),
+                          );
+                          if (settled.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          this.sessionExecutionCoordinator.markTurnAccepted(
+                            turnInput.threadId,
+                            accepted.turnId,
+                            turnInput.invocationId,
+                          );
+                          return accepted;
                         }
                         if (
                           !this.sessionExecutionCoordinator.markTurnAccepted(
@@ -8056,6 +8083,7 @@ export class OrchestrationService {
                       ? undefined
                       : identity.key;
                   })(),
+                  true,
                 );
               };
               try {
@@ -8489,6 +8517,16 @@ export class OrchestrationService {
                 context?.clientOrigin,
                 context?.principal,
               );
+              const steerInvocationId =
+                this.sessionExecutionCoordinator.invocationForTurn(
+                  command.threadId,
+                  activeTurnId,
+                );
+              if (steerInvocationId)
+                this.clientOriginTurns.bindInvocation(
+                  command.threadId,
+                  steerInvocationId,
+                );
               try {
                 await this.withCurrentSkillExperience(command.threadId, () => {
                   this.assertAdapterCurrent(adapter);
@@ -8513,6 +8551,9 @@ export class OrchestrationService {
                 activeTurnId,
                 context?.clientOrigin,
                 context?.principal,
+                undefined,
+                undefined,
+                steerInvocationId,
               );
               if (earlySteerOriginEvent) {
                 this.projectAndPublishEvent(earlySteerOriginEvent);
@@ -11654,17 +11695,20 @@ export class OrchestrationService {
     // still shows the turn running. It settles before the in-memory
     // observers run, so one that throws cannot strand a stop whose terminal
     // is already stored (#3561 review F3).
-    this.cooperativeStop.settleCompletedTurn(
-      event.threadId,
-      event.turnId,
-      event.method,
-    );
+    if (this.sessionExecutionCoordinator.ownsTurnEvent(event))
+      this.cooperativeStop.settleCompletedTurn(
+        event.threadId,
+        event.turnId,
+        event.method,
+      );
     if (!committed) return false;
     const projectedEvent = this.observeCommittedEvent(
       event,
       committed,
       quarantined,
     );
+    if (!isCoalescableDelta(event))
+      this.sessionExecutionCoordinator.observe(projectedEvent);
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11673,7 +11717,8 @@ export class OrchestrationService {
         projectedEvent.method === 'turn.aborted' ||
         (projectedEvent.method === 'runtime.error' &&
           !isDeferredRetriableTurnError(projectedEvent))) &&
-      projectedEvent.turnId
+      projectedEvent.turnId &&
+      !this.sessionExecutionCoordinator.hasActiveTurn(projectedEvent.threadId)
     ) {
       this.nativeOutputGrants.retireTerminal(
         projectedEvent.threadId,
@@ -11696,8 +11741,6 @@ export class OrchestrationService {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
-    if (!isCoalescableDelta(event))
-      this.sessionExecutionCoordinator.observe(projectedEvent);
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
     // archive#3451 finding 5: a failed turn used to be either mis-counted as
     // `completed` (pre-#3442) or dropped from this metric entirely — count it
@@ -11812,7 +11855,9 @@ export class OrchestrationService {
       sessionReadModel: this.sessionReadModel,
     });
     const declaredOutputs =
-      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
+      projectedEvent.method === 'turn.completed' &&
+      projectedEvent.turnId &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(projectedEvent)
         ? [
             ...this.nativeOutputDeclarations.takeTerminalAdmissions(
               projectedEvent.threadId,
@@ -11892,7 +11937,8 @@ export class OrchestrationService {
     // stalled turn's window (#2436).
     if (
       !isCoalescableDelta(event) &&
-      event.method !== 'session.approval-mode-set'
+      event.method !== 'session.approval-mode-set' &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(event)
     )
       this.turnProgress.observe(event);
     this.threadProviders.set(event.threadId, event.provider);
@@ -11908,7 +11954,11 @@ export class OrchestrationService {
       event.method === 'turn.aborted' ||
       event.method === 'runtime.error'
     ) {
-      this.clientOriginTurns.retire(event.threadId, event.turnId);
+      this.clientOriginTurns.retire(
+        event.threadId,
+        event.turnId,
+        event.invocationId,
+      );
     }
     // Adapter-agnostic activity telemetry: adapters stay metric-free (the
     // sessionStateDuration precedent), so provider activity notifications
@@ -12555,6 +12605,10 @@ export class OrchestrationService {
           owned.turnClaim?.retain();
           throw unavailable();
         }
+        this.sessionExecutionCoordinator.markTurnBegun(
+          threadId,
+          stored.capture.intent.invocationId,
+        );
         try {
           const result = await adapter.sendTurn(stored.capture.adapterInput);
           if (
@@ -12566,6 +12620,7 @@ export class OrchestrationService {
           this.sessionExecutionCoordinator.markTurnAccepted(
             threadId,
             result.turnId,
+            stored.capture.intent.invocationId,
           );
           return result;
         } catch (error) {
@@ -12577,8 +12632,7 @@ export class OrchestrationService {
             const settled = owned.claim.recordDefinitiveRefusal(
               new Date().toISOString(),
             );
-            if (settled.kind === 'applied')
-              throw new TurnIdempotencySettledError('definitively-refused');
+            if (settled.kind === 'applied') throw error;
             throw new SessionTurnStartIndeterminateError();
           }
           owned.claim.indeterminate(new Date().toISOString());

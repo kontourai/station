@@ -338,10 +338,11 @@ test('a non-persistent send cannot forward a caller-provided invocation identity
   };
   await service.dispatch({ type: 'sendTurn', input: spoofed });
   expect(adapter.sent).toHaveLength(1);
-  expect(adapter.sent[0]).not.toHaveProperty('invocationId');
+  expect(adapter.sent[0]?.invocationId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(adapter.sent[0]?.invocationId).not.toBe(spoofed.invocationId);
 });
 
-test.each(['accepted', 'refused', 'unknown'] as const)(
+test.each(['accepted', 'refused', 'unknown', 'ack-lost'] as const)(
   'explicit prepared resume retains original bytes for an %s adapter result',
   async (outcome) => {
     const path = join(makeTempDir('prepared-intent-resume-'), 'events.sqlite');
@@ -373,7 +374,7 @@ test.each(['accepted', 'refused', 'unknown'] as const)(
     expect(store.findSessionOwnerUserId(THREAD)).toBe('prepared-owner');
     stores.push(store);
     const adapter = new LiveResumeAdapter();
-    adapter.result = outcome;
+    adapter.result = outcome === 'ack-lost' ? 'accepted' : outcome;
     const service = new OrchestrationService({
       adapterRegistry: createGateTestRegistry(adapter),
       eventBus: new EventBus(),
@@ -408,6 +409,28 @@ test.each(['accepted', 'refused', 'unknown'] as const)(
       inputDigest: row.input_digest,
       input: { text: 'pinned context\n\n  keep these bytes\n' },
     });
+    let ackLost = false;
+    const originalExec = DatabaseSync.prototype.exec;
+    const lost = vi
+      .spyOn(DatabaseSync.prototype, 'exec')
+      .mockImplementation(function (this: DatabaseSync, sql: string) {
+        const result = originalExec.call(this, sql);
+        if (
+          outcome === 'ack-lost' &&
+          !ackLost &&
+          adapter.sent.length === 1 &&
+          sql === 'COMMIT' &&
+          this.prepare(
+            "SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = ? AND state = 'accepted'",
+          ).get(THREAD)
+        ) {
+          ackLost = true;
+          throw new Error(
+            'resume acceptance committed before acknowledgement loss',
+          );
+        }
+        return result;
+      });
     const resumed = service.resumePreparedTurnIntent(
       THREAD,
       invocationId,
@@ -418,18 +441,17 @@ test.each(['accepted', 'refused', 'unknown'] as const)(
         turnId: 'resumed-original',
       });
     else if (outcome === 'refused')
-      await expect(resumed).rejects.toMatchObject({
-        code: 'client_turn_settled',
-        disposition: 'definitively-refused',
-      });
+      await expect(resumed).rejects.toThrow('No provider-visible effect.');
     else
       await expect(resumed).rejects.toMatchObject({ outcome: 'indeterminate' });
+    lost.mockRestore();
+    expect(ackLost).toBe(outcome === 'ack-lost');
     expect(storedIntent(path).row.envelope_json).toBe(row.envelope_json);
     expect(
       await service.readPreparedTurnIntent(THREAD, invocationId, owner),
     ).toMatchObject({
       state:
-        outcome === 'accepted'
+        outcome === 'accepted' || outcome === 'ack-lost'
           ? 'accepted'
           : outcome === 'refused'
             ? 'settled'
@@ -688,3 +710,136 @@ test('resume refuses a different live engine binding even when its native cursor
     db.close();
   }
 }, 90_000);
+
+test.each(['accepted', 'early-terminal'] as const)(
+  'real caller retains %s acceptance across post-COMMIT throws with one adapter entry',
+  async (outcome) => {
+    const path = join(makeTempDir('invocation-ack-loss-'), 'events.sqlite');
+    const store = new EventStore(path);
+    stores.push(store);
+    let calls = 0;
+    let acceptanceReady = false;
+    let terminalId = '';
+    class CountingAdapter extends LiveResumeAdapter {
+      override async sendTurn(input: ProviderSendTurnInput) {
+        calls += 1;
+        this.sent.push(input);
+        this.events.push({
+          method: 'turn.started',
+          eventId: 'start-' + calls,
+          provider: 'claude',
+          threadId: THREAD,
+          turnId: 'N',
+          invocationId: input.invocationId,
+          createdAt: '2030-01-01T00:00:00Z',
+          prompt: 'B',
+        });
+        if (outcome === 'early-terminal') {
+          terminalId = 'early-' + calls;
+          this.events.push({
+            method: 'runtime.error',
+            eventId: terminalId,
+            provider: 'claude',
+            threadId: THREAD,
+            invocationId: input.invocationId,
+            createdAt: '1900-01-01T00:00:00Z',
+            severity: 'error',
+            message: 'request-owned before native acknowledgement',
+          });
+          await vi.waitFor(() =>
+            expect(store.hasEventId(terminalId)).toBe(true),
+          );
+          await vi.waitFor(() =>
+            expect(
+              store['db']
+                .prepare(
+                  'SELECT * FROM orchestration_turn_boundaries WHERE thread_id = ?',
+                )
+                .all(THREAD),
+            ).toHaveLength(0),
+          );
+        }
+        acceptanceReady = true;
+        return { threadId: THREAD, turnId: 'N' };
+      }
+    }
+    const adapter = new CountingAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug() {}, warn() {} },
+    });
+    services.push(service);
+    service.initialize();
+    const exec = DatabaseSync.prototype.exec;
+    let injected = false;
+    const spy = vi
+      .spyOn(DatabaseSync.prototype, 'exec')
+      .mockImplementation(function (this: DatabaseSync, sql: string) {
+        const result = exec.call(this, sql);
+        if (!injected && acceptanceReady && sql === 'COMMIT') {
+          const accepted = this.prepare(
+            "SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ? AND state = 'accepted'",
+          ).get(THREAD);
+          const witness = this.prepare(
+            'SELECT terminal_retirement FROM orchestration_prepared_turns WHERE thread_id = ?',
+          ).get(THREAD);
+          if (
+            accepted ||
+            (outcome === 'early-terminal' &&
+              calls === 1 &&
+              witness?.terminal_retirement)
+          ) {
+            injected = true;
+            throw new Error('committed acceptance acknowledgement lost');
+          }
+        }
+        return result;
+      });
+    const input = {
+      threadId: THREAD,
+      clientTurnId: 'ack-key',
+      input: 'original bytes',
+    };
+    try {
+      await expect(
+        service.dispatch({ type: 'sendTurn', input }),
+      ).rejects.toMatchObject({ outcome: 'indeterminate' });
+      expect(injected).toBe(true);
+      expect(calls).toBe(1);
+      spy.mockRestore();
+      if (outcome === 'accepted') {
+        adapter.events.push({
+          method: 'turn.completed',
+          eventId: 'late-exact-ack',
+          provider: 'claude',
+          threadId: THREAD,
+          turnId: 'N',
+          invocationId: adapter.sent[0]?.invocationId,
+          createdAt: '1900-01-01T00:00:00Z',
+        });
+        await vi.waitFor(() =>
+          expect(store.hasEventId('late-exact-ack')).toBe(true),
+        );
+      }
+      await vi.waitFor(() =>
+        expect(
+          store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+        ).toEqual({ kind: 'available', active: false }),
+      );
+      await expect(
+        service.dispatch({ type: 'sendTurn', input }),
+      ).rejects.toMatchObject({ outcome: 'indeterminate' });
+      expect(calls).toBe(1);
+      const retained = store.readPreparedTurnIntent(
+        THREAD,
+        adapter.sent[0]!.invocationId!,
+      );
+      expect(retained?.capture.adapterInput.input).toBe('original bytes');
+    } finally {
+      spy.mockRestore();
+    }
+  },
+  90_000,
+);

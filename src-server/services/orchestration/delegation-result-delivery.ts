@@ -1062,6 +1062,7 @@ export interface DelegationResultDeliveryPorts {
     turnId: string,
     methods: readonly string[],
     limit: number,
+    invocationId?: string,
   ): readonly DelegationResultOutputEvent[];
   /** The conversation a Session belongs to (itself when it has none). */
   conversationOf(threadId: string): string;
@@ -1243,8 +1244,15 @@ function storedTurnOutput(
   ports: Pick<DelegationResultDeliveryPorts, 'turnEvents'>,
   threadId: string,
   turnId: string,
+  invocationId?: string,
 ): { text: string; incomplete: boolean } {
-  const completed = ports.turnEvents(threadId, turnId, ['turn.completed'], 1);
+  const completed = ports.turnEvents(
+    threadId,
+    turnId,
+    ['turn.completed'],
+    1,
+    invocationId,
+  );
   const outputText = (
     completed[0]?.payload as { outputText?: unknown } | undefined
   )?.outputText;
@@ -1255,6 +1263,7 @@ function storedTurnOutput(
     turnId,
     ['content.text-delta'],
     DELEGATION_RESULT_OUTPUT_MAX_EVENTS + 1,
+    invocationId,
   );
   return {
     text: deltas
@@ -1518,10 +1527,20 @@ export class DelegationResultDelivery {
       );
     const settled = view.settledTurn;
     if (view.state !== 'idle' || !settled) return;
-    const transitionKey = `settled:${thread}:${settled.turnId ?? `sequence-${settled.sequence}`}`;
+    if (
+      settled.invocationId !== undefined &&
+      this.ports.coordinatorBusy(thread)
+    )
+      return;
+    const transitionKey = `settled:${thread}:${settled.invocationId ? `invocation-${settled.invocationId}` : (settled.turnId ?? `sequence-${settled.sequence}`)}`;
     if (this.ports.store.has(childConversationId, transitionKey)) return;
     const output = settled.turnId
-      ? storedTurnOutput(this.ports, thread, settled.turnId)
+      ? storedTurnOutput(
+          this.ports,
+          thread,
+          settled.turnId,
+          settled.invocationId,
+        )
       : { text: '', incomplete: false };
     this.ports.store.record(
       {

@@ -239,10 +239,15 @@ function fixture(
   ownerEncoding: 'json' | 'columns',
   via: 'execute' | 'executeSync',
   bundle: SqliteInvocationTerminalFacts | undefined = hostFacts,
+  boundDedup = false,
 ) {
   const db = new DatabaseSync(':memory:');
   cleanup.push(() => db.close());
   db.exec(schema);
+  if (boundDedup)
+    db.exec(
+      'CREATE TABLE host_dedup(dedup_key TEXT PRIMARY KEY,value TEXT,created_at INTEGER NOT NULL,owner_json TEXT,input_digest TEXT); CREATE TABLE host_expired(dedup_key TEXT PRIMARY KEY,expired_at INTEGER NOT NULL)',
+    );
   const binding: SqliteTurnBoundaryTable = {
     table: 'boundaries',
     ownerEncoding,
@@ -253,7 +258,19 @@ function fixture(
   };
   const storage = openSqliteKernelStorage({
     database: db,
-    tables: { turnBoundary: binding },
+    tables: {
+      turnBoundary: binding,
+      ...(boundDedup
+        ? {
+            turnDedup: {
+              table: 'host_dedup',
+              tombstoneTable: 'host_expired',
+              ownerIdField: 'token',
+              inputDigestColumn: 'input_digest',
+            },
+          }
+        : {}),
+    },
   });
   cleanup.push(() => storage.close());
   const run = async <C extends KernelCommand>(
@@ -273,44 +290,97 @@ function fixture(
 for (const layout of ['json', 'columns'] as const)
   for (const via of ['execute', 'executeSync'] as const)
     describe(`${layout} ${via} real host facts`, () => {
-      it('preserves submitted digest through strict acceptance and full witnessed custody', async () => {
-        const f = fixture(layout, via);
-        const digest = 'station-turn-submission/v1:sha256:' + 'a'.repeat(64);
-        await begin(f.run, true, digest);
-        const dedup = await f.run({ type: 'turnDedup.read', key: 'k' });
-        if (dedup.kind !== 'found') throw new Error('begun dedup prerequisite');
-        expect(dedup.record).toMatchObject({
-          invocation: 'begun',
-          inputDigest: digest,
-        });
-        const accept = {
-          ...command,
-          expected: { ...expected, intent: { ...intent, dedupKey: 'k' } },
-          expectedDedup: dedup.record,
-        };
-        // On the integration baseline this reaches strict record validation,
-        // before any host-acceptance path or missing-witness branch.
-        expect(await f.run(accept)).toEqual({ kind: 'accepted' });
-        for (const inputDigest of [undefined, digest + 'changed']) {
-          const { inputDigest: _original, ...without } = dedup.record;
-          const expectedDedup =
-            inputDigest === undefined ? without : { ...without, inputDigest };
-          expect(await f.run({ ...accept, expectedDedup })).toEqual({
-            kind: 'stale',
+      it.each([false, true])(
+        'preserves submitted digest through strict acceptance and full witnessed custody (bound dedup=%s)',
+        async (boundDedup) => {
+          const f = fixture(layout, via, hostFacts, boundDedup);
+          const digest = 'station-turn-submission/v1:sha256:' + 'a'.repeat(64);
+          await begin(f.run, true, digest);
+          const dedup = await f.run({ type: 'turnDedup.read', key: 'k' });
+          if (dedup.kind !== 'found')
+            throw new Error('begun dedup prerequisite');
+          expect(dedup.record).toMatchObject({
+            invocation: 'begun',
+            inputDigest: digest,
           });
-        }
-        append(f.db, fact('digest-terminal', 'N'));
-        expect(await f.run(observation(fact('digest-terminal', 'N')))).toEqual({
-          kind: 'applied',
-        });
-        const witness = hostFacts.readRetirement(f.db, 't', 'b');
-        expect(witness?.dedup).toEqual(dedup.record);
-        expect(await f.run(accept)).toEqual({
-          kind: 'terminal',
-          terminal: fact('digest-terminal', 'N'),
-        });
-        expect(await f.rows()).toEqual([]);
-      });
+          const accept = {
+            ...command,
+            expected: { ...expected, intent: { ...intent, dedupKey: 'k' } },
+            expectedDedup: dedup.record,
+          };
+          // On the integration baseline this reaches strict record validation,
+          // before any host-acceptance path or missing-witness branch.
+          const table = boundDedup ? 'host_dedup' : 'monument_turn_dedup';
+          const original = f.db
+            .prepare(
+              `SELECT input_digest,owner_json FROM ${table} WHERE dedup_key='k'`,
+            )
+            .get() as { input_digest: string; owner_json: string };
+          expect(original.input_digest).toBe(digest);
+          expect(JSON.parse(original.owner_json).inputDigest).toBe(digest);
+          expect(await f.run(accept)).toEqual({ kind: 'accepted' });
+          for (const inputDigest of [undefined, digest + 'changed']) {
+            const { inputDigest: _original, ...without } = dedup.record;
+            const expectedDedup =
+              inputDigest === undefined ? without : { ...without, inputDigest };
+            expect(await f.run({ ...accept, expectedDedup })).toEqual({
+              kind: 'stale',
+            });
+          }
+          for (const inputDigest of [undefined, digest + 'changed']) {
+            const { inputDigest: _old, ...fields } = JSON.parse(
+              original.owner_json,
+            );
+            f.db
+              .prepare(
+                `UPDATE ${table} SET input_digest=?,owner_json=? WHERE dedup_key='k'`,
+              )
+              .run(
+                inputDigest ?? null,
+                JSON.stringify({
+                  ...fields,
+                  ...(inputDigest === undefined ? {} : { inputDigest }),
+                }),
+              );
+            expect(await f.run(accept)).toEqual({ kind: 'stale' });
+          }
+          f.db
+            .prepare(
+              `UPDATE ${table} SET input_digest=?,owner_json=? WHERE dedup_key='k'`,
+            )
+            .run(original.input_digest, original.owner_json);
+          append(f.db, fact('digest-terminal', 'N'));
+          expect(
+            await f.run(observation(fact('digest-terminal', 'N'))),
+          ).toEqual({
+            kind: 'applied',
+          });
+          const witness = hostFacts.readRetirement(f.db, 't', 'b');
+          expect(witness?.dedup).toEqual(dedup.record);
+          if (!witness?.dedup) throw new Error('digest witness prerequisite');
+          for (const inputDigest of [undefined, digest + 'changed']) {
+            const { inputDigest: _old, ...without } = witness.dedup;
+            f.db.prepare('UPDATE intents SET retirement = ?').run(
+              JSON.stringify({
+                ...witness,
+                dedup: {
+                  ...without,
+                  ...(inputDigest === undefined ? {} : { inputDigest }),
+                },
+              }),
+            );
+            expect(await f.run(accept)).toEqual({ kind: 'stale' });
+          }
+          f.db
+            .prepare('UPDATE intents SET retirement = ?')
+            .run(JSON.stringify(witness));
+          expect(await f.run(accept)).toEqual({
+            kind: 'terminal',
+            terminal: fact('digest-terminal', 'N'),
+          });
+          expect(await f.rows()).toEqual([]);
+        },
+      );
       it('selects after actual-target native eligibility, in code-point order, and acknowledges the exact witnessed event', async () => {
         const f = fixture(layout, via);
         await begin(f.run);
@@ -840,7 +910,7 @@ for (const failure of [false, true])
         id === 'active' ? 'v3-key' : null,
         audit,
       );
-    db.exec(`CREATE TABLE monument_turn_dedup(dedup_key TEXT PRIMARY KEY, value TEXT, created_at INTEGER NOT NULL, owner_json TEXT);
+    db.exec(`CREATE TABLE monument_turn_dedup(dedup_key TEXT PRIMARY KEY, value TEXT, created_at INTEGER NOT NULL, owner_json TEXT, input_digest TEXT);
       CREATE TABLE monument_turn_dedup_expired(dedup_key TEXT PRIMARY KEY, expired_at INTEGER NOT NULL);`);
     const linkedBytes = JSON.stringify({
       ...owner,
@@ -848,12 +918,21 @@ for (const failure of [false, true])
       preparedInvocationId: 'v3-B',
       preparedUpdatedAt: '0',
       retainedHostField: 'preserved bytes',
+      inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
     });
-    db.prepare('INSERT INTO monument_turn_dedup VALUES (?,?,?,?)').run(
+    db.prepare('INSERT INTO monument_turn_dedup VALUES (?,?,?,?,?)').run(
       'v3-key',
       null,
       7,
       linkedBytes,
+      'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
+    );
+    db.prepare('INSERT INTO monument_turn_dedup VALUES (?,?,?,?,?)').run(
+      'v3-legacy',
+      null,
+      8,
+      JSON.stringify({ ...owner, invocation: 'pending' }),
+      null,
     );
     const linkedBefore = db.prepare('SELECT * FROM monument_turn_dedup').all();
     const before = db
@@ -921,7 +1000,7 @@ for (const failure of [false, true])
     storage = openSqliteKernelStorage({ database: db });
     cleanup.push(() => storage.close());
     expect(db.prepare('SELECT * FROM monument_turn_dedup').all()).toEqual(
-      linkedBefore.map((row) => ({ ...row, input_digest: null })),
+      linkedBefore,
     );
     expect(
       storage.executeSync({ type: 'turnDedup.read', key: 'v3-key' }, context),
@@ -935,8 +1014,22 @@ for (const failure of [false, true])
         invocation: 'begun',
         preparedInvocationId: 'v3-B',
         preparedUpdatedAt: '0',
+        inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
       },
     });
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.read', key: 'v3-legacy' },
+        context,
+      ),
+    ).toMatchObject({ kind: 'found', record: { key: 'v3-legacy' } });
+    const legacy = storage.executeSync(
+      { type: 'turnDedup.read', key: 'v3-legacy' },
+      context,
+    );
+    if (legacy.kind !== 'found')
+      throw new Error('legacy migration prerequisite');
+    expect(legacy.record).not.toHaveProperty('inputDigest');
     expect(
       storage.executeSync(
         {

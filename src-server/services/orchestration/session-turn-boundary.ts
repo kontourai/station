@@ -1,6 +1,29 @@
 import { randomUUID } from 'node:crypto';
-import type { OwnerIdentity, PreparedTurnIntent } from '@kontourai/monument';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isDeepStrictEqual } from 'node:util';
+import type {
+  InvocationTerminalFact,
+  InvocationTerminalRetirement,
+  OwnerIdentity,
+  PreparedTurnIntent,
+  PreparedTurnSettlement,
+  TurnBoundaryRecord,
+  TurnDedupRecord,
+} from '@kontourai/monument';
+import {
+  decidePreparedTurnSettlement,
+  decideTurnBoundaryAcceptInvocation,
+  decideTurnBoundaryBeginInvocation,
+  decideTurnBoundaryObserveTerminal,
+  decideTurnBoundaryPrepare,
+  decideTurnBoundaryRecordAccepted,
+  decideTurnBoundaryRemove,
+  decideTurnBoundaryTransition,
+} from '@kontourai/monument';
+import { findInvocationTerminal } from '@kontourai/monument/adapter';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type { CapturedTurnIntent } from './prepared-turn-intent.js';
 import type {
@@ -20,6 +43,7 @@ type BoundaryState =
 
 export interface SessionTurnBoundaryRecord {
   purpose?: 'task-dispatch';
+  createdSequence?: number | null;
   boundaryId: string;
   threadId: string;
   state: BoundaryState;
@@ -31,6 +55,7 @@ export interface SessionTurnBoundaryRecord {
   createdAt: string;
   updatedAt: string;
   intent?: PreparedTurnIntent;
+  settlement?: PreparedTurnSettlement;
 }
 
 /** Unresolved provider acceptances are protected facts and are never pruned. */
@@ -50,6 +75,11 @@ export function isProviderTurnBoundary(record: {
   boundaryId: string;
 }): boolean {
   return record.boundaryId.startsWith(PROVIDER_TURN_BOUNDARY_PREFIX);
+}
+
+export interface InvocationAcceptanceSnapshot {
+  expected: TurnBoundaryRecord;
+  expectedDedup?: TurnDedupRecord;
 }
 
 export type SessionTurnBoundaryTransition =
@@ -84,6 +114,12 @@ export interface SessionTurnBoundaryCoordinator {
     claim?: TurnClaim;
     now: string;
   }): SessionTurnBoundaryTransition;
+  acceptInvocation?(
+    input: InvocationAcceptanceSnapshot & {
+      providerTurnId: string;
+      now: string;
+    },
+  ): SessionTurnBoundaryTransition;
   beginPrepared?(input: {
     boundaryId: string;
     ownerId: string;
@@ -91,7 +127,7 @@ export interface SessionTurnBoundaryCoordinator {
     claim?: TurnClaim;
     now: string;
     current?: () => boolean;
-  }): SessionTurnBoundaryTransition;
+  }): SessionTurnBoundaryTransition & { begun?: InvocationAcceptanceSnapshot };
   recordDefinitiveRefusal?(input: {
     boundaryId: string;
     boundary: { owner: OwnerIdentity; createdAt: string; updatedAt: string };
@@ -118,6 +154,8 @@ export interface SessionTurnBoundaryCoordinator {
     threadId: string;
     providerTurnId?: string;
     sessionTerminal: boolean;
+    invocationId?: string;
+    retire?: boolean;
     terminalCreatedAt: string;
     /** Session terminals use their persisted sequence; turn terminals retain timestamp ordering. */
     terminalEventId?: string;
@@ -620,6 +658,8 @@ export function createSessionTurnBoundaryAuthority(options: {
       };
     }
 
+    let begunSnapshot: InvocationAcceptanceSnapshot | undefined;
+    let beginAt: string | undefined;
     let invocationStarted = false;
     let invocationStartedAt: string | undefined;
     let invocationAttempted = false;
@@ -691,21 +731,26 @@ export function createSessionTurnBoundaryAuthority(options: {
         beginInvocation(beginNow: string) {
           if (invocationStarted) return { kind: 'applied' } as const;
           invocationAttempted = true;
+          beginAt ??= beginNow;
           const result = retainUntilApplied(boundaryId, () => {
-            const transitioned =
+            const transitioned: SessionTurnBoundaryTransition & {
+              begun?: InvocationAcceptanceSnapshot;
+            } =
               prepared && options.coordinator.beginPrepared
                 ? options.coordinator.beginPrepared({
                     boundaryId,
                     ownerId: options.owner.id,
                     ...prepared,
-                    now: beginNow,
+                    now: beginAt!,
                   })
-                : transition(['prepared'], 'invoking', beginNow);
+                : transition(['prepared'], 'invoking', beginAt!);
+            if ('begun' in transitioned && transitioned.begun)
+              begunSnapshot ??= transitioned.begun;
             if (transitioned.kind === 'applied') {
               invocationStarted = true;
-              invocationStartedAt = beginNow;
+              invocationStartedAt = beginAt;
             }
-            return transitioned;
+            return { kind: transitioned.kind };
           });
           if (result.kind === 'applied') invocationStarted = true;
           return result;
@@ -751,7 +796,7 @@ export function createSessionTurnBoundaryAuthority(options: {
           ) {
             return { kind: 'stale' } as const;
           }
-          if (terminalApplied) return { kind: 'applied' } as const;
+          if (terminalApplied && !prepared) return { kind: 'applied' } as const;
           terminalIntent ??= {
             kind: 'accepted',
             turnId,
@@ -761,13 +806,38 @@ export function createSessionTurnBoundaryAuthority(options: {
             NonNullable<typeof terminalIntent>,
             { kind: 'accepted' }
           >;
-          const result = retainUntilApplied(boundaryId, () =>
-            transition(['invoking'], 'accepted', intent.now, intent.turnId),
-          );
+          const operation = (): SessionTurnBoundaryTransition => {
+            if (prepared) {
+              if (!begunSnapshot || !options.coordinator.acceptInvocation)
+                return { kind: 'unavailable' };
+              return options.coordinator.acceptInvocation({
+                ...begunSnapshot,
+                providerTurnId: intent.turnId,
+                now: intent.now,
+              });
+            }
+            return transition(
+              ['invoking'],
+              'accepted',
+              intent.now,
+              intent.turnId,
+            );
+          };
+          const result = operation();
+          if (prepared && result.kind !== 'applied')
+            pendingTransitions.set(boundaryId, () => {
+              const retried = operation();
+              return retried.kind === 'applied'
+                ? retried
+                : { kind: 'unavailable' };
+            });
+          else if (result.kind === 'applied')
+            pendingTransitions.delete(boundaryId);
           if (result.kind === 'applied') terminalApplied = true;
           return result;
         },
         terminalObserved(turnId: string) {
+          if (prepared) return { kind: 'stale' } as const;
           if (
             terminalIntent &&
             (terminalIntent.kind !== 'terminal-observed' ||
@@ -1030,34 +1100,27 @@ export function createSessionTurnBoundaryAuthority(options: {
       ) {
         return { kind: 'applied' };
       }
-      if (
-        event.method === 'runtime.error' &&
-        event.code === SESSION_START_INDETERMINATE_CODE
-      )
+      const retire = !(
+        (event.method === 'runtime.error' &&
+          (event.code === SESSION_START_INDETERMINATE_CODE ||
+            isDeferredRetriableTurnError(event))) ||
+        (event.method === 'turn.aborted' && event.recoveryTerminal === true)
+      );
+      if (!retire && event.invocationId === undefined)
         return { kind: 'applied' };
-      // station#2235: a recovery-synthesized abort is the recovery's own
-      // terminal fact FOR the dead turn, published mid-flow before its
-      // banner/FileMemory/explicit-close sequence completes. Retiring the
-      // row here would delete the very record that lets the next boot
-      // finish that sequence after a mid-flow crash, so the marker
-      // `TurnAbortedEvent.recoveryTerminal` documents opts this one event
-      // out of retirement. Matched on the field, never on prose (`reason`)
-      // — a text match would retire any engine abort whose message happens
-      // to mention interruption.
-      if (
-        event.method === 'turn.aborted' &&
-        'recoveryTerminal' in event &&
-        event.recoveryTerminal === true
-      ) {
-        return { kind: 'applied' };
-      }
       const turnId = 'turnId' in event ? event.turnId : undefined;
       return options.coordinator.removeTerminal({
         threadId: event.threadId,
+        retire,
         ...(typeof turnId === 'string' ? { providerTurnId: turnId } : {}),
+        ...(event.invocationId === undefined
+          ? {}
+          : { invocationId: event.invocationId }),
         sessionTerminal:
           event.method === 'session.exited' ||
-          (event.method === 'runtime.error' && typeof turnId !== 'string'),
+          (event.method === 'runtime.error' &&
+            typeof turnId !== 'string' &&
+            event.invocationId === undefined),
         terminalCreatedAt: event.createdAt,
         terminalEventId: event.eventId,
       });
@@ -1076,6 +1139,61 @@ export function createSessionTurnBoundaryAuthority(options: {
 /** Test/embedded fallback with the same opaque Interface but no restart claim. */
 export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundaryAuthority {
   const records = new Map<string, SessionTurnBoundaryRecord>();
+  let ordinal = 0;
+  const terminalSequences = new Map<string, number>();
+  const kernelRecord = (
+    row: SessionTurnBoundaryRecord,
+  ): TurnBoundaryRecord => ({
+    boundaryId: row.boundaryId,
+    threadId: row.threadId,
+    state: row.state,
+    purpose: row.purpose ?? 'turn',
+    owner:
+      row.ownerIdentityKind === 'exact' && row.ownerBirth
+        ? {
+            id: row.ownerId,
+            pid: row.ownerPid,
+            identityKind: 'exact',
+            birth: row.ownerBirth,
+          }
+        : { id: row.ownerId, pid: row.ownerPid, identityKind: 'unverified' },
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdSequence: row.createdSequence ?? null,
+    ...(row.providerTurnId === undefined
+      ? {}
+      : { providerTurnId: row.providerTurnId }),
+    ...(row.intent === undefined ? {} : { intent: row.intent }),
+    ...(row.settlement === undefined ? {} : { settlement: row.settlement }),
+  });
+  const invocationFacts = new Map<string, InvocationTerminalFact>();
+  const retirements = new Map<string, InvocationTerminalRetirement>();
+  const put = (row: TurnBoundaryRecord) => {
+    records.set(row.boundaryId, {
+      boundaryId: row.boundaryId,
+      threadId: row.threadId,
+      state: row.state,
+      ...(row.purpose === 'task-dispatch' ? { purpose: 'task-dispatch' } : {}),
+      ownerId: row.owner.id,
+      ownerPid: row.owner.pid,
+      ownerIdentityKind: row.owner.identityKind,
+      ...(row.owner.identityKind === 'exact'
+        ? { ownerBirth: row.owner.birth }
+        : {}),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      createdSequence: row.createdSequence,
+      ...(row.providerTurnId === undefined
+        ? {}
+        : { providerTurnId: row.providerTurnId }),
+      ...(row.intent === undefined
+        ? {}
+        : { intent: structuredClone(row.intent) }),
+      ...(row.settlement === undefined
+        ? {}
+        : { settlement: structuredClone(row.settlement) }),
+    });
+  };
   const terminalTurnIds = new Map<string, Set<string>>();
   const coordinator: SessionTurnBoundaryCoordinator = {
     create(record) {
@@ -1093,61 +1211,161 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
       ) {
         return { kind: 'busy' };
       }
-      records.set(record.boundaryId, { ...record });
+      records.set(record.boundaryId, { ...record, createdSequence: ++ordinal });
       return { kind: 'applied' };
+    },
+    prepareIntent({ boundaryId, ownerId, capture, claim, now }) {
+      if (claim) return { kind: 'unavailable' };
+      const current = records.get(boundaryId);
+      const decision = decideTurnBoundaryPrepare(
+        current ? kernelRecord(current) : undefined,
+        undefined,
+        false,
+        {
+          type: 'turnBoundary.prepare',
+          boundaryId,
+          ownerId,
+          intent: capture.intent,
+          now,
+        },
+      );
+      if (decision.put) put(decision.put);
+      return decision.result.kind === 'conflict'
+        ? { kind: 'stale' }
+        : decision.result;
+    },
+    beginPrepared({ boundaryId, ownerId, capture, claim, now }) {
+      if (claim) return { kind: 'unavailable' };
+      const current = records.get(boundaryId);
+      const decision = decideTurnBoundaryBeginInvocation(
+        current ? kernelRecord(current) : undefined,
+        undefined,
+        false,
+        {
+          type: 'turnBoundary.beginInvocation',
+          boundaryId,
+          ownerId,
+          intent: capture.intent,
+          now,
+        },
+      );
+      if (decision.put) put(decision.put);
+      const begun = records.get(boundaryId);
+      return decision.result.kind === 'applied' && begun
+        ? { kind: 'applied', begun: { expected: kernelRecord(begun) } }
+        : { kind: 'stale' };
+    },
+    acceptInvocation(input) {
+      const command = {
+        ...input,
+        type: 'turnBoundary.acceptInvocation' as const,
+      };
+      const raw = records.get(input.expected.boundaryId);
+      const current = raw ? kernelRecord(raw) : undefined;
+      const witness = retirements.get(input.expected.boundaryId);
+      const target = current ?? witness?.boundary;
+      if (!target?.intent) return { kind: 'stale' };
+      const read = findInvocationTerminal(
+        [...invocationFacts.values()].filter(
+          (fact) =>
+            fact.threadId === target.threadId &&
+            fact.invocationId === target.intent?.invocationId,
+        ),
+        {
+          threadId: target.threadId,
+          invocationId: target.intent.invocationId,
+          providerTurnId: input.providerTurnId,
+          allowMissingProviderTurnId:
+            target.providerTurnId === undefined &&
+            input.expected.providerTurnId === undefined,
+          ...(current || !witness
+            ? {}
+            : { terminalEventId: witness.terminal.terminalEventId }),
+        },
+      );
+      const decision = decideTurnBoundaryAcceptInvocation(
+        current,
+        [...records.values()]
+          .filter((row) => row.threadId === target.threadId)
+          .map(kernelRecord),
+        undefined,
+        false,
+        read,
+        witness,
+        command,
+      );
+      if (decision.retirement)
+        retirements.set(
+          target.boundaryId,
+          structuredClone(decision.retirement),
+        );
+      if (decision.remove) records.delete(decision.remove);
+      if (decision.put) put(decision.put);
+      return decision.result.kind === 'accepted' ||
+        decision.result.kind === 'terminal'
+        ? { kind: 'applied' }
+        : decision.result;
+    },
+    recordDefinitiveRefusal({
+      boundaryId,
+      boundary,
+      capture,
+      claim,
+      settlementId,
+      now,
+    }) {
+      if (claim) return { kind: 'unavailable' };
+      const raw = records.get(boundaryId);
+      const decision = decidePreparedTurnSettlement(
+        raw ? kernelRecord(raw) : undefined,
+        undefined,
+        false,
+        {
+          type: 'turnBoundary.recordDefinitiveRefusal',
+          boundaryId,
+          boundary,
+          intent: capture.intent,
+          settlementId,
+          now,
+        },
+      );
+      if (decision.put) put(decision.put);
+      return decision.result.kind === 'applied'
+        ? decision.result
+        : { kind: 'stale' };
     },
     transition(input) {
-      const record = records.get(input.boundaryId);
-      if (
-        !record ||
-        record.state === 'settled' ||
-        record.ownerId !== input.ownerId ||
-        !input.from.includes(record.state)
-      ) {
-        return { kind: 'stale' };
-      }
-      if (
-        input.to === 'accepted' &&
+      const raw = records.get(input.boundaryId);
+      const collision = Boolean(
         input.providerTurnId &&
-        (terminalTurnIds.get(record.threadId)?.has(input.providerTurnId) ||
-          [...records.values()].some(
-            (candidate) =>
-              candidate.boundaryId !== record?.boundaryId &&
-              candidate.threadId === record?.threadId &&
-              candidate.state === 'accepted' &&
-              candidate.providerTurnId === input.providerTurnId,
-          ))
-      ) {
-        records.set(input.boundaryId, {
-          ...record,
-          state: 'indeterminate',
-          providerTurnId: input.providerTurnId,
-          updatedAt: input.now,
-        });
-        return { kind: 'ambiguous' };
-      }
-      records.set(input.boundaryId, {
-        ...record,
-        state: input.to,
-        updatedAt: input.now,
-        ...(input.providerTurnId
-          ? { providerTurnId: input.providerTurnId }
-          : {}),
-      });
-      return { kind: 'applied' };
+          (terminalTurnIds
+            .get(raw?.threadId ?? '')
+            ?.has(input.providerTurnId) ||
+            [...records.values()].some(
+              (row) =>
+                row.boundaryId !== input.boundaryId &&
+                row.threadId === raw?.threadId &&
+                row.state === 'accepted' &&
+                row.providerTurnId === input.providerTurnId,
+            )),
+      );
+      const decision = decideTurnBoundaryTransition(
+        raw ? kernelRecord(raw) : undefined,
+        { ...input, type: 'turnBoundary.transition' },
+        collision,
+      );
+      if (decision.put) put(decision.put);
+      return decision.result;
     },
     remove(input) {
-      const record = records.get(input.boundaryId);
-      if (!record) return { kind: 'applied' };
-      if (
-        record.state === 'settled' ||
-        record.ownerId !== input.ownerId ||
-        !input.from.includes(record.state)
-      ) {
-        return { kind: 'stale' };
-      }
-      records.delete(input.boundaryId);
-      return { kind: 'applied' };
+      const raw = records.get(input.boundaryId);
+      const decision = decideTurnBoundaryRemove(
+        raw ? kernelRecord(raw) : undefined,
+        { ...input, type: 'turnBoundary.remove' },
+        () => 'unknown',
+      );
+      if (decision.remove) records.delete(input.boundaryId);
+      return decision.result;
     },
     removeTerminal(input) {
       if (input.providerTurnId) {
@@ -1158,24 +1376,74 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
         }
         terminals.add(input.providerTurnId);
       }
-      for (const [id, record] of records) {
-        if (
-          record.threadId !== input.threadId ||
-          record.state === 'lifecycle' ||
-          record.state === 'settled' ||
-          record.purpose === 'task-dispatch'
-        ) {
-          continue;
-        }
-        if (
-          record.createdAt <= input.terminalCreatedAt &&
-          (input.sessionTerminal ||
-            (record.state === 'accepted' &&
-              record.providerTurnId === input.providerTurnId))
-        ) {
-          records.delete(id);
-        }
+      let sequence =
+        input.terminalEventId === undefined
+          ? undefined
+          : terminalSequences.get(input.terminalEventId);
+      if (sequence === undefined && input.terminalEventId !== undefined) {
+        sequence = ++ordinal;
+        terminalSequences.set(input.terminalEventId, sequence);
       }
+      let fact: InvocationTerminalFact | undefined;
+      const staged = new Map(invocationFacts);
+      if (input.invocationId !== undefined && !input.sessionTerminal) {
+        if (!input.terminalEventId) return { kind: 'unavailable' };
+        fact = {
+          threadId: input.threadId,
+          invocationId: input.invocationId,
+          terminalEventId: input.terminalEventId,
+          terminalCreatedAt: input.terminalCreatedAt,
+          retire: input.retire ?? true,
+          ...(input.providerTurnId === undefined
+            ? {}
+            : { providerTurnId: input.providerTurnId }),
+        };
+        const key = JSON.stringify([fact.threadId, fact.terminalEventId]);
+        const old = staged.get(key);
+        if (old && !isDeepStrictEqual(old, fact))
+          return { kind: 'unavailable' };
+        staged.set(key, fact);
+      }
+      const reads = fact
+        ? [...records.values()]
+            .filter(
+              (row) =>
+                row.threadId === fact?.threadId &&
+                row.intent?.invocationId === fact?.invocationId,
+            )
+            .map((row) => ({
+              boundaryId: row.boundaryId,
+              read: findInvocationTerminal(
+                [...staged.values()].filter(
+                  (candidate) =>
+                    candidate.threadId === row.threadId &&
+                    candidate.invocationId === row.intent?.invocationId,
+                ),
+                {
+                  threadId: row.threadId,
+                  invocationId: fact!.invocationId,
+                  terminalEventId: fact!.terminalEventId,
+                  ...(row.providerTurnId === undefined
+                    ? {}
+                    : { providerTurnId: row.providerTurnId }),
+                  allowMissingProviderTurnId: row.providerTurnId === undefined,
+                },
+              ),
+            }))
+        : [];
+      const decision = decideTurnBoundaryObserveTerminal(
+        [...records.values()]
+          .filter((row) => row.threadId === input.threadId)
+          .map(kernelRecord),
+        { ...input, type: 'turnBoundary.observeTerminal' },
+        sequence,
+        reads,
+      );
+      for (const [key, value] of staged)
+        invocationFacts.set(key, structuredClone(value));
+      for (const witness of decision.retirements)
+        retirements.set(witness.boundary.boundaryId, structuredClone(witness));
+      for (const id of decision.retire) records.delete(id);
       return { kind: 'applied' };
     },
     hasPossibleEffect: (threadId) =>
@@ -1187,17 +1455,25 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
       ),
     active: () => [...records.values()].map((record) => ({ ...record })),
     recordAccepted(record) {
-      if (
-        [...records.values()].filter(
-          (candidate) =>
-            candidate.threadId === record.threadId &&
-            candidate.state !== 'settled',
-        ).length >= SESSION_TURN_ACCEPTED_CAPACITY
-      ) {
-        return { kind: 'busy' };
-      }
-      records.set(record.boundaryId, { ...record });
-      return { kind: 'applied' };
+      const raw = records.get(record.boundaryId);
+      const row = kernelRecord(record);
+      const decision = decideTurnBoundaryRecordAccepted(
+        [...records.values()]
+          .filter((item) => item.threadId === record.threadId)
+          .map(kernelRecord),
+        raw ? kernelRecord(raw) : undefined,
+        {
+          type: 'turnBoundary.recordAccepted',
+          boundaryId: row.boundaryId,
+          threadId: row.threadId,
+          owner: row.owner,
+          providerTurnId: record.providerTurnId,
+          now: row.createdAt,
+        },
+        SESSION_TURN_ACCEPTED_CAPACITY,
+      );
+      if (decision.put) put({ ...decision.put, createdSequence: ++ordinal });
+      return decision.result;
     },
   };
   return createSessionTurnBoundaryAuthority({

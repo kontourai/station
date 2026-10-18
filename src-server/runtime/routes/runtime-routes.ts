@@ -4566,9 +4566,15 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
-      turnEvents: (threadId, turnId, methods, limit) =>
+      turnEvents: (threadId, turnId, methods, limit, invocationId) =>
         eventStore
-          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .listTurnEventsByMethods(
+            threadId,
+            turnId,
+            methods,
+            limit,
+            invocationId,
+          )
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),
             method: stored.method,

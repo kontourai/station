@@ -450,16 +450,44 @@ function dispatch(
     }
     case 'turnBoundary.hasPossibleEffect': {
       const retired = new Set(facts?.retiredBoundaryIds?.(command.threadId));
+      const rows = tx.turnBoundary.listThread(command.threadId);
       return {
         kind: 'available',
-        active: tx.turnBoundary
-          .listThread(command.threadId)
-          .some(
-            (row) =>
-              row.state !== 'lifecycle' &&
-              row.state !== 'settled' &&
-              !retired.has(row.boundaryId),
-          ),
+        active: rows.some((row) => {
+          if (
+            row.state === 'lifecycle' ||
+            row.state === 'settled' ||
+            retired.has(row.boundaryId)
+          )
+            return false;
+          if (!row.intent) return true;
+          const query = {
+            threadId: row.threadId,
+            invocationId: row.intent.invocationId,
+            ...(row.providerTurnId === undefined
+              ? {}
+              : { providerTurnId: row.providerTurnId }),
+            allowMissingProviderTurnId: row.providerTurnId === undefined,
+          };
+          const read = facts?.invocationTerminals
+            ? facts.invocationTerminals.find(query)
+            : facts
+              ? { kind: 'unknown' as const }
+              : tx.turnTerminals.findInvocation(query);
+          assertInvocationTerminalRead(read, query);
+          if (read.kind !== 'found') return true;
+          // Projection uses the retirement decision without recording its witness.
+          return !decideTurnBoundaryObserveTerminal(
+            [row],
+            {
+              type: 'turnBoundary.observeTerminal',
+              ...read.fact,
+              sessionTerminal: false,
+            },
+            undefined,
+            [{ boundaryId: row.boundaryId, read }],
+          ).retire.includes(row.boundaryId);
+        }),
       };
     }
     case 'turnBoundary.list':

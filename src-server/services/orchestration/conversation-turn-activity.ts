@@ -19,6 +19,7 @@ import type {
 import {
   activeTurnIdForEvents,
   advanceOpenTurnId,
+  turnIdentityAnchorForEvents,
 } from './session-lifecycle-service.js';
 
 /**
@@ -86,7 +87,12 @@ type ActivityStore = Pick<
 
 interface ThreadActivity {
   /** #2324: `trigger` comes from the turn's first `turn.started`. */
-  openTurn?: { turnId: string; startedAt: string; trigger?: 'provider' };
+  openTurn?: {
+    turnId: string;
+    invocationId?: string;
+    startedAt: string;
+    trigger?: 'provider';
+  };
   /** Insertion order is start order: the most recently started is last. */
   runningTools: Map<string, { name: string; startedAt: string }>;
   lastTool?: NonNullable<ConversationTurnActivity['lastTool']>;
@@ -465,11 +471,18 @@ export class ConversationTurnActivityProjection {
     const openTurnId = activeTurnIdForEvents(
       events.map((event) => event.payload),
     );
+    const anchor = turnIdentityAnchorForEvents(
+      events.map((event) => event.payload),
+    );
     return this.installSeed(
       threadId,
       openTurnId,
       events,
-      this.deps.eventStore.readTurnActivitySeed(threadId, openTurnId),
+      this.deps.eventStore.readTurnActivitySeed(
+        threadId,
+        openTurnId,
+        typeof anchor === 'object' ? anchor.invocationId : undefined,
+      ),
     );
   }
 
@@ -497,6 +510,9 @@ export class ConversationTurnActivityProjection {
       state.openTurn = {
         turnId: openTurnId,
         startedAt: seed.openTurn.startedAt,
+        ...(seed.openTurn.invocationId === undefined
+          ? {}
+          : { invocationId: seed.openTurn.invocationId }),
         ...(seed.openTurn.trigger ? { trigger: seed.openTurn.trigger } : {}),
       };
       for (const tool of seed.tools) {
@@ -524,6 +540,9 @@ export class ConversationTurnActivityProjection {
       if (started) {
         state.openTurn = {
           turnId: openTurnId,
+          ...(started.payload.invocationId === undefined
+            ? {}
+            : { invocationId: started.payload.invocationId }),
           startedAt: started.createdAt,
           ...(isProviderTriggeredTurn(started.payload)
             ? { trigger: PROVIDER_TURN_TRIGGER }
@@ -551,8 +570,16 @@ export class ConversationTurnActivityProjection {
     // Unseeded: the seed will read this row durably when first needed.
     if (!state || globalSequence <= state.asOfSequence) return;
     const previous = state.openTurn?.turnId;
-    const next = advanceOpenTurnId(previous, event);
-    if (next !== previous) {
+    const next = advanceOpenTurnId(
+      previous,
+      event,
+      state.openTurn?.invocationId,
+    );
+    if (
+      next !== previous ||
+      (event.method === 'turn.started' &&
+        event.invocationId !== state.openTurn?.invocationId)
+    ) {
       // A new turn or a closed one: calls started in the previous turn are
       // no longer this turn's, and a call left open at close is dropped —
       // settling it is the adapter's report to make, not this fold's.
@@ -564,6 +591,9 @@ export class ConversationTurnActivityProjection {
           ? undefined
           : {
               turnId: next,
+              ...(event.invocationId === undefined
+                ? {}
+                : { invocationId: event.invocationId }),
               startedAt: event.createdAt,
               ...(isProviderTriggeredTurn(event)
                 ? { trigger: PROVIDER_TURN_TRIGGER }

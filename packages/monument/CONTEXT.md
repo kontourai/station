@@ -64,12 +64,11 @@ Station's consumer facade maps retained dedup settlement to a typed
 `client_turn_settled` refusal with the actual disposition; the authorized delivery
 GET answers 409 while the successful lookup DTO and unreadable-conversation
 non-disclosure remain unchanged. An ordinary same-key send is refused and a new
-request needs a new key, never a fabricated provider result. This does not add a
-Station prepare/cancel/resume API. Its legacy boundary binding still lacks intent
-and settlement columns and cannot author or decode a settled boundary audit;
-observation fails closed as unavailable, while terminal SQL preserves the raw
-row. Explicit host thread deletion retains its existing authority. Modern host
-bindings and supported-writer fencing remain separate integration work.
+request needs a new key, never a fabricated provider result. Station binds its
+existing intent/settlement columns and stores retirement custody on the same
+prepared-input audit row. Bindings without those columns retain only their
+legacy commands. Explicit host thread deletion keeps its existing authority;
+concurrent old writers and installed runtime behavior need separate qualification.
 
 ## What it does not own
 
@@ -191,6 +190,7 @@ Facts/witnesses can grow without bound until explicit deletion; dedup retention
 can independently make acknowledgement stale. A late contradiction after an
 already committed deletion makes later acknowledgement stale without recreating
 a fence or retroactively retracting release. Neither terminal disposition nor
-row absence authorizes replay. Producer attribution, supported-writer fencing,
-Station host adoption and actual effect-count/native/runtime qualification remain
-host-owned. See [the exact protocol](README.md#invocation-terminal-acknowledgement).
+row absence authorizes replay. Station source consumes this protocol through
+its actual canonical event/audit connection and private begun claim snapshots.
+Producer attribution, supported-writer fencing and actual effect-count/native/
+runtime qualification remain host-owned. See [the exact protocol](README.md#invocation-terminal-acknowledgement).

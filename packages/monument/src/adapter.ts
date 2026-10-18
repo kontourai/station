@@ -1,4 +1,7 @@
-export { findInvocationTerminal } from './decisions/invocation-terminal.js';
+export {
+  assertInvocationTerminalRetirement,
+  findInvocationTerminal,
+} from './decisions/invocation-terminal.js';
 /**
  * For adapter authors: the record operations a decision runs against inside
  * one transaction, and the step every adapter runs in it. Consumers of the

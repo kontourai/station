@@ -50,6 +50,7 @@ function withClientTurnId(
 
 /** What a turn-start reserves for its eventual `turn.started` event. */
 interface TurnAttribution {
+  invocationId?: string;
   experience?: SkillExperienceInvocationReferenceV1;
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
@@ -124,6 +125,11 @@ export class ClientOriginTurnPropagation {
     return true;
   }
 
+  bindInvocation(threadId: string, invocationId: string): void {
+    const reserved = this.#inFlight.get(threadId);
+    if (reserved) reserved.invocationId = invocationId;
+  }
+
   settle(
     threadId: string,
     turnId: string,
@@ -131,9 +137,11 @@ export class ClientOriginTurnPropagation {
     principal?: PrincipalRef,
     experience?: SkillExperienceInvocationReferenceV1,
     clientTurnId?: string,
+    invocationId?: string,
   ): CanonicalRuntimeEvent | undefined {
     const reserved = this.#inFlight.get(threadId);
     const attribution: TurnAttribution = {
+      invocationId,
       clientOrigin: clientOrigin ?? reserved?.clientOrigin,
       principal: principal ?? reserved?.principal,
       experience: experience ?? reserved?.experience,
@@ -141,7 +149,7 @@ export class ClientOriginTurnPropagation {
     };
     this.#inFlight.delete(threadId);
     if (!hasAttribution(attribution)) return undefined;
-    const key = this.#key(threadId, turnId);
+    const key = this.#key(threadId, turnId, invocationId);
     const early = this.#early.get(key);
     if (early) {
       this.#early.delete(key);
@@ -170,13 +178,19 @@ export class ClientOriginTurnPropagation {
     // it on settle — or drop it on retire, leaving its deltas with no start.
     if (isProviderTriggeredTurn(event)) return event;
     if (!event.turnId) return event;
-    const key = this.#key(event.threadId, event.turnId);
+    const key = this.#key(event.threadId, event.turnId, event.invocationId);
     const attribution = this.#accepted.get(key);
     if (attribution) {
       this.#accepted.delete(key);
       return this.#attribute(event, attribution);
     }
-    if (this.#inFlight.has(event.threadId)) {
+    const reserved = this.#inFlight.get(event.threadId);
+    if (
+      reserved?.invocationId !== undefined &&
+      reserved.invocationId !== event.invocationId
+    )
+      return event;
+    if (reserved) {
       if (this.#early.size < ClientOriginTurnPropagation.MAX_PENDING) {
         this.#early.set(key, event);
         return undefined;
@@ -199,12 +213,20 @@ export class ClientOriginTurnPropagation {
     }
   }
 
-  retire(threadId: string, turnId: string | undefined): void {
+  retire(
+    threadId: string,
+    turnId: string | undefined,
+    invocationId?: string,
+  ): void {
     if (!turnId) {
-      this.#inFlight.delete(threadId);
+      if (
+        invocationId === undefined ||
+        this.#inFlight.get(threadId)?.invocationId === invocationId
+      )
+        this.#inFlight.delete(threadId);
       return;
     }
-    const key = this.#key(threadId, turnId);
+    const key = this.#key(threadId, turnId, invocationId);
     this.#accepted.delete(key);
     this.#early.delete(key);
   }
@@ -251,7 +273,7 @@ export class ClientOriginTurnPropagation {
     return result;
   }
 
-  #key(threadId: string, turnId: string): string {
-    return `${threadId.length}:${threadId}:${turnId.length}:${turnId}`;
+  #key(threadId: string, turnId: string, invocationId?: string): string {
+    return `${threadId.length}:${threadId}:${JSON.stringify([turnId, invocationId ?? null])}`;
   }
 }

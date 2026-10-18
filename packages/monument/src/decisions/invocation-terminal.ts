@@ -134,8 +134,10 @@ export function isTerminalDedupRecord(
         'preparedInvocationId',
         'preparedUpdatedAt',
         'settlement',
+        'inputDigest',
       ],
     ) &&
+    optionalText(value, 'inputDigest') &&
     text(value.key) &&
     (value.value === null || typeof value.value === 'string') &&
     typeof value.createdAt === 'number' &&

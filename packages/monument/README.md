@@ -154,19 +154,17 @@ it, and a command that throws or is refused undoes only itself.
 
 ## Host boundary rows and terminal facts
 
-Station's production boundary coordinator uses this binding for create,
-transition, remove, accepted-turn recording, terminal observation and listing.
-Station retains sealed-task admission, storage-error classification and
-process-owner reconciliation. Its current legacy boundary binding configures
-neither intent nor settlement columns: it cannot author or decode a settled
-boundary audit, and encountering that tag makes the host observation unavailable.
-Host terminal SQL preserves the raw row rather than treating it as permission to
-delete or replay. The separate Station dedup binding can read settlement in
-`owner_json`; its claim/inspection facade refuses the key with the typed
-`client_turn_settled` error and actual disposition. The authorized delivery lookup
-maps that refusal to [HTTP 409](../../docs/reference/session-api.md#find-out-what-became-of-a-send).
-These consumer rules add no host preparation, cancellation or resume API and do
-not qualify mixed-version writers.
+Station's production boundary coordinator binds its existing boundary and dedup
+tables, including intent, settlement and submitted-input digest fields. It retains
+sealed-task admission, storage-error classification and process-owner
+reconciliation. The submission digest identifies the original submitted intent;
+`PreparedTurnIntent.inputDigest` identifies the final composed engine input.
+Neither substitutes for the other. Retained settlement still maps to the typed
+`client_turn_settled` refusal and the authorized delivery lookup's
+[HTTP 409](../../docs/reference/session-api.md#find-out-what-became-of-a-send).
+Legacy bindings without the optional columns remain supported for their legacy
+commands; they cannot decode a settled audit. These source contracts do not
+qualify concurrent old writers or an installed runtime.
 
 The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
@@ -228,28 +226,27 @@ and inputless legacy turn terminals retain the timestamp generation check; lifec
 and task-dispatch rows retain their separate settlement owners.
 
 A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
-open (the SQLite binding receives `database` first). Only
-`turnBoundary.hasPossibleEffect` excludes those IDs from its raw thread rows.
-`get`, `listThread`, `listAll`, listing and recovery still see the retained rows;
-the default memory and SQLite terminal behavior is unchanged. No command or
-context can replace these facts.
+open (the SQLite binding receives `database` first), for session and legacy
+projection. Invocation-bearing rows additionally query the complete terminal
+source and use `decideTurnBoundaryObserveTerminal`, the same pure decision that
+physical observation uses. `hasPossibleEffect` writes no witness, drains no
+pending transition and never deletes a row. Raw listing and recovery still see
+retained rows; no command or context can replace the fixed facts.
 
-Station uses its canonical event log for that read projection, with the exact
-same predicate as physical retirement: session sequence strictly above the
-creation fence, timestamp fallback for NULL legacy fences, turn timestamp and
-provider-ID matching, and the existing lifecycle, task-dispatch, admission-error
-and recovery-terminal exclusions. Settled audit rows are also excluded from both
-terminal projection and physical retirement. Its polling path takes a deferred read
-transaction, does not drain pending transitions, and can read committed facts
-while a peer holds the WAL writer. An uncommitted terminal is invisible; after
-commit the next poll can answer inactive while the boundary row remains.
+Station's canonical source decodes actual event columns and payload eligibility
+on the same connection. Ordinary invocation matching ignores clocks and requires
+native consistency; inputless legacy turns retain provider-ID/time rules.
+Session terminals keep their persisted sequence fence and NULL legacy fallback.
+New ordinary invocation retirement writes the full witness on the existing
+`orchestration_prepared_turns` audit row before deletion. Event insertion and
+observation join the append savepoint, so an outer rollback restores both.
 
-Physical cleanup joins write-only participant admission for both create and
-accepted-turn recording, before occupancy and capacity decisions. It rolls back
-with the command or outer event append. Boot cleanup still precedes raw owner
-recovery. Claim, prepare, observe and reconcile paths retain pending-transition
-retries; until a writer retries, polling conservatively reads the unresolved
-stored fact. No Station participant opts into `observeReads`.
+Create and engine-opened acceptance precompose cleanup under the owning writer
+transaction before command dispatch. Participant admission never re-enters the
+kernel. Boot cleanup precedes raw recovery. Claim, prepare, observe and reconcile
+retain exact pending retries without reinvoking the adapter. Polling remains a
+deferred read and can read committed facts while a peer holds the WAL writer.
+No Station participant opts into `observeReads`.
 
 `hostBoundaryConformanceCases` in `./testing` is a portable contract for hosts
 that bind a creation fence. Its harness supplies a durable creation-sequence
@@ -501,8 +498,9 @@ Adapter authors have equivalent `KernelInvocationTerminalFacts` in `./adapter`.
 That entry also exports the existing pure `findInvocationTerminal(facts, query)`:
 a host can pass its complete decoded canonical scope to share consistency,
 eligibility and code-point selection. It accepts and returns inert data and
-performs no storage or origin inference. No other internal predicate is exposed;
-commands and provider/SDK data contain no callbacks.
+performs no storage or origin inference. The same entry exports
+`assertInvocationTerminalRetirement` for the real host audit decoder. No other
+internal predicate is exposed; commands and provider/SDK data contain no callbacks.
 
 `find` accepts own inert data only: required nonempty `threadId`/`invocationId`,
 required boolean `allowMissingProviderTurnId`, and optional nonempty

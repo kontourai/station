@@ -106,6 +106,7 @@ import {
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import { ensurePreparedTurnIntents } from '../../domain/migrations/017-prepared-turn-intents.js';
+import { ensureInvocationTerminalRetirement } from '../../domain/migrations/018-invocation-terminal-retirement.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -352,10 +353,12 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event
                WHERE event.thread_id = orchestration_turn_boundaries.thread_id
+                 AND NOT (event.method = 'runtime.error' AND event.provider = 'codex' AND COALESCE(json_extract(event.payload, '$.retriable'), 0) = 1)
                  AND (
                    (
                      (event.method = 'session.exited'
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                          AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
                      AND (
                        (orchestration_turn_boundaries.created_sequence IS NULL
@@ -364,7 +367,12 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                      )
                    )
                    OR (
-                     orchestration_turn_boundaries.state = 'accepted'
+                     orchestration_turn_boundaries.invocation_id IS NULL
+                     AND orchestration_turn_boundaries.input_digest IS NULL
+                     AND orchestration_turn_boundaries.intent_digest IS NULL
+                     AND orchestration_turn_boundaries.body_ref IS NULL
+                     AND orchestration_turn_boundaries.dedup_key IS NULL
+                     AND orchestration_turn_boundaries.state = 'accepted'
                      AND event.created_at >= orchestration_turn_boundaries.created_at
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
                      AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
@@ -1937,7 +1945,7 @@ export interface EventStoreCommitObserver {
 export interface TurnActivitySeed {
   head?: { globalSequence: number; createdAt: string };
   /** #2324: `trigger` is read from the turn's first `turn.started`. */
-  openTurn?: { startedAt: string; trigger?: 'provider' };
+  openTurn?: { startedAt: string; invocationId?: string; trigger?: 'provider' };
   tools: Array<{
     method: 'tool.started' | 'tool.completed';
     callId: string;
@@ -2238,6 +2246,7 @@ export class EventStore {
       ensureOrchestrationBoundaryPurpose(this.db);
       ensureTurnBoundarySequenceFence(this.db);
       ensurePreparedTurnIntents(this.db);
+      ensureInvocationTerminalRetirement(this.db);
       this.turnDedupPersistence = createSqliteTurnDedupPersistence({
         db: this.db,
         maxEntries: this.turnDedupMaxEntries,
@@ -3765,6 +3774,7 @@ export class EventStore {
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
         this.recordDeclaredOutputs(event, declaredOutputs);
+        this.observeInsertedInvocationTerminal(event);
         if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
         if (workItemAdmission?.kind === 'association')
           this.recordSessionWorkItemAssociation(
@@ -3807,6 +3817,22 @@ export class EventStore {
     );
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
+  }
+
+  private observeInsertedInvocationTerminal(
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (
+      event.invocationId === undefined ||
+      !['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      )
+    )
+      return;
+    // Exact verification reads the inserted canonical fact on this transaction.
+    const observed = this.sessionTurnBoundaries.observe(event);
+    if (observed.kind !== 'applied')
+      throw new Error('Invocation terminal observation unavailable.');
   }
 
   /**
@@ -4524,6 +4550,7 @@ export class EventStore {
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
         this.projectSessionProjectionFacts(event);
+        this.observeInsertedInvocationTerminal(event);
       }
       this.db.exec('RELEASE SAVEPOINT append_event_if_absent_history');
     } catch (error) {
@@ -4981,7 +5008,8 @@ export class EventStore {
       .prepare(
         `SELECT thread_id, turn_id, created_at, global_sequence,
                 substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
-                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger,
+                json_extract(payload, '$.invocationId') AS invocation_id
            FROM orchestration_events
           WHERE ${isTurnStart} AND global_sequence < ?
           ORDER BY global_sequence DESC LIMIT ?`,
@@ -7287,6 +7315,7 @@ export class EventStore {
     turnId: string,
     methods: readonly string[],
     limit: number,
+    invocationId?: string,
   ): PersistedRuntimeEvent[] {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -7301,10 +7330,17 @@ export class EventStore {
           `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
            FROM orchestration_events
            WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+             ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
            ORDER BY sequence ASC
            LIMIT ?`,
         )
-        .all(threadId, turnId, ...methods, limit) as Record<string, unknown>[]
+        .all(
+          threadId,
+          turnId,
+          ...methods,
+          ...(invocationId === undefined ? [] : [invocationId]),
+          limit,
+        ) as Record<string, unknown>[]
     ).map((row) => this.mapEventRow(row));
   }
 
@@ -7350,6 +7386,7 @@ export class EventStore {
   readTurnActivitySeed(
     threadId: string,
     openTurnId: string | undefined,
+    invocationId?: string,
   ): TurnActivitySeed {
     const head = this.db
       .prepare(
@@ -7363,7 +7400,7 @@ export class EventStore {
       threadId,
     );
     const open = openTurnId
-      ? this.readOpenTurnActivitySeed(threadId, openTurnId)
+      ? this.readOpenTurnActivitySeed(threadId, openTurnId, 2_000, invocationId)
       : { tools: [], toolsTruncated: false };
     return {
       ...(head
@@ -7388,6 +7425,7 @@ export class EventStore {
     threadId: string,
     turnId: string,
     toolLimit = 2_000,
+    invocationId?: string,
   ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
     const started = this.db
       .prepare(
@@ -7395,10 +7433,20 @@ export class EventStore {
                 json_extract(payload, '$.metadata.trigger') AS turn_trigger
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence ASC LIMIT 1`,
       )
-      .get(threadId, turnId) as
-      | { sequence: number; created_at: string; turn_trigger: unknown }
+      .get(
+        threadId,
+        turnId,
+        ...(invocationId === undefined ? [] : [invocationId]),
+      ) as
+      | {
+          sequence: number;
+          created_at: string;
+          turn_trigger: unknown;
+          invocation_id: unknown;
+        }
       | undefined;
     if (!started) return { tools: [], toolsTruncated: false };
     const rows = this.db
@@ -7411,9 +7459,15 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND method IN ('tool.started', 'tool.completed')
            AND sequence > ?
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence ASC LIMIT ?`,
       )
-      .all(threadId, started.sequence, toolLimit + 1) as Array<{
+      .all(
+        threadId,
+        started.sequence,
+        ...(invocationId === undefined ? [] : [invocationId]),
+        toolLimit + 1,
+      ) as Array<{
       method: 'tool.started' | 'tool.completed';
       call_id: unknown;
       tool_name: unknown;
@@ -7435,6 +7489,9 @@ export class EventStore {
     return {
       openTurn: {
         startedAt: started.created_at,
+        ...(typeof started.invocation_id === 'string'
+          ? { invocationId: started.invocation_id }
+          : {}),
         ...(started.turn_trigger === PROVIDER_TURN_TRIGGER
           ? { trigger: PROVIDER_TURN_TRIGGER }
           : {}),
@@ -11347,6 +11404,41 @@ export class EventStore {
     return this.sessionTurnBoundaries;
   }
 
+  preparedInvocationForClientTurn(
+    threadId: string,
+    clientTurnId: string,
+  ): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?',
+      )
+      .get(turnDedupKey(threadId, clientTurnId)) as
+      | { owner_json: string }
+      | undefined;
+    if (!row) throw new Error('Turn result custody is unavailable.');
+    const owner = JSON.parse(row.owner_json) as {
+      preparedInvocationId?: unknown;
+      preparedUpdatedAt?: unknown;
+    };
+    if (
+      owner.preparedInvocationId === undefined &&
+      owner.preparedUpdatedAt === undefined
+    )
+      return undefined;
+    if (
+      typeof owner.preparedInvocationId !== 'string' ||
+      typeof owner.preparedUpdatedAt !== 'string'
+    )
+      throw new Error('Turn result custody is incomplete.');
+    const input = this.readPreparedTurnIntent(
+      threadId,
+      owner.preparedInvocationId,
+    );
+    if (!input || input.capture.clientTurnId !== clientTurnId)
+      throw new Error('Turn result input is unavailable.');
+    return owner.preparedInvocationId;
+  }
+
   /** Private persistence read; the service supplies current Session authority before calling. */
   readPreparedTurnIntent(threadId: string, invocationId: string) {
     const row = this.db
@@ -11557,10 +11649,28 @@ export class EventStore {
   }
 
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
+    // The kernel captures full custody before every ordinary invocation deletion.
+    const events = this.db
+      .prepare(`SELECT payload FROM orchestration_events
+      WHERE (? IS NULL OR thread_id = ?) AND method IN ('turn.completed','turn.aborted','runtime.error','session.exited')`)
+      .all(threadId ?? null, threadId ?? null) as Array<{ payload: string }>;
+    for (const row of events) {
+      const event = JSON.parse(row.payload) as CanonicalRuntimeEvent;
+      if (
+        event.invocationId !== undefined ||
+        event.method === 'session.exited' ||
+        (event.method === 'runtime.error' && event.turnId === undefined)
+      ) {
+        const result = this.sessionTurnBoundaries.observe(event);
+        if (result.kind !== 'applied')
+          throw new Error('Invocation terminal cleanup unavailable.');
+      }
+    }
     this.db
       .prepare(
         `DELETE FROM orchestration_turn_boundaries
-          WHERE ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
+          WHERE invocation_id IS NULL AND input_digest IS NULL AND intent_digest IS NULL AND body_ref IS NULL AND dedup_key IS NULL
+          AND ${SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE}`,
       )
       .run(
         threadId ?? null,

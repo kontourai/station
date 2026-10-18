@@ -237,3 +237,87 @@ describe('SessionTurnWaiter', () => {
     await Promise.all(three);
   });
 });
+
+test('wait settlement carries exact invocation to result consumers when native ids are reused', () => {
+  const base = {
+    provider: 'claude',
+    threadId: 't1',
+    createdAt: '2030-01-01T00:00:00Z',
+  };
+  const log: SessionWaitFoldEvent[] = [
+    {
+      sequence: 1,
+      event: {
+        ...base,
+        eventId: 'A-start',
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'A',
+        prompt: 'A',
+      },
+    },
+    {
+      sequence: 2,
+      event: {
+        ...base,
+        eventId: 'A-done',
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      },
+    },
+    {
+      sequence: 3,
+      event: {
+        ...base,
+        eventId: 'B-start',
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'B',
+        prompt: 'B',
+      },
+    },
+    {
+      sequence: 4,
+      event: {
+        ...base,
+        eventId: 'A-late',
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+        createdAt: '2100-01-01T00:00:00Z',
+      },
+    },
+  ];
+  const ports = {
+    foldEvents: () => log,
+    headSequence: () => log.length,
+    coordinatorBusy: () => false,
+  };
+  expect(evaluateSessionWait(ports, 't1', 'turn-settled', 2)).toMatchObject({
+    satisfied: false,
+    view: { state: 'running', openTurnId: 'N' },
+  });
+  log.push({
+    sequence: 5,
+    event: {
+      ...base,
+      eventId: 'B-done',
+      method: 'turn.completed',
+      turnId: 'N',
+      invocationId: 'B',
+      createdAt: '1900-01-01T00:00:00Z',
+    },
+  });
+  expect(evaluateSessionWait(ports, 't1', 'turn-settled', 2)).toMatchObject({
+    satisfied: true,
+    view: {
+      settledTurn: {
+        turnId: 'N',
+        invocationId: 'B',
+        sequence: 5,
+        outcome: 'completed',
+      },
+    },
+  });
+});

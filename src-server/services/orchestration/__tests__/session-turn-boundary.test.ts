@@ -1198,13 +1198,11 @@ function begunIntent(store: EventStore, threadId: string, key?: string) {
     { binding: {}, requiresFreshCompanions: false },
   );
   const dedup = key
-    ? store
-        .createTurnDeduplicator()
-        .claim({
-          threadId,
-          clientTurnId: key,
-          inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
-        })
+    ? store.createTurnDeduplicator().claim({
+        threadId,
+        clientTurnId: key,
+        inputDigest: 'station-turn-submission/v1:sha256:' + 'a'.repeat(64),
+      })
     : undefined;
   if (dedup && dedup.kind !== 'owner')
     throw new Error('private dedup prerequisite');
@@ -1222,15 +1220,23 @@ function begunIntent(store: EventStore, threadId: string, key?: string) {
     id: string,
     native: string | null = 'N',
     invocationId = capture.intent.invocationId,
-  ): CanonicalRuntimeEvent => ({
-    method: 'turn.completed',
-    eventId: id,
-    provider: 'claude',
-    threadId,
-    createdAt: '1900-01-01T00:00:00Z',
-    invocationId,
-    ...(native === null ? {} : { turnId: native }),
-  });
+  ): CanonicalRuntimeEvent => {
+    const base = {
+      eventId: id,
+      provider: 'claude',
+      threadId,
+      createdAt: '1900-01-01T00:00:00Z',
+      invocationId,
+    };
+    return native === null
+      ? {
+          ...base,
+          method: 'runtime.error',
+          message: 'request-owned failure before native acknowledgement',
+          severity: 'error',
+        }
+      : { ...base, method: 'turn.completed', turnId: native };
+  };
   return { authority, claim: reserved.claim, capture, event };
 }
 
@@ -1263,7 +1269,25 @@ test('actual prepared claims accept reused native ids without old or untagged te
       });
     }
     const doneB = b.event('done-B');
-    store.appendEvent(doneB);
+    const sequence = store['db']
+      .prepare(
+        'SELECT COALESCE(MAX(global_sequence),0)+1 AS next FROM orchestration_events',
+      )
+      .get() as { next: number };
+    store['db']
+      .prepare(`INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence)
+      VALUES(?,?,?,?,?,?,?,?,?)`)
+      .run(
+        doneB.eventId,
+        doneB.provider,
+        doneB.threadId,
+        doneB.turnId,
+        doneB.method,
+        JSON.stringify(doneB),
+        doneB.createdAt,
+        sequence.next,
+        sequence.next,
+      );
     const beforeRead = store['db']
       .prepare('SELECT * FROM orchestration_prepared_turns')
       .all();
@@ -1282,7 +1306,9 @@ test('actual prepared claims accept reused native ids without old or untagged te
       .prepare(
         'SELECT terminal_retirement FROM orchestration_prepared_turns WHERE invocation_id = ?',
       )
-      .get(b.capture.intent.invocationId);
+      .get(b.capture.intent.invocationId) as
+      | { terminal_retirement: string }
+      | undefined;
     expect(JSON.parse(String(audit?.terminal_retirement))).toMatchObject({
       terminal: { terminalEventId: 'done-B' },
       boundary: { createdSequence: expect.any(Number), purpose: 'turn' },
@@ -1298,13 +1324,38 @@ test('actual prepared claims accept reused native ids without old or untagged te
 test('early request-owned missing-native terminal keeps exact begun custody for late acknowledgement', () => {
   const store = new EventStore(':memory:');
   try {
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(
+      authority
+        .prepareProviderTurn(
+          'early-exact',
+          'other-native',
+          '2030-01-01T00:00:00Z',
+        )
+        .record(),
+    ).toEqual({ kind: 'applied' });
     const b = begunIntent(store, 'early-exact', 'B');
     const event = b.event('early-B', null);
     store.appendEvent(event);
     expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
     expect(
-      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+      store['db']
+        .prepare(
+          'SELECT * FROM orchestration_turn_boundaries WHERE invocation_id = ?',
+        )
+        .all(b.capture.intent.invocationId),
     ).toEqual([]);
+    expect(authority.hasPossibleEffect('early-exact')).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    expect(
+      store['db']
+        .prepare(
+          'SELECT provider_turn_id FROM orchestration_turn_boundaries WHERE invocation_id IS NULL',
+        )
+        .get(),
+    ).toEqual({ provider_turn_id: 'other-native' });
     expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
       kind: 'applied',
     });
@@ -1325,41 +1376,64 @@ test('host append rollback undoes exact event witness and deletion; delete trigg
     const before = store['db']
       .prepare('SELECT * FROM orchestration_turn_boundaries')
       .all();
+    const beforeBody = store['db']
+      .prepare('SELECT * FROM orchestration_prepared_turns')
+      .all();
+    const beforeDedup = store['db']
+      .prepare('SELECT * FROM orchestration_turn_dedup')
+      .all();
     store[
       'db'
     ].exec(`CREATE TRIGGER fail_terminal_delete BEFORE DELETE ON orchestration_turn_boundaries BEGIN
       SELECT CASE WHEN (SELECT terminal_retirement FROM orchestration_prepared_turns WHERE boundary_id = OLD.boundary_id) IS NULL THEN RAISE(ABORT, 'witness not reached') END;
       SELECT RAISE(ABORT, 'after witness'); END;`);
-    expect(() =>
-      store.appendEvent(event, [], () => {
+    expect(() => {
+      store['db'].exec('BEGIN IMMEDIATE');
+      try {
+        store.appendEvent(event);
         const result = b.authority.observe(event);
         if (result.kind !== 'applied')
           throw new Error('terminal transaction unavailable');
-      }),
-    ).toThrow();
+      } finally {
+        store['db'].exec('ROLLBACK');
+      }
+    }).toThrow('after witness');
     expect(store.hasEventId(event.eventId)).toBe(false);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_prepared_turns').all(),
+    ).toEqual(beforeBody);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_dedup').all(),
+    ).toEqual(beforeDedup);
     expect(
       store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
     ).toEqual(before);
     expect(
-      store['db']
-        .prepare('SELECT terminal_retirement FROM orchestration_prepared_turns')
-        .get()?.terminal_retirement,
+      (
+        store['db']
+          .prepare(
+            'SELECT terminal_retirement FROM orchestration_prepared_turns',
+          )
+          .get() as { terminal_retirement: string | null } | undefined
+      )?.terminal_retirement,
     ).toBeNull();
     store['db'].exec('DROP TRIGGER fail_terminal_delete');
-    expect(() =>
-      store.appendEvent(event, [], () => {
-        expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
-        throw new Error('outer abort');
-      }),
-    ).toThrow('outer abort');
+    store['db'].exec('BEGIN IMMEDIATE');
+    store.appendEvent(event);
+    expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    store['db'].exec('ROLLBACK');
     expect(store.hasEventId(event.eventId)).toBe(false);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_prepared_turns').all(),
+    ).toEqual(beforeBody);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_dedup').all(),
+    ).toEqual(beforeDedup);
     expect(
       store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
     ).toEqual(before);
-    store.appendEvent(event, [], () => {
-      expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
-    });
+    store.appendEvent(event);
+    expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
     expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
       kind: 'applied',
     });
@@ -1400,5 +1474,216 @@ test('post-COMMIT acceptance loss retains the original full begin image across u
   } finally {
     spy.mockRestore();
     store.close();
+  }
+});
+
+function appendUnobservedCanonical(
+  store: EventStore,
+  event: CanonicalRuntimeEvent,
+) {
+  const sequence = store['db']
+    .prepare(
+      'SELECT COALESCE(MAX(global_sequence),0)+1 AS next FROM orchestration_events',
+    )
+    .get() as { next: number };
+  store['db']
+    .prepare(`INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence)
+    VALUES(?,?,?,?,?,?,?,?,?)`)
+    .run(
+      event.eventId,
+      event.provider,
+      event.threadId,
+      event.turnId ?? null,
+      event.method,
+      JSON.stringify(event),
+      event.createdAt,
+      sequence.next,
+      sequence.next,
+    );
+}
+
+test('host complete-set contradiction fences current custody and later exact acknowledgement without hiding a pinned witness event', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const b = begunIntent(store, 'contradiction', 'B');
+    expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    appendUnobservedCanonical(store, b.event('eN'));
+    appendUnobservedCanonical(store, b.event('eM', 'M'));
+    const before = store['db']
+      .prepare('SELECT * FROM orchestration_turn_boundaries')
+      .all();
+    expect(b.authority.hasPossibleEffect('contradiction')).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'stale',
+    });
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual(before);
+    store['db'].prepare("DELETE FROM orchestration_events WHERE id='eM'").run();
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+    const witness = store['db']
+      .prepare('SELECT terminal_retirement FROM orchestration_prepared_turns')
+      .get();
+    store.appendEvent(b.event('late-eM', 'M'));
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'stale',
+    });
+    expect(
+      store['db']
+        .prepare('SELECT terminal_retirement FROM orchestration_prepared_turns')
+        .get(),
+    ).toEqual(witness);
+    expect(
+      store['db'].prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+    ).toEqual([]);
+  } finally {
+    store.close();
+  }
+});
+
+test('host exact false observation validates retained contents with and without a boundary', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const b = begunIntent(store, 'false-exact', 'B');
+    const event: CanonicalRuntimeEvent = {
+      ...b.event('false-event'),
+      method: 'turn.aborted',
+      turnId: 'N',
+      reason: 'recovery',
+      recoveryTerminal: true,
+    };
+    store.appendEvent(event);
+    expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    expect(b.authority.hasPossibleEffect('false-exact')).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    const { recoveryTerminal: _marker, ...withoutRecovery } = event;
+    for (const retained of [true, false]) {
+      if (!retained)
+        store['db']
+          .prepare(
+            "DELETE FROM orchestration_turn_boundaries WHERE thread_id='false-exact'",
+          )
+          .run();
+      for (const changed of [
+        { ...event, createdAt: 'changed' },
+        { ...event, eventId: 'missing-false' },
+        withoutRecovery,
+      ]) {
+        expect(b.authority.observe(changed)).toEqual({ kind: 'unavailable' });
+      }
+      expect(b.authority.observe(event)).toEqual({ kind: 'applied' });
+    }
+  } finally {
+    store.close();
+  }
+});
+
+test('host retirement refuses changed current dedup digest and full original owner revision sequence custody', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const b = begunIntent(store, 'full-custody', 'B');
+    const db = store['db'];
+    const original = db
+      .prepare('SELECT * FROM orchestration_turn_boundaries')
+      .get() as Record<string, unknown>;
+    for (const [column, value] of [
+      ['owner_birth', 'different'],
+      ['updated_at', 'different'],
+      ['created_at', 'different'],
+      ['created_sequence', 99],
+      ['input_digest', 'different'],
+      ['intent_digest', 'different'],
+      ['body_ref', 'different'],
+    ] as const) {
+      db.prepare(`UPDATE orchestration_turn_boundaries SET ${column}=?`).run(
+        value,
+      );
+      expect(b.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+        kind: 'stale',
+      });
+      db.prepare(`UPDATE orchestration_turn_boundaries SET ${column}=?`).run(
+        original[column],
+      );
+    }
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+    const dedup = db
+      .prepare('SELECT input_digest,owner_json FROM orchestration_turn_dedup')
+      .get() as { input_digest: string; owner_json: string };
+    const owner = JSON.parse(dedup.owner_json);
+    db.prepare(
+      'UPDATE orchestration_turn_dedup SET input_digest=?,owner_json=?',
+    ).run('changed', JSON.stringify({ ...owner, inputDigest: 'changed' }));
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'stale',
+    });
+    db.prepare(
+      'UPDATE orchestration_turn_dedup SET input_digest=?,owner_json=?',
+    ).run(dedup.input_digest, dedup.owner_json);
+    expect(b.claim.accepted('N', '2099-01-01T00:00:00Z')).toEqual({
+      kind: 'applied',
+    });
+  } finally {
+    store.close();
+  }
+});
+
+test('embedded memory preserves invocation identity and exact early settlement without clock inference', () => {
+  const authority = createInMemorySessionTurnBoundaryAuthority();
+  let oldInvocation = '';
+  for (const key of ['A', 'B']) {
+    const owned = authority.reserve!('memory-origin', '2030-01-01T00:00:00Z');
+    if (owned.kind !== 'owner')
+      throw new Error('memory reservation prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 'memory-origin', input: key },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    if (key === 'A') oldInvocation = capture.intent.invocationId;
+    expect(
+      owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+    ).toEqual({ kind: 'applied' });
+    expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+      kind: 'applied',
+    });
+    if (key === 'B') {
+      expect(
+        authority.observe({
+          ...terminal('memory-origin', 'N'),
+          eventId: 'old-memory-A',
+          invocationId: oldInvocation,
+          createdAt: '2100-01-01T00:00:00Z',
+        }),
+      ).toEqual({ kind: 'applied' });
+      expect(authority.hasPossibleEffect('memory-origin')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    }
+    expect(
+      authority.observe({
+        ...terminal('memory-origin', 'N'),
+        eventId: key,
+        invocationId: capture.intent.invocationId,
+        createdAt: '1900-01-01T00:00:00Z',
+      }),
+    ).toEqual({ kind: 'applied' });
+    expect(owned.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(authority.hasPossibleEffect('memory-origin')).toEqual({
+      kind: 'available',
+      active: false,
+    });
   }
 });

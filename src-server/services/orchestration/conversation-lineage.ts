@@ -1073,18 +1073,35 @@ export class ConversationLineage {
       timeoutMs: 1,
       intervalMs: 1,
     });
+    const invocationId = providerTurnId
+      ? store.preparedInvocationForClientTurn(marker.sessionId, clientTurnId)
+      : undefined;
     const turnEvents = providerTurnId
       ? store
           .listEvents(marker.sessionId)
-          .filter((event) => event.turnId === providerTurnId)
+          .filter(
+            (event) =>
+              event.turnId === providerTurnId &&
+              (invocationId === undefined ||
+                event.payload.invocationId === invocationId),
+          )
       : [];
-    const terminal = turnEvents
-      .filter((event) =>
-        ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
-          event.method,
-        ),
-      )
-      .at(-1)?.method;
+    const disposition =
+      invocationId === undefined
+        ? undefined
+        : store
+            .sessionTurnBoundaryAuthority()
+            .hasPossibleEffect(marker.sessionId);
+    const terminal =
+      disposition && (disposition.kind !== 'available' || disposition.active)
+        ? undefined
+        : turnEvents
+            .filter((event) =>
+              ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+                event.method,
+              ),
+            )
+            .at(-1)?.method;
     const status =
       terminal === 'turn.completed'
         ? ('completed' as const)

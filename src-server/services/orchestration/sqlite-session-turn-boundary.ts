@@ -1,14 +1,30 @@
+import { isDeepStrictEqual } from 'node:util';
 import type {
+  InvocationTerminalFact,
+  InvocationTerminalRetirement,
   KernelCommand,
   KernelResult,
   OwnerIdentity,
   OwnerLiveness,
 } from '@kontourai/monument';
-import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
+import {
+  assertInvocationTerminalRetirement,
+  findInvocationTerminal,
+} from '@kontourai/monument/adapter';
+import {
+  openSqliteKernelStorage,
+  type SqliteInvocationTerminalFacts,
+} from '@kontourai/monument/sqlite';
+import { z } from 'zod';
 import { readPreparedClaimCustody } from '../turn-idempotency.js';
-import type { CapturedTurnIntent } from './prepared-turn-intent.js';
+import {
+  type CapturedTurnIntent,
+  decodeTurnIntent,
+} from './prepared-turn-intent.js';
 import { isProjectTaskRoomExecutionSealed } from './project-task-room-source-seal.js';
 import {
+  type InvocationAcceptanceSnapshot,
+  SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
   type SessionTurnBoundaryCoordinator,
   type SessionTurnBoundaryRecord,
@@ -41,6 +57,67 @@ export function createSqliteSessionTurnBoundaryCoordinator({
   };
 }): SessionTurnBoundaryCoordinator {
   let preparedCurrent: (() => boolean) | undefined;
+  const invocationTerminals: SqliteInvocationTerminalFacts = {
+    readObservation(database, threadId, eventId) {
+      const row = database
+        .prepare(
+          'SELECT id, provider, thread_id, turn_id, method, created_at, payload FROM orchestration_events WHERE thread_id = ? AND id = ?',
+        )
+        .get(threadId, eventId);
+      return row ? decodeTerminal(row) : undefined;
+    },
+    find(database, query) {
+      // Every retained scoped assertion is decoded before the pure selector filters candidates.
+      const rows = database
+        .prepare(
+          'SELECT id, provider, thread_id, turn_id, method, created_at, payload FROM orchestration_events WHERE thread_id = ?',
+        )
+        .all(query.threadId);
+      const facts = rows.flatMap((row) => {
+        const fact = decodeTerminal(row);
+        return fact?.invocationId === query.invocationId ? [fact] : [];
+      });
+      return findInvocationTerminal(facts, query);
+    },
+    readRetirement(database, threadId, boundaryId) {
+      const raw = database
+        .prepare(
+          'SELECT * FROM orchestration_prepared_turns WHERE thread_id = ? AND boundary_id = ?',
+        )
+        .get(threadId, boundaryId);
+      const row = retirementRow.optional().parse(raw);
+      if (!row || row.terminal_retirement === null) return undefined;
+      const witness: unknown = JSON.parse(String(row.terminal_retirement));
+      assertInvocationTerminalRetirement(witness);
+      assertIntentAssociation(row, witness);
+      return witness;
+    },
+    recordRetirement(database, witness) {
+      assertInvocationTerminalRetirement(witness);
+      const raw = database
+        .prepare(
+          'SELECT * FROM orchestration_prepared_turns WHERE invocation_id = ?',
+        )
+        .get(witness.terminal.invocationId);
+      const row = retirementRow.optional().parse(raw);
+      if (!row) throw new Error('Invocation retirement input is unavailable.');
+      assertIntentAssociation(row, witness);
+      if (row.terminal_retirement !== null) {
+        const previous: unknown = JSON.parse(String(row.terminal_retirement));
+        assertInvocationTerminalRetirement(previous);
+        if (!isDeepStrictEqual(previous, witness))
+          throw new Error(
+            'Invocation retirement conflicts with retained custody.',
+          );
+        return;
+      }
+      database
+        .prepare(
+          'UPDATE orchestration_prepared_turns SET terminal_retirement = ? WHERE invocation_id = ?',
+        )
+        .run(JSON.stringify(witness), witness.terminal.invocationId);
+    },
+  };
   const kernel = openSqliteKernelStorage({
     database: db,
     tables: {
@@ -82,6 +159,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           dedupKey: 'dedup_key',
         },
         settlementColumn: 'prepared_settlement',
+        invocationTerminals,
       },
     },
     participants: [
@@ -95,11 +173,6 @@ export function createSqliteSessionTurnBoundaryCoordinator({
             !preparedCurrent()
           )
             return { refuse: 'prepared-authority-changed' };
-          if (
-            command.type === 'turnBoundary.create' ||
-            command.type === 'turnBoundary.recordAccepted'
-          )
-            reconcileTerminals(command.threadId);
           if (
             command.type === 'turnBoundary.create' &&
             command.state !== 'lifecycle' &&
@@ -119,9 +192,23 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     command: C,
     nested = false,
   ): KernelResult<C> {
-    return kernel.executeSync(command, context, {
-      withinHostTransaction: nested,
-    });
+    const cleanup =
+      command.type === 'turnBoundary.create' ||
+      command.type === 'turnBoundary.recordAccepted';
+    const outer = cleanup && !db.isTransaction;
+    if (outer) db.exec('BEGIN IMMEDIATE');
+    try {
+      // Cleanup can issue kernel commands only before dispatch, never from a participant.
+      if (cleanup) reconcileTerminals(command.threadId);
+      const result = kernel.executeSync(command, context, {
+        withinHostTransaction: nested || db.isTransaction === true,
+      });
+      if (outer) db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      if (outer && db.isTransaction) db.exec('ROLLBACK');
+      throw error;
+    }
   }
   function withPreparedCurrent<T>(
     current: (() => boolean) | undefined,
@@ -370,17 +457,68 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     beginPrepared({ boundaryId, ownerId, capture, claim, now, current }) {
+      let begun: InvocationAcceptanceSnapshot | undefined;
+      let outer = false;
       try {
+        if (!db.isTransaction) {
+          db.exec('BEGIN IMMEDIATE');
+          outer = true;
+        }
+        const listed = execute({ type: 'turnBoundary.list' }, true);
+        const row =
+          listed.kind === 'records'
+            ? listed.records.find((row) => row.boundaryId === boundaryId)
+            : undefined;
+        if (!row) throw new Error('Begin snapshot unavailable.');
+        const key = row.intent?.dedupKey;
+        const dedup =
+          key === undefined
+            ? undefined
+            : execute({ type: 'turnDedup.read', key }, true);
+        if (key !== undefined && dedup?.kind !== 'found')
+          throw new Error('Begin dedup snapshot unavailable.');
+        begun = {
+          expected: { ...row, state: 'invoking', updatedAt: now },
+          ...(dedup?.kind === 'found'
+            ? { expectedDedup: { ...dedup.record, invocation: 'begun' } }
+            : {}),
+        };
         const result = withPreparedCurrent(current, () =>
-          execute({
-            type: 'turnBoundary.beginInvocation',
-            boundaryId,
-            ownerId,
-            ...linked(capture, claim),
-            now,
-          }),
+          execute(
+            {
+              type: 'turnBoundary.beginInvocation',
+              boundaryId,
+              ownerId,
+              ...linked(capture, claim),
+              now,
+            },
+            true,
+          ),
         );
-        return result.kind === 'applied' ? result : { kind: 'stale' };
+        if (outer) db.exec('COMMIT');
+        return {
+          ...(result.kind === 'applied' ? result : { kind: 'stale' as const }),
+          begun,
+        };
+      } catch {
+        if (outer && db.isTransaction) db.exec('ROLLBACK');
+        return { kind: 'unavailable', ...(begun ? { begun } : {}) };
+      }
+    },
+    acceptInvocation({ expected, expectedDedup, providerTurnId, now }) {
+      try {
+        const result = execute({
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          ...(expectedDedup ? { expectedDedup } : {}),
+          providerTurnId,
+          now,
+        });
+        return result.kind === 'accepted' || result.kind === 'terminal'
+          ? { kind: 'applied' }
+          : result.kind === 'refused'
+            ? { kind: 'unavailable' }
+            : result;
       } catch {
         return { kind: 'unavailable' };
       }
@@ -486,15 +624,27 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     },
     removeTerminal(input) {
       // Empty provider ids never identified a terminal in the host protocol.
-      if (!input.sessionTerminal && !input.providerTurnId)
+      if (
+        !input.sessionTerminal &&
+        !input.providerTurnId &&
+        !input.invocationId
+      )
         return { kind: 'applied' };
+      const nested = db.isTransaction === true;
       try {
-        const result = execute({
-          ...input,
-          type: 'turnBoundary.observeTerminal',
-        });
+        const result = execute(
+          {
+            ...input,
+            type: 'turnBoundary.observeTerminal',
+          },
+          db.isTransaction === true,
+        );
         return result.kind === 'refused' ? { kind: 'unavailable' } : result;
-      } catch {
+      } catch (cause) {
+        if (nested) {
+          if (!db.isTransaction) throw transactionLost(cause);
+          throw cause;
+        }
         return { kind: 'unavailable' };
       }
     },
@@ -563,3 +713,103 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     },
   };
 }
+
+const terminalPayload = z
+  .object({
+    eventId: z.string().min(1),
+    threadId: z.string().min(1),
+    method: z.string().min(1),
+    createdAt: z.string().min(1),
+    invocationId: z.string().min(1).optional(),
+    turnId: z.string().optional(),
+    provider: z.string().min(1),
+    recoveryTerminal: z.boolean().optional(),
+    retriable: z.boolean().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+
+function decodeTerminal(raw: unknown): InvocationTerminalFact | undefined {
+  const row = canonicalTerminalRow.parse(raw);
+  const event = terminalPayload.parse(JSON.parse(row.payload));
+  if (
+    event.eventId !== row.id ||
+    event.provider !== row.provider ||
+    event.threadId !== row.thread_id ||
+    event.method !== row.method ||
+    event.createdAt !== row.created_at ||
+    (event.turnId ?? null) !== row.turn_id
+  )
+    throw new Error('Canonical terminal columns differ from their payload.');
+  if (event.invocationId === undefined) return undefined;
+  return {
+    threadId: event.threadId,
+    invocationId: event.invocationId,
+    terminalEventId: event.eventId,
+    terminalCreatedAt: event.createdAt,
+    ...(event.turnId === undefined ? {} : { providerTurnId: event.turnId }),
+    retire:
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      ) &&
+      !(event.method === 'turn.aborted' && event.recoveryTerminal === true) &&
+      !(
+        event.method === 'runtime.error' &&
+        (event.code === SESSION_START_INDETERMINATE_CODE ||
+          (event.provider === 'codex' && event.retriable === true))
+      ),
+  };
+}
+function assertIntentAssociation(
+  row: z.infer<typeof retirementRow>,
+  witness: InvocationTerminalRetirement,
+): void {
+  const intent = witness.boundary.intent;
+  if (
+    !intent ||
+    row.invocation_id !== intent.invocationId ||
+    row.boundary_id !== witness.boundary.boundaryId ||
+    row.thread_id !== witness.boundary.threadId ||
+    row.input_digest !== intent.inputDigest ||
+    row.intent_digest !== intent.intentDigest ||
+    intent.bodyRef !== intent.intentDigest
+  )
+    throw new Error('Invocation retirement input association changed.');
+  const capture = decodeTurnIntent({
+    envelopeJson: String(row.envelope_json),
+    inputDigest: String(row.input_digest),
+    intentDigest: String(row.intent_digest),
+    invocationId: intent.invocationId,
+    threadId: witness.boundary.threadId,
+  });
+  if (
+    (row.client_turn_id ?? undefined) !== capture.clientTurnId ||
+    row.byte_length !== capture.byteLength ||
+    intent.dedupKey !==
+      (capture.clientTurnId === undefined
+        ? undefined
+        : turnDedupKey(capture.threadId, capture.clientTurnId))
+  )
+    throw new Error('Invocation retirement input custody changed.');
+}
+
+const canonicalTerminalRow = z.object({
+  provider: z.string().min(1),
+  id: z.string().min(1),
+  thread_id: z.string().min(1),
+  turn_id: z.string().nullable(),
+  method: z.string().min(1),
+  created_at: z.string().min(1),
+  payload: z.string(),
+});
+const retirementRow = z.object({
+  invocation_id: z.string().min(1),
+  boundary_id: z.string().min(1),
+  thread_id: z.string().min(1),
+  client_turn_id: z.string().nullable(),
+  input_digest: z.string().min(1),
+  intent_digest: z.string().min(1),
+  envelope_json: z.string(),
+  byte_length: z.number().int().nonnegative(),
+  terminal_retirement: z.string().nullable(),
+});
