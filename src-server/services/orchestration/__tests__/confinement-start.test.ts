@@ -416,8 +416,10 @@ describe('#2494: a start resolves its confinement before the engine is touched',
       start('claude-no-sandbox-exec', 'claude', { approvalMode: 'never' }),
     ).rejects.toMatchObject({
       code: 'confinement_mechanism_unavailable',
+      // The provider's own reason; the mechanism the message names before it
+      // follows the real host platform, which CI runs on Linux.
       message: expect.stringContaining(
-        'which needs a macOS Seatbelt profile; none is available',
+        'seatbelt: /nonexistent/sandbox-exec is missing or not executable',
       ),
     });
     expect(claude.starts).toHaveLength(0);
