@@ -194,3 +194,145 @@ describe('node:sqlite adapter after a real SIGKILL', () => {
     await storage.close();
   });
 });
+
+/** The production participant seam stops only the observation's real transaction. */
+async function retireThenDie(
+  path: string,
+  cut: 'before-commit' | 'after-commit',
+) {
+  const script = `
+    const { writeSync } = await import('node:fs');
+    const assert = await import('node:assert/strict');
+    const { openSqliteKernelStorage } = await import(${JSON.stringify(ADAPTER)});
+    const context = { liveness: () => 'live' };
+    const owner = { id: 'child-owner', pid: process.pid, identityKind: 'exact', birth: 'child-birth' };
+    const intent = { invocationId: 'B', inputDigest: 'input', intentDigest: 'envelope', bodyRef: 'body' };
+    const expected = { boundaryId: 'b', threadId: 't', state: 'invoking', purpose: 'turn', owner, createdAt: '10', updatedAt: '12', intent };
+    const hold = () => { writeSync(1, JSON.stringify(expected) + '\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); };
+    const storage = openSqliteKernelStorage({ path: ${JSON.stringify(path)}, participants: [{ name: 'crash cut', commit({ command }, db) {
+      if (command.type !== 'turnBoundary.observeTerminal') return;
+      assert.equal(db.prepare("SELECT count(*) AS n FROM monument_turn_terminals WHERE fact_kind='retirement'").get().n, 1);
+      assert.equal(db.prepare('SELECT count(*) AS n FROM monument_turn_boundaries').get().n, 0);
+      if (${JSON.stringify(cut)} === 'before-commit') hold();
+    } }] });
+    for (const command of [
+      { type: 'turnBoundary.create', boundaryId: 'b', threadId: 't', state: 'reserved', purpose: 'turn', owner, now: '10' },
+      { type: 'turnBoundary.prepare', boundaryId: 'b', ownerId: owner.id, intent, now: '11' },
+      { type: 'turnBoundary.beginInvocation', boundaryId: 'b', ownerId: owner.id, intent, now: '12' },
+    ]) assert.deepEqual(storage.executeSync(command, context), { kind: 'applied' });
+    assert.deepEqual(storage.executeSync({ type: 'turnBoundary.observeTerminal', threadId: 't', invocationId: 'B', terminalEventId: 'e', providerTurnId: 'N', terminalCreatedAt: '01', sessionTerminal: false }, context), { kind: 'applied' });
+    hold();
+  `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '--eval', script],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+  );
+  let stderr = '';
+  let output = '';
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  const exited = new Promise<NodeJS.Signals | null>((done) =>
+    child.once('exit', (_code, signal) => done(signal)),
+  );
+  try {
+    const expected = await new Promise<
+      import('../records.js').TurnBoundaryRecord
+    >((ready, failed) => {
+      const timeout = setTimeout(
+        () => failed(new Error(`child retirement cut timed out: ${stderr}`)),
+        20_000,
+      );
+      child.stdout.on('data', (chunk) => {
+        output += String(chunk);
+        if (!output.includes('\n')) return;
+        clearTimeout(timeout);
+        try {
+          ready(JSON.parse(output.slice(0, output.indexOf('\n'))));
+        } catch (error) {
+          failed(error);
+        }
+      });
+      child.once('exit', (code) => {
+        clearTimeout(timeout);
+        failed(
+          new Error(`child exited ${code} before retirement cut: ${stderr}`),
+        );
+      });
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        failed(error);
+      });
+    });
+    child.kill('SIGKILL');
+    return { expected, signal: await exited };
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await exited;
+    }
+  }
+}
+
+for (const cut of ['before-commit', 'after-commit'] as const)
+  it(`real prepared terminal SIGKILL ${cut} preserves the transaction's exact disposition`, async () => {
+    const location = createSqliteKernelLocation();
+    locations.push(location);
+    const { expected, signal } = await retireThenDie(location.path, cut);
+    expect(signal).toBe('SIGKILL');
+    const storage = openSqliteKernelStorage({ path: location.path });
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(location.path);
+    try {
+      const rows = storage.executeSync(
+        { type: 'turnBoundary.list' },
+        { liveness: kernelLiveness },
+      );
+      const terminalRows = db
+        .prepare(
+          'SELECT fact_kind FROM monument_turn_terminals ORDER BY fact_kind',
+        )
+        .all();
+      if (cut === 'before-commit') {
+        expect(rows).toEqual({ kind: 'records', records: [expected] });
+        expect(terminalRows).toEqual([]);
+      } else {
+        expect(rows).toEqual({ kind: 'records', records: [] });
+        expect(terminalRows).toEqual([
+          { fact_kind: 'invocation' },
+          { fact_kind: 'legacy' },
+          { fact_kind: 'retirement' },
+        ]);
+        const command = {
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          providerTurnId: 'N',
+          now: '13',
+        } as const;
+        const terminal = {
+          threadId: 't',
+          invocationId: 'B',
+          terminalEventId: 'e',
+          providerTurnId: 'N',
+          terminalCreatedAt: '01',
+          retire: true,
+        };
+        expect(
+          storage.executeSync(command, { liveness: kernelLiveness }),
+        ).toEqual({ kind: 'terminal', terminal });
+        expect(
+          storage.executeSync(command, { liveness: kernelLiveness }),
+        ).toEqual({ kind: 'terminal', terminal });
+        expect(
+          storage.executeSync(
+            { type: 'turnBoundary.list' },
+            { liveness: kernelLiveness },
+          ),
+        ).toEqual({ kind: 'records', records: [] });
+      }
+    } finally {
+      db.close();
+      await storage.close();
+    }
+  });

@@ -110,6 +110,26 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
     settlementId: 's',
     now: 'c',
   },
+  'turnBoundary.acceptInvocation': {
+    type: 'turnBoundary.acceptInvocation',
+    expected: {
+      boundaryId: 'b',
+      threadId: 't',
+      state: 'invoking',
+      purpose: 'turn',
+      owner,
+      createdAt: 'a',
+      updatedAt: 'b',
+      intent: {
+        invocationId: 'i',
+        inputDigest: 'd',
+        intentDigest: 'e',
+        bodyRef: 'body',
+      },
+    },
+    providerTurnId: 'N',
+    now: 'c',
+  },
   'turnBoundary.transition': {
     type: 'turnBoundary.transition',
     boundaryId: 'b',

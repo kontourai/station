@@ -19,6 +19,7 @@ export {
   decideInboxSubmit,
   inboxHead,
 } from './decisions/inbox.js';
+export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
 export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,

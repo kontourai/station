@@ -153,8 +153,9 @@ const context = { liveness };
 ```
 
 The fence and terminal callbacks run synchronously inside the command
-transaction. Terminal callbacks only read facts; a host with an event log uses that log as its sole
-terminal authority. `terminalSeen` replaces, rather than supplements, the
+transaction. Legacy terminal callbacks read facts; invocation retirement additionally
+writes its witness through the private synchronous bundle described below. A
+host with an event log uses that log as its sole terminal authority. `terminalSeen` replaces, rather than supplements, the
 kernel's default terminal table. Observing a terminal or forgetting boundaries
 does not add or delete default terminal facts when that callback is present.
 Terminal callbacks are fixed at open. Command context carries only liveness
@@ -174,8 +175,8 @@ any decision reads, even if the host's savepoint was deferred.
 `turnBoundary.observeTerminal` carries the host's `terminalEventId`.
 For a session terminal and a fenced row, the decision retires the row only
 when `terminalSequence(thread, eventId)` returns a persisted sequence strictly
-above the fence. A missing terminal retains fenced rows. Rows with no fence
-and turn-scoped terminals retain the timestamp generation check; lifecycle
+above the fence. A missing terminal retains fenced rows. Session rows with no fence
+and inputless legacy turn terminals retain the timestamp generation check; lifecycle
 and task-dispatch rows retain their separate settlement owners.
 
 A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
@@ -218,7 +219,8 @@ New ordinary turns can reserve a boundary before capturing input:
 `reserved` → `prepared` → `invoking` → `accepted` (or `indeterminate`).
 Legacy inputless `prepared` claims, session lifecycle claims and task dispatch
 retain their existing behavior. Engine-opened turns still record acceptance
-directly. Invocation terminal attribution is unchanged in this kernel cut.
+directly. Invocation-aware retirement is described below; native attribution
+remains the trusted producer's responsibility.
 
 `turnBoundary.prepare` takes `boundaryId`, its private `ownerId`, `now` and an
 immutable `intent`: `{ invocationId, inputDigest, intentDigest, bodyRef, dedupKey? }`.
@@ -261,9 +263,10 @@ Bound SQLite tables opt in with `intentColumns`, an object mapping each intent
 field (including optional-value `dedupKey`) to its own nullable TEXT column. All
 five column names are validated and copied at open. Old hosts need no new
 columns; intent-bearing writes require the explicit binding. JSON and column
-owner layouts use the same protocol. Owned tables migrate older versions additively
-to the current schema. Version two added intent columns and reserved to the
-unique active-thread index; version three adds passive settlement audit.
+owner layouts use the same protocol. Version two added intent columns and
+reserved to the unique active-thread index; version three added passive
+settlement audit. Version four rebuilds only the owned terminal area, preserving
+legacy terminal strings and all boundary/dedup data in the migration transaction.
 Prepared dedup links remain in `owner_json`, with no
 new host dedup columns.
 
@@ -320,8 +323,8 @@ rewriting legacy records. Bound hosts opt in with `settlementColumn`, a copied,
 fixed-at-open unique nullable TEXT column. New settlement commands fail before
 writes without that binding; old hosts and their legacy commands need no column.
 Both owner layouts and execute interfaces use the same audit/transaction path.
-No host cancellation API, retry policy, invocation-aware terminal rule or dormant
-Session-start child protocol is implemented by these portable commands.
+These settlement commands add no host cancellation API, retry policy or dormant
+Session-start child protocol.
 
 Probing whether a process is alive can take seconds, so it never happens under
 the write lock during reconciliation. A host lists the rows, plans the command, and commits it:
@@ -373,3 +376,116 @@ lets a test do four things:
 ## Licence
 
 Apache-2.0
+
+## Invocation terminal acknowledgement
+
+`turnBoundary.acceptInvocation` takes a full private pre-accept `expected`
+boundary, the original begun/unresolved `expectedDedup` iff its intent has a
+key, a nonempty `providerTurnId`, and a latched `now`. Expected must be an
+ordinary invoking or indeterminate intent. It compares every defined owner,
+intent, creation, update, optional sequence and native field. Linked custody
+must still equal the complete original dedup record or that exact record with
+only `value` resolved to this native ID. It never resolves or releases dedup.
+Generic `transition(to: 'accepted')` refuses every intent-bearing row;
+engine-opened `recordAccepted` cannot acknowledge or convert one either.
+
+`observeTerminal` accepts optional `invocationId` and requires a nonempty
+`terminalEventId` for an invocation-bearing ordinary fact. Its existing
+`applied` result means the transaction completed, not that any row retired.
+Ordinary eligible facts match the exact thread and invocation, and retire only
+invoking, indeterminate or accepted intent. A target already carrying a native
+ID requires the same ID on its terminal. A target without one permits an exact
+native-less terminal. Matching invocation facts use no timestamp or sequence
+ordering. Reserved/prepared, lifecycle, task-dispatch and passive settled rows
+cannot retire this way; untagged or other-invocation facts cannot fall back to
+provider-ID matching for an intent-bearing row. Legacy empty/native strings,
+accepted/provider-ID/time rules and session sequence fencing retain their
+existing meanings. Session deletion produces no ordinary retirement witness.
+
+Owned adapters retain invocation facts and complete retirement witnesses in
+their existing terminal area. Each witness holds schema
+`monument.invocation-terminal-retirement/v1`, the exact `terminal`, the entire
+actual pre-deletion `boundary`, and its actual linked `dedup` when present.
+The transaction writes the witness before deleting the active fence. Missing
+linked data is not repaired. Cancellation/refusal audits remain passive boundary
+rows; completed fences do not remain in raw boundary listing. Memory stages all
+facts/witnesses with the copied image. SQLite schema four validates each
+legacy/invocation/retirement row's columns and witness JSON and rejects conflicting
+reuse of event or witness identity. Both execute interfaces use the same path.
+
+A current acceptance target must equal expected, its accepted image or its
+indeterminate image, changing only state/native ID/update time. A missing target
+requires the retained exact witness and its exact event; another compatible
+event cannot substitute. The actual current or witnessed target controls
+native-less eligibility, additionally constrained by expected and the response
+ID. `unknown` terminal evidence returns `stale` without disposition writes.
+Otherwise precedence is exact eligible terminal, indeterminate image, accepted
+image, then a first acceptance. Expected can equal its indeterminate image;
+that overlap returns `ambiguous` without writes even on a first call. A genuine
+simultaneous accepted-row native collision also produces an indeterminate image,
+which stays ambiguous when the competitor disappears. Old terminal/native-ID
+hits do not enter this invocation-aware collision branch.
+
+The result is `accepted`, `terminal` with its exact fact, `ambiguous` or `stale`
+(plus participant refusal). Exact retries acknowledge disposition, never permit
+another adapter call. `terminal` does not prove an acceptance at `now` committed:
+an early retirement has no acceptance timestamp. An accepted/indeterminate
+witness must match the latched postimage revision. Independently changed owners,
+revisions, linked custody, missing witness/event or explicit retention deletion
+can make acknowledgement stale. No result, missing row or reconciliation grants
+replay permission.
+
+### Transactional host source
+
+Host mode exclusively uses canonical events and the host's existing intent/audit
+row. Opt in with `intentColumns` and a fixed-at-open `invocationTerminals`
+bundle: synchronous `find(database, query)`,
+`readRetirement(database, threadId, boundaryId)` and
+`recordRetirement(database, witness)`. The last operation writes the witness on
+the same connection and transaction, validates the intent association, and
+compares exact retries. It cannot commit independently, call a service, issue a
+nested command or schedule asynchronous repair. Failures roll back all joined
+writes. No kernel terminal table is created or maintained in host mode. Missing
+bundles refuse invocation commands before participant admission or writes;
+legacy bindings and commands remain usable. Kernel mode rejects host bundles.
+Adapter authors have equivalent `KernelInvocationTerminalFacts` in `./adapter`;
+commands and provider/SDK data contain no callbacks.
+
+`find` accepts own inert data only: required nonempty `threadId`/`invocationId`,
+required boolean `allowMissingProviderTurnId`, and optional nonempty
+`providerTurnId`/`terminalEventId`. Present undefined/null/empty values, accessors,
+inherited identities and unknown fields reject. It returns `found` with an
+`InvocationTerminalFact`, `absent`, or `unknown`; consumers revalidate scope,
+shape, exact event, eligibility and native policy. Facts contain thread,
+invocation, event ID, optional native ID, `terminalCreatedAt` and boolean `retire`.
+
+The source validates the **complete retained** exact invocation set before any
+provider, missing-ID or event filter. Among eligible ordinary facts, two distinct
+native assertions, or any native assertion contradicting the query's ID, yield
+unknown. Missing native ID is no assertion; `retire: false` is validated and
+retained but excluded from consistency and candidates. After consistency, filter
+by native policy and exact event, then select the smallest eligible event ID in
+code-point order, independent of insertion/time. A host must inspect genuine
+canonical terminal methods and exclude recovery, deferred/nonterminal and
+Session-start-indeterminate markers. A callback's found tag supplies no producer
+origin proof. Ordinary observation verifies returned evidence agrees with all
+supplied terminal fields.
+
+### Retention and qualification limits
+
+Facts/witnesses have no age/size pruning in this cut and can grow without bound
+across a long-lived thread. Existing explicit `forgetThread` removes owned
+facts/witnesses; the host owns deletion of its own audit evidence. Existing dedup
+retention or `forgetPrefix` can independently make exact acknowledgement stale.
+A future quota needs an explicit admission/retention contract. Older binaries
+are not qualified writers; deployment must fence them.
+
+Contradictory facts arriving before retirement preserve the active fence. A
+contradiction arriving after a committed retirement makes later acknowledgement
+stale but does not recreate the fence or retract its earlier release. No enduring
+contradictory-invocation admission fence is added. Host no-replay custody remains
+necessary. This package does not infer native origin from IDs or history absence,
+and raw reused-ID Codex completion can remain untagged/indeterminate. Real native
+protocol support, Station physical/read projection, claims, workspace/lifecycle,
+pending retries, effect-count and release qualification belong to their host
+owners; the real SQLite fixtures establish portable storage behavior only.

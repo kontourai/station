@@ -29,11 +29,17 @@ import {
   type ProcessIdentityProbe,
 } from '../owner.js';
 import type {
+  InvocationTerminalRead,
+  InvocationTerminalRetirement,
   PreparedTurnIntent,
   PreparedTurnSettlement,
   TurnBoundaryRecord,
   TurnDedupRecord,
 } from '../records.js';
+import {
+  assertInvocationTerminalRead,
+  invocationTerminalRetires,
+} from './invocation-terminal.js';
 import { compareCodePoints } from './order.js';
 import {
   isPreparedTurnSettlement,
@@ -118,6 +124,7 @@ export function decideTurnBoundaryRecordAccepted(
   if (existing)
     return {
       result:
+        existing.intent === undefined &&
         existing.owner.id === command.owner.id &&
         existing.state === 'accepted' &&
         existing.providerTurnId === command.providerTurnId
@@ -163,6 +170,7 @@ export function decideTurnBoundaryTransition(
   if (
     current?.intent &&
     (command.to === 'invoking' ||
+      command.to === 'accepted' ||
       current.state === 'prepared' ||
       current.state === 'reserved')
   )
@@ -256,28 +264,81 @@ export function decideTurnBoundaryObserveTerminal(
   threadRows: readonly TurnBoundaryRecord[],
   command: TurnBoundaryObserveTerminalCommand,
   terminalSequence?: number,
-): { readonly retire: readonly string[] } {
-  if (command.retire === false) return { retire: [] };
-  return {
-    retire: threadRows
-      .filter(
-        (row) =>
-          row.state !== 'lifecycle' &&
-          row.state !== 'settled' &&
-          row.settlement === undefined &&
-          row.purpose !== 'task-dispatch' &&
-          (command.sessionTerminal && row.createdSequence != null
-            ? terminalSequence !== undefined &&
-              row.createdSequence < terminalSequence
-            : compareCodePoints(row.createdAt, command.terminalCreatedAt) <=
-              0) &&
-          (command.sessionTerminal ||
-            (command.providerTurnId !== undefined &&
-              row.state === 'accepted' &&
-              row.providerTurnId === command.providerTurnId)),
+  invocationReads: readonly {
+    readonly boundaryId: string;
+    readonly read: InvocationTerminalRead;
+    readonly dedup?: TurnDedupRecord;
+  }[] = [],
+): {
+  readonly retire: readonly string[];
+  readonly retirements: readonly InvocationTerminalRetirement[];
+} {
+  const retire: string[] = [];
+  const retirements: InvocationTerminalRetirement[] = [];
+  if (command.retire === false) return { retire, retirements };
+  for (const row of threadRows) {
+    if (
+      row.state === 'lifecycle' ||
+      row.state === 'settled' ||
+      row.settlement !== undefined ||
+      row.purpose === 'task-dispatch'
+    )
+      continue;
+    if (command.sessionTerminal) {
+      if (
+        row.createdSequence != null
+          ? terminalSequence !== undefined &&
+            row.createdSequence < terminalSequence
+          : compareCodePoints(row.createdAt, command.terminalCreatedAt) <= 0
       )
-      .map((row) => row.boundaryId),
-  };
+        retire.push(row.boundaryId);
+      continue;
+    }
+    if (row.intent !== undefined) {
+      if (
+        !isPreparedTurnIntent(row.intent) ||
+        command.invocationId !== row.intent.invocationId
+      )
+        continue;
+      const input = invocationReads.find(
+        (entry) => entry.boundaryId === row.boundaryId,
+      );
+      if (!input) continue;
+      const query = {
+        threadId: row.threadId,
+        invocationId: row.intent.invocationId,
+        ...(row.providerTurnId === undefined
+          ? {}
+          : { providerTurnId: row.providerTurnId }),
+        allowMissingProviderTurnId: row.providerTurnId === undefined,
+        ...(command.terminalEventId === undefined
+          ? {}
+          : { terminalEventId: command.terminalEventId }),
+      };
+      assertInvocationTerminalRead(input.read, query);
+      if (
+        input.read.kind === 'found' &&
+        invocationTerminalRetires(row, input.read.fact)
+      ) {
+        retirements.push({
+          schema: 'monument.invocation-terminal-retirement/v1',
+          terminal: input.read.fact,
+          boundary: row,
+          ...(input.dedup ? { dedup: input.dedup } : {}),
+        });
+        retire.push(row.boundaryId);
+      }
+      continue;
+    }
+    if (
+      command.providerTurnId !== undefined &&
+      row.state === 'accepted' &&
+      row.providerTurnId === command.providerTurnId &&
+      compareCodePoints(row.createdAt, command.terminalCreatedAt) <= 0
+    )
+      retire.push(row.boundaryId);
+  }
+  return { retire, retirements };
 }
 
 function sameOwner(a: OwnerIdentity, b: OwnerIdentity): boolean {

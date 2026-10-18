@@ -131,7 +131,7 @@ vite or vitest configs are accepted limits, left to review.
   inbox holds at most `inboxMaxUnsettled` unsettled entries; a submit past it
   answers `capacity` and writes nothing. `inbox.forget` removes one inbox
   outright, for a host whose conversation was deleted.
-- **Terminal-turn facts:** by default the kernel records provider turn ids a
+- **Terminal-turn facts:** inputless legacy rows use retained provider turn ids a
   thread has seen end, which make a later acceptance of the same id
   `ambiguous`. Those default facts are retired by `turnBoundary.forgetThread`.
   A host with an event log supplies `terminalSeen` inside the transaction
@@ -139,7 +139,7 @@ vite or vitest configs are accepted limits, left to review.
   supplying `KernelTerminalFacts` to its transaction step): observation and forgetting do not maintain a second
   terminal source. Session-terminal ordering can use the host's persisted
   sequence and an existing boundary creation-fence column; NULL legacy fences
-  and turn-scoped generations retain timestamps. Optional fixed-at-open
+  and inputless legacy turn generations retain timestamps. Optional fixed-at-open
   `retiredBoundaryIds` facts filter only possible-effect polling; raw rows,
   listing and recovery remain unchanged. Station binds that projection to
   canonical events using the same predicate as physical cleanup. Polling takes
@@ -148,3 +148,34 @@ vite or vitest configs are accepted limits, left to review.
   before raw recovery at boot. Claim, prepare, observe and reconcile retain
   pending retries. Its host adapter retains admission and storage-error
   classification on the existing tables and connection.
+
+
+## Invocation terminal ownership
+
+Intent-aware acceptance uses `turnBoundary.acceptInvocation` with the full
+owned pre-accept boundary and independent original begun dedup snapshot.
+Current or witnessed records must match exact expected/accepted/indeterminate
+images and original/resolved-only dedup images. Unknown/contradictory terminal
+evidence blocks acknowledgement; overlapping expected/indeterminate images
+remain conservatively ambiguous. Generic acceptance cannot bypass this command.
+
+Owned memory and SQLite retain exact invocation facts and full pre-deletion
+witnesses in the existing terminal area; SQLite schema four transactionally
+preserves legacy strings and all other machine data. Witness precedes deletion
+in the same transaction, and raw listing contains no completed fence. Host mode
+uses only its canonical events and existing prepared-intent audit row via the
+fixed-at-open synchronous find/readRetirement/recordRetirement bundle. The host
+must provide the complete bundle and intent binding; legacy commands remain
+available without it. No second store, public capability or async repair exists.
+
+Ordinary retirement matches exact invocation without clocks, subject to the
+actual target's native identity. Full retained eligible scope consistency runs
+before provider/event filters, then code-point event selection. Session sequence,
+legacy accepted/native/time, passive audit and explicit forget rules remain.
+Facts/witnesses can grow without bound until explicit deletion; dedup retention
+can independently make acknowledgement stale. A late contradiction after an
+already committed deletion makes later acknowledgement stale without recreating
+a fence or retroactively retracting release. Neither terminal disposition nor
+row absence authorizes replay. Producer attribution, supported-writer fencing,
+Station host adoption and actual effect-count/native/runtime qualification remain
+host-owned. See [the exact protocol](README.md#invocation-terminal-acknowledgement).
