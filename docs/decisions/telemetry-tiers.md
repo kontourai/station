@@ -169,3 +169,21 @@ including to Off; raising requires the operator or `access:manage`. The route
 compares with the state it replaces inside the serialized mutation. Reset
 preserves tier choices. Kontour Full is refused until a Kontour disclosure
 exists; operator acknowledgement cannot authorize another publisher.
+
+
+Full disclosure wording revision 2 is included in the hashed Full inventory.
+It resets existing acknowledgements because the earlier lede overstated anonymity:
+Full events are pseudonymous, with a monthly installation hash. Existing receipts,
+including the receipt revision at reviewed head `0134b835`, are stale. A saved
+operator Full choice remains pending until the accurate disclosure is acknowledged
+again. Lite notice revisions and contract names are unchanged.
+
+DNT itself never changes saved choices. The disclosure dialog explicitly labels
+its actions **Save operator choice as Off** and **Save operator choice as Full**
+under DNT and explains that either action replaces the saved operator choice.
+Effective telemetry remains Off while DNT is active.
+
+Known residual: operator and `access:manage` callers can submit full tier maps
+without compare-and-swap. Serialized per-publisher merging preserves omitted
+publishers, but a stale full-map write can replace another caller's intervening
+choice. This foundation does not add conflict detection for those callers.

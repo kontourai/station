@@ -1714,10 +1714,11 @@ interface Screen {
 
 function telemetryConsentScreens(): Screen[] {
   return [DESKTOP, MOBILE].flatMap((viewport) =>
-    [false, true].map((pending) => {
+    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
+      const pending = mode === 'pending-full';
+      const dialogVisible = mode !== 'settings-dnt';
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
-      const mode = pending ? 'pending-full' : 'settings-dnt';
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
@@ -1740,7 +1741,7 @@ function telemetryConsentScreens(): Screen[] {
           const disclosureHandler = async (route: Route) => {
             const response = await route.fetch();
             const body = await response.json();
-            body.data.acknowledged = !pending;
+            body.data.acknowledged = !dialogVisible;
             body.data.telemetryEnabled = false;
             body.data.endpointConfigured = pending;
             body.data.publishers = {
@@ -1772,18 +1773,24 @@ function telemetryConsentScreens(): Screen[] {
           });
         },
         afterGoto: async (page) => {
-          if (pending) {
+          if (dialogVisible) {
             const dialog = page.getByRole('dialog', {
               name: 'What Station sends',
             });
             await expect(dialog).toBeVisible();
             await expect(
-              dialog.getByRole('button', { name: 'Turn off usage telemetry' }),
+              dialog.getByRole('button', {
+                name: pending
+                  ? 'Turn off usage telemetry'
+                  : 'Save operator choice as Off',
+              }),
             ).toBeVisible();
             await expect(
               dialog
                 .getByText(
-                  /Your saved operator choice is Full, awaiting acknowledgement/,
+                  pending
+                    ? /Your saved operator choice is Full, awaiting acknowledgement/
+                    : /Saving a choice here replaces your saved operator choice/,
                 )
                 .first(),
             ).toBeVisible();

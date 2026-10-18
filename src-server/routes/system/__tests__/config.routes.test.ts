@@ -946,6 +946,40 @@ describe('Config Routes', () => {
 // (the on-load purge in `loadAppConfigFile`, the null-clearing merge in
 // `mergeAppConfigUpdate`) — a mock loader can't exercise either.
 describe('Config Routes (real ConfigLoader + filesystem)', () => {
+  test('a kontour-only PUT preserves stored operator Off', async () => {
+    const home = makeTempDir('station-tier-publisher-merge-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    try {
+      await loader.loadAppConfig();
+      await loader.updateAppConfig({
+        telemetryTier: { kontour: 'lite', operator: 'off' },
+      });
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { kontour: 'off' } }),
+      });
+      expect(response.status).toBe(200);
+      expect(
+        JSON.parse(readFileSync(join(home, 'config', 'app.json'), 'utf8'))
+          .telemetryTier,
+      ).toEqual({
+        kontour: 'off',
+        operator: 'off',
+      });
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
+      });
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test.each([
     { foo: 'full' },
     'full',

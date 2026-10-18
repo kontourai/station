@@ -82,7 +82,7 @@ describe('approvalModeChipLabel (#1010 item 2)', () => {
 describe('approvalModeDescription', () => {
   test('auto is provider-aware: Codex mentions workspace-sandboxed writes', () => {
     expect(approvalModeDescription('auto', 'codex')).toBe(
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.',
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     );
   });
 
@@ -112,8 +112,14 @@ describe('approvalModeDescription', () => {
     expect(approvalModeDescription('ask', 'claude')).not.toMatch(/only your/i);
   });
 
+  test('Codex Ask distinguishes untrusted-command prompts from the escalation reviewer', () => {
+    expect(approvalModeDescription('ask', 'codex')).toBe(
+      'Codex asks about untrusted commands; its configured reviewer may approve sandbox escalations automatically.',
+    );
+  });
+
   test('ask falls back to generic copy that still claims no floor', () => {
-    for (const engineId of [undefined, 'codex', 'acp']) {
+    for (const engineId of [undefined, 'acp']) {
       expect(approvalModeDescription('ask', engineId)).toBe(
         'Asks before actions the engine does not already allow on its own.',
       );

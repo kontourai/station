@@ -1,0 +1,11 @@
+{
+  "revision": "5df00270c307efdd0aa35cfb9443d71f6003c520",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Delta-only fixture ownership repair after a normal pre-push Coding inventory refusal: moved the shared actual-route fixture from server __test-utils__ to routes/projects/__tests__/fixtures and adjusted test imports. No production behavior, Task binding, room request, authority or prior test assertion changed; dependency/implementation paths are updated through the workspace record. The code-owned fixture belongs in test scope, so no production inventory allowance or policy exception was added. Existing explanations remain accurate; source/focused evidence is not installed-release qualification.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"Delta-only fixture ownership repair after a normal pre-push Coding inventory refusal: moved the shared actual-route fixture from server __test-utils__ to routes/projects/__tests__/fixtures and adjusted test imports. No production behavior, Task binding, room request, authority or prior test assertion changed; dependency/implementation paths are updated through the workspace record. The code-owned fixture belongs in test scope, so no production inventory allowance or policy exception was added. Existing explanations remain accurate; source/focused evidence is not installed-release qualification.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Delta-only fixture ownership repair after a normal pre-push Coding inventory refusal: moved the shared actual-route fixture from server __test-utils__ to routes/projects/__tests__/fixtures and adjusted test imports. No production behavior, Task binding, room request, authority or prior test assertion changed; dependency/implementation paths are updated through the workspace record. The code-owned fixture belongs in test scope, so no production inventory allowance or policy exception was added. Existing explanations remain accurate; source/focused evidence is not installed-release qualification.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}

@@ -5,13 +5,11 @@
 
   "state": "classified",
 
-  "summary": "Pending minor release declaration for additive engine sign-in profile contracts and SDK query; no publication receipt.",
+  "summary": "Consumed minor release declaration for additive engine sign-in profile contracts and SDK query, retained as historical classification; no publication receipt.",
 
   "limits": "Release planner declaration only. Registry publication and installed-consumer availability are not claimed.",
 
   "sources": [],
 
-  "checks": [
-    "npm run changesets:check"
-  ]
+  "checks": []
 }
