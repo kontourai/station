@@ -513,12 +513,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "packages/sdk/src/telemetry.ts",
-      "rule": "as-unknown",
-      "fingerprint": "b062c36701fe35b00a47df64eb27d6da4105e52dfcd7b131922237fa85f73171",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "packages/shared/src/agent-plugin-manifest.ts",
       "rule": "as-unknown",
       "fingerprint": "6fc64790d96588b329dc6f15ea70b63af6cda73dc8829107bd84ac62bdcdc348",
