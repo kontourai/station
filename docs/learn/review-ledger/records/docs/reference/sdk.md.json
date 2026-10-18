@@ -656,7 +656,15 @@
 
     "packages/sdk/src/__tests__/client-execution.test.ts",
 
-    "packages/contracts/src/provider-failure.ts"
+    "packages/contracts/src/provider-failure.ts",
+
+    "scripts/__tests__/provider-failure-inventory.test.ts",
+
+    "src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts",
+
+    "src-server/providers/model-provider-failure.ts",
+
+    "src-server/runtime/conversation/stream-orchestrator.ts"
   ],
 
   "checks": [
