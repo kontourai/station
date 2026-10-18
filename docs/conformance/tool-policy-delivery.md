@@ -215,14 +215,16 @@ it cannot reduce the selected Agent profile to fit the engine. See
 
 The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
 register with the live matrix runner. They use a temporary API-created Agent,
-skill and MCP integration. A script-only nonce and its declared output test
-skill consumption; a follow-up `tool.started` record tests MCP use. A known
+skill and MCP integration. A script-only nonce and its declared output observe script access/output;
+skill delivery stays unverified because an engine can discover the co-located
+script without loading the skill; a follow-up `tool.started` record tests MCP use. A known
 fixture action is disabled through Station's integration policy and checked
 against the same run's discovered tool inventory before absence can count as
 success. A recorded call to the fixture's enabled action is also required.
 
-This is an MCP tool-selection probe for Station, Claude and Codex, not evidence
-that external built-in tools can be disabled. ACP cannot carry restricted MCP
+This is an MCP tool-selection probe for Station, Claude and Codex. The separate
+`nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot
+verify native-tool disabling or the pre-tool blocking/grant chain. ACP cannot carry restricted MCP
 selection and reports that probe unsupported. Unsupported skills and missing
 passing evidence are not promoted to delivered. Cleanup failure remains a failed
 result, and an unreachable third-party dependency is skipped with a reason.

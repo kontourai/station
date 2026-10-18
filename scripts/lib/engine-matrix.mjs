@@ -1,21 +1,60 @@
 import { randomUUID } from 'node:crypto';
 
-const vendorPrefix = /^(?:anthropic|openai|google|meta|mistral|amazon)[/.]/;
-// A snapshot qualifier is allowed; semantic model versions and tiers are not.
-function withoutSnapshot(model) {
-  return model.replace(
-    /(?:-(?:20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v\d+(?::\d+)?)?)$/,
-    '',
+function modelVendor(model) {
+  if (/^claude-/.test(model)) return 'anthropic';
+  if (/^(?:gpt-|chatgpt-|o[134](?:-|$))/.test(model)) return 'openai';
+  if (/^(?:gemini|gemma)-/.test(model)) return 'google';
+  if (/^llama/i.test(model)) return 'meta';
+  if (/^(?:mistral|mixtral|codestral|ministral)-/.test(model)) return 'mistral';
+  if (/^(?:nova|titan)-/.test(model)) return 'amazon';
+}
+
+function modelIdentity(value) {
+  // OpenRouter still names the model's vendor; Bedrock adds a regional profile.
+  const unwrapped = value
+    .replace(/^openrouter\//, '')
+    .replace(/^(?:us|eu|apac|global)\.(?=anthropic\.)/, '');
+  const prefix = /^(anthropic|openai|google|meta|mistral|amazon)[/.]/.exec(
+    unwrapped,
   );
+  const model = prefix ? unwrapped.slice(prefix[0].length) : unwrapped;
+  return { model, valid: !prefix || prefix[1] === modelVendor(model) };
+}
+
+function modelSnapshot(model) {
+  const match =
+    /^(.*?)[-@](20\d{2}-\d{2}-\d{2}|20\d{6})(?:-v(\d+(?::\d+)?))?$/.exec(model);
+  return match
+    ? { base: match[1], date: match[2].replaceAll('-', ''), version: match[3] }
+    : { base: model };
 }
 
 export function checkServedModel(requested, reported) {
-  if (!reported) return 'unverified';
-  const a = requested.replace(vendorPrefix, '');
-  const b = reported.replace(vendorPrefix, '');
-  return a === b || a === withoutSnapshot(b) || b === withoutSnapshot(a)
-    ? 'pass'
-    : 'fail';
+  if (!requested || !reported) return 'unverified';
+  const a = modelIdentity(requested);
+  const b = modelIdentity(reported);
+  if (!a.valid || !b.valid) return 'fail';
+  const left = modelSnapshot(a.model);
+  const right = modelSnapshot(b.model);
+  if (
+    left.base !== right.base ||
+    (left.date && right.date && left.date !== right.date) ||
+    (left.version && right.version && left.version !== right.version)
+  )
+    return 'fail';
+  return 'pass';
+}
+
+function comparisonModel(engine, entry) {
+  if (typeof entry.resolvedModel === 'string' && entry.resolvedModel.trim())
+    return entry.resolvedModel;
+  // Claude's launch selectors include SDK aliases such as sonnet and default.
+  if (
+    engine === 'claude' &&
+    !modelIdentity(entry.id).model.startsWith('claude-')
+  )
+    return null;
+  return entry.id;
 }
 
 export function checkServedConnection(expected, observedEngine, connections) {
@@ -86,23 +125,46 @@ const scenarios = [
     id: 'artifact',
     async run(ctx) {
       await ctx.send(
-        `Create ${ctx.artifactName} containing exactly STATION_MATRIX_ARTIFACT then call Station's declare_output tool with {"file":{"path":"${ctx.artifactName}"}} so it is declared as a session output. Reply with exactly STATION_SMOKE_OK.`,
+        `Create ${ctx.artifactName} containing exactly ${ctx.artifactContent} then call Station's declare_output tool with {"file":{"path":"${ctx.artifactName}"}} so it is declared as a session output. Reply with exactly STATION_SMOKE_OK.`,
         ctx.model,
         'STATION_SMOKE_OK',
         ctx.artifactName,
+        ctx.artifactContent,
       );
     },
   },
   {
     id: 'recycle',
     async run(ctx) {
+      const loaded = async () => {
+        try {
+          const body = await ctx.api('/api/orchestration/sessions/loaded');
+          if (!Array.isArray(body.data)) return null;
+          return body.data.some(
+            (session) =>
+              session.threadId === ctx.sessionId && session.isLoaded === true,
+          );
+        } catch {
+          return null;
+        }
+      };
+      ctx.recycleEvidence = { loadedBefore: await loaded() };
       await ctx.command({ type: 'stopSession', threadId: ctx.sessionId });
+      ctx.recycleEvidence.loadedAfterStop = await loaded();
+      if (
+        ctx.recycleEvidence.loadedBefore !== true ||
+        ctx.recycleEvidence.loadedAfterStop !== false
+      )
+        return 'unverified: API unload transition was not observed';
       await ctx.recall(ctx.model);
+      ctx.recycleEvidence.loadedAfterRecall = await loaded();
+      if (ctx.recycleEvidence.loadedAfterRecall !== true)
+        return 'unverified: API resumed activation was not observed';
     },
   },
 ];
 
-async function waitForTurn(api, sessionId, turnId, deadline) {
+async function waitForTurn(api, sessionId, turnId, deadline, priorEventIds) {
   while (Date.now() < deadline) {
     const events = (
       await api(`/api/orchestration/sessions/${sessionId}/events`)
@@ -113,7 +175,10 @@ async function waitForTurn(api, sessionId, turnId, deadline) {
     if (aborted)
       throw new Error(`Turn aborted: ${aborted.reason ?? 'unknown'}`);
     const error = events.find(
-      (event) => event.turnId === turnId && event.method === 'runtime.error',
+      (event) =>
+        event.method === 'runtime.error' &&
+        (event.turnId === turnId ||
+          (!event.turnId && !priorEventIds.has(event.eventId))),
     );
     if (error) throw new Error(error.message);
     if (
@@ -142,21 +207,118 @@ async function readStoredOutputs(api, sessionId, turnId, deadline) {
       )
     ).data;
     if (page.partial) throw new Error('Stored outputs are partial');
-    stored.push(
-      ...page.items
-        .filter((item) => item.turnId === turnId)
-        .map((item) =>
-          item.descriptor.kind === 'workspace-file'
-            ? item.descriptor.relativePath
-            : item.descriptor.ref,
-        ),
-    );
+    stored.push(...page.items.filter((item) => item.turnId === turnId));
     cursor = page.cursor;
     if (cursor && seenCursors.has(cursor))
       throw new Error('Output cursor did not advance');
     seenCursors.add(cursor);
   } while (cursor);
   return stored;
+}
+
+function planRun(catalog, modelIds, additionalScenarios, maxTurns) {
+  const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
+  const models = [
+    ...new Set(modelIds.length ? modelIds : catalog.map((entry) => entry.id)),
+  ];
+  if (
+    !models.length ||
+    models.some(
+      (model) => typeof model !== 'string' || !model || !catalogById.has(model),
+    )
+  )
+    throw new Error(
+      'No usable advertised models, or --model is not advertised',
+    );
+  const registered = [...scenarios, ...additionalScenarios];
+  if (
+    new Set(registered.map((scenario) => scenario.id)).size !==
+    registered.length
+  )
+    throw new Error('Duplicate scenario id');
+  if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 1000)
+    throw new Error('max-turns must be an integer between 1 and 1000');
+  const builtInTurns = models.length * (models.length > 1 ? 6 : 4);
+  for (const scenario of additionalScenarios) {
+    if (
+      scenario.maxTurns !== undefined &&
+      (!Number.isSafeInteger(scenario.maxTurns) || scenario.maxTurns < 1)
+    )
+      throw new Error('Scenario maxTurns must be a positive integer');
+  }
+  const minimumPlannedTurns =
+    builtInTurns +
+    additionalScenarios.reduce(
+      (sum, scenario) =>
+        sum +
+        (scenario.maxTurns ?? 1) *
+          (scenario.scope === 'engine' ? 1 : models.length),
+      0,
+    );
+  if (minimumPlannedTurns > maxTurns)
+    throw new Error(
+      `Planned ${minimumPlannedTurns} turns exceeds --max-turns=${maxTurns}; refusing the entire run`,
+    );
+  const plan = {
+    modelIds: models,
+    builtInTurns,
+    additionalScenarios: additionalScenarios.map((scenario) => ({
+      id: scenario.id,
+      scope: scenario.scope ?? 'model',
+      maxTurns: scenario.maxTurns ?? null,
+      instances: scenario.scope === 'engine' ? 1 : models.length,
+      minimumPlannedTurns:
+        (scenario.maxTurns ?? 1) *
+        (scenario.scope === 'engine' ? 1 : models.length),
+    })),
+    plannedTurnCount: additionalScenarios.some(
+      (scenario) => scenario.maxTurns === undefined,
+    )
+      ? maxTurns
+      : minimumPlannedTurns,
+    maxTurns,
+    extensionBudget: additionalScenarios.some(
+      (scenario) => scenario.maxTurns === undefined,
+    )
+      ? 'reserved-remaining-ceiling'
+      : 'declared',
+  };
+  return { catalogById, models, registered, plan };
+}
+
+async function inspectArtifact(
+  api,
+  sessionId,
+  turnId,
+  storedItems,
+  artifactName,
+  artifactContent,
+) {
+  let contentCheck = 'pass';
+  if (artifactContent !== undefined) {
+    const item = storedItems.find(
+      (candidate) =>
+        candidate.descriptor.kind === 'workspace-file' &&
+        candidate.descriptor.relativePath === artifactName,
+    );
+    contentCheck = 'unverified';
+    if (item?.ref?.eventId) {
+      const inspection = (
+        await api(
+          `/api/orchestration/sessions/${sessionId}/outputs/${encodeURIComponent(item.ref.eventId)}/inspect`,
+          {},
+        )
+      ).data;
+      if (
+        inspection.item?.ref?.sessionId === sessionId &&
+        inspection.item?.ref?.eventId === item.ref.eventId &&
+        inspection.item?.turnId === turnId &&
+        inspection.kind === 'text'
+      )
+        contentCheck = inspection.text === artifactContent ? 'pass' : 'fail';
+    }
+  }
+  return contentCheck;
 }
 
 /**
@@ -167,12 +329,13 @@ async function readStoredOutputs(api, sessionId, turnId, deadline) {
  * @typedef {{engine: string, connectionId: string, model: string, sessionId: string,
  * scenario: string, status: string, turns: MatrixTurn[], failure: string|null,
  * delivery?: Record<string,DeliveryEvidence>}} MatrixRow
- * @typedef {{version: number, generatedAt: string, evidence: string, rows: MatrixRow[]}} MatrixResult
+ * @typedef {{version: number, generatedAt: string, evidence: string, plan: {modelIds: string[], builtInTurns: number, plannedTurnCount: number, maxTurns: number, extensionBudget: string, additionalScenarios: Array<{id: string, scope: string, maxTurns: number|null, instances: number, minimumPlannedTurns: number}>}, sentTurns?: number, rows: MatrixRow[]}} MatrixResult
  */
 
 /**
  * @param {{api: Function, connectionId: string, cwd: string, timeoutMs?: number,
- * observeOutputs?: Function, additionalScenarios?: Array<{id: string, scope?: string, prepare?: Function, run: Function}>}} options
+ * observeOutputs?: Function, additionalScenarios?: Array<{id: string, scope?: string, maxTurns?: number, prepare?: Function, run: Function}>,
+ * modelIds?: string[], maxTurns?: number, onPlan?: Function}} options
  * @returns {Promise<MatrixResult>}
  */
 export async function runMatrix({
@@ -182,6 +345,9 @@ export async function runMatrix({
   timeoutMs = 60_000,
   observeOutputs,
   additionalScenarios = [],
+  modelIds = [],
+  maxTurns = 24,
+  onPlan = () => {},
 }) {
   const inventory = await api('/api/connections/agents');
   if (inventory.failures?.length)
@@ -200,18 +366,22 @@ export async function runMatrix({
       `/api/orchestration/providers/${encodeURIComponent(engine)}/models`,
     )
   ).data;
-  const models = [...new Set(catalog.map((model) => model.id))];
-  if (
-    !models.length ||
-    models.some((model) => typeof model !== 'string' || !model)
-  )
-    throw new Error('No usable advertised models');
-  const registered = [...scenarios, ...additionalScenarios];
-  if (
-    new Set(registered.map((scenario) => scenario.id)).size !==
-    registered.length
-  )
-    throw new Error('Duplicate scenario id');
+  const { catalogById, models, registered, plan } = planRun(
+    catalog,
+    modelIds,
+    additionalScenarios,
+    maxTurns,
+  );
+  await onPlan(plan);
+  let sentTurns = 0;
+  const checkedApi = async (path, body, method) => {
+    if (path === '/api/orchestration/commands' && body?.type === 'sendTurn') {
+      if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
+        throw new Error('Hard turn ceiling reached; refusing another send');
+      sentTurns++;
+    }
+    return api(path, body, method);
+  };
   /** @type {MatrixResult} */
   const result = {
     version: 1,
@@ -219,10 +389,11 @@ export async function runMatrix({
     evidence: observeOutputs
       ? 'Station API with caller-supplied output observer; inspect per-turn checks'
       : 'Station API only; rendered UI NOT_VERIFIED',
+    plan,
     rows: [],
   };
   const command = (value) =>
-    api('/api/orchestration/commands', value).then((body) => body.data);
+    checkedApi('/api/orchestration/commands', value).then((body) => body.data);
   const modelScenarios = registered.filter(
     (scenario) => scenario.scope !== 'engine',
   );
@@ -244,7 +415,7 @@ export async function runMatrix({
     const cleanup = [];
     const delivery = {};
     const setup = {
-      api,
+      api: checkedApi,
       engine,
       connectionId,
       cwd,
@@ -300,8 +471,9 @@ export async function runMatrix({
           model,
           switchModel: models.find((candidate) => candidate !== model),
           artifactName: `station-matrix-${randomUUID()}.txt`,
+          artifactContent: `STATION_MATRIX_ARTIFACT:${randomUUID()}`,
           command,
-          api,
+          api: checkedApi,
           recall: (requested) =>
             ctx.send(
               'Reply with exactly the secret from the first message. Do not use tools.',
@@ -313,6 +485,7 @@ export async function runMatrix({
             requestedModel,
             expectedText,
             artifactName,
+            artifactContent,
             evaluate,
           ) {
             // Recheck isolation before every billable turn, including switches.
@@ -330,6 +503,12 @@ export async function runMatrix({
               throw new Error('Connection isolation changed');
             const turn = { requestedModel, status: 'fail' };
             row.turns.push(turn);
+            const priorEvents = (
+              await api(`/api/orchestration/sessions/${sessionId}/events`)
+            ).data;
+            const priorEventIds = new Set(
+              priorEvents.map((event) => event.eventId),
+            );
             const ack = await command({
               type: 'sendTurn',
               input: {
@@ -343,7 +522,13 @@ export async function runMatrix({
               throw new Error('Turn was not acknowledged; no automatic retry');
             turn.turnId = ack.turnId;
             const deadline = Date.now() + timeoutMs;
-            await waitForTurn(api, sessionId, ack.turnId, deadline);
+            await waitForTurn(
+              api,
+              sessionId,
+              ack.turnId,
+              deadline,
+              priorEventIds,
+            );
             const messages = (
               await api(`/api/orchestration/sessions/${sessionId}/messages`)
             ).data;
@@ -364,13 +549,32 @@ export async function runMatrix({
                 (entry) =>
                   engineFor(entry) === turn.servedEngine && entry.enabled,
               )?.id ?? null;
-            const stored = await readStoredOutputs(
+            const storedItems = await readStoredOutputs(
               api,
               sessionId,
               ack.turnId,
               deadline,
             );
+            const stored = storedItems.map((item) =>
+              item.descriptor.kind === 'workspace-file'
+                ? item.descriptor.relativePath
+                : item.descriptor.ref,
+            );
             turn.storedOutputs = stored;
+            const contentCheck = await inspectArtifact(
+              api,
+              sessionId,
+              ack.turnId,
+              storedItems,
+              artifactName,
+              artifactContent,
+            );
+            turn.comparisonModel = comparisonModel(
+              engine,
+              catalogById.get(requestedModel) ?? { id: requestedModel },
+            );
+            if (turn.comparisonModel === null)
+              turn.modelResolutionReason = 'alias without resolution';
             const observation = await observeOutputs?.({
               sessionId,
               turnId: ack.turnId,
@@ -391,13 +595,17 @@ export async function runMatrix({
                 expectedText === null || text === expectedText
                   ? 'pass'
                   : 'fail',
-              servedModel: checkServedModel(requestedModel, turn.reportedModel),
+              servedModel: checkServedModel(
+                turn.comparisonModel,
+                turn.reportedModel,
+              ),
               servedConnection: checkServedConnection(
                 connectionId,
                 turn.servedEngine,
                 current.data,
               ),
               outputs: checkOutputs(stored, turn.renderedOutputs),
+              artifactContent: contentCheck,
               artifact:
                 !artifactName ||
                 (stored.length === 1 && stored[0] === artifactName)
@@ -460,7 +668,11 @@ export async function runMatrix({
                     row.turns.flatMap((turn) =>
                       Object.entries(turn.checks ?? {})
                         .filter(([, status]) => status === 'unverified')
-                        .map(([name]) => name),
+                        .map(([name]) =>
+                          name === 'servedModel' && turn.modelResolutionReason
+                            ? `${name} (${turn.modelResolutionReason})`
+                            : name,
+                        ),
                     ),
                   ),
                 ].join(', ')}`
@@ -469,6 +681,8 @@ export async function runMatrix({
           row.status = 'fail';
           row.failure = String(error.message ?? error).slice(0, 500);
           priorFailed = true;
+        } finally {
+          if (ctx.recycleEvidence) row.recycleEvidence = ctx.recycleEvidence;
         }
       }
     } catch (error) {
@@ -510,10 +724,12 @@ export async function runMatrix({
       }
     }
   }
+  result.sentTurns = sentTurns;
   return result;
 }
 
 function deliveryVerdict(row, evidence) {
+  if (evidence.probe === 'unverified') return 'unverified';
   if (evidence.declared === 'unsupported') return 'unsupported';
   if (evidence.probe === 'fail') return 'fail';
   const turn = row.turns.find((entry) => entry.turnId === evidence.turnId);
@@ -536,7 +752,7 @@ export function renderMatrix(result) {
     `Generated: ${result.generatedAt}. Evidence: ${result.evidence}.`,
     'A missing model or rendered-output observation is unverified. This report does not alter the catalog.',
     '',
-    '| Engine | Connection | Requested model | Scenario | Verdict | Served by | Served as | Failure |',
+    '| Engine | Connection | Requested model | Scenario | Verdict | Engine-inferred connection | Served as | Failure |',
     '| --- | --- | --- | --- | --- | --- | --- | --- |',
     ...result.rows.map(
       (row) =>

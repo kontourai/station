@@ -44,6 +44,7 @@ type Context = Setup & {
     model: string,
     expected: string | null,
     artifact: string | undefined,
+    artifactContent: string | undefined,
     evaluate?: (turn: {
       text: string;
       storedOutputs: string[];
@@ -136,15 +137,26 @@ export const scenarios = [
   {
     id: 'delivery',
     scope: 'engine',
+    maxTurns: 2,
     async prepare(ctx: Setup) {
       const matrix = resolveEngineCapabilityMatrix(undefined, {
         engineId: ctx.engine === 'station-agent' ? 'station' : ctx.engine,
       });
       const skill = matrix.skills.state !== 'unsupported';
       const policy = disabledId(ctx.engine) !== undefined;
-      ctx.delivery.skills = { declared: matrix.skills.state };
+      ctx.delivery.skills = {
+        declared: matrix.skills.state,
+        reason:
+          'Co-located script access cannot establish that the engine loaded the skill',
+      };
       ctx.delivery.script = { declared: matrix.skills.state };
       ctx.delivery.toolServers = { declared: matrix.toolServers.state };
+      ctx.delivery.nativeToolPolicy = {
+        declared: matrix.toolPolicy.state,
+        probe: 'unverified',
+        reason:
+          'This probe exercises MCP selection only, not native pre-tool blocking or grants',
+      };
       ctx.delivery.disabledTool = {
         declared: policy ? 'MCP selection' : 'unsupported',
         reason: policy
@@ -294,16 +306,24 @@ export const scenarios = [
           ctx.model,
           null,
           undefined,
+          undefined,
           ({ text, storedOutputs, events, identityChecks, turnId }) => {
             allCalls.push(...callsIn(events));
             const checks: Record<string, Verdict> = {
               deliveryIdentity: identityVerdict(identityChecks),
+              skillDelivery: 'unverified',
               skillNonce: text.includes(state.nonce) ? 'pass' : 'fail',
               scriptOutput: storedOutputs.includes(state.artifact)
                 ? 'pass'
                 : 'fail',
             };
-            record(ctx.delivery, 'skills', checks, ['skillNonce'], turnId);
+            record(
+              ctx.delivery,
+              'skills',
+              checks,
+              ['skillNonce', 'skillDelivery'],
+              turnId,
+            );
             record(
               ctx.delivery,
               'script',
@@ -319,6 +339,7 @@ export const scenarios = [
         `Call ping on the configured MCP server ${state.serverId}. Also try its blocked action if available. Reply STATION_DELIVERY_OK.`,
         ctx.model,
         null,
+        undefined,
         undefined,
         ({ events, identityChecks, turnId }) => {
           const currentCalls = callsIn(events);
