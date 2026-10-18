@@ -317,28 +317,33 @@ let telemetryEndpointConfigured: boolean | undefined;
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
 let telemetryDnt = false;
+let telemetryStatusFailed = false;
 vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('../hooks/useTelemetryStatus')>();
   return {
     ...actual,
     useTelemetryStatus: () => ({
-      data: {
-        publishers: Object.fromEntries(
-          ['kontour', 'operator'].map((id) => [
-            id,
-            {
-              tier: telemetryDnt ? 'off' : 'lite',
-              reason: telemetryDnt ? 'DNT' : 'user',
-              userChoice: (
-                configSnapshot.config?.telemetryTier as
-                  | TelemetryTierChoices
-                  | undefined
-              )?.[id as 'kontour' | 'operator'],
-            },
-          ]),
-        ),
-      },
+      isError: telemetryStatusFailed,
+      data: telemetryStatusFailed
+        ? undefined
+        : {
+            publishers: Object.fromEntries(
+              ['kontour', 'operator'].map((id) => [
+                id,
+                {
+                  tier: telemetryDnt ? 'off' : 'lite',
+                  reason: telemetryDnt ? 'DNT' : 'user',
+                  fullAvailable: id === 'operator',
+                  userChoice: (
+                    configSnapshot.config?.telemetryTier as
+                      | TelemetryTierChoices
+                      | undefined
+                  )?.[id as 'kontour' | 'operator'],
+                },
+              ]),
+            ),
+          },
     }),
   };
 });
@@ -498,6 +503,7 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     telemetryDnt = false;
+    telemetryStatusFailed = false;
     isMobile = false;
     isDesktop = false;
     pluginVisibilityRefused = false;
@@ -925,7 +931,7 @@ describe('settings catalog completeness', () => {
 
     expect(
       await screen.findByText(
-        'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.',
+        'Log Level could not be saved. Your change is kept here until you retry.',
       ),
     ).toBeTruthy();
     expect((logLevel as HTMLSelectElement).value).toBe('debug');
@@ -1003,7 +1009,9 @@ describe('settings catalog completeness', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await screen.findByText(/Some settings could not be saved\./);
+    await screen.findByText(
+      /Some settings were saved. Unsaved changes are kept here/,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
     expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(1);
@@ -2278,7 +2286,10 @@ describe('settings catalog completeness', () => {
       dataUpdatedAt: 1,
     };
     updateConfig.mockImplementation(async (delta) => {
-      if (!delta.telemetryTier) throw new Error('Other settings failed');
+      if (!delta.telemetryTier)
+        throw Object.assign(new Error('Full access refused.'), {
+          code: 'approval-full-access-not-granted',
+        });
     });
     await renderSettings();
     fireEvent.change(screen.getByLabelText('Default max turns'), {
@@ -2295,7 +2306,89 @@ describe('settings catalog completeness', () => {
       telemetryTier: { operator: 'off' },
     });
     expect(updateConfig.mock.calls[1][0]).toEqual({ defaultMaxTurns: 201 });
+    await screen.findByText(
+      /Some settings were saved. Unsaved changes are kept here./,
+    );
+    expect(screen.queryByText(/Nothing in this save was stored/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(3));
+    expect(updateConfig.mock.calls[2][0]).toEqual({ defaultMaxTurns: 201 });
   });
+
+  test('failed status with no saved choices keeps both built-in controls and disables Full', async () => {
+    telemetryStatusFailed = true;
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    await renderSettings();
+    expect(
+      screen.getByText(/Telemetry status could not be loaded/),
+    ).toBeTruthy();
+    for (const name of ['Kontour telemetry', 'Operator telemetry']) {
+      const select = screen.getByRole('combobox', { name });
+      expect(
+        (
+          within(select).getByRole('option', {
+            name: 'Full (unavailable)',
+          }) as HTMLOptionElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        (
+          within(select).getByRole('option', {
+            name: 'Off',
+          }) as HTMLOptionElement
+        ).disabled,
+      ).toBe(false);
+    }
+  });
+
+  test('a draft raise followed by Lite compares with saved Off and sends no lowering reason', async () => {
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'off', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    const select = screen.getByRole('combobox', { name: 'Operator telemetry' });
+    fireEvent.change(select, { target: { value: 'full' } });
+    fireEvent.change(select, { target: { value: 'lite' } });
+    expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'lite' },
+      }),
+    );
+  });
+
+  test.each(['button', 'Escape'])(
+    'cancelling a Settings reason with %s restores the draft and sends nothing',
+    async (method) => {
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { operator: 'full', kontour: 'off' },
+        },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+      const select = screen.getByRole('combobox', {
+        name: 'Operator telemetry',
+      }) as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'off' } });
+      const heading = screen.getByRole('heading', {
+        name: /Why lower Operator/,
+      });
+      if (method === 'Escape') fireEvent.keyDown(heading, { key: 'Escape' });
+      else fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+      expect(screen.queryByText(/Why lower Operator/)).toBeNull();
+      expect(select.value).toBe('full');
+      expect(document.activeElement).toBe(select);
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(updateConfig).not.toHaveBeenCalled();
+    },
+  );
 
   test('discarding an optional reason does not attach it to an imported tier change', async () => {
     window.history.replaceState({}, '', '/settings?view=overview');

@@ -695,6 +695,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     const { logLevel, ...plainChanges } = changed;
     const feedbackAtSave = telemetryFeedback;
     const dntAtSave = telemetryStatus.data?.publishers;
+    const savedPlain: Partial<AppConfig> = {};
+    const savedTiers: TelemetryTierChoices = {};
     const plainWrite =
       Object.keys(plainChanges).length > 0
         ? (async () => {
@@ -713,9 +715,36 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     ? { telemetryFeedbackReason: reason }
                     : {}),
                 };
-                await updateConfig(write);
+                const result = await updateConfig(write);
+                if (
+                  result?.ignoredKeys?.some(
+                    (entry) => entry.key === 'telemetryTier',
+                  )
+                )
+                  throw new Error('The telemetry tier was refused.');
+                savedTiers[publisher] = tier;
+                savedPlain.telemetryTier = {
+                  ...savedTelemetryChoices,
+                  ...savedTiers,
+                };
+                setTelemetryFeedback((current) => {
+                  const next = { ...current };
+                  delete next[publisher];
+                  return next;
+                });
               }
-              if (Object.keys(other).length) await updateConfig(other);
+              if (Object.keys(other).length) {
+                await updateConfig(other);
+                Object.assign(
+                  savedPlain,
+                  Object.fromEntries(
+                    Object.keys(other).map((key) => [
+                      key,
+                      (config as Record<string, unknown>)[key],
+                    ]),
+                  ),
+                );
+              }
             } finally {
               if (telemetryTier) {
                 void invalidate(['telemetry-status']);
@@ -781,19 +810,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const logLevelFailed =
         logLevelWrite !== undefined && logLevelOutcome.status === 'rejected';
       const hasSaved =
-        (plainWrite !== undefined && plainOutcome.status === 'fulfilled') ||
+        Object.keys(savedPlain).length > 0 ||
         (logLevelWrite !== undefined && logLevelOutcome.status === 'fulfilled');
       if (hasSaved) {
         // Preserve draft spelling until readback, including '' for cleared Region.
         const written = {
-          ...(plainWrite !== undefined && plainOutcome.status === 'fulfilled'
-            ? Object.fromEntries(
-                Object.keys(plainChanges).map((key) => [
-                  key,
-                  (config as Record<string, unknown>)[key],
-                ]),
-              )
-            : {}),
+          ...savedPlain,
           ...(logLevelWrite &&
           logLevelOutcome.status === 'fulfilled' &&
           logLevelOutcome.value
@@ -845,18 +867,24 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         overrideWrite !== undefined && overrideOutcome.status === 'rejected';
       const stationMessage =
         plainFailed && logLevelFailed
-          ? 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
+          ? hasSaved
+            ? 'Some settings were saved. Log Level and other unsaved changes are kept here until you retry.'
+            : 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
           : logLevelFailed
-            ? plainOutcome.status === 'fulfilled'
+            ? hasSaved
               ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
               : 'Log Level could not be saved. Your change is kept here until you retry.'
             : plainFailed
               ? plainOutcome.reason instanceof StationReadOnlyError
-                ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                ? hasSaved
+                  ? 'Some settings were saved before Station became unreachable. Unsaved changes are kept here until you retry.'
+                  : 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
                 : fullAccessRefusal(plainOutcome.reason)
                   ? // #2436: a retry would be refused again; say why instead.
-                    `${fullAccessRefusal(plainOutcome.reason)} Nothing in this save was stored. Choose a stricter default approval mode to save your other changes.`
-                  : 'Some settings could not be saved. Your changes are kept here until you retry.'
+                    `${fullAccessRefusal(plainOutcome.reason)} ${hasSaved ? 'Some settings were saved. Unsaved changes are kept here.' : 'Nothing in this save was stored.'} Choose a stricter default approval mode to save your other changes.`
+                  : hasSaved
+                    ? 'Some settings were saved. Unsaved changes are kept here until you retry.'
+                    : 'Some settings could not be saved. Your changes are kept here until you retry.'
               : null;
       const messages = [
         stationMessage,
@@ -1157,6 +1185,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <StationConfigSection
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
+                      savedTelemetryChoices={savedConfig.telemetryTier}
+                      telemetryStatusError={telemetryStatus.isError}
                       showTelemetryOutbox
                       onTelemetryFeedback={(publisher, reason) =>
                         setTelemetryFeedback((current) => ({

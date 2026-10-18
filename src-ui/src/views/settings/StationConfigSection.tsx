@@ -160,6 +160,8 @@ export function StationConfigSection({
   containerScope,
   projectOverride,
   telemetryPublishers,
+  savedTelemetryChoices,
+  telemetryStatusError,
   onTelemetryFeedback,
   showTelemetryOutbox,
 }: {
@@ -185,6 +187,8 @@ export function StationConfigSection({
    */
   containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
+  savedTelemetryChoices?: AppConfig['telemetryTier'];
+  telemetryStatusError?: boolean;
   telemetryPublishers?: Partial<
     Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
@@ -204,6 +208,8 @@ export function StationConfigSection({
           config={config}
           onChange={onChange}
           publishers={telemetryPublishers}
+          savedChoices={savedTelemetryChoices}
+          statusError={telemetryStatusError}
           onFeedback={onTelemetryFeedback}
           showOutbox={showTelemetryOutbox}
         />

@@ -2,11 +2,13 @@ import type {
   TelemetryOutboxEntry,
   TelemetryPublisherId,
 } from '@kontourai/station-contracts/product-telemetry';
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import { authenticatedFetch, getJson } from '@kontourai/station-sdk';
+import { DEFAULT_CLIENT_REQUEST_TIMEOUT_MS } from '@kontourai/station-sdk/client';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useOptionalRecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { telemetryPublisherLabel } from '../../hooks/useTelemetryStatus';
 import '../../components/TelemetryPrivacy.css';
 
@@ -25,13 +27,19 @@ export function TelemetryOutbox({
   publisher: TelemetryPublisherId;
 }) {
   const { apiBase } = useApiBase();
+  const scope = useOptionalRecoveryScope();
+  const targetBase = scope?.apiBase ?? apiBase;
   const query = useQuery({
-    queryKey: ['telemetry-outbox', apiBase, publisher],
+    queryKey: ['telemetry-outbox', targetBase, scope?.identityKey, publisher],
     queryFn: async ({ signal }): Promise<TelemetryOutboxEntry[]> => {
-      const response = await authenticatedFetch(
-        `${apiBase}/api/usage-telemetry/outbox?publisher=${encodeURIComponent(publisher)}`,
-        { signal },
-      );
+      const url = `${targetBase}/api/usage-telemetry/outbox?publisher=${encodeURIComponent(publisher)}&limit=${LIMIT}`;
+      const response = scope
+        ? await getJson(url, {
+            signal,
+            timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+            ...(scope.requestScope ? { requestScope: scope.requestScope } : {}),
+          })
+        : await authenticatedFetch(url, { signal });
       if (!response.ok) throw new Error('The outbox could not be loaded.');
       return (await response.json()).data;
     },
@@ -54,6 +62,7 @@ export function TelemetryOutbox({
         and dropped records show reasons and counts, without a payload viewer.
       </p>
       <Button
+        size="sm"
         variant="secondary"
         disabled={query.isFetching}
         onClick={() => void query.refetch()}
@@ -94,7 +103,9 @@ export function TelemetryOutbox({
               </details>
             ) : (
               <p>
-                {'count' in entry.payload
+                {entry.payload &&
+                typeof entry.payload === 'object' &&
+                'count' in entry.payload
                   ? `${entry.payload.count} ${entry.payload.count === 1 ? 'observation' : 'observations'}`
                   : 'Payload not displayed for an unsent record.'}
               </p>

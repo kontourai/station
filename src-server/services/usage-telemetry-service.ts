@@ -371,8 +371,13 @@ export class UsageTelemetryService {
     }
   > {
     await this.loadDisclosureReceipt();
+    const resolved = this.resolvedConfiguration();
     return {
-      ...this.resolvedConfiguration(),
+      ...resolved,
+      publishers: {
+        kontour: { ...resolved.publishers.kontour, fullAvailable: false },
+        operator: { ...resolved.publishers.operator, fullAvailable: true },
+      },
       liteNotices: this.publishers.local.notices(),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,

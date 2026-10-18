@@ -20,11 +20,13 @@ const LABELS: Record<TelemetryFeedbackReason, string> = {
 export function TelemetryFeedbackPrompt({
   publisher,
   onChoose,
+  onCancel,
   deferred = false,
 }: {
   publisher: string;
   onChoose: (reason: TelemetryFeedbackReason) => void;
   deferred?: boolean;
+  onCancel?: () => void;
 }) {
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -32,7 +34,16 @@ export function TelemetryFeedbackPrompt({
     heading.current?.focus();
   }, []);
   return (
-    <section className="telemetry-feedback" aria-labelledby={id}>
+    <section
+      className="telemetry-feedback"
+      aria-labelledby={id}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && onCancel) {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
       <h3 id={id} tabIndex={-1} ref={heading}>
         Why lower {publisher} telemetry? (optional)
       </h3>
@@ -53,6 +64,11 @@ export function TelemetryFeedbackPrompt({
             {LABELS[reason]}
           </Button>
         ))}
+        {onCancel && (
+          <Button variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
       </div>
     </section>
   );

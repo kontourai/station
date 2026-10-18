@@ -75,7 +75,7 @@ the server's exact field inventory. It records the receipt after the panel is
 in the visible viewport, while the document is visible and no modal covers it.
 It waits while first-run or connection setup owns the screen, adding no new
 blocking onboarding step. DNT hides the notice and the API refuses a receipt
-under DNT. A failed receipt leaves Lite suppressed; dismissing never counts as
+under DNT or when that publisher’s effective tier is not Lite. The panel has a named region and a polite announcement. A failed receipt leaves Lite suppressed; dismissing never counts as
 a receipt. Successful receipt writes update the authority-scoped status cache; the current
 panel stays available until dismissed or turned off, while a remount does not
 replay an old cached notice. Server-side receipts survive reload and restart;
@@ -100,7 +100,8 @@ Lite. These commands support the normal target/credential flags. The status API 
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
-Settings exposes a **What was sent** section for every status publisher, showing
+Settings always exposes Kontour and Operator controls, plus any registered publisher. A failed status read is shown explicitly; Full stays disabled unless status reports `fullAvailable: true` for that publisher. Older servers without this field leave Full disabled.
+Settings exposes a collapsed **What was sent to {publisher}** section below each publisher’s tier row, showing
 the newest 50 records for that publisher and an explicit empty/error state.
 Sent entries have a collapsible JSON viewer. Unsent entries expose only their
 reason and observation count, with Off/DNT/disclosure/notice/unconfigured
@@ -201,10 +202,10 @@ Inline tier-lowering reasons and standalone feedback share one persisted budget 
 
 ## Local ledger and feedback
 
-`GET /api/usage-telemetry/outbox?publisher=operator` and the CLI show the payload,
+`GET /api/usage-telemetry/outbox?publisher=operator&limit=50` and the CLI show the payload,
 publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
 is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
-5 MiB of actual serialized bytes, oldest first. Reads also enforce retention.
+5 MiB of actual serialized bytes, oldest first. Reads also enforce retention. The HTTP API returns the newest 50 records by default; `limit` accepts integers from 1 to 200 and rejects values outside that range with 400. Publisher filtering happens before the limit. Settings requests 50 and uses the same authority scope as its status read.
 It is an audit log, not a retry spool. Dropped Full observations are coalesced
 in memory, then published at the flush interval, on outbox reads, and at shutdown
 as `telemetry_dropped` counts per publisher, reason and UTC day. A process crash
@@ -226,14 +227,14 @@ Feedback persistence or transport failure never prevents applying the lower tier
 An unchanged or raised choice sends no reason. A repeated request cannot replay
 the reason. DNT suppresses the signal and does not record a feedback window.
 Settings offers the fixed reasons and Skip when lowering a publisher's choice;
-the reason is staged until Save. Each edited publisher is written independently,
+the comparison uses the saved tier, so editing an unsaved raise back down is not a lowering. The reason is staged until Save. Cancel or Escape closes the Settings prompt, restores the prior draft tier and focus, and sends nothing. Each edited publisher is written independently,
 with its optional reason in that same config request, preserving omitted
-publishers. The Full disclosure dialog offers the same optional prompt before
+publishers. Successful writes are marked saved even if a later write fails; the error identifies a partial save and retry includes only unsaved changes. The Full disclosure dialog offers the same optional prompt before
 its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is
 offered under DNT. Failed writes do not acknowledge. Feedback is action metadata,
 not a persisted setting. The optional prompt focuses its heading once when
 opened and returns keyboard focus to the Settings tier control after a reason
-or Skip is chosen.
+or Skip is chosen. A failed dialog setting write focuses its error so keyboard users can find the retry actions.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action

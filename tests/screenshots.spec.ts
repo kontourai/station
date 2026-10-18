@@ -1769,6 +1769,7 @@ function telemetryConsentScreens(): Screen[] {
                 tier: dnt ? 'off' : 'lite',
                 reason: pending ? 'disclosure' : dnt ? 'DNT' : 'user',
                 userChoice: pending || dnt ? 'full' : 'lite',
+                fullAvailable: true,
                 source: 'config',
               },
             };
@@ -1788,6 +1789,7 @@ function telemetryConsentScreens(): Screen[] {
                 tier: dnt ? 'off' : 'lite',
                 reason: pending ? 'disclosure' : dnt ? 'DNT' : 'user',
                 userChoice: pending || dnt ? 'full' : 'lite',
+                fullAvailable: true,
               },
             };
             body.data.liteNotices =
@@ -1869,7 +1871,7 @@ function telemetryConsentScreens(): Screen[] {
         afterGoto: async (page) => {
           if (mode === 'lite-notice') {
             await expect(
-              page.getByRole('complementary', {
+              page.getByRole('region', {
                 name: 'Lite telemetry notice for Operator',
               }),
             ).toBeVisible();
@@ -1888,6 +1890,13 @@ function telemetryConsentScreens(): Screen[] {
             return;
           }
           if (mode === 'outbox') {
+            const summary = page.getByText('What was sent to Operator', {
+              exact: true,
+            });
+            await expect(
+              page.getByRole('button', { name: 'Refresh Operator outbox' }),
+            ).toBeHidden();
+            await summary.click();
             const outbox = page.getByRole('region', {
               name: 'What was sent to Operator',
             });

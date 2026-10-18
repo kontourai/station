@@ -15,12 +15,16 @@ import { TelemetryOutbox } from './TelemetryOutbox';
 
 export function TelemetryTierSettings({
   config,
+  savedChoices,
+  statusError = false,
   onChange,
   publishers,
   onFeedback,
   showOutbox = false,
 }: {
   config: AppConfig;
+  savedChoices?: TelemetryTierChoices;
+  statusError?: boolean;
   onChange: (config: AppConfig) => void;
   publishers?: Partial<Record<TelemetryPublisherId, TelemetryPublisherStatus>>;
   onFeedback?: (
@@ -32,6 +36,7 @@ export function TelemetryTierSettings({
   const [pending, setPending] = useState<{
     publisher: TelemetryPublisherId;
     tier: TelemetryTier;
+    previous: string;
     trigger: HTMLSelectElement;
   }>();
   const choices: TelemetryTierChoices | undefined = config.telemetryTier;
@@ -50,14 +55,28 @@ export function TelemetryTierSettings({
   };
   return (
     <div {...settingsRow('usage-telemetry')} tabIndex={-1}>
-      {(Object.keys(publishers ?? choices ?? {}) as TelemetryPublisherId[]).map(
-        (publisher) => {
-          const label = `${telemetryPublisherLabel(publisher)} telemetry`;
-          const status = publishers?.[publisher];
-          const choice = choices?.[publisher] ?? status?.userChoice ?? '';
-          return (
+      {statusError && (
+        <p role="alert" className="settings__field-hint">
+          Telemetry status could not be loaded. Full is unavailable until status
+          loads.
+        </p>
+      )}
+      {(
+        [
+          ...new Set([
+            'kontour',
+            'operator',
+            ...Object.keys(publishers ?? {}),
+            ...Object.keys(choices ?? {}),
+          ]),
+        ] as TelemetryPublisherId[]
+      ).map((publisher) => {
+        const label = `${telemetryPublisherLabel(publisher)} telemetry`;
+        const status = publishers?.[publisher];
+        const choice = choices?.[publisher] ?? status?.userChoice ?? '';
+        return (
+          <div key={publisher} className="telemetry-publisher">
             <SettingsPageRow
-              key={publisher}
               label={label}
               description={
                 publisher === 'kontour'
@@ -72,7 +91,7 @@ export function TelemetryTierSettings({
                   onChange={(event) => {
                     const tier = event.target.value as TelemetryTier;
                     const previous =
-                      choices?.[publisher] ??
+                      savedChoices?.[publisher] ??
                       status?.userChoice ??
                       status?.tier ??
                       'lite';
@@ -84,6 +103,7 @@ export function TelemetryTierSettings({
                       setPending({
                         publisher,
                         tier,
+                        previous: choice,
                         trigger: event.currentTarget,
                       });
                     else change(publisher, tier, 'skip');
@@ -94,37 +114,52 @@ export function TelemetryTierSettings({
                   </option>
                   <option value="off">Off</option>
                   <option value="lite">Lite</option>
-                  <option value="full" disabled={publisher === 'kontour'}>
-                    Full{publisher === 'kontour' ? ' (unavailable)' : ''}
+                  <option
+                    value="full"
+                    disabled={statusError || !status?.fullAvailable}
+                  >
+                    Full{!status?.fullAvailable ? ' (unavailable)' : ''}
                   </option>
                 </select>
               }
             >
-              {pending?.publisher === publisher && status?.reason !== 'DNT' && (
-                <TelemetryFeedbackPrompt
-                  deferred
-                  publisher={telemetryPublisherLabel(publisher)}
-                  onChoose={(reason) => {
-                    const { tier, trigger } = pending;
-                    change(publisher, tier, reason);
-                    trigger.focus();
-                  }}
-                />
-              )}
-              {pending?.publisher === publisher && status?.reason === 'DNT' && (
-                <p>
-                  DO_NOT_TRACK is active. Choose a tier again to save without
-                  feedback.
-                </p>
-              )}
               <span className="settings__field-hint">
                 {effectiveSummary(status)}
               </span>
-              {showOutbox && <TelemetryOutbox publisher={publisher} />}
             </SettingsPageRow>
-          );
-        },
-      )}
+            {pending?.publisher === publisher && status?.reason !== 'DNT' && (
+              <TelemetryFeedbackPrompt
+                deferred
+                onCancel={() => {
+                  pending.trigger.value = pending.previous;
+                  pending.trigger.focus();
+                  setPending(undefined);
+                }}
+                publisher={telemetryPublisherLabel(publisher)}
+                onChoose={(reason) => {
+                  const { tier, trigger } = pending;
+                  change(publisher, tier, reason);
+                  trigger.focus();
+                }}
+              />
+            )}
+            {pending?.publisher === publisher && status?.reason === 'DNT' && (
+              <p>
+                DO_NOT_TRACK is active. Choose a tier again to save without
+                feedback.
+              </p>
+            )}
+            {showOutbox && (
+              <details className="telemetry-outbox">
+                <summary>
+                  What was sent to {telemetryPublisherLabel(publisher)}
+                </summary>
+                <TelemetryOutbox publisher={publisher} />
+              </details>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

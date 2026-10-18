@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
   type Ref,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -764,6 +765,10 @@ function useUsageTelemetryDecision(
     choose: (reason: TelemetryFeedbackReason) => void;
   }>();
   const [settingError, setSettingError] = useState(false);
+  const settingErrorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (settingError) settingErrorRef.current?.focus();
+  }, [settingError]);
   const [dntSelection, setDntSelection] = useState<{
     target: string;
     tier: TelemetryTier;
@@ -999,7 +1004,12 @@ function useUsageTelemetryDecision(
           }
         : undefined,
     notice: settingError ? (
-      <p className="usage-telemetry-disclosure__error" role="alert">
+      <p
+        className="usage-telemetry-disclosure__error"
+        role="alert"
+        tabIndex={-1}
+        ref={settingErrorRef}
+      >
         The usage telemetry setting could not be saved.
       </p>
     ) : (

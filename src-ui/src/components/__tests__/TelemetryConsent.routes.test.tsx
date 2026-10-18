@@ -9,10 +9,13 @@ import { afterEach, expect, test, vi } from 'vitest';
 
 const bridge = vi.hoisted(() => ({
   request: vi.fn(),
+  scopedRead: vi.fn(),
+  scope: null as RecoveryScope | null,
   save: vi.fn(),
   config: {} as AppConfig,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  getJson: (...args: unknown[]) => bridge.scopedRead(...args),
   mutateJson: (url: string, method: string, _options: unknown, body: unknown) =>
     bridge.request(url, {
       method,
@@ -41,7 +44,7 @@ vi.mock('../../hooks/useRecoveryConfig', () => ({
   recoveryConfigKey: (...parts: unknown[]) => parts,
 }));
 vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
-  useOptionalRecoveryScope: () => null,
+  useOptionalRecoveryScope: () => bridge.scope,
 }));
 vi.mock('../../../../src-server/telemetry/metrics.js', () => ({
   configOps: { add: vi.fn() },
@@ -69,6 +72,7 @@ const { UsageTelemetryService } = await import(
 );
 const { createLogger } = await import(serverModule('utils/logger.js'));
 
+import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
 import { UsageTelemetryDisclosureStep } from '../UsageTelemetryDisclosure';
 
@@ -403,7 +407,7 @@ test('notice receipts follow visible presentation, survive remount, and require 
     expect((await service.telemetryStatus()).liteNotices).toEqual({});
     view.unmount();
     view = renderNotice();
-    await screen.findByRole('complementary', {
+    await screen.findByRole('region', {
       name: 'Lite telemetry notice for Operator',
     });
     await new Promise((resolve) =>
@@ -415,7 +419,28 @@ test('notice receipts follow visible presentation, survive remount, and require 
       ),
     ).toHaveLength(0);
     expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
     modal.remove();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+    );
+    expect(
+      bridge.request.mock.calls.filter(([url]) =>
+        String(url).endsWith('/lite-notices'),
+      ),
+      'hidden tab must not dispatch a receipt',
+    ).toHaveLength(0);
+    expect(
+      (await service.telemetryStatus()).liteNotices,
+      'hidden tab must not attest a notice',
+    ).toEqual({});
+    visibility.mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
     await waitFor(async () =>
       expect(
         (await service.telemetryStatus()).liteNotices.operator
@@ -426,8 +451,8 @@ test('notice receipts follow visible presentation, survive remount, and require 
     expect(screen.getByRole('button', { name: 'Dismiss notice' })).toBeTruthy();
     view.unmount();
     view = renderNotice();
-    expect(screen.queryByRole('complementary')).toBeNull();
-    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull());
+    expect(screen.queryByRole('region')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('region')).toBeNull());
     // A stale receipt is not a notice for today's catalog.
     const dailyPath = join(home, 'config', 'telemetry-daily.json');
     const daily = JSON.parse(await readFile(dailyPath, 'utf8'));
@@ -436,7 +461,7 @@ test('notice receipts follow visible presentation, survive remount, and require 
     view.unmount();
     client.clear();
     view = renderNotice();
-    await screen.findByRole('complementary', {
+    await screen.findByRole('region', {
       name: 'Lite telemetry notice for Operator',
     });
     await waitFor(async () =>
@@ -549,8 +574,85 @@ test('DNT never renders a Lite notice or records a UI receipt', async () => {
         ])?.status,
       ).toBe('success'),
     );
-    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByRole('region')).toBeNull();
     expect((await service.telemetryStatus()).liteNotices).toEqual({});
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
+test('outbox uses recovery scope and tolerates an unsent null payload', async () => {
+  const { client, loader } = await publisherFixture();
+  bridge.scope = {
+    apiBase: 'http://recovery.test',
+    identityKey: 'recovery-1',
+    requestScope: null,
+  };
+  bridge.scopedRead.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            publisher: 'operator',
+            tier: 'lite',
+            recordedAt: '2026-10-18T00:00:00Z',
+            outcome: 'dropped',
+            reason: 'transport',
+            payload: null,
+          },
+        ],
+      }),
+    ),
+  );
+  const view = render(
+    <QueryClientProvider client={client}>
+      <TelemetryOutbox publisher="operator" />
+    </QueryClientProvider>,
+  );
+  try {
+    await screen.findByText('Payload not displayed for an unsent record.');
+    expect(bridge.scopedRead).toHaveBeenCalledWith(
+      'http://recovery.test/api/usage-telemetry/outbox?publisher=operator&limit=50',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      client.getQueryData([
+        'telemetry-outbox',
+        'http://recovery.test',
+        'recovery-1',
+        'operator',
+      ]),
+    ).toHaveLength(1);
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+    bridge.scope = null;
+  }
+});
+
+test('a failed dialog tier write focuses its error after the reason prompt closes', async () => {
+  const { client, loader } = await publisherFixture();
+  bridge.save.mockRejectedValueOnce(new Error('refused'));
+  const advance = vi.fn();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <UsageTelemetryDisclosureStep onAdvance={advance} />
+    </QueryClientProvider>,
+  );
+  try {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Turn off usage telemetry' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip' }));
+    const error = await screen.findByText(
+      'The usage telemetry setting could not be saved.',
+    );
+    await waitFor(() => expect(document.activeElement).toBe(error));
+    expect(advance).not.toHaveBeenCalled();
+    expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('lite');
   } finally {
     view.unmount();
     client.clear();

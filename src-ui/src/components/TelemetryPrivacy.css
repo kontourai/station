@@ -82,3 +82,23 @@
 .telemetry-lite-notice__actions {
   flex-shrink: 0;
 }
+
+.telemetry-outbox h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 500;
+}
+.telemetry-outbox p,
+.telemetry-outbox li,
+.telemetry-lite-notice p,
+.telemetry-feedback p {
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.telemetry-outbox pre,
+.telemetry-lite-notice pre {
+  font-size: var(--k-text-xs);
+}
+.telemetry-publisher {
+  min-width: 0;
+}
