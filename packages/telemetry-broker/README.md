@@ -52,6 +52,8 @@ Configure these environment variables for the built entrypoint:
 | `STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE` | Owned Unix regular file, private permissions, containing one `sto_` credential |
 | `STATION_TELEMETRY_BROKER_HOST` | Listen address, default `127.0.0.1` |
 | `STATION_TELEMETRY_BROKER_PORT` | Nonprivileged port, default `43891` |
+| `STATION_TELEMETRY_BROKER_TRUSTED_PROXY` | Optional comma-separated IPv4/IPv6 CIDRs (at most 128); unset trusts no proxy. Empty entries, bare IPs, zone IDs and invalid masks refuse startup |
+| `STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER` | Only `cf-connecting-ip` is allowed (also the default); any other value refuses startup, even without trusted CIDRs |
 
 Run `node packages/telemetry-broker/dist/main.mjs`. The bundled artifact includes
 its JavaScript dependencies. The Unix secret-file profile rejects symlinks,
@@ -83,6 +85,7 @@ described under [Lite observations](#lite-observations).
 | Route | Credential and outcome |
 | --- | --- |
 | `GET /health/live` | Public process liveness and inventory revision; does not prove storage readiness |
+| `GET /v1/operator/diagnostics` | Operator Bearer key; process-lifetime `invalidClientIpHeaders` counter, no request values |
 | `GET /v1/operator/storage` | Operator Bearer key; checks durability, migration, logged tables, columns, defaults, keys, constraints and index |
 | `POST /v1/operator/sources` | Operator Bearer key; JSON `{id, label, credentialHash}` provisions a UUID source and a lowercase SHA-256 key digest |
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
@@ -169,7 +172,9 @@ command. It also checks that a probe inserts no source, observation or commit,
 and that foreign and revoked keys cannot probe. Successful runs remove only their owned database; failed runs retain
 it and report its name for diagnosis.
 
-The runner does not certify Station execution, persistent deployment, backup
+The runner includes built-entrypoint trusted-proxy startup refusals and scans
+all database rows plus captured logs for a trusted `CF-Connecting-IP` sentinel.
+It does not certify Station execution, persistent deployment, backup
 restore or native shells. Those remain separate from focused HTTP tests and
 live-store qualification.
 
@@ -186,6 +191,15 @@ bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
 source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
+
+This endpoint accepts only `station_daily`. A `TelemetryFeedback` body such as
+`{"publisher":"kontour","action":"tier-lowered","reason":"privacy"}` returns
+400 `invalid_daily_ping` and stores nothing. The Lite sender currently posts
+both payload types to its configured URL; that does not establish feedback
+interoperability. A destination must explicitly support feedback before a
+sender routes it there. Durable receiver support needs its own strict
+validation, storage migration, retention/capacity policy and operator view;
+no feedback route or discarded-payload 202 is introduced here.
 
 The operator provisions a **public per-publisher/per-channel identifier**, not
 a secret embedded in a binary. Example operator-authenticated request body for
@@ -208,7 +222,9 @@ Publisher IDs are bounded to 128 characters and retain scoped IDs such as
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
 strings. Empty catalogs admit only contract sentinels (`custom` version,
-`none`/`custom` distribution, no public plugins). To change a catalog, provision
+`none`/`custom`/`unknown` distribution, no public plugins). Sources may select
+channel `unknown` for a sender without channel metadata; channel equality still
+applies. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
 a new source and revoke the old one with
 `DELETE /v1/operator/lite/sources/:source`; existing IDs cannot be repurposed.
 Only enabled sources ingest. The trusted mapping, never the request body,
@@ -229,16 +245,30 @@ recently used entry is evicted at capacity, so new clients remain admissible;
 eviction can reset an old client's attempt budget, but never changes its daily
 contributor hash. Keys use HMAC-SHA256 with a random process-only salt, replaced
 on the next UTC-day request. The salt is never stored. Raw IPs and user agents
-never enter SQL, logs, errors, marginals or receipts. Forwarded-IP headers are
-ignored. Behind a proxy all clients share one key; NAT also merges contributors.
+never enter SQL, logs, errors, marginals or receipts. By default forwarded-IP
+headers are ignored: without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, **all
+clients behind cloudflared share the connector's key**. NAT also merges contributors.
+
+For a Cloudflare Tunnel, trust only the connector's socket CIDR (ideally a /32
+or /128), and keep direct access to the receiver private. A trusted peer's
+`CF-Connecting-IP` must contain exactly one IPv4 or IPv6 address. Lists, ports,
+brackets, zone IDs and garbage fall back to the socket peer and increment the
+operator diagnostic counter. A missing header also uses the peer. Untrusted
+peers cannot select keys with any header and do not increment that counter.
+IPv4-mapped IPv6 peers match IPv4 trusted CIDRs. The selected transient address
+feeds both existing HMAC groupings; no raw address is retained or echoed.
+`X-Forwarded-For` is always ignored. See the [single-host tunnel
+recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel).
 
 Run one receiver process. Restart changes the salt and can count the same
 network again that day, inflating distinct contributor counts; multiple
 processes have independent salts and limits. This is not a unique-person count
 or a Sybil defense. Network grouping provides no authenticity; published support
-is fixed and has no contributor threshold to pad. A proxy-aware deployment needs a separately reviewed trusted
-ingress boundary, with access logging disabled/sanitized there. This package
-does not qualify infrastructure logging. OHTTP and DAP/Prio remain deferred.
+is fixed and has no contributor threshold to pad. The trusted connector must
+supply Cloudflare's header faithfully; do not trust an entire container/host
+network or permit other workloads to impersonate it. Disable or sanitize
+infrastructure access/error logging. This package does not qualify Cloudflare,
+connector or host logging. OHTTP and DAP/Prio remain deferred.
 
 ### Storage and activity estimates
 

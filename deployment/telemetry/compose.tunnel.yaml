@@ -1,0 +1,51 @@
+name: ${COMPOSE_PROJECT_NAME:?set a unique persistent Compose project name}
+
+services:
+  postgres:
+    extends: {file: compose.yaml, service: postgres}
+
+  receiver:
+    extends: {file: compose.yaml, service: receiver}
+    environment:
+      STATION_TELEMETRY_BROKER_TRUSTED_PROXY: 172.30.242.2/32
+      STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER: cf-connecting-ip
+    networks:
+      product: {}
+      tunnel:
+        ipv4_address: 172.30.242.3
+
+  cloudflared:
+    image: ${TELEMETRY_CLOUDFLARED_IMAGE:?set a reviewed cloudflare/cloudflared image digest}
+    user: "65532:65532"
+    command: [tunnel, --no-autoupdate, --config, /etc/cloudflared/config.yaml, run]
+    restart: unless-stopped
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    logging: {driver: none}
+    volumes:
+      - ./cloudflared.example.yaml:/etc/cloudflared/config.yaml:ro
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR}/tunnel-credentials.json
+        target: /run/private/tunnel-credentials.json
+        read_only: true
+        bind: {create_host_path: false}
+    networks:
+      tunnel:
+        ipv4_address: 172.30.242.2
+      edge: {}
+    depends_on: [receiver]
+    cpus: 0.5
+    mem_limit: 256m
+
+networks:
+  product:
+    internal: true
+  tunnel:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.242.0/29}]
+  edge: {}
+
+volumes:
+  postgres-data:

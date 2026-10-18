@@ -3,6 +3,7 @@ import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
 import type { Pool, QueryResultRow } from 'pg';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
+import { clientAddressPolicy } from '../client-address.js';
 import {
   assertLiteSchema,
   LiteRepository,
@@ -236,6 +237,70 @@ test('padding probe always releases rare values, including zero, on identical fi
   expect(
     own.some((c) => c.value === 'rare.plugin' || c.value === '1.2.3'),
   ).toBe(false);
+});
+
+test('trusted proxy contributes distinct clients and accepts the sender unknown sentinels', async () => {
+  await lite.createSource({
+    id: 'unknown-channel',
+    publisher: 'kontour',
+    channel: 'unknown',
+    registryIds: [],
+    releaseVersions: [],
+  });
+  const addresses = clientAddressPolicy('192.0.2.1/32');
+  const full = new PgProductRepository({} as Pool);
+  app = createProductBroker(
+    Object.assign(full, { lite }),
+    operatorKey,
+    addresses,
+  );
+  const header = '203.0.113.87';
+  for (const [peer, value] of [
+    ['192.0.2.1', header],
+    ['192.0.2.1', '203.0.113.88'],
+    ['192.0.2.2', header],
+    ['192.0.2.2', '203.0.113.89'],
+  ]) {
+    const response = await app.request(
+      '/v1/lite/unknown-channel',
+      {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': value },
+        body: JSON.stringify({
+          ...dailyPing(),
+          version: 'custom',
+          channel: 'unknown',
+          distribution: 'unknown',
+          layouts_customized: 'unknown',
+          public_plugins_enabled: [],
+        }),
+      },
+      socketBindings(peer),
+    );
+    expect(response.status).toBe(202);
+  }
+  await closeDay();
+  await lite.finalize();
+  const exact = await (
+    await app.request('/v1/operator/lite/daily', auth())
+  ).json();
+  expect(exact.marginals).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    dimension: 'channel',
+    value: 'unknown',
+    pings: '4',
+    contributors: '3',
+  });
+  const published = await readAll();
+  for (const dimension of ['channel', 'distribution'])
+    expect(
+      published.some((c) => c.dimension === dimension && c.value === 'unknown'),
+    ).toBe(true);
+  expect((await app.request('/v1/operator/diagnostics')).status).toBe(401);
+  expect(
+    await (await app.request('/v1/operator/diagnostics', auth())).json(),
+  ).toEqual({ invalidClientIpHeaders: 0 });
 });
 
 test.each([

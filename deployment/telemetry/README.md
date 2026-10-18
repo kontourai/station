@@ -109,7 +109,8 @@ The private Compose profile does not publish these endpoints on the Internet.
 A public deployment must independently qualify TLS, ingress access/error logging
 without client IP/user-agent retention, proxy/NAT rate limits, database capacity,
 restart and backup/restore. IPv4 or IPv6 /64s select daily rate-limit keys;
-IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored.
+IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored
+unless the connector socket CIDR is explicitly trusted as described below.
 Run one receiver process; restarts change the salt and inflate same-day distinct
 counts. A failed publisher/day dimension retains only that publisher/day's
 associations while completed publishers' erasure progresses. Public reads never
@@ -173,6 +174,80 @@ collector base URL with the separate OTel key. Use the saved instance destinatio
 and exact SecretBinding grants where available, or the documented independent
 environment settings. Product disclosure remains necessary. A connection check
 is not an emitted event, persisted metric, trace query or personal enrollment.
+
+## Single-host Cloudflare Tunnel
+
+The separate [`compose.tunnel.yaml`](compose.tunnel.yaml) recipe runs only
+receiver, PostgreSQL 16 and cloudflared. It reuses the receiver/database service
+settings above, including persistent PostgreSQL storage and the numeric-loopback
+operator port 44481. It is a deployment template, not evidence of a live tunnel,
+backup/restore acceptance or production logging configuration.
+
+Provision a dedicated locally managed tunnel and hostname using
+[Cloudflare's configuration-file workflow](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/).
+Select a reviewed `cloudflare/cloudflared@sha256:<digest>` as
+`TELEMETRY_CLOUDFLARED_IMAGE` in the same private environment file. Add the
+existing tunnel's credentials as `tunnel-credentials.json`, readable only by
+container UID 65532 (0400). Do not use a tunnel token in command arguments.
+Copy/edit [`cloudflared.example.yaml`](cloudflared.example.yaml), replace its
+placeholder UUID and hostname, and update the Compose config bind to that
+private edited file. The example is inert until deliberately provisioned.
+
+Cloudflared has an outbound edge network and a dedicated internal connector
+network. Only cloudflared and the receiver join the latter. Its static connector
+address `172.30.242.2/32` is the sole trusted proxy; the receiver also remains on
+the private database network. Check that `172.30.242.0/29` is free on the host;
+if changing it, update both static addresses, subnet and trusted CIDR together.
+Never trust the edge ranges or the whole Docker subnet: the trust decision is
+about the receiver's immediate socket peer. Keep one receiver process.
+
+The ingress rules allow only `/v1/lite/<source>` (one bounded public slug),
+`/v1/public/aggregates`, `/public/*` and `/health/live` on the chosen hostname.
+Everything else terminates at `http_status:404`, including `/v1/operator/*`,
+`/v1/publishers/*` and all Full-tier product routes. No receiver or database port
+is published on a non-loopback host address. Provision sources and inspect
+`/v1/operator/lite/daily` locally through 44481 or an owned SSH forward with the
+operator credential. A source with channel `unknown` admits a real sender whose
+build lacks channel metadata; empty catalogs admit version `custom` and the
+contract's unknown distribution/layout values.
+
+Validate the rendered stack and ingress without starting the tunnel (commands
+that follow `run --rm` execute only the local config/rule parser):
+
+```sh
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml config
+
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml run --rm --no-deps cloudflared \
+  tunnel --config /etc/cloudflared/config.yaml ingress validate
+
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml run --rm --no-deps cloudflared \
+  tunnel --config /etc/cloudflared/config.yaml ingress rule https://telemetry.example.com/v1/operator/storage
+```
+
+The last command must choose the final 404 rule. Repeat with a publisher route
+and a Full-tier route; allowed paths must choose their explicit rules. After
+separate host, logging and backup acceptance, the operator can build/start only
+this Compose project using the same `build receiver` and `up -d` commands above
+with `compose.tunnel.yaml`. These instructions authorize no deployment.
+
+The receiver trusts only `CF-Connecting-IP`, as documented in
+[Cloudflare's header reference](https://developers.cloudflare.com/fundamentals/reference/http-headers/).
+Disable Pseudo IPv4's overwrite mode and review Worker/subrequest behavior for
+this hostname so the selected header represents the intended visitor address.
+Without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, all tunneled clients share the
+connector key for both admission and contributors. With it, an invalid single-IP
+header falls back to that same peer key and increments the private
+`/v1/operator/diagnostics` counter; no header value is logged or stored.
+
+Cloudflared uses error-level diagnostics and Docker's `none` logging driver in
+this template; do not enable debug/request logs or log streaming. Independently
+review Cloudflare edge analytics, Logpush, security/error events, host logging
+and retention. The receiver's no-IP guarantee does not assert that Cloudflare
+never processes or retains an IP. No production calls were made to qualify
+this source recipe.
 
 ## Diagnostic semantics and retention
 

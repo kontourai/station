@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { receiverAdmission } from './admission.js';
 import { BrokerError } from './broker-error.js';
+import { clientAddressPolicy } from './client-address.js';
 import type { LiteRepository } from './lite-store.js';
 import { DASHBOARD_HTML, DASHBOARD_JS } from './public-dashboard.js';
 
@@ -14,6 +15,7 @@ export function registerLiteRoutes(
     Variables: { dailyClient: { day: string; hash: string } };
   }>,
   store: LiteRepository,
+  addresses = clientAddressPolicy(),
 ) {
   let day = '';
   let salt = randomBytes(32);
@@ -25,11 +27,13 @@ export function registerLiteRoutes(
       salt = randomBytes(32);
       clients.clear();
     }
-    // Forwarded headers never select a key; only the daily HMAC reaches storage.
+    // The selected address remains transient; only the daily HMAC reaches storage.
+    const address = addresses.resolve(
+      c.env?.incoming?.socket.remoteAddress ?? 'unavailable',
+      c.req.header('cf-connecting-ip'),
+    );
     const client = createHmac('sha256', salt)
-      .update(
-        networkKey(c.env?.incoming?.socket.remoteAddress ?? 'unavailable', 64),
-      )
+      .update(networkKey(address, 64))
       .digest('hex');
     const count = clients.get(client) ?? 0;
     if (count >= 60) {
@@ -42,12 +46,7 @@ export function registerLiteRoutes(
     c.set('dailyClient', {
       day,
       hash: createHmac('sha256', salt)
-        .update(
-          networkKey(
-            c.env?.incoming?.socket.remoteAddress ?? 'unavailable',
-            48,
-          ),
-        )
+        .update(networkKey(address, 48))
         .digest('hex'),
     });
     await next();

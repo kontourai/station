@@ -377,7 +377,7 @@ export class LiteRepository {
       typeof v.id !== 'string' ||
       !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(v.id) ||
       !publisherId(v.publisher) ||
-      !TELEMETRY_CHANNELS.some((c) => c === v.channel) ||
+      ![...TELEMETRY_CHANNELS, 'unknown'].some((c) => c === v.channel) ||
       !catalog(v.registryIds, 1000, 128) ||
       !catalog(v.releaseVersions, 1000, 64)
     )

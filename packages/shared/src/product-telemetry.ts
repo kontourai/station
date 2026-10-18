@@ -400,6 +400,8 @@ export function parseStationDailyPing(
     if (Array.isArray(domain))
       return typeof item === 'string' && domain.includes(item);
     if (domain === 'boolean') return typeof item === 'boolean';
+    if (domain === 'boolean-or-unknown')
+      return typeof item === 'boolean' || item === 'unknown';
     if (domain === 'count')
       return (
         typeof item === 'number' &&
@@ -422,8 +424,8 @@ export function parseStationDailyPing(
     if (domain === 'public-release-version-or-custom')
       return item === 'custom' || publicReleaseVersions.includes(item);
     return (
-      (domain === 'public-registry-id-or-none-or-custom' &&
-        ['none', 'custom'].includes(item)) ||
+      (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&
+        ['none', 'custom', 'unknown'].includes(item)) ||
       publicRegistryIds.includes(item)
     );
   };

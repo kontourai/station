@@ -1,0 +1,19 @@
+# Copy/edit for the dedicated hostname and an already provisioned tunnel UUID.
+tunnel: 00000000-0000-4000-8000-000000000000
+credentials-file: /run/private/tunnel-credentials.json
+loglevel: error
+
+ingress:
+  - hostname: telemetry.example.com
+    path: '^/v1/lite/[a-z0-9][a-z0-9._-]{0,79}$'
+    service: http://receiver:43891
+  - hostname: telemetry.example.com
+    path: '^/v1/public/aggregates$'
+    service: http://receiver:43891
+  - hostname: telemetry.example.com
+    path: '^/public/.*$'
+    service: http://receiver:43891
+  - hostname: telemetry.example.com
+    path: '^/health/live$'
+    service: http://receiver:43891
+  - service: http_status:404

@@ -29,7 +29,7 @@ export function publicDomain(
     let values: readonly string[];
     if (dimension === 'version') values = [...versions, 'custom'];
     else if (dimension === 'distribution')
-      values = [...registry, 'none', 'custom'];
+      values = [...registry, 'none', 'custom', 'unknown'];
     else if (dimension === 'public_plugins_enabled')
       values = [...registry, 'none'];
     else {

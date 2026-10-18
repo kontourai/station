@@ -40,6 +40,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
   const key = `stq_${randomBytes(32).toString('base64url')}`;
   const agent = 'private-user-agent-must-never-persist';
   const forwarded = '198.51.100.73';
+  const connecting = '203.0.113.84';
   const logs = [];
   const stdoutWrite = process.stdout.write,
     stderrWrite = process.stderr.write;
@@ -58,6 +59,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         'content-type': 'application/json',
         'user-agent': agent,
         'x-forwarded-for': forwarded,
+        'cf-connecting-ip': connecting,
         ...(auth ? { authorization: `Bearer ${auth}` } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -84,6 +86,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     for (const sentinel of [
       '127.0.0.1',
       forwarded,
+      connecting,
       agent,
       'private-rejected-content',
     ]) {
@@ -609,9 +612,16 @@ export async function qualifyLiteReceiver(
   store,
   pool,
   operatorKey,
+  clientAddressPolicy,
 ) {
   const server = createServer(
-    getRequestListener(createProductBroker(store, operatorKey).fetch),
+    getRequestListener(
+      createProductBroker(
+        store,
+        operatorKey,
+        clientAddressPolicy('127.0.0.1/32'),
+      ).fetch,
+    ),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
@@ -641,9 +651,8 @@ async function main() {
     process.env.STATION_TELEMETRY_QUALIFICATION_DATABASE_URL;
   if (!connectionString)
     throw new Error('A qualification PostgreSQL connection is required');
-  const { createProductBroker, PgProductRepository } = await import(
-    './dist/index.mjs'
-  );
+  const { createProductBroker, PgProductRepository, clientAddressPolicy } =
+    await import('./dist/index.mjs');
   const database = `station_lite_qa_${randomUUID().replaceAll('-', '')}`;
   const admin = new Pool({ connectionString });
   const url = new URL(connectionString);
@@ -671,6 +680,7 @@ async function main() {
       store,
       pool,
       key,
+      clientAddressPolicy,
     );
     passed = true;
     console.log(
