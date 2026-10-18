@@ -2,23 +2,25 @@ import { readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import ts from 'typescript-api';
 
-/** Concrete class/object implementations, not references to already built adapters. */
+/** Concrete implementations across production src-server TypeScript, not adapter references. */
 export function providerShapeImplementations(root: string): string[] {
-  const providerRoot = join(root, 'src-server/providers');
+  const serverRoot = join(root, 'src-server');
+  const providerRoot = join(serverRoot, 'providers');
   const files: string[] = [];
   const walk = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === '__tests__') continue;
+      if (['__tests__', 'tests', '__test-utils__'].includes(entry.name))
+        continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (
-        entry.name.endsWith('.ts') &&
-        !/\.(test|spec|d)\.ts$/.test(entry.name)
+        /\.(?:[cm]?ts|tsx)$/.test(entry.name) &&
+        !/\.(?:test|spec|d)\.(?:[cm]?ts|tsx)$/.test(entry.name)
       )
         files.push(path);
     }
   };
-  walk(providerRoot);
+  walk(serverRoot);
   const config = ts.readConfigFile(
     join(root, 'tsconfig.json'),
     ts.sys.readFile,
@@ -93,7 +95,7 @@ export function providerShapeImplementations(root: string): string[] {
                 ? owner.parent.name.getText(source)
                 : `anonymous@${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`;
           found.push(
-            `${relative(providerRoot, file).replaceAll('\\', '/')}#${named}`,
+            `${relative(serverRoot, file).replaceAll('\\', '/')}#${named}`,
           );
         }
       }

@@ -69,11 +69,12 @@ interface GapObservation {
 /** Only this exact assertion may be inverted; setup/other failures must stay red. */
 function knownGap(
   category: 'DEFECT' | 'HARDENING',
+  issue: '#3835' | '#3836' | '#3837',
   name: string,
   failure: string,
   observe: () => Promise<GapObservation>,
 ) {
-  describe(`${category}: ${name}`, () => {
+  describe(`${category} ${issue}: ${name}`, () => {
     let observation: GapObservation | undefined;
     let preparationError: unknown;
     const unexpectedSignatures: unknown[] = [];
@@ -85,7 +86,7 @@ function knownGap(
     });
     beforeAll(() => {
       process.stdout.write(
-        `[adapter-conformance] ${category}: ${name}; pinned failure: ${failure}\n`,
+        `[adapter-conformance] ${category} ${issue}: ${name}; pinned failure: ${failure}\n`,
       );
     });
     beforeEach(async () => {
@@ -102,7 +103,10 @@ function knownGap(
       expect(observation).toBeDefined();
       observation!.healthy();
     });
-    it.fails(`known gap: ${failure}`, async ({ annotate, onTestFinished }) => {
+    it.fails(`known gap ${issue}: ${failure}`, async ({
+      annotate,
+      onTestFinished,
+    }) => {
       // Vitest also inverts teardown errors. Audit the complete raw error list
       // after teardown, then assert it outside the it.fails inversion.
       onTestFinished(({ task }) => {
@@ -377,61 +381,72 @@ for (const { name, label, transport } of registrations) {
         engine.complete();
         await settle(2);
       });
-      knownGap(
-        'DEFECT',
-        'Claude text in the interrupt-ack/result window',
-        'Claude must not publish text on the aborted turn between interrupt acknowledgement and result',
-        async () => {
-          // Match the capture: the client turn completes, then the engine
-          // opens a task-notification turn of its own before it is interrupted.
-          await send();
-          engine.text('setup');
-          engine.complete();
-          await settle(1);
-          engine.text('before-stop');
-          await expect.poll(() => started().length).toBe(2);
-          await expect.poll(() => texts().length).toBe(2);
-          const providerStart = started()[1];
-          const turn = { turnId: providerStart.turnId! };
-          const result = await engine.adapter.interruptTurn(
-            THREAD,
-            turn.turnId,
-          );
-          const offset = published().length;
-          engine.late();
-          await quiet(); // The old message is still open: result withheld.
-          const late = published()
-            .slice(offset)
-            .filter((event) => event.method === 'content.text-delta');
-          engine.settleInterrupt();
-          await quiet();
-          return {
-            satisfied: textAttributionIsValid(late, turn.turnId),
-            healthy: () => {
-              expect(result).toEqual({
-                outcome: 'cancelled',
-                turnId: turn.turnId,
-              });
-              expect(providerStart.metadata?.trigger).toBe('provider');
-              expect(engine.inputs()).toHaveLength(1);
-              expect(engine.stopped()).toBe(true);
-              expect(
-                terminals().filter((event) => event.turnId === turn.turnId),
-              ).toHaveLength(1);
-              expect(
-                terminals().find((event) => event.turnId === turn.turnId),
-              ).toMatchObject({
-                method: 'turn.aborted',
-                turnId: turn.turnId,
-              });
-            },
-          };
-        },
-      );
+      for (const origin of ['client-dispatched', 'engine-opened'] as const) {
+        knownGap(
+          'DEFECT',
+          '#3835',
+          `Claude ${origin} text in the interrupt-ack/result window`,
+          `Claude must not publish text on the aborted ${origin} turn between interrupt acknowledgement and result`,
+          async () => {
+            if (origin === 'engine-opened') {
+              // Match the capture's task-notification turn after a client result.
+              await send();
+              engine.text('setup');
+              engine.complete();
+              await settle(1);
+              engine.text('before-stop');
+              await expect.poll(() => started().length).toBe(2);
+              await expect.poll(() => texts().length).toBe(2);
+            } else {
+              await send();
+              engine.text('before-stop');
+              await expect.poll(() => texts().length).toBe(1);
+            }
+            const interruptedStart = started().at(-1)!;
+            const turn = { turnId: interruptedStart.turnId! };
+            const result = await engine.adapter.interruptTurn(
+              THREAD,
+              turn.turnId,
+            );
+            const offset = published().length;
+            engine.late();
+            await quiet(); // The old message is still open: result withheld.
+            const late = published()
+              .slice(offset)
+              .filter((event) => event.method === 'content.text-delta');
+            engine.settleInterrupt();
+            await quiet();
+            return {
+              satisfied: textAttributionIsValid(late, turn.turnId),
+              healthy: () => {
+                expect(result).toEqual({
+                  outcome: 'cancelled',
+                  turnId: turn.turnId,
+                });
+                if (origin === 'engine-opened')
+                  expect(interruptedStart.metadata?.trigger).toBe('provider');
+                else expect(started()).toHaveLength(1);
+                expect(engine.inputs()).toHaveLength(1);
+                expect(engine.stopped()).toBe(true);
+                expect(
+                  terminals().filter((event) => event.turnId === turn.turnId),
+                ).toHaveLength(1);
+                expect(
+                  terminals().find((event) => event.turnId === turn.turnId),
+                ).toMatchObject({
+                  method: 'turn.aborted',
+                  turnId: turn.turnId,
+                });
+              },
+            };
+          },
+        );
+      }
     }
     if (name === 'codex') {
       knownGap(
         'DEFECT',
+        '#3836',
         'Codex duplicate terminal after captured interrupted notification',
         'Codex must publish only one terminal for the captured client interrupt sequence',
         async () => {
@@ -472,6 +487,7 @@ for (const { name, label, transport } of registrations) {
     if (name === 'codex') {
       knownGap(
         'HARDENING',
+        '#3835',
         'Codex adapter has no guard if the engine sends a late delta (not present in the three client-interrupt captures)',
         'Codex must suppress an engine delta for an already aborted turn',
         async () => {
@@ -515,6 +531,7 @@ for (const { name, label, transport } of registrations) {
       ] as const) {
         knownGap(
           'DEFECT',
+          '#3835',
           `ACP unscoped post-cancel text ${phase}`,
           `ACP must attribute or suppress post-cancel text ${phase}`,
           async () => {
@@ -638,6 +655,7 @@ for (const { name, label, transport } of registrations) {
       if (attachmentGaps.has(name)) {
         knownGap(
           'DEFECT',
+          '#3837',
           `${label} unsupported attachment refusal`,
           `${label} must refuse undeclared attachments pre-effect with attachment_input_unsupported`,
           async () => {

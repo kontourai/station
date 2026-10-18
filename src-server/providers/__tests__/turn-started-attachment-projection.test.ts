@@ -39,7 +39,7 @@ const ATTACHMENT_FORWARDING_ADAPTERS = [
 ] as const;
 
 describe('turn.started attachment projection inventory (station#4134)', () => {
-  test('every concrete ProviderAdapterShape implementation registers in the deterministic conformance suite', () => {
+  test('every concrete ProviderAdapterShape implementation across production src-server TypeScript registers in the deterministic conformance suite', () => {
     // This existing repo-scans inventory runs on every PR, including additions
     // with no import edge to an existing adapter test.
     const root = fileURLToPath(new URL('../../..', import.meta.url));
