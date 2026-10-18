@@ -611,7 +611,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
         turnId: 'new',
         startedAt: started.createdAt,
       });
-      expect(projection.readForThread(ROOT)?.runningTools).toEqual([]);
+      expect(projection.readForThread(ROOT)?.runningTools ?? []).toEqual([]);
       append(ROOT, {
         method: 'turn.completed',
         turnId: 'new',

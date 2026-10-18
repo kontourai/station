@@ -414,7 +414,7 @@ test.each([
           method: 'turn.completed',
           turnId: 'N',
         });
-        await Promise.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
         expect(authority.hasPossibleEffect('t')).toEqual({
           kind: 'available',
           active: true,
@@ -427,6 +427,9 @@ test.each([
           store.listEvents('t').find((row) => row.id === 'raw-complete')
             ?.payload.invocationId,
         ).toBeUndefined();
+        expect(
+          evaluateSessionWait(ports, 't', 'turn-settled', 1).satisfied,
+        ).toBe(false);
         expect(outcome).toBeUndefined();
         store.appendEvent({
           ...base,
