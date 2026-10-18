@@ -10,3 +10,5 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
+| [device-agent-control](./device-agent-control.md) | current | Bound agents control local device live surfaces through the shared lease |
