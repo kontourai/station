@@ -103,27 +103,44 @@ for other engine × connection combinations.
 station environment credential show | npm run dogfood:agent-smoke -- \
   --matrix --confirm-billable-engine-matrix \
   --origin=http://127.0.0.1:43000 --credential-file=- \
-  --connection=example-engine --cwd=/path/on/server/disposable-matrix-workspace
+  --connection=example-engine --cwd=/path/on/server/disposable-matrix-workspace \
+  --model=example-model-a --model=example-model-b --max-turns=12
 ```
 
 The matrix-specific flag is required even if `--confirm-billable-one-turn` is
 present. Refusal exits 2 before reading credentials, loading extensions, or
-making requests. The runner discovers every advertised model from the engine's
-model API and starts one session per model. Each gets up to six sends:
+making requests. Credentials shorter than 16 characters are refused before any
+request; short strings are never used for global redaction replacements.
+
+The runner discovers the engine's advertised models and starts one session per
+selected model. Repeat `--model=ID` to allowlist launch selectors; omitted models
+are never called, including during switch-and-back. Without an allowlist, all
+advertised models are planned. `--max-turns=N` is a hard send ceiling (default 24,
+allowed 1–1000). A plan larger than the ceiling refuses the entire run before
+starting sessions; it does not truncate the catalog. The accepted plan and its
+turn count are printed as JSON on stderr before session commands; stdout stays
+one JSON results document. Each model gets up to six built-in sends:
 
 | Scenario | Check |
 | --- | --- |
 | First | Exact smoke reply; remember a random conversation secret |
 | Follow-up | Recall that secret without repeating it in the prompt |
 | Model switch and back | Recall on a second advertised model, then the original |
-| Artifact | Write one file, then call Station's `declare_output`; require exactly its path in the turn's stored outputs |
-| Recycle | `stopSession` tears down the idle adapter session; the next send recalls the secret in the same Station session |
+| Artifact | Write a file with a fresh content nonce, call `declare_output`, compare its stored path and inspect its exact text bytes |
+| Recycle | Observe loaded → unloaded across `stopSession`, then loaded after a recall send in the same Station session |
 
-One advertised model leaves switch-and-back **unverified**. Recycle proves
-session teardown/resumption through the public API, not an observed OS process
-exit. Artifact support depends on the engine using Station's native output
-producer; an undeclared file cannot pass. The artifact filename uses a different
-nonce from the conversation secret. There is no automatic send retry. A failed
+One selected model leaves switch-and-back **unverified** and plans four built-in
+sends. Recycle reads `/api/orchestration/sessions/loaded` before stop, after stop,
+and after recall. A no-op stop or unavailable unload/resume observation is
+**unverified** with its reason; a forgotten secret fails the response check.
+These observations prove the public API's activation transition, not an OS
+process exit or native provider-session identity. JSON retains those states.
+Artifact support depends on the engine using Station's native output producer;
+an undeclared file cannot pass. The runner uses the output's exact event ID with
+`POST /outputs/:eventId/inspect`, requires the returned session/turn/output
+identity, and compares the inspected text to the expected nonce. A non-text or
+unavailable inspection cannot pass the content check. Artifact filename and
+content nonces differ from the conversation secret. There is no automatic send retry. A failed
 scenario leaves later scenarios unverified and does not prevent testing the next
 model. Each API request and turn poll has a timeout (`--timeout-ms`, default
 60000, allowed 100–300000); a timeout does not confirm provider termination.
@@ -132,13 +149,21 @@ for inspection. Cleanup failure is a separate failed row. Delete the disposable
 instance/workspace after reviewing the report.
 
 Every completed turn passes only when its exact response, independently
-reported model, observed engine resolved to the isolated connection, and complete
-rendered/stored output name multisets agree. Provenance is read from the exact
+reported model, engine-inferred connection, and complete rendered/stored output
+name multisets agree. The connection verdict infers the sole enabled connection
+from the observed engine kind. It is not a provider-issued connection receipt;
+the matrix column is named **Engine-inferred connection** to preserve that limit. Provenance is read from the exact
 session/turn's assistant messages, never from the requested model metadata.
-Missing reported model or engine is unverified. Model aliases accept the listed
-vendor prefixes and a dated deployment suffix (optionally followed by `-vN:N`);
-semantic family/version/tier changes, arbitrary suffixes, and two distinct
-explicit snapshots fail. The accepted/rejected table in the
+Missing reported model or engine is unverified. Launch selectors stay unchanged
+in sends. When the catalog provides `resolvedModel`, that concrete identity is
+the comparison target. A Claude SDK alias such as `sonnet` or `default` without
+resolution is recorded as **alias without resolution**, never a substitution.
+Vendor prefixes must agree with the model family's vendor. Known OpenRouter
+vendor-qualified forms, Bedrock regional Anthropic forms such as
+`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, and Vertex's
+`claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
+cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
+versions fail. The accepted/rejected table in the
 [matrix tests](../../scripts/__tests__/station-engine-matrix.test.ts) pins this
 policy. All stored-output pages are read; partial results fail. Duplicate or
 extra rendered names fail even if the expected card exists.
@@ -159,9 +184,17 @@ trusted local ES module. It may export either or both:
   observer is bundled in this change; UI checks remain explicitly unverified
   without one.
 - `scenarios: [{ id, async run(ctx) { /* probe */ } }]`: append unique scenario
-  IDs after the built-ins. `ctx` provides `sessionId`, `model`, `switchModel`,
-  `nonce`, `artifactName`, `api(path, optionalPostBody)`, `command(command)`,
-  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath)` and
+  IDs after the built-ins. The existing `additionalScenarios` interface remains
+  valid. An optional positive integer `maxTurns` per scenario declares its
+  per-model planning estimate. Without estimates, the plan reserves the
+  remaining run ceiling for extensions (at least one send per scenario/model);
+  its printed count is an upper bound. Every managed `sendTurn` command still
+  consumes the hard run ceiling, including `ctx.api` and `ctx.command` calls.
+  An extension exceeding that ceiling gets an explicit failure before another
+  send. Trusted modules retain their existing authority; this is not a sandbox. `ctx` provides `sessionId`, `model`, `switchModel`,
+  `nonce`, `artifactName`, `artifactContent`, `api(path, optionalPostBody)`,
+  `command(command)`,
+  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent)` and
   `recall(model)`. `send` returns the checked turn, including `turnId`, for
   subsequent API observations. Throw on a failed additional assertion; return a
   reason string for an unverified prerequisite. A scenario with no checked turns
@@ -172,8 +205,11 @@ trusted local ES module. It may export either or both:
 JSON goes to stdout and a timestamped `.json` file alongside a generated,
 dated Markdown matrix in `docs/reference/engine-matrix-runs/` by default.
 Use `--output-dir=PATH` for private receipts. Both include engine, connection,
-requested model, scenario, verdict, served-by, served-as and failure text; JSON
-also retains session/turn IDs and individual checks. Exit 0 requires every row
+launch selector, scenario, verdict, engine-inferred connection, served-as and
+failure text; JSON also retains concrete comparison models, the send plan/count,
+session/turn IDs and individual checks. New session-level `runtime.error` events
+without a turn ID retain their actual error text; pre-send historical errors are
+not reassigned to a later turn. Exit 0 requires every row
 to pass; failures or unverified rows exit 1. Review receipts before committing:
 provider errors receive bounded redaction, but arbitrary error text and model
 or connection identifiers can still be sensitive.
