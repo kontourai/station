@@ -90,6 +90,13 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
+`invocationId`. Station assigns it to requested work, and producers retain it
+only through an actual originating request or stream association. It is
+attribution data, not authorization, a client turn key or replay permission.
+Raw weak-origin observations remain untagged; consumers must not infer an
+invocation from a reused native turn ID or the current thread mapping.
+
 `ProviderContinuityCapabilities.resumeIdentity` is an additive adapter opt-in
 to `require-match`. Foreground native-cursor continuations set
 `ProviderSessionStartInput.requireNativeResumeIdentity` only for that declaration.

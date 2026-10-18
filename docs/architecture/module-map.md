@@ -1360,7 +1360,10 @@ the caller's scope and keys each request in the durable
 before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
-which never acts on the Session. Source tests are the
+which never acts on the Session. The
+[Session control guide](../guides/self-configuring-agent.md#session-control)
+distinguishes ordinary idle from a verified requested-work acknowledgement,
+including the conservative untagged-history limit. Source tests are the
 [delivery decision table](../../packages/monument/src/__tests__/session-message-delivery.test.ts),
 the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
 and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).

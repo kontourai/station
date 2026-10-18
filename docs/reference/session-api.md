@@ -128,8 +128,10 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above. Its
-read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-control` rather than the routes above. That guide
+also distinguishes ordinary idle from a verified requested-work settlement,
+including the history-dependent limit on untagged terminal acknowledgement.
+Its read-only companions, `list_project_activity` and `get_session_digest`, call
 `/api/orchestration/session-activity` (see
 [Station Control Project Activity](api.md#station-control-project-activity)) and
 read as the calling Session's owner within the caller's Project.

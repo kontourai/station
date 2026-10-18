@@ -118,7 +118,9 @@
 
     "src-server/services/orchestration/turn-submission-digest.ts",
 
-    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "docs/guides/self-configuring-agent.md"
   ],
 
   "checks": [

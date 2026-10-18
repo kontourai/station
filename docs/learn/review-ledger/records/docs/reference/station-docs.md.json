@@ -126,7 +126,11 @@
 
     "src-ui/src/components/chat/TaskShapingComposer.tsx",
 
-    "src-ui/src/components/chat/TaskProposalCard.tsx"
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "docs/architecture/module-map.md",
+
+    "docs/learn/atlas.json"
   ],
 
   "checks": [

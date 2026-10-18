@@ -3480,8 +3480,12 @@ and `clientTurnId`, takes no approval pick, and resolves
 `{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
 (`outcome: 'queued'`). A Station that predates the inbox, and any send it
 cannot hold (attachments, a target other than the conversation's binding),
-refuses a busy send as before, so keep the message on
-`provider_turn_in_progress` or `provider_session_starting`.
+can refuse a send before its keyed dispatch begins with
+`provider_turn_in_progress` or `provider_session_starting`; that message can
+wait for the Session to be free. On a current Station, a begun keyed send
+that is definitively refused instead answers HTTP `409` with `client_turn_settled` and its actual
+disposition. Never retry that key or generate a replacement key automatically.
+A deliberate new user request requires a new key.
 `listConversationInbox(apiBase, conversationId)` lists the held messages and
 `cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
 one, or dismisses one that is `unconfirmed` or `refused`.
