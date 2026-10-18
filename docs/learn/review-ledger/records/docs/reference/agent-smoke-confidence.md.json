@@ -114,7 +114,11 @@
 
     "src-server/services/orchestration/orchestration-session-state.ts",
 
-    "packages/contracts/src/provider.ts"
+    "packages/contracts/src/provider.ts",
+
+    "scripts/lib/matrix-cleanup.mjs",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts"
   ],
 
   "checks": [
