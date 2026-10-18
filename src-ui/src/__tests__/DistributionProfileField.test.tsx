@@ -87,7 +87,7 @@ describe('DistributionProfileField', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'Changes take effect after the next Station restart. This is project-layout configuration: it does not build or distribute Station, set the Registry URL, or fetch or execute declared remote sources.',
+        'Choose the layout sources offered to Projects. Changes apply after restarting Station.',
       ),
     ).toBeTruthy();
   });
