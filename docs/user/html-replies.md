@@ -54,7 +54,7 @@ A conversation can retain at most 32 pages and 32 MiB of serialized page data.
 Pages belong to their publishing execution session. Closing or archiving work
 retains them. Physical deletion of that session deletes its pages in the same
 transaction; deleting every member of a conversation lineage deletes every
-page in it. See the [security and deletion decision](../decisions/html-replies.md).
+page in it. See the [security and deletion decision](https://github.com/kontourai/station/blob/main/docs/decisions/html-replies.md).
 
 ## Which Agents receive the tools
 
@@ -80,7 +80,7 @@ the equivalent configuration is:
 }
 ```
 
-For an **ACP** Agent, attach the server without an `available` filter:
+For an Agent using an **ACP engine**, attach the server without an `available` filter:
 
 ```json
 {
@@ -92,7 +92,7 @@ For an **ACP** Agent, attach the server without an `available` filter:
 
 ACP passthrough exposes the server's full tool catalog. Station refuses
 per-tool `available` filters or disabled-tool selections on this path with
-`engine-unsupported`; do not copy the Claude/Codex filter into an ACP Agent.
+`engine-unsupported`; do not copy the Claude/Codex filter into an Agent using an ACP engine.
 An ACP engine without MCP passthrough cannot use these tools. Merge server
 entries into existing arrays rather than removing other tool servers. Start a
 new conversation after saving tool settings. Authored Agents may optionally
