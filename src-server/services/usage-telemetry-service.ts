@@ -20,6 +20,7 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  mapRuntimeChannelToTelemetryChannel,
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
@@ -49,8 +50,8 @@ import {
 } from './telemetry-response.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   USAGE_TELEMETRY_EVENTS,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
   type UsageTelemetryProperties,
 } from './usage-telemetry-inventory.js';
@@ -152,6 +153,7 @@ export class UsageTelemetryService {
       options.buildProvenance === undefined
         ? captureBuildProvenance(env)
         : options.buildProvenance;
+    const channel = mapRuntimeChannelToTelemetryChannel(provenance?.channel);
     this.build = {
       version: options.version,
       platform: process.platform,
@@ -161,12 +163,7 @@ export class UsageTelemetryService {
       provenance.shaSource
         ? { sha: provenance.fullSha, sha_source: provenance.shaSource }
         : {}),
-      ...(provenance?.channel &&
-      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
-        provenance.channel,
-      )
-        ? { channel: provenance.channel as ProductTelemetryBuild['channel'] }
-        : {}),
+      ...(channel ? { channel } : {}),
       ...(provenance?.dirty !== undefined ? { dirty: provenance.dirty } : {}),
     };
     const resolved = resolveProductTelemetryEnabled(options.appConfig, env);
@@ -281,7 +278,7 @@ export class UsageTelemetryService {
           typeof (receipt as { acknowledgedAt?: unknown }).acknowledgedAt ===
             'string' &&
           (receipt as { inventoryRevision?: unknown }).inventoryRevision ===
-            USAGE_TELEMETRY_INVENTORY_REVISION &&
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION &&
           (this.publisher === 'operator' ||
             (!!this.endpoint &&
               'publisher' in receipt &&
@@ -324,7 +321,7 @@ export class UsageTelemetryService {
       throw new Error(
         'Author telemetry destination changed; review the current disclosure.',
       );
-    if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
+    if (inventoryRevision !== FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION)
       throw new Error(
         'Usage telemetry disclosure changed; review the current inventory.',
       );
@@ -339,7 +336,7 @@ export class UsageTelemetryService {
       this.disclosurePath,
       {
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
         ...(this.publisher === 'kontour'
           ? { publisher: 'kontour', destination: this.endpoint }
           : {}),
@@ -374,7 +371,7 @@ export class UsageTelemetryService {
       ...this.resolvedConfiguration(),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,
-      fullInventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
     };
   }
   async disclosure(publisher?: 'kontour' | 'operator'): Promise<{
@@ -405,7 +402,7 @@ export class UsageTelemetryService {
         ? { publisher: 'kontour' as const, destination: this.endpoint }
         : {}),
       acknowledged: this.hasCurrentDisclosureReceipt,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
       acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
@@ -716,7 +713,7 @@ export class UsageTelemetryService {
       event,
       properties,
       randomUUID(),
-      new Date().toISOString(),
+      new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString(),
       this.deliveryEpoch,
     ).catch((error) => this.warn('Usage telemetry observation failed.', error));
     this.tracking.add(operation);
@@ -758,7 +755,9 @@ export class UsageTelemetryService {
       properties: redactDeep(properties) as Record<string, string>,
       event_id: eventId,
       occurred_at: occurredAt,
-      observed_at: new Date().toISOString(),
+      observed_at: new Date(
+        Math.floor(Date.now() / 60_000) * 60_000,
+      ).toISOString(),
       build: { ...this.build },
     };
     if (!this.active || epoch !== this.deliveryEpoch) {
@@ -790,7 +789,9 @@ export class UsageTelemetryService {
         properties: safeProperties,
         event_id: eventId,
         occurred_at: occurredAt,
-        observed_at: new Date().toISOString(),
+        observed_at: new Date(
+          Math.floor(Date.now() / 60_000) * 60_000,
+        ).toISOString(),
         build: { ...this.build },
       });
       this.counts.buffered++;

@@ -259,6 +259,31 @@ describe('Lite ping privacy boundary', () => {
     const { event_id: _omitted, ...missing } = ping;
     expect(() => parseStationDailyPing(missing, ['public-plugin'])).toThrow();
   });
+  test('sender SemVer validation differs from receiver release-list admission', () => {
+    for (const version of ['0.7.0', '1.2.3-source.1+build.2']) {
+      expect(
+        parseStationDailyPing({ ...ping, version }, ['public-plugin'], 'semver')
+          .version,
+      ).toBe(version);
+      expect(() =>
+        parseStationDailyPing({ ...ping, version }, ['public-plugin']),
+      ).toThrow('version');
+    }
+    for (const version of [
+      'private build',
+      '01.2.3',
+      '1.2.3-01',
+      '1.2',
+      'custom',
+    ])
+      expect(() =>
+        parseStationDailyPing(
+          { ...ping, version },
+          ['public-plugin'],
+          'semver',
+        ),
+      ).toThrow('version');
+  });
   test('binds the shown notice to the Lite inventory independently of Full acknowledgement', () => {
     expect(
       hasCurrentLiteTelemetryNotice({

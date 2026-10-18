@@ -28,9 +28,9 @@ import {
 /** Runtime builds call the preview release ring beta; telemetry uses preview. */
 export function mapRuntimeChannelToTelemetryChannel(
   channel: string | undefined,
-): (typeof TELEMETRY_CHANNELS)[number] {
+): ProductTelemetryBuild['channel'] {
   const label = channel === 'beta' ? 'preview' : channel;
-  return TELEMETRY_CHANNELS.find((allowed) => allowed === label) ?? 'unknown';
+  return TELEMETRY_CHANNELS.find((allowed) => allowed === label);
 }
 
 export function renderUsageTelemetryInventory(): string {
@@ -396,11 +396,12 @@ export function monthlyTelemetryId(
     .digest('hex');
 }
 
-/** Registry membership comes from the public catalog, never from a syntactic ID match. */
+/** Senders validate version format with semver; receivers supply their release list.
+ * Registry membership comes from the public catalog, never from a syntactic ID match. */
 export function parseStationDailyPing(
   value: unknown,
   publicRegistryIds: readonly string[] = [],
-  publicReleaseVersions: readonly string[] = [],
+  publicReleaseVersions: readonly string[] | 'semver' = [],
 ): StationDailyPing {
   if (
     !record(value) ||
@@ -438,7 +439,11 @@ export function parseStationDailyPing(
       );
     if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
     if (domain === 'public-release-version-or-custom')
-      return item === 'custom' || publicReleaseVersions.includes(item);
+      return publicReleaseVersions === 'semver'
+        ? /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+            item,
+          )
+        : item === 'custom' || publicReleaseVersions.includes(item);
     return (
       (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&
         ['none', 'custom', 'unknown'].includes(item)) ||

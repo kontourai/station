@@ -12,6 +12,7 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  parseProductTelemetryBatch,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
@@ -250,6 +251,71 @@ test.each([
     expect(daily(sink.payloads)[0].channel).toBe(expected);
   },
 );
+
+test.each([
+  [undefined, undefined],
+  ['unknown', undefined],
+  ['private-build-label', undefined],
+  ['beta', 'preview'],
+  ['source-checkout', 'source-checkout'],
+] as const)(
+  'Full channel %s serializes as %s without unknown',
+  async (channel, expected) => {
+    vi.stubGlobal('__STATION_SERVER_BUILD__', { channel });
+    const sink = await receiver();
+    const { live } = await service(sink.endpoint, {
+      telemetryTier: { operator: 'full' },
+    });
+    await live.acknowledgeDisclosure(
+      (await live.disclosure()).inventoryRevision,
+    );
+    await live.track('plugin_removed', { plugin: 'custom' });
+    await live.flush();
+    expect(sink.payloads).toHaveLength(1);
+    const batch = parseProductTelemetryBatch(sink.payloads[0]);
+    expect(batch.events[0].build.channel).toBe(expected);
+    if (expected === undefined)
+      expect(batch.events[0].build).not.toHaveProperty('channel');
+  },
+);
+
+test('Full timestamps round down to the UTC minute at both publishers', async () => {
+  const author = await receiver();
+  const operator = await receiver();
+  build.endpoint = author.endpoint;
+  const { live } = await service(operator.endpoint, {
+    telemetryTier: { operator: 'full', kontour: 'full' },
+  });
+  const revision = (await live.disclosure()).inventoryRevision;
+  await live.acknowledgeDisclosure(revision);
+  await live.acknowledgeDisclosure(revision, 'kontour', author.endpoint);
+  vi.setSystemTime('2026-10-12T10:23:45.678Z');
+  await live.track('plugin_removed', { plugin: 'custom' });
+  await live.flush();
+  for (const sink of [author, operator]) {
+    expect(sink.payloads).toHaveLength(1);
+    const batch = parseProductTelemetryBatch(sink.payloads[0]);
+    expect(batch.events[0]).toMatchObject({
+      occurred_at: '2026-10-12T10:23:00.000Z',
+      observed_at: '2026-10-12T10:23:00.000Z',
+    });
+  }
+});
+
+test('daily sender rejects a malformed version instead of allowing its own value', async () => {
+  const sink = await receiver();
+  const { live, home } = await service(sink.endpoint);
+  await live.stationStarted();
+  const path = join(home, 'config', 'telemetry-daily.json');
+  const state = JSON.parse(await readFile(path, 'utf8'));
+  state.ping.version = 'private build';
+  await writeFile(path, JSON.stringify(state));
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await expect(live.flushDaily()).rejects.toThrow(
+    'Invalid station_daily field: version',
+  );
+  expect(sink.payloads).toEqual([]);
+});
 
 test('keeps author inert with an empty build constant even when runtime environment supplies one', async () => {
   const operator = await receiver();
@@ -614,6 +680,58 @@ test('DNT suppresses every publisher, including explicit feedback', async () => 
   expect((await live.outbox()).every((row) => row.reason === 'DNT')).toBe(true);
 });
 
+test('DNT tierLowered guard leaves no lowering eligibility or ledger write', async () => {
+  const sink = await receiver();
+  const { live, home } = await service(
+    sink.endpoint,
+    {},
+    { DO_NOT_TRACK: 'yes' },
+  );
+  await live.recordTierLowering('operator', 'privacy');
+  await expect(
+    access(join(home, 'config', 'telemetry-daily.json')),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await live.outbox()).toEqual([]);
+  expect(sink.payloads).toEqual([]);
+});
+
+test('tier-lowering reasons share one persisted UTC-day budget with standalone feedback per publisher', async () => {
+  const author = await receiver();
+  const operator = await receiver();
+  build.endpoint = author.endpoint;
+  const { live, home } = await service(operator.endpoint);
+  await Promise.all([
+    live.recordTierLowering('operator', 'privacy'),
+    live.recordTierLowering('operator', 'other'),
+  ]);
+  await live.recordTierLowering('kontour', 'privacy');
+  const reopened = await service(operator.endpoint, {}, {}, home);
+  await reopened.live.recordTierLowering('operator', 'other');
+  await reopened.live.recordTierLowering('operator');
+  expect(
+    await reopened.live.submitFeedback({
+      publisher: 'operator',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    }),
+  ).toBe(false);
+  expect(operator.payloads).toHaveLength(1);
+  expect(author.payloads).toHaveLength(1);
+  vi.setSystemTime('2026-10-13T00:00:00Z');
+  await reopened.live.recordTierLowering('operator');
+  expect(
+    await reopened.live.submitFeedback({
+      publisher: 'operator',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    }),
+  ).toBe(true);
+  await reopened.live.recordTierLowering('operator', 'other');
+  await reopened.live.recordTierLowering('kontour', 'other');
+  expect(operator.payloads).toHaveLength(2);
+  expect(author.payloads).toHaveLength(2);
+});
+
 test('notice is recorded once per inventory and desktop/web must record the shown revision before Lite', async () => {
   vi.stubEnv('STATION_LOG_LEVEL', 'error');
   vi.stubEnv('STATION_STDOUT_LOGS', '0');
@@ -774,9 +892,13 @@ test('outbox evicts oldest entries at both the 30-day and actual serialized 5 Mi
       ).toISOString(),
     });
   await writeFile(outboxPath, JSON.stringify(rows, null, 2));
-  // Separate user changes can each carry their own reason.
-  for (let index = 0; index < 12; index++)
+  // Daily feedback crosses the byte bound while the seeded rows stay within retention.
+  for (let index = 0; index < 12; index++) {
+    vi.setSystemTime(
+      new Date(Date.parse('2026-10-13T10:00:00Z') + index * 86_400_000),
+    );
     await live.recordTierLowering('operator', 'privacy');
+  }
   expect((await stat(outboxPath)).size).toBeLessThanOrEqual(
     TELEMETRY_OUTBOX_LIMITS.maxBytes,
   );
@@ -1095,16 +1217,20 @@ test('tier-change reason sends once before applying Off; standalone feedback req
     expect(sink.payloads).toHaveLength(1);
     expect((await put('lite')).status).toBe(200);
     expect((await put('off')).status).toBe(200);
+    expect((await submit()).status).toBe(409);
+    vi.setSystemTime('2026-10-13T00:00:00Z');
+    expect((await put('lite')).status).toBe(200);
+    expect((await put('off')).status).toBe(200);
     expect((await submit()).status).toBe(200);
     expect((await submit()).status).toBe(409);
     expect((await submit('kontour')).status).toBe(409);
     expect((await put('lite')).status).toBe(200);
     expect((await put('off')).status).toBe(200);
     expect((await submit()).status).toBe(409);
-    vi.setSystemTime('2026-10-13T10:00:00Z');
+    vi.setSystemTime('2026-10-14T10:00:00Z');
     expect((await put('lite')).status).toBe(200);
     expect((await put('off')).status).toBe(200);
-    vi.setSystemTime('2026-10-13T10:11:00Z');
+    vi.setSystemTime('2026-10-14T10:11:00Z');
     expect((await submit()).status).toBe(409);
     expect(sink.payloads).toHaveLength(2);
     expect((await put('lite')).status).toBe(200);

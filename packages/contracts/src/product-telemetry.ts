@@ -74,7 +74,6 @@ export const TELEMETRY_CHANNELS = [
   'nightly',
   'dev',
   'source-checkout',
-  'unknown',
 ] as const;
 export const TELEMETRY_SETUP_STEPS = [
   'none',
@@ -118,7 +117,7 @@ export const STATION_DAILY_FIELDS = {
   event: { domain: ['station_daily'] },
   event_id: { domain: 'uuid-v4' },
   version: { domain: 'public-release-version-or-custom', maxLength: 64 },
-  channel: { domain: TELEMETRY_CHANNELS },
+  channel: { domain: [...TELEMETRY_CHANNELS, 'unknown'] },
   platform: {
     domain: [
       'aix',
@@ -419,8 +418,9 @@ export const PRODUCT_TELEMETRY_ENVELOPE = {
     event_id: 'Random UUID assigned once at observation; unchanged on retry.',
     event: 'One name from the classified event inventory.',
     occurred_at:
-      'Canonical UTC producer wall-clock time when track was called.',
-    observed_at: 'Canonical UTC producer wall-clock time at buffer admission.',
+      'Canonical UTC producer wall-clock time when track was called, rounded down to the minute.',
+    observed_at:
+      'Canonical UTC producer wall-clock time at buffer admission, rounded down to the minute.',
     build:
       'Allowlisted immutable process build metadata; missing facts stay absent.',
     properties: 'Only the event-specific classified properties below.',

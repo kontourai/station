@@ -102,7 +102,8 @@ export class TelemetryPublisherService {
     );
   }
   private seed(now: Date, prior?: TelemetryDailyState): TelemetryDailyState {
-    const channel = mapRuntimeChannelToTelemetryChannel(this.options.channel);
+    const channel =
+      mapRuntimeChannelToTelemetryChannel(this.options.channel) ?? 'unknown';
     const day = now.toISOString().slice(0, 10);
     const week = utcWeek(now);
     const month = day.slice(0, 7);
@@ -317,7 +318,7 @@ export class TelemetryPublisherService {
               event_id: randomUUID(),
             },
             [],
-            [snapshot.ping.version],
+            'semver',
           ),
           notice:
             state.notices[publisher]?.inventoryRevision ===
@@ -338,17 +339,25 @@ export class TelemetryPublisherService {
   ): Promise<void> {
     if (this.options.configuration().publishers[publisher].reason === 'DNT')
       return;
+    let sendReason = false;
     await this.update();
     await this.local.daily((state) => {
       if (!state) throw new Error('Telemetry daily state is unavailable');
+      const today = new Date().toISOString().slice(0, 10);
+      state.feedbackDays ??= {};
+      sendReason =
+        !!reason &&
+        reason !== 'skip' &&
+        state.feedbackDays[publisher] !== today;
+      if (sendReason) state.feedbackDays[publisher] = today;
       state.lowerings ??= {};
       state.lowerings[publisher] = {
         at: new Date().toISOString(),
-        feedbackSent: reason !== undefined && reason !== 'skip',
+        feedbackSent: sendReason,
       };
       return state;
     });
-    if (reason && reason !== 'skip')
+    if (sendReason && reason)
       await this.send(
         publisher,
         { publisher, action: 'tier-lowered', reason },

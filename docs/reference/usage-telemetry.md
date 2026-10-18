@@ -116,8 +116,10 @@ ever falls back to the other destination's key.
 
 Full telemetry is pseudonymous, not anonymous. Its installation hash rotates
 monthly and is never linked to an account by Station. The Full payload carries
-SHA-256 of a random UUID concatenated with the publisher ID and UTC `YYYY-MM`. The UUID is persisted at
+SHA-256 of a random UUID concatenated with the publisher ID and UTC `YYYY-MM`. Upgrading from the permanent `sha256(uuid)` scheme immediately changes existing receivers’ `distinct_id`; historical installation series do not continue under the new ID. Station does not send a migration link. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
+
+Full `occurred_at` and `observed_at` are rounded down to the UTC minute to reduce cross-publisher correlation. Unknown Full channels are omitted; runtime `beta` maps to `preview`. The broker deduplicates by source and `event_id`, not timestamps; its reporting groups by day. Other shared facts can still correlate pseudonymous Full events.
 
 ## Daily aggregates and observation limits
 
@@ -140,7 +142,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 
 | Field | Server observation or conservative value |
 | --- | --- |
-| version | The running package version; the producer validates it against its own build version. Receivers must admit that public release version in their catalog. |
+| version | The running package version, validated as SemVer by the sender. Receivers use their configured release list for admission. Version alone cannot establish an official build: source/fork builds are distinguishable only through channel `unknown` or `source-checkout`, and may reuse a release version. |
 | channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
@@ -165,6 +167,8 @@ connection observations above to the existing startup/recovery/turn stream.
 Unverified-public plugin IDs become `custom`. Pane-open events belong to the UI;
 setup abandonment, safe mode, crash disables and engine connection-failure
 producers remain unwired rather than guessed from unrelated events.
+
+Inline tier-lowering reasons and standalone feedback share one persisted budget per publisher per UTC day, reserved before sending. A failed send still consumes that day’s budget.
 
 ## Local ledger and feedback
 
@@ -196,7 +200,7 @@ the reason. DNT suppresses the signal and does not record a feedback window.
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action
 `tier-lowered`, a server-recorded lowering within the last 10 minutes, no prior
-reason for that change, and no standalone feedback for that publisher that UTC
+reason for that change, and no inline or standalone reason for that publisher that UTC
 day. Otherwise it returns 409. It can send the explicitly requested reason
 while the resulting tier is Off; DNT always refuses it. Plugin uninstall feedback
 is unavailable until a publisher-specific uninstall action records authority.
@@ -365,8 +369,8 @@ The contracts/product-telemetry inventory declares event and envelope fields; sh
 | --- | --- |
 | `event_id` | Random UUID assigned once at observation; unchanged on retry. |
 | `event` | One name from the classified event inventory. |
-| `occurred_at` | Canonical UTC producer wall-clock time when track was called. |
-| `observed_at` | Canonical UTC producer wall-clock time at buffer admission. |
+| `occurred_at` | Canonical UTC producer wall-clock time when track was called, rounded down to the minute. |
+| `observed_at` | Canonical UTC producer wall-clock time at buffer admission, rounded down to the minute. |
 | `build` | Allowlisted immutable process build metadata; missing facts stay absent. |
 | `properties` | Only the event-specific classified properties below. |
 
