@@ -360,7 +360,7 @@ function ChatMessageListComponent({
   // Every programmatic scrollTop write goes through these so the scroll
   // handler can tell our own echoes apart from reader movement. The recorded
   // (clamped) position is what the echo carries.
-  const noteProgrammaticScroll = useCallback((el: HTMLDivElement) => {
+  const noteProgrammaticScroll = useCallback((el: HTMLElement) => {
     lastProgrammaticScrollRef.current = {
       top: el.scrollTop,
       at: performance.now(),
@@ -952,9 +952,9 @@ function ChatMessageListComponent({
       return;
     }
     // A pinned transcript that lands a little short with no reader input was
-    // clamped by layout, not scrolled: a sibling measuring itself (the
-    // composer collapses its draft to one row to size it) briefly hands the
-    // transcript more height, the browser clamps scrollTop to the new end, and
+    // clamped by layout, not scrolled: a sibling measuring itself can briefly
+    // hand the transcript more height (the composer used to collapse its
+    // draft to one row to size it). The browser clamps scrollTop to the new end, and
     // the height comes back within the same frame — no resize is ever
     // observed. Without this the newest message stayed that many pixels short.
     const acting = readerActing();
@@ -1503,6 +1503,7 @@ function ChatMessageListComponent({
                     <TranscriptVirtualizer
                       rows={transcriptRows}
                       scrollElement={messagesContainerRef}
+                      onProgrammaticScroll={noteProgrammaticScroll}
                       renderRow={renderTranscriptRow}
                       followTail={!isUserScrolledUp && !requestedMessageRowId}
                       followTick={`${tailContentLength}:${tailPartsLength}`}
