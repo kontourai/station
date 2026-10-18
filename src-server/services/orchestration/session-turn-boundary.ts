@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type {
   InvocationTerminalFact,
+  InvocationTerminalRead,
   InvocationTerminalRetirement,
   OwnerIdentity,
   PreparedTurnIntent,
@@ -160,6 +161,11 @@ export interface SessionTurnBoundaryCoordinator {
     /** Session terminals use their persisted sequence; turn terminals retain timestamp ordering. */
     terminalEventId?: string;
   }): SessionTurnBoundaryTransition;
+  readInvocationTerminal?(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ): InvocationTerminalRead;
   hasPossibleEffect(threadId: string): boolean;
   active(): SessionTurnBoundaryRecord[];
   /**
@@ -355,6 +361,11 @@ export interface SessionTurnBoundaryAuthority {
   hasPossibleEffect(
     threadId: string,
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
+  readInvocationTerminal(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ): InvocationTerminalRead;
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
   /**
    * #2324: the durable row for a turn the engine opened on its own. Retired
@@ -1088,6 +1099,19 @@ export function createSessionTurnBoundaryAuthority(options: {
         };
       } catch {
         return { kind: 'unavailable' };
+      }
+    },
+    readInvocationTerminal(threadId, invocationId, providerTurnId) {
+      try {
+        return (
+          options.coordinator.readInvocationTerminal?.(
+            threadId,
+            invocationId,
+            providerTurnId,
+          ) ?? { kind: 'unknown' }
+        );
+      } catch {
+        return { kind: 'unknown' };
       }
     },
     observe(event) {

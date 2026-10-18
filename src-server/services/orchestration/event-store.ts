@@ -1297,12 +1297,15 @@ interface RankedMethodFact {
 }
 
 /**
- * A stable composite key for a `(threadId, turnId)` pair, joined on a NUL
- * byte rather than a printable separator so a threadId/turnId that happened
- * to contain the separator could never manufacture a collision.
+ * Encode the full selected identity without delimiter collisions; legacy
+ * native-only selections retain an absent invocation discriminator.
  */
-function pairKey(threadId: string, turnId: string): string {
-  return `${threadId}\u0000${turnId}`;
+function pairKey(
+  threadId: string,
+  turnId: string,
+  invocationId?: string,
+): string {
+  return JSON.stringify([threadId, turnId, invocationId ?? null]);
 }
 
 const SESSION_STATE_FACT_METHODS = [
@@ -6451,6 +6454,7 @@ export class EventStore {
             threadId,
             latestTurnStarted.turnId,
             bounded,
+            latestTurnStarted.payload.invocationId,
           )
         : undefined,
       this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded),
@@ -6553,7 +6557,30 @@ export class EventStore {
     threadId: string,
     bounded = false,
   ): PersistedRuntimeEvent | undefined {
-    const event = this.latestEventByMethod(threadId, 'runtime.error', bounded);
+    const latestTurn = this.latestEventByMethod(
+      threadId,
+      'turn.started',
+      bounded,
+    );
+    const invocationId = latestTurn?.payload.invocationId;
+    const row =
+      invocationId === undefined
+        ? undefined
+        : this.db
+            .prepare(
+              `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+       FROM orchestration_events WHERE thread_id = ? AND method = 'runtime.error'
+       AND (json_extract(payload, '$.invocationId') = ? OR
+         (turn_id IS NULL AND json_extract(payload, '$.invocationId') IS NULL))
+       ORDER BY sequence DESC LIMIT 1`,
+            )
+            .get(threadId, invocationId);
+    const event =
+      invocationId === undefined
+        ? this.latestEventByMethod(threadId, 'runtime.error', bounded)
+        : row
+          ? this.mapEventRow(row)
+          : undefined;
     if (!event) return undefined;
     if (!event.turnId) {
       // Session-scoped (archive#3485): retained until a strictly later
@@ -6563,11 +6590,6 @@ export class EventStore {
         ? undefined
         : event;
     }
-    const latestTurn = this.latestEventByMethod(
-      threadId,
-      'turn.started',
-      bounded,
-    );
     if (!latestTurn) return event;
     // Supersession is a question about turn IDENTITY, not about sequence. One
     // turn can be announced more than once — `claude-adapter.ts`'s steer path
@@ -6693,6 +6715,7 @@ export class EventStore {
     threadId: string,
     turnId: string,
     bounded = false,
+    invocationId?: string,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
@@ -6700,10 +6723,15 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND method IN ('turn.completed', 'turn.aborted')
+           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
          ORDER BY sequence DESC
          LIMIT 1`,
       )
-      .get(threadId, turnId) as any;
+      .get(
+        threadId,
+        turnId,
+        ...(invocationId === undefined ? [] : [invocationId]),
+      ) as any;
     return row ? this.mapEventRow(row) : undefined;
   }
 
@@ -6950,13 +6978,21 @@ export class EventStore {
     // own turn-started row. Both depend on facts the ranked-method query
     // above already resolved, so they run as a SECOND small round of
     // queries rather than growing the first one's shape.
-    const terminalPairs: Array<{ threadId: string; turnId: string }> = [];
+    const terminalPairs: Array<{
+      threadId: string;
+      turnId: string;
+      invocationId?: string;
+    }> = [];
     const ownTurnStartPairs: Array<{ threadId: string; turnId: string }> = [];
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
       const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
       if (latestTurnStarted?.turnId) {
-        terminalPairs.push({ threadId, turnId: latestTurnStarted.turnId });
+        terminalPairs.push({
+          threadId,
+          turnId: latestTurnStarted.turnId,
+          invocationId: latestTurnStarted.payload.invocationId,
+        });
       }
       const runtimeError = methodFacts?.get('runtime.error')?.latest;
       if (
@@ -6972,6 +7008,12 @@ export class EventStore {
       "method IN ('turn.completed', 'turn.aborted')",
       'DESC',
     );
+    const currentErrorByPair = this.fetchTurnScopedEvent(
+      terminalPairs.filter((pair) => pair.invocationId !== undefined),
+      "method = 'runtime.error'",
+      'DESC',
+      true,
+    );
     const ownTurnStartByPair = this.fetchTurnScopedEvent(
       ownTurnStartPairs,
       "method = 'turn.started'",
@@ -6981,7 +7023,17 @@ export class EventStore {
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
       const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
-      const latestRuntimeError = methodFacts?.get('runtime.error')?.latest;
+      const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
+      const latestRuntimeError =
+        latestTurnStarted?.payload.invocationId !== undefined
+          ? currentErrorByPair.get(
+              pairKey(
+                threadId,
+                latestTurnStarted.turnId ?? '',
+                latestTurnStarted.payload.invocationId,
+              ),
+            )
+          : unscopedRuntimeError;
       // Mirrors `latestCurrentTurnRuntimeErrorEvent` exactly (archive#3442):
       // see that method's docblock above for the full reasoning. The
       // session-scoped branch (archive#3485) calls the SAME
@@ -7039,7 +7091,13 @@ export class EventStore {
         firstPromptedTurnByThread.get(threadId),
         latestTurnStarted,
         latestTurnStarted?.turnId
-          ? terminalByPair.get(pairKey(threadId, latestTurnStarted.turnId))
+          ? terminalByPair.get(
+              pairKey(
+                threadId,
+                latestTurnStarted.turnId,
+                latestTurnStarted.payload.invocationId,
+              ),
+            )
           : undefined,
         latestLifecycleEvent,
         latestCurrentTurnRuntimeError,
@@ -7192,7 +7250,7 @@ export class EventStore {
    * The latest (`order === 'DESC'`) or first (`'ASC'`) row matching
    * `methodFilter` for each requested `(threadId, turnId)` pair — mirrors
    * {@link latestTerminalEventForTurn} and {@link turnStartedEvent}, batched
-   * via a `(thread_id, turn_id) IN (VALUES (?,?), ...)` row-value list,
+   * by joining requested native/invocation identities before ranking,
    * chunked at {@link EVENT_STORE_BATCH_CHUNK_SIZE} pairs. Two-phase and
    * payload-deferred like the method-ranked query. (The planner satisfies it
    * via `idx_events_history_projection (thread_id, method)` plus bloom
@@ -7202,32 +7260,51 @@ export class EventStore {
    * request no turn-scoped facts at all).
    */
   private fetchTurnScopedEvent(
-    pairs: ReadonlyArray<{ threadId: string; turnId: string }>,
+    pairs: ReadonlyArray<{
+      threadId: string;
+      turnId: string;
+      invocationId?: string;
+    }>,
     methodFilter: string,
     order: 'ASC' | 'DESC',
+    includeSessionErrors = false,
   ): Map<string, PersistedRuntimeEvent> {
     const result = new Map<string, PersistedRuntimeEvent>();
     if (pairs.length === 0) return result;
     for (const chunk of this.chunkArray(pairs, EVENT_STORE_BATCH_CHUNK_SIZE)) {
-      const valuesPlaceholders = chunk.map(() => '(?, ?)').join(', ');
-      const values = chunk.flatMap((pair) => [pair.threadId, pair.turnId]);
+      const valuesPlaceholders = chunk.map(() => '(?, ?, ?)').join(', ');
+      const values = chunk.flatMap((pair) => [
+        pair.threadId,
+        pair.turnId,
+        pair.invocationId ?? null,
+      ]);
       const rows = this.db
         .prepare(
-          `WITH ranked AS (
-             SELECT rowid AS rid, thread_id, turn_id,
-               ROW_NUMBER() OVER (PARTITION BY thread_id, turn_id ORDER BY sequence ${order}) AS rn
-             FROM orchestration_events
-             WHERE (thread_id, turn_id) IN (VALUES ${valuesPlaceholders})
-               AND ${methodFilter}
+          `WITH requested(thread, native, invocation) AS (VALUES ${valuesPlaceholders}), ranked AS (
+             SELECT event.rowid AS rid, requested.thread AS selected_thread, requested.native AS selected_native, requested.invocation AS selected_invocation,
+               ROW_NUMBER() OVER (PARTITION BY requested.thread, requested.native, requested.invocation ORDER BY sequence ${order}) AS rn
+             FROM orchestration_events AS event JOIN requested
+               ON event.thread_id = requested.thread AND (
+                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation))
+                 ${includeSessionErrors ? "OR (event.turn_id IS NULL AND json_extract(event.payload, '$.invocationId') IS NULL)" : ''}
+               )
+             WHERE ${methodFilter}
            )
-           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence
+           SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.observed_at, event.sequence, event.global_sequence, ranked.selected_thread, ranked.selected_native, ranked.selected_invocation
            FROM ranked
            INNER JOIN orchestration_events AS event ON event.rowid = ranked.rid
            WHERE ranked.rn = 1`,
         )
         .all(...values) as any[];
       for (const row of rows) {
-        result.set(pairKey(row.thread_id, row.turn_id), this.mapEventRow(row));
+        result.set(
+          pairKey(
+            row.selected_thread,
+            row.selected_native,
+            row.selected_invocation ?? undefined,
+          ),
+          this.mapEventRow(row),
+        );
       }
     }
     return result;
@@ -7430,7 +7507,8 @@ export class EventStore {
     const started = this.db
       .prepare(
         `SELECT sequence, created_at,
-                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger,
+                json_extract(payload, '$.invocationId') AS invocation_id
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
            ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
@@ -11402,6 +11480,18 @@ export class EventStore {
   /** Private runtime composition for session turn provider boundaries. */
   sessionTurnBoundaryAuthority(): SessionTurnBoundaryAuthority {
     return this.sessionTurnBoundaries;
+  }
+
+  readInvocationTerminal(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ) {
+    return this.sessionTurnBoundaries.readInvocationTerminal(
+      threadId,
+      invocationId,
+      providerTurnId,
+    );
   }
 
   preparedInvocationForClientTurn(

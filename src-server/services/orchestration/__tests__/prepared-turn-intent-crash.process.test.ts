@@ -850,13 +850,40 @@ test.each(['accepted', 'early-terminal'] as const)(
 test.each(['fresh', 'resume'] as const)(
   'acknowledged %s refusal releases only its local invocation and workspace; failed settlement retains it',
   async (mode) => {
-    for (const settlement of ['applied', 'abort', 'ack-lost'] as const) {
+    for (const settlement of [
+      'applied',
+      'abort',
+      'ack-lost',
+      'other-active',
+    ] as const) {
       const cwd = makeTempDir(`refusal-${mode}-${settlement}-`);
       const path = join(cwd, 'events.sqlite');
       if (mode === 'resume') await killedOwner(path, 'prepared', cwd);
       const store = new EventStore(path);
       stores.push(store);
       class RefusingAdapter extends LiveResumeAdapter {
+        override async sendTurn(input: ProviderSendTurnInput) {
+          if (settlement === 'other-active') {
+            this.events.push({
+              method: 'turn.started',
+              eventId: 'independent-provider-start',
+              provider: 'claude',
+              threadId: input.threadId,
+              turnId: 'provider:independent',
+              prompt: 'independent engine work',
+              metadata: { trigger: 'provider' },
+              createdAt: new Date().toISOString(),
+            });
+            await vi.waitFor(() =>
+              expect(
+                store
+                  .listEvents(input.threadId)
+                  .some((row) => row.id === 'independent-provider-start'),
+              ).toBe(true),
+            );
+          }
+          return super.sendTurn(input);
+        }
         override async listSessions() {
           return (await super.listSessions()).map((row) => ({ ...row, cwd }));
         }
@@ -960,7 +987,7 @@ test.each(['fresh', 'resume'] as const)(
                 },
                 { userId: 'prepared-owner' },
               );
-        if (settlement === 'applied')
+        if (settlement === 'applied' || settlement === 'other-active')
           await expect(dispatch).rejects.toThrow('No provider-visible effect.');
         else
           await expect(dispatch).rejects.toMatchObject({
@@ -969,7 +996,7 @@ test.each(['fresh', 'resume'] as const)(
         expect(adapter.sent).toHaveLength(1);
         const audit = store['db']
           .prepare(
-            'SELECT state FROM orchestration_turn_boundaries WHERE thread_id=?',
+            'SELECT state FROM orchestration_turn_boundaries WHERE thread_id=? AND invocation_id IS NOT NULL',
           )
           .get(THREAD) as { state: string };
         expect(audit.state).toBe(

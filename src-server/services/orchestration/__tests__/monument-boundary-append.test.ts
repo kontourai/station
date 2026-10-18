@@ -210,7 +210,9 @@ test.each(['ABORT', 'ROLLBACK'] as const)(
   'pending acceptance %s during provider-start cleanup cannot commit outside the owning append',
   (failure) => {
     const store = open(':memory:');
-    closes.push(() => store.close());
+    closes.push(() => {
+      store.close();
+    });
     const db = store['db'];
     const authority = store.sessionTurnBoundaryAuthority();
     store.appendEvent({

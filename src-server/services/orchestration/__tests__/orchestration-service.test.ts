@@ -1349,7 +1349,11 @@ describe('OrchestrationService', () => {
         input: { threadId: 'terminal-before-accept', provider: 'bedrock', cwd },
       });
       const accepted = deferred<ProviderTurnStartResult>();
-      bedrock.sendTurn.mockReturnValueOnce(accepted.promise);
+      let terminalInvocation: string | undefined;
+      bedrock.sendTurn.mockImplementationOnce((input) => {
+        terminalInvocation = input.invocationId;
+        return accepted.promise;
+      });
       const sending = service.dispatch({
         type: 'sendTurn',
         input: {
@@ -1360,6 +1364,7 @@ describe('OrchestrationService', () => {
       });
       await waitFor(() => bedrock.sendTurn.mock.calls.length, Boolean);
       bedrock.events.push({
+        invocationId: terminalInvocation,
         eventId: 'terminal-before-accept-event',
         provider: 'bedrock',
         threadId: 'terminal-before-accept',
@@ -4362,243 +4367,317 @@ describe('OrchestrationService', () => {
     },
   );
 
-  test('reserves an idempotent explicit handoff without letting ordinary continuation start its target child', async () => {
-    const handoffService = new OrchestrationService({
-      adapterRegistry: createRegistry([claude]),
-      eventBus,
-      eventStore,
-      resolveSessionAgent: createSessionAgentResolver({
-        loadAgentSpec: async (slug) =>
-          slug === 'station' || slug === 'agent-b'
-            ? {
-                name: slug === 'station' ? 'Station' : 'Handoff Agent',
-                prompt: 'Continue the conversation safely.',
-                execution: { agentConnectionId: engineConnectionId('claude') },
-              }
-            : null,
-        resolveToolServer: async () => null,
-        resolveSkillDir: async () => null,
-      }),
-      loadAgentPresentation: async (slug) =>
-        slug === 'station'
-          ? { name: 'Station', icon: 'station' }
-          : slug === 'agent-b'
-            ? { name: 'Handoff Agent', icon: 'sparkles' }
-            : undefined,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-    const root = await handoffService.sessionCommands.execute(
-      {
-        type: 'start-session',
-        input: {
-          threadId: 'handoff-conversation',
+  test.each(['legacy', 'captured', 'contradictory'] as const)(
+    'reserves an idempotent explicit handoff with %s completion custody',
+    async (custody) => {
+      const startSession = claude.startSession.getMockImplementation()!;
+      claude.startSession.mockImplementation(async (input) => {
+        const session = await startSession(input);
+        claude.events.push({
+          method: 'session.started',
+          eventId: `owned-start:${input.threadId}`,
           provider: 'claude',
-          metadata: { userId: 'owner-user', agentSlug: 'station' },
-        },
-      },
-      { userId: 'owner-user' },
-    );
-    if (root.status !== 'accepted') throw new Error(root.message);
-    eventStore.appendEvent({
-      eventId: 'handoff-root-complete',
-      provider: 'claude',
-      threadId: 'handoff-conversation',
-      sessionId: 'handoff-conversation',
-      method: 'session.state-changed',
-      from: 'running',
-      to: 'completed',
-      sessionState: 'completed',
-      previousState: 'running',
-      transitionReason: 'turn_completed',
-      transitionSource: 'runtime',
-      createdAt: '2026-08-24T01:00:00.000Z',
-    });
-    const request = {
-      agentId: 'agent-b',
-      environmentId: 'environment-a',
-      connectionId: 'claude',
-      idempotencyKey: 'handoff-request-a',
-      messageDigest: 'message-a',
-    };
-    const boundary = await handoffService.reserveConversationContextBoundary(
-      'handoff-conversation',
-      INTERNAL_SESSION_READ_SCOPE,
-      {
-        policy: 'continue-from-history',
-        idempotencyKey: 'handoff-boundary',
-        expectedCurrentSessionId: 'handoff-conversation',
-        actorId: 'owner-user',
-      },
-    );
-    const first = await handoffService.prepareConversationHandoff(
-      'handoff-conversation',
-      INTERNAL_SESSION_READ_SCOPE,
-      request,
-    );
-    const replay = await handoffService.prepareConversationHandoff(
-      'handoff-conversation',
-      INTERNAL_SESSION_READ_SCOPE,
-      request,
-    );
-    expect(replay.marker.sessionId).toBe(first.marker.sessionId);
-    expect(replay.contextBoundary).toMatchObject({
-      boundaryId: boundary.boundaryId,
-      successorSessionId: first.marker.sessionId,
-      policy: 'continue-from-history',
-      status: 'reserved',
-    });
-    expect(replay.transcriptSeed).toBe(first.transcriptSeed);
-    expect(replay.carried).toEqual(first.carried);
-    expect(replay.reset).toEqual(first.reset);
-    await expect(
-      handoffService.prepareConversationHandoff(
-        'handoff-conversation',
-        INTERNAL_SESSION_READ_SCOPE,
-        { ...request, messageDigest: 'different-message' },
-      ),
-    ).rejects.toThrow(
-      'idempotency key already names a different target or message',
-    );
-    expect(first.reset).toContain('sessionApprovals');
-    expect(first.reset).toContain('taskWorkflowReferences');
-    await expect(
-      handoffService.readConversationHandoffStatus(
-        'handoff-conversation',
-        request.idempotencyKey,
-        INTERNAL_SESSION_READ_SCOPE,
-      ),
-    ).resolves.toMatchObject({
-      status: 'reserved',
-      currentSessionId: first.marker.sessionId,
-    });
-    await expect(
-      handoffService.readConversationHandoffStatus(
-        'handoff-conversation',
-        request.idempotencyKey,
-        personalReadAuthority('different-owner'),
-      ),
-    ).resolves.toBeNull();
-    await expect(
-      handoffService.resolveConversationContinuation(
-        'handoff-conversation',
-        INTERNAL_SESSION_READ_SCOPE,
-        { provider: 'claude', connectionId: 'claude' },
-      ),
-    ).rejects.toThrow('explicit Agent/engine handoff awaiting');
-
-    const child = await handoffService.sessionCommands.execute(
-      {
-        type: 'start-session',
-        input: {
-          threadId: first.marker.sessionId,
-          provider: 'claude',
-          metadata: {
-            userId: 'owner-user',
-            conversationId: 'handoff-conversation',
-            agentSlug: 'agent-b',
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          createdAt: session.createdAt,
+          metadata: input.metadata,
+        });
+        await waitFor(
+          () => eventStore.findSessionOwnerUserId(input.threadId),
+          (owner) => owner === input.metadata?.userId,
+        );
+        return session;
+      });
+      const handoffService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus,
+        eventStore,
+        resolveSessionAgent: createSessionAgentResolver({
+          loadAgentSpec: async (slug) =>
+            slug === 'station' || slug === 'agent-b'
+              ? {
+                  name: slug === 'station' ? 'Station' : 'Handoff Agent',
+                  prompt: 'Continue the conversation safely.',
+                  execution: {
+                    agentConnectionId: engineConnectionId('claude'),
+                  },
+                }
+              : null,
+          resolveToolServer: async () => null,
+          resolveSkillDir: async () => null,
+        }),
+        loadAgentPresentation: async (slug) =>
+          slug === 'station'
+            ? { name: 'Station', icon: 'station' }
+            : slug === 'agent-b'
+              ? { name: 'Handoff Agent', icon: 'sparkles' }
+              : undefined,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const root = await handoffService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'handoff-conversation',
+            provider: 'claude',
+            metadata: { userId: 'owner-user', agentSlug: 'station' },
           },
         },
-      },
-      { userId: 'owner-user' },
-    );
-    if (child.status !== 'accepted') throw new Error(child.message);
-    expect(claude.startSession).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          agentSlug: 'station',
-          agentName: 'Station',
-          agentIcon: 'station',
+        { userId: 'owner-user' },
+      );
+      if (root.status !== 'accepted') throw new Error(root.message);
+      eventStore.appendEvent({
+        eventId: 'handoff-root-complete',
+        provider: 'claude',
+        threadId: 'handoff-conversation',
+        sessionId: 'handoff-conversation',
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T01:00:00.000Z',
+      });
+      const request = {
+        agentId: 'agent-b',
+        environmentId: 'environment-a',
+        connectionId: 'claude',
+        idempotencyKey: 'handoff-request-a',
+        messageDigest: 'message-a',
+      };
+      const boundary = await handoffService.reserveConversationContextBoundary(
+        'handoff-conversation',
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          policy: 'continue-from-history',
+          idempotencyKey: 'handoff-boundary',
+          expectedCurrentSessionId: 'handoff-conversation',
+          actorId: 'owner-user',
+        },
+      );
+      const first = await handoffService.prepareConversationHandoff(
+        'handoff-conversation',
+        INTERNAL_SESSION_READ_SCOPE,
+        request,
+      );
+      const replay = await handoffService.prepareConversationHandoff(
+        'handoff-conversation',
+        INTERNAL_SESSION_READ_SCOPE,
+        request,
+      );
+      expect(replay.marker.sessionId).toBe(first.marker.sessionId);
+      expect(replay.contextBoundary).toMatchObject({
+        boundaryId: boundary.boundaryId,
+        successorSessionId: first.marker.sessionId,
+        policy: 'continue-from-history',
+        status: 'reserved',
+      });
+      expect(replay.transcriptSeed).toBe(first.transcriptSeed);
+      expect(replay.carried).toEqual(first.carried);
+      expect(replay.reset).toEqual(first.reset);
+      await expect(
+        handoffService.prepareConversationHandoff(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          { ...request, messageDigest: 'different-message' },
+        ),
+      ).rejects.toThrow(
+        'idempotency key already names a different target or message',
+      );
+      expect(first.reset).toContain('sessionApprovals');
+      expect(first.reset).toContain('taskWorkflowReferences');
+      await expect(
+        handoffService.readConversationHandoffStatus(
+          'handoff-conversation',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toMatchObject({
+        status: 'reserved',
+        currentSessionId: first.marker.sessionId,
+      });
+      await expect(
+        handoffService.readConversationHandoffStatus(
+          'handoff-conversation',
+          request.idempotencyKey,
+          personalReadAuthority('different-owner'),
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        handoffService.resolveConversationContinuation(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: 'claude', connectionId: 'claude' },
+        ),
+      ).rejects.toThrow('explicit Agent/engine handoff awaiting');
+
+      const child = await handoffService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: first.marker.sessionId,
+            provider: 'claude',
+            metadata: {
+              userId: 'owner-user',
+              conversationId: 'handoff-conversation',
+              agentSlug: 'agent-b',
+            },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (child.status !== 'accepted') throw new Error(child.message);
+      expect(claude.startSession).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            agentSlug: 'station',
+            agentName: 'Station',
+            agentIcon: 'station',
+          }),
         }),
-      }),
-    );
-    expect(claude.startSession).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          agentSlug: 'agent-b',
-          agentName: 'Handoff Agent',
-          agentIcon: 'sparkles',
+      );
+      expect(claude.startSession).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            agentSlug: 'agent-b',
+            agentName: 'Handoff Agent',
+            agentIcon: 'sparkles',
+          }),
         }),
-      }),
-    );
-    const clientTurnId = `handoff:${createHash('sha256')
-      .update(`handoff-conversation\0${request.idempotencyKey}`)
-      .digest('hex')}`;
-    const claim = eventStore.createTurnDeduplicator().claim({
-      threadId: first.marker.sessionId,
-      clientTurnId,
-    });
-    if (claim.kind !== 'owner') throw new Error('expected turn claim owner');
-    claim.claim.resolve('handoff-provider-turn');
-    eventStore.appendEvent({
-      eventId: 'handoff-turn-started',
-      provider: 'claude',
-      threadId: first.marker.sessionId,
-      turnId: 'handoff-provider-turn',
-      method: 'turn.started',
-      prompt: 'continue',
-      createdAt: '2026-08-24T01:00:30.000Z',
-    });
-    await expect(
-      handoffService.readConversationHandoffStatus(
-        'handoff-conversation',
-        request.idempotencyKey,
-        INTERNAL_SESSION_READ_SCOPE,
-      ),
-    ).resolves.toMatchObject({
-      status: 'accepted',
-      providerTurnId: 'handoff-provider-turn',
-    });
-    eventStore.appendEvent({
-      eventId: 'handoff-turn-completed',
-      provider: 'claude',
-      threadId: first.marker.sessionId,
-      turnId: 'handoff-provider-turn',
-      method: 'turn.completed',
-      outputText: 'continued',
-      createdAt: '2026-08-24T01:00:45.000Z',
-    });
-    eventStore.appendEvent({
-      eventId: 'handoff-token-usage-after-completion',
-      provider: 'claude',
-      threadId: first.marker.sessionId,
-      turnId: 'handoff-provider-turn',
-      method: 'token-usage.updated',
-      promptTokens: 3,
-      completionTokens: 2,
-      createdAt: '2026-08-24T01:00:46.000Z',
-    });
-    await expect(
-      handoffService.readConversationHandoffStatus(
-        'handoff-conversation',
-        request.idempotencyKey,
-        INTERNAL_SESSION_READ_SCOPE,
-      ),
-    ).resolves.toMatchObject({ status: 'completed' });
-    eventStore.appendEvent({
-      eventId: 'handoff-child-complete',
-      provider: 'claude',
-      threadId: first.marker.sessionId,
-      sessionId: first.marker.sessionId,
-      method: 'session.state-changed',
-      from: 'running',
-      to: 'completed',
-      sessionState: 'completed',
-      previousState: 'running',
-      transitionReason: 'turn_completed',
-      transitionSource: 'runtime',
-      createdAt: '2026-08-24T01:01:00.000Z',
-    });
-    await expect(
-      handoffService.resolveConversationContinuation(
-        'handoff-conversation',
-        INTERNAL_SESSION_READ_SCOPE,
-        { provider: 'claude', connectionId: 'claude' },
-      ),
-    ).resolves.toMatchObject({ startRequired: true });
-    await handoffService.shutdown();
-  });
+      );
+      const clientTurnId = `handoff:${createHash('sha256')
+        .update(`handoff-conversation\0${request.idempotencyKey}`)
+        .digest('hex')}`;
+      let invocationId: string | undefined;
+      if (custody === 'legacy') {
+        const claim = eventStore
+          .createTurnDeduplicator()
+          .claim({ threadId: first.marker.sessionId, clientTurnId });
+        if (claim.kind !== 'owner')
+          throw new Error('expected turn claim owner');
+        claim.claim.resolve('handoff-provider-turn');
+      } else {
+        claude.sendTurn.mockImplementationOnce(async (input) => {
+          invocationId = input.invocationId;
+          return { threadId: input.threadId, turnId: 'handoff-provider-turn' };
+        });
+        await handoffService.dispatch(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId: first.marker.sessionId,
+              input: 'continue',
+              clientTurnId,
+            },
+          },
+          { userId: 'owner-user' },
+        );
+        expect(invocationId).toBeTypeOf('string');
+      }
+      eventStore.appendEvent({
+        ...(invocationId === undefined ? {} : { invocationId }),
+        eventId: 'handoff-turn-started',
+        provider: 'claude',
+        threadId: first.marker.sessionId,
+        turnId: 'handoff-provider-turn',
+        method: 'turn.started',
+        prompt: 'continue',
+        createdAt: '2026-08-24T01:00:30.000Z',
+      });
+      await expect(
+        handoffService.readConversationHandoffStatus(
+          'handoff-conversation',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toMatchObject({
+        status: 'accepted',
+        providerTurnId: 'handoff-provider-turn',
+      });
+      eventStore.appendEvent({
+        ...(invocationId === undefined ? {} : { invocationId }),
+        eventId: 'handoff-turn-completed',
+        provider: 'claude',
+        threadId: first.marker.sessionId,
+        turnId: 'handoff-provider-turn',
+        method: 'turn.completed',
+        outputText: 'continued',
+        createdAt: '2026-08-24T01:00:45.000Z',
+      });
+      if (invocationId !== undefined) {
+        const retained = eventStore['db']
+          .prepare(
+            'SELECT terminal_retirement FROM orchestration_prepared_turns WHERE invocation_id=?',
+          )
+          .get(invocationId) as { terminal_retirement: string };
+        expect(
+          JSON.parse(retained.terminal_retirement).terminal.terminalEventId,
+        ).toBe('handoff-turn-completed');
+        expect(
+          eventStore['db']
+            .prepare(
+              'SELECT 1 FROM orchestration_turn_boundaries WHERE invocation_id=?',
+            )
+            .get(invocationId),
+        ).toBeUndefined();
+        if (custody === 'contradictory')
+          eventStore.appendEvent({
+            eventId: 'handoff-late-contradiction',
+            provider: 'claude',
+            threadId: first.marker.sessionId,
+            turnId: 'M',
+            invocationId,
+            method: 'turn.completed',
+            createdAt: '2026-08-24T01:00:45.500Z',
+          });
+      }
+      eventStore.appendEvent({
+        eventId: 'handoff-token-usage-after-completion',
+        provider: 'claude',
+        threadId: first.marker.sessionId,
+        turnId: 'handoff-provider-turn',
+        method: 'token-usage.updated',
+        promptTokens: 3,
+        completionTokens: 2,
+        createdAt: '2026-08-24T01:00:46.000Z',
+      });
+      await expect(
+        handoffService.readConversationHandoffStatus(
+          'handoff-conversation',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toMatchObject({
+        status: custody === 'contradictory' ? 'accepted' : 'completed',
+      });
+      eventStore.appendEvent({
+        eventId: 'handoff-child-complete',
+        provider: 'claude',
+        threadId: first.marker.sessionId,
+        sessionId: first.marker.sessionId,
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T01:01:00.000Z',
+      });
+      await expect(
+        handoffService.resolveConversationContinuation(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: 'claude', connectionId: 'claude' },
+        ),
+      ).resolves.toMatchObject({ startRequired: true });
+      await handoffService.shutdown();
+    },
+  );
 
   test('an empty-boundary handoff retry rehydrates its boundary without a transcript seed', async () => {
     eventStore.upsertSession({
@@ -7083,6 +7162,169 @@ describe('OrchestrationService', () => {
    * `orchestration.ts`'s `resolveActorPrincipal` populates per request in
    * production — and reads back the two PERSISTED `turn.started` rows.
    */
+  test.each(['early', 'postaccept', 'cancelled'] as const)(
+    'untagged %s routing copies only authenticated principal/origin and preserves exact invocation credit',
+    async (timing) => {
+      const startSession = claude.startSession.getMockImplementation()!;
+      claude.startSession.mockImplementation(async (input) => {
+        const session = await startSession(input);
+        claude.events.push({
+          method: 'session.started',
+          eventId: `owned-start:${input.threadId}`,
+          provider: 'claude',
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          createdAt: session.createdAt,
+          metadata: input.metadata,
+        });
+        await waitFor(
+          () => eventStore.findSessionOwnerUserId(input.threadId),
+          (owner) => owner === input.metadata?.userId,
+        );
+        return session;
+      });
+      const threadId = `routing-${timing}`;
+      await service.dispatch({
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: { userId: 'recorded-owner' },
+        },
+      });
+      const principal = {
+        id: 'human:routing',
+        kind: 'human' as const,
+        display: 'Routing owner',
+      };
+      const origin = {
+        version: 1 as const,
+        actor: { kind: 'device' as const, deviceId: 'routing-device' },
+        reported: {
+          version: 1 as const,
+          surface: 'mobile' as const,
+          build: 'test',
+        },
+      };
+      let invocationId: string | undefined;
+      const observed = (
+        id: string,
+        invocation?: string,
+      ): CanonicalRuntimeEvent => ({
+        eventId: id,
+        provider: 'claude',
+        threadId,
+        turnId: 'N',
+        method: 'turn.started',
+        createdAt: new Date().toISOString(),
+        prompt: id,
+        ...(invocation === undefined ? {} : { invocationId: invocation }),
+        clientTurnId: 'untrusted-key',
+        metadata: { stationSkillExperience: { forged: true } },
+      });
+      claude.sendTurn.mockImplementationOnce(async (input) => {
+        invocationId = input.invocationId;
+        expect(invocationId).toBeTypeOf('string');
+        if (timing !== 'postaccept') {
+          claude.events.push(observed('stale-A', 'A'));
+          claude.events.push(observed('legacy-start'));
+          await waitFor(
+            () => eventStore.listEvents(threadId),
+            (rows) => rows.some((row) => row.id === 'stale-A'),
+          );
+        }
+        if (timing === 'cancelled')
+          throw new Error('acceptance acknowledgement lost');
+        return { threadId, turnId: 'N' };
+      });
+      const dispatch = service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId, input: 'B', clientTurnId: 'B-key' },
+        },
+        { principal, clientOrigin: origin, userId: 'recorded-owner' },
+      );
+      if (timing === 'cancelled')
+        await expect(dispatch).rejects.toMatchObject({
+          outcome: 'indeterminate',
+        });
+      else await dispatch;
+      if (timing === 'postaccept') {
+        claude.events.push(observed('stale-A', 'A'));
+        claude.events.push(observed('legacy-start'));
+      }
+      await waitFor(
+        () => eventStore.listEvents(threadId),
+        (rows) => rows.some((row) => row.id === 'legacy-start'),
+      );
+      // Neither old tagged retirement nor an untagged terminal owns B's exact reservation.
+      claude.events.push({
+        eventId: 'A-done',
+        provider: 'claude',
+        threadId,
+        turnId: 'N',
+        invocationId: 'A',
+        method: 'turn.completed',
+        createdAt: new Date().toISOString(),
+      });
+      claude.events.push({
+        eventId: 'raw-done',
+        provider: 'claude',
+        threadId,
+        turnId: 'N',
+        method: 'turn.completed',
+        createdAt: new Date().toISOString(),
+      });
+      claude.events.push(observed('exact-B', invocationId));
+      const rows = await waitFor(
+        () => eventStore.listEvents(threadId),
+        (events) => events.some((row) => row.id === 'exact-B'),
+      );
+      const raw = rows.find((row) => row.id === 'legacy-start')!.payload;
+      const old = rows.find((row) => row.id === 'stale-A')!.payload;
+      const exact = rows.find((row) => row.id === 'exact-B')!.payload;
+      if (timing === 'cancelled') {
+        expect(raw.principal).toBeUndefined();
+        expect(raw.clientOrigin).toBeUndefined();
+      } else expect(raw).toMatchObject({ principal, clientOrigin: origin });
+      expect(raw.invocationId).toBeUndefined();
+      expect('clientTurnId' in raw).toBe(false);
+      if (raw.method !== 'turn.started') throw new Error('start prerequisite');
+      expect(raw.metadata?.stationSkillExperience).toBeUndefined();
+      expect(old.principal).toBeUndefined();
+      expect(old.clientOrigin).toBeUndefined();
+      if (timing === 'cancelled') {
+        expect(exact.principal).toBeUndefined();
+        expect(exact.clientOrigin).toBeUndefined();
+        expect('clientTurnId' in exact).toBe(false);
+      } else
+        expect(exact).toMatchObject({
+          invocationId,
+          principal,
+          clientOrigin: origin,
+          clientTurnId: 'B-key',
+        });
+      expect(service.sessionRecordedOwnerId(threadId)).toBe('recorded-owner');
+      expect(
+        service.canUserReadSession(
+          threadId,
+          personalReadAuthority('recorded-owner'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          threadId,
+          personalReadAuthority(principal.id),
+        ),
+      ).toBe(false);
+      await expect(
+        service.readSession(threadId, personalReadAuthority(principal.id)),
+      ).resolves.toBeNull();
+      expect(service.hasActiveTurn(threadId)).toBe(true);
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('station#4075 stage 2: a dispatching principal and a later steering principal are stamped distinctly on their own persisted turn.started rows', async () => {
     const threadId = 'thread-4075-attribution';
     await service.dispatch({
@@ -7852,6 +8094,11 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessionByThread(draft)).toBeUndefined();
 
     await start();
+    let capturedInvocation: string | undefined;
+    bedrock.sendTurn.mockImplementationOnce(async (input) => {
+      capturedInvocation = input.invocationId;
+      return { threadId: input.threadId, turnId: 'bedrock-turn' };
+    });
     await service.dispatch({
       type: 'sendTurn',
       input: { threadId: draft, input: 'sent from a tab left open' },
@@ -7862,6 +8109,7 @@ describe('OrchestrationService', () => {
       provider: 'bedrock',
       threadId: draft,
       turnId: 'bedrock-turn',
+      invocationId: capturedInvocation,
       createdAt: now,
       method: 'turn.started',
       prompt: 'sent from a tab left open',
@@ -7871,6 +8119,7 @@ describe('OrchestrationService', () => {
       provider: 'bedrock',
       threadId: draft,
       turnId: 'bedrock-turn',
+      invocationId: capturedInvocation,
       createdAt: now,
       method: 'turn.completed',
     };
@@ -14874,28 +15123,27 @@ describe('OrchestrationService', () => {
       expect(
         countOfShapeContaining("typeof(json_extract(payload, '$.prompt'))"),
       ).toBe(1);
-      // fetchTurnScopedEvent for the turn-scoped terminal: every seeded
-      // thread's latest turn (turn-2) has a matching `turn.completed`, so
-      // this companion query fires once (chunked pairs, all in one chunk).
-      // `PARTITION BY thread_id, turn_id ORDER BY sequence DESC` is unique to
-      // this query (the ranked-method query above partitions by
-      // `thread_id, method`, not `thread_id, turn_id`).
+      // The actual turn companion joins the requested identity tuples to
+      // canonical rows before ranking. Count its terminal bucket once for
+      // all 400 sessions; this population needs no error/start companions.
+      const companionCount = (methodFilter: string) =>
+        [...shapeCounts.entries()]
+          .filter(
+            ([shape]) =>
+              shape.includes(
+                'requested(thread, native, invocation) AS (VALUES',
+              ) &&
+              shape.includes(
+                'FROM orchestration_events AS event JOIN requested',
+              ) &&
+              shape.includes(methodFilter),
+          )
+          .reduce((sum, [, count]) => sum + count, 0);
       expect(
-        countOfShapeContaining(
-          'PARTITION BY thread_id, turn_id ORDER BY sequence DESC',
-        ),
+        companionCount("method IN ('turn.completed', 'turn.aborted')"),
       ).toBe(1);
-      // fetchTurnScopedEvent for latestCurrentTurnRuntimeErrorEvent's own-
-      // turn-start lookup: NO thread in this corpus has a `runtime.error`,
-      // so the pairs list is empty and the query is skipped entirely — zero
-      // calls proves the empty-list short-circuit, not just its presence.
-      // `PARTITION BY thread_id, turn_id ORDER BY sequence ASC` is unique to
-      // this (skipped) query.
-      expect(
-        countOfShapeContaining(
-          'PARTITION BY thread_id, turn_id ORDER BY sequence ASC',
-        ),
-      ).toBe(0);
+      expect(companionCount("method = 'turn.started'")).toBe(0);
+      expect(companionCount("method = 'runtime.error'")).toBe(0);
       expect(
         countOfShapeContaining(
           'FROM orchestration_session_projection_facts AS fact',
@@ -16557,7 +16805,9 @@ describe('OrchestrationService', () => {
       });
       claude.sendTurn.mockClear();
       const controller = new AbortController();
-      claude.sendTurn.mockImplementationOnce(async () => {
+      let capturedInvocation: string | undefined;
+      claude.sendTurn.mockImplementationOnce(async (input) => {
+        capturedInvocation = input.invocationId;
         controller.abort();
         return {
           threadId: 'thread-accepted-abort',
@@ -16612,6 +16862,7 @@ describe('OrchestrationService', () => {
           projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
         }
       ).projectAndPublishEvent({
+        invocationId: capturedInvocation,
         eventId: 'terminal:thread-accepted-abort',
         provider: 'claude',
         threadId: 'thread-accepted-abort',

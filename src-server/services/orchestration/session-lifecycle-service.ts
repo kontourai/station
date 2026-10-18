@@ -564,7 +564,8 @@ export function advanceOpenTurnId(
       event.method,
     ) &&
     (event.turnId !== undefined || event.invocationId !== undefined) &&
-    event.invocationId !== invocationId
+    (event.invocationId !== invocationId ||
+      (openTurnId !== undefined && event.turnId !== openTurnId))
   )
     return openTurnId;
   return nextActiveTurnId(openTurnId, event);

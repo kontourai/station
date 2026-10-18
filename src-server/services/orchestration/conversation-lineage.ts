@@ -1089,11 +1089,13 @@ export class ConversationLineage {
     const disposition =
       invocationId === undefined
         ? undefined
-        : store
-            .sessionTurnBoundaryAuthority()
-            .hasPossibleEffect(marker.sessionId);
+        : store.readInvocationTerminal(
+            marker.sessionId,
+            invocationId,
+            providerTurnId,
+          );
     const terminal =
-      disposition && (disposition.kind !== 'available' || disposition.active)
+      disposition && disposition.kind !== 'found'
         ? undefined
         : turnEvents
             .filter((event) =>

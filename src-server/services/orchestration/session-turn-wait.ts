@@ -1,3 +1,4 @@
+import type { InvocationTerminalRead } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { advanceOpenTurnId } from './session-lifecycle-service.js';
 
@@ -29,6 +30,11 @@ export interface SessionTurnWaitPorts {
   headSequence(threadId: string): number;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInvocationTerminal?(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ): InvocationTerminalRead;
   /**
    * Call `listener` whenever an event is appended to this Session's log;
    * returns the unsubscribe. The wait re-reads the log on each call, so the
@@ -73,7 +79,7 @@ const SETTLE_OUTCOME: Record<string, SessionSettledTurn['outcome']> = {
 export function evaluateSessionWait(
   ports: Pick<
     SessionTurnWaitPorts,
-    'foldEvents' | 'headSequence' | 'coordinatorBusy'
+    'foldEvents' | 'headSequence' | 'coordinatorBusy' | 'readInvocationTerminal'
   >,
   threadId: string,
   until: SessionWaitUntil,
@@ -90,6 +96,26 @@ export function evaluateSessionWait(
   for (const { sequence, event } of events) {
     const before = open;
     open = advanceOpenTurnId(open, event, invocationId);
+    if (
+      before !== undefined &&
+      invocationId !== undefined &&
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      ) &&
+      (event.turnId !== undefined || event.invocationId !== undefined)
+    ) {
+      const read = ports.readInvocationTerminal?.(
+        threadId,
+        invocationId,
+        before,
+      );
+      if (read !== undefined) {
+        open =
+          read.kind === 'found' && read.fact.terminalEventId === event.eventId
+            ? undefined
+            : before;
+      }
+    }
     if (before !== undefined && open === undefined && sequence > cursor) {
       settled = {
         ...(before ? { turnId: before } : {}),

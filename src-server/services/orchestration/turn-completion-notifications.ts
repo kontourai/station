@@ -513,7 +513,11 @@ export function wireTurnCompletionNotifications(
           // guard on the identical events.
           if (
             (event.method === 'turn.completed' ||
-              event.method === 'turn.aborted') &&
+              event.method === 'turn.aborted' ||
+              (event.method === 'runtime.error' &&
+                typeof previousAnchor === 'object' &&
+                (event.turnId !== undefined ||
+                  event.invocationId !== undefined))) &&
             !acceptsTurnTerminalEvent(event, previousAnchor)
           ) {
             turnCompletionNotificationOps.add(1, {

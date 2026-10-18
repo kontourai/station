@@ -102,6 +102,7 @@ import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
   type SessionSettledTurn,
+  type SessionTurnWaitPorts,
   type SessionWaitFoldEvent,
 } from './session-turn-wait.js';
 import type { SqliteDatabase } from './sqlite-database.js';
@@ -1070,6 +1071,7 @@ export interface DelegationResultDeliveryPorts {
   currentSessionId(conversationId: string): string;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInvocationTerminal?: SessionTurnWaitPorts['readInvocationTerminal'];
   /** The recorded owner of a Session, read from its start record. */
   sessionOwnerId(threadId: string): string | undefined;
   /**
@@ -1469,6 +1471,7 @@ export class DelegationResultDelivery {
 
   private foldPorts() {
     return {
+      readInvocationTerminal: this.ports.readInvocationTerminal,
       foldEvents: (threadId: string) => this.ports.foldEvents(threadId),
       headSequence: (threadId: string) => this.ports.headSequence(threadId),
       coordinatorBusy: (threadId: string) =>
@@ -1529,11 +1532,28 @@ export class DelegationResultDelivery {
     if (view.state !== 'idle' || !settled) return;
     if (
       settled.invocationId !== undefined &&
-      this.ports.coordinatorBusy(thread)
+      (this.ports.coordinatorBusy(thread) ||
+        this.ports.readInvocationTerminal?.(
+          thread,
+          settled.invocationId,
+          settled.turnId,
+        )?.kind !== 'found')
     )
       return;
     const transitionKey = `settled:${thread}:${settled.invocationId ? `invocation-${settled.invocationId}` : (settled.turnId ?? `sequence-${settled.sequence}`)}`;
     if (this.ports.store.has(childConversationId, transitionKey)) return;
+    if (
+      this.ports.store
+        .listForChild(childConversationId)
+        .some(
+          (row) =>
+            (row.state === 'pending' || row.state === 'claimed') &&
+            row.childSessionId === thread &&
+            row.childTurnId === settled.turnId &&
+            !this.canDeliverRow(row),
+        )
+    )
+      return;
     const output = settled.turnId
       ? storedTurnOutput(
           this.ports,
@@ -1592,8 +1612,37 @@ export class DelegationResultDelivery {
     this.inFlight.set(key, run);
   }
 
+  private canDeliverRow(row: DelegationResultRow): boolean {
+    const prefix = `settled:${row.childSessionId}:`;
+    const identity = row.transitionKey.startsWith(prefix)
+      ? row.transitionKey.slice(prefix.length)
+      : undefined;
+    const legacy =
+      row.childTurnId !== undefined
+        ? identity === row.childTurnId
+        : identity !== undefined && /^sequence-[1-9][0-9]*$/.test(identity);
+    if (!legacy) {
+      if (
+        !identity?.startsWith('invocation-') ||
+        identity.length === 'invocation-'.length
+      )
+        return false;
+      const invocationId = identity.slice('invocation-'.length);
+      if (
+        this.ports.readInvocationTerminal?.(
+          row.childSessionId,
+          invocationId,
+          row.childTurnId,
+        )?.kind !== 'found'
+      )
+        return false;
+    }
+    return true;
+  }
+
   private async attempt(row: DelegationResultRow): Promise<void> {
     const store = this.ports.store;
+    if (!this.canDeliverRow(row)) return;
     const owner = store.owner(row.childConversationId);
     if (!owner) return store.settle(row, 'refused', 'owner-missing');
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;

@@ -4475,6 +4475,11 @@ export function configureRuntimeRoutes(
         context.orchestrationService.currentConversationSessionId(
           conversationId,
         ),
+      readInvocationTerminal: (
+        threadId: string,
+        invocationId: string,
+        turnId?: string,
+      ) => eventStore.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: (threadId: string) =>
         context.orchestrationService.hasActiveTurn(threadId),
       sessionOwnerId: (threadId: string) =>

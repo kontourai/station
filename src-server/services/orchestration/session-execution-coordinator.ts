@@ -226,6 +226,15 @@ export class SessionExecutionCoordinator {
     return true;
   }
 
+  settleInvocation(threadId: string, invocationId: string): void {
+    const state = this.states.get(threadId);
+    if (!state) return;
+    state.begunInvocationIds.delete(invocationId);
+    for (const key of state.activeTurnIds)
+      if (JSON.parse(key)[1] === invocationId) state.activeTurnIds.delete(key);
+    this.deleteEmptyState(threadId, state);
+  }
+
   invocationForTurn(threadId: string, turnId: string): string | undefined {
     const ids = [...(this.states.get(threadId)?.activeTurnIds ?? [])]
       .map((key) => JSON.parse(key) as [string | null, string | null])

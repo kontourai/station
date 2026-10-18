@@ -1236,7 +1236,15 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
   });
 });
 
-test.each(['retained', 'retired', 'consistent'] as const)(
+test.each([
+  'retained',
+  'retired',
+  'queued',
+  'queued-consistent',
+  'queued-malformed',
+  'queued-unknown',
+  'consistent',
+] as const)(
   'real result delivery validates %s invocation scope before its first bounded output effect',
   async (order) => {
     const eventStore = new EventStore(':memory:');
@@ -1258,6 +1266,7 @@ test.each(['retained', 'retired', 'consistent'] as const)(
       kind: 'applied',
     });
     const invocationId = capture.intent.invocationId;
+    let parentBusy = false;
     const delivery = new DelegationResultDelivery({
       store,
       foldEvents: (threadId) =>
@@ -1279,7 +1288,10 @@ test.each(['retained', 'retired', 'consistent'] as const)(
         ),
       conversationOf: (threadId) => threadId,
       currentSessionId: (id) => id,
-      coordinatorBusy: () => {
+      readInvocationTerminal: (threadId, invocationId, turnId) =>
+        eventStore.readInvocationTerminal(threadId, invocationId, turnId),
+      coordinatorBusy: (threadId) => {
+        if (threadId === 'parent') return parentBusy;
         const read = eventStore
           .sessionTurnBoundaryAuthority()
           .hasPossibleEffect('child');
@@ -1380,7 +1392,13 @@ test.each(['retained', 'retired', 'consistent'] as const)(
             5,
           );
       eventStore.appendEvent(done);
-      if (order === 'retired') {
+      if (
+        order === 'retired' ||
+        order === 'queued' ||
+        order === 'queued-consistent' ||
+        order === 'queued-malformed' ||
+        order === 'queued-unknown'
+      ) {
         expect(
           eventStore['db']
             .prepare('SELECT * FROM orchestration_turn_boundaries')
@@ -1394,9 +1412,26 @@ test.each(['retained', 'retired', 'consistent'] as const)(
         expect(
           JSON.parse(witness.terminal_retirement).terminal.terminalEventId,
         ).toBe('B-done');
-        eventStore.appendEvent(conflicting);
+        if (order.startsWith('queued')) {
+          parentBusy = true;
+          await delivery.reconcile();
+          expect(store.listForChild('child')).toHaveLength(1);
+          expect(starts).toEqual([]);
+          parentBusy = false;
+        }
+        if (order === 'queued-malformed' || order === 'queued-unknown') {
+          eventStore['db']
+            .prepare('UPDATE delegation_result_deliveries SET transition_key=?')
+            .run(
+              order === 'queued-malformed'
+                ? 'settled:child:unsupported-host-key'
+                : 'settled:child:invocation-unknown',
+            );
+        } else if (order !== 'queued-consistent')
+          eventStore.appendEvent(conflicting);
       }
       const raw = {
+        deliveries: store.listForChild('child'),
         events: eventStore['db']
           .prepare('SELECT * FROM orchestration_events')
           .all(),
@@ -1408,8 +1443,9 @@ test.each(['retained', 'retired', 'consistent'] as const)(
           .all(),
       };
       await delivery.reconcile();
-      if (order !== 'consistent') {
+      if (order !== 'consistent' && order !== 'queued-consistent') {
         expect(starts).toEqual([]);
+        expect(store.listForChild('child')).toEqual(raw.deliveries);
         expect(
           eventStore['db'].prepare('SELECT * FROM orchestration_events').all(),
         ).toEqual(raw.events);

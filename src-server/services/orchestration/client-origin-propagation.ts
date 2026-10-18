@@ -102,6 +102,15 @@ export class ClientOriginTurnPropagation {
   readonly #accepted = new Map<string, TurnAttribution>();
   readonly #trusted = new WeakSet<object>();
   readonly #early = new Map<string, CanonicalRuntimeEvent>();
+  readonly #legacyPending = new Map<
+    string,
+    Pick<TurnAttribution, 'principal' | 'clientOrigin' | 'invocationId'>
+  >();
+  readonly #legacyAccepted = new Map<
+    string,
+    Pick<TurnAttribution, 'principal' | 'clientOrigin' | 'invocationId'>
+  >();
+  readonly #legacyEarly = new Map<string, CanonicalRuntimeEvent>();
 
   begin(
     threadId: string,
@@ -122,12 +131,16 @@ export class ClientOriginTurnPropagation {
     if (this.#inFlight.size >= ClientOriginTurnPropagation.MAX_PENDING)
       return false;
     this.#inFlight.set(threadId, attribution);
+    if (principal !== undefined || clientOrigin !== undefined)
+      this.#legacyPending.set(threadId, { principal, clientOrigin });
     return true;
   }
 
   bindInvocation(threadId: string, invocationId: string): void {
     const reserved = this.#inFlight.get(threadId);
     if (reserved) reserved.invocationId = invocationId;
+    const legacy = this.#legacyPending.get(threadId);
+    if (legacy) legacy.invocationId = invocationId;
   }
 
   settle(
@@ -148,6 +161,14 @@ export class ClientOriginTurnPropagation {
       clientTurnId: clientTurnId ?? reserved?.clientTurnId,
     };
     this.#inFlight.delete(threadId);
+    const legacy = this.#legacyPending.get(threadId);
+    this.#legacyPending.delete(threadId);
+    if (
+      invocationId !== undefined &&
+      legacy &&
+      this.#legacyAccepted.size < ClientOriginTurnPropagation.MAX_PENDING
+    )
+      this.#legacyAccepted.set(this.#key(threadId, turnId), legacy);
     if (!hasAttribution(attribution)) return undefined;
     const key = this.#key(threadId, turnId, invocationId);
     const early = this.#early.get(key);
@@ -178,6 +199,27 @@ export class ClientOriginTurnPropagation {
     // it on settle — or drop it on retire, leaving its deltas with no start.
     if (isProviderTriggeredTurn(event)) return event;
     if (!event.turnId) return event;
+    if (
+      event.invocationId === undefined &&
+      this.#inFlight.get(event.threadId)?.invocationId !== undefined
+    ) {
+      const key = this.#key(event.threadId, event.turnId);
+      if (
+        this.#legacyPending.has(event.threadId) &&
+        this.#legacyEarly.size < ClientOriginTurnPropagation.MAX_PENDING
+      ) {
+        this.#legacyEarly.set(key, event);
+        return undefined;
+      }
+    }
+    if (event.invocationId === undefined) {
+      const key = this.#key(event.threadId, event.turnId);
+      const legacy = this.#legacyAccepted.get(key);
+      if (legacy) {
+        this.#legacyAccepted.delete(key);
+        return this.#routeLegacy(event, legacy);
+      }
+    }
     const key = this.#key(event.threadId, event.turnId, event.invocationId);
     const attribution = this.#accepted.get(key);
     if (attribution) {
@@ -200,7 +242,31 @@ export class ClientOriginTurnPropagation {
     return event;
   }
 
+  takeLegacyRouting(
+    threadId: string,
+    turnId: string,
+  ): CanonicalRuntimeEvent | undefined {
+    const key = this.#key(threadId, turnId);
+    const event = this.#legacyEarly.get(key);
+    const routing = this.#legacyAccepted.get(key);
+    if (!event || !routing) return undefined;
+    this.#legacyEarly.delete(key);
+    this.#legacyAccepted.delete(key);
+    return this.#routeLegacy(event, routing);
+  }
+
   clearThread(threadId: string): void {
+    this.#legacyPending.delete(threadId);
+    const prefix = `${threadId.length}:${threadId}:`;
+    for (const key of [
+      ...this.#legacyAccepted.keys(),
+      ...this.#legacyEarly.keys(),
+    ]) {
+      if (key.startsWith(prefix)) {
+        this.#legacyAccepted.delete(key);
+        this.#legacyEarly.delete(key);
+      }
+    }
     this.#inFlight.delete(threadId);
     for (const key of [...this.#accepted.keys(), ...this.#early.keys()]) {
       if (
@@ -218,11 +284,36 @@ export class ClientOriginTurnPropagation {
     turnId: string | undefined,
     invocationId?: string,
   ): void {
-    if (!turnId) {
+    const legacy = this.#legacyPending.get(threadId);
+    if (invocationId === undefined || legacy?.invocationId === invocationId)
+      this.#legacyPending.delete(threadId);
+    const prefix = `${threadId.length}:${threadId}:`;
+    for (const [key, routing] of this.#legacyAccepted) {
       if (
-        invocationId === undefined ||
-        this.#inFlight.get(threadId)?.invocationId === invocationId
-      )
+        key.startsWith(prefix) &&
+        (turnId === undefined || key === this.#key(threadId, turnId)) &&
+        (invocationId === undefined || routing.invocationId === invocationId)
+      ) {
+        this.#legacyAccepted.delete(key);
+        this.#legacyEarly.delete(key);
+      }
+    }
+    if (invocationId === undefined && turnId !== undefined)
+      this.#legacyEarly.delete(this.#key(threadId, turnId));
+    if (
+      legacy &&
+      (invocationId === undefined || legacy.invocationId === invocationId)
+    ) {
+      for (const [key, event] of this.#legacyEarly) {
+        if (
+          event.threadId === threadId &&
+          (turnId === undefined || event.turnId === turnId)
+        )
+          this.#legacyEarly.delete(key);
+      }
+    }
+    if (!turnId) {
+      if (this.#inFlight.get(threadId)?.invocationId === invocationId)
         this.#inFlight.delete(threadId);
       return;
     }
@@ -238,6 +329,7 @@ export class ClientOriginTurnPropagation {
    */
   cancel(threadId: string): CanonicalRuntimeEvent[] {
     this.#inFlight.delete(threadId);
+    this.#legacyPending.delete(threadId);
     const released: CanonicalRuntimeEvent[] = [];
     const prefix = `${threadId.length}:${threadId}:`;
     for (const [key, event] of this.#early) {
@@ -245,7 +337,24 @@ export class ClientOriginTurnPropagation {
       this.#early.delete(key);
       released.push(event);
     }
+    for (const [key, event] of this.#legacyEarly) {
+      if (!key.startsWith(prefix)) continue;
+      this.#legacyEarly.delete(key);
+      released.push(event);
+    }
     return released;
+  }
+
+  #routeLegacy(
+    event: CanonicalRuntimeEvent,
+    routing: Pick<TurnAttribution, 'principal' | 'clientOrigin'>,
+  ): CanonicalRuntimeEvent {
+    const result = withPrincipal(
+      withClientOrigin(event, routing.clientOrigin),
+      routing.principal,
+    );
+    this.#trusted.add(result);
+    return result;
   }
 
   #attribute(

@@ -329,6 +329,7 @@ test.each([
   'missing-native',
   'exact-native',
   'session',
+  'early-missing-native',
 ] as const)(
   'real accepted B/N wait requires exact native custody for %s terminal',
   async (kind) => {
@@ -346,9 +347,10 @@ test.each([
     expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
       kind: 'applied',
     });
-    expect(owned.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
-      kind: 'applied',
-    });
+    if (kind !== 'early-missing-native')
+      expect(owned.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+        kind: 'applied',
+      });
     const base = {
       provider: 'claude',
       threadId: 't',
@@ -368,6 +370,8 @@ test.each([
           .listEvents('t')
           .map((row) => ({ sequence: row.sequence, event: row.payload })),
       headSequence: () => store.readSessionInventoryHighWater('t'),
+      readInvocationTerminal: (threadId, invocationId, turnId) =>
+        store.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: () => {
         const read = authority.hasPossibleEffect('t');
         return read.kind !== 'available' || read.active;
@@ -413,7 +417,7 @@ test.each([
           severity: 'error',
           message: kind,
           invocationId: capture.intent.invocationId,
-          ...(kind === 'missing-native'
+          ...(['missing-native', 'early-missing-native'].includes(kind)
             ? {}
             : { turnId: kind === 'wrong-native' ? 'M' : 'N' }),
         });
@@ -424,6 +428,21 @@ test.each([
           active: true,
         });
         expect(outcome).toBeUndefined();
+        if (kind === 'wrong-native') {
+          store.appendEvent({
+            ...base,
+            eventId: 'B-exact-after-contradiction',
+            method: 'turn.completed',
+            turnId: 'N',
+            invocationId: capture.intent.invocationId,
+          });
+          await Promise.resolve();
+          expect(outcome).toBeUndefined();
+          expect(authority.hasPossibleEffect('t')).toEqual({
+            kind: 'available',
+            active: true,
+          });
+        }
         controller.abort();
         await expect(waiting).resolves.toEqual({ kind: 'aborted' });
       } else

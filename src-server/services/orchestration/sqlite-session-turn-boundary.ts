@@ -7,6 +7,7 @@ import type {
   OwnerIdentity,
   OwnerLiveness,
 } from '@kontourai/monument';
+import { decideTurnBoundaryObserveTerminal } from '@kontourai/monument';
 import {
   assertInvocationTerminalRetirement,
   findInvocationTerminal,
@@ -192,6 +193,11 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     command: C,
     nested = false,
   ): KernelResult<C> {
+    if (nested && db.isTransaction !== true)
+      throw transactionLost(
+        new Error('Host transaction ended before boundary command.'),
+      );
+    const joined = db.isTransaction === true;
     const cleanup =
       command.type === 'turnBoundary.create' ||
       command.type === 'turnBoundary.recordAccepted';
@@ -200,6 +206,10 @@ export function createSqliteSessionTurnBoundaryCoordinator({
     try {
       // Cleanup can issue kernel commands only before dispatch, never from a participant.
       if (cleanup) reconcileTerminals(command.threadId);
+      if (joined && db.isTransaction !== true)
+        throw transactionLost(
+          new Error('Host transaction ended during terminal cleanup.'),
+        );
       const result = kernel.executeSync(command, context, {
         withinHostTransaction: nested || db.isTransaction === true,
       });
@@ -457,6 +467,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     beginPrepared({ boundaryId, ownerId, capture, claim, now, current }) {
+      const nested = db.isTransaction === true;
       let begun: InvocationAcceptanceSnapshot | undefined;
       let outer = false;
       try {
@@ -500,12 +511,14 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           ...(result.kind === 'applied' ? result : { kind: 'stale' as const }),
           begun,
         };
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         if (outer && db.isTransaction) db.exec('ROLLBACK');
         return { kind: 'unavailable', ...(begun ? { begun } : {}) };
       }
     },
     acceptInvocation({ expected, expectedDedup, providerTurnId, now }) {
+      const nested = db.isTransaction === true;
       try {
         const result = execute({
           type: 'turnBoundary.acceptInvocation',
@@ -519,7 +532,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           : result.kind === 'refused'
             ? { kind: 'unavailable' }
             : result;
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         return { kind: 'unavailable' };
       }
     },
@@ -532,6 +546,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       settlementId,
       now,
     }) {
+      const nested = db.isTransaction === true;
       try {
         const binding = linked(capture, claim);
         const custody = claim && readPreparedClaimCustody(claim);
@@ -555,11 +570,13 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           now,
         });
         return result.kind === 'applied' ? result : { kind: 'stale' };
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         return { kind: 'unavailable' };
       }
     },
     create(record) {
+      const nested = db.isTransaction === true;
       try {
         const result = execute({
           type: 'turnBoundary.create',
@@ -571,7 +588,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
           now: record.createdAt,
         });
         return result.kind === 'refused' ? { kind: 'unavailable' } : result;
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         // A lost commit acknowledgement is success only when the original owner row exists.
         try {
           if (exact({ boundaryId: record.boundaryId, ownerId: record.ownerId }))
@@ -589,10 +607,12 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     transition(input) {
+      const nested = db.isTransaction === true;
       try {
         const result = execute({ ...input, type: 'turnBoundary.transition' });
         return result.kind === 'refused' ? { kind: 'unavailable' } : result;
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         try {
           if (
             input.to === 'accepted' &&
@@ -609,10 +629,12 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     remove(input) {
+      const nested = db.isTransaction === true;
       try {
         const result = execute({ ...input, type: 'turnBoundary.remove' });
         return result.kind === 'refused' ? { kind: 'unavailable' } : result;
-      } catch {
+      } catch (cause) {
+        if (nested && db.isTransaction !== true) throw transactionLost(cause);
         try {
           return present(input.boundaryId)
             ? { kind: 'unavailable' }
@@ -677,6 +699,76 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         } catch {
           return { kind: 'unavailable' };
         }
+      }
+    },
+    readInvocationTerminal(threadId, invocationId, providerTurnId) {
+      const outer = db.isTransaction !== true;
+      if (outer) db.exec('BEGIN');
+      try {
+        const listed = execute({ type: 'turnBoundary.list' }, true);
+        if (listed.kind !== 'records') return { kind: 'unknown' };
+        const targets = listed.records.filter(
+          (row) =>
+            row.threadId === threadId &&
+            row.intent?.invocationId === invocationId,
+        );
+        if (targets.length > 1) return { kind: 'unknown' };
+        const audit = retirementRow
+          .optional()
+          .parse(
+            db
+              .prepare(
+                'SELECT * FROM orchestration_prepared_turns WHERE thread_id = ? AND invocation_id = ?',
+              )
+              .get(threadId, invocationId),
+          );
+        const witness = audit
+          ? invocationTerminals.readRetirement(db, threadId, audit.boundary_id)
+          : undefined;
+        const target = targets[0] ?? witness?.boundary;
+        if (
+          !target ||
+          (target.providerTurnId !== undefined &&
+            providerTurnId !== undefined &&
+            target.providerTurnId !== providerTurnId)
+        )
+          return { kind: 'unknown' };
+        const read = invocationTerminals.find(db, {
+          threadId,
+          invocationId,
+          ...(target.providerTurnId === undefined
+            ? {}
+            : { providerTurnId: target.providerTurnId }),
+          allowMissingProviderTurnId: target.providerTurnId === undefined,
+        });
+        if (read.kind !== 'found') return read;
+        if (
+          providerTurnId !== undefined &&
+          read.fact.providerTurnId !== undefined &&
+          read.fact.providerTurnId !== providerTurnId
+        )
+          return { kind: 'unknown' };
+        const decision = decideTurnBoundaryObserveTerminal(
+          [target],
+          {
+            type: 'turnBoundary.observeTerminal',
+            threadId,
+            invocationId,
+            sessionTerminal: false,
+            terminalEventId: read.fact.terminalEventId,
+            terminalCreatedAt: read.fact.terminalCreatedAt,
+            ...(read.fact.providerTurnId === undefined
+              ? {}
+              : { providerTurnId: read.fact.providerTurnId }),
+          },
+          undefined,
+          [{ boundaryId: target.boundaryId, read }],
+        );
+        return decision.retire.includes(target.boundaryId)
+          ? read
+          : { kind: 'unknown' };
+      } finally {
+        if (outer && db.isTransaction) db.exec('ROLLBACK');
       }
     },
     hasPossibleEffect(threadId) {

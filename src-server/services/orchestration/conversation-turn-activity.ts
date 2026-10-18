@@ -288,8 +288,16 @@ export class ConversationTurnActivityProjection {
             globalSequence: event.globalSequence,
             createdAt: event.createdAt,
           };
+      const anchor = turnIdentityAnchorForEvents(
+        events.map((event) => event.payload),
+      );
       const open = openTurnId
-        ? store.readOpenTurnActivitySeed(threadId, openTurnId)
+        ? store.readOpenTurnActivitySeed(
+            threadId,
+            openTurnId,
+            2_000,
+            typeof anchor === 'object' ? anchor.invocationId : undefined,
+          )
         : { tools: [], toolsTruncated: false };
       const lastTool = lastTools.get(threadId);
       this.installSeed(threadId, openTurnId, events, {
@@ -600,13 +608,17 @@ export class ConversationTurnActivityProjection {
                 : {}),
             };
     }
-    if (event.method === 'tool.started' && state.openTurn) {
+    const ownsTool =
+      state.openTurn?.invocationId === undefined ||
+      (state.openTurn.invocationId === event.invocationId &&
+        (event.turnId === undefined || event.turnId === state.openTurn.turnId));
+    if (event.method === 'tool.started' && state.openTurn && ownsTool) {
       state.runningTools.delete(event.toolCallId);
       state.runningTools.set(event.toolCallId, {
         name: event.toolName,
         startedAt: event.createdAt,
       });
-    } else if (event.method === 'tool.completed') {
+    } else if (event.method === 'tool.completed' && ownsTool) {
       state.runningTools.delete(event.toolCallId);
       const lastTool = lastToolOf({
         name: event.toolName,

@@ -7809,6 +7809,13 @@ export class OrchestrationService {
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
                         }
+                        const legacyOriginEvent =
+                          this.clientOriginTurns.takeLegacyRouting(
+                            turnInput.threadId,
+                            accepted.turnId,
+                          );
+                        if (legacyOriginEvent)
+                          this.projectAndPublishEvent(legacyOriginEvent);
                         if (turnInput.invocationId) {
                           const settled = boundary.accepted(
                             accepted.turnId,
@@ -7934,6 +7941,11 @@ export class OrchestrationService {
                             );
                             if (settled.kind !== 'applied')
                               throw new SessionTurnStartIndeterminateError();
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.settleInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
                             throw error;
                           }
                           // The adapter refused the turn BEFORE its first
@@ -8558,6 +8570,12 @@ export class OrchestrationService {
               if (earlySteerOriginEvent) {
                 this.projectAndPublishEvent(earlySteerOriginEvent);
               }
+              const legacySteerEvent = this.clientOriginTurns.takeLegacyRouting(
+                command.threadId,
+                activeTurnId,
+              );
+              if (legacySteerEvent)
+                this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
               if (steerInput) {
@@ -12632,7 +12650,13 @@ export class OrchestrationService {
             const settled = owned.claim.recordDefinitiveRefusal(
               new Date().toISOString(),
             );
-            if (settled.kind === 'applied') throw error;
+            if (settled.kind === 'applied') {
+              this.sessionExecutionCoordinator.settleInvocation(
+                threadId,
+                stored.capture.intent.invocationId,
+              );
+              throw error;
+            }
             throw new SessionTurnStartIndeterminateError();
           }
           owned.claim.indeterminate(new Date().toISOString());
