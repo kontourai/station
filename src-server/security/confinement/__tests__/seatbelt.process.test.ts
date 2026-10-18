@@ -537,16 +537,22 @@ describe.skipIf(!probe.ok)(
         );
         const target = join(gitDir, file);
         const before = existsSync(target) ? readFileSync(target, 'utf8') : null;
-        const write = await confined(
-          worktree,
-          `mkdir -p "$(dirname "${target}")" 2>/dev/null; echo /tmp/evil > "${target}"`,
-        );
-        expect(write.status).not.toBe(0);
-        const remove = await confined(worktree, `rm -f "${target}"`);
-        expect(existsSync(target) ? readFileSync(target, 'utf8') : null).toBe(
-          before,
-        );
-        void remove;
+        try {
+          const write = await confined(
+            worktree,
+            `mkdir -p "$(dirname "${target}")" 2>/dev/null; echo /tmp/evil > "${target}"`,
+          );
+          expect(write.status).not.toBe(0);
+          await confined(worktree, `rm -f "${target}"`);
+          expect(existsSync(target) ? readFileSync(target, 'utf8') : null).toBe(
+            before,
+          );
+        } finally {
+          // Each case starts from git's own files, so one that leaked cannot
+          // hide another (a broken commondir would drop every git grant).
+          if (before === null) rmSync(target, { force: true });
+          else writeFileSync(target, before);
+        }
       },
     );
 
