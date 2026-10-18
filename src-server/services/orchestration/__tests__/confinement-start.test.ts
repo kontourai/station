@@ -6,8 +6,6 @@
  * and the real SQLite `EventStore`; only the engines are recording fakes, so
  * each assertion reads the exact start input an adapter would receive.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   ConfinementMechanism,
@@ -18,6 +16,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -133,6 +132,8 @@ const CODEX_REQUIRED_PLAN: ConfinementPlan = {
 };
 
 describe('#2494: a start resolves its confinement before the engine is touched', () => {
+  // Registered first, so it removes the home after the store below closes.
+  const makeTempDir = trackTempDirs();
   let tmp: string;
   let store: EventStore;
   let bus: EventBus;
@@ -165,7 +166,7 @@ describe('#2494: a start resolves its confinement before the engine is touched',
   }
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'confinement-start-'));
+    tmp = makeTempDir('confinement-start-');
     store = new EventStore(join(tmp, 'orchestration.sqlite'));
     bus = new EventBus();
     claude = new RecordingAdapter('claude');
@@ -177,7 +178,6 @@ describe('#2494: a start resolves its confinement before the engine is touched',
   afterEach(async () => {
     await service.shutdown();
     store.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   async function replaceService(providers: readonly ConfinementProvider[]) {

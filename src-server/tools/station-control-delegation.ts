@@ -951,28 +951,37 @@ function capabilityDeliveryReport(
 }
 
 /**
- * Derive the delegate seam's delivery disclosure from a session's events.
- * Exported for its unit tests; callers pass the same raw event array
- * `snapshotFor` already holds.
- */
-/**
  * #2494: the confinement record on the session's latest `session.started`,
  * or `undefined` when it recorded none (or something that is not one).
  */
 export function startedSessionConfinement(
-  events: Array<Record<string, unknown>>,
+  events: readonly unknown[],
 ): ExecutionConfinementRecord | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event?.method !== 'session.started') continue;
-    const metadata = event.metadata as Record<string, unknown> | undefined;
-    return readConfinementRecord(
-      metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY],
-    );
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      (event as { method?: unknown }).method !== 'session.started'
+    )
+      continue;
+    const metadata = (event as { metadata?: unknown }).metadata;
+    return metadata && typeof metadata === 'object'
+      ? readConfinementRecord(
+          (metadata as Record<string, unknown>)[
+            STATION_CONFINEMENT_RECORD_METADATA_KEY
+          ],
+        )
+      : undefined;
   }
   return undefined;
 }
 
+/**
+ * Derive the delegate seam's delivery disclosure from a session's events.
+ * Exported for its unit tests; callers pass the same raw event array
+ * `snapshotFor` already holds.
+ */
 export function delegatedCapabilityDelivery(
   events: Array<Record<string, unknown>>,
 ): DelegatedCapabilityDelivery | undefined {
@@ -6140,11 +6149,10 @@ export async function delegateTask(
         sessionId,
         readAuthority,
       );
-      const events = (detail?.events ?? []) as unknown as Array<
-        Record<string, unknown>
-      >;
-      capabilityDelivery = delegatedCapabilityDelivery(events);
-      confinement = startedSessionConfinement(events);
+      capabilityDelivery = delegatedCapabilityDelivery(
+        (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
+      );
+      confinement = startedSessionConfinement(detail?.events ?? []);
     } catch {
       capabilityDelivery = undefined;
       confinement = undefined;
