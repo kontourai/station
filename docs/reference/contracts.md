@@ -58,8 +58,10 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
-| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
@@ -68,6 +70,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
@@ -84,6 +87,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
@@ -120,6 +124,10 @@ See the [provider contract](../../packages/contracts/src/provider.ts),
 [foreground caller](../../src-server/services/execution-target/execution-target-execution.ts),
 [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
+
+Session inventory preserves Surface's `not-chosen` reviewed-source state and
+`reviewed-source-review-not-chosen` gap when a review selected another candidate.
+The row remains `contributed-to`; that state does not establish support for the answer.
 
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
@@ -165,7 +173,9 @@ child-work report for that row; clients retain their existing state.
 ## Product telemetry observations
 
 `@kontourai/station-contracts/product-telemetry` declares the content-free event
-inventory and version1 batch, observation and build shapes. Stable event IDs,
+inventory and version1 batch, observation and build shapes.
+`TelemetryPublisherStatus` includes the effective tier and reason alongside the
+optional saved `userChoice`; a DNT override does not replace that saved choice. Stable event IDs,
 producer occurrence/admission time, inventory revision and allowlisted build
 provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
@@ -396,7 +406,7 @@ send is refused with `provider_session_start_failed`, and the client keeps the
 message queued with the reason and Retry without re-sending it on its own. If
 it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
-re-sends it. A retry whose idempotency key an earlier attempt still holds
+re-sends it. A retry of the same submitted input whose idempotency key an earlier attempt still holds
 waits for that attempt's turn (up to five minutes). If none arrives, or the
 attempt released the key without sending, the retry is refused with the
 retryable code `client_turn_in_flight` and re-sent with the same key; that
@@ -795,7 +805,10 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 `@kontourai/station-contracts/native-push` owns the agent-activity push
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
-gateway delivers to, and the request/response shapes. The response's
+gateway delivers to, and the request/response shapes.
+`NativePushRegistrationStatus`, the `GET` answer on
+`NATIVE_PUSH_REGISTRATION_PATH`, carries only `registered` and the caller's
+own `registrationId`, never a token or key. The registration response's
 `registrationId`, `stationId` and `stationKey` are public identity checks for
 incoming pushes; none of those three is a credential. The response also includes
 `payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.
@@ -895,6 +908,16 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+### Keyed orchestration send identity
+
+The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`
+(`client_turn_input_conflict`). Existing keyed orchestration sends return this
+nonretryable refusal when a known original submission digest differs. This is
+an additive code, not a requirement for keys on all routes. The server captures
+the digest; clients cannot supply it as provider metadata. Legacy input proof
+and mixed-version limits are described in
+[TurnDeduplicator](../architecture/module-map.md#turndeduplicator).
 
 ## Engine durability declarations
 

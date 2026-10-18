@@ -30,6 +30,7 @@ import {
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_DEVICES,
+  PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
@@ -76,6 +77,16 @@ import {
   type NativePushRegistration,
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
+
+/** Host browser device use grants must not transfer administration or consent. */
+export function isProtectedPairingPromotionScope(token: PairingScope): boolean {
+  const paths = PAIRING_SCOPE_GRANT_PATHS[token];
+  return (
+    paths.length === 1 &&
+    paths[0] === 'operator-promotion' &&
+    deviceRequestedExtraScopes(token).length === 0
+  );
+}
 
 const REGISTRY_SCHEMA_VERSION = 3 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -264,6 +275,8 @@ interface DeviceRegistry {
 }
 
 interface PairingOfferState extends DevicePairingOffer {
+  /** Private authorization recorded when the operator creates an invitation. */
+  preapproved?: true;
   principalBinding?: DevicePrincipalBinding;
   status: 'open' | 'requested' | 'confirmed' | 'used' | 'cancelled';
   request?: DevicePairingRequest;
@@ -1241,6 +1254,7 @@ export class DevicePairingService {
     endpoint: string;
     scope?: string;
     kind?: PairedDeviceKind;
+    approval?: 'on-create' | 'on-request';
   }): DevicePairingOffer {
     let endpoint: URL;
     try {
@@ -1272,6 +1286,15 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('invalid_request');
     }
+    // Preapproval has no later operator decision at which to review promotion.
+    if (
+      input.approval === 'on-create' &&
+      ((input.kind !== undefined && input.kind !== 'device') ||
+        parsedScope.includes(PAIRING_SCOPE_ACCESS_MANAGE) ||
+        parsedScope.some(isProtectedPairingPromotionScope))
+    ) {
+      throw new DevicePairingError('invalid_request');
+    }
     this.#pruneOffers();
     if (this.#offers.size >= this.#maxActiveOffers) {
       throw new DevicePairingError('offer_capacity_reached');
@@ -1286,6 +1309,7 @@ export class DevicePairingService {
       scope,
       expiresAt: this.#now() + this.#offerTtlMs,
       status: 'open',
+      ...(input.approval === 'on-create' ? { preapproved: true as const } : {}),
       kind: input.kind ?? 'device',
     };
     this.#offers.set(offer.offerId, offer);
@@ -1331,6 +1355,7 @@ export class DevicePairingService {
         !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
       (input.accountCandidate === undefined) !==
         (input.accountCandidateSessionId === undefined) ||
+      (offer.preapproved === true && input.requireAccountBinding === true) ||
       (input.requireAccountBinding === true &&
         input.accountCandidate === undefined) ||
       (input.accountCandidate !== undefined &&
@@ -1372,7 +1397,8 @@ export class DevicePairingService {
     };
     offer.request = request;
     offer.requesterPosition = input.requesterPosition;
-    offer.status = 'requested';
+    offer.status = offer.preapproved ? 'confirmed' : 'requested';
+    if (offer.preapproved) request.status = 'confirmed';
     return cloneRequest(request);
   }
 
@@ -1731,11 +1757,16 @@ export class DevicePairingService {
     };
   }
 
-  denyRequest(requestId: string): DevicePairingRequest {
+  denyRequest(
+    requestId: string,
+    expectedKind?: PairedDeviceKind,
+  ): DevicePairingRequest {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
     );
     if (!offer) throw new DevicePairingError('request_not_found');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     this.#ensureNotExpired(offer);
     if (
       (offer.status !== 'requested' && offer.status !== 'confirmed') ||
@@ -2108,9 +2139,11 @@ export class DevicePairingService {
     return true;
   }
 
-  cancelOffer(offerId: string): void {
+  cancelOffer(offerId: string, expectedKind?: PairedDeviceKind): void {
     const offer = this.#offers.get(offerId);
     if (!offer) throw new DevicePairingError('invalid_offer');
+    if (expectedKind !== undefined && offer.kind !== expectedKind)
+      throw new DevicePairingError('approval_requires_operator');
     offer.status = 'cancelled';
   }
 
@@ -2257,7 +2290,11 @@ export class DevicePairingService {
     const device = this.identifyDevice(candidate);
     return device?.kind === 'device' &&
       device.credentialKind !== 'personal-token' &&
-      pairingScopeIncludes(this.#capScope(device), PAIRING_SCOPE_ACCESS_DEVICES)
+      (pairingScopeIncludes(
+        this.#capScope(device),
+        PAIRING_SCOPE_ACCESS_DEVICES,
+      ) ||
+        this.credentialMayManagePairing(candidate))
       ? device
       : null;
   }
@@ -2346,6 +2383,12 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null) {
@@ -2522,6 +2565,12 @@ export class DevicePairingService {
     }
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      actor !== 'operator-credential' &&
+      this.credentialMayManagePairing(actor.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt === null)
@@ -2618,6 +2667,22 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('approval_requires_operator');
+    if (
+      approval.kind === 'device-access' &&
+      this.credentialMayManagePairing(approval.credential) &&
+      scope.some(
+        (token) =>
+          isProtectedPairingPromotionScope(token) &&
+          !pairingScopeIncludes(device.scope, token),
+      )
+    )
+      throw new DevicePairingError('approval_requires_operator');
     if (device.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {
@@ -2842,6 +2907,30 @@ export class DevicePairingService {
     } finally {
       this.#notifyNativePushRetired();
     }
+  }
+
+  /**
+   * The device's current registration id on either platform, or `null` when
+   * neither file holds one (or the device is not active). Picks the newer
+   * record like {@link listNativePushRegistrationsByPlatform}. An unreadable
+   * file throws rather than reading as "not registered", which would make
+   * the phone register again over a registration that still exists.
+   */
+  nativePushRegistrationId(deviceId: string): string | null {
+    if (!this.#activeDeviceIds().has(deviceId)) return null;
+    const [android, ios] = onBothNativePushFiles<
+      NativePushRegistration | undefined
+    >([
+      () => this.#nativePush.list().get(deviceId),
+      () => this.#nativePushIos.list().get(deviceId),
+    ]);
+    const current =
+      android && ios
+        ? ios.updatedAt > android.updatedAt
+          ? ios
+          : android
+        : (android ?? ios);
+    return current?.registrationId ?? null;
   }
 
   /**
@@ -3321,6 +3410,17 @@ export class DevicePairingService {
       : undefined;
   }
 
+  /** Host-issued browser sessions may manage device access, never native consent. */
+  credentialMayManagePairing(candidate: string): boolean {
+    return (
+      this.credentialMintKind(candidate) === 'ui-bootstrap' &&
+      pairingScopeIncludes(
+        this.effectiveScope(candidate) ?? '',
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      )
+    );
+  }
+
   /**
    * The credential-level mirror of the auth boundary's bound
    * local-grant-minted-operator predicate (archive#3677 PR 3): true only when
@@ -3534,6 +3634,7 @@ export class DevicePairingService {
       status: _status,
       request: _request,
       clientInstanceId: _clientInstanceId,
+      preapproved: _preapproved,
       ...safe
     } = offer;
     return safe;

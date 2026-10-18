@@ -1,0 +1,7 @@
+{
+  "revision": "0f34fc04e434cfb1757ebad4b889f05d726a8c0d",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-reviewed terminal WebSocket surface-matrix, retained direct-loopback path, terminal:operate and account-bound refusal claims against the session-scoping fix in terminal-ws-server.ts. Admission is unchanged; the fix narrows event delivery and data/resize/cwd/close to sockets that opened the session. No prose change needed. Known gap, not documented here: open still lets any admitted socket attach to an existing session of any Project.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/terminal/terminal-ws-server.ts"]}
+  ]
+}

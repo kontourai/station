@@ -626,6 +626,7 @@ export {
   materializeKitProjectLayout,
   mintOwnAccessToken,
   mintStationPersonToken,
+  nativePushRegistrationStatus,
   notificationsUrl,
   type OpenSshDiscoveryResult,
   type OperatingState,
@@ -900,6 +901,7 @@ export {
   useFeedbackStatusQuery,
   useFetchRunOutputRef,
   useFileSystemBrowseQuery,
+  useFinishIntegrationOAuthMutation,
   useFleetRoutingReceiptsQuery,
   useFleetServeReceiptsQuery,
   useFlowDefinitionsQuery,
@@ -919,6 +921,7 @@ export {
   useInstallACPConnectionRegistryEntryMutation,
   useInstalledRegistryItemsQuery,
   useInstallSkillMutation,
+  useIntegrationAccountQuery,
   useIntegrationQuery,
   useIntegrationsQuery,
   useInterruptDelegatedTaskMutation,
@@ -1075,6 +1078,7 @@ export {
   useSmokeAgentConnectionMutation,
   useSmokeModelConnectionMutation,
   useSshEnvironmentsQuery,
+  useStartIntegrationOAuthMutation,
   useStationPeopleQuery,
   useStationUsageQuery,
   useStatsQuery,
@@ -1205,6 +1209,12 @@ export {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from './query-domains/peerEnrollments';
+export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,

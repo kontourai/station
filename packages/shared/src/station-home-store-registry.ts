@@ -62,6 +62,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'checkpoint-restores.json': 'state',
   'checkpoint-retention.json': 'state',
   config: 'state',
+  // #2494: Seatbelt-confined engine config homes and any credential enrolled
+  // for confined use; like app-homes, product state.
+  'confined-homes': 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',

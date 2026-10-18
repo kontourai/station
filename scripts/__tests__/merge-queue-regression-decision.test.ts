@@ -22,7 +22,7 @@ import {
  */
 
 const root = resolve(import.meta.dirname, '../..');
-const WORKFLOW = '.github/workflows/merge-queue-regression.yml';
+const WORKFLOW = '.github/workflows/ci.yml';
 const DECISION = 'scripts/merge-queue-regression-decision.mjs';
 const HEAD = 'c'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -303,55 +303,82 @@ function workflow() {
   }) as { on: Record<string, unknown>; jobs: Record<string, Job> };
 }
 
-describe('merge-queue-regression.yml wiring', () => {
-  test('exactly one job carries the required context name, literally', () => {
-    const named = Object.entries(workflow().jobs).filter(
-      ([, job]) => job.name === 'Merge-queue regression',
+describe('same-run merge integration wiring', () => {
+  test('one automatic required context shares the sole fast-checks planner', () => {
+    const { jobs } = workflow();
+    expect(
+      Object.entries(jobs)
+        .filter(([, job]) => job.name === 'Merge-queue regression')
+        .map(([id]) => id),
+    ).toEqual(['merge-queue-regression']);
+    const planners = Object.entries(jobs).filter(([, job]) =>
+      job.steps?.some((step) =>
+        /fast-checks:shard -- plan/.test(step.run ?? ''),
+      ),
     );
-    expect(named.map(([id]) => id)).toEqual(['merge-queue-regression']);
+    expect(planners.map(([id]) => id)).toEqual(['fast-checks-plan']);
+    const steps = jobs['fast-checks-plan'].steps ?? [];
+    const decision = steps.find((step) => step.id === 'merge-decision');
+    expect(decision?.env).toEqual({
+      HEAD_SHA: expr('github.sha'),
+      PLAN_BASE: expr('github.event.merge_group.base_sha'),
+    });
+    expect(decision?.run).toContain(`node ${DECISION} --plan=`);
+    expect(decision?.if).toBe(
+      expr("always() && !cancelled() && github.event_name == 'merge_group'"),
+    );
+    expect(jobs['fast-checks-plan'].outputs?.['full-regression']).toBe(
+      expr('steps.merge-decision.outputs.full-regression'),
+    );
+    expect(jobs['merge-queue-regression'].needs).toContain('fast-checks');
+    const diagnostic = load(
+      readFileSync(
+        join(root, '.github/workflows/merge-queue-regression.yml'),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as { on: Record<string, unknown> };
+    expect(Object.keys(diagnostic.on)).toEqual(['workflow_dispatch']);
   });
 
-  test('pull requests never plan or run the full regression', () => {
-    const { on, jobs } = workflow();
-    expect(on).not.toHaveProperty('pull_request');
-    for (const id of ['plan', 'full-regression'])
-      expect(jobs[id].if).toContain(
-        "github.event_name != 'pull_request_target'",
-      );
+  test('an old candidate without the decision CLI explicitly falls back to full regression', () => {
+    const directory = makeTempDir('station-mq-legacy-decision-');
+    const output = join(directory, 'output');
+    const step = workflow().jobs['fast-checks-plan'].steps?.find(
+      (candidate) => candidate.id === 'merge-decision',
+    );
+    const result = spawnSync(
+      'bash',
+      ['-eo', 'pipefail', '-c', String(step?.run)],
+      {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH ?? '',
+          GITHUB_OUTPUT: output,
+          RUNNER_TEMP: directory,
+          HEAD_SHA: HEAD,
+          PLAN_BASE: BASE,
+        },
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('MODULE_NOT_FOUND');
+    expect(readFileSync(output, 'utf8')).toBe(RUNS_FULL);
   });
 
-  test('the plan job plans with the fast-checks inputs and decides from that file', () => {
-    const steps = workflow().jobs.plan.steps ?? [];
-    const plan = steps.find(
-      (step) => step.name === 'Plan the affected-test selection',
-    );
-    const decision = steps.find((step) => step.id === 'decide');
-    expect(plan?.run).toBe(
-      'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"',
-    );
-    expect(plan?.['continue-on-error']).toBe(true);
-    expect(plan?.env?.STATION_CI_FAST_BASE).toBe(
-      expr("github.event.merge_group.base_sha || 'origin/main'"),
-    );
-    expect(decision?.if).toBe(expr('!cancelled()'));
-    expect(decision?.env?.PLAN_BASE).toBe(plan?.env?.STATION_CI_FAST_BASE);
-    expect(decision?.run).toBe(
-      `node ${DECISION} --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"`,
-    );
-    expect(workflow().jobs.plan.outputs?.['full-regression']).toBe(
-      expr('steps.decide.outputs.full-regression'),
-    );
-  });
-
-  test('the full regression runs unless the decision is exactly false, on this candidate', () => {
-    const job = workflow().jobs['full-regression'];
+  test('the full regression runs unless the same-run decision is exactly false', () => {
+    const job = workflow().jobs['merge-integration-full-regression'];
     expect(job.if).toBe(
       expr(
-        "always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false'",
+        "always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false')",
       ),
     );
     expect(job.uses).toBe('./.github/workflows/full-regression.yml');
-    expect(job.with).toEqual({
+    expect(job.with).toMatchObject({
+      capacity_class: 'integration',
       source_sha: expr('github.sha'),
       allow_reuse: true,
     });
@@ -368,7 +395,10 @@ describe('the required aggregate over job results (bash and jq child process)', 
   function aggregate(needs: Record<string, unknown>) {
     return spawnSync('bash', ['-eo', 'pipefail', '-c', run], {
       encoding: 'utf8',
-      env: { PATH: process.env.PATH ?? '', NEEDS: JSON.stringify(needs) },
+      env: {
+        PATH: process.env.PATH ?? '',
+        NEEDS: JSON.stringify({ 'fast-checks': job('success'), ...needs }),
+      },
       timeout: 30_000,
       windowsHide: true,
     });
@@ -389,17 +419,29 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'fast path: plan says false and the regression was skipped',
       {
         diff: job('success'),
-        plan: job('success', fast),
-        'full-regression': job('skipped'),
+        'fast-checks-plan': job('success', fast),
+        'merge-integration-full-regression': job('skipped'),
       },
       0,
     ],
+    ...['failure', 'cancelled', 'skipped'].map(
+      (result): [string, Record<string, ReturnType<typeof job>>, number] => [
+        `fast-checks ${result} prevents premature green`,
+        {
+          diff: job('success'),
+          'fast-checks-plan': job('success', fast),
+          'merge-integration-full-regression': job('skipped'),
+          'fast-checks': job(result),
+        },
+        1,
+      ],
+    ),
     [
       'deferred candidate whose full regression passed',
       {
         diff: job('success'),
-        plan: job('success', full),
-        'full-regression': job('success'),
+        'fast-checks-plan': job('success', full),
+        'merge-integration-full-regression': job('success'),
       },
       0,
     ],
@@ -407,8 +449,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'failed plan job whose fail-closed full regression passed',
       {
         diff: job('success'),
-        plan: job('failure'),
-        'full-regression': job('success'),
+        'fast-checks-plan': job('failure'),
+        'merge-integration-full-regression': job('success'),
       },
       0,
     ],
@@ -416,8 +458,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'deferred candidate whose full regression failed',
       {
         diff: job('success'),
-        plan: job('success', full),
-        'full-regression': job('failure'),
+        'fast-checks-plan': job('success', full),
+        'merge-integration-full-regression': job('failure'),
       },
       1,
     ],
@@ -425,8 +467,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'decision true but the regression was skipped',
       {
         diff: job('success'),
-        plan: job('success', full),
-        'full-regression': job('skipped'),
+        'fast-checks-plan': job('success', full),
+        'merge-integration-full-regression': job('skipped'),
       },
       1,
     ],
@@ -434,8 +476,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'no decision and no regression',
       {
         diff: job('success'),
-        plan: job('success'),
-        'full-regression': job('skipped'),
+        'fast-checks-plan': job('success'),
+        'merge-integration-full-regression': job('skipped'),
       },
       1,
     ],
@@ -443,8 +485,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'failed plan job and skipped regression',
       {
         diff: job('success'),
-        plan: job('failure', fast),
-        'full-regression': job('skipped'),
+        'fast-checks-plan': job('failure', fast),
+        'merge-integration-full-regression': job('skipped'),
       },
       1,
     ],
@@ -452,8 +494,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'cancelled full regression',
       {
         diff: job('success'),
-        plan: job('success', full),
-        'full-regression': job('cancelled'),
+        'fast-checks-plan': job('success', full),
+        'merge-integration-full-regression': job('cancelled'),
       },
       1,
     ],
@@ -461,8 +503,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
       'failed candidate diff on the fast path',
       {
         diff: job('failure'),
-        plan: job('success', fast),
-        'full-regression': job('skipped'),
+        'fast-checks-plan': job('success', fast),
+        'merge-integration-full-regression': job('skipped'),
       },
       1,
     ],
@@ -474,8 +516,8 @@ describe('the required aggregate over job results (bash and jq child process)', 
   test('the fast path says so on the required check', () => {
     const result = aggregate({
       diff: job('success'),
-      plan: job('success', fast),
-      'full-regression': job('skipped'),
+      'fast-checks-plan': job('success', fast),
+      'merge-integration-full-regression': job('skipped'),
     });
     expect(result.stdout).toContain('no deferred lane: fast path');
   });

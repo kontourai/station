@@ -35,6 +35,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -79,6 +80,7 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -152,10 +154,12 @@ import type {
 import {
   AttachmentInputUnsupportedError,
   ClientTurnInFlightError,
+  ClientTurnInputConflictError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
+import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
@@ -193,6 +197,14 @@ import {
   isFullAccessGrant,
   UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
+import {
+  type ConfinementProvider,
+  ConfinementRefusedError,
+  noMechanismConfinementRecord,
+  readConfinementRecord,
+  resolveConfinement,
+} from '../../security/confinement/confinement-provider.js';
+import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -458,6 +470,12 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import {
+  directTurnSubmissionDigest,
+  snapshotDirectTurnInput,
+  snapshotTurnSubmissionValue,
+  TurnSubmissionUnsupportedError,
+} from './turn-submission-digest.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
@@ -487,6 +505,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Original intent proof; null preserves unknown legacy inbox input. */
+  submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
@@ -952,6 +972,11 @@ interface OrchestrationServiceOptions {
    * its next turn. Absent: stamps apply as written.
    */
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
+  /**
+   * #2494: the confinement mechanisms a start can resolve to. Absent:
+   * Codex's own sandbox and Station's Seatbelt profile for Claude.
+   */
+  confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -2154,6 +2179,15 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      // #2494: read from the stored start event directly, because
+      // `readLatestSessionStartMetadata` strips the reserved record key.
+      observedConfinement: (threadId) =>
+        readConfinementRecord(
+          (
+            options.eventStore?.latestEventByMethod(threadId, 'session.started')
+              ?.payload as { metadata?: Record<string, unknown> } | undefined
+          )?.metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY],
+        ),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2375,6 +2409,14 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       assertAdapterCurrent: (adapter) => this.assertAdapterCurrent(adapter),
       assertAdapterReady: (adapter) => this.assertAdapterReady(adapter),
+      applyConfinement: (input) =>
+        this.withConfinement(
+          input.provider,
+          input,
+          input.confinement === 'host' ? 'host' : 'workspace',
+          // The child runs in its own folder, never a worktree Station made.
+          'shared',
+        ),
       withAcceptedModelLaunchPlan: (
         adapter,
         input,
@@ -4926,13 +4968,17 @@ export class OrchestrationService {
     threadId: string,
     clientTurnId: string,
     signal?: AbortSignal,
+    inputDigest?: string,
   ): Promise<{ kind: 'turn'; turnId: string } | { kind: 'given-up' | 'held' }> {
     const ledger = this.turnDeduplicator;
     if (!ledger) return { kind: 'held' };
     const turnId = await raceWithSignal(
-      ledger.awaitResolution({ threadId, clientTurnId }),
+      ledger.awaitResolution({ threadId, clientTurnId, inputDigest }),
       signal,
-    ).catch(() => undefined);
+    ).catch((error) => {
+      if (error instanceof ClientTurnInputConflictError) throw error;
+      return undefined;
+    });
     if (turnId) return { kind: 'turn', turnId };
     let givenUp = false;
     try {
@@ -4954,12 +5000,18 @@ export class OrchestrationService {
     clientTurnId: string,
     /** Stops only this wait (the caller went away); nothing is sent either way. */
     signal?: AbortSignal,
+    inputDigest?: string,
   ): Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
   > {
     this.initialize();
-    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
+    const held = await this.awaitHeldTurnKey(
+      sessionId,
+      clientTurnId,
+      signal,
+      inputDigest,
+    );
     if (held.kind === 'turn')
       return { outcome: 'started', turnId: held.turnId };
     return {
@@ -4971,26 +5023,64 @@ export class OrchestrationService {
     conversationId: string,
     clientTurnId: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
     this.initialize();
     return this.conversationLineage.inspectTurnDelivery(
       conversationId,
       clientTurnId,
       authority,
+      inputDigest,
     );
+  }
+
+  readPendingConversationSubmission(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    userId?: string,
+  ) {
+    this.initialize();
+    if (
+      this.conversationLineage.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        authority,
+      ) === null
+    )
+      throw new Error('The requested conversation is unavailable.');
+    const pending = this.options.eventStore?.readPendingThreadInboxSubmission(
+      conversationId,
+      clientTurnId,
+    );
+    if (pending && pending.userId !== userId)
+      throw Object.assign(
+        new Error("This message key belongs to someone else's queued message."),
+        { code: 'inbox_key_held' },
+      );
+    return pending;
   }
 
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): Promise<ConversationHandoffStatusProjection | null> {
     this.initialize();
-    return this.conversationLineage.readConversationHandoffStatus(
+    const status = await this.conversationLineage.readConversationHandoffStatus(
       conversationId,
       idempotencyKey,
       authority,
     );
+    if (status?.marker && inputDigest !== undefined) {
+      this.turnDeduplicator?.inspect({
+        threadId: status.marker.sessionId,
+        clientTurnId: `handoff:${crypto.createHash('sha256').update(`${conversationId}\0${idempotencyKey}`).digest('hex')}`,
+        inputDigest,
+      });
+    }
+    return status;
   }
 
   async reserveConversationContextBoundary(
@@ -6197,6 +6287,7 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
+            confinementPlan: _untrustedConfinementPlan,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
           const admittedStartWorkspace =
@@ -6296,6 +6387,22 @@ export class OrchestrationService {
                 : {}),
             },
           };
+          // #2494: the confinement this start resolves to, from the
+          // confinement above and the mode the engine is actually given. A
+          // required level with no usable mechanism refuses here, before the
+          // engine is touched.
+          // The isolation comes from the server-resolved workspace binding
+          // (a canonically provisioned or verified owned worktree), never the
+          // caller-controlled `metadata.workspaceIsolation`.
+          startInput = this.withConfinement(
+            adapter.provider,
+            startInput,
+            confinement,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ||
+              readExecutionWorkspaceBinding(internal?.executionWorkspace)
+              ? 'worktree'
+              : 'shared',
+          );
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -6984,16 +7091,34 @@ export class OrchestrationService {
             command.target,
           );
         case 'sendTurn': {
+          const submittedInput = command.input.clientTurnId
+            ? snapshotDirectTurnInput(command.input)
+            : command.input;
+          if (submittedInput.clientTurnId && internal?.skillExperience)
+            internal = {
+              ...internal,
+              skillExperience: snapshotTurnSubmissionValue(
+                internal.skillExperience,
+              ),
+            };
+          const submissionDigest =
+            submittedInput.clientTurnId && internal?.submissionDigest !== null
+              ? (internal?.submissionDigest ??
+                directTurnSubmissionDigest(
+                  submittedInput,
+                  internal?.skillExperience,
+                ))
+              : undefined;
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(command.input.threadId);
+          this.assertTurnAdmitted(submittedInput.threadId);
           const current = await this.readSession(
-            command.input.threadId,
+            submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
           const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.input.threadId,
+            threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
@@ -7023,7 +7148,7 @@ export class OrchestrationService {
             // The client's own key for the turn.started stamp; Station's.
             clientKey: stampedClientKey,
             ...publicTurnInput
-          } = command.input as ProviderSendTurnInput & {
+          } = submittedInput as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
             clientKey?: string;
@@ -7194,8 +7319,11 @@ export class OrchestrationService {
             const claim = turnDeduplicator?.claim({
               threadId: turnInput.threadId,
               clientTurnId,
+              inputDigest: submissionDigest,
             });
             if (claim) {
+              if (claim.kind === 'conflict')
+                throw new ClientTurnInputConflictError();
               // #3559: the key's owner died after it may have handed this
               // turn to the provider, or the key's resolved row was evicted
               // after the turn was sent. Never send it again; report the same
@@ -7214,6 +7342,7 @@ export class OrchestrationService {
                       turnInput.threadId,
                       clientTurnId,
                       turnInput.signal,
+                      submissionDigest,
                     );
                 if (held.kind !== 'turn') {
                   throwIfAborted(turnInput.signal);
@@ -7322,7 +7451,7 @@ export class OrchestrationService {
                       throw new EngineParkedDuringDispatchError();
                     const invoke = async () => {
                       const assertInputRequestCurrent = () => {
-                        const expected = command.input.expectedInputRequest;
+                        const expected = submittedInput.expectedInputRequest;
                         if (
                           expected &&
                           (expected.threadId !== turnInput.threadId ||
@@ -7383,7 +7512,7 @@ export class OrchestrationService {
                             turnInput = {
                               ...turnInput,
                               displayInput:
-                                turnInput.displayInput ?? command.input.input,
+                                turnInput.displayInput ?? submittedInput.input,
                               input: `${prompt}\n\n${turnInput.input}`,
                             };
                           },
@@ -7568,7 +7697,8 @@ export class OrchestrationService {
                               turnInput = {
                                 ...turnInput,
                                 displayInput:
-                                  turnInput.displayInput ?? command.input.input,
+                                  turnInput.displayInput ??
+                                  submittedInput.input,
                                 input: `${prompt}\n\n${turnInput.input}`,
                               };
                             }
@@ -8767,7 +8897,9 @@ export class OrchestrationService {
           // a failed action — and its closed code must survive the wrapper
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          // #2494: a respawn refused for its confinement started nothing.
+          error instanceof ConfinementRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -8811,7 +8943,12 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof AttachmentInputUnsupportedError
+          error instanceof AttachmentInputUnsupportedError ||
+          error instanceof ClientTurnInputConflictError ||
+          error instanceof TurnSubmissionUnsupportedError ||
+          // #2494: the closed confinement refusal codes are a public
+          // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
+          error instanceof ConfinementRefusedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );
@@ -11069,6 +11206,7 @@ export class OrchestrationService {
     const {
       modelOptions: _previous,
       confinement: _previousConfinement,
+      confinementPlan: _previousConfinementPlan,
       ...withoutOptions
     } = input;
     // Carry the stamp forward (the stored-metadata read strips reserved
@@ -11091,7 +11229,57 @@ export class OrchestrationService {
           : {}),
       },
     };
-    return modelOptions ? { ...restamped, modelOptions } : restamped;
+    // #2494: re-resolved for the new process, whose engine re-derives the
+    // posture; the previous start's record is never copied forward (the
+    // stored-metadata read strips it as a reserved key).
+    // A respawn carries no server workspace binding, so it resolves as
+    // `shared`: a provider that needs a proven worktree is refused, never
+    // granted one on the persisted metadata's say-so.
+    return this.withConfinement(
+      provider,
+      modelOptions ? { ...restamped, modelOptions } : restamped,
+      confinement,
+      'shared',
+    );
+  }
+
+  /**
+   * #2494: `input` with its resolved confinement: a plan for the adapter
+   * when a mechanism is engaged (the adapter observes the started process
+   * and records the posture), else the `no-mechanism` record stamped now.
+   * Called after the reserved-key strip, with the input's final model
+   * options. Throws `ConfinementRefusedError` when a required level has no
+   * usable mechanism.
+   */
+  private withConfinement<
+    T extends Omit<ProviderSessionStartInput, 'resumeCursor'>,
+  >(
+    engine: EngineId,
+    input: T,
+    confinement: StationConfinement,
+    isolationMode: WorkspaceIsolationMode,
+  ): T {
+    const resolution = resolveConfinement({
+      confinement,
+      engine,
+      appliedMode: approvalKnobSupported(engine)
+        ? readApprovalMode(input.modelOptions)
+        : undefined,
+      isolationMode,
+      providers: this.options.confinementProviders ?? [
+        codexSandboxConfinementProvider,
+        seatbeltConfinementProvider,
+      ],
+    });
+    if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
+    return {
+      ...input,
+      metadata: {
+        ...input.metadata,
+        [STATION_CONFINEMENT_RECORD_METADATA_KEY]:
+          noMechanismConfinementRecord(resolution),
+      },
+    };
   }
 
   /**

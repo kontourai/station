@@ -1,0 +1,7 @@
+{
+  "revision": "8407ed3d8f2207ae3e4bf9d95f25c13303be1d59",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the combined dependency-security guide after merging main060046380425d222a4c3d3ede16bece9e7857bf4. Preserved both Forge references and main source-verification-policy references with the canonical ledger serializer; no historical review or limit was replaced. Inspected inherited title/source publication sections against ci.yml, source-verification-policy.yml, pr-title-check.mjs and source-verification-policy.mjs: trusted workflow/base checkout, exact repository/head/current-owner/attempt binding, base ancestry, metadata-only reconciliation, scoped statuses-write, pending/failure and publication-outage limits. Forge RSA section and approved scanner/patch/lock/advisory/verification/test bytes remain identical to294d3a. Fresh157 owner tests, dependency verification and full-history gitleaks passed on merge4237230. The initial readiness failure was canonical record layout, not a cryptographic or graph defect. This is a source-delta review, not a new hosted publisher, endpoint, native or release receipt.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

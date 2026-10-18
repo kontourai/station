@@ -167,6 +167,7 @@ interface ChatInputAreaProps {
   mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   // Status
   disabled: boolean;
   /** A busy continuation may accept a draft while sends remain blocked. */
@@ -355,17 +356,33 @@ interface ChatInputAreaProps {
  * draft nobody has typed, at the transcript's expense.
  */
 function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
-  textarea.style.height = 'auto';
-  const rows = textarea.rows;
-  textarea.rows = 1;
-  const contentHeight = textarea.scrollHeight;
-  textarea.rows = rows;
-  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-  const height = Math.min(textarea.scrollHeight, maxHeight);
-  textarea.style.height = `${height}px`;
-  textarea.style.overflowY =
-    textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  // Measure out of flow: collapsing the live draft lets the browser clamp
+  // the pinned transcript while the composer is temporarily shorter (#3661).
+  const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
+  mirror.removeAttribute('id');
+  mirror.removeAttribute('name');
+  mirror.setAttribute('aria-hidden', 'true');
+  mirror.tabIndex = -1;
+  mirror.value = textarea.value;
   const style = getComputedStyle(textarea);
+  Object.assign(mirror.style, {
+    position: 'fixed',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    width: style.width,
+    height: 'auto',
+    minHeight: '0',
+    maxHeight: 'none',
+  });
+  textarea.parentElement?.appendChild(mirror);
+  const draftHeight = mirror.scrollHeight;
+  mirror.rows = 1;
+  const contentHeight = mirror.scrollHeight;
+  mirror.remove();
+  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+  const height = Math.min(draftHeight, maxHeight);
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY = draftHeight > maxHeight ? 'auto' : 'hidden';
   const fontSize = Number.parseFloat(style.fontSize) || 16;
   const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
   const chrome =
@@ -393,6 +410,7 @@ export function ChatInputArea({
   quoteContext,
   attachments,
   textareaRef,
+  onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
   turnInFlight,
@@ -483,6 +501,11 @@ export function ChatInputArea({
   loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
+  const textareaDisabled = disabled && !allowDraftWhileDisabled;
+  useEffect(() => {
+    onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
+    return () => onEnabledChange?.(null);
+  }, [textareaDisabled, textareaRef, onEnabledChange]);
   const isMobile = useIsMobile();
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
@@ -1237,7 +1260,7 @@ export function ChatInputArea({
             }
             placeholder={placeholder}
             value={displayInput}
-            disabled={disabled && !allowDraftWhileDisabled}
+            disabled={textareaDisabled}
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);

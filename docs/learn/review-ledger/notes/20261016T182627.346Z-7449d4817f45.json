@@ -1,0 +1,7 @@
+{
+  "revision": "35f8b5355dde195fe9cdd76112eb62e2a66b5fe6",
+
+  "notes": [
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Read the full fixture guide against the prepare, serve, successor, recovered-cleanup, invitation, pending and approval owners. Added the safe refusal-output paragraph only: nonzero exit remains, bounded fixture AssertionError codes are visible, all other failures stay generic without stack/path/body/credential output. Existing commands, private custody, lease/provision-last ordering and physical/provider limitations remain accurate. Six tests pass; old formatter makes the new CLI diagnostic assertion fail, with two separate expected dirty-checkout refusals; byte-identical restoration returns six passes. Historical qualification failure cause remains unknown.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md","scripts/__tests__/native-fresh-relay-fixture.test.ts","scripts/native-fresh-relay-fixture.ts"]}
+  ]
+}

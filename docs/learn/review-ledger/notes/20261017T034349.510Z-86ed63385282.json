@@ -1,0 +1,7 @@
+{
+  "revision": "a85fae854ac29d461c84a28187dea0687187586b",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed the changed combined ChatDock and ChatDockBody callers against the Last known status/history and per-Station observation claims. Their main-side observation wiring remains intact: open/retry carries the current authority observation and transcript status uses its unavailable value. The branch adds only composer-enabled/focus routing at these callers; selecting a chat does not clear a failed status read or change Task, Session, epoch, Resync or Refresh authority. The existing explanation remains accurate without a prose change. Executed combined runtime at bd72f77a137: 188 focused tests, including dock/mobile row freshness, history recovery and hydration lifetime, plus 13 working-chat browser journeys and UI/E2E types. Those controlled fixtures do not establish physical-device or live-provider behavior.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

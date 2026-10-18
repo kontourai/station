@@ -167,6 +167,23 @@ async function fulfillGallerySystemStatus(route: Route): Promise<void> {
   });
 }
 
+async function fulfillGalleryToolAccess(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const access = await response.json();
+  if (!response.ok() || !access.success || !access.data?.station?.name)
+    throw new Error('Gallery requires the live tool-access projection.');
+  await route.fulfill({
+    response,
+    json: {
+      ...access,
+      data: {
+        ...access.data,
+        station: { ...access.data.station, name: 'Gallery host' },
+      },
+    },
+  });
+}
+
 function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   if (route.request().method() !== 'GET') return route.fallback();
   return route.fulfill({
@@ -1095,6 +1112,36 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({
+    path: join(GALLERY_DIR, `freshness-failed-${width}.png`),
+    animations: 'disabled',
+  });
+  if (width > 600) {
+    const row = page
+      .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+      .filter({ hasText: 'Mismatch demo chat' });
+    await expect(row.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await expect(row.locator('.inbox-row__status-glyph')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
+    await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
+  } else {
+    await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+    await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+    await expect(picker.getByTestId('inbox-row-status')).toContainText(
+      'Last known:',
+    );
+    await page.screenshot({
+      path: join(GALLERY_DIR, `freshness-failed-picker-${width}.png`),
+      animations: 'disabled',
+    });
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+  }
   await mockRuntimeConversation(page, {
     id: 'gallery-mismatch-conversation',
     agentSlug: 'demo-agent',
@@ -1241,6 +1288,33 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       await page.screenshot({
         path: testInfo.outputPath(`resync-recovered-${width}.png`),
       });
+      // A successful history read cannot clear the independently failed inventory.
+      if (width > 600) {
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).toContainText(
+          'Last known:',
+        );
+      }
+      await page.screenshot({
+        path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+        animations: 'disabled',
+      });
+      if (width === 390) {
+        await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
+        await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
+        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-picker-${width}.png`),
+          animations: 'disabled',
+        });
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+      }
       expect(historyReads - failedHistoryReads).toBe(1);
       console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
         width,
@@ -1297,6 +1371,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByRole('button', { name: 'Refresh inbox', exact: true }),
         ).toBeEnabled();
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+          animations: 'disabled',
+        });
         expect(inventoryReads).toBe(1);
         console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
           inventoryReads,
@@ -1371,14 +1455,7 @@ function projectDetailFixture(
     });
 }
 
-/**
- * `overlay-dock-project-mismatch`'s hooks, factored out (matching
- * `connectionsHubBadgeSettleHooks()`'s established shape above) because
- * every route registered in `beforeGoto` (needed BEFORE `page.goto` — these
- * queries fire on first render) must be unregistered again in `afterGoto`,
- * and a plain object literal's two callbacks cannot share the `withRoute`
- * cleanup closures any other way.
- */
+/** Keep the selected Project fixture available through both captures. */
 function overlayDockProjectMismatchHooks(
   resyncOnly = false,
 ): Pick<Screen, 'beforeGoto' | 'afterGoto' | 'cleanup'> {
@@ -1635,7 +1712,117 @@ interface Screen {
   expectSkeleton?: boolean;
 }
 
+function telemetryConsentScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['settings-dnt', 'pending-full', 'dialog-dnt'] as const).map((mode) => {
+      const pending = mode === 'pending-full';
+      const dialogVisible = mode !== 'settings-dnt';
+      const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
+      let ownPage: Page;
+      const device = viewport === MOBILE ? 'mobile' : 'desktop';
+      return {
+        name: `telemetry-${mode}-${device}`,
+        title: `Telemetry — ${mode} (${device})`,
+        path: '/settings?view=telemetry',
+        viewport,
+        beforeGoto: async (page) => {
+          ownPage = page;
+          const configPattern = /\/config\/app(?:\?.*)?$/;
+          const disclosurePattern = /\/api\/usage-telemetry\/disclosure$/;
+          const configHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.telemetryTier = { kontour: 'off', operator: 'full' };
+            delete body.data.telemetryEnabled;
+            // This fixture represents an upgraded home, outside guided setup.
+            delete body.data.firstRun;
+            await route.fulfill({ response, json: body });
+          };
+          const disclosureHandler = async (route: Route) => {
+            const response = await route.fetch();
+            const body = await response.json();
+            body.data.acknowledged = !dialogVisible;
+            body.data.telemetryEnabled = false;
+            body.data.endpointConfigured = pending;
+            body.data.publishers = {
+              kontour: {
+                tier: 'off',
+                reason: pending ? 'user' : 'DNT',
+                userChoice: 'off',
+                source: 'config',
+              },
+              operator: {
+                tier: pending ? 'lite' : 'off',
+                reason: pending ? 'disclosure' : 'DNT',
+                userChoice: 'full',
+                source: 'config',
+              },
+            };
+            await route.fulfill({ response, json: body });
+          };
+          routes.push(
+            [configPattern, configHandler],
+            [disclosurePattern, disclosureHandler],
+          );
+          for (const [pattern, handler] of routes)
+            await page.route(pattern, handler);
+          await page.addInitScript(() => {
+            localStorage.removeItem(
+              'station.usage-telemetry-disclosure.snoozed',
+            );
+          });
+        },
+        afterGoto: async (page) => {
+          if (dialogVisible) {
+            const dialog = page.getByRole('dialog', {
+              name: 'What Station sends',
+            });
+            await expect(dialog).toBeVisible();
+            await expect(
+              dialog.getByRole('button', {
+                name: pending
+                  ? 'Turn off usage telemetry'
+                  : 'Save operator choice as Full',
+              }),
+            ).toBeVisible();
+            if (!pending) {
+              for (const tier of ['Off', 'Lite', 'Full'])
+                await expect(
+                  dialog.getByRole('radio', { name: tier, exact: true }),
+                ).toBeVisible();
+            }
+            await expect(
+              dialog
+                .getByText(
+                  pending
+                    ? /Your saved operator choice is Full, awaiting acknowledgement/
+                    : /DO_NOT_TRACK is active: nothing is sent/,
+                )
+                .first(),
+            ).toBeVisible();
+          } else {
+            const control = page.getByRole('combobox', {
+              name: 'Operator telemetry',
+            });
+            await control.scrollIntoViewIfNeeded();
+            await expect(control).toHaveValue('full');
+            await expect(
+              page.getByText(/Effective: Off — DO_NOT_TRACK is active/).first(),
+            ).toBeVisible();
+          }
+        },
+        cleanup: async () => {
+          // Each route belongs only to this gallery state.
+          for (const [pattern, handler] of routes)
+            await ownPage.unroute(pattern, handler);
+        },
+      } satisfies Screen;
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...telemetryConsentScreens(),
   {
     name: 'mobile-activity-compact',
     title: 'Mobile — Activity opened over Chat (#2549)',
@@ -1644,7 +1831,7 @@ const SCREENS: Screen[] = [
     waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
       for (const control of [
-        page.getByRole('button', { name: 'New task', exact: true }),
+        page.getByRole('button', { name: 'New Task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(
@@ -1913,7 +2100,17 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
+  {
+    name: 'profile',
+    title: 'Profile',
+    path: '/profile',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await expect(
+        page.getByRole('region', { name: 'My access', exact: true }),
+      ).toContainText('Operator on Gallery host');
+    },
+  },
   {
     name: 'settings',
     title: 'Settings',
@@ -3202,6 +3399,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
+  await page.route('**/api/tool-library/access', fulfillGalleryToolAccess);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established

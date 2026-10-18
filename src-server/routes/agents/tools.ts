@@ -40,6 +40,7 @@ import {
   toolServerCredentialWrites,
 } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
@@ -64,6 +65,7 @@ import {
  * Absent in legacy/test wiring → the proxy keeps its original direct behavior.
  */
 export interface McpUiCallDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /** Injectable for local icon route tests; production defaults to Station home. */
   integrationIconAssets?: Pick<IntegrationIconAssets, 'resolve'>;
   /**
@@ -214,6 +216,28 @@ export function createToolRoutes(
   mcpUiCallDeps: McpUiCallDeps = {},
 ) {
   const app = new Hono();
+  app.use('*', async (c, next) => {
+    const path = c.req.path.replace(/^\/integrations/, '') || '/';
+    const management =
+      (c.req.method === 'POST' && path === '/') ||
+      (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
+      (c.req.method === 'POST' &&
+        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect)$/.test(path));
+    if (management && mcpUiCallDeps.authorizeOperator) {
+      try {
+        await mcpUiCallDeps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can configure sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());
@@ -330,28 +354,32 @@ export function createToolRoutes(
             ? stationTools
             : t.id === 'station-knowledge'
               ? stationKnowledgeToolCatalog()
-              : [
-                  ...(t.probe?.toolNames ?? []).map((name) => ({
-                    name: originalMcpToolName(t.id, name),
-                    description: undefined,
-                  })),
-                  ...catalog
-                    .filter((tool) => tool.serverId === t.id)
-                    .map((tool) => ({
-                      name:
-                        tool.toolName ??
-                        originalMcpToolName(t.id, tool.originalName),
-                      description: tool.description,
-                      group:
-                        typeof tool._meta?.['ai.kontour/tool-group'] ===
-                        'string'
-                          ? tool._meta['ai.kontour/tool-group']
-                          : undefined,
+              : t.id === 'station-docs'
+                ? stationDocsToolCatalog()
+                : [
+                    ...(t.probe?.toolNames ?? []).map((name) => ({
+                      name: originalMcpToolName(t.id, name),
+                      description: undefined,
                     })),
-                ];
-        const rows = [
-          ...new Map(entries.map((tool) => [tool.name, tool])).values(),
-        ];
+                    ...(t.probe?.tools ?? []),
+                    ...catalog
+                      .filter((tool) => tool.serverId === t.id)
+                      .map((tool) => ({
+                        name:
+                          tool.toolName ??
+                          originalMcpToolName(t.id, tool.originalName),
+                        description: tool.description,
+                        group:
+                          typeof tool._meta?.['ai.kontour/tool-group'] ===
+                          'string'
+                            ? tool._meta['ai.kontour/tool-group']
+                            : undefined,
+                      })),
+                  ];
+        const byName = new Map<string, (typeof entries)[number]>();
+        for (const tool of entries)
+          byName.set(tool.name, { ...byName.get(tool.name), ...tool });
+        const rows = [...byName.values()];
         return {
           ...t,
           ...(t.disabledTools
@@ -364,11 +392,17 @@ export function createToolRoutes(
               }
             : {}),
           builtin: isRuntimeManagedIntegrationId(t.id),
+          origin: isRuntimeManagedIntegrationId(t.id)
+            ? { kind: 'station', registryName: 'Station' }
+            : t.origin,
           usedBy: agentMap[t.id] || [],
           connected:
             mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
           tools: rows.map((tool) => ({
             ...tool,
+            classificationSource: isRuntimeManagedIntegrationId(t.id)
+              ? 'station'
+              : 'publisher',
             name: normalizeToolName(`${t.id}_${tool.name}`),
             toolName: tool.name,
             disabled: mcpToolDisabled(t.id, tool.name, t.disabledTools),

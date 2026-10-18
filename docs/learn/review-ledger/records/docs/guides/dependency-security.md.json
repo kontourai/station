@@ -110,7 +110,17 @@
 
     "packages/shared/package.json#/exports",
 
-    "packages/shared/package.json#/files"
+    "packages/shared/package.json#/files",
+
+    "patches/node-forge-1.4.0.patch",
+
+    "scripts/__tests__/node-forge-rsa-backport.test.ts",
+
+    "scripts/__tests__/dependency-patch-binding.test.ts",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs"
   ],
 
   "checks": [

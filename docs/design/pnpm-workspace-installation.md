@@ -39,6 +39,11 @@ directory by `linkWorkspacePackages`), so the root importer in the lock holds a
 `link:packages/monument` entry; the gate also refuses Station code that reaches
 the package other than through its exported entry points.
 
+`packages/supervisor` is declared in both workspace lists as well. It is
+private, has no dependencies, and nothing depends on it yet, so its lock
+importer is empty and no other importer links it. The server build bundles it
+into a self-contained `dist-server/station-supervisor.js`.
+
 Preserve the managed `dependencies:*` entry points. They bootstrap the exact
 pnpm pin, force an inert install, inspect all installed lifecycle packages,
 validate their locked identity and complete hook set, run approved hooks, and
@@ -80,6 +85,9 @@ Advisory policy uses one registry response with separate full and production
 closures for root, SDK, and Shared. Root includes all managed workspace
 importers; SDK and Shared each select their own importer. The policy retains
 its severity and residual requirements.
+An exact reviewed local remediation can satisfy a version-reported high finding
+only with current patch, graph, and installed-byte verification; it does not
+reclassify the advisory. See the [RSA backport](../guides/dependency-security.md#rsa-signature-verification-backport-2026-10).
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of

@@ -34,13 +34,21 @@ import { describe, expect, test } from 'vitest';
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
 type Job = {
+  name?: string;
   needs?: string | string[];
   if?: string;
   uses?: string;
   strategy?: { matrix?: { shard?: string | number[] } };
+  concurrency?: {
+    group: string;
+    queue?: string;
+    'cancel-in-progress': boolean;
+  };
 };
 type Context = {
   event: string;
+  action?: string;
+  retarget?: boolean;
   repository: string;
   headRepository: string;
 };
@@ -82,7 +90,7 @@ function ancestors(
 function evaluate(
   source: string,
   lookup: (path: string[]) => unknown,
-  functions: Record<string, (argument?: unknown) => unknown>,
+  functions: Record<string, (...arguments_: unknown[]) => unknown>,
 ): unknown {
   const tokens =
     source.match(
@@ -107,14 +115,20 @@ function evaluate(
     if (token.startsWith("'")) return token.slice(1, -1).replaceAll("''", "'");
     if (token === 'true') return true;
     if (token === 'false') return false;
+    if (/^\d+$/.test(token)) return Number(token);
     if (peek() === '(') {
       next();
-      const argument = peek() === ')' ? undefined : or();
+      const arguments_: unknown[] = [];
+      while (peek() !== ')') {
+        arguments_.push(or());
+        if (peek() !== ',') break;
+        next();
+      }
       expect_(')');
       // GitHub function names are case-insensitive.
       const fn = functions[token.toLowerCase()];
       if (!fn) throw new Error(`unmodelled function ${token}() in ${source}`);
-      return fn(argument);
+      return fn(...arguments_);
     }
     const path = [token];
     while (peek() === '.' || peek() === '[') {
@@ -220,6 +234,9 @@ function simulate(
       if (head === 'github') {
         const key = rest.join('.');
         if (key === 'event_name') return context.event;
+        if (key === 'event.action') return context.action ?? 'synchronize';
+        if (key === 'event.changes.base')
+          return context.retarget ? { ref: { from: 'release' } } : undefined;
         if (key === 'repository') return context.repository;
         if (key === 'event.pull_request.head.repo.full_name')
           return context.event === 'pull_request_target'
@@ -385,6 +402,64 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  test.each(['', 'true', 'garbled'])(
+    'queue decision %s fails closed without another planner',
+    (decision) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {
+          outputs: {
+            'fast-checks-plan': {
+              legacy: 'false',
+              'full-regression': decision,
+            },
+          },
+        },
+      );
+      expect(state.results.get('merge-integration-full-regression')).toBe(
+        'success',
+      );
+    },
+  );
+
+  test('a failed plan still runs full regression even if it wrote false before failing', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      {
+        outputs: {
+          'fast-checks-plan': { legacy: 'false', 'full-regression': 'false' },
+        },
+        outcomes: { 'fast-checks-plan': 'failure' },
+      },
+    );
+    expect(state.results.get('merge-integration-full-regression')).toBe(
+      'success',
+    );
+  });
+
+  test('empty selections allocate no shard runner while retaining a required verdict', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outputs: {
+        'fast-checks-plan': {
+          legacy: 'false',
+          empty: 'true',
+          shards: '[1]',
+          'shard-count': '1',
+        },
+      },
+    });
+    expect(state.results.get('fast-checks-shard')).toBe('skipped');
+    expect(state.shards.has('fast-checks-shard')).toBe(false);
+    expect(aggregatorPartResults(jobs, state)).toBe(0);
+    const failed = simulate(jobs, sameRepositoryPr, {
+      outputs: { 'fast-checks-plan': { legacy: 'false', empty: 'true' } },
+      outcomes: { 'fast-checks-plan': 'failure' },
+    });
+    expect(aggregatorPartResults(jobs, failed)).toBe(1);
+  });
+
   test.each([1, 2, 4])(
     'the base verdict accepts %i planned legs on PRs and merge groups',
     (count) => {
@@ -448,6 +523,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       expect(aggregatorPartResults(jobs, failedLegacy)).toBe(1);
     },
   );
+
+  test.each(['title', 'body'])(
+    'a metadata-only %s edit admits only the independent title check',
+    () => {
+      const state = simulate(readJobs(), {
+        ...sameRepositoryPr,
+        action: 'edited',
+      });
+      expect(
+        [...state.results]
+          .filter(([, result]) => result !== 'skipped')
+          .map(([id]) => id),
+      ).toEqual(['pr-title']);
+      expect(state.shards.size).toBe(0);
+    },
+  );
+
+  test('merge queue emits the independent title context without source dependencies', () => {
+    const state = simulate(readJobs(), {
+      ...sameRepositoryPr,
+      event: 'merge_group',
+    });
+    expect(state.results.get('pr-title')).toBe('success');
+    expect(needsOf(readJobs()['pr-title'])).toEqual([]);
+  });
+
+  test('base retarget keeps the complete source graph', () => {
+    const state = simulate(
+      readJobs(),
+      { ...sameRepositoryPr, action: 'edited', retarget: true },
+      {
+        outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+      },
+    );
+    for (const id of [
+      ...PARTS,
+      'fast-checks',
+      'pr-title',
+      'repo-scans',
+      'ui-bundle-delta',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+  });
 
   test('a fork pull request runs fork-smoke and none of the fast-checks graph', () => {
     const state = simulate(jobs, {
@@ -602,5 +720,155 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       )
       .map(([id]) => id);
     expect(exposed).toEqual([]);
+  });
+});
+
+describe('delivery work waits for required PR feedback', () => {
+  const jobs = readJobs();
+  const outputs = { 'delivery-plan': { install: 'true' } };
+  test.each(['success', 'failure', 'cancelled', 'skipped'] as const)(
+    'same-repository fast-checks %s controls expensive delivery work',
+    (result) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'fast-checks': result },
+        outputs,
+      });
+      expect(state.results.get('delivery-validation')).toBe(
+        result === 'success' ? 'success' : 'skipped',
+      );
+    },
+  );
+  test('the live delivery eligibility read waits until every independent nonoptional CI job settles', () => {
+    for (const id of ['repo-scans', 'ui-bundle-delta', 'pr-title']) {
+      expect(needsOf(jobs['delivery-plan'])).toContain(id);
+      expect(ancestors(jobs, 'delivery-plan').has(id)).toBe(true);
+    }
+    // Scoped skips still reach the eligibility gate; adding dependencies
+    // must not inherit success() over the intentionally skipped classifier.
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('delivery-plan')).toBe('success');
+  });
+  test('a successful fork smoke still admits affected delivery proof', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, headRepository: 'external/fork' },
+      { outputs },
+    );
+    expect(state.results.get('fast-checks')).toBe('skipped');
+    expect(state.results.get('delivery-validation')).toBe('success');
+  });
+  test('metadata changes and an empty affected plan allocate no delivery workers', () => {
+    expect(
+      simulate(
+        jobs,
+        { ...sameRepositoryPr, action: 'edited' },
+        { outputs },
+      ).results.get('delivery-validation'),
+    ).toBe('skipped');
+    expect(
+      simulate(jobs, sameRepositoryPr).results.get('delivery-validation'),
+    ).toBe('skipped');
+  });
+  test('failed delivery planning does not become an empty successful result', () => {
+    const state = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'delivery-plan': 'failure' },
+      outputs,
+    });
+    expect(state.results.get('delivery-plan')).toBe('failure');
+    expect(state.results.get('delivery-validation')).toBe('skipped');
+  });
+});
+
+describe('repository-wide PR source runner ceilings', () => {
+  const jobs = readJobs();
+  const sourceGroups = (
+    job: Job,
+    pr: number,
+    shard = 1,
+    event = 'pull_request_target',
+    sha = 'a'.repeat(40),
+  ) => {
+    if (!job.concurrency) throw new Error('Missing source concurrency');
+    const github = {
+      event_name: event,
+      ref: `refs/heads/${event}`,
+      sha,
+      event: {
+        pull_request: {
+          number: pr,
+          head: { sha },
+          base: { sha: 'b'.repeat(40) },
+        },
+      },
+    };
+    return evaluate(
+      job.concurrency.group.slice(3, -2),
+      (path) => {
+        const context: Record<string, unknown> = { github, matrix: { shard } };
+        let value: unknown = context;
+        for (const key of path)
+          value = (value as Record<string, unknown>)?.[key];
+        return value;
+      },
+      {
+        format: (pattern, ...values) =>
+          String(pattern).replace(/\{(\d+)\}/g, (_match, index) =>
+            String(values[Number(index)] ?? ''),
+          ),
+        endswith: (value, suffix) =>
+          String(value).toLowerCase().endsWith(String(suffix).toLowerCase()),
+      },
+    );
+  };
+  test('25 simultaneous PRs expose exactly two statics and two shard slots, with no cancellation or pending replacement', () => {
+    const statics = new Set();
+    const shards = new Set();
+    for (let pr = 3700; pr < 3725; pr++) {
+      statics.add(sourceGroups(jobs['fast-checks-statics'], pr));
+      for (const shard of [1, 2, 3, 4])
+        shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
+    }
+    expect(statics.size).toBe(2);
+    expect(shards.size).toBe(2);
+    expect(new Set([...statics, ...shards]).size).toBe(4);
+    for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
+      expect(jobs[id].concurrency?.queue).toBe('max');
+      expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
+    }
+  });
+  test('odd and even one-shard PRs use both slots; four-way plans keep every shard without cancelling siblings', () => {
+    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).not.toBe(
+      sourceGroups(jobs['fast-checks-shard'], 3702),
+    );
+    const slots = [1, 2, 3, 4].map((shard) =>
+      sourceGroups(jobs['fast-checks-shard'], 3701, shard),
+    );
+    expect(slots.filter((slot) => slot === slots[0])).toHaveLength(2);
+    expect(new Set(slots).size).toBe(2);
+    const state = simulate(jobs, sameRepositoryPr, {
+      outputs: { 'fast-checks-plan': { legacy: 'false' } },
+    });
+    expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
+    expect(state.results.get('fast-checks')).toBe('success');
+  });
+  test('merge groups and diagnostics never join a PR slot or each other; source identities remain distinct', () => {
+    for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
+      const prSlots = [
+        sourceGroups(jobs[id], 3701),
+        sourceGroups(jobs[id], 3702),
+      ];
+      const queue = sourceGroups(jobs[id], 3701, 1, 'merge_group');
+      const dispatch = sourceGroups(jobs[id], 3701, 1, 'workflow_dispatch');
+      expect(prSlots).not.toContain(queue);
+      expect(prSlots).not.toContain(dispatch);
+      expect(queue).not.toBe(dispatch);
+      expect(queue).not.toBe(
+        sourceGroups(jobs[id], 3701, 1, 'merge_group', 'c'.repeat(40)),
+      );
+    }
   });
 });

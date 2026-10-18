@@ -6,7 +6,15 @@ import {
   renameSync,
   statSync,
 } from 'node:fs';
-import { chmod, lstat, mkdir, open, rm, stat } from 'node:fs/promises';
+import {
+  chmod,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -14,6 +22,7 @@ import {
   NULLABLE_APP_CONFIG_KEYS,
 } from '@kontourai/station-contracts/settings-registry';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
 import { APP_CONFIG_SEED } from './app-config-seed.js';
 import { validator } from './validator.js';
@@ -364,6 +373,43 @@ async function loadAppConfigFileInternal(
       templateVariables?: Array<{ key: string }>;
     };
     let shouldPersist = false;
+    if (
+      data.telemetryTier === undefined &&
+      typeof data.telemetryEnabled === 'boolean'
+    ) {
+      let acknowledged = false;
+      try {
+        const receipt: unknown = JSON.parse(
+          await readFile(
+            join(projectHomeDir, 'config', 'usage-telemetry-disclosure.json'),
+            'utf8',
+          ),
+        );
+        acknowledged =
+          receipt !== null &&
+          typeof receipt === 'object' &&
+          'inventoryRevision' in receipt &&
+          receipt.inventoryRevision ===
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION &&
+          'acknowledgedAt' in receipt &&
+          typeof receipt.acknowledgedAt === 'string';
+      } catch {
+        // An unreadable or malformed receipt cannot grant Full consent.
+      }
+      data.telemetryTier = {
+        kontour: data.telemetryEnabled ? 'lite' : 'off',
+        operator: data.telemetryEnabled
+          ? acknowledged
+            ? 'full'
+            : 'lite'
+          : 'off',
+      };
+      shouldPersist = true;
+    }
+    if (data.telemetryEnabled !== undefined) {
+      delete data.telemetryEnabled;
+      shouldPersist = true;
+    }
 
     // station#settings-revamp slice-1 fix (finding 1): purge any
     // runtime-derived field that ended up persisted in the file — e.g. a
@@ -455,9 +501,25 @@ export function mergeAppConfigUpdate(
       } else {
         delete merged[key];
       }
+    } else if (key === 'telemetryTier') {
+      merged[key] = { ...existing.telemetryTier, ...updates.telemetryTier };
+    } else if (key === 'telemetryEnabled' && typeof value === 'boolean') {
+      // Older consent clients remain able to withdraw. Enabling never manufactures a receipt.
+      merged.telemetryTier = {
+        kontour: existing.telemetryTier?.kontour ?? (value ? 'lite' : 'off'),
+        operator: value ? 'full' : 'off',
+        ...updates.telemetryTier,
+      };
     } else {
       merged[key] = value;
     }
   }
+  // Older clients can PUT an entire readback including an unchanged tier map.
+  // Withdrawal must win over that copied map, independent of JSON field order.
+  if (updates.telemetryEnabled === false) {
+    merged.telemetryTier = { kontour: 'off', operator: 'off' };
+  }
+
+  delete merged.telemetryEnabled;
   return merged as unknown as AppConfig;
 }

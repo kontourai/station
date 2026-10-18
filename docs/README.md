@@ -129,7 +129,8 @@ a historical audit retained in the repository archive.
 User-facing docs not named in the audience table:
 [user/native-recovery.md](user/native-recovery.md),
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
-[user/work-board.md](user/work-board.md), and
+[user/work-board.md](user/work-board.md),
+[user/personal-boards.md](user/personal-boards.md), and
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
@@ -173,3 +174,5 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+- [Cedar policy foundation](reference/cedar-policy.md) — server-local evaluator contract, bounds and packaged probe.

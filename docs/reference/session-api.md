@@ -139,7 +139,45 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
 
+A delegation's dispatch response (`POST /api/orchestration/delegations`) also
+carries `resolution.confinement` once its session has started (#2494). It is
+the session's confinement record, read back from that session's own
+`session.started`: the level, whether it was required, the posture the engine
+reported applying at that start (`confined`, `no-mechanism` or
+`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
+workspace access and policy basis. A Seatbelt record also lists the kinds of
+writes its profile grants (`writeGrants`). A start that asked for confinement
+but ran at Auto with none engaged names why in `fallback`
+(`confined-credential-unavailable`, `config-root-pinned`,
+`resume-bound-elsewhere` or `workspace-too-broad`). It
+describes the start: a later per-turn re-tightening or grant revocation does
+not update it until the next start. It is absent when the start recorded none
+or its record was not readable when the response was built. A refused start
+answers with the refusal's closed code (`confinement_mechanism_unavailable`,
+`confinement_workspace_incompatible`, `confinement_not_observed`) and leaves
+the conversation able to start again.
+A start whose required confinement has no mechanism on this host is refused
+before anything starts. See
+[confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
 ### Find out what became of a send
+
+An existing keyed send with different submitted input returns HTTP `409`,
+`success: false`, and `code: client_turn_input_conflict`; it does not accept a
+new turn. The original input can still replay its provider turn. This applies
+to the foreground, background, continue and explicit handoff orchestration routes.
+Conversation-wide replay and live-key joins compare retained original proof
+before returning a prior turn or reserving a successor Session. Inbox admission
+also compares known proof before answering queued; queued placement retains that
+server-captured digest through restart. Accepted handoff replay compares retained
+original input proof without starting or sending again. While the inbox is actively placing a key, its route guard
+may refuse a retry with `client_turn_in_flight` before this comparison; that
+transient refusal accepts, queues and replays nothing. The legacy handoff marker
+alone binds prepared effects, including trimmed text; it cannot establish the original raw input. Legacy rows
+without original digest proof remain unknown, and older binaries cannot enforce
+these conflicts. Keys remain optional outside surfaces that already require
+one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
+the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
 characters) and its `conversationId` can be looked up afterwards, for example
@@ -189,9 +227,19 @@ A key is one send for the whole conversation, not only for one of its
 Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
-of the conversation. A key whose turn already started is answered with that
-turn (`providerTurnId`), whatever the retry changed, and staged attachments
-the retry carries are bound to that turn. A key another attempt still holds
+of the conversation. Known original input is compared before replay or a new
+provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
+can replay a started turn (`providerTurnId`); authorized staged attachments
+are bound to that turn. Staged bytes are authorized against the earlier claim's
+Session and read without binding before digest comparison, including retained,
+dead-invoked and reclaimable claims. The production continuation uses the caller's
+read authority across every materialized Session; an unavailable or unreadable
+lineage fails closed before key inspection or staged hydration. The same rule
+applies before inbox admission and to the recorded sender's inspections during
+placement and abandoned-start recovery; an unavailable result is never an empty
+ledger or permission to send. Only after a safe start or replay is chosen
+are they bound to its actual Session; tombstones retain no input proof.
+An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
 it does not resolve in time. That includes a claim the delivery lookup calls
@@ -223,7 +271,12 @@ another device and a restart.
   `turnId`, once Station sent it). Sent when the conversation is idle and
   holds nothing, it takes the live path, whose turn claim answers with the
   turn already started. The same key with a different message is refused
-  `409` with `code: "inbox_key_conflict"`. A send to `POST /chat` or
+  `409` with `code: "client_turn_input_conflict"` when original submitted
+  identity is known; queue submissions against older entries without that proof
+  retain the inbox's `inbox_key_conflict` payload comparison. A live retry by the same sender under
+  a waiting key also stays in the inbox: matching input returns its existing
+  `202` receipt, and different known input returns the typed conflict before
+  any provider effect. A send to `POST /chat` or
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
@@ -575,7 +628,8 @@ from the engine's own request. `request.opened` carries the sanitised
 `decisionReason` and any of the flags that are set.
 
 An approval-guardian allow is held to the same rule (#2947). In a Claude
-Session it answers a plain call with no `request.opened`; an escalation, a
+Session it answers a plain call with no `request.opened`, unless an effective
+authored `askBeforeUse` rule requires approval; an escalation, a
 plan exit or a question opens a request even when the guardian allowed the
 call. In an ACP Session it answers no plan exit, question or sandbox
 network-host ask.

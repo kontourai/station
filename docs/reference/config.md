@@ -88,11 +88,20 @@ accounting. No destination is configured by default.
 
 | field | type | default | description |
 |---|---|---|---|
-| `telemetryEnabled` | boolean | `true` | Enables disclosed product observations only when a destination and current disclosure acknowledgement exist. A saved toggle precedes the canonical environment setting and its legacy alias. |
+| `telemetryTier` | map of `kontour`/`operator` to `off`/`lite`/`full` | Lite per absent publisher | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; only operator Full has a sender in this foundation. Updating one publisher preserves the other. Standard paired devices may lower tiers; raises require the operator or `access:manage`. Reset preserves choices. |
+| `telemetryEnabled` | boolean | deprecated | A stored legacy false migrates to both Off; stored true migrates to operator Full with a current receipt, otherwise Lite, and Kontour Lite. A legacy write of false withdraws both publishers; true requests operator Full, still gated by disclosure. Writes follow the same authorization rules, and the legacy key is never persisted beside `telemetryTier`. |
 | `productTelemetryEndpoint` | HTTP(S) URL | unset | Full product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
 | `productTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact product grant for the selected destination. Missing, revoked or ungranted references fail without environment fallback. |
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
+
+`DO_NOT_TRACK` except empty/`0` forces every product publisher Off, including saved
+choices. Legacy `STATION_PRODUCT_TELEMETRY_ENABLED` and `STATION_TELEMETRY_ENABLED`
+remain fallbacks (`false` means Off). Distribution/operator policy inputs only
+lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
+is a build-time server-banner constant, empty in source, never a runtime enabling
+variable. It is exposed in resolved telemetry configuration independently of the
+operator address and currently has no sender. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an
@@ -465,8 +474,19 @@ external-engine approval are separate; see the [Agent guide](../guides/agents.md
 | `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
 | `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
+| `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
+
+Project source permissions are stored separately in
+`<STATION_HOME>/security/tool-library.json`, keyed by exact local Project ID.
+The file also holds source sharing, durable acquisition requests, and ownership
+bindings for agents created through Project administration. Default policy is
+`all`; `selected` is a source ceiling checked during authoring and runtime tool
+delivery. Agent selection and Project defaults cannot broaden that ceiling.
+Project-authored agents use `tools.mcpMode: "replace"`, disable browser tools,
+and start with `execution.approvalMode: "ask"`. Their API accepts no arbitrary
+command, filesystem or engine configuration.
 
 ### guardrails
 

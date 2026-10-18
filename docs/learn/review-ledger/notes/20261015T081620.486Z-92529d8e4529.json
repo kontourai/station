@@ -1,0 +1,7 @@
+{
+  "revision": "929c9210d4ecd37cd77d8a247ebb286e916861d8",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 6: traced all activity publishers, history and older-history read-token guards, picker/retry/revalidator patch consumers, synchronous stream publishers, query reset/cancellation and retained-row feed guards. Documented option B. Owner 33/33 and seven clean committed fault controls restored 33/33; local evidence only.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

@@ -38,7 +38,15 @@
 
     "src-ui/src/components/header/Header.tsx",
 
-    "src-ui/src/components/header/Header.css"
+    "src-ui/src/components/header/Header.css",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "docs/user/personal-boards.md",
+
+    "src-ui/src/__tests__/session-follow-reader.browser.test.tsx"
   ],
 
   "checks": [

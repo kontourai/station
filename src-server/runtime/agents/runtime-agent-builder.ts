@@ -16,11 +16,18 @@ import type {
   AgentBundle,
   DispatchEvidenceSource,
   IAgentFramework,
+  InvocationContext,
 } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    invocation?: InvocationContext,
+    additions?: readonly string[],
+  ) => void;
   agentSlug: string;
   appConfig: AppConfig;
   configLoader: ConfigLoader;
@@ -109,6 +116,7 @@ export async function prepareRuntimeAgentInstance(
   preparationState: RuntimeAgentPreparationState = context,
 ): Promise<PreparedRuntimeAgentInstance> {
   const spec = await context.configLoader.loadAgent(context.agentSlug);
+  context.validateProjectTools?.(context.agentSlug, spec);
 
   const instructions = createRuntimeInstructions(
     spec,
@@ -123,6 +131,17 @@ export async function prepareRuntimeAgentInstance(
   });
 
   const hooks = createAgentHooks({
+    projectToolPolicy: (invocation, tool) => {
+      const source = preparationState.toolNameMapping.get(
+        tool.toolName,
+      )?.server;
+      context.validateProjectTools?.(
+        context.agentSlug,
+        spec,
+        invocation,
+        source ? [source] : [],
+      );
+    },
     spec,
     appConfig: context.appConfig,
     configLoader: context.configLoader,

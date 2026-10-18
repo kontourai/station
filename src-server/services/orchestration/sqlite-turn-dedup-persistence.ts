@@ -69,7 +69,9 @@ export function chatTurnDedupKey(clientTurnId: string): string {
 /**
  * Station's turn-dedup tables, bound in place of the kernel's own: they stay
  * the source of truth, and an older binary that writes them directly keeps
- * working. Two encodings here predate the kernel:
+ * working, but cannot enforce digest conflicts. A nullable input_digest
+ * column is trusted only with its matching current-owner JSON marker.
+ * Two encodings here predate the kernel:
  *
  * - `owner_json` names the owner `token`, and a thread row written before
  *   #3559 carries no invocation record. Thread keys start with the thread
@@ -84,6 +86,7 @@ export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
     table: 'orchestration_turn_dedup',
     tombstoneTable: 'orchestration_turn_dedup_expired',
     ownerIdField: 'token',
+    inputDigestColumn: 'input_digest',
     ownerErrorMessage: 'Invalid orchestration turn claim owner_json',
     legacyUntrackedKeyPrefixes: [CHAT_KEY_PREFIX],
   },

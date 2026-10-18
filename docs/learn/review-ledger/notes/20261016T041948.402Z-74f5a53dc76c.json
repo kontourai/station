@@ -1,0 +1,11 @@
+{
+  "revision": "800f9fb066409816460a8fe7e7ec666ef1bef466",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the merged Claude adapter delta: it only adds steering durability metadata. The existing bound Station browser delivery is unchanged, and the common browser/computer layer remains proposed rather than implemented.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Checked the inherited latest-main deploy ledger JSON and generated Markdown with renderLedgerMarkdown after merge: byte-identical projection. No publication, install or live destination qualification was repeated.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]},
+
+    {"path":"docs/reference/sdk.md","note":"Resolved adjacent SDK reference additions by preserving upstream telemetry delivery and secret-binding text, integration discovery and Project tool-library text, and canonical usage export. Existing SDK shapes and source-availability limits are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

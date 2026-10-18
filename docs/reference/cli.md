@@ -699,6 +699,27 @@ by every installed agent version.
 
 ## Configuration
 
+### `telemetry`
+
+Read effective per-publisher tiers from a running Station or save a built-in
+publisher's choice through its authenticated configuration API:
+
+```sh
+station telemetry status
+station telemetry set kontour off
+station telemetry set operator full
+```
+
+Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
+`user`, `disclosure`, or `environment`. Kontour Full is refused until a Kontour disclosure exists. The normal target and credential flags apply; `--json`
+prints the status object. Full remains Lite until the current disclosure has
+been acknowledged. DNT forces Off. Changing one publisher preserves the other.
+Operator environment-limited status also explains that restoring Full delivery requires an
+explicit config choice (`station telemetry set operator full`) and acknowledgement
+in Settings; a legacy environment true plus a receipt no longer enables Full.
+Lite sending and `station telemetry outbox` belong to later implementation lanes;
+these commands do not configure a receiver. See [Usage telemetry](usage-telemetry.md).
+
 ### `config`
 
 Read and write Station's own application config
@@ -843,7 +864,7 @@ station agents delete <slug> [--api-base=<url>]
 station agents conversations <slug> [--api-base=<url>]
 station agents messages <slug> <conversationId> [--api-base=<url>]
 station agents workflows <list|get|create|update|delete> ... [--api-base=<url>]
-station agents chat <slug> <message> [--project=<project-slug>] [--conversation=<id>] [--model=<id>] [--api-base=<url>]
+station agents chat <slug> <message> [--project=<project-slug>] [--conversation=<id>] [--client-turn-id=<key>] [--model=<id>] [--api-base=<url>]
 ```
 
 `station agents get <slug>` includes that Agent's delegated-child denial
@@ -901,7 +922,7 @@ does not silently discard it. Conversation naming will return when it is part
 of the shared execution contract.
 
 ```
-station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
+station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--client-turn-id=<key>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
 ```
 
 Examples:
@@ -921,6 +942,33 @@ station chat codex "Continue" --conversation="$CONVERSATION_ID" --approval-mode=
 Environment. The controlling Station sends the canonical Environment + Agent
 target to that Environment for resolution. The CLI never selects an engine,
 connection, provider, tunnel, or remote API URL for execution.
+
+Each user turn gets a UUID `clientTurnId` before HTTP. To retain the identity
+across separate invocations, pass `--client-turn-id=<key>`; it must be nonblank
+and at most 200 characters. Valid key bytes are preserved, including surrounding
+spaces. A new chat derives its Conversation ID as `cli:<sha256(clientTurnId)>`;
+an explicit `--session` or `--conversation` remains authoritative. Reusing a key
+means retrying the same operation with the same message, target, and options.
+Use a fresh key for another user turn. Two callers choosing the same explicit
+key address the same new Conversation; the server's existing authorization
+still applies. A refusal never falls back to a different Conversation.
+
+`--json` success and pending-request results include `clientTurnId` and
+`conversationId`, even when the API receipt does not echo the key. If chat fails
+after preparing the operation, both executable entry points write one JSON
+object to stderr and exit 1:
+
+```json
+{"success":false,"error":"<existing CLI error message>","clientTurnId":"<key>","conversationId":"<bound conversation>"}
+```
+
+Use `--json` or choose the key before sending to retain a retry handle if the
+response is lost. Text-mode errors do not expose generated keys. An uncertain
+response can mean the send took effect: inspect the Conversation before deciding
+to retry, then reuse the original key and binding. For a new-chat retry, repeat
+the original command with its key; for a continuation, also retain its original
+`--session`/`--conversation`. Keys supply identity, not a safe-replay policy or a
+guaranteed retention window. The CLI never resends automatically.
 
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. The
@@ -1077,7 +1125,8 @@ resolved current Session/task and their output identifies both the durable
 `conversationId` and `currentSessionId`. A Conversation selector does not create
 a Task or grant task-supervision authority.
 
-Creation accepts only the authored prompt, target, and optional parent Task.
+Creation accepts the authored prompt, target, optional parent Task, and an
+optional caller-owned attempt id for prepared portable execution.
 The serving Station produces the resulting Conversation and Session identities;
 they are response handles, never caller-selected create fields.
 
@@ -1103,6 +1152,64 @@ Delegating to an External agent by its Agent ID on a saved Environment:
 station delegate --agent=codex --on=env-media-host --model=gpt-5.6-sol "Review the diff" --json
 station delegate respond task:0f3c... req-1 accept --json
 ```
+
+#### Require a source version before execution
+
+Prepared delegation checks the receiving Station's existing, operator-offered
+Git checkout before starting work. Supply all four flags together:
+
+```bash
+station delegate --agent=codex --on=env-worker \
+  --portable-project=<portable-project-id> --resource=<resource-id> \
+  --source-commit=<full-git-object-id> --attempt-id=review-1 \
+  --json "Review this revision"
+```
+
+Use the portable Project and resource identities admitted by the receiver;
+matching a Project slug or choosing a path does not authorize the resource.
+The receiver needs the `executionPreparation` and `delegationAttemptClaims`
+capabilities. The new workspace variant fails closed on older receivers.
+For a direct receiver request, the caller needs a current delegation-peer
+grant; an ordinary operator or Device credential cannot own an attempt claim.
+With `--on`, the serving Station forwards through its configured peer grant;
+SSH portable dispatch remains unsupported.
+
+`--source-commit` accepts a full lowercase 40- or 64-character hexadecimal
+Git object id. The CLI sends it explicitly; it reads no local repository.
+`--attempt-id` is a caller-owned token of 1–128 characters: a letter or digit,
+then letters, digits, dots, underscores, colons or hyphens. Keep the id with
+the original intent for reconciliation. These four flags are create-only and
+cannot be combined with `--project`, `--project-path` or `--cwd`.
+
+The receiver refuses a different commit, changed tracked files or submodule
+commits, and unverifiable tracked state. Untracked files are allowed and counted.
+Nothing is transferred or installed. The receipt at
+`data.resolution.preparation` in JSON records **version matched when checked**;
+it does not protect the checkout from writers during execution or certify the
+Agent's eventual result. See [remote execution preparation](../design/remote-execution-preparation.md).
+
+#### Inspect a delegation attempt
+
+```bash
+station delegate attempt review-1 --station=<executing-receiver> --json
+```
+
+This reads the actual receiver's
+`GET /api/orchestration/delegations/attempts/:attemptId` endpoint once. `--on`
+is refused because lookup is receiver-local, not forwarded. Authenticate with
+the **same current delegation-peer grant** that owns the claim. An ordinary
+operator/Device credential or a different peer grant is refused. A CLI talking
+to a forwarding controller cannot use that controller's server-held peer
+credential automatically; this command does not export it or broaden access.
+
+JSON returns `{ok:true,kind:"delegate.attempt",data:{attemptId,state,...}}`.
+Exit 0 means the lookup succeeded, not that work completed. The receiver may
+report `none`, `preparing`, `accepted`, `unresolved` or `refused`, with its
+recorded Task, accepted initial turn, or refusal code when available. Human
+output includes those facts and a reminder that observation does not authorize
+resending. There is no create, continuation, cancellation, polling or retry in
+this command. A lost reply, `none`, `preparing` or `unresolved` never authorizes
+another dispatch. See [attempt claims](../guides/delegation-attempt-claims.md).
 
 #### Recorded versus acknowledged decisions
 
@@ -2279,7 +2386,7 @@ station environment show
 station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
-station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>]
 station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -2334,6 +2441,19 @@ station environment peers remove <environment-id>
   never changes Serve and Station never enables Funnel. The printed QR and
   link grant **Standard** (`orchestration:read orchestration:operate
   terminal:operate`), the same grant the **Paired devices** panel offers.
+  Preapproved invitations cannot carry protected management or consent scopes
+  such as `relay:manage`, `access:approve` or `consent:decide`; those permissions
+  need their separate operator promotion. Running commands and full Device
+  access remain supported explicit grants.
+  Creating the invitation approves its selected access: the recipient can
+  redeem it once before expiry without a second approval. `--scope` replaces
+  Standard with the named space- or comma-separated scopes. `--browser-url`
+  adds an HTTP(S) browser invitation pointing at the web UI address you supply,
+  keeping its one-time proof in the fragment. Supply the web address, which can
+  differ from the API listener but must proxy that same Station. Browser
+  invitations pair through the web origin; the command does not guess a port.
+  `--require-approval` retains the request-and-host-confirmation flow. Neither form gives an invited
+  Device the host's private browser-administration authority.
   `--payload-only` is the desktop SSH launcher's machine flow: it names no
   scope, so the Station issues its default grant.
 - `environment access request` is the requester side of device pairing: it asks a
@@ -3450,6 +3570,13 @@ without attempting creation when verification fails.
 ### Open an authorized local browser session
 
 `station open [--home=<directory>] [--instance=<name>]` opens an already-running local instance through its one-time browser authorization. Multiple live instances require an explicit selection. A failed authorization does not silently open an unpaired page. The default form keeps the capability out of stdout; the explicit `--print` form prints the one-time sign-in link. `station doctor` in the packaged client reuses the target diagnostic report; source-checkout doctor retains its development checks.
+
+Bare `environment access list|approve|deny` and `environment operator passkeys`
+prefer the live local listener recorded in the selected Station home over a
+project or saved-default Station. Explicit `--station`, `--api-base` and
+`STATION_TARGET` keep their existing precedence and loopback requirement.
+Use the same `STATION_HOME` and CLI channel as the running host. Discovery does
+not authorize a remote Station or replace the local identity/proof checks.
 
 `station environment access approve <request-id> --api-base=http://127.0.0.1:<port>` requires the selected Station home (`STATION_HOME` or its saved local binding). The packaged client uses the same read-only record validation and listener challenge proof as the host. Non-interactive approval still requires `--force`; ordinary interactive use asks for confirmation.
 
