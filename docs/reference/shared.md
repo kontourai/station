@@ -30,7 +30,8 @@ owning declarations; import the canonical type rather than copying an interface.
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
-fingerprints the canonical event/envelope inventory and provides
+fingerprints the canonical event/envelope inventory together with the Full
+disclosure wording revision, and provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid
 timestamps, unclassified properties and invalid build provenance. It accepts
