@@ -49,7 +49,7 @@ import { encodeLine, isRecord, NdjsonDecoder } from './ndjson.ts';
 
 export class SupervisorStartError extends Error {}
 
-export const LOCK_PENDING_GRACE_MS = 30_000;
+const LOCK_PENDING_GRACE_MS = 30_000;
 const PROBE_TIMEOUT_MS = 2_000;
 const MAX_EPOCH = 1_000_000_000;
 
