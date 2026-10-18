@@ -1260,6 +1260,7 @@ test.each([
   'queued-malformed',
   'queued-unknown',
   'consistent',
+  'compat-earliestnativeA-pending',
   ...(['old', 'v2', 'oldambiguous', 'earliestnative'] as const).flatMap(
     (format) =>
       (format === 'earliestnative'
@@ -1280,6 +1281,76 @@ test.each([
   async (order) => {
     const eventStore = new EventStore(':memory:');
     const store = eventStore.delegationResultStore();
+    let olderNativeRow:
+      | ReturnType<typeof store.listForChild>[number]
+      | undefined;
+    if (order === 'compat-earliestnativeA-pending') {
+      const a = eventStore.sessionTurnBoundaryAuthority().reserve!(
+        'child',
+        '2029-01-01T00:00:00Z',
+      );
+      if (a.kind !== 'owner')
+        throw new Error('independent actual A prerequisite');
+      const inputA = captureTurnIntent(
+        { threadId: 'child', input: 'A' },
+        { binding: {}, requiresFreshCompanions: false },
+      );
+      expect(
+        a.claim.prepareIntent!(inputA, undefined, '2029-01-01T00:00:01Z'),
+      ).toEqual({ kind: 'applied' });
+      expect(a.claim.beginInvocation('2029-01-01T00:00:02Z')).toEqual({
+        kind: 'applied',
+      });
+      expect(a.claim.accepted('N', '2029-01-01T00:00:03Z')).toEqual({
+        kind: 'applied',
+      });
+      eventStore.appendEvent({
+        eventId: 'owned-A-start',
+        threadId: 'child',
+        provider: 'claude',
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: inputA.intent.invocationId,
+        prompt: 'A',
+        createdAt: '2029-01-01T00:00:04Z',
+      });
+      eventStore.appendEvent({
+        eventId: 'owned-A-done',
+        threadId: 'child',
+        provider: 'claude',
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: inputA.intent.invocationId,
+        outputText: 'OLDER A OUTPUT',
+        createdAt: '1900-01-01T00:00:00Z',
+      });
+      expect(
+        eventStore.readInvocationTerminal(
+          'child',
+          inputA.intent.invocationId,
+          'N',
+        ).kind,
+      ).toBe('found');
+      store.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'owner', attribution: 'verified-bound' },
+      });
+      const key = 'settled:child:N';
+      store.record({
+        childConversationId: 'child',
+        transitionKey: key,
+        transition: 'settled',
+        parentConversationId: 'parent',
+        childSessionId: 'child',
+        childTurnId: 'N',
+        outcome: 'completed',
+        deliveryId: `dr-${createHash('sha256').update(`child\u0000${key}`).digest('hex').slice(0, 40)}`,
+        text: 'OLDER A OUTPUT',
+      });
+      olderNativeRow = store.listForChild('child')[0];
+    }
     const starts: string[] = [];
     const deliveryKeys: string[] = [];
     const owned = eventStore.sessionTurnBoundaryAuthority().reserve!(
@@ -1463,6 +1534,12 @@ test.each([
             5,
           );
       eventStore.appendEvent(done);
+      if (order === 'compat-earliestnativeA-pending') {
+        await delivery.reconcile();
+        expect(starts).toEqual([]);
+        expect(store.listForChild('child')).toEqual([olderNativeRow]);
+        return;
+      }
       if (order.startsWith('compat-')) {
         const [, format, state] = order.split('-');
         parentBusy =
