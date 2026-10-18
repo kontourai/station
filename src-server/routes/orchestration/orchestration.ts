@@ -85,6 +85,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import { providerFailure } from '../../providers/provider-failure.js';
 import type {
   RequestDelegationResolver,
   ResolvedRequestDelegation,
@@ -2757,6 +2758,7 @@ export function createOrchestrationRoutes(
         // the exact provider turn identity needed for terminal settlement.
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error:
               'Foreground Agent execution may have started but did not return a provider turn id',
@@ -2825,6 +2827,7 @@ export function createOrchestrationRoutes(
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: error.code,
@@ -2839,6 +2842,7 @@ export function createOrchestrationRoutes(
       if (error instanceof ForegroundMessageTurnIdentityUnavailableError) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: error.code,
@@ -2850,6 +2854,7 @@ export function createOrchestrationRoutes(
       if (isForegroundIndeterminateShape(error)) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -2993,6 +2998,7 @@ export function createOrchestrationRoutes(
         if (!isForegroundDispatchHandle(data)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error:
                 'Agent/engine handoff may have started but did not return a provider turn id',
@@ -3009,6 +3015,7 @@ export function createOrchestrationRoutes(
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
               code: error.code,
@@ -3026,6 +3033,7 @@ export function createOrchestrationRoutes(
         ) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
               code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -3417,6 +3425,7 @@ export function createOrchestrationRoutes(
         if (!isForegroundDispatchHandle(data)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error:
                 'Foreground Agent continuation may have started but did not return a provider turn id',
@@ -3439,6 +3448,7 @@ export function createOrchestrationRoutes(
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: error.code,
@@ -3453,6 +3463,7 @@ export function createOrchestrationRoutes(
         if (error instanceof ForegroundMessageTurnIdentityUnavailableError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: error.code,
@@ -3464,6 +3475,7 @@ export function createOrchestrationRoutes(
         if (isForegroundIndeterminateShape(error)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -5863,7 +5875,12 @@ export function createOrchestrationRoutes(
                 }
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
-              ? { code: error.code, retryable: error.retryable }
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
               : {}),
             // #3386: a folder Station will not continue in; the same
             // request is refused again, so clients offer no retry.
@@ -5873,7 +5890,12 @@ export function createOrchestrationRoutes(
             // #3429: the engine was not ready and nothing was created; the
             // reason is shown and the same request may be retried.
             ...(error instanceof AdoptionEngineNotReadyError
-              ? { code: error.code, retryable: error.retryable }
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError
               ? {
@@ -5883,12 +5905,12 @@ export function createOrchestrationRoutes(
                     ? {}
                     : {
                         kind: error.kind,
-                        retryable: error.retryable,
                         failurePhase: error.failurePhase,
                       }),
-                  ...(error.code
-                    ? { code: error.code, retryable: error.retryable }
-                    : {}),
+                  ...(error.code ? { code: error.code } : {}),
+                  ...(error.retryable === undefined
+                    ? {}
+                    : { retryable: error.retryable }),
                   ...(error.indeterminateSession
                     ? {
                         outcome: 'indeterminate',

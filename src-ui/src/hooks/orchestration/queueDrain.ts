@@ -1,5 +1,7 @@
 import {
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -47,6 +49,14 @@ import { isReplayThread } from './replay/replay-registry';
  * this discriminator must consult the parsed body code, not just the class
  * and status.
  */
+const PROVIDER_REJECTION_CODES: ReadonlySet<string> = new Set([
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
+]);
+
 const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   'resource_engine_start_capacity',
   'adoption_continuation_in_progress',
@@ -84,12 +94,12 @@ function isDefinitiveClientRejection(error: unknown): boolean {
   }
   if (
     error.code !== undefined &&
-    ((error.retryable === true &&
-      (error.kind === 'busy' || error.kind === 'unavailable')) ||
-      RETRYABLE_REJECTION_CODES.has(error.code))
-  ) {
+    (RETRYABLE_REJECTION_CODES.has(error.code) ||
+      (PROVIDER_REJECTION_CODES.has(error.code) &&
+        (error.kind === undefined || error.retryable !== false)))
+  )
     return false;
-  }
+
   return true;
 }
 

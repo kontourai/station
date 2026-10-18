@@ -8,7 +8,10 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
 } from '@kontourai/station-contracts/provider';
-import type { ProviderFailure } from '@kontourai/station-contracts/provider-failure';
+import type {
+  ProviderRuntimeErrorBody,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalAcknowledgement,
   type ApprovalStatus,
@@ -926,10 +929,11 @@ export class MuseServeSession {
       this.closeOpenTools(turn);
       this.settle(turn, {
         method: 'runtime.error',
+        severity: 'error',
         ...providerFailure('engine_crashed'),
         message,
         code: MUSE_SERVE_HOST_EXITED_CODE,
-      });
+      } satisfies ProviderRuntimeErrorBody);
     }
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
@@ -1081,6 +1085,7 @@ export class MuseServeSession {
       const detail = readString(error.message) ?? readString(params.reason);
       this.settle(turn, {
         method: 'runtime.error',
+        severity: 'error',
         ...providerFailure('provider_error'),
         code: ENGINE_TURN_FAILED_CODE,
         message: `The Muse turn failed${
@@ -1091,7 +1096,7 @@ export class MuseServeSession {
         ...(typeof error.retryable === 'boolean'
           ? { retriable: error.retryable }
           : {}),
-      });
+      } satisfies ProviderRuntimeErrorBody);
       return;
     }
     // An open terminal this build does not know: the turn is over, with no
@@ -2138,12 +2143,7 @@ export class MuseServeSession {
           finishReason: 'stop' | 'cancelled' | 'other';
         }
       | { method: 'turn.aborted'; reason: string }
-      | (ProviderFailure & {
-          method: 'runtime.error';
-          message: string;
-          code: string;
-          retriable?: boolean;
-        }),
+      | (ProviderRuntimeErrorBody & { code: string }),
   ): void {
     if (turn.settled) return;
     turn.settled = true;
@@ -2187,7 +2187,7 @@ export class MuseServeSession {
           ? { retriable: outcome.retriable }
           : {}),
         ...(metadata ? { metadata } : {}),
-      });
+      } satisfies ProviderRuntimeErrorEvent);
     }
     turn.resolveSettled();
     this.forgetSettledTurns();

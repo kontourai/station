@@ -42,8 +42,26 @@ import {
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
+export const PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE =
+  'provider-plan-quota-exhausted';
+export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
+  'engine-decision-unacknowledged';
+export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
+export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
+export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
+export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
+export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
+  'confined_full_access_unavailable';
+export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
+export const RESOURCE_ENGINE_START_CAPACITY_CODE =
+  'resource_engine_start_capacity';
+export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
+export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
+  'adoption_continuation_in_progress';
+
 /** Fixed eligibility for a caller-requested retry; never an automatic replay instruction. */
 export const PROVIDER_FAILURE_RETRYABLE = {
+  warning: false,
   auth: false,
   rate_limited: true,
   quota_exhausted: false,
@@ -67,13 +85,24 @@ export interface ProviderFailure {
   kind: ProviderFailureKind;
   retryable: boolean;
   /** Refused means no provider-visible effect; failed may have spent resources. */
-  failurePhase: 'refused' | 'failed';
+  failurePhase: 'refused' | 'failed' | 'indeterminate';
   /** Earliest known retry time, as an ISO 8601 timestamp. */
   retryAfter?: string;
 }
 
 /** Existing diagnostic codes retain their wire spelling, including warning codes. */
 export const PROVIDER_FAILURE_KINDS = {
+  [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
+  [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
+  [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',
+  [SESSION_RECOVERY_FAILED_CODE]: 'unavailable',
+  [SESSION_START_INDETERMINATE_CODE]: 'indeterminate',
+  [CONFINED_FULL_ACCESS_UNAVAILABLE_CODE]: 'permission_denied',
+  [SESSION_START_IN_FLIGHT_CODE]: 'busy',
+  [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
+  [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
+  [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
   'muse-terminal-not-completed': 'provider_error',
@@ -98,20 +127,20 @@ export const PROVIDER_FAILURE_KINDS = {
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MODEL_NOT_ADVERTISED_CODE]: 'model_unavailable',
   [SESSION_REATTACH_CONFLICT_CODE]: 'conflict',
-  [APPROVAL_ESCALATION_REQUIRES_RESTART_CODE]: 'permission_denied',
+  [APPROVAL_ESCALATION_REQUIRES_RESTART_CODE]: 'warning',
   [ENGINE_SESSION_BINDING_DEAD_CODE]: 'session_gone',
   [ENGINE_TURN_FAILED_CODE]: 'provider_error',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
-  [MUSE_LINGERING_CHILD_REAPED_CODE]: 'cancelled',
-  [MUSE_HELD_TURN_UNFINISHED_CODE]: 'indeterminate',
+  [MUSE_LINGERING_CHILD_REAPED_CODE]: 'warning',
+  [MUSE_HELD_TURN_UNFINISHED_CODE]: 'warning',
   [MUSE_TURN_SLOT_RELEASING_CODE]: 'busy',
-  [MUSE_APPROVAL_EXPIRED_CODE]: 'timeout',
-  [MUSE_APPROVAL_DECIDE_FAILED_CODE]: 'provider_error',
-  [MUSE_SERVE_UNAVAILABLE_CODE]: 'input_unsupported',
-  [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'permission_denied',
+  [MUSE_APPROVAL_EXPIRED_CODE]: 'warning',
+  [MUSE_APPROVAL_DECIDE_FAILED_CODE]: 'warning',
+  [MUSE_SERVE_UNAVAILABLE_CODE]: 'warning',
+  [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
   [MUSE_SERVE_HOST_EXITED_CODE]: 'engine_crashed',
-  [MUSE_SERVE_STOP_UNCONFIRMED_CODE]: 'indeterminate',
+  [MUSE_SERVE_STOP_UNCONFIRMED_CODE]: 'warning',
   [PROVIDER_TURN_IN_PROGRESS_CODE]: 'busy',
   [PROVIDER_SESSION_STARTING_CODE]: 'busy',
   [PROVIDER_SESSION_START_FAILED_CODE]: 'unavailable',

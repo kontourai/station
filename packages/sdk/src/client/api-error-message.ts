@@ -40,7 +40,7 @@ export class StationHttpError extends Error {
   readonly status: number;
   readonly kind?: ProviderFailureKind;
   readonly retryable?: boolean;
-  readonly failurePhase?: 'refused' | 'failed';
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   /**
    * The response's `Retry-After` in milliseconds, when it sent one. Station's
@@ -74,7 +74,7 @@ export class StationHttpError extends Error {
       code?: string;
       details?: unknown;
       kind?: ProviderFailureKind;
-      failurePhase?: 'refused' | 'failed';
+      failurePhase?: 'refused' | 'failed' | 'indeterminate';
     },
   ) {
     super(message ?? `HTTP ${status}`);
@@ -135,7 +135,7 @@ export interface EnvelopeFailureResponse {
 /** Everything a failure envelope said, with the status it arrived under. */
 export interface EnvelopeFailure {
   kind?: ProviderFailureKind;
-  failurePhase?: 'refused' | 'failed';
+  failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   /** The observed HTTP status — a 2xx too, for a `success:false` body. */
   status: number;
@@ -286,7 +286,11 @@ export function readEnvelopeFailure(
   ) {
     failure.kind = raw.kind as ProviderFailureKind;
   }
-  if (raw?.failurePhase === 'refused' || raw?.failurePhase === 'failed') {
+  if (
+    raw?.failurePhase === 'refused' ||
+    raw?.failurePhase === 'failed' ||
+    raw?.failurePhase === 'indeterminate'
+  ) {
     failure.failurePhase = raw.failurePhase;
   }
   const code = envelopeCode(body);

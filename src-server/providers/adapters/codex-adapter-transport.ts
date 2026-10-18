@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import type {
   ApprovalStatus,
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
@@ -1340,7 +1341,7 @@ export class CodexAdapterTransport {
       turnId,
       message,
       code: 'codex-turn-orphaned',
-    });
+    } satisfies ProviderRuntimeErrorEvent);
   }
 
   /**

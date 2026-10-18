@@ -155,6 +155,23 @@ describe('readEnvelopeFailure / envelopeError', () => {
       failurePhase: 'refused',
       code: 'new-engine-diagnostic',
     });
+    expect(
+      envelopeError(
+        response(409),
+        {
+          success: false,
+          error: 'Uncertain',
+          kind: 'indeterminate',
+          retryable: true,
+          failurePhase: 'indeterminate',
+        },
+        'fallback',
+      ),
+    ).toMatchObject({
+      kind: 'indeterminate',
+      retryable: false,
+      failurePhase: 'indeterminate',
+    });
     // Old servers retain the same eligibility for existing public codes.
     expect(
       envelopeError(

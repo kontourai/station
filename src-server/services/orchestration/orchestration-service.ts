@@ -70,11 +70,16 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
+  MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
   readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -96,6 +101,7 @@ import {
   PROVIDER_FAILURE_RETRYABLE,
   type ProviderFailure,
   type ProviderFailureKind,
+  SESSION_START_IN_FLIGHT_CODE,
 } from '@kontourai/station-contracts/provider-failure';
 import type {
   CanonicalRuntimeEvent,
@@ -162,6 +168,7 @@ import {
 } from '../../providers/adapter-shape.js';
 import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
   nativeSessionIdentityMatchesSource,
@@ -603,7 +610,7 @@ export class OrchestrationCommandDispatchError extends Error {
   readonly outcome?: 'indeterminate';
   readonly retryable?: boolean;
   readonly kind?: ProviderFailureKind;
-  readonly failurePhase?: 'refused' | 'failed';
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   constructor(
     message: string,
@@ -622,6 +629,7 @@ export class OrchestrationCommandDispatchError extends Error {
       this.outcome = 'indeterminate';
       this.kind = 'indeterminate';
       this.retryable = false;
+      this.failurePhase = 'indeterminate';
     } else if (code) {
       this.code = code;
       this.kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, code)
@@ -632,20 +640,36 @@ export class OrchestrationCommandDispatchError extends Error {
           )[code]
         : undefined;
       this.retryable =
-        this.kind === undefined
-          ? code === 'session_start_in_flight' ||
-            code === 'resource_engine_start_capacity'
-          : PROVIDER_FAILURE_RETRYABLE[this.kind];
+        this.kind === undefined ? false : PROVIDER_FAILURE_RETRYABLE[this.kind];
+      if (this.kind === 'indeterminate') this.failurePhase = 'indeterminate';
     }
-    if (refusal) {
+    if (refusal && !indeterminateTurnStart) {
       this.kind = refusal.kind;
       this.retryable = refusal.retryable;
       this.failurePhase = refusal.failurePhase;
     }
+    if (
+      indeterminateTurnStart ||
+      indeterminateSession ||
+      this.kind === 'indeterminate'
+    ) {
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
+      this.outcome = 'indeterminate';
+    }
   }
 }
 
-/** Compatibility for adapters whose pre-effect readiness refusal carries only a code. */
+const LEGACY_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  CLIENT_TURN_IN_FLIGHT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+]);
+
+/** Only the legacy pre-effect codes can establish refusal without typed metadata. */
 function retryableAdapterRefusalCode(error: unknown): string | undefined {
   if (
     !(error instanceof Error) ||
@@ -653,20 +677,18 @@ function retryableAdapterRefusalCode(error: unknown): string | undefined {
     typeof error.code !== 'string'
   )
     return undefined;
-  const kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, error.code)
-    ? (PROVIDER_FAILURE_KINDS as Readonly<Record<string, ProviderFailureKind>>)[
-        error.code
-      ]
-    : undefined;
-  return kind === 'busy' || kind === 'unavailable' ? error.code : undefined;
+  return LEGACY_ADAPTER_REFUSAL_CODES.has(error.code) ? error.code : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
-export class SessionReattachConflictError extends Error {
+export class SessionReattachConflictError extends ProviderRefusalError {
   readonly code = SESSION_REATTACH_CONFLICT_CODE;
 
   constructor(readonly reason: SessionReattachConflictReason) {
-    super(`${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`);
+    super(
+      `${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`,
+      PROVIDER_FAILURE_KINDS[SESSION_REATTACH_CONFLICT_CODE],
+    );
   }
 }
 
@@ -678,12 +700,13 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-class SessionStopWhileStartingError extends Error {
-  readonly code = 'session_start_in_flight';
+class SessionStopWhileStartingError extends ProviderRefusalError {
+  readonly code = SESSION_START_IN_FLIGHT_CODE;
 
   constructor(threadId: string, timeoutMs: number) {
     super(
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
+      PROVIDER_FAILURE_KINDS[SESSION_START_IN_FLIGHT_CODE],
     );
     this.name = 'SessionStopWhileStartingError';
   }
@@ -8949,7 +8972,10 @@ export class OrchestrationService {
               typeof error.code === 'string'
             ? error.code
             : retryableAdapterRefusalCode(error),
-        error instanceof SendTurnRefusedError ? error : undefined,
+        error instanceof SendTurnRefusedError ||
+          error instanceof ProviderRefusalError
+          ? error
+          : undefined,
       );
     } finally {
       if (dispatchedTurnThread !== undefined) {

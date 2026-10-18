@@ -1,3 +1,4 @@
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerFailure } from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
@@ -1661,7 +1662,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             severity: 'error',
             code: error.code,
             message: error.message,
-          });
+          } satisfies ProviderRuntimeErrorEvent);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -2665,7 +2666,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           severity: 'error',
           message:
             'The engine process could not be terminated during credential-refusal recovery.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw destroyError;
       }
       if (this.sessions.get(threadId) !== record) return;
@@ -2714,7 +2715,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           severity: 'error',
           message:
             'The engine session could not be re-established after its credential request was refused.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw error;
       }
     } finally {
@@ -2902,7 +2903,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
             message: PROVIDER_PLAN_QUOTA_MESSAGE,
             details: providerQuotaEventDetails(quota),
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = errorMessage(error);
           this.publish({
@@ -2917,7 +2918,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             message: coReportedCause
               ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
               : baseMessage,
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';
         record.session.updatedAt = new Date().toISOString();

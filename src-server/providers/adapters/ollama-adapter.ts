@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -678,7 +679,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       ...providerFailure('provider_error'),
       severity: 'error',
       message,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(threadId, { status: 'ready', updatedAt: completedAt });
     this.publish({
       eventId: crypto.randomUUID(),

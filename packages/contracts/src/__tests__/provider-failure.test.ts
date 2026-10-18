@@ -1,70 +1,101 @@
-import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CONFINEMENT_REFUSAL_CODES } from '../execution-confinement.js';
-import { CONTINUATION_WORKSPACE_REFUSAL_CODES } from '../execution-target.js';
 import {
   PROVIDER_FAILURE_KINDS,
   PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailureKind,
 } from '../provider-failure.js';
 
-// Discover the contract exports independently: adding a code must not silently
-// inherit a classification or disappear from a test that only iterates the map.
-const modules = await Promise.all(
-  readdirSync(new URL('..', import.meta.url))
-    .filter((name) => name.endsWith('.ts'))
-    .map(async (name) => ({
-      name,
-      exports: await import(`../${name.slice(0, -3)}.ts`),
-    })),
-);
+// Independent wire expectations: changing a mapping or its retry semantics is
+// a contract decision, even when the replacement is another valid kind.
+const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
+  [
+    ['SESSION_START_INDETERMINATE', 'indeterminate', false],
+    ['continuation_engine_not_ready', 'unavailable', true],
+    ['adoption_continuation_in_progress', 'busy', true],
+    ['approval-escalation-requires-restart', 'warning', false],
+    ['approval-full-access-not-granted', 'permission_denied', false],
+    ['attachment_input_unsupported', 'input_unsupported', false],
+    ['authentication_rate_limited', 'rate_limited', true],
+    ['client_protocol_invalid', 'input_unsupported', false],
+    ['client_protocol_unsupported', 'input_unsupported', false],
+    ['client_turn_in_flight', 'busy', true],
+    ['client_turn_input_conflict', 'conflict', false],
+    ['client_turn_input_unsupported', 'input_unsupported', false],
+    ['confined_full_access_unavailable', 'permission_denied', false],
+    ['confinement_mechanism_unavailable', 'permission_denied', false],
+    ['confinement_not_observed', 'permission_denied', false],
+    ['confinement_workspace_incompatible', 'permission_denied', false],
+    [
+      'continuation_workspace_corrupt_worktree_binding',
+      'input_unsupported',
+      false,
+    ],
+    ['continuation_workspace_different_project', 'input_unsupported', false],
+    ['continuation_workspace_direct_mismatch', 'input_unsupported', false],
+    [
+      'continuation_workspace_project_context_missing',
+      'input_unsupported',
+      false,
+    ],
+    ['continuation_workspace_unbound', 'input_unsupported', false],
+    ['continuation_workspace_worktree_gone', 'input_unsupported', false],
+    ['continuation_workspace_worktree_moved', 'input_unsupported', false],
+    ['engine-decision-not-sent', 'warning', false],
+    ['engine-decision-unacknowledged', 'warning', false],
+    ['engine-session-binding-dead', 'session_gone', false],
+    ['engine-turn-failed', 'provider_error', false],
+    ['execution_engine_changed', 'conflict', false],
+    ['foreground_message_indeterminate', 'indeterminate', false],
+    ['model-override-unsupported', 'input_unsupported', false],
+    ['model_not_advertised', 'model_unavailable', false],
+    ['muse-approval-decide-failed', 'warning', false],
+    ['muse-approval-expired', 'warning', false],
+    ['muse-approval-mode-not-applied', 'warning', false],
+    ['muse-exit-without-terminal', 'engine_crashed', true],
+    ['muse-held-turn-unfinished', 'warning', false],
+    ['muse-lingering-child-reaped', 'warning', false],
+    ['muse-serve-host-exited', 'engine_crashed', true],
+    ['muse-serve-stop-unconfirmed', 'warning', false],
+    ['muse-serve-unavailable', 'warning', false],
+    ['muse-spawn-failed', 'unavailable', true],
+    ['muse-terminal-not-completed', 'provider_error', false],
+    ['muse-turn-idle-timeout', 'timeout', true],
+    ['muse-turn-timeout', 'timeout', true],
+    ['muse_turn_slot_releasing', 'busy', true],
+    ['principal_unresolved', 'auth', false],
+    ['project_identity_not_prepared', 'input_unsupported', false],
+    ['provider-plan-quota-exhausted', 'quota_exhausted', false],
+    ['provider_session_start_failed', 'unavailable', true],
+    ['provider_session_starting', 'busy', true],
+    ['provider_turn_in_progress', 'busy', true],
+    ['resource_engine_start_capacity', 'busy', true],
+    ['session-reattach-conflict', 'conflict', false],
+    ['session_ended', 'session_gone', false],
+    ['session_recovery_failed', 'unavailable', true],
+    ['session_start_in_flight', 'busy', true],
+    ['transcript-line-skipped', 'warning', false],
+  ];
 
 describe('provider failure wire contract', () => {
-  it('classifies every exported diagnostic code, including other contract modules', () => {
-    const codes = modules.flatMap(({ name, exports }) =>
-      Object.entries(exports)
-        .filter(
-          ([symbol, value]) =>
-            symbol.endsWith('_CODE') && typeof value === 'string',
-        )
-        .map(([symbol, value]) => ({
-          module: name,
-          symbol,
-          code: value as string,
-        })),
-    );
-    expect(codes.length).toBeGreaterThan(0);
-    const mapping: Readonly<Record<string, string>> = PROVIDER_FAILURE_KINDS;
-    for (const { module, symbol, code } of codes) {
-      expect(
-        mapping[code],
-        `${module}:${symbol} (${code}) has no failure kind`,
-      ).toBeDefined();
-    }
-    for (const code of [
-      ...CONFINEMENT_REFUSAL_CODES,
-      ...CONTINUATION_WORKSPACE_REFUSAL_CODES,
-    ]) {
-      expect(mapping[code], `${code} has no failure kind`).toBeDefined();
-    }
-  });
+  it.each(expected)(
+    '%s stays %s with retryable=%s',
+    (code, kind, retryable) => {
+      const mapping: Readonly<Record<string, ProviderFailureKind>> =
+        PROVIDER_FAILURE_KINDS;
+      const actualKind = mapping[code];
+      expect({
+        kind: actualKind,
+        retryable:
+          actualKind === undefined
+            ? undefined
+            : PROVIDER_FAILURE_RETRYABLE[actualKind],
+      }).toEqual({ kind, retryable });
+    },
+  );
 
-  it('requires changed input, authority, quota reset or inspection before those failures can be retried', () => {
-    expect(PROVIDER_FAILURE_RETRYABLE).toMatchObject({
-      auth: false,
-      quota_exhausted: false,
-      model_unavailable: false,
-      provider_error: false,
-      cancelled: false,
-      input_unsupported: false,
-      session_gone: false,
-      permission_denied: false,
-      conflict: false,
-      indeterminate: false,
-      busy: true,
-      timeout: true,
-      engine_crashed: true,
-      unavailable: true,
-      rate_limited: true,
-    });
+  it('pins every mapped diagnostic, including non-exported legacy codes', () => {
+    expect(Object.keys(PROVIDER_FAILURE_KINDS).sort()).toEqual(
+      expected.map(([code]) => code).sort(),
+    );
   });
 });

@@ -174,15 +174,18 @@ child-work report for that row; clients retain their existing state.
 
 `@kontourai/station-contracts/provider-failure` owns the closed
 `ProviderFailureKind`, `PROVIDER_FAILURE_RETRYABLE` and diagnostic-code mapping.
-Built-in adapter `runtime.error` writers use `ProviderRuntimeEvent`, which
-requires `kind`, computed `retryable` and `failurePhase`. Stored events and
+Server `runtime.error` constructors explicitly satisfy `ProviderRuntimeErrorEvent`
+or its emitter-body type. Both require `kind`, computed `retryable` and `failurePhase`. Stored events and
 third-party plugins can predate these additive fields; missing means unknown.
-`SendTurnRefusedError` requires an explicit kind, and `SessionStartRefusedError`
+`SendTurnRefusedError` and pre-effect server refusals require an explicit kind, and `SessionStartRefusedError`
 requires a mapped code. Their inherited getters compute eligibility from the
 same constants; subclasses cannot omit the required constructor input.
 
 `failurePhase: refused` promises no provider-visible effect. `failed` means
-work may already have run and spent resources. `retryable` describes whether
+work may already have run and spent resources. `indeterminate` means invocation
+may have happened and its outcome is unknown. A new send blocked by custody of a
+previous process is instead a refused `conflict`: that new send did not run.
+`retryable` describes whether
 the same input is eligible for a later caller-requested attempt; it never
 instructs clients to replay a failed or indeterminate action automatically.
 `retryAfter`, when known, is an ISO timestamp. Account quota failures carry
@@ -195,83 +198,119 @@ The fixed retryable kinds are `busy` (wait for the competing operation),
 `unavailable` (session startup failed; a manual attempt may start it again).
 All other kinds are non-retryable: `auth`, `quota_exhausted`,
 `model_unavailable`, `provider_error`, `cancelled`, `input_unsupported`,
-`session_gone`, `permission_denied`, `conflict` and `indeterminate`.
+`session_gone`, `permission_denied`, `conflict`, `indeterminate` and `warning`.
 
 The existing `retriable` event field retains its separate meaning. In
 particular, Codex can report that it will continue the same turn; changing it
-would change terminal-event folding. Warning-code classification below does
-not turn a warning into a failed turn or offer a retry. Generic engine codes
+would change terminal-event folding. Warning-only diagnostics use `warning`, with `retryable: false`. Approval
+expiry, lingering-child reaping and serve fallback describe observations or
+partial/background work; they do not fail or replay the completed turn. Generic engine codes
 can carry a more specific kind when structured quota details establish it.
 No existing diagnostic code is renamed or removed.
 
-| Diagnostic code | Kind |
-| --- | --- |
-| `approval-escalation-requires-restart` | `permission_denied` |
-| `approval-full-access-not-granted` | `permission_denied` |
-| `attachment_input_unsupported` | `input_unsupported` |
-| `authentication_rate_limited` | `rate_limited` |
-| `client_protocol_invalid` | `input_unsupported` |
-| `client_protocol_unsupported` | `input_unsupported` |
-| `client_turn_in_flight` | `busy` |
-| `client_turn_input_conflict` | `conflict` |
-| `client_turn_input_unsupported` | `input_unsupported` |
-| `confinement_mechanism_unavailable` | `permission_denied` |
-| `confinement_not_observed` | `permission_denied` |
-| `confinement_workspace_incompatible` | `permission_denied` |
-| `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` |
-| `continuation_workspace_different_project` | `input_unsupported` |
-| `continuation_workspace_direct_mismatch` | `input_unsupported` |
-| `continuation_workspace_project_context_missing` | `input_unsupported` |
-| `continuation_workspace_unbound` | `input_unsupported` |
-| `continuation_workspace_worktree_gone` | `input_unsupported` |
-| `continuation_workspace_worktree_moved` | `input_unsupported` |
-| `engine-session-binding-dead` | `session_gone` |
-| `engine-turn-failed` | `provider_error` |
-| `execution_engine_changed` | `conflict` |
-| `foreground_message_indeterminate` | `indeterminate` |
-| `model-override-unsupported` | `input_unsupported` |
-| `model_not_advertised` | `model_unavailable` |
-| `muse-approval-decide-failed` | `provider_error` |
-| `muse-approval-expired` | `timeout` |
-| `muse-approval-mode-not-applied` | `permission_denied` |
-| `muse-exit-without-terminal` | `engine_crashed` |
-| `muse-spawn-failed` | `unavailable` |
-| `muse-terminal-not-completed` | `provider_error` |
-| `muse-held-turn-unfinished` | `indeterminate` |
-| `muse-lingering-child-reaped` | `cancelled` |
-| `muse-serve-host-exited` | `engine_crashed` |
-| `muse-serve-stop-unconfirmed` | `indeterminate` |
-| `muse-serve-unavailable` | `input_unsupported` |
-| `muse-turn-idle-timeout` | `timeout` |
-| `muse-turn-timeout` | `timeout` |
-| `muse_turn_slot_releasing` | `busy` |
-| `principal_unresolved` | `auth` |
-| `project_identity_not_prepared` | `input_unsupported` |
-| `provider_session_start_failed` | `unavailable` |
-| `provider_session_starting` | `busy` |
-| `provider_turn_in_progress` | `busy` |
-| `session-reattach-conflict` | `conflict` |
-| `session_ended` | `session_gone` |
+| Diagnostic code | Kind | Retryable |
+| --- | --- | --- |
+| `adoption_continuation_in_progress` | `busy` | `true` |
+| `approval-escalation-requires-restart` | `warning` | `false` |
+| `approval-full-access-not-granted` | `permission_denied` | `false` |
+| `attachment_input_unsupported` | `input_unsupported` | `false` |
+| `authentication_rate_limited` | `rate_limited` | `true` |
+| `client_protocol_invalid` | `input_unsupported` | `false` |
+| `client_protocol_unsupported` | `input_unsupported` | `false` |
+| `client_turn_in_flight` | `busy` | `true` |
+| `client_turn_input_conflict` | `conflict` | `false` |
+| `client_turn_input_unsupported` | `input_unsupported` | `false` |
+| `confined_full_access_unavailable` | `permission_denied` | `false` |
+| `confinement_mechanism_unavailable` | `permission_denied` | `false` |
+| `confinement_not_observed` | `permission_denied` | `false` |
+| `confinement_workspace_incompatible` | `permission_denied` | `false` |
+| `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
+| `continuation_workspace_different_project` | `input_unsupported` | `false` |
+| `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
+| `continuation_workspace_project_context_missing` | `input_unsupported` | `false` |
+| `continuation_workspace_unbound` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `engine-decision-not-sent` | `warning` | `false` |
+| `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-turn-failed` | `provider_error` | `false` |
+| `execution_engine_changed` | `conflict` | `false` |
+| `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `model_not_advertised` | `model_unavailable` | `false` |
+| `model-override-unsupported` | `input_unsupported` | `false` |
+| `muse_turn_slot_releasing` | `busy` | `true` |
+| `muse-approval-decide-failed` | `warning` | `false` |
+| `muse-approval-expired` | `warning` | `false` |
+| `muse-approval-mode-not-applied` | `warning` | `false` |
+| `muse-exit-without-terminal` | `engine_crashed` | `true` |
+| `muse-held-turn-unfinished` | `warning` | `false` |
+| `muse-lingering-child-reaped` | `warning` | `false` |
+| `muse-serve-host-exited` | `engine_crashed` | `true` |
+| `muse-serve-stop-unconfirmed` | `warning` | `false` |
+| `muse-serve-unavailable` | `warning` | `false` |
+| `muse-spawn-failed` | `unavailable` | `true` |
+| `muse-terminal-not-completed` | `provider_error` | `false` |
+| `muse-turn-idle-timeout` | `timeout` | `true` |
+| `muse-turn-timeout` | `timeout` | `true` |
+| `principal_unresolved` | `auth` | `false` |
+| `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `provider_session_start_failed` | `unavailable` | `true` |
+| `provider_session_starting` | `busy` | `true` |
+| `provider_turn_in_progress` | `busy` | `true` |
+| `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
+| `resource_engine_start_capacity` | `busy` | `true` |
+| `session_ended` | `session_gone` | `false` |
+| `session_recovery_failed` | `unavailable` | `true` |
+| `session_start_in_flight` | `busy` | `true` |
+| `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
+| `session-reattach-conflict` | `conflict` | `false` |
+| `transcript-line-skipped` | `warning` | `false` |
 
-The [contract inventory test](../../packages/contracts/src/__tests__/provider-failure.test.ts)
-discovers exported `*_CODE` strings from every contract module independently
-of this map, and also covers the confinement and continuation refusal arrays.
-The [delivery route test](../../src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts)
-exercises a pre-effect adapter refusal through HTTP and a same-key resend.
-The [SDK envelope tests](../../packages/sdk/src/__tests__/api-error-message.test.ts)
-cover classification transport, fixed retry computation and older-server codes.
-These are controlled tests; no live engine behavior is established by them.
+The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
+recursively discovers string `*_CODE` declarations in contracts and server code,
+including private constants and newly added files. Known out-of-scope constants
+are explicitly allowed by file, name and value: directory/command grants and
+Station Control containment are caller authority, Flow unreachable-gate claims
+are evidence governance, and person/native-title control codes do not represent
+turn execution or session startup. The guard refuses a new unclassified constant.
+Existing server import paths forward the relocated contract constants.
 
-Queue retention reads the SDK's computed `retryable` for coded `busy` and
-`unavailable` refusals, preserving the existing five-code eligibility set. Its remaining explicit
-codes describe other behavior: workspace/adoption/resource-policy exceptions,
-which refusals trigger bounded automatic redrain, different queue copy, or a
-change in the composer transaction. `useActiveChatSessionMessaging.ts` keeps
-its two-code composer-to-queue transition; `queueDrain.ts` keeps its three-code
-automatic-redrain policy. Widening either to all `busy` failures would change
-behavior for Muse slot release and ordinary active-turn refusals.
-`chatErrorTranslation.ts` retains code-specific corrective copy and hints;
-usage-limit recovery retains account reset, scope and explicit opt-in policy.
+The same guard requires every literal server `runtime.error` constructor to
+satisfy a strict writer type. Its two named reader exceptions reconstruct old
+observations (`monitoredRuntimeEventFrom`) or pass a small input to a terminal
+predicate (`isDelegationTerminalEvent`); neither publishes a new event. The
+recovery coordinator's error matches are parameter types for observed events,
+not emitters. A compiler-backed test proves that the real writer type rejects
+missing metadata while the legacy reader accepts it.
+
+The [pinned wire test](../../packages/contracts/src/__tests__/provider-failure.test.ts)
+states every code's expected kind and retryable value as independent literals;
+changing an existing mapping to another valid kind fails. The
+[projection route tests](../../src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts)
+reach handoff, continuation and receipted-command failures, including invocation
+uncertainty. The [delivery test](../../src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts)
+reaches ordinary foreground refusal and same-key resend. These use fakes, not
+live model calls.
+
+Station's model-provider SSE writer recognizes `insufficient_quota` only in a
+bounded structured body from a qualified upstream HTTP 429. It forwards a fixed
+kind, never that body or its text. The Station-agent relay distinguishes
+`quota_exhausted` from ordinary `rate_limited` and preserves the same safe text
+in live events and saved failure markers. The
+[relay tests](../../src-server/providers/__tests__/station-agent-adapter.test.ts)
+exercise both cases through the production SSE writer.
+
+Queue retention reads computed eligibility for its existing five provider
+refusal codes, with an explicit fallback when older or hand-built errors have no
+kind. The code membership bounds this migration to the behavior proved equivalent;
+a coarse kind does not expand queue policy. A `muse-spawn-failed` response keeps
+its old drop policy even if it carries an `unavailable` kind. The
+[queue tests](../../src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts)
+pin both behaviors. Code-specific automatic redrain, composer transitions,
+corrective copy, workspace/adoption authority and reset/opt-in recovery policy
+remain separate decisions. Broader retention for newly classified codes is deferred.
 
 ## Product telemetry observations
 

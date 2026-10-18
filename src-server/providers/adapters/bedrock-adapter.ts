@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -746,7 +747,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       ...providerFailure('provider_error'),
       severity: 'error',
       message: options.message,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(options.input.threadId, {
       status: 'ready',
       updatedAt: completedAt,

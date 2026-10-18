@@ -1017,6 +1017,9 @@ describe('Orchestration Routes', () => {
     await expect(readJson(response)).resolves.toEqual({
       success: false,
       error: 'Session started, but receipt persistence is unavailable.',
+      kind: 'indeterminate',
+      retryable: false,
+      failurePhase: 'indeterminate',
       receipt,
       outcome: 'indeterminate',
       receiptStatus: 'unavailable',
@@ -1403,6 +1406,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent message may have started. Do not retry automatically.',
@@ -1969,6 +1975,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toMatchObject({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',
@@ -1997,6 +2006,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -2035,6 +2047,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toEqual({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         error: expect.stringContaining('may have started'),
         code: 'foreground_message_indeterminate',
@@ -2083,6 +2098,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -3544,6 +3562,8 @@ describe('Orchestration Routes', () => {
 
     expect(response.status).toBe(409);
     expect(await readJson(response)).toEqual({
+      kind: 'busy',
+      failurePhase: 'refused',
       success: false,
       error: 'Continuation is being created — retry shortly.',
       code: 'adoption_continuation_in_progress',

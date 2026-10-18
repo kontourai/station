@@ -2129,6 +2129,11 @@ describe('MuseAdapter owned-child registration', () => {
     expect(refusal).toBeInstanceOf(SendTurnRefusedError);
     expect(refusal).not.toBeInstanceOf(MuseTurnSlotReleasingError);
     expect((refusal as Error).message).toContain('could not confirm');
+    expect(refusal).toMatchObject({
+      kind: 'conflict',
+      retryable: false,
+      failurePhase: 'refused',
+    });
 
     await expect(
       harness.adapter.stopSession('thread-survivor'),

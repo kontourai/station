@@ -32,3 +32,18 @@ export function providerFailureForCode(
         )[code];
   return providerFailure(kind ?? 'provider_error');
 }
+
+/** A confirmed pre-effect refusal; never use after a possible provider invocation. */
+export class ProviderRefusalError extends Error implements ProviderFailure {
+  readonly failurePhase = 'refused';
+  get retryable(): boolean {
+    return PROVIDER_FAILURE_RETRYABLE[this.kind];
+  }
+  constructor(
+    message: string,
+    readonly kind: ProviderFailureKind,
+  ) {
+    super(message);
+    this.name = 'ProviderRefusalError';
+  }
+}

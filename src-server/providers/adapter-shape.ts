@@ -35,11 +35,15 @@ import {
   type ProviderFailureCode,
   type ProviderFailureKind,
 } from '@kontourai/station-contracts/provider-failure';
+import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
-export class ProviderTurnEndedError extends Error {
+export class ProviderTurnEndedError extends ProviderRefusalError {
   constructor() {
-    super('The provider turn ended before the input could be enqueued.');
+    super(
+      'The provider turn ended before the input could be enqueued.',
+      'conflict',
+    );
     this.name = 'ProviderTurnEndedError';
   }
 }

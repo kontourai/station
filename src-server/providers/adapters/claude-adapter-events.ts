@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -488,7 +489,7 @@ export function mapClaudeSdkMessage({
         message:
           'The engine opened a different native conversation; the requested resume was refused.',
         metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       interruptEngine?.();
       return;
     }
@@ -966,7 +967,7 @@ export function mapClaudeSdkMessage({
         ...(resultTurn?.kind === 'provider'
           ? { metadata: claudeTurnTerminalMetadata(resultTurn) }
           : {}),
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       return;
     }
     // Claude emits a successful `result` for resume/init handshakes. It has

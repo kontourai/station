@@ -9,6 +9,7 @@ import type {
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalStatus,
   type ProviderRuntimeEvent as CanonicalRuntimeEvent,
@@ -797,7 +798,9 @@ export function mapStationAgentStreamEvent(options: {
         inferredCredentials || httpStatus === 401 || httpStatus === 403
           ? 'auth'
           : httpStatus === 429
-            ? 'rate_limited'
+            ? event.failureKind === 'quota_exhausted'
+              ? 'quota_exhausted'
+              : 'rate_limited'
             : 'provider_error',
       ),
       severity: 'error',
@@ -808,11 +811,16 @@ export function mapStationAgentStreamEvent(options: {
             // (`outwardTurnFailureText`), so a reloaded chat's projected
             // runtime error and marker de-duplicate to one card.
             outwardTransportError('sse')
-          : modelProviderFailureMessage(httpStatus),
+          : modelProviderFailureMessage(
+              httpStatus,
+              event.failureKind === 'quota_exhausted'
+                ? 'quota_exhausted'
+                : undefined,
+            ),
       code: 'station_agent_turn_failed',
       retriable: true,
       ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     return { failed: true };
   }
   return {};
@@ -1600,7 +1608,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       message: turnRejectionMessage(reason),
       code: 'station_agent_turn_unavailable',
       retriable: true,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
     finishNativeKnowledgeTurn(record.session.threadId, turnId);

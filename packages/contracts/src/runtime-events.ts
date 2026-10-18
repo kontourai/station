@@ -1274,6 +1274,14 @@ export type CanonicalRuntimeEvent =
   | ConversationForkedEvent;
 
 /** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
+export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;
+
+/** A session-source fragment whose emitter supplies the common envelope. */
+export type ProviderRuntimeErrorBody = Omit<
+  ProviderRuntimeErrorEvent,
+  'eventId' | 'provider' | 'threadId' | 'createdAt'
+>;
+
 export type ProviderRuntimeEvent =
   | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
-  | (RuntimeErrorEvent & ProviderFailure);
+  | ProviderRuntimeErrorEvent;

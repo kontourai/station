@@ -22,7 +22,10 @@ import {
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
   readApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
@@ -1346,7 +1349,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           input.threadId,
           new SendTurnRefusedError(
             'Station could not confirm that the previous Muse process stopped. It will try stopping it again; this message can be sent again after that.',
-            'indeterminate',
+            'conflict',
           ),
         );
       }
@@ -2411,7 +2414,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${outcome.omitStderr ? '' : this.stderrDetail(turn)}`,
           code: outcome.error.code,
           retriable: false,
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         break;
       case 'completed':
         this.publish({

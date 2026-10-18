@@ -2,6 +2,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { APICallError } from 'ai';
 import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -9,6 +10,10 @@ import {
   readSkillExperienceRelayContext,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  outwardTurnFailureText,
+  writeSSEError,
+} from '../../runtime/conversation/stream-orchestrator.js';
 import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
@@ -2699,6 +2704,48 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
       expect(serialized).not.toContain('sk-live-SECRET');
       expect(serialized).not.toContain('api.example.test');
       expect(serialized).not.toContain('The response stream failed.');
+    },
+  );
+
+  test.each([
+    ['code', 'insufficient_quota', 'quota_exhausted', false],
+    ['type', 'insufficient_quota', 'quota_exhausted', false],
+    ['code', 'rate_limit_exceeded', 'rate_limited', true],
+    ['message', 'insufficient_quota', 'rate_limited', true],
+  ] as const)(
+    'upstream 429 %s=%s survives the production SSE writer and relay',
+    async (field, value, kind, retryable) => {
+      const upstream = new APICallError({
+        message: SECRET,
+        url: 'https://api.example.test/v1/responses',
+        requestBodyValues: {},
+        statusCode: 429,
+        responseBody: JSON.stringify({
+          error: { message: SECRET, [field]: value },
+        }),
+      });
+      let wire = '';
+      await writeSSEError(
+        {
+          write: async (text: string) => {
+            wire += text;
+          },
+        },
+        upstream,
+      );
+      expect(wire).not.toContain(SECRET);
+      const frame: Record<string, unknown> = JSON.parse(
+        wire.slice('data: '.length).trim(),
+      );
+      const { error, events } = await runFailedTurn(frame);
+      expect(error).toMatchObject({
+        kind,
+        retryable,
+        failurePhase: 'failed',
+        details: { httpStatus: 429 },
+      });
+      expect(error?.message).toBe(outwardTurnFailureText(upstream));
+      expect(JSON.stringify(events)).not.toContain(SECRET);
     },
   );
 
