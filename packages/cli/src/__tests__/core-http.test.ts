@@ -543,7 +543,7 @@ describe('CLI core commands over HTTP', () => {
         // mock).
         res.write(':\n\n');
         pendingChatEventsResponse = res;
-        req.on('close', () => {
+        res.on('close', () => {
           if (pendingChatEventsResponse === res) {
             pendingChatEventsResponse = null;
           }
