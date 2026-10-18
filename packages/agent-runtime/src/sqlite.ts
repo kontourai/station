@@ -338,6 +338,27 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
   validateReceipts(result);
   return result;
 }
+/** Journal completion authority, independent of sink application/readiness. */
+function completedProjection(
+  state: ModelState,
+  key: RunKey,
+  requestId: string,
+  attempt: number,
+  tape: BodyRef,
+) {
+  const identity = {
+    key,
+    requestId,
+    attempt,
+    sequence: 0,
+    kind: 'completed' as const,
+  };
+  const expected = { ...identity, id: projectionId(identity), body: tape };
+  const committed = state.outbox.get(expected.id);
+  if (!committed || !same(committed.projection, expected))
+    throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+  return committed;
+}
 function validateLinks(
   database: DatabaseSync,
   policy: ModelPolicy,
@@ -379,6 +400,13 @@ function validateLinks(
           auditRefs.set(canonical(part), part);
         }
         if (attempt.tape) {
+          completedProjection(
+            state,
+            run.spec.key,
+            pin.pin.requestId,
+            attempt.attempt.number,
+            attempt.tape,
+          );
           const tape = readTape(readBody(database, policy, attempt.tape));
           if (
             tape.requestId !== attempt.attempt.requestId ||
@@ -725,22 +753,21 @@ export function openSqliteRuntimeProjection(options: {
                 return { kind: 'unavailable' };
             } else if (a.state === 'completed' && a.tape) {
               const id = projectionId({ ...identity, kind: 'completed' });
-              const committed = state.outbox.get(id);
-              const expected = {
-                ...identity,
-                id,
-                kind: 'completed',
-                body: a.tape,
-              };
+              const committed = completedProjection(
+                state,
+                key,
+                pin.pin.requestId,
+                a.attempt.number,
+                a.tape,
+              );
               const applied = database
                 .prepare(
                   'SELECT record FROM agent_runtime_projection WHERE id=?',
                 )
                 .get(id);
               if (
-                !committed?.acknowledged ||
-                !same(committed.projection, expected) ||
-                applied?.record !== canonical(expected)
+                !committed.acknowledged ||
+                applied?.record !== canonical(committed.projection)
               )
                 throw new RuntimeError('DURABLE_RECORD_DAMAGED');
               if (

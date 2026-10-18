@@ -40,6 +40,10 @@ mode and foreign keys; wrappers validate them and do not change host pragmas.
 External/nested transactions, future/partial schema and unsupported writers
 refuse. Body COMMIT precedes journal adoption; an orphan body grants nothing.
 Journal, operation receipt and outbox commit in one real transaction.
+Current journal validation ties every completed attempt to the exact owning
+completed outbox body before replay. This permits legitimate completed replay
+before run settlement or projection draining; sink acknowledgment/application
+remain additional ready-view requirements.
 An optional generic participant `maintenance` stage joins actual compaction
 writes when the triggering command returns expired; normal `commit` still
 excludes refusals. Both run before COMMIT and roll back on failure. Closing

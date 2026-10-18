@@ -53,3 +53,11 @@ runs, distinct or identical per-run request/attempt headers, one foreign tape
 reference substitution, unchanged journal/projection/BLOB authority and exact
 restoration. The owning completed marker/body relation and native header/prefix
 are checked in the same authorized read snapshot before returning ready.
+
+`r4-replay.test.ts` owns pre-settlement journal/recovery admission. Actual valid
+same-header tapes in two runs cannot replace an owning completed attempt's tape
+without matching its exact committed projection. The relation is shared with
+ready reads; ordinary journal replay requires no sink acknowledgment/application.
+The owner exercises real restored Volt replay, historical execute acknowledgment,
+unchanged authority on refusal and exact disposable-DB restoration, including
+only the attempted receipt side effect of the deliberately buggy baseline.
