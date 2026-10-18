@@ -594,6 +594,15 @@ test('DNT suppresses every publisher, including explicit feedback', async () => 
   const sink = await receiver();
   build.endpoint = sink.endpoint;
   const { live } = await service(sink.endpoint, {}, { DO_NOT_TRACK: 'yes' });
+  for (const publisher of ['kontour', 'operator'] as const) {
+    await expect(
+      live.acknowledgeDisclosure(
+        (await live.disclosure(publisher)).inventoryRevision,
+        publisher,
+        sink.endpoint,
+      ),
+    ).rejects.toThrow('DO_NOT_TRACK');
+  }
   await live.stationStarted();
   await flush(live);
   await live.submitFeedback({

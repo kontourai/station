@@ -15,6 +15,7 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -183,6 +184,10 @@ const makeTempDir = trackTempDirs();
 const disclosure = {
   acknowledged: false,
   inventoryRevision: 'inventory-revision',
+  publishers: {
+    operator: { tier: 'lite', reason: 'default', source: 'default' },
+    kontour: { tier: 'lite', reason: 'default', source: 'default' },
+  },
   events: { station_started: { description: 'Starts', properties: {} } },
 };
 
@@ -510,7 +515,8 @@ describe('persisted telemetry configuration during Agent activation', () => {
                       probe: {
                         protocol: 'station-product-probe/v1',
                         sourceId: '22222222-2222-4333-8444-555555555555',
-                        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+                        inventoryRevision:
+                          PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
                         checkedAt: '2026-10-11T06:00:00.000Z',
                         storage: 'postgres-schema-v1',
                       },

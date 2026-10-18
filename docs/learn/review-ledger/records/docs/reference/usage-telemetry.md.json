@@ -89,6 +89,7 @@
     "src-server/routes/system/__tests__/config.routes.test.ts",
 
     "src-server/security/coding-authority.ts",
+
     "src-ui/src/components/UsageTelemetryDisclosure.css"
   ],
 
