@@ -8,7 +8,7 @@
 .setting-inheritance__help {
   margin: 0 0 0.5rem;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
 }
 .setting-inheritance__layers {
   margin: 0;
@@ -22,7 +22,7 @@
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   color: var(--text-secondary);
 }
 .setting-inheritance__layer--in-effect {
@@ -34,12 +34,12 @@
   font-variant-numeric: tabular-nums;
 }
 .setting-inheritance__layer-effect {
-  font-size: 0.6875rem;
+  font-size: var(--k-text-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .setting-inheritance__note {
   margin: 0.5rem 0 0;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
 }
