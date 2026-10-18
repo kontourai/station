@@ -60,6 +60,27 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
   ).toBe(false);
 }, 30_000);
 
+test('preview delivers script delimiters, Unicode separators and template syntax byte-exact to the frame', async () => {
+  const payload = '</script>\u2028` ${agent.value}';
+  const service = new HtmlReplyPreview(makeTempDir('html-preview-bytes-'));
+  const result = await service.render(
+    {
+      html: `<template id="payload"><!--${payload}--></template><script>console.log(document.getElementById('payload').content.firstChild.data)</script>`,
+      height: 400,
+    },
+    800,
+    'dark',
+  );
+  const received = result.console.find((entry) => entry.text === payload);
+  expect(
+    received,
+    'the opaque frame must receive every authored byte',
+  ).toBeDefined();
+  expect(Buffer.from(received?.text ?? '', 'utf8')).toEqual(
+    Buffer.from(payload, 'utf8'),
+  );
+}, 30_000);
+
 test('preview rejects oversized layout, overflowing console and invalid viewport instead of returning partial output', async () => {
   const service = new HtmlReplyPreview(makeTempDir('html-preview-limits-'));
   await expect(

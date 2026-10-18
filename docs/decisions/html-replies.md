@@ -210,3 +210,11 @@ value. A mismatch, unreadable/unsupported diagnostic, timeout or URL override
 refuses preview with a fixed, clear error. The diagnostic target is closed;
 authored content uses a separate fresh target. This keeps system-browser support
 while failing closed for enterprise overrides and incompatible browser versions.
+
+
+Preview passes its complete sandbox document, diagnostic token, theme and theme
+values as CDP `Runtime.callFunctionOn` value arguments. The bootstrap function
+source is constant; the only preceding evaluation obtains the page global
+object. Agent-authored bytes never become part of that function source. The
+real preview regression reads script delimiters, Unicode separators and template
+syntax back from inside the opaque frame without changing their UTF-8 bytes.

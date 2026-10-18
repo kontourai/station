@@ -18,6 +18,11 @@ const LIMIT = {
   height: 2000,
 };
 
+// Keep authored values in CDP call arguments, never in JavaScript source.
+const PREVIEW_BOOTSTRAP = `function(documentHtml, token, theme, appearance) {
+  return new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.style='border:0;width:100%;height:100%';frame.srcdoc=documentHtml;document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==token)return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:theme,tokens:appearance},'*');document.body.append(frame)});
+}`;
+
 /** A fresh profile/process per render; never the person's browser-pane profile. */
 export class HtmlReplyPreview {
   private active = 0;
@@ -121,10 +126,23 @@ export class HtmlReplyPreview {
           'font-sans': 'system-ui,sans-serif',
           'font-mono': 'monospace',
         };
-        const expression = `new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.style='border:0;width:100%;height:100%';frame.srcdoc=${JSON.stringify(document)};document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==${JSON.stringify(token)})return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:${JSON.stringify(theme)},tokens:${JSON.stringify(appearance)}},'*');document.body.append(frame)})`;
+        const global = await send<{
+          result: { objectId?: string };
+          exceptionDetails?: unknown;
+        }>('Runtime.evaluate', { expression: 'globalThis' });
+        if (global.exceptionDetails || !global.result.objectId)
+          throw new HtmlReplyRefusal('HTML preview bootstrap failed');
         const evaluated = await send<{ exceptionDetails?: unknown }>(
-          'Runtime.evaluate',
-          { expression, awaitPromise: true, returnByValue: true },
+          'Runtime.callFunctionOn',
+          {
+            objectId: global.result.objectId,
+            functionDeclaration: PREVIEW_BOOTSTRAP,
+            arguments: [document, token, theme, appearance].map((value) => ({
+              value,
+            })),
+            awaitPromise: true,
+            returnByValue: true,
+          },
         );
         if (evaluated.exceptionDetails)
           throw new HtmlReplyRefusal('HTML preview bootstrap failed');
