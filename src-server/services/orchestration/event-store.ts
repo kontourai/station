@@ -1308,6 +1308,9 @@ function pairKey(
   return JSON.stringify([threadId, turnId, invocationId ?? null]);
 }
 
+const POSITIVE_TURN_START_SQL = `(turn_id IS NOT NULL AND typeof(json_extract(payload, '$.invocationId')) = 'text' AND length(json_extract(payload, '$.invocationId')) > 0)
+  OR json_extract(payload, '$.metadata.trigger') = 'provider'`;
+
 const SESSION_STATE_FACT_METHODS = [
   'request.opened',
   'request.resolved',
@@ -6371,11 +6374,16 @@ export class EventStore {
     // slot it anchors — see `latestTerminalEventForTurn`'s docblock for why
     // the terminal slot must be scoped to THIS turn's id, not the thread's
     // latest terminal.
-    const latestTurnStarted = this.latestEventByMethod(
+    const latestObservedStart = this.latestEventByMethod(
       threadId,
       'turn.started',
       bounded,
     );
+    const positiveStart = this.latestPositiveTurnStarted(threadId, bounded);
+    const latestTurnStarted =
+      positiveStart?.payload.invocationId !== undefined
+        ? positiveStart
+        : latestObservedStart;
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -6427,6 +6435,8 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
+      latestObservedStart,
+      positiveStart,
       latestTurnStarted,
       // archive#3557: the counterweight the block above already forecasts.
       // `firstTurnStartedWithPrompt`/`latestEventByMethod('turn.started')`
@@ -6458,7 +6468,11 @@ export class EventStore {
           )
         : undefined,
       this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded),
-      this.latestCurrentTurnRuntimeErrorEvent(threadId, bounded),
+      this.latestCurrentTurnRuntimeErrorEvent(
+        threadId,
+        bounded,
+        latestTurnStarted,
+      ),
       ...this.listSessionProjectionFactEvents(threadId, bounded),
       ...unresolvedRequests,
       ...this.listRequestSettlementFacts(threadId, unresolvedRequests, bounded),
@@ -6466,6 +6480,46 @@ export class EventStore {
     return [...new Map(facts.map((event) => [event.id, event])).values()].sort(
       (left, right) => left.sequence - right.sequence,
     );
+  }
+
+  private latestPositiveTurnStarted(
+    threadId: string,
+    bounded: boolean,
+  ): PersistedRuntimeEvent | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
+       FROM orchestration_events WHERE thread_id = ? AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL})
+       ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(threadId);
+    return row ? this.mapEventRow(row) : undefined;
+  }
+
+  private fetchPositiveTurnStarted(
+    threadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent> {
+    const result = new Map<string, PersistedRuntimeEvent>();
+    for (const chunk of this.chunkArray(
+      threadIds,
+      EVENT_STORE_BATCH_CHUNK_SIZE,
+    )) {
+      const rows = this.db
+        .prepare(
+          `WITH start_identity_threads(thread_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+         SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.sequence, event.global_sequence
+         FROM start_identity_threads JOIN orchestration_events AS event ON event.rowid = (
+           SELECT rowid FROM orchestration_events WHERE thread_id = start_identity_threads.thread_id
+             AND method = 'turn.started' AND (${POSITIVE_TURN_START_SQL}) ORDER BY sequence DESC LIMIT 1
+         )`,
+        )
+        .all(...chunk);
+      for (const row of rows) {
+        const event = this.mapEventRow(row);
+        result.set(event.threadId, event);
+      }
+    }
+    return result;
   }
 
   /**
@@ -6556,12 +6610,8 @@ export class EventStore {
   private latestCurrentTurnRuntimeErrorEvent(
     threadId: string,
     bounded = false,
+    latestTurn?: PersistedRuntimeEvent,
   ): PersistedRuntimeEvent | undefined {
-    const latestTurn = this.latestEventByMethod(
-      threadId,
-      'turn.started',
-      bounded,
-    );
     const invocationId = latestTurn?.payload.invocationId;
     const row =
       invocationId === undefined
@@ -6590,7 +6640,7 @@ export class EventStore {
         ? undefined
         : event;
     }
-    if (!latestTurn) return event;
+    if (!event.turnId || !latestTurn) return event;
     // Supersession is a question about turn IDENTITY, not about sequence. One
     // turn can be announced more than once — `claude-adapter.ts`'s steer path
     // publishes a second `turn.started` with the SAME turn id mid-turn — so a
@@ -6940,6 +6990,8 @@ export class EventStore {
 
     const rankedMethodFacts = this.fetchRankedMethodFacts(uniqueThreadIds);
     const latestAnyEventByThread = this.fetchLatestAnyEvent(uniqueThreadIds);
+    const positiveStartByThread =
+      this.fetchPositiveTurnStarted(uniqueThreadIds);
     const firstPromptedTurnByThread =
       this.fetchFirstTurnStartedWithPrompt(uniqueThreadIds);
     const projectionFactsByThread = this.groupMappedEventRowsByThread(
@@ -6986,7 +7038,12 @@ export class EventStore {
     const ownTurnStartPairs: Array<{ threadId: string; turnId: string }> = [];
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
-      const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
+      const latestObservedStart = methodFacts?.get('turn.started')?.latest;
+      const positiveStart = positiveStartByThread.get(threadId);
+      const latestTurnStarted =
+        positiveStart?.payload.invocationId !== undefined
+          ? positiveStart
+          : latestObservedStart;
       if (latestTurnStarted?.turnId) {
         terminalPairs.push({
           threadId,
@@ -7022,7 +7079,12 @@ export class EventStore {
 
     for (const threadId of uniqueThreadIds) {
       const methodFacts = rankedMethodFacts.get(threadId);
-      const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
+      const latestObservedStart = methodFacts?.get('turn.started')?.latest;
+      const positiveStart = positiveStartByThread.get(threadId);
+      const latestTurnStarted =
+        positiveStart?.payload.invocationId !== undefined
+          ? positiveStart
+          : latestObservedStart;
       const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
       const latestRuntimeError =
         latestTurnStarted?.payload.invocationId !== undefined
@@ -7089,6 +7151,8 @@ export class EventStore {
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
         firstPromptedTurnByThread.get(threadId),
+        latestObservedStart,
+        positiveStart,
         latestTurnStarted,
         latestTurnStarted?.turnId
           ? terminalByPair.get(

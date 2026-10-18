@@ -528,12 +528,18 @@ export function activeTurnIdForEvents(
   let activeTurnId: string | undefined;
   let anchor: TurnIdentityAnchor | undefined;
   for (const event of events) {
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
     const scopedTerminal =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
       ) &&
       (event.turnId !== undefined || event.invocationId !== undefined);
     if (
+      !retainedStart &&
       !(
         typeof anchor === 'object' &&
         scopedTerminal &&
@@ -541,7 +547,7 @@ export function activeTurnIdForEvents(
       )
     )
       activeTurnId = nextActiveTurnId(activeTurnId, event);
-    anchor = nextTurnIdentityAnchor(anchor, event);
+    anchor = nextAnchor;
   }
   return activeTurnId;
 }

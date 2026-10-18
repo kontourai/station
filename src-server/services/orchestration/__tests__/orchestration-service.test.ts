@@ -15109,6 +15109,7 @@ describe('OrchestrationService', () => {
       // Each projection query runs once for the whole population. Method
       // bounds and latest-any use indexed seeks rather than window ranking.
       expect(countOfShapeContaining('methods(method) AS (VALUES')).toBe(1);
+      expect(countOfShapeContaining('WITH start_identity_threads(thread_id) AS (VALUES')).toBe(1);
       expect(
         [...shapeCounts.entries()]
           .filter(

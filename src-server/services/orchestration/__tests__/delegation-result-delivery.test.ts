@@ -1259,7 +1259,7 @@ test.each([
   'queued-malformed',
   'queued-unknown',
   'consistent',
-  ...(['old', 'v2'] as const).flatMap((format) =>
+  ...(['old', 'v2', 'oldambiguous'] as const).flatMap((format) =>
     (['pending', 'claimed', 'consumed', 'delivered'] as const).map(
       (state) => `compat-${format}-${state}` as const,
     ),
@@ -1287,9 +1287,11 @@ test.each([
       kind: 'applied',
     });
     const invocationId = capture.intent.invocationId;
-    const native = order.startsWith('queued-native-collision')
-      ? `invocation-${invocationId}`
-      : 'N';
+    const native =
+      order.startsWith('queued-native-collision') ||
+      order.startsWith('compat-oldambiguous')
+        ? `invocation-${invocationId}`
+        : 'N';
     expect(owned.claim.accepted(native, '2030-01-01T00:00:03Z')).toEqual({
       kind: 'applied',
     });
@@ -1457,7 +1459,7 @@ test.each([
         if (!original) throw new Error('actual recorded result prerequisite');
         expect(original.state).toBe(state);
         const key =
-          format === 'old'
+          format === 'old' || format === 'oldambiguous'
             ? `settled:child:invocation-${invocationId}`
             : JSON.stringify([
                 'station.delegation-result/2',
@@ -1477,7 +1479,10 @@ test.each([
           before.deliveryId,
         );
         expect(store.listForChild('child')[0]?.transitionKey).toBe(key);
-        if (state === 'pending') expect(starts).toHaveLength(1);
+        if (format === 'oldambiguous') {
+          expect(starts).toHaveLength(calls);
+          expect(store.listForChild('child')[0]).toEqual(before);
+        } else if (state === 'pending') expect(starts).toHaveLength(1);
         else if (state === 'claimed') {
           expect(starts.length).toBeGreaterThanOrEqual(calls);
           expect(new Set(deliveryKeys).size).toBe(1);

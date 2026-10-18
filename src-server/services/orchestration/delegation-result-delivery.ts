@@ -1309,7 +1309,9 @@ function readSettlementIdentity(
       JSON.stringify(decoded) !== row.transitionKey
     )
       return undefined;
-    const [, threadId, kind, value] = decoded;
+    const threadId = row.childSessionId;
+    const kind: unknown = decoded[2];
+    const value: unknown = decoded[3];
     if (
       (kind === 'invocation' || kind === 'native') &&
       typeof value === 'string' &&
@@ -1319,6 +1321,7 @@ function readSettlementIdentity(
       return { threadId, kind, value };
     if (
       kind === 'sequence' &&
+      typeof value === 'number' &&
       Number.isSafeInteger(value) &&
       value > 0 &&
       row.childTurnId === undefined
