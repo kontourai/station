@@ -18,8 +18,8 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
-  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   mapRuntimeChannelToTelemetryChannel,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
 } from '@kontourai/station-shared/product-telemetry';
