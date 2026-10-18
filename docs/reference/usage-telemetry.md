@@ -51,9 +51,10 @@ build destination; the UI lane presents that disclosure.
 Every non-desktop server, including `station start`, `service run`, Docker and
 web servers with a UI port, prints a one-time Lite notice per publisher and
 inventory revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts)
-and records it before sending. The launching CLI also prints newly recorded
-notices in the terminal after readiness. Unattended services retain the notice
-in their logs. This first-start log notice is the fallback while the web notice
+and records it before sending. The launching CLI prints the notice in the
+terminal after readiness when its pre-launch state lacks a current receipt. The server records its own log notice
+asynchronously; HTTP readiness does not imply that receipt is already written.
+Unattended services retain the notice in their logs. This first-start log notice is the fallback while the web notice
 UI is not wired; a UI port does not imply that a person saw a notice.
 Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the UI. Until it records
 the shown revision with `POST /api/usage-telemetry/lite-notices`, daily payloads

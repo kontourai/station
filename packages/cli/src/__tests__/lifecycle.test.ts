@@ -2267,7 +2267,7 @@ describe('lifecycle instance state', () => {
   });
 
   it.each([true, false])(
-    'prints the Lite notice only when this start recorded a new receipt (new=%s)',
+    'prints a first-start notice before asynchronous server receipt publication (new=%s)',
     async (fresh) => {
       ensureDir(TEST_CWD);
       ensureBuildOutputs('notice-test');
@@ -2280,22 +2280,22 @@ describe('lifecycle instance state', () => {
         writeFileSync(
           join(TEST_ALT_HOME, 'config', 'telemetry-daily.json'),
           JSON.stringify({
-            notices: {
-              operator: {
-                publisher: 'operator',
-                inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
-                shownAt,
-              },
-            },
+            notices: Object.fromEntries(
+              ['kontour', 'operator'].map((publisher) => [
+                publisher,
+                {
+                  publisher,
+                  inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+                  shownAt,
+                },
+              ]),
+            ),
           }),
         );
       if (!fresh) receipt('2020-01-01T00:00:00.000Z');
       const spawn = vi
         .fn()
-        .mockImplementationOnce(() => {
-          if (fresh) receipt(new Date().toISOString());
-          return { pid: 41001, unref: vi.fn() };
-        })
+        .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
         .mockReturnValueOnce({ pid: 41002, unref: vi.fn() });
       vi.spyOn(process, 'kill').mockImplementation(((
         pid: number,
@@ -2322,7 +2322,7 @@ describe('lifecycle instance state', () => {
         stderr.mock.calls.filter(([message]) =>
           String(message).includes('Lite sends'),
         ),
-      ).toHaveLength(fresh ? 1 : 0);
+      ).toHaveLength(fresh ? 2 : 0);
     },
   );
 
