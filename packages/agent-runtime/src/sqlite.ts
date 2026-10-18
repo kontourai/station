@@ -35,6 +35,7 @@ import {
   runKey,
 } from './encoding.js';
 import { fixedPolicy, type ModelPolicy } from './policy.js';
+import { validateReceipts } from './receipts.js';
 import {
   emptyState,
   type ModelState,
@@ -334,6 +335,7 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
       list.sort((a, b) => a - b).some((position, index) => position !== index)
     )
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+  validateReceipts(result);
   return result;
 }
 function validateLinks(

@@ -9,6 +9,7 @@ import {
   RuntimeError,
 } from './encoding.js';
 import type { ModelPolicy } from './policy.js';
+import { validateReceiptCommand } from './receipts.js';
 import {
   type AttemptRecord,
   type ModelState,
@@ -195,6 +196,15 @@ export function decideModel(
       receipt.commandType !== command.type
     )
       return refuse('conflict');
+    if (
+      command.type !== 'acknowledge' &&
+      run?.settledAt !== null &&
+      run?.settledAt !== undefined &&
+      now >= run.settledAt + policy.settledRetentionMs
+    )
+      return refuse('expired');
+    if (!run) return refuse('unavailable');
+    validateReceiptCommand(state, run, receipt, command);
     const answer = receipt.answer;
     if (command.type === 'begin' && answer.kind === 'execute')
       return {
@@ -220,6 +230,15 @@ export function decideModel(
       return answer;
     return refuse('unavailable');
   }
+  if (command.type === 'open' && run && !same(command.spec, run.spec))
+    return refuse('conflict');
+  if (
+    command.type !== 'acknowledge' &&
+    run?.settledAt !== null &&
+    run?.settledAt !== undefined &&
+    now >= run.settledAt + policy.settledRetentionMs
+  )
+    return refuse('expired');
   const remember = (answer: ModelResult<ModelCommand>) => {
     if (answer.kind !== 'refused')
       state.receipts.set(receiptId, {

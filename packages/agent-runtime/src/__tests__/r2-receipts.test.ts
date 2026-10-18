@@ -89,6 +89,10 @@ for (const mutation of [
   'operation-id',
   'row-id',
   'command-type',
+  'malformed-outer-id',
+  'noncanonical-outer-id',
+  'noncanonical-generation',
+  'missing-generation',
 ] as const)
   it(`R2.3 current SQLite refuses schema-valid ${mutation} receipt with both actual generation tapes intact`, async () => {
     const { f, answer } = await twoTapes();
@@ -113,7 +117,35 @@ for (const mutation of [
     if (mutation === 'operation-id')
       changed.operationId = 'unrelated-operation';
     if (mutation === 'command-type') changed.commandType = 'pin';
-    if (mutation === 'row-id')
+    if (
+      mutation === 'malformed-outer-id' ||
+      mutation === 'noncanonical-outer-id' ||
+      mutation === 'noncanonical-generation' ||
+      mutation === 'missing-generation'
+    ) {
+      const generation = canonical([
+        key.scopeId,
+        key.conversationId,
+        key.invocationId,
+      ]);
+      const replacement =
+        mutation === 'malformed-outer-id'
+          ? canonical([generation, f.begin.operationId, 'extra'])
+          : mutation === 'noncanonical-outer-id'
+            ? ` ${id}`
+            : mutation === 'noncanonical-generation'
+              ? canonical([
+                  generation.replace('scope', '\\u0073cope'),
+                  f.begin.operationId,
+                ])
+              : canonical([
+                  canonical(['scope', 'absent', 'turn']),
+                  f.begin.operationId,
+                ]);
+      f.database
+        .prepare('UPDATE agent_runtime_receipts SET id=? WHERE id=?')
+        .run(replacement, id);
+    } else if (mutation === 'row-id')
       f.database
         .prepare('UPDATE agent_runtime_receipts SET id=? WHERE id=?')
         .run(
@@ -207,4 +239,36 @@ it('R2.3 final guarded replay rejects a valid foreign tape header supplied after
   expect(providerCalls).toBe(0);
   expect(output).toEqual([]);
   expect(outcome).toBe('refused');
+});
+it('R2.3 own historical execute acknowledgment and replay remain valid after a real owner takeover', async () => {
+  const f = await completedGeneration();
+  cleanup.push(() => f.close());
+  const restored = await f.storage.execute(
+    operation({ type: 'takeOver', key, expected: f.fence, owner: nextOwner }),
+    { liveness: () => 'dead' },
+  );
+  if (restored.kind !== 'restored')
+    throw Error('real historical owner takeover prerequisite');
+  expect(restored.snapshot.fence.owner).toEqual(nextOwner);
+  expect(await f.storage.execute(f.begin, f.context)).toEqual({
+    kind: 'acknowledged',
+    fence: f.begun.fence,
+    originalGrantId: f.begun.attempt.grantId,
+  });
+  expect(await f.storage.execute(f.replay, f.context)).toEqual(f.replayed);
+  const current = await f.storage.execute(
+    operation({
+      type: 'begin',
+      key,
+      expected: restored.snapshot.fence,
+      requestId: f.pin.requestId,
+    }),
+    f.context,
+  );
+  expect(current).toMatchObject({
+    kind: 'replay',
+    fence: restored.snapshot.fence,
+    attempt: f.begun.attempt,
+    tape: f.tape,
+  });
 });

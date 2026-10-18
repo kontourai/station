@@ -954,6 +954,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
       'packages/agent-runtime/src/__tests__/r1-retention.test.ts',
       'packages/agent-runtime/src/__tests__/r1-native-controls.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-admission.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-retention.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-receipts.test.ts',
     ],
     reason:
       'model runtime protocol, immutable body and actual framework consumers',

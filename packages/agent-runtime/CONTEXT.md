@@ -6,11 +6,14 @@ and output projection readiness. Station remains a future consumer. It imports
 only public Monument contracts and pinned optional framework APIs.
 
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
-fences, receipts and stable projection identity. `memory.ts` stages changes;
+fences, receipts and stable projection identity. `receipts.ts` correlates
+canonical operation/generation rows and historical command answers with their
+own pins/attempts/tapes; it never reconstructs an execution grant. `memory.ts` stages changes;
 `sqlite.ts` owns real host-connection transactions, immutable BLOBs, namespace
 validation and the projection sink. `retention.ts` owns exact-generation settled
 replay compaction, tombstones and irreversible expired markers; raw audit and
-BLOBs remain retained. `codecs.ts` owns fixed entry/request/part/tape
+BLOBs remain retained. Replay admission expires independently of compaction
+eligibility. `codecs.ts` owns fixed entry/request/part/tape
 validation and the bounded Zod non-wire sidecar interpretation. `coordinator.ts`
 owns private invocation bindings, grant consumption, backpressure, held suffix,
 fatal latch and explicit cancellation. The framework entries create actual
@@ -38,3 +41,9 @@ Tools, approval recovery, affinity creation/forking, host terminal integration,
 Station transcript/boot adoption, publication, and live provider fidelity remain
 outside this package cut. A completed model tape is never tool execution or
 whole-Conversation completion authority.
+
+The `r2-*` owners cover private-entry admission after a held final request read,
+current authority/cancellation before held replay release, expired saved full
+answers while projection authority lags, and malformed operation/foreign-tape
+receipt links between real SQLite generations. Public entry bytes are an
+observable copy; current admission and framework construction use private bytes.

@@ -81,12 +81,12 @@ function known(
 }
 function checkedAdmission(
   options: ModelRuntimeOptions,
-  entry: RestoredEntry,
+  session: Session,
   operation: 'execute' | 'recover' | 'read' | 'cancel' | 'project',
 ) {
-  const current = options.admission(entry.key, operation);
+  const current = options.admission(session.entry.key, operation);
   bindingSchema.parse(current.binding);
-  const data = entryData(entry.entry.body.codec, entry.entryBytes);
+  const data = entryData(session.entry.entry.body.codec, session.retainedBytes);
   if (!same(current.binding, data.binding))
     throw new RuntimeError('DURABLE_IMPLEMENTATION_CHANGED');
   return current;
@@ -257,7 +257,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
         async run(operation) {
           if (scope.getStore() || session.running || session.consumed)
             throw new RuntimeError('DURABLE_DUPLICATE_CONSUMER');
-          checkedAdmission(options, entry, 'execute');
+          checkedAdmission(options, session, 'execute');
           session.running = true;
           session.consumed = true;
           let settle!: () => void;
@@ -293,7 +293,7 @@ export function createModelRuntime(options: ModelRuntimeOptions): ModelRuntime {
         async cancel() {
           if (session.cancellation) return session.cancellation;
           session.cancellation = (async () => {
-            checkedAdmission(options, entry, 'cancel');
+            checkedAdmission(options, session, 'cancel');
             session.cancelling = true;
             session.abort.abort();
             session.wakePull?.();
@@ -465,7 +465,7 @@ export function guardedModel(input: {
     },
     async doStream(options: LanguageModelV3CallOptions) {
       assertNativeEntry(runtime, entry);
-      checkedAdmission(internals.options, entry, 'execute');
+      checkedAdmission(internals.options, session, 'execute');
       if (
         model.provider !== data.binding.provider ||
         model.modelId !== data.binding.modelId
@@ -477,6 +477,21 @@ export function guardedModel(input: {
         await session.promise;
         throw new RuntimeError('DURABLE_DUPLICATE_CONSUMER');
       }
+      const checkRelease = () => {
+        const currentAdmission = checkedAdmission(
+          internals.options,
+          session,
+          'execute',
+        );
+        if (
+          currentAdmission.writerGeneration !== session.writerGeneration ||
+          model.provider !== data.binding.provider ||
+          model.modelId !== data.binding.modelId ||
+          model.specificationVersion !== 'v3'
+        )
+          throw new RuntimeError('DURABLE_IMPLEMENTATION_CHANGED');
+        assertNativeEntry(runtime, entry);
+      };
       const execute = async (): Promise<LanguageModelV3StreamResult> => {
         const bytes = requestBytes(options);
         const reconstructed = requestSchema.parse(
@@ -551,6 +566,13 @@ export function guardedModel(input: {
           const tape = readTape(
             await internals.options.bodies.read(answer.tape),
           );
+          if (
+            tape.requestId !== pin.requestId ||
+            tape.requestId !== answer.attempt.requestId ||
+            tape.attempt !== answer.attempt.number
+          )
+            throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+          checkRelease();
           session.complete = true;
           session.ordinal++;
           return {
@@ -571,19 +593,7 @@ export function guardedModel(input: {
             ),
           ),
         );
-        const currentAdmission = checkedAdmission(
-          internals.options,
-          entry,
-          'execute',
-        );
-        if (
-          currentAdmission.writerGeneration !== session.writerGeneration ||
-          model.provider !== data.binding.provider ||
-          model.modelId !== data.binding.modelId ||
-          model.specificationVersion !== 'v3'
-        )
-          throw new RuntimeError('DURABLE_IMPLEMENTATION_CHANGED');
-        assertNativeEntry(runtime, entry);
+        checkRelease();
         const native = await model.doStream({
           ...pinnedOptions,
           abortSignal: session.abort.signal,

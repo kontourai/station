@@ -95,3 +95,13 @@ conversion as the real constructor. Fresh admission, selected implementation,
 writer generation and cancellation are checked after the final body-read await
 at the provider call. Staged memory owns detached commands/results and private
 participant views, then reauthorizes after asynchronous body validation.
+
+Admission always uses private retained entry bytes. The exposed `entryBytes`
+array is a detached presentation copy; mutating it changes no authorization or
+native request. Completed replay rechecks current binding, writer, model and
+cancellation after its last body-read await, before releasing a native part.
+Receipt validation correlates canonical generation/operation identity, legal
+command/result variants and owning pin/attempt/tape links. Historical receipts
+remain valid across later ownership/revision changes, while settled full answers
+expire at the replay cutoff even when unacknowledged projections prevent
+compaction. Authorized projection draining remains available after that cutoff.
