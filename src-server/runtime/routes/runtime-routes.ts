@@ -4475,6 +4475,8 @@ export function configureRuntimeRoutes(
         context.orchestrationService.currentConversationSessionId(
           conversationId,
         ),
+      readInputlessTurnDisposition: (threadId: string) =>
+        eventStore.readInputlessTurnDisposition(threadId),
       readInvocationTerminal: (
         threadId: string,
         invocationId: string,
@@ -4512,6 +4514,8 @@ export function configureRuntimeRoutes(
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      hasPossibleEffect: (threadId) =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
       // conversation's recorded owner, or a reader a personal Station lets
       // continue it.

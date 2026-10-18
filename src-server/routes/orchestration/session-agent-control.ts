@@ -191,7 +191,12 @@ export interface SessionAgentControlDeps {
     | 'readSessionInventoryHighWater'
     | 'sessionControlRequestKeys'
   > &
-    Partial<Pick<EventStore, 'readInvocationTerminal'>>;
+    Partial<
+      Pick<
+        EventStore,
+        'readInvocationTerminal' | 'readInputlessTurnDisposition'
+      >
+    >;
   /** Server events; an appended orchestration event wakes a wait. */
   eventBus: {
     subscribe(
@@ -246,6 +251,10 @@ function sessionTurnWaitPorts(
     // that needed it; it is exactly `MAX(sequence)` for the thread).
     headSequence: (threadId) =>
       deps.eventStore.readSessionInventoryHighWater(threadId),
+    readInputlessTurnDisposition: (threadId) =>
+      deps.eventStore.readInputlessTurnDisposition?.(threadId) ?? {
+        kind: 'unknown',
+      },
     readInvocationTerminal: (threadId, invocationId, turnId) =>
       deps.eventStore.readInvocationTerminal?.(
         threadId,

@@ -72,6 +72,7 @@ function coordinatorAt(clock: { now: number }) {
     turnEvents: () => [],
     conversationOf: (threadId) => threadId,
     currentSessionId: (conversationId) => conversationId,
+    readInputlessTurnDisposition: () => ({ kind: 'inputless' }),
     coordinatorBusy: () => false,
     sessionOwnerId: () => 'human:local:owner',
     start: async () => {
@@ -675,6 +676,8 @@ describe('delegation result schema migration (#3158)', () => {
             })),
         conversationOf: (threadId) => threadId,
         currentSessionId: (conversationId) => conversationId,
+        readInputlessTurnDisposition: (threadId) =>
+          eventStore.readInputlessTurnDisposition(threadId),
         coordinatorBusy: () => false,
         sessionOwnerId: () => 'human:local:owner',
         start: async ({ clientTurnId }) => {
@@ -955,6 +958,8 @@ describe('upgrading a home created at f352640350 (#3158)', () => {
         turnEvents: () => [],
         conversationOf: (threadId) => threadId,
         currentSessionId: (conversationId) => conversationId,
+        readInputlessTurnDisposition: (threadId) =>
+          eventStore.readInputlessTurnDisposition(threadId),
         coordinatorBusy: () => false,
         sessionOwnerId: () => 'human:local:owner',
         start: async ({ actor, text, parentConversationId }) => {
@@ -1105,6 +1110,10 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
         threadId === PARENT_THREAD ? 'parent' : threadId,
       currentSessionId: (conversationId) =>
         conversationId === 'parent' ? PARENT_THREAD : conversationId,
+      readInputlessTurnDisposition: (threadId) =>
+        world.eventStore.readInputlessTurnDisposition(threadId),
+      readInvocationTerminal: (threadId, invocationId, turnId) =>
+        world.eventStore.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: () => false,
       sessionOwnerId: (threadId) =>
         world.service.sessionRecordedOwnerId(threadId),
@@ -1405,6 +1414,8 @@ test.each([
         ),
       conversationOf: (threadId) => threadId,
       currentSessionId: (id) => id,
+      readInputlessTurnDisposition: (threadId) =>
+        eventStore.readInputlessTurnDisposition(threadId),
       readInvocationTerminal: (threadId, invocationId, turnId) =>
         eventStore.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: (threadId) => {
@@ -1705,6 +1716,7 @@ test.each([
   'inputless-stale-local',
   'scoped-terminal',
   'older-exact',
+  'inactive-history',
 ] as const)(
   'real service never-tagged producer uses actual custody for %s wait/result effects',
   async (mode) => {
@@ -1715,8 +1727,8 @@ test.each([
     class WeakAdapter extends GateTestAdapter {
       readonly sent: Parameters<GateTestAdapter['sendTurn']>[0][] = [];
       readonly opened = new Set<string>();
-      override async hasSession(threadId: string) {
-        return this.opened.has(threadId);
+      override async hasSession(threadId?: string) {
+        return threadId !== undefined && this.opened.has(threadId);
       }
       override async startSession(
         input: Parameters<GateTestAdapter['startSession']>[0],
@@ -1746,6 +1758,9 @@ test.each([
             turnId: 'N',
             method: 'turn.started',
             prompt: input.input,
+            ...(input.input === 'A'
+              ? { invocationId: input.invocationId }
+              : {}),
             createdAt: new Date().toISOString(),
           });
         return {
@@ -1787,6 +1802,8 @@ test.each([
         thread === 'parent'
           ? parentBusy
           : mode === 'inputless-stale-local' || service.hasActiveTurn(thread),
+      readInputlessTurnDisposition: (thread) =>
+        eventStore.readInputlessTurnDisposition(thread),
       readInvocationTerminal: (thread, invocation, native) =>
         eventStore.readInvocationTerminal(thread, invocation, native),
       sessionOwnerId: (thread) => service.sessionRecordedOwnerId(thread),
@@ -1941,6 +1958,43 @@ test.each([
         )?.invocationId;
         expect(invocationB).toBeTypeOf('string');
         expect(service.hasActiveTurn('child')).toBe(true);
+        if (mode === 'inactive-history') {
+          await emit({
+            ...base,
+            eventId: 'proved-B-history',
+            method: 'turn.completed',
+            invocationId: invocationB,
+            outputText: 'B done',
+          });
+          expect(
+            eventStore
+              .sessionTurnBoundaryAuthority()
+              .hasPossibleEffect('child'),
+          ).toEqual({ kind: 'available', active: false });
+          const afterProof = eventStore.readSessionInventoryHighWater('child');
+          await emit({
+            ...base,
+            eventId: 'unassigned-later-start',
+            method: 'turn.started',
+            prompt: 'later raw',
+          });
+          await emit({
+            ...base,
+            eventId: 'unassigned-later-terminal',
+            method: 'turn.completed',
+          });
+          expect(eventStore.readInputlessTurnDisposition('child')).toEqual({
+            kind: 'unknown',
+          });
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'idle', 0).satisfied,
+          ).toBe(true);
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'turn-settled', afterProof)
+              .satisfied,
+          ).toBe(false);
+          return;
+        }
         const before = {
           boundary: eventStore['db']
             .prepare(
@@ -1991,12 +2045,16 @@ test.each([
               .every((row) => row.payload.invocationId === undefined),
           ).toBe(true);
           const pending = ports.store.listForChild('child');
+          const priorSteers = steers.length;
           parentBusy = false;
           await delivery.reconcile();
           expect(starts).toEqual([]);
-          expect(steers).toEqual([]);
+          expect(steers).toHaveLength(priorSteers);
           expect(ports.store.listForChild('child')).toEqual(pending);
           expect(outcome).toBeUndefined();
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'idle', 0).satisfied,
+          ).toBe(false);
           expect(
             evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
               .satisfied,
@@ -2031,6 +2089,9 @@ test.each([
             cursor,
           );
           expect(settled.satisfied).toBe(true);
+          expect(eventStore.readInputlessTurnDisposition('child')).toEqual({
+            kind: 'unknown',
+          });
           expect(settled.view.settledTurn?.invocationId).toBe(
             adapter.sent.find(
               (input) => input.input === (mode === 'older-exact' ? 'A' : 'B'),
@@ -2045,6 +2106,9 @@ test.each([
           expect(starts[0]).not.toContain('UNPROVEN B');
         }
       } else {
+        expect(eventStore.readInputlessTurnDisposition('child')).toEqual({
+          kind: 'inputless',
+        });
         expect(
           evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
             .satisfied,
@@ -2066,3 +2130,59 @@ test.each([
     }
   },
 );
+
+test('inputless disposition holds corrupt captured markers and unavailable audit source without mutation', () => {
+  const eventStore = new EventStore(':memory:');
+  try {
+    expect(eventStore.readInputlessTurnDisposition('untouched')).toEqual({
+      kind: 'inputless',
+    });
+    const owned = eventStore.sessionTurnBoundaryAuthority().reserve!(
+      'captured',
+      '2030-01-01T00:00:00Z',
+    );
+    if (owned.kind !== 'owner') throw new Error('actual owner prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 'captured', input: 'B' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    expect(
+      owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+    ).toEqual({ kind: 'applied' });
+    eventStore['db']
+      .prepare(
+        'UPDATE orchestration_turn_boundaries SET body_ref=NULL WHERE invocation_id=?',
+      )
+      .run(capture.intent.invocationId);
+    const before = eventStore['db']
+      .prepare('SELECT * FROM orchestration_turn_boundaries')
+      .all();
+    expect(eventStore.readInputlessTurnDisposition('captured')).toEqual({
+      kind: 'unknown',
+    });
+    expect(
+      eventStore['db']
+        .prepare('SELECT * FROM orchestration_turn_boundaries')
+        .all(),
+    ).toEqual(before);
+    eventStore['db'].exec(
+      'SAVEPOINT unavailable_audit; DROP TABLE orchestration_prepared_turns',
+    );
+    try {
+      expect(eventStore.readInputlessTurnDisposition('untouched')).toEqual({
+        kind: 'unknown',
+      });
+    } finally {
+      eventStore['db'].exec(
+        'ROLLBACK TO unavailable_audit; RELEASE unavailable_audit',
+      );
+    }
+    expect(
+      eventStore['db']
+        .prepare('SELECT * FROM orchestration_turn_boundaries')
+        .all(),
+    ).toEqual(before);
+  } finally {
+    eventStore.close();
+  }
+});

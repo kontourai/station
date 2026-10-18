@@ -1071,6 +1071,7 @@ export interface DelegationResultDeliveryPorts {
   currentSessionId(conversationId: string): string;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInputlessTurnDisposition?: SessionTurnWaitPorts['readInputlessTurnDisposition'];
   readInvocationTerminal?: SessionTurnWaitPorts['readInvocationTerminal'];
   /** The recorded owner of a Session, read from its start record. */
   sessionOwnerId(threadId: string): string | undefined;
@@ -1559,6 +1560,7 @@ export class DelegationResultDelivery {
   private foldPorts() {
     return {
       readInvocationTerminal: this.ports.readInvocationTerminal,
+      readInputlessTurnDisposition: this.ports.readInputlessTurnDisposition,
       foldEvents: (threadId: string) => this.ports.foldEvents(threadId),
       headSequence: (threadId: string) => this.ports.headSequence(threadId),
       coordinatorBusy: (threadId: string) =>
@@ -1619,12 +1621,16 @@ export class DelegationResultDelivery {
     if (view.state !== 'idle' || !settled) return;
     if (
       settled.invocationId !== undefined &&
-      (this.ports.coordinatorBusy(thread) ||
-        this.ports.readInvocationTerminal?.(
-          thread,
-          settled.invocationId,
-          settled.turnId,
-        )?.kind !== 'found')
+      this.ports.readInvocationTerminal?.(
+        thread,
+        settled.invocationId,
+        settled.turnId,
+      )?.kind !== 'found'
+    )
+      return;
+    if (
+      settled.invocationId === undefined &&
+      this.ports.readInputlessTurnDisposition?.(thread)?.kind !== 'inputless'
     )
       return;
     const identity: ResultSettlementIdentity =
@@ -1709,6 +1715,12 @@ export class DelegationResultDelivery {
   private canDeliverRow(row: DelegationResultRow): boolean {
     const identity = readSettlementIdentity(row);
     if (!identity) return false;
+    if (
+      identity.kind !== 'invocation' &&
+      this.ports.readInputlessTurnDisposition?.(row.childSessionId)?.kind !==
+        'inputless'
+    )
+      return false;
     if (identity.kind === 'native' && identity.nativeOnlyLegacy) {
       try {
         if (

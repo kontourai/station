@@ -115,9 +115,9 @@ export class SessionStartRefusedError extends Error {
 /**
  * #2324: a send refused because the engine is running a turn it opened on
  * its own (`PROVIDER_TURN_TRIGGER`). Accepting it would fold the message
- * into a reply nobody asked for. Retryable: the same send succeeds once that
- * turn closes, so orchestration forwards the code and clients keep the
- * message queued rather than dropping it.
+ * into a reply nobody asked for. Before dispatch entry, a busy request may
+ * wait in the inbox. A keyed send that has begun and is definitively refused
+ * closes that key; a new explicit request requires a new key.
  */
 export class ProviderTurnInProgressError extends SendTurnRefusedError {
   readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;

@@ -363,7 +363,9 @@ export type QueuedFollowUpResult =
  * skill start); any other busy send is refused as `sendExecutionMessage`'s
  * is. So is every busy send to a Station that predates the inbox, which
  * ignores `whenBusy`: keep the message on a `provider_turn_in_progress` or
- * `provider_session_starting` refusal, exactly as before.
+ * `provider_session_starting` refusal. A begun keyed send definitively refused
+ * by the engine instead answers `client_turn_settled`; never retry that key
+ * automatically. A new explicit request requires a new key.
  */
 export async function queueExecutionMessage(
   apiBase: string,

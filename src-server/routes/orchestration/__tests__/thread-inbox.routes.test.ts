@@ -480,6 +480,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         readInvocationTerminal: (threadId, invocationId, turnId) =>
           store.readInvocationTerminal(threadId, invocationId, turnId),
         coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        hasPossibleEffect: (threadId) =>
+          store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
         conversationOf: (threadId) =>
           store.conversationForSession(threadId)?.conversationId ?? threadId,
         currentSessionId: (conversationId) =>
@@ -1294,18 +1296,24 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         success: false,
         code: 'client_turn_settled',
         disposition: 'definitively-refused',
-        error: 'This turn was definitively refused. A new request requires a new turn key.',
+        error:
+          'This turn was definitively refused. A new request requires a new turn key.',
       });
       expect(world.inbox.list(CONVERSATION)).toEqual([]);
       expect(world.prompts()).toEqual(['read the file']);
       const retry = await world.send('raced', 'then summarize', options);
       expect(retry.status, await retry.clone().text()).toBe(409);
       expect(await retry.json()).toMatchObject({
-        code: 'client_turn_settled', disposition: 'definitively-refused',
+        code: 'client_turn_settled',
+        disposition: 'definitively-refused',
       });
       expect(world.inbox.list(CONVERSATION)).toEqual([]);
       expect(world.prompts()).toEqual(['read the file']);
-      const fresh = await world.send('explicit-new-key', 'then summarize', options);
+      const fresh = await world.send(
+        'explicit-new-key',
+        'then summarize',
+        options,
+      );
       expect(fresh.status, await fresh.clone().text()).toBe(200);
       await eventually(() =>
         expect(world.prompts()).toEqual(['read the file', 'then summarize']),

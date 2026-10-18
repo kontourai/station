@@ -5,6 +5,7 @@ import {
   nextTurnIdentityAnchor,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
+import type { InputlessTurnDisposition } from './session-turn-boundary.js';
 
 /**
  * #3160: the wait behind `wait_session`.
@@ -34,6 +35,7 @@ export interface SessionTurnWaitPorts {
   headSequence(threadId: string): number;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInputlessTurnDisposition?(threadId: string): InputlessTurnDisposition;
   readInvocationTerminal?(
     threadId: string,
     invocationId: string,
@@ -83,7 +85,11 @@ const SETTLE_OUTCOME: Record<string, SessionSettledTurn['outcome']> = {
 export function evaluateSessionWait(
   ports: Pick<
     SessionTurnWaitPorts,
-    'foldEvents' | 'headSequence' | 'coordinatorBusy' | 'readInvocationTerminal'
+    | 'foldEvents'
+    | 'headSequence'
+    | 'coordinatorBusy'
+    | 'readInvocationTerminal'
+    | 'readInputlessTurnDisposition'
   >,
   threadId: string,
   until: SessionWaitUntil,
@@ -106,30 +112,45 @@ export function evaluateSessionWait(
       typeof anchor === 'object' &&
       nextAnchor === anchor;
     if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
-    if (
-      before !== undefined &&
-      invocationId !== undefined &&
+    let settledInvocation = invocationId;
+    const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
       ) &&
-      (event.turnId !== undefined || event.invocationId !== undefined)
+      (event.turnId !== undefined || event.invocationId !== undefined);
+    if (
+      before !== undefined &&
+      ordinary &&
+      (invocationId !== undefined || event.invocationId !== undefined)
     ) {
-      const read = ports.readInvocationTerminal?.(
-        threadId,
-        invocationId,
-        before,
-      );
-      if (read !== undefined) {
-        open =
-          read.kind === 'found' && read.fact.terminalEventId === event.eventId
-            ? undefined
-            : before;
-      }
+      const proofInvocation = invocationId ?? event.invocationId;
+      const read =
+        proofInvocation === undefined
+          ? undefined
+          : ports.readInvocationTerminal?.(threadId, proofInvocation, before);
+      if (
+        read?.kind === 'found' &&
+        read.fact.terminalEventId === event.eventId
+      ) {
+        open = undefined;
+        settledInvocation = read.fact.invocationId;
+      } else open = before;
     }
-    if (before !== undefined && open === undefined && sequence > cursor) {
+    const canAcknowledge =
+      settledInvocation !== undefined ||
+      !ordinary ||
+      ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless';
+    if (
+      before !== undefined &&
+      open === undefined &&
+      sequence > cursor &&
+      canAcknowledge
+    ) {
       settled = {
         ...(before ? { turnId: before } : {}),
-        ...(invocationId === undefined ? {} : { invocationId }),
+        ...(settledInvocation === undefined
+          ? {}
+          : { invocationId: settledInvocation }),
         sequence,
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };

@@ -11555,6 +11555,10 @@ export class EventStore {
     return this.sessionTurnBoundaries;
   }
 
+  readInputlessTurnDisposition(threadId: string) {
+    return this.sessionTurnBoundaries.readInputlessTurnDisposition(threadId);
+  }
+
   readInvocationTerminal(
     threadId: string,
     invocationId: string,

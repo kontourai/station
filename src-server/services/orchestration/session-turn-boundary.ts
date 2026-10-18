@@ -90,7 +90,12 @@ export type SessionTurnBoundaryTransition =
   | { kind: 'stale' }
   | { kind: 'unavailable' };
 
+export type InputlessTurnDisposition =
+  | { kind: 'inputless' }
+  | { kind: 'unknown' };
+
 export interface SessionTurnBoundaryCoordinator {
+  readInputlessTurnDisposition?(threadId: string): InputlessTurnDisposition;
   resumePrepared?(input: {
     capture: CapturedTurnIntent;
     owner: OwnerIdentity;
@@ -361,6 +366,7 @@ export interface SessionTurnBoundaryAuthority {
   hasPossibleEffect(
     threadId: string,
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
+  readInputlessTurnDisposition(threadId: string): InputlessTurnDisposition;
   retryPendingTransitions(): void;
   readInvocationTerminal(
     threadId: string,
@@ -1100,6 +1106,17 @@ export function createSessionTurnBoundaryAuthority(options: {
         };
       } catch {
         return { kind: 'unavailable' };
+      }
+    },
+    readInputlessTurnDisposition(threadId) {
+      try {
+        return (
+          options.coordinator.readInputlessTurnDisposition?.(threadId) ?? {
+            kind: 'unknown',
+          }
+        );
+      } catch {
+        return { kind: 'unknown' };
       }
     },
     retryPendingTransitions,

@@ -268,7 +268,11 @@ another device and a restart.
   with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
   once, with the usual receipt. A send refused because the engine opened a turn
   itself (`provider_turn_in_progress`) or is still starting
-  (`provider_session_starting`) is held too.
+  (`provider_session_starting`) can be held before its keyed dispatch begins.
+  If the keyed dispatch has begun and is definitively refused, it closes that
+  key: HTTP `409`, `success: false`, `code: "client_turn_settled"`, and the
+  actual `disposition`. It is never queued again under that key. A new explicit
+  user request needs a new key; clients must not generate one automatically.
 - The same body sent again under the same key, while the conversation is still
   busy or holds other messages, answers the same entry (`sent`, with its
   `turnId`, once Station sent it). Sent when the conversation is idle and

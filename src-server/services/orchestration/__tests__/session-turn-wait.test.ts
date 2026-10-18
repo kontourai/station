@@ -29,6 +29,7 @@ function fakeSession() {
   const ports: SessionTurnWaitPorts = {
     foldEvents: () => [...log],
     headSequence: () => log.at(-1)?.sequence ?? 0,
+    readInputlessTurnDisposition: () => ({ kind: 'inputless' }),
     coordinatorBusy: () => state.coordinatorBusy,
     subscribe: (_thread, listener) => {
       listeners.add(listener);
@@ -240,7 +241,7 @@ describe('SessionTurnWaiter', () => {
   });
 });
 
-test('wait settlement carries exact invocation to result consumers when native ids are reused', () => {
+test('invocation wait holds when actual terminal read support is missing for reused native ids', () => {
   const base = {
     provider: 'claude',
     threadId: 't1',
@@ -312,15 +313,8 @@ test('wait settlement carries exact invocation to result consumers when native i
     },
   });
   expect(evaluateSessionWait(ports, 't1', 'turn-settled', 2)).toMatchObject({
-    satisfied: true,
-    view: {
-      settledTurn: {
-        turnId: 'N',
-        invocationId: 'B',
-        sequence: 5,
-        outcome: 'completed',
-      },
-    },
+    satisfied: false,
+    view: { state: 'running', openTurnId: 'N' },
   });
 });
 
@@ -371,6 +365,8 @@ test.each([
           .listEvents('t')
           .map((row) => ({ sequence: row.sequence, event: row.payload })),
       headSequence: () => store.readSessionInventoryHighWater('t'),
+      readInputlessTurnDisposition: (threadId) =>
+        store.readInputlessTurnDisposition(threadId),
       readInvocationTerminal: (threadId, invocationId, turnId) =>
         store.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: () => {

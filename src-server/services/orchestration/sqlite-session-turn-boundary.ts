@@ -701,6 +701,37 @@ export function createSqliteSessionTurnBoundaryCoordinator({
         }
       }
     },
+    readInputlessTurnDisposition(threadId) {
+      const outer = db.isTransaction !== true;
+      if (outer) db.exec('BEGIN');
+      try {
+        const listed = execute({ type: 'turnBoundary.list' }, true);
+        if (
+          listed.kind !== 'records' ||
+          listed.records.some(
+            (row) => row.threadId === threadId && row.intent !== undefined,
+          )
+        )
+          return { kind: 'unknown' };
+        if (
+          db
+            .prepare(
+              'SELECT 1 FROM orchestration_prepared_turns WHERE thread_id = ? LIMIT 1',
+            )
+            .get(threadId)
+        )
+          return { kind: 'unknown' };
+        const effect = execute(
+          { type: 'turnBoundary.hasPossibleEffect', threadId },
+          true,
+        );
+        return effect.kind === 'available' && !effect.active
+          ? { kind: 'inputless' }
+          : { kind: 'unknown' };
+      } finally {
+        if (outer && db.isTransaction) db.exec('ROLLBACK');
+      }
+    },
     readInvocationTerminal(threadId, invocationId, providerTurnId) {
       const outer = db.isTransaction !== true;
       if (outer) db.exec('BEGIN');

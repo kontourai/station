@@ -53,7 +53,11 @@ const permitted = new Set<string>([OWNER]);
 const devicesAllowed = new Set<string>();
 let sequence = 0;
 
-type OwningTurn = Readonly<{ threadId: string; invocationId?: string }>;
+type OwningTurn = Readonly<{
+  threadId: string;
+  invocationId?: string;
+  request: Readonly<ProviderSendTurnInput>;
+}>;
 class CountingAdapter extends GateTestAdapter {
   readonly entered: OwningTurn[] = [];
   override async sendTurn(
@@ -64,6 +68,7 @@ class CountingAdapter extends GateTestAdapter {
       Object.freeze({
         threadId: input.threadId,
         invocationId: input.invocationId,
+        request: Object.freeze({ ...input }),
       }),
     );
     if (nextSend === 'hang') {
@@ -131,6 +136,8 @@ function boot(
     readInvocationTerminal: (threadId, invocationId, turnId) =>
       store.readInvocationTerminal(threadId, invocationId, turnId),
     coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+    hasPossibleEffect: (threadId) =>
+      store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
     conversationOf: (threadId) => threadId,
     currentSessionId: (conversationId) => conversationId,
     mayContinue: (_conversationId, userId) => permitted.has(userId),
@@ -272,30 +279,57 @@ async function settle(world: World) {
 }
 
 /** Actual owner images retained before assertions, including failed runs. */
-function recoveryImage(file: string, world: World, original: OwningTurn, stage: string) {
+function recoveryImage(
+  file: string,
+  world: World,
+  original: OwningTurn,
+  stage: string,
+) {
   const db = new DatabaseSync(file);
   try {
-    const events = world.store.listEventsByMethods(THREAD, ACTIVE_TURN_FOLD_METHODS)
+    const events = world.store
+      .listEventsByMethods(THREAD, ACTIVE_TURN_FOLD_METHODS)
       .map((row) => ({ sequence: row.sequence, event: row.payload }));
     const image = {
-      stage, original,
-      boundary: db.prepare('SELECT * FROM orchestration_turn_boundaries WHERE thread_id=?').all(THREAD),
-      audit: db.prepare('SELECT * FROM orchestration_prepared_turns WHERE thread_id=?').all(THREAD),
+      stage,
+      original,
+      boundary: db
+        .prepare(
+          'SELECT * FROM orchestration_turn_boundaries WHERE thread_id=?',
+        )
+        .all(THREAD),
+      audit: db
+        .prepare('SELECT * FROM orchestration_prepared_turns WHERE thread_id=?')
+        .all(THREAD),
       dedup: db.prepare('SELECT * FROM orchestration_turn_dedup').all(),
       events,
-      durable: world.store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+      durable: world.store
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(THREAD),
       local: world.service.hasActiveTurn(THREAD),
-      wait: evaluateSessionWait({
-        foldEvents: () => events,
-        headSequence: () => world.store.readSessionInventoryHighWater(THREAD),
-        coordinatorBusy: () => world.service.hasActiveTurn(THREAD),
-        readInvocationTerminal: (...args) => world.store.readInvocationTerminal(...args),
-        readInputlessTurnDisposition: (...args) => world.store.readInputlessTurnDisposition(...args),
-      }, THREAD, 'turn-settled', 0),
+      wait: evaluateSessionWait(
+        {
+          foldEvents: () => events,
+          headSequence: () => world.store.readSessionInventoryHighWater(THREAD),
+          coordinatorBusy: () => world.service.hasActiveTurn(THREAD),
+          readInvocationTerminal: (...args) =>
+            world.store.readInvocationTerminal(...args),
+          readInputlessTurnDisposition: (...args) =>
+            world.store.readInputlessTurnDisposition(...args),
+        },
+        THREAD,
+        'turn-settled',
+        0,
+      ),
     };
-    appendFileSync('/tmp/3566-host-r4-restart-owner-images-20261018.jsonl', `${JSON.stringify(image)}\n`);
+    appendFileSync(
+      '/tmp/3566-host-r4-restart-owner-images-final-selection-20261018.jsonl',
+      `${JSON.stringify(image)}\n`,
+    );
     return image;
-  } finally { db.close(); }
+  } finally {
+    db.close();
+  }
 }
 
 const followUpSends = () => sends.filter((input) => input === FOLLOW_UP);
@@ -343,9 +377,31 @@ describe('thread inbox (#3568)', () => {
     // Reattaching ends the turn the restart interrupted (`turn.aborted`), and
     // that terminal places the follow-up.
     await startSession(second);
-    recoveryImage(file, second, firstTurn, 'distinct:after-disposal-before-placement');
+    recoveryImage(
+      file,
+      second,
+      firstTurn,
+      'distinct:after-start-session-before-settle',
+    );
     await settle(second);
-    recoveryImage(file, second, firstTurn, 'distinct:after-placement');
+    const disposed = recoveryImage(
+      file,
+      second,
+      firstTurn,
+      'distinct:after-placement',
+    );
+    expect(
+      disposed.boundary.some(
+        (row) => row.invocation_id === firstTurn.invocationId,
+      ),
+    ).toBe(false);
+    expect(
+      disposed.audit.find(
+        (row) => row.invocation_id === firstTurn.invocationId,
+      ),
+    ).toMatchObject({ terminal_retirement: null });
+    expect(disposed.wait.satisfied).toBe(false);
+    expect(sends.filter((input) => input === 'read the file')).toHaveLength(1);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     expect(second.inbox.list(THREAD)).toMatchObject([
       { state: 'sent', turnId: expect.any(String), sessionId: THREAD },
@@ -390,10 +446,32 @@ describe('thread inbox (#3568)', () => {
 
     recoveryImage(file, second, firstTurn, 'same-key:before-disposal');
     await startSession(second);
-    recoveryImage(file, second, firstTurn, 'same-key:after-disposal-before-placement');
+    recoveryImage(
+      file,
+      second,
+      firstTurn,
+      'same-key:after-start-session-before-settle',
+    );
     await emit(second, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
     await settle(second);
-    recoveryImage(file, second, firstTurn, 'same-key:after-placement');
+    const disposed = recoveryImage(
+      file,
+      second,
+      firstTurn,
+      'same-key:after-placement',
+    );
+    expect(
+      disposed.boundary.some(
+        (row) => row.invocation_id === firstTurn.invocationId,
+      ),
+    ).toBe(false);
+    expect(
+      disposed.audit.find(
+        (row) => row.invocation_id === firstTurn.invocationId,
+      ),
+    ).toMatchObject({ terminal_retirement: null });
+    expect(disposed.wait.satisfied).toBe(false);
+    expect(sends.filter((input) => input === 'read the file')).toHaveLength(1);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     expect(second.inbox.list(THREAD)).toHaveLength(1);
     await crash(second);
@@ -409,6 +487,145 @@ describe('thread inbox (#3568)', () => {
     await third.inbox.reconcile();
     await settle(third);
     expect(third.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test.each(['missing', 'unavailable', 'local-uncertain', 'active'] as const)(
+    'fresh placement holds without current durable/local disposition: %s',
+    async (mode) => {
+      const file = path();
+      const world = boot(file);
+      const firstTurn = await runningFirstTurn(world);
+      if (mode !== 'active')
+        await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+      world.inbox.stop();
+      const ports: Partial<ThreadInboxDeliveryPorts> =
+        mode === 'missing'
+          ? { hasPossibleEffect: undefined }
+          : mode === 'unavailable'
+            ? { hasPossibleEffect: () => ({ kind: 'unavailable' }) }
+            : mode === 'local-uncertain'
+              ? { coordinatorBusy: () => true }
+              : { coordinatorBusy: () => false };
+      const held = boot(file, ports);
+      queueFollowUp(held);
+      await settle(held);
+      expect(followUpSends()).toEqual([]);
+      expect(held.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
+    },
+  );
+
+  test('failed guarded interrupted disposal keeps fresh input queued and supplies no terminal ACK', async () => {
+    const file = path();
+    const first = boot(file);
+    const original = await runningFirstTurn(first);
+    queueFollowUp(first);
+    const originalRow = first.store['db']
+      .prepare(
+        'SELECT boundary_id FROM orchestration_turn_boundaries WHERE thread_id=? AND invocation_id=?',
+      )
+      .get(THREAD, original.invocationId) as
+      | { boundary_id: string }
+      | undefined;
+    if (!originalRow) throw new Error('actual captured boundary prerequisite');
+    await crash(first);
+    const second = boot(file);
+    const resolve = vi.spyOn(second.store, 'resolveInterruptedTurnBoundary');
+    const db = new DatabaseSync(file);
+    db.exec(`CREATE TRIGGER retain_interrupted_boundary BEFORE DELETE ON orchestration_turn_boundaries
+      WHEN OLD.thread_id='conversation-1'
+      AND OLD.invocation_id='${original.invocationId!.replace(/'/g, "''")}'
+      AND OLD.boundary_id='${originalRow.boundary_id.replace(/'/g, "''")}' BEGIN SELECT RAISE(ABORT, 'guarded disposal unavailable'); END`);
+    try {
+      const started = await second.service.dispatch({
+        type: 'startSession',
+        input: { threadId: THREAD, provider: 'claude' },
+      });
+      await eventuallyTrue(
+        () =>
+          resolve.mock.calls.some(
+            ([input]) => input.boundaryId === originalRow.boundary_id,
+          ),
+        1_000,
+      );
+      await settle(second);
+      const image = recoveryImage(
+        file,
+        second,
+        original,
+        'guarded-disposal-failure',
+      );
+      expect(started).toMatchObject({
+        threadId: THREAD,
+        provider: 'claude',
+        status: 'ready',
+      });
+      expect(resolve).toHaveBeenCalled();
+      expect(resolve).toHaveBeenCalledWith(
+        expect.objectContaining({ boundaryId: originalRow.boundary_id }),
+      );
+      expect(image.boundary).toMatchObject([
+        {
+          boundary_id: originalRow.boundary_id,
+          invocation_id: original.invocationId,
+          state: 'accepted',
+        },
+      ]);
+      expect(image.durable).toEqual({ kind: 'available', active: true });
+      expect(image.wait.satisfied).toBe(false);
+      expect(image.audit).toMatchObject([{ terminal_retirement: null }]);
+      expect(
+        image.events.some(
+          ({ event }) =>
+            event.method === 'turn.aborted' &&
+            event.recoveryTerminal === true &&
+            event.invocationId === undefined,
+        ),
+      ).toBe(true);
+      expect(followUpSends()).toEqual([]);
+      expect(second.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
+    } finally {
+      db.exec('DROP TRIGGER retain_interrupted_boundary');
+      db.close();
+    }
+  });
+
+  test('a newer genuine provider start blocks stale structured placement override even with inactive durable/local reads', async () => {
+    const world = boot(path(), {
+      coordinatorBusy: () => false,
+      hasPossibleEffect: () => ({ kind: 'available', active: false }),
+    });
+    const original = await runningFirstTurn(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, original);
+    await emit(world, 'turn.started', {
+      turnId: 'new-provider-N',
+      metadata: { trigger: 'provider' },
+    });
+    queueFollowUp(world);
+    await settle(world);
+    expect(followUpSends()).toEqual([]);
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
+  });
+
+  test('an actual provider-opened legacy turn holds fresh placement until its terminal', async () => {
+    const world = boot(path());
+    await startSession(world);
+    await emit(world, 'turn.started', {
+      turnId: 'provider-N',
+      metadata: { trigger: 'provider' },
+    });
+    queueFollowUp(world);
+    await settle(world);
+    expect(world.service.hasActiveTurn(THREAD)).toBe(true);
+    expect(
+      world.store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+    ).toEqual({ kind: 'available', active: true });
+    expect(followUpSends()).toEqual([]);
+    await emit(world, 'turn.completed', {
+      turnId: 'provider-N',
+      metadata: { trigger: 'provider' },
+    });
+    await settle(world);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
@@ -620,7 +837,7 @@ describe('thread inbox (#3568)', () => {
   test('an entry claimed on a session the conversation has left, but never sent, is sent once', async () => {
     const file = path();
     const first = boot(file);
-    const firstTurn = await runningFirstTurn(first);
+    await runningFirstTurn(first);
     const store = first.store.threadInboxStore();
     store.submit({
       conversationId: THREAD,
@@ -656,7 +873,7 @@ describe('thread inbox (#3568)', () => {
 
   test('a sender placement would refuse is never accepted', async () => {
     const world = boot(path());
-    const firstTurn = await runningFirstTurn(world);
+    await runningFirstTurn(world);
     expect(
       world.inbox.submit({
         conversationId: THREAD,
@@ -883,7 +1100,7 @@ describe('thread inbox (#3568)', () => {
       conversationOf: (threadId) =>
         threadId === 'later-session' ? THREAD : threadId,
     });
-    const firstTurn = await runningFirstTurn(world);
+    await runningFirstTurn(world);
     world.inbox.submit({
       conversationId: 'later-session',
       clientTurnId: 'via-session',
@@ -917,7 +1134,7 @@ describe('thread inbox (#3568)', () => {
   test("a store that never opened its inbox still forgets a deleted conversation's entries", async () => {
     const file = path();
     const first = boot(file);
-    const firstTurn = await runningFirstTurn(first);
+    await runningFirstTurn(first);
     queueFollowUp(first);
     await crash(first);
     // A new process deletes the conversation before anything opened the inbox.
@@ -932,7 +1149,7 @@ describe('thread inbox (#3568)', () => {
 
   test('a deleted conversation takes its queued follow-ups with it', async () => {
     const world = boot(path());
-    const firstTurn = await runningFirstTurn(world);
+    await runningFirstTurn(world);
     queueFollowUp(world);
     world.store.deleteThread(THREAD);
     expect(world.inbox.list(THREAD)).toEqual([]);
