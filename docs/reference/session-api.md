@@ -139,6 +139,16 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
 
+A delegation's dispatch response (`POST /api/orchestration/delegations`) also
+carries `resolution.confinement` once its session has started (#2494). It is
+the session's confinement record, read back from that session's own
+`session.started`: the level, whether it was required, the observed posture
+(`confined`, `no-mechanism` or `configured-but-failed`), the mechanism,
+workspace access and policy basis. It is absent when the start recorded none.
+A start whose required confinement has no mechanism on this host is refused
+before anything starts. See
+[confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
+
 ### Find out what became of a send
 
 An existing keyed send with different submitted input returns HTTP `409`,

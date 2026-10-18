@@ -1,4 +1,5 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type { ExecutionConfinementRecord } from './execution-confinement.js';
 import type {
   ExecutionPreparationReceipt,
   ExecutionPreparationRequirement,
@@ -200,4 +201,12 @@ export interface ExecutionResolutionReceipt {
   workspace?: ResolvedWorkspaceTarget;
   /** Present only for a `project-portable-prepared` intent that matched. */
   preparation?: ExecutionPreparationReceipt;
+  /**
+   * #2494: the started session's confinement, read back from its own
+   * `session.started` record after the start. Never present at resolution
+   * time: the posture is observed from the started process, which does not
+   * exist yet when the binding is resolved. Absent when the receipt was
+   * returned before a start, or the start recorded none.
+   */
+  confinement?: ExecutionConfinementRecord;
 }

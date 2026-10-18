@@ -2529,3 +2529,62 @@ describe('#3567: keyed input and model changes', () => {
     expect(f.claude.turns).toHaveLength(1);
   });
 });
+
+describe('#2494: the confinement a start records reaches the delegation receipt', () => {
+  test('a delegation receipt carries the confinement read back from the started session, keyed on who started it', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const delegate = (credential: string, agent: keyof typeof AGENTS) =>
+      f.request(f.bearer(credential), '/api/orchestration/delegations', {
+        prompt: 'go',
+        target: { environment: { kind: 'current' }, agent },
+      });
+
+    const byPhone = await delegate(phone.credential, 'claude-agent');
+    expect(byPhone.status, byPhone.text).toBe(200);
+    // Read back from the session's own start record, which the start path
+    // wrote: Claude engages no mechanism, on the member floor.
+    expect(byPhone.body.data.resolution.confinement).toEqual({
+      level: 'host',
+      required: false,
+      posture: 'no-mechanism',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+    });
+    expect(f.claude.starts.at(-1)!.metadata?.stationConfinementRecord).toEqual(
+      byPhone.body.data.resolution.confinement,
+    );
+
+    const byOperator = await delegate(f.operator.credential, 'claude-agent');
+    expect(byOperator.status, byOperator.text).toBe(200);
+    expect(byOperator.body.data.resolution.confinement).toMatchObject({
+      level: 'host',
+      posture: 'no-mechanism',
+      policyBasis: 'operator-policy',
+    });
+  });
+
+  test('a delegated Codex start at never requires os-profile; with no observed record the receipt claims none', async () => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const response = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/delegations',
+      {
+        prompt: 'go',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+      },
+    );
+    expect(response.status, response.text).toBe(200);
+    expect(f.codex.starts.at(-1)!.confinementPlan).toEqual({
+      requiredLevel: 'os-profile',
+      policyBasis: 'workspace-floor',
+      mechanism: 'codex-sandbox',
+      level: 'os-profile',
+      workspaceAccess: 'mounted',
+    });
+    // This recording engine observes nothing, so nothing is claimed: the
+    // receipt never fills a posture in from the plan.
+    expect(response.body.data.resolution).not.toHaveProperty('confinement');
+  });
+});

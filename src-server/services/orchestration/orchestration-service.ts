@@ -35,6 +35,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -79,6 +80,7 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -157,6 +159,7 @@ import {
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
+import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
@@ -194,6 +197,11 @@ import {
   isFullAccessGrant,
   UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
+import {
+  type ConfinementProvider,
+  noMechanismConfinementRecord,
+  resolveConfinement,
+} from '../../security/confinement/confinement-provider.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -961,6 +969,11 @@ interface OrchestrationServiceOptions {
    * its next turn. Absent: stamps apply as written.
    */
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
+  /**
+   * #2494: the confinement mechanisms a start can resolve to. Absent:
+   * Codex's own sandbox, the only one this Station can engage today.
+   */
+  confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -2384,6 +2397,12 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       assertAdapterCurrent: (adapter) => this.assertAdapterCurrent(adapter),
       assertAdapterReady: (adapter) => this.assertAdapterReady(adapter),
+      applyConfinement: (input) =>
+        this.withConfinement(
+          input.provider,
+          input,
+          input.confinement === 'host' ? 'host' : 'workspace',
+        ),
       withAcceptedModelLaunchPlan: (
         adapter,
         input,
@@ -6254,6 +6273,7 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
+            confinementPlan: _untrustedConfinementPlan,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
           const admittedStartWorkspace =
@@ -6353,6 +6373,15 @@ export class OrchestrationService {
                 : {}),
             },
           };
+          // #2494: the confinement this start resolves to, from the
+          // confinement above and the mode the engine is actually given. A
+          // required level with no usable mechanism refuses here, before the
+          // engine is touched.
+          startInput = this.withConfinement(
+            adapter.provider,
+            startInput,
+            confinement,
+          );
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -11151,6 +11180,7 @@ export class OrchestrationService {
     const {
       modelOptions: _previous,
       confinement: _previousConfinement,
+      confinementPlan: _previousConfinementPlan,
       ...withoutOptions
     } = input;
     // Carry the stamp forward (the stored-metadata read strips reserved
@@ -11173,7 +11203,50 @@ export class OrchestrationService {
           : {}),
       },
     };
-    return modelOptions ? { ...restamped, modelOptions } : restamped;
+    // #2494: re-resolved for the new process, whose engine re-derives the
+    // posture; the previous start's record is never copied forward (the
+    // stored-metadata read strips it as a reserved key).
+    return this.withConfinement(
+      provider,
+      modelOptions ? { ...restamped, modelOptions } : restamped,
+      confinement,
+    );
+  }
+
+  /**
+   * #2494: `input` with its resolved confinement: a plan for the adapter
+   * when a mechanism is engaged (the adapter observes the started process
+   * and records the posture), else the `no-mechanism` record stamped now.
+   * Called after the reserved-key strip, with the input's final model
+   * options. Throws `ConfinementRefusedError` when a required level has no
+   * usable mechanism.
+   */
+  private withConfinement<
+    T extends Omit<ProviderSessionStartInput, 'resumeCursor'>,
+  >(engine: EngineId, input: T, confinement: StationConfinement): T {
+    const isolation = input.metadata?.workspaceIsolation as
+      | { mode?: unknown }
+      | undefined;
+    const resolution = resolveConfinement({
+      confinement,
+      engine,
+      appliedMode: approvalKnobSupported(engine)
+        ? readApprovalMode(input.modelOptions)
+        : undefined,
+      isolationMode: isolation?.mode === 'worktree' ? 'worktree' : 'shared',
+      providers: this.options.confinementProviders ?? [
+        codexSandboxConfinementProvider,
+      ],
+    });
+    if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
+    return {
+      ...input,
+      metadata: {
+        ...input.metadata,
+        [STATION_CONFINEMENT_RECORD_METADATA_KEY]:
+          noMechanismConfinementRecord(resolution),
+      },
+    };
   }
 
   /**
