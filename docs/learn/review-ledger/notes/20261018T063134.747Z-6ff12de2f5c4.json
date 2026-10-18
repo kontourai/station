@@ -1,0 +1,7 @@
+{
+  "revision": "049ca5b373283025a2fdb4f19ba6a139f7bffd15",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"CI-fix commits only: four module-private exports (CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID, CONFINED_FULL_ACCESS_UNAVAILABLE_CODE, observedConfined, a test helper) and the fallback helper's cast replaced by a typed delete; no behaviour change. This document names none of these symbols; its claims about confined Claude starts and the never-to-auto fallback still match the code.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

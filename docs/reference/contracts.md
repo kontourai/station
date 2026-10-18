@@ -59,8 +59,9 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
-| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
@@ -124,6 +125,10 @@ See the [provider contract](../../packages/contracts/src/provider.ts),
 [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
 
+Session inventory preserves Surface's `not-chosen` reviewed-source state and
+`reviewed-source-review-not-chosen` gap when a review selected another candidate.
+The row remains `contributed-to`; that state does not establish support for the answer.
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
@@ -168,7 +173,9 @@ child-work report for that row; clients retain their existing state.
 ## Product telemetry observations
 
 `@kontourai/station-contracts/product-telemetry` declares the content-free event
-inventory and version1 batch, observation and build shapes. Stable event IDs,
+inventory and version1 batch, observation and build shapes.
+`TelemetryPublisherStatus` includes the effective tier and reason alongside the
+optional saved `userChoice`; a DNT override does not replace that saved choice. Stable event IDs,
 producer occurrence/admission time, inventory revision and allowlisted build
 provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure

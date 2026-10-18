@@ -150,7 +150,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/domain/migrations/016-session-parent-mentions.ts"
   ],
 
   "checks": [

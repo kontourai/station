@@ -24,12 +24,14 @@ import { readProjectOverrides } from '@kontourai/station-contracts/project-setti
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import {
   persistableCredentialProfiles,
@@ -433,6 +435,27 @@ export function createConfigRoutes(
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (Object.hasOwn(body as object, 'telemetryTier')) {
+        const tiers = (body as Record<string, unknown>).telemetryTier;
+        if (
+          !tiers ||
+          typeof tiers !== 'object' ||
+          Array.isArray(tiers) ||
+          Object.entries(tiers).some(
+            ([publisher, tier]) =>
+              !['kontour', 'operator'].includes(publisher) ||
+              !['off', 'lite', 'full'].includes(tier),
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+            },
+            400,
+          );
+      }
 
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`
@@ -532,7 +555,7 @@ export function createConfigRoutes(
             {
               success: false,
               error:
-                'An agent cannot change telemetry destinations or key references. The operator can, in Settings.',
+                'An agent cannot change telemetry choices, destinations or key references. The operator can, in Settings.',
             },
             403,
           );
@@ -545,7 +568,7 @@ export function createConfigRoutes(
             {
               success: false,
               error:
-                'An operator must configure telemetry destinations and key references.',
+                'An operator must configure telemetry choices, destinations and key references.',
             },
             403,
           );
@@ -699,6 +722,14 @@ export function createConfigRoutes(
       // hung second PUT in tests/settings.spec.ts 'save persists changes').
       // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
+      const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
+        (key) => Object.hasOwn(body as object, key),
+      );
+      const mayRaiseTelemetry =
+        !requestMayBeAnAgent(c.req.raw) &&
+        (isOperatorInPersonNotAgent(c.req.raw) ||
+          (presentedScope !== undefined &&
+            pairingScopeIncludes(presentedScope, 'access:manage')));
       const priorConfig = await configLoader.loadAppConfig();
       // #2436: the Station default applies to every session start, the
       // unattended ones included, so raising it to full access needs the
@@ -715,6 +746,37 @@ export function createConfigRoutes(
       const update = async (beginMutation: () => void) => {
         beginMutation();
         const updated = await configLoader.mutateAppConfig((current) => {
+          if (writesTelemetryChoice) {
+            if (requestMayBeAnAgent(c.req.raw))
+              throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+            const next = mergeAppConfigUpdate(current, accepted);
+            const rank = { off: 0, lite: 1, full: 2 } as const;
+            // DNT blocks sending without changing the underlying choice/default.
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+            ).publishers;
+            const publishers = new Set([
+              ...Object.keys(current.telemetryTier ?? {}),
+              ...Object.keys(next.telemetryTier ?? {}),
+            ]);
+            for (const publisher of publishers) {
+              const key = publisher as keyof NonNullable<
+                AppConfig['telemetryTier']
+              >;
+              const before = current.telemetryTier?.[key] ?? defaults[key].tier;
+              const after = next.telemetryTier?.[key] ?? defaults[key].tier;
+              if (rank[after] > rank[before] && !mayRaiseTelemetry)
+                throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+            }
+            if (
+              next.telemetryTier?.kontour === 'full' &&
+              current.telemetryTier?.kontour !== 'full'
+            )
+              throw new Error(
+                'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+              );
+          }
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -788,6 +850,18 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only the operator or a device with access:manage can raise telemetry tiers. Agents cannot change telemetry choices.',
+          },
+          403,
+        );
       if (
         error instanceof Error &&
         error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED

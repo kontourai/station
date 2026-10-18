@@ -1,8 +1,10 @@
 import type { ClientOriginActor } from '@kontourai/station-contracts/client-origin';
+import type { ExecutionConfinementRecord } from '@kontourai/station-contracts/execution-confinement';
 import {
   type ApprovalMode,
   type EngineId,
   isApprovalMode,
+  PROVIDER_CLAUDE,
   PROVIDER_CODEX,
   PROVIDER_MODEL_OPTION_SUPPORT,
   type StationConfinement,
@@ -29,12 +31,27 @@ export function approvalKnobSupported(provider: EngineId): boolean {
 }
 
 /**
- * #2493: whether this engine confines `never` to the workspace with a native
- * process sandbox (Codex's `workspace-write`). An engine without one cannot
- * run `never` confined, so a confined session applies `auto` there instead.
+ * #2493/#2494: whether this engine runs `never` confined to the workspace.
+ *
+ * - Codex: always, with its own sandbox (`workspace-write`).
+ * - Claude: inside a Seatbelt profile Station applies around the engine.
+ *   At a START the request passes through: the start resolves its
+ *   confinement (a plan, or a refusal where no mechanism exists), and the
+ *   adapter applies full access only once the provider has observed the
+ *   profile applied, else Auto with the reason recorded. At a TURN it is
+ *   lifted only for a session whose latest start recorded an observed
+ *   `confined` posture (`observedConfined`), never from configuration.
+ * - Every other engine (ACP): never; a confined session applies `auto`.
  */
-function confinesFullAccessNatively(provider: EngineId): boolean {
-  return provider === PROVIDER_CODEX;
+function confinesFullAccess(
+  provider: EngineId,
+  phase: 'start' | 'turn',
+  observedConfined: () => boolean,
+): boolean {
+  if (provider === PROVIDER_CODEX) return true;
+  if (provider === PROVIDER_CLAUDE)
+    return phase === 'start' || observedConfined();
+  return false;
 }
 
 /** #2493: the mode an engine can apply for `mode` under `confinement`. */
@@ -42,12 +59,24 @@ function applicableMode(
   mode: ApprovalMode,
   provider: EngineId,
   confinement: StationConfinement,
+  phase: 'start' | 'turn',
+  observedConfined: () => boolean,
 ): ApprovalMode {
   return mode === 'never' &&
     confinement !== 'host' &&
-    !confinesFullAccessNatively(provider)
+    !confinesFullAccess(provider, phase, observedConfined)
     ? 'auto'
     : mode;
+}
+
+/**
+ * #2494: whether `record` (a session's latest start record) says its engine
+ * runs inside an observed confinement of at least `os-profile`.
+ */
+function observedConfined(
+  record: ExecutionConfinementRecord | undefined,
+): boolean {
+  return record?.posture === 'confined' && record.level !== 'host';
 }
 
 export interface ApprovalPostureStore {
@@ -166,6 +195,13 @@ export class ApprovalPosture {
       resolveAgentDefault?: (
         agentSlug: string,
       ) => Promise<ApprovalMode | undefined>;
+      /**
+       * #2494: the confinement record of the thread's latest start, as its
+       * engine's adapter observed it. Absent: no session counts as confined.
+       */
+      observedConfinement?: (
+        threadId: string,
+      ) => ExecutionConfinementRecord | undefined;
     },
   ) {}
 
@@ -338,10 +374,11 @@ export class ApprovalPosture {
    *   the engine already runs, never a re-read default, so an edited default
    *   still reconfigures nothing, and an ordinary turn still sends nothing.
    *
-   * #2493: on an engine with no native sandbox, `never` in a `workspace`
-   * session is applied as `auto`, so the engine is never spawned or turned
-   * with its permission checks bypassed on a caller's say-so. Codex keeps
-   * `never` and confines it with its sandbox (codex-approval-mode.ts).
+   * #2493: on an engine with no confinement for it, `never` in a
+   * `workspace` session is applied as `auto`, so the engine is never spawned
+   * or turned with its permission checks bypassed on a caller's say-so.
+   * Codex keeps `never` and confines it with its sandbox
+   * (codex-approval-mode.ts); Claude keeps it as `confinesFullAccess` says.
    */
   async resolve(input: {
     threadId: string;
@@ -381,7 +418,13 @@ export class ApprovalPosture {
     });
     return {
       ...rest,
-      approvalMode: applicableMode(mode, input.provider, input.confinement),
+      approvalMode: applicableMode(
+        mode,
+        input.provider,
+        input.confinement,
+        input.phase,
+        () => observedConfined(this.deps.observedConfinement?.(input.threadId)),
+      ),
     };
   }
 

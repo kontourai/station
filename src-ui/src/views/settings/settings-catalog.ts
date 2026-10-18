@@ -338,7 +338,7 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'usage-telemetry',
     title: 'Usage telemetry',
     section: 'telemetry',
-    configKeys: ['telemetryEnabled'],
+    configKeys: ['telemetryTier'],
   },
   {
     id: 'telemetry-destination',
