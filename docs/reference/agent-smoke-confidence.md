@@ -86,9 +86,13 @@ time; these deterministic tests are not a live-provider receipt.
 `dogfood:agent-smoke -- --matrix` extends the command's API/credential path
 with longer diagnostic sessions. It does not replace the one-turn smoke or
 promote connection readiness. The matrix is opt-in, may incur provider charges,
-and stays outside deterministic CI. Tests run against a loopback stub API;
-real-provider and rendered-browser qualification remain **NOT_VERIFIED** until
-an operator explicitly runs them.
+and live runs stay outside deterministic CI. Offline tests drive the real Hono
+orchestration routes and `OrchestrationService` over loopback HTTP, replacing
+only the provider adapter and read-only agent/connection configuration. They
+exercise real validation, conversation continuation, provenance projection,
+output admission/storage/inspection and activation lifecycle. The test output
+observer is a fake engine-side observer; real-provider and rendered-browser
+qualification remain **NOT_VERIFIED** until an operator explicitly runs them.
 
 Prepare a separate Station with an isolated `STATION_HOME`, instance name,
 non-default server/UI ports (for example 43141/43000), a disposable working
@@ -112,8 +116,11 @@ present. Refusal exits 2 before reading credentials, loading extensions, or
 making requests. Credentials shorter than 16 characters are refused before any
 request; short strings are never used for global redaction replacements.
 
-The runner discovers the engine's advertised models and starts one session per
-selected model. Repeat `--model=ID` to allowlist launch selectors; omitted models
+Configure an available Agent bound to the selected connection. The runner uses
+that connection's execution-default Agent, or an explicit `--agent=SLUG` (which
+must have that binding). Native Station Agents may use the built-in engine
+without an explicit connection binding. The runner discovers the engine's
+advertised models and creates one conversation per selected model. Repeat `--model=ID` to allowlist launch selectors; omitted models
 are never called, including during switch-and-back. Without an allowlist, all
 advertised models are planned. `--max-turns=N` is a hard send ceiling (default 24,
 allowed 1–1000). A plan larger than the ceiling refuses the entire run before
@@ -122,7 +129,7 @@ count and explains how to select fewer models with repeatable `--model=ID` or
 explicitly increase `--max-turns`. Four models with only the built-in scenarios
 fit exactly at 24 turns; five require 30. Extension reservations add to that
 count. The accepted plan and its
-turn count are printed as JSON on stderr before session commands; stdout stays
+turn count are printed as JSON on stderr before the first foreground submission; stdout stays
 one JSON results document. Each model gets up to six built-in sends:
 
 | Scenario | Check |
@@ -131,13 +138,20 @@ one JSON results document. Each model gets up to six built-in sends:
 | Follow-up | Recall that secret without repeating it in the prompt |
 | Model switch and back | Recall on a second advertised model, then the original |
 | Artifact | Write a file with a fresh content nonce, call `declare_output`, compare its stored path and inspect its exact text bytes |
-| Recycle | Observe loaded → unloaded across `stopSession`, then loaded after a recall send in the same Station session |
+| Recycle | Observe loaded → unloaded across `stopSession`, then loaded after a foreground continuation recall |
 
 One selected model leaves switch-and-back **unverified** and plans four built-in
 sends. Recycle reads `/api/orchestration/sessions/loaded` before stop, after stop,
 and after recall. A no-op stop or unavailable unload/resume observation is
 **unverified** with its reason; a forgotten secret fails the response check.
-These observations prove the public API's activation transition, not an OS
+The first message uses `POST /api/orchestration/chat` with the Agent target,
+workspace, model override and conversation ID. Follow-ups, model switches and
+recycle recall use `POST /api/orchestration/chat/:conversationId/continue` with
+a model override. The runner follows each receipt's `sessionId` and
+`providerTurnId`; it does not assume conversation and runtime session IDs stay
+identical. Stop uses the public `/api/orchestration/commands` route's
+`stopSession` command. Internal `startSession` and `sendTurn` commands are not
+accepted by that route. These observations prove the public API's activation transition, not an OS
 process exit or native provider-session identity. JSON retains those states.
 Artifact support depends on the engine using Station's native output producer;
 an undeclared file cannot pass. The runner uses the output's exact event ID with
@@ -167,10 +181,13 @@ supply that identity, while an explicitly vendor-qualified request also covers
 new families and vendor namespaces without a fixed registry. A bare unknown family cannot establish a reported prefix's vendor
 and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
 forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
-matching vendor, including `us.meta.*`, and Vertex's
+matching vendor, including `us.meta.*` and `us.amazon.nova-pro-v1:0`, and Vertex's
 `claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
 cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
-versions fail. The accepted/rejected table in the
+versions fail. Dots inside bare model IDs (for example `grok-4.1` or
+`qwen3.5-coder`) remain part of the model name. Only an explicit `vendor/`
+prefix or a known `region.vendor.` form establishes a vendor prefix.
+The accepted/rejected table in the
 [matrix tests](../../scripts/__tests__/station-engine-matrix.test.ts) pins this
 policy. All stored-output pages are read; partial results fail. Duplicate or
 extra rendered names fail even if the expected card exists.
@@ -195,12 +212,14 @@ trusted local ES module. It may export either or both:
   valid. An optional positive integer `maxTurns` per scenario declares its
   per-model planning bound. Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario/model);
-  its printed count is an upper bound. Every managed `sendTurn` command still
-  consumes both the printed plan reservation and the hard run ceiling, including
-  `ctx.api` and `ctx.command` calls.
+  its printed count is an upper bound. Every managed foreground submission or continuation, background/delegated
+  submission, and `steerTurn`/`steerTurnOnce` command consumes both the printed
+  plan reservation and the hard run ceiling, including `ctx.api` and
+  `ctx.command` calls. The effective HTTP method and path are normalized before
+  counting; query strings and an explicit method cannot bypass the ceiling.
   An extension exceeding either bound gets an explicit failure before another
   send. Trusted modules retain their existing authority; this is not a sandbox.
-  `ctx` provides `sessionId`, `model`, `switchModel`,
+  `ctx` provides the current `sessionId`, stable `conversationId`, `model`, `switchModel`,
   `nonce`, `artifactName`, `artifactContent`,
   `api(path, optionalBody, optionalMethod)`, `command(command)`,
   `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent)` and
@@ -220,7 +239,11 @@ The adapter catalog and orchestration return types explicitly retain optional
 `resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
 checks that a fake adapter's concrete alias resolution survives real discovery,
 service dispatch and JSON serialization. A catalog resolution is not per-turn
-served-model proof.
+served-model proof. The [matrix integration test](../../src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts)
+executes all five scenarios against the real foreground routes with a fake
+adapter, including actual stored outputs and inspected file contents. The
+pure tests retain the model-alias table, verdict rules and Markdown renderer;
+there is no permissive replacement for the execution routes.
 
 JSON goes to stdout and a timestamped `.json` file alongside a generated,
 dated Markdown matrix in `docs/reference/engine-matrix-runs/` by default.
@@ -228,11 +251,11 @@ Use `--output-dir=PATH` for private receipts. Both include engine, connection,
 launch selector, scenario, verdict, engine-inferred connection, served-as and
 failure text; JSON also retains concrete comparison models, the send plan/count,
 session/turn IDs and individual checks. New session-level `runtime.error` events
-without a turn ID retain their actual error text. An initial snapshot establishes
-the session error cursor; it then advances only through a completed-turn event.
-Reads before later sends do not reset it. Errors in the gap after a terminal,
+without a turn ID retain their actual error text. The cursor starts empty for
+each new conversation and advances only through a completed-turn event. Startup
+errors belong to this run. Reads before later sends do not reset the cursor. Errors in the gap after a terminal,
 including errors emitted during `stopSession`, fail the next attempted scenario
-before another billable send. Initial historical errors remain excluded.
+before another billable send.
 Exit 0 requires every row
 to pass; failures or unverified rows exit 1. Review receipts before committing:
 provider errors receive bounded redaction, but arbitrary error text and model
