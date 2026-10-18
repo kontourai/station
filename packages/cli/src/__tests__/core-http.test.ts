@@ -10,6 +10,7 @@ import {
   describe,
   expect,
   type MockInstance,
+  onTestFinished,
   test,
   vi,
 } from 'vitest';
@@ -601,6 +602,13 @@ describe('CLI core commands over HTTP', () => {
           res.destroy();
           return;
         }
+        if (body.message === 'trigger conversation refusal') {
+          sendJson(403, {
+            success: false,
+            error: 'Conversation access denied',
+          });
+          return;
+        }
         // #1796: the real refusal's shape, for a device without the grant.
         if (body.message === 'refuse full access') {
           res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -1085,64 +1093,127 @@ describe('CLI core commands over HTTP', () => {
     expect(chatRequests).toEqual([]);
   });
 
-  test('the executable retains a lost acceptance handle in one JSON error and never resends', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-cli-turn-key-'));
-    try {
-      const result = await new Promise<{
-        code: number | null;
-        stdout: string;
-        stderr: string;
-      }>((resolveResult, reject) => {
-        const child = spawn(
-          process.execPath,
-          [
-            '--import',
-            'tsx',
-            resolve('packages/cli/src/bin.ts'),
+  test('a refused explicit conversation never falls back to a new chat', async () => {
+    const { runCli, reportCliError, describeCliError } = await import(
+      '../cli.js'
+    );
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failure = await runCli([
+      'chat',
+      'codex',
+      'trigger conversation refusal',
+      '--json',
+      '--conversation=private-conversation',
+      '--client-turn-id=retry-private',
+      `--api-base=${apiBase}`,
+    ]).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ status: 403 });
+    reportCliError(failure);
+    expect(stderr).toHaveBeenCalledExactlyOnceWith(
+      JSON.stringify({
+        success: false,
+        error: describeCliError(failure),
+        clientTurnId: 'retry-private',
+        conversationId: 'private-conversation',
+      }),
+    );
+    expect(chatRequests).toEqual([
+      {
+        path: '/api/orchestration/chat/private-conversation/continue',
+        message: 'trigger conversation refusal',
+        clientTurnId: 'retry-private',
+        conversationId: undefined,
+      },
+    ]);
+  });
+
+  test.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
+    '%s retains a lost acceptance handle in one JSON error and never resends',
+    async (entrypoint) => {
+      const home = mkdtempSync(join(tmpdir(), 'station-cli-turn-key-'));
+      try {
+        const result = await new Promise<{
+          code: number | null;
+          stdout: string;
+          stderr: string;
+        }>((resolveResult, reject) => {
+          const child = spawn(
+            process.execPath,
+            [
+              '--import',
+              'tsx',
+              resolve(entrypoint),
+              'chat',
+              'codex',
+              'trigger lost acceptance',
+              '--json',
+              `--api-base=${apiBase}`,
+            ],
+            {
+              env: {
+                ...process.env,
+                STATION_HOME: home,
+                STATION_INSTANCE_NAME: 'cli-stable-key-test',
+              },
+              stdio: ['ignore', 'pipe', 'pipe'],
+              windowsHide: true,
+              timeout: 20000,
+              killSignal: 'SIGKILL',
+            },
+          );
+          onTestFinished(() => {
+            if (child.exitCode === null) child.kill('SIGKILL');
+          });
+          let stdout = '';
+          let stderr = '';
+          child.stdout.on('data', (chunk) => {
+            stdout += chunk;
+          });
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk;
+          });
+          child.once('error', reject);
+          child.once('close', (code) =>
+            resolveResult({ code, stdout, stderr }),
+          );
+        });
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(chatRequests).toHaveLength(1);
+        expect(result.stderr.trim().split('\n')).toHaveLength(1);
+        expect(result.stderr).toMatch(/^\{"success":false,/);
+        const failure = JSON.parse(result.stderr);
+        expect(failure).toMatchObject({
+          success: false,
+          error: expect.any(String),
+          clientTurnId: chatRequests[0].clientTurnId,
+          conversationId: chatRequests[0].conversationId,
+        });
+        expect(failure.clientTurnId).toEqual(expect.any(String));
+        expect(failure.conversationId).toEqual(expect.any(String));
+        const { runCli } = await import('../cli.js');
+        await expect(
+          runCli([
             'chat',
             'codex',
             'trigger lost acceptance',
             '--json',
+            `--client-turn-id=${failure.clientTurnId}`,
             `--api-base=${apiBase}`,
-          ],
-          {
-            env: {
-              ...process.env,
-              STATION_HOME: home,
-              STATION_INSTANCE_NAME: 'cli-stable-key-test',
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-          },
-        );
-        let stdout = '';
-        let stderr = '';
-        child.stdout.on('data', (chunk) => {
-          stdout += chunk;
-        });
-        child.stderr.on('data', (chunk) => {
-          stderr += chunk;
-        });
-        child.once('error', reject);
-        child.once('close', (code) => resolveResult({ code, stdout, stderr }));
-      });
-      expect(result.code).toBe(1);
-      expect(result.stdout).toBe('');
-      expect(chatRequests).toHaveLength(1);
-      expect(result.stderr.trim().split('\n')).toHaveLength(1);
-      expect(result.stderr).toMatch(/^\{"success":false,/);
-      const failure = JSON.parse(result.stderr);
-      expect(failure).toMatchObject({
-        success: false,
-        error: expect.any(String),
-        clientTurnId: chatRequests[0].clientTurnId,
-        conversationId: chatRequests[0].conversationId,
-      });
-      expect(failure.clientTurnId).toEqual(expect.any(String));
-      expect(failure.conversationId).toEqual(expect.any(String));
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
-  }, 30000);
+          ]),
+        ).rejects.toBeInstanceOf(TypeError);
+        expect(chatRequests).toHaveLength(2);
+        expect(chatRequests[1]).toEqual(chatRequests[0]);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    30000,
+  );
 
   test('representative generic verbs render structured API error codes, never objects', async () => {
     const { runCli } = await import('../cli.js');
@@ -1196,6 +1267,7 @@ describe('CLI core commands over HTTP', () => {
       {
         type: 'continueTarget',
         input: {
+          clientTurnId: expect.any(String),
           message: 'say runtime ok',
           environment: { kind: 'current' },
         },
@@ -1225,6 +1297,7 @@ describe('CLI core commands over HTTP', () => {
     expect(orchestrationCommands).toContainEqual({
       type: 'executeTarget',
       input: {
+        clientTurnId: expect.any(String),
         message: 'say routed ok',
         conversationId: expect.any(String),
         target: {
@@ -1279,6 +1352,7 @@ describe('CLI core commands over HTTP', () => {
       {
         type: 'continueTarget',
         input: {
+          clientTurnId: expect.any(String),
           message: 'hello from kiro',
           environment: { kind: 'current' },
         },
@@ -1354,6 +1428,7 @@ describe('CLI core commands over HTTP', () => {
       type: 'executeTarget',
       input: {
         conversationId: expect.any(String),
+        clientTurnId: expect.any(String),
         message: 'say runtime ok',
         target: {
           agent: 'codex',
@@ -1381,6 +1456,7 @@ describe('CLI core commands over HTTP', () => {
       type: 'executeTarget',
       input: {
         conversationId: expect.any(String),
+        clientTurnId: expect.any(String),
         message: 'say runtime ok',
         target: {
           environment: { kind: 'current' },
@@ -1405,6 +1481,7 @@ describe('CLI core commands over HTTP', () => {
       type: 'executeTarget',
       input: {
         conversationId: expect.any(String),
+        clientTurnId: expect.any(String),
         message: 'use the current workspace',
         target: {
           environment: { kind: 'current' },
@@ -1430,6 +1507,7 @@ describe('CLI core commands over HTTP', () => {
       type: 'executeTarget',
       input: {
         conversationId: expect.any(String),
+        clientTurnId: expect.any(String),
         message: 'use the remote workspace',
         target: {
           environment: { kind: 'saved', id: 'remote-env' },
@@ -1517,6 +1595,7 @@ describe('CLI core commands over HTTP', () => {
       {
         type: 'continueTarget',
         input: {
+          clientTurnId: expect.any(String),
           message: 'say runtime ok',
           environment: { kind: 'current' },
           model: { options: { approvalMode: 'never' } },
@@ -1568,6 +1647,7 @@ describe('CLI core commands over HTTP', () => {
       type: 'executeTarget',
       input: {
         conversationId: expect.any(String),
+        clientTurnId: expect.any(String),
         message: 'say runtime ok',
         target: {
           environment: { kind: 'current' },
@@ -1601,6 +1681,7 @@ describe('CLI core commands over HTTP', () => {
     expect(orchestrationCommands[0]).toEqual({
       type: 'continueTarget',
       input: {
+        clientTurnId: expect.any(String),
         message: 'continue the work',
         environment: { kind: 'current' },
       },
@@ -1669,7 +1750,7 @@ describe('CLI core commands over HTTP', () => {
     );
   });
 
-  test('rejects value-less connection and session flags', async () => {
+  test('rejects value-less connection and conversation flags', async () => {
     const { runCli } = await import('../cli.js');
 
     await expect(
@@ -1678,6 +1759,15 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli(['chat', 'codex', 'hello', '--session', `--api-base=${apiBase}`]),
     ).rejects.toThrow('--session requires a non-empty value');
+    await expect(
+      runCli([
+        'chat',
+        'codex',
+        'hello',
+        '--conversation',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--conversation requires a non-empty value');
     expect(orchestrationCommands).toEqual([]);
   });
 
@@ -1834,6 +1924,7 @@ describe('CLI core commands over HTTP', () => {
       input: {
         conversationId: expect.any(String),
         message: 'say runtime ok',
+        clientTurnId: expect.any(String),
         target: {
           environment: { kind: 'current' },
           agent: 'codex',
@@ -3114,6 +3205,8 @@ describe('CLI core commands over HTTP', () => {
     expect(printed).toBeDefined();
     const payload = JSON.parse(printed as string);
     expect(payload.pendingRequest.requestId).toBe('req-open-1');
+    expect(payload.clientTurnId).toBe(chatRequests[0].clientTurnId);
+    expect(payload.clientTurnId).toEqual(expect.any(String));
   });
 
   test('rejects an invalid --on-request value as a usage error before any request (station#979)', async () => {

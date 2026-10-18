@@ -344,6 +344,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // prove the reaper survives, the same resource shape as platform.test.ts.
   'packages/cli/src/__tests__/helpers/longrunning-fixture-child.abnormal-exit.test.ts',
   'packages/cli/src/__tests__/platform.test.ts',
+  // #3567: bounded CLI executable children send to a per-test loopback
+  // fixture to verify lost-response JSON handles in both entry points.
+  'packages/cli/src/__tests__/core-http.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.

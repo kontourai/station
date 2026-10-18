@@ -843,7 +843,7 @@ station agents delete <slug> [--api-base=<url>]
 station agents conversations <slug> [--api-base=<url>]
 station agents messages <slug> <conversationId> [--api-base=<url>]
 station agents workflows <list|get|create|update|delete> ... [--api-base=<url>]
-station agents chat <slug> <message> [--project=<project-slug>] [--conversation=<id>] [--model=<id>] [--api-base=<url>]
+station agents chat <slug> <message> [--project=<project-slug>] [--conversation=<id>] [--client-turn-id=<key>] [--model=<id>] [--api-base=<url>]
 ```
 
 `station agents get <slug>` includes that Agent's delegated-child denial
@@ -901,7 +901,7 @@ does not silently discard it. Conversation naming will return when it is part
 of the shared execution contract.
 
 ```
-station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
+station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--client-turn-id=<key>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
 ```
 
 Examples:
@@ -921,6 +921,33 @@ station chat codex "Continue" --conversation="$CONVERSATION_ID" --approval-mode=
 Environment. The controlling Station sends the canonical Environment + Agent
 target to that Environment for resolution. The CLI never selects an engine,
 connection, provider, tunnel, or remote API URL for execution.
+
+Each user turn gets a UUID `clientTurnId` before HTTP. To retain the identity
+across separate invocations, pass `--client-turn-id=<key>`; it must be nonblank
+and at most 200 characters. Valid key bytes are preserved, including surrounding
+spaces. A new chat derives its Conversation ID as `cli:<sha256(clientTurnId)>`;
+an explicit `--session` or `--conversation` remains authoritative. Reusing a key
+means retrying the same operation with the same message, target, and options.
+Use a fresh key for another user turn. Two callers choosing the same explicit
+key address the same new Conversation; the server's existing authorization
+still applies. A refusal never falls back to a different Conversation.
+
+`--json` success and pending-request results include `clientTurnId` and
+`conversationId`, even when the API receipt does not echo the key. If chat fails
+after preparing the operation, both executable entry points write one JSON
+object to stderr and exit 1:
+
+```json
+{"success":false,"error":"<existing CLI error message>","clientTurnId":"<key>","conversationId":"<bound conversation>"}
+```
+
+Use `--json` or choose the key before sending to retain a retry handle if the
+response is lost. Text-mode errors do not expose generated keys. An uncertain
+response can mean the send took effect: inspect the Conversation before deciding
+to retry, then reuse the original key and binding. For a new-chat retry, repeat
+the original command with its key; for a continuation, also retain its original
+`--session`/`--conversation`. Keys supply identity, not a safe-replay policy or a
+guaranteed retention window. The CLI never resends automatically.
 
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. The
