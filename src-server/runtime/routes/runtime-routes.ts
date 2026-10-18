@@ -2914,7 +2914,7 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         onTelemetryRemoval: async (publisher, reason) => {
-          await context
+          return context
             .getUsageTelemetry?.()
             ?.pluginUninstalled(publisher, reason);
         },

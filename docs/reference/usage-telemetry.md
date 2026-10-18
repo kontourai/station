@@ -558,6 +558,22 @@ standalone feedback route cannot manufacture an uninstall action.
 strict daily parser is in `@kontourai/station-shared/plugin-telemetry`; broker
 acceptance is deferred. No endpoint is enabled by these changes.
 
-Plugin count requests require a short-lived kernel-issued Pane capability bound to plugin, namespaced publisher, installation generation and declaration revision. A plugin header is ignored for attribution. Agent principals are refused. Capability-bearing and Pane-marked requests cannot raise tiers or write Full acknowledgements or notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately; unmarked same-origin plugin code is not isolated by these checks.
+Plugin count requests require a short-lived kernel-issued Pane capability bound to
+plugin, namespaced publisher, installation generation and declaration revision. A plugin
+header is ignored for attribution. Agent principals are refused. Capability-bearing and
+Pane-marked requests cannot raise tiers or write Full acknowledgements or notice
+receipts.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. Isolating that code remains a separate platform item.
 
 Plugin declarations reject non-public literals. Each send checks every DNS answer with the shared development-proxy validator and pins TLS to a validated address; redirects are refused. Each publisher admits at most 100 count requests and 100 Full observations per UTC day. Full delivery sends one `plugin_events` batch per flush containing the queued `plugin_event` records. Dropped records coalesce per publisher/day/reason. Synchronous uninstall fencing prevents pending ordinary sends from crossing asynchronous withdrawal.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

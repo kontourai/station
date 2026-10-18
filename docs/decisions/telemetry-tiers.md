@@ -231,12 +231,31 @@ limited to one per publisher per UTC day. DNT permits neither path.
 
 Plugin telemetry declarations now use the shared bounded publisher schema. Because
 registry signature receipts do not classify catalog visibility, operators must
-explicitly list public catalog source keys in `publicTelemetryRegistries`.
-Signature verification and matching registry item identity are independently
-required. `telemetryPublisherPolicy` feeds the foundation resolver and can only
-lower defaults. The authoring API uses a Pane-scoped `useTelemetry()` or explicit
-`createPluginTelemetry(apiBase, paneCapability)`; the kernel mints a five-minute, unforgeable token per mounted Pane, bound to plugin, namespaced publisher, installation generation and declaration revision. Only the token attributes counts; plugin headers confer no count authority. Agent principals cannot count. Pane-marked requests and capability-bearing requests cannot raise tiers, acknowledge Full, or write notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately; unmarked same-origin code is not isolated by these checks. Legacy ambient count/track and automatic instrument() observations are no-ops; development instrumentation warns. Kernel consent surfaces retain
+explicitly list public catalog source keys in `publicTelemetryRegistries`. Signature
+verification and matching registry item identity are independently required.
+`telemetryPublisherPolicy` feeds the foundation resolver and can only lower defaults.
+The authoring API uses a Pane-scoped `useTelemetry()` or explicit
+`createPluginTelemetry(apiBase, paneCapability)`; the kernel mints a five-minute,
+unforgeable token per mounted Pane, bound to plugin, namespaced publisher, installation
+generation and declaration revision. Only the token attributes counts; plugin headers
+confer no count authority. Agent principals cannot count. Pane-marked requests and
+capability-bearing requests cannot raise tiers, acknowledge Full, or write notice
+receipts.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. Isolating that code remains a separate platform item.
+
+Legacy ambient count/track and automatic instrument() observations are no-ops; development instrumentation warns. Kernel consent surfaces retain
 their ownership and appearance. Broker acceptance and distribution manifest
 loading remain deferred; no deployment or real endpoint is enabled.
 
 Plugin destinations reject non-public literal hosts during declaration parsing. Before every send the shared development-proxy validator checks every DNS answer; the HTTPS connection is pinned to one validated address with TLS hostname verification. Redirects are refused. Each publisher admits at most 100 count requests and 100 Full observations per UTC day. Full delivery batches queued observations into one request per flush without retries. Dropped observations coalesce in the outbox per publisher/day/reason. Uninstall synchronously fences ordinary sends and aborts active requests before asynchronous withdrawal; Off and DNT suppress explicit uninstall reasons.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

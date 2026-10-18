@@ -71,7 +71,7 @@ export function createPluginRoutes(
     onTelemetryRemoval?: (
       publisher: TelemetryPublisherId,
       reason?: TelemetryFeedbackReason,
-    ) => Promise<void>;
+    ) => Promise<undefined | (() => void)>;
     installationHost?: PluginInstallationHost;
     registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
     packageMcpJournal?: PackageMcpAdmissionJournal;

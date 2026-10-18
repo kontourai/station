@@ -115,7 +115,7 @@ interface PluginLifecycleRouteDeps {
   onTelemetryRemoval?: (
     publisher: TelemetryPublisherId,
     reason?: TelemetryFeedbackReason,
-  ) => Promise<void>;
+  ) => Promise<undefined | (() => void)>;
   /**
    * Caller resolution for the operator-only members of this file (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -1205,7 +1205,7 @@ export function registerPluginLifecycleRoutes(
               deps.onTelemetryRemoval?.(
                 publisher,
                 reason as TelemetryFeedbackReason | undefined,
-              ) ?? Promise.resolve(),
+              ) ?? Promise.resolve(undefined),
             agentsDir,
             registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
             packageMcpJournal: deps.packageMcpJournal,

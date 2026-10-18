@@ -1888,4 +1888,22 @@ available for receiver authors. The Station broker does not yet accept this
 contract. A direct HTTPS receiver sees network metadata, including source IP;
 these shapes do not establish network unlinkability or aggregate-only reception.
 
-The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its plugin, namespaced publisher, installation and declaration revision. `useTelemetry()` uses that capability; `x-station-plugin` cannot authorize counts. Agent principals cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a tier, acknowledge Full, or write an opt-in/notice receipt. Same-origin plugin frames remain a platform-wide trust boundary tracked separately: this feature does not isolate unmarked same-origin plugin code. Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
+The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its
+plugin, namespaced publisher, installation and declaration revision. `useTelemetry()`
+uses that capability; `x-station-plugin` cannot authorize counts. Agent principals
+cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a
+tier, acknowledge Full, or write an opt-in/notice receipt.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. Isolating that code remains a separate platform item.
+
+Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

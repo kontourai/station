@@ -459,7 +459,9 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallTransactionDeps {
-  beforeTelemetryRemoval?: (publisher: TelemetryPublisherId) => Promise<void>;
+  beforeTelemetryRemoval?: (
+    publisher: TelemetryPublisherId,
+  ) => Promise<undefined | (() => void)>;
   /** Explicit private installer owner, never request data or ambient state. */
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
@@ -4257,7 +4259,7 @@ async function installPluginFromSourceUnderContext(
           {
             strict: true,
             beforeEffect: () =>
-              policyAdmission?.assertCurrent() ?? Promise.resolve(),
+              policyAdmission?.assertCurrent() ?? Promise.resolve(undefined),
             ...(permissionArtifact
               ? (captureManagedPluginPermission(deps, pluginName) ?? {
                   artifact: permissionArtifact,
@@ -4762,6 +4764,7 @@ async function uninstallPluginUnderPublication(
     throw new Error(
       'Plugin installation changed before removal; reload before retrying',
     );
+  let telemetryPublisher: TelemetryPublisherId | undefined;
   if (manifest.telemetry && priorJournal?.state === 'observed') {
     const trust = deps.packageMcpJournal!.registryAcquisition(
       priorJournal.installation,
@@ -4771,16 +4774,10 @@ async function uninstallPluginUnderPublication(
       trust.receipt?.signer &&
       trust.receipt.registryId === manifest.telemetry.publisher
     ) {
-      const publisher: TelemetryPublisherId = pluginTelemetryPublisherId(
+      telemetryPublisher = pluginTelemetryPublisherId(
         trust.receipt.registryKeyDigest,
         trust.receipt.registryId,
       );
-      try {
-        await deps.beforeTelemetryRemoval?.(publisher);
-      } catch {
-        logger.warn('Plugin uninstall feedback unavailable');
-      }
-      await retirePluginTelemetry(projectHomeDir, publisher);
     }
   }
   const priorWasReady =
@@ -4938,7 +4935,27 @@ async function uninstallPluginUnderPublication(
     return managed ? await installationService!.inspect(pluginName) : null;
   };
 
+  let resumeTelemetry: (() => void) | undefined;
+  let restoreTelemetry: (() => Promise<void>) | undefined;
+  const rollbackTelemetry = async () => {
+    await restoreTelemetry?.();
+    restoreTelemetry = undefined;
+    resumeTelemetry?.();
+    resumeTelemetry = undefined;
+  };
   try {
+    if (telemetryPublisher) {
+      try {
+        resumeTelemetry =
+          await deps.beforeTelemetryRemoval?.(telemetryPublisher);
+      } catch {
+        logger.warn('Plugin uninstall feedback unavailable');
+      }
+      restoreTelemetry = await retirePluginTelemetry(
+        projectHomeDir,
+        telemetryPublisher,
+      );
+    }
     backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
     if (recovery) mkdirSync(backupRoot, { recursive: true });
     if (!managed)
@@ -5029,7 +5046,12 @@ async function uninstallPluginUnderPublication(
       commitRemovedDependencies(removedDependencyBackups);
       grantScope.commit();
     };
-    if (recovery) recovery.capture(compensateRemoval, finishRemoval);
+    if (recovery)
+      recovery.capture(async (parent) => {
+        const restored = await compensateRemoval(parent);
+        await rollbackTelemetry();
+        return restored;
+      }, finishRemoval);
     else finishRemoval();
     return {
       success: true,
@@ -5042,6 +5064,7 @@ async function uninstallPluginUnderPublication(
   } catch (error) {
     try {
       await compensateRemoval();
+      await rollbackTelemetry();
     } catch (rollbackError) {
       throw new AggregateError(
         [error, rollbackError],

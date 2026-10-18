@@ -99,31 +99,36 @@ function empty(declaration: PublisherTelemetryDeclaration): Counts {
     ]),
   );
 }
-/** Withdrawal persists before removal, invalidating both queued snapshots and receipts. */
+/** Retire snapshots and receipts before removal; return compensation for an aborted uninstall. */
 export async function retirePluginTelemetry(
   homeDir: string,
   publisher: TelemetryPublisherId,
-): Promise<void> {
-  await new TelemetryLocalState(homeDir).publisherDaily<PublisherState>(
-    publisher,
-    (state) =>
-      state
-        ? {
-            ...state,
-            retired: true,
-            counts: {},
-            previous: undefined,
-            full: undefined,
-            notice: undefined,
-            acknowledgement: undefined,
-          }
-        : null,
-  );
+) {
+  const local = new TelemetryLocalState(homeDir);
+  let previous: PublisherState | null = null;
+  await local.publisherDaily<PublisherState>(publisher, (state) => {
+    previous = state;
+    return state
+      ? {
+          ...state,
+          retired: true,
+          counts: {},
+          previous: undefined,
+          full: undefined,
+          notice: undefined,
+          acknowledgement: undefined,
+        }
+      : null;
+  });
+  return async () => {
+    await local.publisherDaily<PublisherState>(publisher, () => previous);
+  };
 }
 export class PluginTelemetryService {
   private readonly local: TelemetryLocalState;
   private stopped = false;
   private readonly withdrawn = new Set<TelemetryPublisherId>();
+  private readonly withdrawalEpochs = new Map<TelemetryPublisherId, number>();
   private readonly capabilities = new Map<
     string,
     {
@@ -171,10 +176,17 @@ export class PluginTelemetryService {
   }
   withdraw(publisher: TelemetryPublisherId) {
     this.withdrawn.add(publisher);
+    this.withdrawalEpochs.set(
+      publisher,
+      (this.withdrawalEpochs.get(publisher) ?? 0) + 1,
+    );
     for (const [token, claim] of this.capabilities)
       if (claim.publisher === publisher) this.capabilities.delete(token);
     for (const [request, owner] of this.requests)
       if (owner === publisher) request.abort();
+    return () => {
+      this.withdrawn.delete(publisher);
+    };
   }
   async mountPane(plugin: string) {
     const binding = (await this.bindings()).find(
@@ -186,6 +198,11 @@ export class PluginTelemetryService {
       throw new Error('Publisher retired');
     for (const [token, claim] of this.capabilities)
       if (claim.expires <= Date.now()) this.capabilities.delete(token);
+    const pluginTokens = [...this.capabilities].filter(
+      ([, claim]) => claim.plugin === plugin,
+    );
+    while (pluginTokens.length >= 16)
+      this.capabilities.delete(pluginTokens.shift()![0]);
     if (this.capabilities.size >= 1024)
       throw new Error('Too many mounted panes');
     const token = randomBytes(32).toString('base64url');
@@ -631,6 +648,8 @@ export class PluginTelemetryService {
     tier: 'lite' | 'full',
     snapshot: PublisherState,
   ) {
+    const withdrawalEpoch =
+      this.withdrawalEpochs.get(publisherId(binding)) ?? 0;
     let outcome: TelemetryOutboxEntry['outcome'] = 'dropped';
     let reason: TelemetryOutboxEntry['reason'] = 'expired';
     const artifactCurrent = await binding.isCurrent();
@@ -695,9 +714,11 @@ export class PluginTelemetryService {
             reason = 'disclosure';
             throw new Error('Full withdrawn');
           }
-          // Withdrawal may happen before controller registration during DNS/admission.
+          // Rollback can reopen counting, but cannot release a send from before withdrawal.
           if (
-            (this.withdrawn.has(publisherId(binding)) &&
+            ((this.withdrawn.has(publisherId(binding)) ||
+              (this.withdrawalEpochs.get(publisherId(binding)) ?? 0) !==
+                withdrawalEpoch) &&
               !('action' in payload)) ||
             !binding.isSelected() ||
             controller.signal.aborted

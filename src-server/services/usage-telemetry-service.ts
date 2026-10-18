@@ -868,16 +868,19 @@ export class UsageTelemetryService {
     publisher: TelemetryPublisherId,
     reason?: TelemetryFeedback['reason'],
   ) {
-    this.pluginPublishers?.withdraw(publisher);
+    const resume = this.pluginPublishers?.withdraw(publisher);
     try {
       await this.pluginPublishers?.tierLowered(
         publisher,
         reason,
         'plugin-uninstalled',
       );
+    } catch (error) {
+      this.warn('Plugin uninstall feedback unavailable', error);
     } finally {
       this.pluginPublishers?.withdraw(publisher);
     }
+    return resume;
   }
   async stationStarted(): Promise<void> {
     await this.pluginPublishers?.notice(

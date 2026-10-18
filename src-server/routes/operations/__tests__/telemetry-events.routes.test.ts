@@ -21,6 +21,7 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import * as transport from '../../../services/plugin-telemetry-transport.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
+import * as pluginPermissions from '../../../services/plugins/plugin-permissions.js';
 import { registryPackageSignaturePayload } from '../../../services/plugins/registry-supply-chain.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../../services/plugins/registry-trust-policy.js';
 import { TelemetryLocalState } from '../../../services/telemetry-local-state.js';
@@ -57,24 +58,13 @@ async function fixture(
     unsigned?: boolean;
     private?: boolean;
     wrongPublisher?: boolean;
+    secondPlugin?: boolean;
   } = {},
 ) {
   const directory = makeTempDir('station-publisher-test-');
   const home = join(directory, 'home');
   mkdirSync(home, { recursive: true });
-  const source = join(directory, 'writer');
-  mkdirSync(source);
-  writeFileSync(
-    join(source, 'plugin.json'),
-    readFileSync(new URL('./fixtures/telemetry-plugin.json', import.meta.url)),
-  );
-  if (options.wrongPublisher) {
-    const path = join(source, 'plugin.json');
-    const manifest = JSON.parse(readFileSync(path, 'utf8'));
-    manifest.extensions['io.kontourai.station'].telemetry.publisher =
-      'someone-else';
-    writeFileSync(path, JSON.stringify(manifest));
-  }
+  const source = join(directory, 'telemetry-writer');
   await ensureStationHomeSchema(home);
   mkdirSync(join(home, 'plugins'), { recursive: true });
   const store = new EventStore(join(home, 'events.sqlite'));
@@ -133,86 +123,120 @@ async function fixture(
     ...deps,
     projectVisiblePlugins: () => (installed) => installed,
   });
-  // Obtain the source digest through the real preview. This is then signed by the fixture registry.
-  const initial = await previewApp.request('/preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source }),
-  });
-  const preview = (await initial.json()) as {
-    valid: boolean;
-    contentDigest: string;
-    permissions: { required: string[] };
-    registryTrust?: { revision: string };
-  };
-  expect(preview.valid, JSON.stringify(preview)).toBe(true);
-  const plain: RegistryPackageClaim = {
-    packageSchema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-    registryId: 'telemetry-writer',
-    registryKey: catalog.registryKey,
-    pluginName: 'telemetry-writer',
-    packageVersion: '1.0.0',
-    source,
-    packageDigest: preview.contentDigest,
-  };
-  const claim: RegistryPackageClaim = options.unsigned
-    ? plain
-    : {
-        ...plain,
-        signature: {
-          algorithm: 'ed25519',
-          keyId: 'fixture',
-          value: sign(
-            null,
-            registryPackageSignaturePayload(plain),
-            privateKey,
-          ).toString('base64'),
-        },
-      };
-  writeFileSync(
-    catalogPath,
-    JSON.stringify({
-      version: 1,
-      plugins: [
-        {
-          id: 'telemetry-writer',
-          source,
-          displayName: 'Writer',
-          version: '1.0.0',
-          claim,
-        },
-      ],
-    }),
-  );
   await replacePluginProvidersForSource('telemetry-fixture', [
     { type: 'pluginRegistry', provider: catalog, source: 'telemetry-fixture' },
   ]);
-  const registryPreview = await previewApp.request('/preview', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ registryId: 'telemetry-writer' }),
-  });
-  const reviewed = (await registryPreview.json()) as {
-    valid: boolean;
-    contentDigest: string;
-    registryTrust?: { revision: string };
-    permissions: { required: string[] };
-    registryTrustRevision?: string;
-  };
-  expect(reviewed.valid, JSON.stringify(reviewed)).toBe(true);
-  const install = () =>
-    installPluginFromSource(source, [], deps, {
-      registryId: 'telemetry-writer',
-      registryKey: catalog.registryKey,
-      consent: {
-        kind: 'operator-decision',
-        contentDigest: reviewed.contentDigest,
-        permissions: reviewed.permissions.required,
-        dependencies: [],
-        registryTrustRevision:
-          reviewed.registryTrust?.revision ?? reviewed.registryTrustRevision,
-      },
+  const entries: Array<{
+    id: string;
+    source: string;
+    displayName: string;
+    version: string;
+    claim: RegistryPackageClaim;
+  }> = [];
+  const installs = new Map<
+    string,
+    () => ReturnType<typeof installPluginFromSource>
+  >();
+  for (const pluginName of options.secondPlugin
+    ? ['telemetry-writer', 'telemetry-reader']
+    : ['telemetry-writer']) {
+    const source = join(directory, pluginName);
+    mkdirSync(source);
+    writeFileSync(
+      join(source, 'plugin.json'),
+      readFileSync(
+        new URL('./fixtures/telemetry-plugin.json', import.meta.url),
+        'utf8',
+      ).replaceAll('telemetry-writer', pluginName),
+    );
+    if (options.wrongPublisher) {
+      const path = join(source, 'plugin.json');
+      const manifest = JSON.parse(readFileSync(path, 'utf8'));
+      manifest.extensions['io.kontourai.station'].telemetry.publisher =
+        'someone-else';
+      writeFileSync(path, JSON.stringify(manifest));
+    }
+    // Obtain the source digest through the real preview. This is then signed by the fixture registry.
+    const initial = await previewApp.request('/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source }),
     });
+    const preview = (await initial.json()) as {
+      valid: boolean;
+      contentDigest: string;
+      permissions: { required: string[] };
+      registryTrust?: { revision: string };
+    };
+    expect(preview.valid, JSON.stringify(preview)).toBe(true);
+    const plain: RegistryPackageClaim = {
+      packageSchema:
+        'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      registryId: pluginName,
+      registryKey: catalog.registryKey,
+      pluginName: pluginName,
+      packageVersion: '1.0.0',
+      source,
+      packageDigest: preview.contentDigest,
+    };
+    const claim: RegistryPackageClaim = options.unsigned
+      ? plain
+      : {
+          ...plain,
+          signature: {
+            algorithm: 'ed25519',
+            keyId: 'fixture',
+            value: sign(
+              null,
+              registryPackageSignaturePayload(plain),
+              privateKey,
+            ).toString('base64'),
+          },
+        };
+    entries.push({
+      id: pluginName,
+      source,
+      displayName: pluginName,
+      version: '1.0.0',
+      claim,
+    });
+    writeFileSync(
+      catalogPath,
+      JSON.stringify({
+        version: 1,
+        plugins: entries,
+      }),
+    );
+    const registryPreview = await previewApp.request('/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registryId: pluginName }),
+    });
+    const reviewed = (await registryPreview.json()) as {
+      valid: boolean;
+      contentDigest: string;
+      registryTrust?: { revision: string };
+      permissions: { required: string[] };
+      registryTrustRevision?: string;
+    };
+    expect(reviewed.valid, JSON.stringify(reviewed)).toBe(true);
+    installs.set(pluginName, () =>
+      installPluginFromSource(source, [], deps, {
+        registryId: pluginName,
+        registryKey: catalog.registryKey,
+        consent: {
+          kind: 'operator-decision',
+          contentDigest: reviewed.contentDigest,
+          permissions: reviewed.permissions.required,
+          dependencies: [],
+          registryTrustRevision:
+            reviewed.registryTrust?.revision ?? reviewed.registryTrustRevision,
+        },
+      }),
+    );
+  }
+  const install = () => installs.get('telemetry-writer')!();
+  const installSecond = () => installs.get('telemetry-reader')!();
   const received: unknown[] = [];
   const receiver = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -345,6 +369,7 @@ async function fixture(
     deps,
     received,
     install,
+    installSecond,
     count,
     post,
     declaration: (await readPluginManifestFile(join(source, 'plugin.json')))
@@ -888,4 +913,107 @@ test('expired Pane capabilities cannot count or borrow a renewed capability', as
   });
   expect(old.status).toBe(400);
   expect((await f.count()).status).toBe(200);
+});
+
+test('one plugin minting 2000 Pane capabilities cannot block another plugin', async () => {
+  const f = await fixture({ secondPlugin: true });
+  await f.install();
+  await f.installSecond();
+  const oldest = await f.capability();
+  const body = { events: [{ event: 'closed', attributes: {} }] };
+  const countWith = (capability: string) =>
+    f.app.request('/api/telemetry/events', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-station-plugin-capability': capability,
+      },
+      body: JSON.stringify(body),
+    });
+  let newest = oldest;
+  for (let i = 0; i < 2000; i++) {
+    const response = await f.post('/api/telemetry/panes', {
+      plugin: 'telemetry-writer',
+    });
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as { data: { token: string } };
+    newest = data.token;
+    if (i === 14) expect((await countWith(oldest)).status).toBe(200);
+    if (i === 15) expect((await countWith(oldest)).status).toBe(400);
+  }
+  const other = await f.post('/api/telemetry/panes', {
+    plugin: 'telemetry-reader',
+  });
+  expect(other.status).toBe(200);
+  const {
+    data: { token },
+  } = (await other.json()) as { data: { token: string } };
+  expect((await countWith(oldest)).status).toBe(400);
+  expect((await countWith(newest)).status).toBe(200);
+  expect((await countWith(token)).status).toBe(200);
+}, 120000);
+
+test('an aborted uninstall restores counting and consent without releasing a pre-withdrawal send', async () => {
+  const f = await fixture();
+  await f.install();
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  const disclosure = await f.service.disclosure(f.id);
+  await f.service.acknowledgeDisclosure(
+    disclosure.inventoryRevision,
+    f.id,
+    disclosure.destination,
+  );
+  await f.count();
+  let release!: () => void;
+  let arrived!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  vi.mocked(publicNetwork.resolvePublicAddress).mockImplementationOnce(
+    async () => {
+      arrived();
+      await gate;
+      return { address: '8.8.8.8', family: 4 };
+    },
+  );
+  const pending = f.service.flush();
+  await started;
+  // Fail after withdrawal, before the uninstall backup completes.
+  vi.spyOn(
+    pluginPermissions,
+    'snapshotPluginGrantEntry',
+  ).mockImplementationOnce(() => {
+    throw new Error('fixture backup refused');
+  });
+  let response: Response;
+  try {
+    response = await f.app.request('/telemetry-writer', { method: 'DELETE' });
+  } finally {
+    release();
+    await pending;
+  }
+  expect(response.status).toBe(500);
+  expect(await response.text()).toContain('fixture backup refused');
+  expect(f.received).toEqual([]);
+  const renewed = await f.post('/api/telemetry/panes', {
+    plugin: 'telemetry-writer',
+  });
+  expect(renewed.status, await renewed.clone().text()).toBe(200);
+  const {
+    data: { token },
+  } = (await renewed.json()) as { data: { token: string } };
+  await f.service.countPluginTelemetry(token, [
+    { event: 'closed', attributes: {} },
+  ]);
+  await f.service.flush();
+  expect(f.received).toHaveLength(1);
+  expect(
+    (f.received[0] as { events: Array<{ name: string }> }).events[0].name,
+  ).toBe('closed');
 });

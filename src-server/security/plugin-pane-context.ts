@@ -1,8 +1,7 @@
-/** Declared Pane context cannot author user consent. Same-origin frames remain a platform trust boundary. */
+/** Explicit SDK context cannot author consent; same-origin code can omit these headers. */
 export function requestFromPluginPane(request: Request): boolean {
   return (
     request.headers.has('x-station-plugin-capability') ||
-    request.headers.has('x-station-plugin') ||
-    request.headers.get('sec-fetch-dest') === 'iframe'
+    request.headers.has('x-station-plugin')
   );
 }

@@ -6,6 +6,7 @@ import {
   parsePublisherTelemetryDeclaration,
   pluginTelemetryInventoryRevision,
 } from '../plugin-telemetry.js';
+import { isPublicIp } from '../public-network.js';
 
 const declaration = {
   publisher: 'writer',
@@ -123,6 +124,7 @@ test.each([
   '127.0.0.1',
   '169.254.169.254',
   '[::1]',
+  '[::ffff:127.0.0.1]',
   '10.1.2.3',
   'localhost',
   '0x7f000001',
@@ -130,8 +132,30 @@ test.each([
   expect(() =>
     parsePublisherTelemetryDeclaration({
       publisher: 'writer',
-      endpoint: `https://${host}/counts`,
+      endpoint: `https://${host}/x`,
       events: { opened: { properties: {} } },
     }),
   ).toThrow();
+});
+
+// Keep address classification independent of URL canonicalization in declarations.
+test.each([
+  ['::ffff:127.0.0.1', false],
+  ['::ffff:169.254.169.254', false],
+  ['64:ff9b::7f00:1', false],
+  ['0.0.0.0', false],
+  ['::', false],
+  ['::127.0.0.1', false],
+  ['100.64.0.1', false],
+  ['224.0.0.1', false],
+  ['ff02::1', false],
+  ['fc00::1', false],
+  ['fec0::1', false],
+  ['2002:7f00:1::1', false],
+  ['2001:0:4136:e378:8000:63bf:3fff:fdd2', false],
+  ['255.255.255.255', false],
+  ['8.8.8.8', true],
+  ['2606:4700:4700::1111', true],
+])('public address classification for %s is %s', (address, expected) => {
+  expect(isPublicIp(address)).toBe(expected);
 });

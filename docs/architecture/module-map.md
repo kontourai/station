@@ -4336,14 +4336,14 @@ projects declared SDK counts through the authenticated kernel telemetry route.
 [Admission](../../src-server/services/plugins/plugin-telemetry-admission.ts) binds
 selected immutable plugin code to the applied signature receipt, its verified
 registry item ID and the operator's public-catalog classification. Declaration
-validation runs during install before activation. Counts require a kernel-issued five-minute Pane capability bound to the namespaced registry/item identity, installation and declaration revision; plugin headers confer no attribution authority. Agents cannot count. Pane-marked and capability-bearing requests cannot raise tiers or write consent. Same-origin plugin frames remain a platform-wide trust boundary tracked separately.
+validation runs during install before activation. Counts require a kernel-issued five-minute Pane capability bound to the namespaced registry/item identity, installation and declaration revision; plugin headers confer no attribution authority. Agents cannot count. Pane-marked and capability-bearing requests cannot raise tiers or write consent. Pane-context checks recognize explicit plugin/capability headers and prevent accidental or well-behaved SDK misuse. Same-origin plugin code can omit them, call shell APIs, raise tiers, mint tokens and read the shared query cache; isolation remains a separate platform item.
 
 The service uses the foundation tier resolver, monthly identity helper, atomic
-publisher daily state and shared bounded outbox. Plugin publishers default Off; plugin-chosen Lite counts can encode identifiers. A notice alone does not enable sending. Each publisher admits at most 100 count requests and 100 Full observations per day; Full sends are batched per flush and drops coalesce by publisher/day/reason. Daily reservations precede I/O;
+publisher daily state and shared bounded outbox. Plugin publishers default Off; plugin-chosen Lite counts can encode identifiers. A notice alone does not enable sending. Each plugin retains at most 16 live Pane tokens, evicting its oldest; the global cap remains 1024. Each publisher admits at most 100 count requests and 100 Full observations per day; Full sends are batched per flush and drops coalesce by publisher/day/reason. Daily reservations precede I/O;
 there is no backlog or automatic retry. Current installation/trust, effective tier,
 notice or Full receipt are checked before dispatch. The central uninstall
 transaction retires persistent snapshots and receipts; runtime also aborts requests
-already waiting to dispatch, with a synchronous final withdrawal fence. Explicit fixed-enum feedback can send before removal only while enabled; Off and DNT suppress it. Declaration literals and every DNS answer must be public; TLS is pinned to a validated address with redirects refused.
+already waiting to dispatch, with a synchronous final withdrawal fence. Rollback restores persisted telemetry state and allows fresh tokens, while a withdrawal epoch keeps earlier sends fenced. Explicit fixed-enum feedback can send before removal only while enabled; Off and DNT suppress it. Declaration literals and every DNS answer must be public; TLS is pinned to a validated address with redirects refused.
 The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.routes.test.ts)
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
