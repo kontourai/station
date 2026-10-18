@@ -35,7 +35,6 @@ describe('supervisor crash restart (real processes)', () => {
         consecutiveFailures: 1,
         lastBackoffMs: 750,
       });
-      expect(after.listeners).toEqual([{ name: 'api', port: supervisor.port }]);
       await vi.waitFor(() =>
         expect(load.stats.bootIds.at(-1)).toBe(after.active?.bootId),
       );
@@ -49,6 +48,8 @@ describe('supervisor crash restart (real processes)', () => {
       ).toEqual([]);
       expect(stats.errors.ECONNRESET ?? 0).toBeLessThanOrEqual(8);
       expect(stats.connections).toBeGreaterThan(connectionsBefore);
+      // Checked after the client's view: the held listener is the reason.
+      expect(after.listeners).toEqual([{ name: 'api', port: supervisor.port }]);
       expect(stats.bootIds).toEqual([
         before.active?.bootId,
         after.active?.bootId,
