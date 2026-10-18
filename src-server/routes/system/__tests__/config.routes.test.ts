@@ -952,8 +952,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       projectHomeDir: home,
       watchFiles: false,
     });
-    const app = new Hono();
-    app.route('/', createConfigRoutes(loader, mockLogger));
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
     try {
       await loader.loadAppConfig();
       await loader.updateAppConfig({
@@ -965,16 +964,16 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         body: JSON.stringify({ telemetryTier: { kontour: 'off' } }),
       });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
-        success: true,
-        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
-      });
       expect(
         JSON.parse(readFileSync(join(home, 'config', 'app.json'), 'utf8'))
           .telemetryTier,
       ).toEqual({
         kontour: 'off',
         operator: 'off',
+      });
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
       });
     } finally {
       loader.dispose();
