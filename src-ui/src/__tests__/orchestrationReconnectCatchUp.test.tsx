@@ -14,14 +14,9 @@
  * never performs for a Station-owned thread) are stubbed.
  */
 
-import {
-  act,
-  cleanup,
-  render,
-  renderHook,
-  waitFor,
-} from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { render } from './renderWithQueryClient';
 
 const fetchCapability = vi.fn();
 const fetchWindow = vi.fn();
