@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   PLUGIN_TELEMETRY_LIMITS as LIMITS,
   type PluginDailyPing,
+  type PluginTelemetryCountBucket,
   type PublisherTelemetryDeclaration,
 } from '@kontourai/station-contracts/plugin-telemetry';
 
@@ -242,7 +243,9 @@ export function parsePluginDailyPing(
     !exact(value.events, Object.keys(declaration.events))
   )
     throw new Error('Invalid plugin_daily envelope');
-  const bucket = (v: unknown) => ['0', '1', '2-3', '4+'].includes(v as string);
+  const bucket = (v: unknown): v is PluginTelemetryCountBucket =>
+    typeof v === 'string' && ['0', '1', '2-3', '4+'].includes(v);
+  const events: PluginDailyPing['events'] = {};
   for (const [name, declared] of Object.entries(declaration.events)) {
     const event = value.events[name];
     if (
@@ -253,15 +256,30 @@ export function parsePluginDailyPing(
       !exact(event.properties, Object.keys(declared.properties))
     )
       throw new Error('Invalid plugin_daily event');
+    const properties: PluginDailyPing['events'][string]['properties'] = {};
     for (const [key, domain] of Object.entries(declared.properties)) {
       const histogram = event.properties[key];
       if (
         !object(histogram) ||
-        !exact(histogram, pluginTelemetryPropertyValues(domain)) ||
-        Object.values(histogram).some((v) => !bucket(v))
+        !exact(histogram, pluginTelemetryPropertyValues(domain))
       )
         throw new Error('Invalid plugin_daily histogram');
+      const counts: Record<string, PluginTelemetryCountBucket> = {};
+      for (const [label, count] of Object.entries(histogram)) {
+        if (!bucket(count)) throw new Error('Invalid plugin_daily histogram');
+        counts[label] = count;
+      }
+      properties[key] = counts;
     }
+    events[name] = { count: event.count, properties };
   }
-  return value as unknown as PluginDailyPing;
+  return {
+    event: 'plugin_daily',
+    schema_version: 1,
+    data_revision: PLUGIN_TELEMETRY_DATA_REVISION,
+    inventory_revision: pluginTelemetryInventoryRevision(declaration, 'lite'),
+    event_id: value.event_id,
+    publisher: `publisher:${declaration.publisher}`,
+    events,
+  };
 }
