@@ -302,7 +302,7 @@ test('Full timestamps round down to the UTC minute at both publishers', async ()
   }
 });
 
-test('daily sender rejects a malformed version instead of allowing its own value', async () => {
+test('daily sender maps a persisted malformed version to custom', async () => {
   const sink = await receiver();
   const { live, home } = await service(sink.endpoint);
   await live.stationStarted();
@@ -311,10 +311,41 @@ test('daily sender rejects a malformed version instead of allowing its own value
   state.ping.version = 'private build';
   await writeFile(path, JSON.stringify(state));
   vi.setSystemTime('2026-10-13T10:00:00Z');
-  await expect(live.flushDaily()).rejects.toThrow(
-    'Invalid station_daily field: version',
+  await live.flushDaily();
+  expect(daily(sink.payloads)).toHaveLength(1);
+  expect(daily(sink.payloads)[0].version).toBe('custom');
+});
+
+test('a dev running version sends one custom daily ping and saves its reservation', async () => {
+  const sink = await receiver();
+  const home = makeTempDir('station-publishers-dev-');
+  const live = new UsageTelemetryService({
+    homeDir: home,
+    appConfig: {
+      defaultModel: 'fixture',
+      invokeModel: 'fixture',
+      structureModel: 'fixture',
+      productTelemetryEndpoint: sink.endpoint,
+      telemetryTier: { operator: 'lite', kontour: 'off' },
+    },
+    version: 'dev',
+    env: {},
+    logger: { warn: vi.fn() },
+  });
+  services.push(live);
+  await live.stationStarted();
+  vi.setSystemTime('2026-10-13T10:00:00Z');
+  await Promise.all([live.flushDaily(), live.flushDaily()]);
+  expect(daily(sink.payloads)).toHaveLength(1);
+  expect(daily(sink.payloads)[0].version).toBe('custom');
+  const state = JSON.parse(
+    await readFile(join(home, 'config', 'telemetry-daily.json'), 'utf8'),
   );
-  expect(sink.payloads).toEqual([]);
+  expect(state.attempted.operator).toBe('2026-10-13');
+  expect(state.reported.operator).toBe('2026-10-12');
+  expect(await live.outbox('operator')).toMatchObject([
+    { outcome: 'sent', payload: { event: 'station_daily', version: 'custom' } },
+  ]);
 });
 
 test('keeps author inert with an empty build constant even when runtime environment supplies one', async () => {

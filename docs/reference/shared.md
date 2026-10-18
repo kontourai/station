@@ -48,9 +48,11 @@ collection, consent, durable storage or deployed service.
 `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
 returns undefined for unmapped labels. Full omits that field; Lite supplies
 `unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
-release list by default; the sender selects `semver` to validate version format
-without claiming catalog membership. Source/fork versions can reuse a release
-version; channel `unknown` or `source-checkout` is their only distinction here.
+release list by default; the sender selects `semver` to admit valid versions
+or `custom` without claiming catalog membership.
+`mapRuntimeVersionToTelemetryVersion` preserves SemVer within the 64-character
+bound and maps other running versions to `custom` before daily validation.
+Source/fork versions can reuse a release version.
 
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a

@@ -268,13 +268,14 @@ describe('Lite ping privacy boundary', () => {
         parseStationDailyPing({ ...ping, version }, ['public-plugin']),
       ).toThrow('version');
     }
-    for (const version of [
-      'private build',
-      '01.2.3',
-      '1.2.3-01',
-      '1.2',
-      'custom',
-    ])
+    expect(
+      parseStationDailyPing(
+        { ...ping, version: 'custom' },
+        ['public-plugin'],
+        'semver',
+      ).version,
+    ).toBe('custom');
+    for (const version of ['private build', '01.2.3', '1.2.3-01', '1.2'])
       expect(() =>
         parseStationDailyPing(
           { ...ping, version },

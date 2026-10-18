@@ -11,6 +11,7 @@ import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   liteTelemetryNoticeText,
   mapRuntimeChannelToTelemetryChannel,
+  mapRuntimeVersionToTelemetryVersion,
   parseStationDailyPing,
 } from '@kontourai/station-shared/product-telemetry';
 import type { ResolvedTelemetryConfiguration } from '../domain/telemetry-configuration.js';
@@ -315,6 +316,9 @@ export class TelemetryPublisherService {
           payload: parseStationDailyPing(
             {
               ...snapshot.ping,
+              version: mapRuntimeVersionToTelemetryVersion(
+                snapshot.ping.version,
+              ),
               event_id: randomUUID(),
             },
             [],

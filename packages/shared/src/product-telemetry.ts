@@ -399,6 +399,15 @@ export function monthlyTelemetryId(
     .digest('hex');
 }
 
+export function mapRuntimeVersionToTelemetryVersion(version: string): string {
+  return version.length <= 64 &&
+    /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+      version,
+    )
+    ? version
+    : 'custom';
+}
+
 /** Senders validate version format with semver; receivers supply their release list.
  * Registry membership comes from the public catalog, never from a syntactic ID match. */
 export function parseStationDailyPing(
@@ -443,9 +452,7 @@ export function parseStationDailyPing(
     if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
     if (domain === 'public-release-version-or-custom')
       return publicReleaseVersions === 'semver'
-        ? /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
-            item,
-          )
+        ? mapRuntimeVersionToTelemetryVersion(item) === item
         : item === 'custom' || publicReleaseVersions.includes(item);
     return (
       (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&

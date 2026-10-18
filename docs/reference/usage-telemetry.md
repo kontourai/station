@@ -145,7 +145,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 
 | Field | Server observation or conservative value |
 | --- | --- |
-| version | The running package version, validated as SemVer by the sender. Receivers use their configured release list for admission. Version alone cannot establish an official build: source/fork builds are distinguishable only through channel `unknown` or `source-checkout`, and may reuse a release version. |
+| version | The running package version when it is valid SemVer within the 64-character bound; otherwise `custom`. Receivers admit `custom` or versions on their configured release list. Version alone cannot establish an official build: source/fork builds can reuse a release version. |
 | channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
