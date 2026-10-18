@@ -133,7 +133,7 @@ It is a syntax check, not a general assertion-strength proof. Seed legacy values
 and inspect the current store's persisted envelope when testing migrations.
 
 
-Changed-test diagnostics retain up to 32 explicit test targets even when broader
+Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
 provisional and do not satisfy the deferred obligations. Broad import expansion
 and larger selections stay deferred within the existing feedback budget.
@@ -457,8 +457,12 @@ file imported by the scripts of more than 16 spawning tests, such as the
 instead of running them inline, so one shared-helper edit cannot exceed the
 `ci:fast` budget. When that deferral is the only reason a lane is deferred,
 the other changed files keep their related discovery and only the deferring
-file leaves the inline run. Any other deferral, such as an escalation or an
-unavailable related path, still defers the whole related selection.
+file leaves the inline run. In local unsharded feedback, any other deferral,
+such as an escalation or an unavailable related path, still defers the whole
+related selection. Hosted shard planning instead retains the other mapped
+related paths and concrete explicit targets, including selections over 32,
+while preserving every unresolved lane obligation. This produces earlier
+failures without declaring global coverage complete.
 A third kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the
@@ -1643,8 +1647,14 @@ then chooses a path:
 - **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
   or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
   packaging leg, take the fast path: the owner limited the scope to keep queue
-  candidates under the shared runner cap. A deferred plan drops related discovery and
-  runs no explicit test above 32, so `fast-checks` cannot cover it. A
+  candidates under the shared runner cap. Hosted plans retain concrete mapped
+  tests and related discovery from the other changed paths, even when a global
+  obligation remains deferred. They run through the existing resource groups
+  and shard receipts, including explicit selections above 32 files. Paths
+  explicitly deferred by supplemental edges remain deferred; unknown/global
+  paths are not expanded into an assumed-complete selection. Passing the mapped
+  tests does not discharge the broader obligation. Local unsharded feedback
+  keeps its bounded selection limits. A
   `mergeQueueRegression` path, such as the SDK transport or the orchestration
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
@@ -2193,8 +2203,12 @@ UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
 that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred selection (the
-selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
+missing receipt, or receipt for another plan or head fails the check. A deferred
+selection (the selector's exit 3) is reported and passes only when its executed
+mapped tests pass; a real assertion or infrastructure failure is not converted
+into deferral. The unresolved obligation still controls merge-queue full
+regression. This catches mapped caller failures before queue admission without
+claiming that the PR completed global verification.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no
 `scripts/fast-checks-shard.mjs`) runs its whole unsharded `ci:fast` in
