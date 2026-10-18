@@ -171,6 +171,18 @@ export async function qualifyResilience(
   );
   const locker = await pool.connect();
   const started = performance.now();
+  let lockConnectionError;
+  const recordLockError = (error) => {
+    lockConnectionError = error;
+  };
+  locker.on('error', recordLockError);
+  let heartbeat = Promise.resolve();
+  // Keep the fixture's held lock active under the real five-second idle limit.
+  const keepalive = setInterval(() => {
+    heartbeat = heartbeat
+      .then(() => locker.query('SELECT 1'))
+      .catch(recordLockError);
+  }, 1000);
   try {
     await locker.query('BEGIN');
     await locker.query(
@@ -219,8 +231,15 @@ export async function qualifyResilience(
       'retention progresses independently of blocked finalization',
     );
   } finally {
-    await locker.query('ROLLBACK');
-    locker.release();
+    clearInterval(keepalive);
+    await heartbeat;
+    try {
+      await locker.query('ROLLBACK');
+    } finally {
+      locker.off('error', recordLockError);
+      locker.release(Boolean(lockConnectionError));
+    }
+    if (lockConnectionError) throw lockConnectionError;
   }
   const reopened = new store.constructor(pool);
   await reopened.migrate();
