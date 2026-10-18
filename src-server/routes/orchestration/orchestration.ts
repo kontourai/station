@@ -2895,6 +2895,14 @@ export function createOrchestrationRoutes(
           success: false,
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(error instanceof OrchestrationCommandDispatchError &&
+          error.kind !== undefined
+            ? {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              }
+            : {}),
         },
         unreachableWorkspace
           ? 503
@@ -3031,6 +3039,14 @@ export function createOrchestrationRoutes(
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(error instanceof OrchestrationCommandDispatchError &&
+            error.kind !== undefined
+              ? {
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
           },
           409,
         );
@@ -3461,6 +3477,14 @@ export function createOrchestrationRoutes(
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(error instanceof OrchestrationCommandDispatchError &&
+            error.kind !== undefined
+              ? {
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
           },
           // Another attempt still holds the key: a conflict to retry, as
           // the inbox's own in-flight refusal answers it.
@@ -5855,6 +5879,13 @@ export function createOrchestrationRoutes(
               ? {
                   receipt: error.receipt,
                   receiptStatus: error.receiptStatus,
+                  ...(error.kind === undefined
+                    ? {}
+                    : {
+                        kind: error.kind,
+                        retryable: error.retryable,
+                        failurePhase: error.failurePhase,
+                      }),
                   ...(error.code
                     ? { code: error.code, retryable: error.retryable }
                     : {}),

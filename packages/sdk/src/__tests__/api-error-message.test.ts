@@ -136,6 +136,51 @@ describe('readEnvelopeFailure / envelopeError', () => {
     expect(refused.code).toBe('project-not-prepared');
   });
 
+  test('preserves engine-neutral refusal metadata and computes retry eligibility', () => {
+    const refused = envelopeError(
+      response(400),
+      {
+        success: false,
+        error: 'Not sent',
+        code: 'new-engine-diagnostic',
+        kind: 'busy',
+        retryable: false,
+        failurePhase: 'refused',
+      },
+      'fallback',
+    );
+    expect(refused).toMatchObject({
+      kind: 'busy',
+      retryable: true,
+      failurePhase: 'refused',
+      code: 'new-engine-diagnostic',
+    });
+    // Old servers retain the same eligibility for existing public codes.
+    expect(
+      envelopeError(
+        response(400),
+        {
+          success: false,
+          error: 'Not sent',
+          code: 'provider_turn_in_progress',
+        },
+        'fallback',
+      ),
+    ).toMatchObject({ kind: 'busy', retryable: true });
+    expect(
+      envelopeError(
+        response(400),
+        {
+          success: false,
+          error: 'Unknown',
+          code: 'constructor',
+          kind: 'unknown-engine-kind',
+        },
+        'fallback',
+      ).retryable,
+    ).toBeUndefined();
+  });
+
   test('reads the top-level code first, then the object error’s own code', () => {
     expect(
       readEnvelopeFailure(

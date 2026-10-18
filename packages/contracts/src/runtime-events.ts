@@ -7,6 +7,7 @@ import {
   type EngineId,
   PROVIDER_CODEX,
 } from './provider.js';
+import type { ProviderFailure } from './provider-failure.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -807,7 +808,10 @@ export interface RequestDeliveryEvent extends CanonicalRuntimeEventBase {
   engineStatus?: ApprovalStatus;
 }
 
-export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
+/** Stored events and third-party plugins may predate failure classification. */
+export interface RuntimeErrorEvent
+  extends CanonicalRuntimeEventBase,
+    Partial<ProviderFailure> {
   method: 'runtime.error';
   severity: Extract<RuntimeSeverity, 'error'>;
   message: string;
@@ -1268,3 +1272,8 @@ export type CanonicalRuntimeEvent =
   | ExtensionEvent
   | ChildWorkUpdatedEvent
   | ConversationForkedEvent;
+
+/** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
+export type ProviderRuntimeEvent =
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
+  | (RuntimeErrorEvent & ProviderFailure);

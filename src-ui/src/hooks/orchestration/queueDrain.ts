@@ -1,7 +1,5 @@
 import {
   CLIENT_TURN_IN_FLIGHT_CODE,
-  MUSE_TURN_SLOT_RELEASING_CODE,
-  PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -60,23 +58,6 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // caller can continue it as it is or bind one, so the follow-up must be
   // retained for that retry, not discarded as a permanent rejection.
   'continuation_workspace_unbound',
-  // #2300: a Muse send that arrived while the previous turn's process was
-  // still exiting (past the adapter's short wait). The same send succeeds
-  // once that process is gone.
-  MUSE_TURN_SLOT_RELEASING_CODE,
-  // #2324: a send that arrived while the engine was running a turn it opened
-  // on its own. The same send succeeds once that turn ends.
-  PROVIDER_TURN_IN_PROGRESS_CODE,
-  // A send that outwaited its session's engine start (an ACP reattach). The
-  // same send succeeds once the session is ready.
-  PROVIDER_SESSION_STARTING_CODE,
-  // A send whose session failed to start while it waited. Nothing was sent;
-  // it stays queued with the reason and Retry (no automatic re-send: the
-  // same failure would likely repeat).
-  PROVIDER_SESSION_START_FAILED_CODE,
-  // An earlier attempt of this same message still held its key or released
-  // it unsent. Re-sent with the same key.
-  CLIENT_TURN_IN_FLIGHT_CODE,
 ]);
 
 /**
@@ -101,7 +82,12 @@ function isDefinitiveClientRejection(error: unknown): boolean {
   if ((error as { outcome?: unknown }).outcome === 'indeterminate') {
     return false;
   }
-  if (error.code !== undefined && RETRYABLE_REJECTION_CODES.has(error.code)) {
+  if (
+    error.code !== undefined &&
+    ((error.retryable === true &&
+      (error.kind === 'busy' || error.kind === 'unavailable')) ||
+      RETRYABLE_REJECTION_CODES.has(error.code))
+  ) {
     return false;
   }
   return true;

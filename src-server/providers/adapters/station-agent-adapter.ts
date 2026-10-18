@@ -11,7 +11,7 @@ import type {
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
@@ -88,6 +88,7 @@ import {
   modelProviderFailureMessage,
   modelProviderHttpStatus,
 } from '../model-provider-failure.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -792,6 +793,13 @@ export function mapStationAgentStreamEvent(options: {
     publish({
       ...base,
       method: 'runtime.error',
+      ...providerFailure(
+        inferredCredentials || httpStatus === 401 || httpStatus === 403
+          ? 'auth'
+          : httpStatus === 429
+            ? 'rate_limited'
+            : 'provider_error',
+      ),
       severity: 'error',
       message: inferredCredentials
         ? MODEL_PROVIDER_CREDENTIALS_REJECTED
@@ -965,6 +973,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (record.activeController && !record.activeController.signal.aborted) {
       throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
+        'busy',
       );
     }
     // A start/resume override is accepted into the adapter-owned session.
@@ -1586,6 +1595,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       turnId,
       createdAt: this.now().toISOString(),
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message: turnRejectionMessage(reason),
       code: 'station_agent_turn_unavailable',

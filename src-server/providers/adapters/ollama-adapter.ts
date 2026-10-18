@@ -10,7 +10,7 @@ import {
   modelSelectionReceipt,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -29,6 +29,7 @@ import type {
   LLMStreamChunk,
 } from '../llm/model-provider-types.js';
 import { OllamaLLMProvider } from '../llm/ollama-provider.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { ollamaReportedUsage } from './ai-sdk-reported-usage.js';
 
@@ -674,6 +675,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       createdAt: completedAt,
       turnId,
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message,
     });

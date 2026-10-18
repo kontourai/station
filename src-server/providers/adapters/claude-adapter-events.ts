@@ -14,7 +14,7 @@ import {
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -24,6 +24,7 @@ import {
   redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
@@ -480,6 +481,7 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         method: 'runtime.error',
+        ...providerFailure('session_gone'),
         severity: 'error',
         code: ENGINE_SESSION_BINDING_DEAD_CODE,
         retriable: false,
@@ -942,6 +944,15 @@ export function mapClaudeSdkMessage({
         createdAt,
         turnId: resultTurnId,
         method: 'runtime.error',
+        ...providerFailure(
+          usageLimit
+            ? 'quota_exhausted'
+            : outcome === 'binding-dead'
+              ? 'session_gone'
+              : 'provider_error',
+          'failed',
+          usageLimit?.resetAt,
+        ),
         severity: 'error',
         code:
           outcome === 'binding-dead'

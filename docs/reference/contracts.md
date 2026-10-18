@@ -170,6 +170,109 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+## Engine-neutral failures
+
+`@kontourai/station-contracts/provider-failure` owns the closed
+`ProviderFailureKind`, `PROVIDER_FAILURE_RETRYABLE` and diagnostic-code mapping.
+Built-in adapter `runtime.error` writers use `ProviderRuntimeEvent`, which
+requires `kind`, computed `retryable` and `failurePhase`. Stored events and
+third-party plugins can predate these additive fields; missing means unknown.
+`SendTurnRefusedError` requires an explicit kind, and `SessionStartRefusedError`
+requires a mapped code. Their inherited getters compute eligibility from the
+same constants; subclasses cannot omit the required constructor input.
+
+`failurePhase: refused` promises no provider-visible effect. `failed` means
+work may already have run and spent resources. `retryable` describes whether
+the same input is eligible for a later caller-requested attempt; it never
+instructs clients to replay a failed or indeterminate action automatically.
+`retryAfter`, when known, is an ISO timestamp. Account quota failures carry
+`quota_exhausted` and a reported reset time when available; eligibility remains
+false until that condition changes. Generic failures stay `provider_error`
+unless structured engine evidence supports a narrower kind.
+
+The fixed retryable kinds are `busy` (wait for the competing operation),
+`rate_limited` (respect the reported delay), `timeout`, `engine_crashed` and
+`unavailable` (session startup failed; a manual attempt may start it again).
+All other kinds are non-retryable: `auth`, `quota_exhausted`,
+`model_unavailable`, `provider_error`, `cancelled`, `input_unsupported`,
+`session_gone`, `permission_denied`, `conflict` and `indeterminate`.
+
+The existing `retriable` event field retains its separate meaning. In
+particular, Codex can report that it will continue the same turn; changing it
+would change terminal-event folding. Warning-code classification below does
+not turn a warning into a failed turn or offer a retry. Generic engine codes
+can carry a more specific kind when structured quota details establish it.
+No existing diagnostic code is renamed or removed.
+
+| Diagnostic code | Kind |
+| --- | --- |
+| `approval-escalation-requires-restart` | `permission_denied` |
+| `approval-full-access-not-granted` | `permission_denied` |
+| `attachment_input_unsupported` | `input_unsupported` |
+| `authentication_rate_limited` | `rate_limited` |
+| `client_protocol_invalid` | `input_unsupported` |
+| `client_protocol_unsupported` | `input_unsupported` |
+| `client_turn_in_flight` | `busy` |
+| `client_turn_input_conflict` | `conflict` |
+| `client_turn_input_unsupported` | `input_unsupported` |
+| `confinement_mechanism_unavailable` | `permission_denied` |
+| `confinement_not_observed` | `permission_denied` |
+| `confinement_workspace_incompatible` | `permission_denied` |
+| `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` |
+| `continuation_workspace_different_project` | `input_unsupported` |
+| `continuation_workspace_direct_mismatch` | `input_unsupported` |
+| `continuation_workspace_project_context_missing` | `input_unsupported` |
+| `continuation_workspace_unbound` | `input_unsupported` |
+| `continuation_workspace_worktree_gone` | `input_unsupported` |
+| `continuation_workspace_worktree_moved` | `input_unsupported` |
+| `engine-session-binding-dead` | `session_gone` |
+| `engine-turn-failed` | `provider_error` |
+| `execution_engine_changed` | `conflict` |
+| `foreground_message_indeterminate` | `indeterminate` |
+| `model-override-unsupported` | `input_unsupported` |
+| `model_not_advertised` | `model_unavailable` |
+| `muse-approval-decide-failed` | `provider_error` |
+| `muse-approval-expired` | `timeout` |
+| `muse-approval-mode-not-applied` | `permission_denied` |
+| `muse-exit-without-terminal` | `engine_crashed` |
+| `muse-spawn-failed` | `unavailable` |
+| `muse-terminal-not-completed` | `provider_error` |
+| `muse-held-turn-unfinished` | `indeterminate` |
+| `muse-lingering-child-reaped` | `cancelled` |
+| `muse-serve-host-exited` | `engine_crashed` |
+| `muse-serve-stop-unconfirmed` | `indeterminate` |
+| `muse-serve-unavailable` | `input_unsupported` |
+| `muse-turn-idle-timeout` | `timeout` |
+| `muse-turn-timeout` | `timeout` |
+| `muse_turn_slot_releasing` | `busy` |
+| `principal_unresolved` | `auth` |
+| `project_identity_not_prepared` | `input_unsupported` |
+| `provider_session_start_failed` | `unavailable` |
+| `provider_session_starting` | `busy` |
+| `provider_turn_in_progress` | `busy` |
+| `session-reattach-conflict` | `conflict` |
+| `session_ended` | `session_gone` |
+
+The [contract inventory test](../../packages/contracts/src/__tests__/provider-failure.test.ts)
+discovers exported `*_CODE` strings from every contract module independently
+of this map, and also covers the confinement and continuation refusal arrays.
+The [delivery route test](../../src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts)
+exercises a pre-effect adapter refusal through HTTP and a same-key resend.
+The [SDK envelope tests](../../packages/sdk/src/__tests__/api-error-message.test.ts)
+cover classification transport, fixed retry computation and older-server codes.
+These are controlled tests; no live engine behavior is established by them.
+
+Queue retention reads the SDK's computed `retryable` for coded `busy` and
+`unavailable` refusals, preserving the existing five-code eligibility set. Its remaining explicit
+codes describe other behavior: workspace/adoption/resource-policy exceptions,
+which refusals trigger bounded automatic redrain, different queue copy, or a
+change in the composer transaction. `useActiveChatSessionMessaging.ts` keeps
+its two-code composer-to-queue transition; `queueDrain.ts` keeps its three-code
+automatic-redrain policy. Widening either to all `busy` failures would change
+behavior for Muse slot release and ordinary active-turn refusals.
+`chatErrorTranslation.ts` retains code-specific corrective copy and hints;
+usage-limit recovery retains account reset, scope and explicit opt-in policy.
+
 ## Product telemetry observations
 
 `@kontourai/station-contracts/product-telemetry` declares the content-free event

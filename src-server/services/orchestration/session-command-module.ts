@@ -11,8 +11,10 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
+import type { ProviderFailure } from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -81,6 +83,7 @@ export type SessionCommandOutcome =
     }
   | {
       status: 'rejected' | 'failed';
+      failure?: ProviderFailure;
       receipt: OrchestrationCommandReceipt;
       receiptStatus: 'persisted' | 'unavailable';
       message: string;
@@ -526,6 +529,15 @@ export function createSessionCommandModule(
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
         message: errorMessage(error),
+        ...(error instanceof SessionStartRefusedError
+          ? {
+              failure: {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              },
+            }
+          : {}),
         ...(typeof error === 'object' &&
         error !== null &&
         typeof (error as { code?: unknown }).code === 'string'
