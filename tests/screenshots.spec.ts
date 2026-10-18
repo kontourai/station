@@ -1782,9 +1782,15 @@ function telemetryConsentScreens(): Screen[] {
               dialog.getByRole('button', {
                 name: pending
                   ? 'Turn off usage telemetry'
-                  : 'Save operator choice as Off',
+                  : 'Save operator choice as Full',
               }),
             ).toBeVisible();
+            if (!pending) {
+              for (const tier of ['Off', 'Lite', 'Full'])
+                await expect(
+                  dialog.getByRole('radio', { name: tier, exact: true }),
+                ).toBeVisible();
+            }
             await expect(
               dialog
                 .getByText(

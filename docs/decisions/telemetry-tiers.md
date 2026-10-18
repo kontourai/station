@@ -189,9 +189,9 @@ compatibility. Lite notice revisions are independent.
 
 DNT itself never changes saved choices. While it is active, the disclosure
 leads with the fact that nothing is sent and that Full still needs confirmation
-after DNT is removed. It offers **Save operator choice as Off**, **Save operator
-choice as Lite**, and **Save operator choice as Full**. Each action saves only
-the selected operator tier, without writing a disclosure acknowledgement.
+after DNT is removed. It offers visible **Off**, **Lite**, and **Full** radio
+choices and a save action named **Save operator choice as** the selected tier.
+Saving writes only that operator tier, without a disclosure acknowledgement.
 Saving Lite preserves a saved-Lite user's choice. Saving Full leaves Full
 pending: removing DNT shows the unacknowledged dialog again, and no Full event
 is admitted until the person allows it. These saves do not snooze the dialog;

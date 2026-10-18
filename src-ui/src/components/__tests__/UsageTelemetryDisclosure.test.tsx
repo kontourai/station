@@ -897,7 +897,11 @@ test.each([
         operator: { tier: 'off', reason: 'DNT', userChoice: savedChoice },
       },
     });
-    const save = await screen.findByRole('button', {
+    const choice = await screen.findByRole('radio', { name: label });
+    fireEvent.click(choice);
+    expect(choice).toHaveProperty('checked', true);
+    expect(updateConfig).not.toHaveBeenCalled();
+    const save = screen.getByRole('button', {
       name: `Save operator choice as ${label}`,
     });
     expect(
@@ -909,11 +913,7 @@ test.each([
       ),
     ).toBeTruthy();
     for (const choice of ['Off', 'Lite', 'Full'])
-      expect(
-        screen.getByRole('button', {
-          name: `Save operator choice as ${choice}`,
-        }),
-      ).toBeTruthy();
+      expect(screen.getByRole('radio', { name: choice })).toBeTruthy();
     fireEvent.click(save);
     expect(updateConfig.mock.calls.map((call) => call[0])).toEqual([
       { telemetryTier: { operator: next } },

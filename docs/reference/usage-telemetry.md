@@ -11,9 +11,9 @@ Station settings preserves these choices. Kontour Full is unavailable until
 its own disclosure exists.
 
 DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
-offers **Save operator choice as Off**, **Save operator choice as Lite**, and
-**Save operator choice as Full**. These actions replace the saved operator tier
-without acknowledging; DNT keeps telemetry Off.
+offers visible Off, Lite, and Full radio choices and a **Save operator choice
+as** action for the selected tier. Saving replaces the operator tier without
+acknowledging; DNT keeps telemetry Off.
 
 A standard paired device may lower tiers; only the operator or a device with
 `access:manage` may raise them. Agents cannot change telemetry choices or
