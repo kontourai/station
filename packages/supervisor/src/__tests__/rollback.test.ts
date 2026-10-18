@@ -1,7 +1,7 @@
+import { realpathSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import {
-  FAKE_CORE,
   getBoot,
   startLoad,
   startSupervisor,
@@ -26,12 +26,11 @@ describe('supervisor handoff rollback (real processes)', () => {
     'rolls back to the previous entry when the trial $name',
     async ({ env, reason }) => {
       const home = makeTempDir('sup-rollback-');
-      const badEntry = writeCoreVariant(
-        makeTempDir('sup-entry-'),
-        'bad-core',
-        env,
-      );
-      const supervisor = await startSupervisor({ home });
+      // Both entries live in one build root: the supervisor runs nothing outside it.
+      const buildRoot = makeTempDir('sup-build-');
+      const goodEntry = realpathSync(writeCoreVariant(buildRoot, 'core', {}));
+      const badEntry = writeCoreVariant(buildRoot, 'bad-core', env);
+      const supervisor = await startSupervisor({ home, entry: goodEntry });
       const port = supervisor.port;
       const before = await supervisor.status();
       const load = startLoad(port);
@@ -51,7 +50,7 @@ describe('supervisor handoff rollback (real processes)', () => {
         expect(after.state).toBe('serving');
         // gen 1 drained, gen 2 was the failed trial, gen 3 relaunched the previous entry.
         expect(after.active?.generation).toBe(3);
-        expect(after.active?.entry).toBe(FAKE_CORE);
+        expect(after.active?.entry).toBe(goodEntry);
         expect(after.active?.bootId).not.toBe(before.active?.bootId);
         expect(after.listeners).toEqual([{ name: 'api', port }]);
         const servedBefore = load.stats.ok;
@@ -59,7 +58,7 @@ describe('supervisor handoff rollback (real processes)', () => {
           expect(load.stats.bootIds.at(-1)).toBe(after.active?.bootId);
           expect(load.stats.ok).toBeGreaterThan(servedBefore + 20);
         });
-        expect((await getBoot(port)).entry).toBe(FAKE_CORE);
+        expect((await getBoot(port)).entry).toBe(goodEntry);
 
         const stats = await load.stop();
         expect(stats.errors).toEqual({});
@@ -76,10 +75,12 @@ describe('supervisor handoff rollback (real processes)', () => {
 
   it('never disturbs the active generation when the trial fails before parking', async () => {
     const home = makeTempDir('sup-rollback-park-');
-    const badEntry = writeCoreVariant(makeTempDir('sup-entry-'), 'boot-fail', {
+    const buildRoot = makeTempDir('sup-build-');
+    const goodEntry = writeCoreVariant(buildRoot, 'core', {});
+    const badEntry = writeCoreVariant(buildRoot, 'boot-fail', {
       FAKE_CORE_EXIT_ON_BOOT: '1',
     });
-    const supervisor = await startSupervisor({ home });
+    const supervisor = await startSupervisor({ home, entry: goodEntry });
     const before = await supervisor.status();
     const load = startLoad(supervisor.port);
     try {
@@ -98,19 +99,5 @@ describe('supervisor handoff rollback (real processes)', () => {
     } finally {
       await load.stop();
     }
-  }, 60_000);
-
-  it('refuses a handoff to an entry that does not exist', async () => {
-    const supervisor = await startSupervisor({
-      home: makeTempDir('sup-rollback-refuse-'),
-    });
-    const result = await supervisor.handoff({
-      entry: '/nonexistent/station-core.js',
-    });
-    expect(result).toMatchObject({
-      outcome: 'refused',
-      reason: 'entry-not-found',
-    });
-    expect((await supervisor.status()).active?.generation).toBe(1);
   }, 60_000);
 });

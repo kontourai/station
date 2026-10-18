@@ -3,10 +3,9 @@
  * processes into one supervisor process.
  */
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
 import { ControlServer } from './control-server.ts';
+import { createEntryBoundary } from './entry-boundary.ts';
 import {
   type GenerationLauncher,
   GenerationManager,
@@ -22,7 +21,10 @@ import {
 export const SUPERVISOR_VERSION: string = packageJson.version;
 
 export interface SupervisorOptions {
+  /** The initial core entry; must already be inside `buildRoot`. */
   entry: string;
+  /** Every entry a handoff names must be a .js/.mjs file inside this directory. */
+  buildRoot: string;
   endpoint: ControlEndpoint;
   instance: string;
   handoff?: GenerationManagerOptions['handoff'];
@@ -85,12 +87,6 @@ function createForkLauncher(options: {
   };
 }
 
-export function validateEntry(entry: string): string | null {
-  if (!isAbsolute(entry)) return 'entry-not-absolute';
-  if (!existsSync(entry) || !statSync(entry).isFile()) return 'entry-not-found';
-  return null;
-}
-
 export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   const log =
     options.log ??
@@ -116,7 +112,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     handoff: options.handoff,
     restart: options.restart,
     log,
-    validateEntry,
+    resolveEntry: createEntryBoundary(options.buildRoot),
     onEvent: (event) => {
       for (const subscriber of [...subscribers]) subscriber(event);
     },

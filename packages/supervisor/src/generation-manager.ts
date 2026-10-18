@@ -79,8 +79,12 @@ export interface GenerationManagerOptions {
   onEvent?: (event: SupervisorEvent) => void;
   /** Called once when crash restarts exceed the failure budget. */
   onGiveUp?: (failures: number) => void;
-  /** Validates a requested handoff entry; returns a refusal reason or null. */
-  validateEntry?: (entry: string) => string | null;
+  /**
+   * Checks an entry a handoff request names, returning the entry to run or a
+   * refusal. Entries the manager already runs (the committed one, and the one
+   * a rollback relaunches) are not re-checked: they passed this on the way in.
+   */
+  resolveEntry?: (entry: string) => { entry: string } | { refused: string };
 }
 
 interface Generation {
@@ -182,9 +186,15 @@ export class GenerationManager {
     if (this.state !== 'serving' || !previous || previous.state !== 'serving') {
       return { outcome: 'refused', reason: 'not-serving' };
     }
-    const entry = request.entry ?? previous.entry;
-    const invalid = this.options.validateEntry?.(entry) ?? null;
-    if (invalid) return { outcome: 'refused', reason: invalid };
+    let entry = previous.entry;
+    if (request.entry !== undefined) {
+      const checked = this.options.resolveEntry?.(request.entry) ?? {
+        entry: request.entry,
+      };
+      if ('refused' in checked)
+        return { outcome: 'refused', reason: checked.refused };
+      entry = checked.entry;
+    }
     const readinessTimeoutMs =
       request.readinessTimeoutMs ?? this.handoffConfig.readinessTimeoutMs;
     const drainDeadlineMs =

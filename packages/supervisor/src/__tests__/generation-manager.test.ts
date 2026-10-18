@@ -417,6 +417,38 @@ describe('GenerationManager', () => {
     expect(manager.status().active?.generation).toBe(3);
   });
 
+  it('refuses a requested entry the boundary rejects, from a client or the core, without launching', async () => {
+    const log: string[] = [];
+    let launches = 0;
+    const manager = new GenerationManager({
+      entry: '/root/a.js',
+      clock,
+      resolveEntry: (entry) =>
+        entry.startsWith('/root/')
+          ? { entry }
+          : { refused: 'entry-outside-build-root' },
+      launcher: {
+        launch: ({ generation, entry }) => {
+          launches += 1;
+          return new FakeGeneration(generation, entry, {}, log);
+        },
+      },
+    });
+    await manager.start();
+    expect(await manager.handoff({ entry: '/elsewhere/evil.js' })).toEqual({
+      outcome: 'refused',
+      reason: 'entry-outside-build-root',
+    });
+    expect(launches).toBe(1);
+    expect(manager.status().state).toBe('serving');
+    // No entry named: the committed entry is reused without re-checking.
+    expect(await manager.handoff({})).toMatchObject({
+      outcome: 'committed',
+      generation: 2,
+    });
+    expect(launches).toBe(2);
+  });
+
   it('drains everything and closes its listeners on stop', async () => {
     const { manager, generations } = setup();
     await manager.start();

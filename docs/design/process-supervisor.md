@@ -163,6 +163,10 @@ product decisions.
   - Requests are `status`, `handoff` (streams progress, then a result of
     `committed`, `rolled-back`, or `refused`), `stop`, and, with the
     `events` capability, `subscribe`.
+  - A handoff entry must be a `.js` or `.mjs` file whose real path is inside
+    the supervisor's build root; otherwise it is refused as
+    `entry-outside-build-root` without starting a process. A token holder
+    therefore cannot run an arbitrary program as the Station server.
   - The types and constants are exported from
     [`@kontourai/station-supervisor/protocol`](../../packages/supervisor/src/protocol.ts).
 

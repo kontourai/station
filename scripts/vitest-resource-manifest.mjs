@@ -1424,6 +1424,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/handoff.test.ts',
   'packages/supervisor/src/__tests__/rollback.test.ts',
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
+  'packages/supervisor/src/__tests__/build-root.test.ts',
   // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
   'packages/supervisor/src/__tests__/protocol.test.ts',
   // Forks two children that pass a raw listening handle through this worker.

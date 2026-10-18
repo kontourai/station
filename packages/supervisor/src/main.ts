@@ -1,20 +1,23 @@
 /**
  * Supervisor process entry:
  *
- *   node station-supervisor.js --entry <core entry> --home <dir> --instance <id> [--control <path>]
+ *   node station-supervisor.js --entry <core entry> --home <dir> --instance <id>
+ *     [--build-root <dir>] [--control <path>]
  *
  * `--control` defaults to the endpoint derived from home and instance, which
  * is what clients derive too. Tuning flags exist for operators and tests.
  */
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { createEntryBoundary } from './entry-boundary.ts';
 import {
   type ControlEndpoint,
   isValidInstanceId,
   resolveControlEndpoint,
   unixSocketPathLimit,
 } from './protocol.ts';
-import { runSupervisor, validateEntry } from './supervisor.ts';
+import { runSupervisor } from './supervisor.ts';
 
 const DURATION_FLAGS = {
   'park-timeout-ms': ['handoff', 'parkTimeoutMs'],
@@ -55,6 +58,7 @@ async function main(): Promise<void> {
       home: { type: 'string' },
       instance: { type: 'string' },
       control: { type: 'string' },
+      'build-root': { type: 'string' },
       ...Object.fromEntries(
         Object.keys(DURATION_FLAGS).map((flag) => [
           flag,
@@ -67,14 +71,32 @@ async function main(): Promise<void> {
   const raw = values as Record<string, string | undefined>;
   if (!raw.entry || !raw.home || !raw.instance) {
     fail(
-      'usage: --entry <core entry> --home <dir> --instance <id> [--control <path>]',
+      'usage: --entry <core entry> --home <dir> --instance <id> [--build-root <dir>] [--control <path>]',
     );
   }
   if (!isValidInstanceId(raw.instance))
     fail(`invalid --instance: ${raw.instance}`);
-  const entry = resolve(raw.entry);
-  const invalidEntry = validateEntry(entry);
-  if (invalidEntry) fail(`--entry ${entry}: ${invalidEntry}`);
+  let initialEntry: string;
+  try {
+    initialEntry = realpathSync(resolve(raw.entry));
+  } catch {
+    fail(`--entry not found: ${raw.entry}`);
+  }
+  // Default: the directory holding the initial entry.
+  const buildRoot = resolve(raw['build-root'] ?? dirname(initialEntry));
+  let boundary: ReturnType<typeof createEntryBoundary>;
+  try {
+    boundary = createEntryBoundary(buildRoot);
+  } catch {
+    fail(`--build-root not found: ${buildRoot}`);
+  }
+  const checked = boundary(initialEntry);
+  if ('refused' in checked) {
+    fail(
+      `--entry must be a .js or .mjs file inside --build-root ${buildRoot}: ${raw.entry}`,
+    );
+  }
+  const entry = checked.entry;
 
   const derived = resolveControlEndpoint({
     home: raw.home,
@@ -104,6 +126,7 @@ async function main(): Promise<void> {
 
   await runSupervisor({
     entry,
+    buildRoot,
     endpoint,
     instance: raw.instance,
     handoff,

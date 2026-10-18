@@ -9,6 +9,8 @@ evidence:
     ref: docs/design/process-supervisor.md
   - kind: doc
     ref: packages/supervisor/src/generation-manager.ts
+  - kind: doc
+    ref: packages/supervisor/src/entry-boundary.ts
 ---
 
 # Station process ownership and the process supervisor
@@ -45,12 +47,17 @@ reasoning, phases, and verification plan.
 - Phase 1 hands off one generation at a time. Overlapping generations wait
   for a home-writer lease.
 - The supervisor makes no authorization, routing, or product decisions.
-- ADR 0015's finding still applies when Desktop becomes a client: Desktop
-  must not trust a listener because it answers on loopback, and a
-  capability readable by agent-controlled processes is not proof of the
-  backend's identity. The control channel's token file lives in the Station
-  home, which agents running as the same user can read, so how Desktop
-  verifies its backend must be settled before Desktop adopts the service
-  (delivery phase 4).
+- A handoff runs only a `.js` or `.mjs` entry whose real path is strictly
+  inside the supervisor's build root (`--build-root`, by default the
+  directory of the initial entry). Anything else is refused before a process
+  starts, so holding the control token does not let a client start an
+  arbitrary program as the Station server. A rollback relaunches only the
+  previously committed entry.
+- Still open for delivery phase 4: ADR 0015's finding applies when Desktop
+  becomes a client. Desktop must not trust a listener because it answers on
+  loopback, and a capability readable by agent-controlled processes is not
+  proof of the backend's identity. The control token lives in the Station
+  home, which agents running as the same user can read. How Desktop verifies
+  its backend must be settled before Desktop adopts the service.
 - Until the core server has a supervised mode and the launch modes adopt the
   supervisor, the lifecycle described in ADR 0015 remains what ships.
