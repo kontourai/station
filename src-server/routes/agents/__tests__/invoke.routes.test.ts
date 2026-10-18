@@ -4,6 +4,7 @@ import {
   tenantExecutionContextFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import { Agent } from '@voltagent/core';
 import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -1464,6 +1465,7 @@ test('global structured invoke reaches the real VoltAgent model through its fram
   const framework = new VoltAgentFramework();
   vi.spyOn(framework, 'createModel').mockResolvedValue(model);
   const runtime = createMockCtx({ framework });
+  const nativeObject = vi.spyOn(Agent.prototype, 'generateObject');
   const response = await createInvokeRoutes(runtime as any).request('/invoke', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1476,6 +1478,8 @@ test('global structured invoke reaches the real VoltAgent model through its fram
       },
     }),
   });
+  const nativeOptions = nativeObject.mock.calls.at(-1)?.[2];
+  nativeObject.mockRestore();
   expect(response.status).toBe(200);
   expect(await json(response)).toMatchObject({
     success: true,
@@ -1484,6 +1488,10 @@ test('global structured invoke reaches the real VoltAgent model through its fram
   expect(model.doGenerateCalls).toHaveLength(2);
   expect(model.doGenerateCalls[1]?.responseFormat).toMatchObject({
     type: 'json',
+  });
+  expect(nativeOptions).toMatchObject({
+    userId: 'service:invoke-user',
+    conversationId: expect.stringMatching(/^invoke-/),
   });
 });
 

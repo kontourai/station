@@ -77,8 +77,10 @@ Restoring this adapter means configured approval guardians begin receiving model
 verdicts: valid allow/deny/defer decisions now reach the existing policy. Previously
 those calls failed before model invocation and deferred. Normalization still
 rejects malformed decisions to defer; policy, grants, modes and prompts do not
-change. Title generation and session summaries also begin using model results,
-and global structured invoke can complete its second formatting run.
+change. Title generation and session summaries also begin using model results.
+Global structured invoke already supplied the native schema as the second argument,
+so it could produce structured output; its third-argument options were discarded
+by the wrapper. Its formatting run now preserves conversation and user identity.
 
 Expose all scalar and collection bounds in the structured schema and prompt.
 Describe the inclusive excerpt rule (`end - start + 1 <= 25`) in the schema as
