@@ -399,6 +399,21 @@ describe('engine delivery probes', () => {
     },
   );
 
+  it('forwards every cleanup DELETE through the matrix wrapper to the API transport', async () => {
+    const { requests } = await exercise();
+    const cleanup = requests.slice(-3);
+    expect(cleanup.map(({ method }) => method)).toEqual([
+      'DELETE',
+      'DELETE',
+      'DELETE',
+    ]);
+    expect(cleanup.map(({ path }) => path)).toEqual([
+      expect.stringMatching(/^\/agents\/delivery-/),
+      expect.stringMatching(/^\/api\/skills\/delivery-/),
+      expect.stringMatching(/^\/integrations\/probe/),
+    ]);
+  });
+
   it.each([
     ['nonce', 'skillNonce'],
     ['artifact', 'scriptOutput'],
