@@ -123,7 +123,10 @@ import type { ProjectSharedTaskStore } from '../../services/projects/project-sha
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
-import { guideOutputSchema } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
+import {
+  guideOutputSchema,
+  isGuideExcerptLimitError,
+} from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
@@ -5933,6 +5936,8 @@ export function configureRuntimeRoutes(
         });
         return result.object;
       } catch (error) {
+        if (isGuideExcerptLimitError(error))
+          throw new ReviewGuideError('excerpt-too-long');
         if (
           error instanceof Error &&
           [

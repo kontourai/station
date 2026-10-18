@@ -39,7 +39,9 @@ export function PullRequestGuide({
       'pull-request-guide-status',
       scope?.authorityKey,
       target,
-      query.data?.enabled ? query.data.run?.startedAt : undefined,
+      query.data?.enabled && query.data.run?.state === 'Running'
+        ? query.data.run.startedAt
+        : undefined,
     ],
     queryFn: ({ signal }) =>
       getPullRequestGuideStatus(scope!.apiBase, target, {
@@ -176,7 +178,9 @@ function GuideStops({ result }: { result: PullRequestReviewGuideResult }) {
                 {excerpt.side === 'new' ? 'New' : 'Old'} lines {excerpt.start}–
                 {excerpt.end} · {excerpt.caption}
               </p>
+              {/* biome-ignore lint/a11y/useSemanticElements: preserve preformatted code while naming its scrollable region. */}
               <pre
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must focus this region to scroll long code lines in WebKit.
                 tabIndex={0}
                 role="region"
                 aria-label={`Code excerpt from ${excerpt.path}`}

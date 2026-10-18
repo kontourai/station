@@ -1,4 +1,6 @@
+import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, test, vi } from 'vitest';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { generateConversationTitle } from '../chat-title-generation.js';
 
 function createCtx(overrides: Record<string, unknown> = {}) {
@@ -169,5 +171,31 @@ describe('generateConversationTitle (station#1566)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+test('generates through the real VoltAgent adapter with JSON output', async () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [{ type: 'text', text: '{"title": "Deploying the app"}' }],
+      finishReason: { unified: 'stop', raw: 'stop' },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    }),
+  });
+  const framework = new VoltAgentFramework();
+  vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+  const runtime = createCtx({ framework });
+  const result = await generateConversationTitle({
+    ctx: runtime,
+    firstUserText: 'Deploy?',
+    assistantText: 'Use the script.',
+  });
+  expect(result).toBe('Deploying the app');
+  expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+    type: 'json',
   });
 });

@@ -1,4 +1,6 @@
+import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, test, vi } from 'vitest';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import {
   ApprovalGuardianService,
   DEFAULT_GUARDIAN_PROMPT,
@@ -33,51 +35,72 @@ describe('ApprovalGuardianService', () => {
     });
   });
 
-  test('returns structured guardian decisions from the temp agent', async () => {
-    const generateObject = vi.fn().mockResolvedValue({
-      object: {
-        decision: 'deny',
-        reason: 'The target path looks destructive.',
+  test.each([
+    {
+      output: { decision: 'allow', reason: 'Scoped read.' },
+      expected: { decision: 'allow', reason: 'Scoped read.' },
+    },
+    {
+      output: { decision: 'deny', reason: 'Destructive target.' },
+      expected: { decision: 'deny', reason: 'Destructive target.' },
+    },
+    {
+      output: { decision: 'defer', reason: 'Unclear intent.' },
+      expected: { decision: 'defer', reason: 'Unclear intent.' },
+    },
+    {
+      output: { decision: 'allow', reason: '   ' },
+      expected: {
+        decision: 'defer',
+        reason: 'Guardian could not parse a confident decision.',
       },
-    });
-    const createTempAgent = vi.fn().mockResolvedValue({
-      generateObject,
-    });
-
-    const service = new ApprovalGuardianService({
-      appConfig: {
-        defaultModel: 'default-model',
-        invokeModel: 'invoke-model',
-        structureModel: 'structure-model',
-        approvalGuardian: {
-          enabled: true,
-          mode: 'enforce',
+    },
+    {
+      output: { decision: 'invalid', reason: 'Malformed decision.' },
+      expected: {
+        decision: 'defer',
+        reason: 'Guardian could not parse a confident decision.',
+      },
+    },
+  ])(
+    'real VoltAgent returns $expected.decision for $output',
+    async ({ output, expected }) => {
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => ({
+          content: [{ type: 'text', text: JSON.stringify(output) }],
+          finishReason: { unified: 'stop', raw: 'stop' },
+          usage: {
+            inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 1, text: 1, reasoning: 0 },
+          },
+          warnings: [],
+        }),
+      });
+      const framework = new VoltAgentFramework();
+      vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+      const service = new ApprovalGuardianService({
+        appConfig: {
+          defaultModel: 'default-model',
+          invokeModel: 'invoke-model',
+          structureModel: 'structure-model',
+          approvalGuardian: { enabled: true, mode: 'enforce' },
         },
-      },
-      framework: {
-        createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-        createTempAgent,
-      } as any,
-      logger: { warn: vi.fn() },
-      projectHomeDir: '/tmp/project',
-    });
-
-    await expect(
-      service.reviewToolCall({
-        agentName: 'Planner',
-        agentSlug: 'planner',
-        toolName: 'filesystem_write',
-        toolDescription: 'Write a file',
-        toolArgs: { path: '/etc/passwd' },
-      }),
-    ).resolves.toEqual({
-      decision: 'deny',
-      reason: 'The target path looks destructive.',
-    });
-
-    expect(createTempAgent).toHaveBeenCalledOnce();
-    expect(generateObject).toHaveBeenCalledOnce();
-  });
+        framework,
+        logger: { warn: vi.fn() },
+        projectHomeDir: '/tmp/project',
+      });
+      await expect(
+        service.reviewToolCall({
+          agentSlug: 'planner',
+          toolName: 'filesystem_write',
+          toolArgs: {},
+        }),
+      ).resolves.toEqual(expected);
+      expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+        type: 'json',
+      });
+    },
+  );
 
   // archive#1831 delivery review (HIGH): user instructions were an OR-fallback
   // that REPLACED the entire built-in decision framework, while the Settings

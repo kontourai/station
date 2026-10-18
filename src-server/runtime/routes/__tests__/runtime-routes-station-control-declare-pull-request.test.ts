@@ -12,6 +12,7 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { MockLanguageModelV3 } from 'ai/test';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -31,6 +32,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpHeaderAuth,
@@ -277,26 +279,43 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
 
   test('bound operator MCP caller generates structured output through the production runtime wiring', async () => {
     const f = await guideFixture(makeTempDir);
-    const generateObject = vi.fn(async () => ({
-      object: {
-        stops: [
+    const output = {
+      stops: [
+        {
+          title: 'Tour',
+          summary: '',
+          attention: null,
+          excerpts: [] as Array<{
+            path: string;
+            side: string;
+            start: number;
+            end: number;
+            caption: string;
+          }>,
+          files: [],
+          notes: [],
+          questions: [],
+        },
+      ],
+    };
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
           {
-            title: 'Tour',
-            summary: '',
-            attention: null,
-            excerpts: [],
-            files: [],
-            notes: [],
-            questions: [],
+            type: 'text',
+            text: JSON.stringify(output),
           },
         ],
-      },
-    }));
-    const generateText = vi.fn();
-    const framework = {
-      createModel: vi.fn(async () => ({})),
-      createTempAgent: vi.fn(async () => ({ generateObject, generateText })),
-    };
+        finishReason: { unified: 'stop', raw: 'stop' },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    });
+    const framework = new VoltAgentFramework();
+    vi.spyOn(framework, 'createModel').mockResolvedValue(model);
     const { base, homeDir } = await setup(true, framework);
     const repo = {
       ...f.context,
@@ -351,19 +370,48 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         ref: '42',
       };
       const store = new PullRequestReviewGuideStore(homeDir);
-      await vi.waitFor(() =>
-        expect(store.read(identity, f.snapshot.headSha)?.stops[0]?.title).toBe(
-          'Tour',
-        ),
+      await vi.waitFor(
+        () =>
+          expect(
+            store.read(identity, f.snapshot.headSha)?.stops[0]?.title,
+          ).toBe('Tour'),
+        { timeout: 15000 },
       );
-      expect(framework.createTempAgent).toHaveBeenCalledWith(
-        expect.objectContaining({ tools: [], maxSteps: 1 }),
-      );
-      expect(generateObject).toHaveBeenCalledWith(
-        expect.stringContaining('Untrusted change data'),
-        expect.objectContaining({ structuredOutputSchema: expect.anything() }),
-      );
-      expect(generateText).not.toHaveBeenCalled();
+      expect(model.doGenerateCalls).toHaveLength(1);
+      expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+        type: 'json',
+      });
+      expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(16000);
+      expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+        schema: {
+          properties: {
+            stops: {
+              minItems: 1,
+              maxItems: 8,
+              items: {
+                properties: {
+                  excerpts: {
+                    maxItems: 6,
+                    items: {
+                      description:
+                        expect.stringContaining('25 inclusive lines'),
+                      properties: {
+                        end: {
+                          description: expect.stringContaining('start + 24'),
+                          maximum: 10000000,
+                        },
+                      },
+                    },
+                  },
+                  notes: { maxItems: 3 },
+                  questions: { maxItems: 2 },
+                  files: { maxItems: 500 },
+                },
+              },
+            },
+          },
+        },
+      });
       const denied = await fetch(
         `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
         {
@@ -373,7 +421,37 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
         },
       );
       expect(denied.status).toBe(403);
-      expect(generateObject).toHaveBeenCalledOnce();
+      expect(model.doGenerateCalls).toHaveLength(1);
+      output.stops[0]!.excerpts = [
+        { path: 'a.ts', side: 'new', start: 1, end: 36, caption: 'Too long' },
+      ];
+      const rewrite = await fetch(
+        `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a`,
+        {
+          method: 'POST',
+          headers: as('bound', 'op-caller-a'),
+          body: '{"force":true}',
+        },
+      );
+      expect(rewrite.status).toBe(200);
+      await vi.waitFor(
+        async () => {
+          const status = await fetch(
+            `${base}/api/pull-requests/github/github.com/owner/repo/42/guide?project=project-a&status=1`,
+            { headers: as('bound', 'op-caller-a') },
+          );
+          expect(await status.json()).toMatchObject({
+            data: {
+              run: {
+                state: 'Failed',
+                detail:
+                  'The model returned an excerpt exceeding 25 lines. Rewrite the guide using shorter excerpts.',
+              },
+            },
+          });
+        },
+        { timeout: 15000 },
+      );
     } finally {
       snapshot.mockRestore();
       resolve.mockRestore();

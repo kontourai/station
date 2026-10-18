@@ -37,7 +37,9 @@ not supplied to the model, including resolved conversations.
 Guides support up to 500 changed files, a bounded diff and context, eight model
 stops, and an optional final stop naming files the model did not explain.
 Invalid excerpt paths, ranges outside a diff hunk, or excerpts over 25 lines
-fail generation. Station runs at most two guides at once; additional requests
+fail generation. An excerpt longer than 25 inclusive lines fails the whole run
+with a specific limit message; split long passages into shorter excerpts when
+rewriting. Station runs at most two guides at once; additional requests
 are refused so they can be retried later. Completed guides persist by forge,
 repository, pull request, and head SHA across restarts. In-progress and failure
 status is process-local; after a restart, choose **Rewrite guide** if needed.

@@ -387,6 +387,13 @@ modes, `review` and `enforce`:
   `unattendedAutoApprove` and to a per-job grant alike.
 - In `review` mode, the guardian never blocks the opt-in.
 
+VoltAgent structured generation now reaches the configured model. Previously a
+framework signature mismatch made guardian reviews fail before the model was
+called and fall back to `defer`. A configured guardian can now issue real `allow`
+and `deny` decisions. Its modes and policy are unchanged; malformed or missing
+decisions still defer. Strands also converts Station's structured schema wrappers
+to the Zod schema required by its SDK.
+
 Attended chat ignores `unattendedAutoApprove` and asks as before; there a
 guardian defer still means asking the person. External engines (Claude Code,
 ACP) do not deliver Station's unattended checks

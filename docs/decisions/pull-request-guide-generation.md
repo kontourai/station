@@ -63,3 +63,31 @@ checks capacity before a costly snapshot and again before starting generation.
 Current-head guides are reused unless force is explicit, and a different head
 cannot silently join an older run. Check the exact pretty-printed document size
 before publishing it so every admitted write remains within the read limit.
+
+## Structured generation and excerpt bounds
+
+Station's framework interface takes the schema in `structuredOutputSchema`.
+VoltAgent 2.10 requires the schema as its second argument and generation options
+as its third; the adapter translates the interface and refuses a missing schema.
+Strands 1.19 requires Zod, so its adapter converts AI SDK wrappers through their
+JSON Schema representation. Registered-agent invoke uses the raw VoltAgent API;
+global invoke uses Station's wrapper interface.
+
+Restoring this adapter means configured approval guardians begin receiving model
+verdicts: valid allow/deny/defer decisions now reach the existing policy. Previously
+those calls failed before model invocation and deferred. Normalization still
+rejects malformed decisions to defer; policy, grants, modes and prompts do not
+change. Title generation and session summaries also begin using model results,
+and global structured invoke can complete its second formatting run.
+
+Expose all scalar and collection bounds in the structured schema and prompt.
+Describe the inclusive excerpt rule (`end - start + 1 <= 25`) in the schema as
+well as the prompt, and validate it with Zod and normalization. Native JSON Schema
+cannot express this relationship between two fields, so provider schema support
+alone does not guarantee compliance. A 36-line response is refused with the fixed
+25-line failure, including when the AI SDK rejects it before normalization.
+Reject the whole run rather than silently dropping the excerpt: its stop's notes
+and narrative may depend on that range, and a partial tour would conceal the
+failure. Nothing is published on failure; any prior guide remains intact. Valid
+guides still cover every changed file through explicit anchors/files or the final
+unexplained-files stop.

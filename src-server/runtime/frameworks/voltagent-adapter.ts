@@ -648,7 +648,15 @@ class VoltAgentWrapper implements IAgent {
     prompt: string,
     options?: any,
   ): Promise<IGenerateResult> {
-    return this.inner.generateObject(prompt, options);
+    const { structuredOutputSchema, signal, ...invokeOptions } = options ?? {};
+    if (!structuredOutputSchema)
+      throw new Error(
+        'Structured object generation requires structuredOutputSchema.',
+      );
+    return this.inner.generateObject(prompt, structuredOutputSchema, {
+      ...invokeOptions,
+      ...(signal ? { abortSignal: signal } : {}),
+    });
   }
 
   getMemory(): IMemory | null {

@@ -386,3 +386,38 @@ test('missing local commits and oversized diffs produce different actionable fai
   );
   expect(generate).not.toHaveBeenCalled();
 });
+
+test('a 36-line excerpt is refused with its exact fixed failure and no partial guide is published', async () => {
+  const f = await guideFixture(makeTempDir);
+  const overlong = stop();
+  overlong.excerpts[0]!.end = 36;
+  const longPatch =
+    'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1,36 @@\n' +
+    Array.from({ length: 36 }, (_, n) => `+line ${n + 1}\n`).join('');
+  expect(() =>
+    normalizeReviewGuide(
+      { stops: [overlong] },
+      readGuideChange(['a.ts'], longPatch),
+    ),
+  ).toThrow('exceeding 25 lines');
+  const service = new PullRequestReviewGuideService(
+    f.store,
+    () => ({ enabled: true, model: 'model', instructions: '' }),
+    async (prompt) => {
+      expect(prompt).toContain('end - start + 1 <= 25');
+      return { stops: [overlong] };
+    },
+    () => {},
+  );
+  service.start({ identity, context: f.context, snapshot: f.snapshot });
+  await vi.waitFor(
+    () =>
+      expect(service.status(identity).run).toMatchObject({
+        state: 'Failed',
+        detail:
+          'The model returned an excerpt exceeding 25 lines. Rewrite the guide using shorter excerpts.',
+      }),
+    { timeout: 15000 },
+  );
+  expect(f.store.latest(identity)).toBeNull();
+});

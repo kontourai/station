@@ -1,5 +1,6 @@
 import type { PullRequestReviewGuideStop } from '@kontourai/station-contracts/pull-request-review-guide';
 import { z } from 'zod';
+import { ReviewGuideError } from './pull-request-review-guide-errors.js';
 
 const text = z.string().max(4000);
 const path = z.string().min(1).max(1024);
@@ -31,11 +32,20 @@ export const guideOutputSchema = z
                   .object({
                     path,
                     side: z.enum(['new', 'old']),
-                    start: line,
-                    end: line,
+                    start: line.describe('Inclusive first line, 1–10000000.'),
+                    end: line.describe(
+                      'Inclusive last line: start <= end <= start + 24. An excerpt must contain at most 25 lines.',
+                    ),
                     caption: z.string().max(500),
                   })
-                  .strict(),
+                  .strict()
+                  .refine(
+                    (excerpt) => excerpt.end - excerpt.start < 25,
+                    'An excerpt exceeded 25 lines.',
+                  )
+                  .describe(
+                    'At most 25 inclusive lines wholly inside one diff hunk.',
+                  ),
               )
               .max(6),
             files: z
@@ -65,6 +75,24 @@ export const guideOutputSchema = z
       .max(8),
   })
   .strict();
+
+/** AI SDK validation errors retain the Zod issue behind their cause chain. */
+export function isGuideExcerptLimitError(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth++) {
+    if (
+      current instanceof z.ZodError &&
+      current.issues.some(
+        (issue) =>
+          issue.code === 'custom' &&
+          issue.message === 'An excerpt exceeded 25 lines.',
+      )
+    )
+      return true;
+    current = current.cause;
+  }
+  return false;
+}
 
 export interface GuideChange {
   files: string[];
@@ -164,7 +192,13 @@ export function normalizeReviewGuide(
 ): PullRequestReviewGuideStop[] {
   if (Buffer.byteLength(JSON.stringify(raw) ?? '') > 128 * 1024)
     throw Error('Guide output exceeds the size limit.');
-  const { stops } = guideOutputSchema.parse(raw);
+  const parsed = guideOutputSchema.safeParse(raw);
+  if (!parsed.success) {
+    if (isGuideExcerptLimitError(parsed.error))
+      throw new ReviewGuideError('excerpt-too-long');
+    throw parsed.error;
+  }
+  const { stops } = parsed.data;
   const changed = new Set(change.files);
   const placed = new Set<string>();
   for (const stop of stops) {

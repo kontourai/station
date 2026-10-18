@@ -14,7 +14,9 @@ const DETAILS = {
     'Reading the local Git change timed out. Try again when the server is less busy.',
   'git-read': 'The local Git change could not be read safely.',
   'invalid-output':
-    'The model returned invalid guide output or excerpts. Rewrite with a model that supports structured output.',
+    'The model returned guide output that did not match the bounded schema or the diff. Rewrite the guide.',
+  'excerpt-too-long':
+    'The model returned an excerpt exceeding 25 lines. Rewrite the guide using shorter excerpts.',
   'stored-too-large':
     'The serialized guide exceeds the storage limit. Use a shorter guide.',
   timeout: 'Guide generation exceeded its time budget.',
