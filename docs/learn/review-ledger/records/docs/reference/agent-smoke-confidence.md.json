@@ -62,7 +62,15 @@
 
     "src-server/services/orchestration/orchestration-service.ts",
 
-    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "packages/sdk/src/client/execution.ts"
   ],
 
   "checks": [
