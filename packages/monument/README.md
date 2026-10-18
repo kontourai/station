@@ -109,7 +109,18 @@ it, and a command that throws or is refused undoes only itself.
 Station's production boundary coordinator uses this binding for create,
 transition, remove, accepted-turn recording, terminal observation and listing.
 Station retains sealed-task admission, storage-error classification and
-process-owner reconciliation. The binding supports the default
+process-owner reconciliation. Its current legacy boundary binding configures
+neither intent nor settlement columns: it cannot author or decode a settled
+boundary audit, and encountering that tag makes the host observation unavailable.
+Host terminal SQL preserves the raw row rather than treating it as permission to
+delete or replay. The separate Station dedup binding can read settlement in
+`owner_json`; its claim/inspection facade refuses the key with the typed
+`client_turn_settled` error and actual disposition. The authorized delivery lookup
+maps that refusal to [HTTP 409](../../docs/reference/session-api.md#find-out-what-became-of-a-send).
+These consumer rules add no host preparation, cancellation or resume API and do
+not qualify mixed-version writers.
+
+The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
 `owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
 layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,
@@ -178,7 +189,8 @@ Station uses its canonical event log for that read projection, with the exact
 same predicate as physical retirement: session sequence strictly above the
 creation fence, timestamp fallback for NULL legacy fences, turn timestamp and
 provider-ID matching, and the existing lifecycle, task-dispatch, admission-error
-and recovery-terminal exclusions. Its polling path takes a deferred read
+and recovery-terminal exclusions. Settled audit rows are also excluded from both
+terminal projection and physical retirement. Its polling path takes a deferred read
 transaction, does not drain pending transitions, and can read committed facts
 while a peer holds the WAL writer. An uncommitted terminal is invisible; after
 commit the next poll can answer inactive while the boundary row remains.

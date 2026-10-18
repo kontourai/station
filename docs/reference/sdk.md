@@ -3416,10 +3416,12 @@ Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
-the connection dropped before the answer arrived. It is read-only and returns a
-`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+the connection dropped before the answer arrived. It is read-only and, on success,
+returns a `TurnDeliveryInspection`; only `not-received` means the same key may be sent
 again. A Station without the lookup answers `404`, which throws a refusal
-rather than reading as `not-received`. The
+rather than reading as `not-received`. An explicitly settled key answers HTTP
+`409` with `client_turn_settled` and its actual disposition; that is a refusal,
+not a successful delivery outcome or permission to resend the key. The
 [Session API](session-api.md) defines each outcome.
 `queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
 the conversation's inbox while its turn runs (#3568). It needs `conversationId`

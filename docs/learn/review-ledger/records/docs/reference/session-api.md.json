@@ -88,7 +88,17 @@
 
     "src-server/providers/sessions/opencode-session-source.ts",
 
-    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts"
+    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts",
+
+    "src-server/services/turn-idempotency.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts"
   ],
 
   "checks": [

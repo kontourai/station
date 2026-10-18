@@ -54,7 +54,29 @@
 
     "packages/monument/src/decisions/prepared-settlement.ts",
 
-    "packages/monument/src/__tests__/sqlite-prepared-settlement.test.ts"
+    "packages/monument/src/__tests__/sqlite-prepared-settlement.test.ts",
+
+    "src-server/services/turn-idempotency.ts",
+
+    "src-server/services/orchestration/session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts"
   ],
 
   "checks": []
