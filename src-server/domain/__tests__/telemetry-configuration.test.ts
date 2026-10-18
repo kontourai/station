@@ -1,12 +1,13 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveTelemetryTier } from '@kontourai/station-contracts/product-telemetry';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   loadAppConfigFile,
   mergeAppConfigUpdate,
+  saveAppConfigFile,
 } from '../config-loader-app.js';
 import { resolveTelemetryConfiguration } from '../telemetry-configuration.js';
 
@@ -70,15 +71,15 @@ describe('telemetry policy', () => {
         kontour: true,
         operator: true,
       }).publishers,
-    ).toEqual({
+    ).toMatchObject({
       kontour: { tier: 'off', reason: 'DNT' },
       operator: { tier: 'off', reason: 'DNT' },
     });
     vi.stubEnv('DO_NOT_TRACK', '0');
     expect(
       resolveTelemetryConfiguration(base, process.env, { operator: true })
-        .publishers.operator.tier,
-    ).toBe('full');
+        .publishers.operator,
+    ).toMatchObject({ tier: 'lite', reason: 'environment', source: 'env' });
     vi.stubEnv('STATION_TELEMETRY_TIER', '');
     expect(
       resolveTelemetryConfiguration(base, process.env, { operator: true })
@@ -90,7 +91,7 @@ describe('telemetry policy', () => {
         process.env,
         { operator: true },
       ).publishers,
-    ).toEqual({
+    ).toMatchObject({
       kontour: { tier: 'off', reason: 'user' },
       operator: { tier: 'full', reason: 'user' },
     });
@@ -101,6 +102,56 @@ describe('telemetry policy', () => {
     ).toBeUndefined();
   });
 });
+it('environment defaults never grant Full and provenance is publisher-specific', () => {
+  for (const env of [
+    { STATION_TELEMETRY_TIER: 'full' },
+    { STATION_PRODUCT_TELEMETRY_ENABLED: 'true' },
+  ]) {
+    expect(
+      resolveTelemetryConfiguration(base, env, { operator: true }).publishers
+        .operator,
+    ).toMatchObject({ tier: 'lite', reason: 'environment', source: 'env' });
+  }
+  expect(
+    resolveTelemetryConfiguration(
+      { ...base, telemetryTier: { operator: 'full' } },
+      { STATION_TELEMETRY_TIER: 'off' },
+      { operator: true },
+    ).publishers,
+  ).toMatchObject({
+    operator: { tier: 'full', reason: 'user', source: 'config' },
+    kontour: { tier: 'off', reason: 'environment', source: 'env' },
+  });
+});
+
+it('existing tier choices win over a stale persisted legacy alias', async () => {
+  const home = makeTempDir('station-tier-alias-');
+  await saveAppConfigFile(home, {
+    ...base,
+    telemetryTier: { operator: 'off', kontour: 'off' },
+    telemetryEnabled: true,
+  });
+  expect((await loadAppConfigFile(home)).telemetryTier).toEqual({
+    operator: 'off',
+    kontour: 'off',
+  });
+  expect(
+    JSON.parse(await readFile(join(home, 'config', 'app.json'), 'utf8')),
+  ).not.toHaveProperty('telemetryEnabled');
+  expect(
+    mergeAppConfigUpdate(
+      { ...base, telemetryTier: { operator: 'off' } },
+      { telemetryEnabled: true },
+    ),
+  ).toMatchObject({ telemetryTier: { operator: 'full' } });
+  expect(
+    mergeAppConfigUpdate(
+      { ...base, telemetryTier: { operator: 'off' } },
+      { telemetryEnabled: true },
+    ),
+  ).not.toHaveProperty('telemetryEnabled');
+});
+
 describe('persisted telemetry migration', () => {
   it.each([
     { enabled: false, receipt: 'current', operator: 'off', kontour: 'off' },
@@ -112,11 +163,7 @@ describe('persisted telemetry migration', () => {
     'migrates $enabled with $receipt receipt through the real app.json loader',
     async ({ enabled, receipt, operator, kontour }) => {
       const home = makeTempDir('station-tiers-');
-      await mkdir(join(home, 'config'));
-      await writeFile(
-        join(home, 'config', 'app.json'),
-        JSON.stringify({ ...base, telemetryEnabled: enabled }),
-      );
+      await saveAppConfigFile(home, { ...base, telemetryEnabled: enabled });
       if (receipt !== 'absent')
         await writeFile(
           join(home, 'config', 'usage-telemetry-disclosure.json'),
@@ -126,7 +173,7 @@ describe('persisted telemetry migration', () => {
                 acknowledgedAt: '2026-10-17T00:00:00.000Z',
                 inventoryRevision:
                   receipt === 'current'
-                    ? USAGE_TELEMETRY_INVENTORY_REVISION
+                    ? FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION
                     : 'old',
               }),
         );

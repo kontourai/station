@@ -2,6 +2,36 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
+Settings → Telemetry offers separate Kontour and Operator Off/Lite/Full
+choices. Off is always available. Effective state and its reason are shown
+separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
+choice waits at Lite until the current disclosure is acknowledged. **Turn
+off usage telemetry** saves operator Off before acknowledging. Resetting
+Station settings preserves these choices. Kontour Full is unavailable until
+its own disclosure exists.
+
+DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
+offers visible Off, Lite, and Full radio choices and a **Save operator choice
+as** action for the selected tier. Saving replaces the operator tier without
+acknowledging; DNT keeps telemetry Off. Save closes the dialog and remembers the
+current revision for this host across reloads while DNT remains active. Removing
+DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
+no acknowledgement.
+
+A standard paired device may lower tiers; only the operator or a device with
+`access:manage` may raise them. Agents cannot change telemetry choices or
+acknowledge the disclosure, even with `access:manage`.
+`STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
+defaults, reported as `environment`, and cannot grant Full. Hosts that previously
+relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
+receipt now resolve to Lite and stop Full delivery. There is no Lite sender in
+this foundation. To resume Full events, explicitly choose operator Full in
+Settings or run `station telemetry set operator full`, then acknowledge the
+current disclosure in Settings. Explicit stored choices take precedence over
+environment defaults; DO_NOT_TRACK always wins.
+After migration only `telemetryTier` is persisted. Legacy boolean writes are
+translated into tier changes under the same authorization rules.
+
 ## Disclosure and activation
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Lite is the default;
@@ -35,7 +65,7 @@ before sending. A Lite inventory change requires a new notice, while a Full
 inventory change requires a new acknowledgement.
 
 Use `station telemetry status` to read effective tiers and reasons (`DNT`,
-`policy`, `default`, `user`, `disclosure`) from a running Station. Use
+`policy`, `default`, `user`, `disclosure`, `environment`) from a running Station. Use
 `station telemetry set operator off` or `station telemetry set kontour lite`
 to save a single publisher choice. Requesting Full without its receipt remains
 Lite. These commands support the normal target/credential flags. The status API also
@@ -44,6 +74,17 @@ can display the server inventory rather than an older bundled copy. The outbox
 command is reserved for the later transparency lane.
 
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
+
+Full disclosure wording revision 2 participates only in the acknowledgement hash;
+batches and probes use the separate data inventory revision. Existing
+acknowledgements were reset because the earlier lede overstated anonymity; the
+accurate pseudonymous disclosure must be acknowledged again before Full resumes.
+Under DNT, the disclosure offers Off, Lite, and Full saves without writing an
+acknowledgement. Full saved this way remains pending; after DNT is removed the
+dialog appears again and sends nothing until Full is allowed. The acknowledgement
+API returns 409 while DNT is active.
+
+See the [decision and full-map concurrency limitation](../decisions/telemetry-tiers.md#consent-repair-after-foundation-review).
 
 When an operator configures `STATION_PRODUCT_TELEMETRY_ENDPOINT`, Station POSTs
 batches directly to that full address. It does not append an ingestion path.
@@ -58,7 +99,9 @@ legacy or conflicting variables without printing their values. Aliases remain
 supported until a separate release decision removes them; neither destination
 ever falls back to the other destination's key.
 
-The Full payload carries SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
+Full telemetry is pseudonymous, not anonymous. Its installation hash rotates
+monthly and is never linked to an account by Station. The Full payload carries
+SHA-256 of a random UUID concatenated with UTC `YYYY-MM`. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
 ## Delivery status and connection checks

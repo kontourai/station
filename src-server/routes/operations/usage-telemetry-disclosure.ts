@@ -1,5 +1,6 @@
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   checkOtelTelemetryConnection,
@@ -79,6 +80,15 @@ export function createUsageTelemetryDisclosureRoutes(
     return c.json({ success: true, data: await service.disclosure() });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
+    if (requestMayBeAnAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Agents cannot acknowledge telemetry consent. The operator can review it in Settings.',
+        },
+        403,
+      );
     const service = resolve();
     if (!service)
       return c.json(
@@ -127,6 +137,15 @@ export function createUsageTelemetryDisclosureRoutes(
           success: false,
           error:
             'Usage telemetry disclosure changed; review the current inventory.',
+        },
+        409,
+      );
+    if (disclosure.publishers.operator.reason === 'DNT')
+      return c.json(
+        {
+          success: false,
+          error:
+            'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
         },
         409,
       );

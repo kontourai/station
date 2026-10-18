@@ -11,7 +11,7 @@ evidence:
 
 This records the whole program direction. The foundation supplies contracts,
 configuration, migration, policy, monthly Full identity, CLI status/choice, and
-disclosure inventories. Daily sending, a transparency ledger, consent UI,
+disclosure inventories and per-publisher Settings controls. Daily sending, a transparency ledger, publisher-specific consent UI,
 plugin publishers, receiver changes, dashboards, release injection and deployment
 remain separate lanes. This decision does not assert that any of them is deployed.
 The numbered ADR directory is frozen; new decisions use this topic-keyed record.
@@ -147,3 +147,65 @@ enable real traffic as part of this program's implementation lanes. Each is an
 owner-gated action. Receiver/proxy retention review, public disclosure and store
 classification approval, endpoint enablement, and end-to-end release qualification
 remain separate from local source/tests and from this decision's acceptance.
+
+## Consent repair after foundation review
+
+Settings exposes each built-in publisher's saved choice, with Off always
+available. Effective resolution is shown separately, including DO_NOT_TRACK
+and Full awaiting acknowledgement. Declining Full writes operator Off before
+acknowledging the inventory; acknowledging alone must not turn a pending saved
+Full choice into consent after an Off decision.
+
+Environment and baked defaults are policy, never explicit consent. Even
+`STATION_TELEMETRY_TIER=full` and legacy environment `true` resolve to at most
+Lite, with reason `environment`. A saved choice wins over defaults; DNT still
+forces Off. Status includes each publisher's source and saved `userChoice`.
+The top-level source remains the operator compatibility projection.
+
+After migration `telemetryTier` is the sole persisted authority. Legacy boolean
+writes translate into tier changes and are not retained beside the map. An
+agent cannot change a choice. A standard paired device may lower a tier,
+including to Off; raising requires the operator or `access:manage`. The route
+compares with the state it replaces inside the serialized mutation. Reset
+preserves tier choices. Kontour Full is refused until a Kontour disclosure
+exists; operator acknowledgement cannot authorize another publisher.
+
+### Disclosure and wire revisions
+
+Full disclosure wording revision 2 resets existing acknowledgements because the
+earlier lede overstated anonymity: Full events are pseudonymous, with a monthly
+installation hash. `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` hashes this wording
+revision together with the event/property/envelope inventory. The existing
+`USAGE_TELEMETRY_INVENTORY_REVISION` export remains for compatibility but is
+deprecated in favor of the explicit acknowledgement name for receipts and the
+disclosure API. A saved operator Full choice remains pending
+until the accurate disclosure is acknowledged again.
+
+`PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` hashes only the data inventory and
+belongs in batches and probes. Receiver parser names remain unchanged. A
+wording-only bump changes acknowledgement validity without changing wire
+compatibility. Lite notice revisions are independent. Broker and Station must
+ship together when the data inventory wire revision changes: an older broker
+rejects the new revision, and this foundation has no legacy wire fallback.
+
+### Choices while Do Not Track is active
+
+DNT itself never changes saved choices. While it is active, the disclosure
+leads with the fact that nothing is sent and that Full still needs confirmation
+after DNT is removed. It offers visible **Off**, **Lite**, and **Full** radio
+choices and a save action named **Save operator choice as** the selected tier.
+Saving writes only that operator tier, without a disclosure acknowledgement.
+Saving Lite preserves a saved-Lite user's choice. Saving Full leaves Full
+pending: removing DNT shows the unacknowledged dialog again, and no Full event
+is admitted until the person allows it. Every successful Save closes the dialog
+and records a local, host-bound decision for the current disclosure revision,
+without acknowledging it. It stays closed across reloads while DNT is active.
+After DNT is removed, only saved Full re-prompts for confirmation; saved Off or
+Lite does not, since neither requires acknowledgement. A new disclosure revision
+re-prompts. This decision record is separate from the timed “Not now” snooze;
+the service and acknowledgement route also refuse acknowledgement under DNT.
+
+Known residual: operator and `access:manage` callers can submit full tier maps
+without compare-and-swap. Serialized per-publisher merging preserves omitted
+publishers, but a stale full-map write can replace another caller's intervening
+choice. This foundation does not add conflict detection for those callers.

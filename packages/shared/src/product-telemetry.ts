@@ -7,6 +7,7 @@ export {
 } from '@kontourai/station-contracts/product-telemetry';
 
 import {
+  FULL_DISCLOSURE_WORDING_REVISION,
   PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
@@ -50,14 +51,31 @@ export function renderUsageTelemetryInventory(): string {
     .join('\n\n');
 }
 
-/** A receipt covers this exact published inventory, not a vague telemetry policy. */
-export const USAGE_TELEMETRY_INVENTORY_REVISION = createHash('sha256')
+/** Wire compatibility depends only on the event/property/envelope data inventory. */
+export const PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION = createHash('sha256')
   .update(
     renderUsageTelemetryEnvelopeInventory() +
       '\n\n' +
       renderUsageTelemetryInventory(),
   )
   .digest('hex');
+
+/** Consent covers the disclosed data and the wording the person reviewed. */
+export const FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION = createHash('sha256')
+  .update(
+    `full-disclosure-wording:${FULL_DISCLOSURE_WORDING_REVISION}\n\n` +
+      renderUsageTelemetryEnvelopeInventory() +
+      '\n\n' +
+      renderUsageTelemetryInventory(),
+  )
+  .digest('hex');
+
+/**
+ * Existing disclosure API/receipt name; never use this for wire admission.
+ * @deprecated Use FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION.
+ */
+export const USAGE_TELEMETRY_INVENTORY_REVISION =
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION;
 
 /** Fails loudly if an implementation and the published inventory diverge. */
 export function assertUsageTelemetryInventoryContract(
@@ -203,12 +221,12 @@ export function parseProductTelemetryProbeRequest(
     !record(value) ||
     !onlyKeys(value, ['protocol', 'inventoryRevision']) ||
     value.protocol !== 'station-product-probe/v1' ||
-    value.inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION
+    value.inventoryRevision !== PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION
   )
     throw new Error('Invalid product telemetry probe');
   return {
     protocol: 'station-product-probe/v1',
-    inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+    inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   };
 }
 
@@ -226,7 +244,7 @@ export function parseProductTelemetryProbeReceipt(
     ]) ||
     value.protocol !== 'station-product-probe/v1' ||
     !productUuid(value.sourceId) ||
-    value.inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION ||
+    value.inventoryRevision !== PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION ||
     !utcTime(value.checkedAt) ||
     value.storage !== 'postgres-schema-v1'
   )
@@ -234,7 +252,7 @@ export function parseProductTelemetryProbeReceipt(
   return {
     protocol: 'station-product-probe/v1',
     sourceId: value.sourceId.toLowerCase(),
-    inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+    inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     checkedAt: value.checkedAt,
     storage: 'postgres-schema-v1',
   };
@@ -250,7 +268,7 @@ export function parseProductTelemetryBatch(
     !record(value) ||
     !onlyKeys(value, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.batch)) ||
     value.schema_version !== 1 ||
-    value.inventory_revision !== USAGE_TELEMETRY_INVENTORY_REVISION ||
+    value.inventory_revision !== PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION ||
     typeof value.distinct_id !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.distinct_id) ||
     !Array.isArray(value.events) ||

@@ -15,14 +15,17 @@ import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
 } from '@kontourai/station-contracts/product-telemetry';
-import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
+import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+  parseProductTelemetryBatch,
+} from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import { FileSecretBindingAdministration } from '../secrets/secret-binding-administration.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   renderUsageTelemetryInventory,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '../usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 
@@ -119,7 +122,9 @@ async function service(
     options.env?.STATION_PRODUCT_TELEMETRY_ENDPOINT ||
     options.env?.STATION_TELEMETRY_ENDPOINT
   )
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
   return subject;
 }
 
@@ -193,7 +198,17 @@ describe('UsageTelemetryService', () => {
         },
         setInterval: vi.fn() as typeof setInterval,
       });
-      await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      if (dnt) {
+        await expect(
+          subject.acknowledgeDisclosure(
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+          ),
+        ).rejects.toThrow('DO_NOT_TRACK');
+      } else {
+        await subject.acknowledgeDisclosure(
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        );
+      }
       await subject.stationStarted();
       await subject.flush();
       expect(fetch).toHaveBeenCalledTimes(sends ? 1 : 0);
@@ -318,7 +333,14 @@ describe('UsageTelemetryService', () => {
     }
   });
   test.each([
-    ['canonical on wins', 'on', 'off', undefined, true, 'env'],
+    [
+      'canonical on supplies Lite, never Full',
+      'on',
+      'off',
+      undefined,
+      false,
+      'env',
+    ],
     ['canonical off wins', 'off', 'on', undefined, false, 'env'],
     ['empty canonical uses alias', ' ', 'off', undefined, false, 'env'],
     [
@@ -586,14 +608,14 @@ describe('UsageTelemetryService', () => {
       });
       expect(JSON.parse(String(request?.body))).toEqual({
         protocol: 'station-product-probe/v1',
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
       });
       release(
         Response.json({
           probe: {
             protocol: 'station-product-probe/v1',
             sourceId: '22222222-2222-4333-8444-555555555555',
-            inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+            inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             checkedAt: '2026-10-10T12:00:00.000Z',
             storage: 'postgres-schema-v1',
           },
@@ -956,7 +978,9 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -964,36 +988,61 @@ describe('UsageTelemetryService', () => {
       'acknowledged disclosure did not permit telemetry emission',
     ).toHaveBeenCalledTimes(1);
   });
-  test('DISCLOSURE REVISION DEFECT: an old inventory receipt stops emission until re-acknowledged', async () => {
-    const root = await home();
-    await mkdir(join(root, 'config'));
-    await writeFile(
-      join(root, 'config', 'usage-telemetry-disclosure.json'),
-      JSON.stringify({
-        acknowledgedAt: new Date().toISOString(),
-        // Frozen event-only inventory revision from main 558d3a91; it never disclosed envelope metadata.
-        inventoryRevision:
-          'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
-      }),
-    );
-    const fetch = vi.fn();
-    const subject = new UsageTelemetryService({
-      homeDir: root,
-      appConfig: { telemetryTier: { operator: 'full' } } as any,
-      version: '1.2.3',
-      logger: logger(),
-      env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
-      fetch,
-      setInterval: vi.fn() as any,
-    });
-    await subject.stationStarted();
-    expect(
-      fetch,
-      'stale disclosure receipt permitted telemetry emission',
-    ).not.toHaveBeenCalled();
-    expect((await subject.disclosure()).acknowledged).toBe(false);
-    expect(subject.bufferedCount).toBe(0);
-  });
+  test.each([
+    [
+      'event-only inventory',
+      'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
+    ],
+    // Frozen revision at reviewed head 0134b835: the lede previously overstated anonymity.
+    [
+      'before pseudonymous wording reset',
+      'b271907cca72f7553c4570a1fed28e0d00c9d085f14712be5a2a29c2b3565e08',
+    ],
+  ])(
+    'DISCLOSURE REVISION DEFECT: %s receipt stops emission until re-acknowledged',
+    async (_label, previousRevision) => {
+      const root = await home();
+      await mkdir(join(root, 'config'));
+      await writeFile(
+        join(root, 'config', 'usage-telemetry-disclosure.json'),
+        JSON.stringify({
+          acknowledgedAt: new Date().toISOString(),
+          inventoryRevision: previousRevision,
+        }),
+      );
+      const fetch = vi.fn().mockImplementation(acceptProductBatch);
+      const subject = new UsageTelemetryService({
+        homeDir: root,
+        appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+        version: '1.2.3',
+        logger: logger(),
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+        setInterval: vi.fn() as any,
+      });
+      await subject.stationStarted();
+      expect(
+        fetch,
+        'stale disclosure receipt permitted telemetry emission',
+      ).not.toHaveBeenCalled();
+      expect((await subject.disclosure()).acknowledged).toBe(false);
+      expect(subject.bufferedCount).toBe(0);
+      expect(
+        (await subject.telemetryStatus()).publishers.operator,
+      ).toMatchObject({
+        tier: 'lite',
+        reason: 'disclosure',
+        userChoice: 'full',
+      });
+      await subject.acknowledgeDisclosure(
+        FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+      );
+      await subject.stationStarted();
+      await subject.shutdown();
+      expect((await subject.disclosure()).acknowledged).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
   test('RESTART DISCLOSURE DEFECT: bootstrap receipt load activates an existing valid receipt without an HTTP request', async () => {
     const root = await home();
     await mkdir(join(root, 'config'));
@@ -1001,7 +1050,7 @@ describe('UsageTelemetryService', () => {
       join(root, 'config', 'usage-telemetry-disclosure.json'),
       JSON.stringify({
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       }),
     );
     const subject = new UsageTelemetryService({
@@ -1532,7 +1581,7 @@ describe('UsageTelemetryService', () => {
       setInterval: vi.fn() as any,
     };
     const first = new UsageTelemetryService(opts);
-    await first.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await first.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await first.stationStarted();
     await first.shutdown();
     const raw = (
@@ -1721,7 +1770,9 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -1755,7 +1806,7 @@ describe('UsageTelemetryService', () => {
       new UsageTelemetryService(options),
       new UsageTelemetryService(options),
     ];
-    await one.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await one.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION);
     await Promise.all([one.stationStarted(), two.stationStarted()]);
     await Promise.all([one.shutdown(), two.shutdown()]);
     const persisted = (
@@ -1826,4 +1877,51 @@ describe('UsageTelemetryService', () => {
       'published telemetry inventory drifted from registry',
     ).toContain(renderUsageTelemetryInventory());
   });
+});
+
+test('Full saved under DNT remains pending after DNT removal and sends only after confirmation', async () => {
+  const root = await home();
+  const env = {
+    DO_NOT_TRACK: '1',
+    STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+  };
+  const fetch = vi.fn().mockImplementation(acceptProductBatch);
+  const subject = new UsageTelemetryService({
+    homeDir: root,
+    appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+    version: '1.2.3',
+    logger: logger(),
+    env,
+    fetch,
+    setInterval: vi.fn() as typeof setInterval,
+  });
+  try {
+    await expect(
+      subject.acknowledgeDisclosure(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION),
+    ).rejects.toThrow('DO_NOT_TRACK');
+    await expect(
+      access(join(root, 'config', 'usage-telemetry-disclosure.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    env.DO_NOT_TRACK = '';
+    expect(await subject.disclosure()).toMatchObject({
+      acknowledged: false,
+      publishers: {
+        operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+      },
+    });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    await subject.acknowledgeDisclosure(
+      FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+    );
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    await subject.shutdown();
+  }
 });

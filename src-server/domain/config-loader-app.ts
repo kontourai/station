@@ -22,7 +22,7 @@ import {
   NULLABLE_APP_CONFIG_KEYS,
 } from '@kontourai/station-contracts/settings-registry';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
 import { APP_CONFIG_SEED } from './app-config-seed.js';
 import { validator } from './validator.js';
@@ -389,7 +389,8 @@ async function loadAppConfigFileInternal(
           receipt !== null &&
           typeof receipt === 'object' &&
           'inventoryRevision' in receipt &&
-          receipt.inventoryRevision === USAGE_TELEMETRY_INVENTORY_REVISION &&
+          receipt.inventoryRevision ===
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION &&
           'acknowledgedAt' in receipt &&
           typeof receipt.acknowledgedAt === 'string';
       } catch {
@@ -403,6 +404,9 @@ async function loadAppConfigFileInternal(
             : 'lite'
           : 'off',
       };
+      shouldPersist = true;
+    }
+    if (data.telemetryEnabled !== undefined) {
       delete data.telemetryEnabled;
       shouldPersist = true;
     }
@@ -501,7 +505,6 @@ export function mergeAppConfigUpdate(
       merged[key] = { ...existing.telemetryTier, ...updates.telemetryTier };
     } else if (key === 'telemetryEnabled' && typeof value === 'boolean') {
       // Older consent clients remain able to withdraw. Enabling never manufactures a receipt.
-      merged[key] = value;
       merged.telemetryTier = {
         kontour: existing.telemetryTier?.kontour ?? (value ? 'lite' : 'off'),
         operator: value ? 'full' : 'off',
@@ -517,5 +520,6 @@ export function mergeAppConfigUpdate(
     merged.telemetryTier = { kontour: 'off', operator: 'off' };
   }
 
+  delete merged.telemetryEnabled;
   return merged as unknown as AppConfig;
 }

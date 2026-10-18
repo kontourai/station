@@ -42,6 +42,19 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
+function historicalItems(): HomeWorkItem[] {
+  return Array.from({ length: 45 }, (_, index) =>
+    workItem({
+      id: `chat:history-${index}`,
+      chatSessionId: `history-${index}`,
+      orchestrationThreadId: `thread-history-${index}`,
+      title: `Historical work ${index}`,
+      lifecycleLabel: 'Completed',
+      updatedAt: NOW - 3_600_000 - index * 1000,
+    }),
+  );
+}
+
 /** The live agent catalog both hosts pass down for the rows' agent icons. */
 const AGENTS = [
   { slug: 'codex', name: 'Codex' },
@@ -119,6 +132,127 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
   });
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s pages Earlier history through the real host',
+    (host) => {
+      const history = historicalItems();
+      const handlers = {
+        activeChatSessionId: null,
+        onCloseChat: vi.fn(),
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        now: NOW,
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...handlers}
+            items={history}
+            openChatSessionIds={[]}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+        expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+          0,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...handlers}
+            open
+            tasks={history}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        20,
+      );
+      const more = screen.getByRole('button', {
+        name: 'Show more earlier chats and tasks',
+      });
+      more.focus();
+      fireEvent.click(more);
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        40,
+      );
+      expect(document.activeElement).toBe(more);
+      fireEvent.click(more);
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        45,
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Show more earlier chats and tasks',
+        }),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Historical work 44, Shared project',
+        }),
+      );
+      expect(handlers.onFocusChat).toHaveBeenCalledWith('history-44');
+    },
+  );
+
+  it.each([
+    { host: 'desktop', currentId: 'history-40' },
+    { host: 'mobile', currentId: 'history-40' },
+    { host: 'desktop', currentId: 'thread-history-40' },
+    { host: 'mobile', currentId: 'thread-history-40' },
+  ])(
+    '$host keeps the current Earlier row beyond page one ($currentId)',
+    ({ host, currentId }) => {
+      const history = historicalItems();
+      const handlers = {
+        activeChatSessionId: currentId,
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        onCloseChat: vi.fn(),
+        now: NOW,
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...handlers}
+            items={history}
+            openChatSessionIds={['history-40']}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...handlers}
+            open
+            tasks={history}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      const current = screen.getByRole('button', {
+        name: 'Historical work 40, Shared project',
+      });
+      expect(current.getAttribute('aria-current')).toBe('true');
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        21,
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Historical work 39, Shared project',
+        }),
+      ).toBeNull();
+    },
+  );
 
   it('desktop panel host renders the shared anatomy', () => {
     const { container } = renderPanelHost(workItem());

@@ -2,8 +2,8 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   resolveTelemetryTier,
   TELEMETRY_TIERS,
+  type TelemetryPublisherStatus,
   type TelemetryTier,
-  type TelemetryTierResolution,
 } from '@kontourai/station-contracts/product-telemetry';
 import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
@@ -13,7 +13,12 @@ import {
 import { STATION_AUTHOR_TELEMETRY_ENDPOINT } from './telemetry-build-constants.js';
 
 export interface ResolvedTelemetryConfiguration {
-  publishers: Record<'kontour' | 'operator', TelemetryTierResolution>;
+  publishers: Record<
+    'kontour' | 'operator',
+    TelemetryPublisherStatus & {
+      source: 'config' | 'env' | 'default';
+    }
+  >;
   authorEndpoint: string | undefined;
   source: 'config' | 'env' | 'default';
   notices: ReturnType<typeof resolveSettingEnvironment>['notices'];
@@ -45,40 +50,60 @@ export function resolveTelemetryConfiguration(
   );
   const resolvePublisher = (
     publisher: 'kontour' | 'operator',
-  ): TelemetryTierResolution => {
+  ): ResolvedTelemetryConfiguration['publishers']['operator'] => {
     const acknowledged = disclosures[publisher] === true;
-    const legacy = config.telemetryEnabled ?? legacyEnvironment.value;
-    const legacyTier =
-      legacy === false
-        ? 'off'
-        : legacy === true && publisher === 'operator' && acknowledged
-          ? 'full'
-          : undefined;
     const userChoice =
       config.telemetryTier?.[publisher] ??
-      (config.telemetryEnabled !== undefined
-        ? (legacyTier ?? 'lite')
-        : (tierEnvironment.value ?? legacyTier));
-    return resolveTelemetryTier({
+      (config.telemetryTier === undefined &&
+      config.telemetryEnabled !== undefined
+        ? config.telemetryEnabled === false
+          ? 'off'
+          : publisher === 'operator' && acknowledged
+            ? 'full'
+            : 'lite'
+        : undefined);
+    const environmentTier =
+      tierEnvironment.value ??
+      (legacyEnvironment.value === false
+        ? 'off'
+        : legacyEnvironment.value === true
+          ? 'lite'
+          : undefined);
+    const resolved = resolveTelemetryTier({
       ...policies[publisher],
+      distributionDefault:
+        environmentTier === 'off'
+          ? 'off'
+          : policies[publisher]?.distributionDefault,
       userChoice,
       doNotTrack: environment.DO_NOT_TRACK,
       hasFullDisclosure: acknowledged,
     });
+    const source =
+      userChoice !== undefined
+        ? 'config'
+        : environmentTier !== undefined
+          ? 'env'
+          : 'default';
+    return {
+      ...resolved,
+      ...(source === 'env' &&
+      (resolved.reason === 'default' || resolved.reason === 'policy')
+        ? { reason: 'environment' as const }
+        : {}),
+      source,
+      ...(userChoice !== undefined ? { userChoice } : {}),
+    };
+  };
+  const publishers = {
+    kontour: resolvePublisher('kontour'),
+    operator: resolvePublisher('operator'),
   };
   return {
-    publishers: {
-      kontour: resolvePublisher('kontour'),
-      operator: resolvePublisher('operator'),
-    },
+    publishers,
     authorEndpoint: STATION_AUTHOR_TELEMETRY_ENDPOINT || undefined,
-    source:
-      config.telemetryTier?.operator !== undefined ||
-      config.telemetryEnabled !== undefined
-        ? ('config' as const)
-        : tierEnvironment.envVar || legacyEnvironment.envVar
-          ? ('env' as const)
-          : ('default' as const),
+    // Compatibility projection for clients of the former operator-only resolver.
+    source: publishers.operator.source,
     notices: [...tierEnvironment.notices, ...legacyEnvironment.notices],
   };
 }

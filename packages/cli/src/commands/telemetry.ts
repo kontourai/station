@@ -21,6 +21,10 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       throw new Error(
         'Usage: station telemetry set <kontour|operator> <off|lite|full>',
       );
+    if (publisher === 'kontour' && tier === 'full')
+      throw new Error(
+        'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+      );
     if (parsed.flags.offline)
       throw new Error(
         'Telemetry choices require a running Station; use its authenticated configuration API.',
@@ -45,5 +49,11 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   if (parsed.flags.json) console.log(JSON.stringify(status));
   else
     for (const [name, value] of Object.entries(status.publishers))
-      console.log(`${name}: ${value.tier} (${value.reason})`);
+      console.log(
+        `${name}: ${value.tier} (${value.reason})${
+          name === 'operator' && value.reason === 'environment'
+            ? '; environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.'
+            : ''
+        }`,
+      );
 }

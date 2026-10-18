@@ -18,6 +18,7 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   mapRuntimeChannelToTelemetryChannel,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
@@ -46,8 +47,8 @@ import {
 } from './telemetry-response.js';
 import {
   assertUsageTelemetryInventoryContract,
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
   USAGE_TELEMETRY_EVENTS,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
   type UsageTelemetryProperties,
 } from './usage-telemetry-inventory.js';
@@ -200,7 +201,7 @@ export class UsageTelemetryService {
           typeof (receipt as { acknowledgedAt?: unknown }).acknowledgedAt ===
             'string' &&
           (receipt as { inventoryRevision?: unknown }).inventoryRevision ===
-            USAGE_TELEMETRY_INVENTORY_REVISION,
+            FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       );
       if (!isCurrentReceipt)
         this.warn('Usage telemetry disclosure receipt is invalid.');
@@ -213,7 +214,16 @@ export class UsageTelemetryService {
     return this.hasCurrentDisclosureReceipt;
   }
   async acknowledgeDisclosure(inventoryRevision: string): Promise<void> {
-    if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
+    if (
+      resolveTelemetryConfiguration(
+        this.appConfig,
+        this.options.env ?? process.env,
+      ).publishers.operator.reason === 'DNT'
+    )
+      throw new Error(
+        'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+      );
+    if (inventoryRevision !== FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION)
       throw new Error(
         'Usage telemetry disclosure changed; review the current inventory.',
       );
@@ -228,7 +238,7 @@ export class UsageTelemetryService {
       this.disclosurePath,
       {
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       },
       { indent: null, trailingNewline: true },
     );
@@ -264,7 +274,7 @@ export class UsageTelemetryService {
       ),
       liteInventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
       liteInventory: STATION_DAILY_FIELDS,
-      fullInventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      fullInventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
     };
   }
   async disclosure(): Promise<{
@@ -276,10 +286,17 @@ export class UsageTelemetryService {
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
+    publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
+    await this.loadDisclosureReceipt();
+    const resolved = resolveTelemetryConfiguration(
+      this.appConfig,
+      this.options.env ?? process.env,
+      { operator: this.hasCurrentDisclosureReceipt },
+    );
     return {
       acknowledged: await this.loadDisclosureReceipt(),
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
       acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
@@ -292,12 +309,8 @@ export class UsageTelemetryService {
         )
         .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
-      // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
-      // canonical/legacy product environment fallbacks and the default. A client that
-      // read `AppConfig.telemetryEnabled` alone would render "on" for a host
-      // the environment has switched off, and offer to turn off something
-      // that is already off.
-      telemetryEnabled: this.enabled,
+      telemetryEnabled: resolved.publishers.operator.tier === 'full',
+      publishers: resolved.publishers,
       enabledSource: this.enabledSource,
     };
   }
@@ -407,7 +420,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               protocol: 'station-product-probe/v1',
-              inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             }),
             signal: controller.signal,
           }),
@@ -712,7 +725,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               schema_version: 1,
-              inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
               distinct_id: distinctId,
               events: batch,
             } satisfies ProductTelemetryBatch),
