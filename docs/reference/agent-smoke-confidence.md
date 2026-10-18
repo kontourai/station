@@ -257,19 +257,38 @@ trusted local ES module. It may export either or both:
   delegates response judgment to those checks and requires an evaluator. Artifact content may be an expected string or a verifier function over the inspected text. The evaluator also receives `sessionEvents` for engine-reported configuration receipts. Added scenarios may send additional
   billable turns; review extension code before confirming.
 
-`ctx.api` forwards every supplied transport argument. Its third argument is the
-HTTP method: `ctx.api(path, undefined, 'DELETE')` performs DELETE cleanup. If the
-method is omitted, the command transport retains its GET default without a body
-and POST default with a body. Existing two-argument calls remain valid.
-`ctx.setupApi` uses the same signature and defaults but forwards only the
-method/path pairs in the setup allowlist. It requires a Station-relative path
-and rejects encoded separators or ambiguous nested encoding. Turn routes,
-MCP tool execution, unknown writes and unlisted reads are refused before the
-transport is called. Preparation and cleanup in #3832 should use this channel;
-turns continue through `send`/`recall` or the billable `api` channel. An extension
-with `maxTurns: 2` may perform all six setup POSTs and then send two turns
-without inflating its printed billable bound. Setup can launch MCP processes
-and change configuration; it retains ordinary server auth and command authority.
+Both API channels validate a Station-relative path and a string HTTP method
+once, then forward the normalized pathname plus query and uppercase method.
+Absolute/protocol-relative URLs, any raw backslash, and a parsed origin other
+than the sentinel Station origin are refused. A normalized pathname starting
+with `//` is also refused so resolving the forwarded value cannot change hosts. Non-string methods are refused
+without invoking `toString`. Trailing transport arguments are still forwarded.
+GET without a body and POST with a body remain the defaults.
+
+Use `ctx.setupApi(path, undefined, 'DELETE')` for owned setup-resource cleanup.
+`ctx.api(path, undefined, 'DELETE')` remains available for other operations and
+reserves billable-request budget. Setup allows only the method/path pairs below;
+HEAD, encoded separators, nested encoding, turn routes, MCP tool execution,
+unknown writes and unlisted reads are refused before transport.
+
+Setup creates require explicit integration `id`, skill `name`, or Agent `slug`.
+The runner first reads the collection and refuses an existing or unverifiable
+identity, then registers the absent intended ID immediately before POST. A
+matching create-response ID confirms it; responses that name a different ID
+are refused, revoke the pending intended ID, and never authorize that other ID. A cleanup callback may therefore
+be registered before awaiting create and still use `setupApi` after a lost
+acknowledgement. Successful DELETE consumes the cleanup authorization. Other
+IDs, including resources created through the billable channel, cannot be
+deleted through setup. Use fresh nonce IDs in the disposable Station: this is
+process-local intent tracking with a preflight read, not a server-side atomic
+ownership lease against concurrent writers.
+
+Preparation and cleanup in #3832 should use setup; turn submissions continue
+through `send`/`recall` or the billable `api` channel. An extension with
+`maxTurns: 2` may perform all six setup POSTs and send two turns without inflating
+its printed bound. Setup can launch MCP processes and change configuration;
+ordinary server authentication and command authority still apply.
+
 `ctx.sessionId` is a getter: before the first send it is the proposed
 conversation ID, and after each send it is the runtime session ID in Station's
 receipt. Read it lazily when making an observation or API request; do not
@@ -291,12 +310,12 @@ Re-audit the handlers before widening this list.
 | POST `/api/skills/local` | [skills.ts](../../src-server/routes/agents/skills.ts):145 | Creates local skill package files. |
 | POST `/agents` | [agents.ts](../../src-server/routes/agents/agents.ts):362 | Saves a definition with deferred configuration activation. |
 | GET `/integrations`, `/integrations/:id` | [tools.ts](../../src-server/routes/agents/tools.ts):342,460 | Reads configuration, status and tool catalog. |
-| DELETE `/integrations/:id` | [tools.ts](../../src-server/routes/agents/tools.ts):869 | Deletes the integration and releases its runtime resources. |
+| DELETE `/integrations/:id` (run-owned) | [tools.ts](../../src-server/routes/agents/tools.ts):869 | Deletes the integration and releases its runtime resources. |
 | GET `/api/skills`, `/api/skills/:name` | [skills.ts](../../src-server/routes/agents/skills.ts):97,116 | Reads installed skills and package metadata. |
-| DELETE `/api/skills/:name` | [skills.ts](../../src-server/routes/agents/skills.ts):324 | Removes owned skill files. |
+| DELETE `/api/skills/:name` (run-owned) | [skills.ts](../../src-server/routes/agents/skills.ts):324 | Removes owned skill files. |
 | GET `/agents` | [agents.ts](../../src-server/routes/agents/agents.ts):261 | Lists the agent catalog. |
 | GET `/api/agents`, `/api/agents/:slug` | [enriched-agents.ts](../../src-server/routes/agents/enriched-agents.ts):973,999 | Reads enriched agent configuration. |
-| DELETE `/agents/:slug` | [agents.ts](../../src-server/routes/agents/agents.ts):557 | Deletes configuration with deferred activation. |
+| DELETE `/agents/:slug` (run-owned) | [agents.ts](../../src-server/routes/agents/agents.ts):557 | Deletes configuration with deferred activation. |
 
 Integration activation uses configuration reload/rollback
 ([tools.ts](../../src-server/routes/agents/tools.ts):268 and

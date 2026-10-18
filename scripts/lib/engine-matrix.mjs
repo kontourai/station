@@ -356,13 +356,25 @@ async function inspectArtifact(
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-function requestShape(path, body, method) {
+const REQUEST_BASE = 'http://station.invalid';
+
+function requestShape(path, body, method, refusal = 'API route refused') {
+  if (
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.startsWith('//') ||
+    path.includes('\\') ||
+    (method !== undefined && typeof method !== 'string')
+  )
+    throw new Error(refusal);
+  const parsed = new URL(path, REQUEST_BASE);
+  if (parsed.origin !== REQUEST_BASE) throw new Error(refusal);
+  const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+  if (pathname.startsWith('//')) throw new Error(refusal);
   return {
-    pathname: new URL(path, 'http://station.invalid').pathname.replace(
-      /\/+$/,
-      '',
-    ),
-    method: String(method ?? (body ? 'POST' : 'GET')).toUpperCase(),
+    pathname,
+    path: `${pathname}${parsed.search}`,
+    method: (method ?? (body ? 'POST' : 'GET')).toUpperCase(),
   };
 }
 
@@ -388,26 +400,45 @@ const SETUP_API_ROUTES = [
   ['DELETE', /^\/(?:integrations|api\/skills|agents)\/[^/]+$/],
 ];
 
-function setupRouteAllowed(path, pathname, method) {
-  if (
-    typeof path !== 'string' ||
-    !path.startsWith('/') ||
-    path.startsWith('//')
-  )
-    return false;
-  let decoded;
+function setupRouteAllowed(pathname, method) {
   try {
     const segments = pathname
       .split('/')
       .map((segment) => decodeURIComponent(segment));
     if (segments.some((segment) => /[\\/%]/.test(segment))) return false;
-    decoded = segments.join('/');
   } catch {
     return false;
   }
   return SETUP_API_ROUTES.some(
-    ([verb, route]) => verb === method && route.test(decoded),
+    ([verb, route]) => verb === method && route.test(pathname),
   );
+}
+
+const SETUP_COLLECTIONS = new Map([
+  ['/integrations', 'id'],
+  ['/api/skills', 'name'],
+  ['/agents', 'slug'],
+]);
+
+function setupCreate(pathname, body) {
+  const collection =
+    pathname === '/api/skills/local' ? '/api/skills' : pathname;
+  const field = SETUP_COLLECTIONS.get(collection);
+  if (
+    !field ||
+    (collection === '/api/skills' && pathname !== '/api/skills/local')
+  )
+    return null;
+  const id = body?.[field];
+  if (typeof id !== 'string' || !id || /[\\/%]/.test(id))
+    throw new Error(`Setup create requires explicit ${field}`);
+  return {
+    collection,
+    field,
+    id,
+    key: `${collection}/${id}`,
+    body: { ...body, [field]: id },
+  };
 }
 
 /**
@@ -482,16 +513,61 @@ async function runMatrixWithLifecycle(
     throw new Error('Select --agent=ID bound to the connection under test');
   let sentTurns = 0;
   let reservedBillableRequests = 0;
+  const setupResources = new Set();
   const setupApi = async (path, body, ...rest) => {
-    const { pathname, method } = requestShape(path, body, rest[0]);
+    const request = requestShape(
+      path,
+      body,
+      rest[0],
+      'Setup API route refused',
+    );
+    const { pathname, method } = request;
     if (cleanupScope.interrupted && method !== 'GET' && method !== 'DELETE')
       throw new Error('Run interrupted');
-    if (!setupRouteAllowed(path, pathname, method))
+    if (!setupRouteAllowed(pathname, method))
       throw new Error(`Setup API route refused: ${method} ${pathname}`);
-    return api(path, body, ...rest);
+    const resourceKey = pathname
+      .split('/')
+      .map((segment) => decodeURIComponent(segment))
+      .join('/');
+    if (method === 'DELETE' && !setupResources.has(resourceKey))
+      throw new Error(
+        `Setup DELETE requires a resource created by this run: ${pathname}`,
+      );
+    const create = method === 'POST' ? setupCreate(pathname, body) : null;
+    if (create) {
+      const inventory = await api(create.collection, undefined, 'GET');
+      if (
+        inventory.failures?.length ||
+        !Array.isArray(inventory.data) ||
+        inventory.data.some((item) => typeof item?.[create.field] !== 'string')
+      )
+        throw new Error('Setup resource inventory is incomplete');
+      if (inventory.data.some((item) => item[create.field] === create.id))
+        throw new Error(`Setup resource already exists: ${create.key}`);
+      // Retain the absent, intended ID before POST so lost-ack cleanup can compensate.
+      setupResources.add(create.key);
+    }
+    const response = await api(
+      request.path,
+      create?.body ?? body,
+      method,
+      ...rest.slice(1),
+    );
+    if (create) {
+      const reportedId = response.data?.[create.field] ?? create.id;
+      if (reportedId !== create.id) {
+        setupResources.delete(create.key);
+        throw new Error('Setup create returned a different resource identity');
+      }
+      setupResources.add(`${create.collection}/${reportedId}`);
+    }
+    if (method === 'DELETE') setupResources.delete(resourceKey);
+    return response;
   };
   const checkedApi = async (path, body, ...rest) => {
-    const { pathname, method } = requestShape(path, body, rest[0]);
+    const request = requestShape(path, body, rest[0]);
+    const { pathname, method } = request;
     const nonBillable =
       method === 'POST' &&
       ((pathname === '/api/orchestration/commands' &&
@@ -515,7 +591,7 @@ async function runMatrixWithLifecycle(
       reservedBillableRequests++;
     }
     if (method === 'POST' && isTurnSubmission(pathname, body)) sentTurns++;
-    return api(path, body, ...rest);
+    return api(request.path, body, method, ...rest.slice(1));
   };
   /** @type {MatrixResult["rows"]} */
   const rows = [];

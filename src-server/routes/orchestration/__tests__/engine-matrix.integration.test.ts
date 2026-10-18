@@ -1543,30 +1543,55 @@ describe('engine matrix through real foreground routes and orchestration', () =>
   ];
 
   // Setup side effects are stubbed; all turn/control requests still reach the real server.
-  const setupTransport = () =>
-    vi.fn(
+  const setupTransport = () => {
+    const resources = new Map<string, string[]>();
+    return vi.fn(
       async (path: string, body?: unknown, method = body ? 'POST' : 'GET') => {
         const setup = setupOperations.find(
           (operation) => operation.path === path,
         );
+        const collection = path === '/api/skills/local' ? '/api/skills' : path;
+        const field =
+          collection === '/integrations'
+            ? 'id'
+            : collection === '/api/skills'
+              ? 'name'
+              : collection === '/agents'
+                ? 'slug'
+                : undefined;
         if (method === 'POST' && setup) {
           setup.schema?.parse(body);
+          if (field && isRecord(body)) {
+            const id = String(body[field]);
+            resources.set(collection, [
+              ...(resources.get(collection) ?? []),
+              id,
+            ]);
+            return { success: true, data: { [field]: id } };
+          }
           return { success: true, data: {} };
         }
+        if (method === 'HEAD') return { success: true, data: {} }; // Negative-control trap: setup must refuse before transport.
+        if (method === 'GET' && field)
+          return {
+            success: true,
+            data: (resources.get(collection) ?? []).map((id) => ({
+              [field]: id,
+            })),
+          };
         if (
-          (method === 'GET' &&
-            ['/integrations', '/api/skills', '/agents'].includes(path)) ||
-          (['GET', 'DELETE'].includes(method) &&
-            [
-              '/integrations/matrix-setup',
-              '/api/skills/matrix-setup',
-              '/agents/matrix-setup',
-            ].includes(path))
+          ['GET', 'DELETE'].includes(method) &&
+          [
+            '/integrations/matrix-setup',
+            '/api/skills/matrix-setup',
+            '/agents/matrix-setup',
+          ].includes(path)
         )
           return { success: true, data: {} };
         return api(path, body, method);
       },
     );
+  };
 
   test('six setup POSTs and cleanup reserve no turn budget for a two-turn extension', async () => {
     const transport = setupTransport();
@@ -1651,23 +1676,40 @@ describe('engine matrix through real foreground routes and orchestration', () =>
               '/integrations/matrix-setup/ui/call',
               '/api/skills/matrix-setup/run',
               '/api/future-route',
+              '/integrations/matrix%25tag/reconnect',
               '/integrations/matrix%2fui/reconnect',
+              '/integrations/matrix%5ctag/reconnect',
+              '/\\evil.invalid/agents',
+              '/\\x/integrations/y/reconnect',
               '//other.invalid/agents',
             ];
-            for (const path of paths)
-              await expect(
-                ctx.setupApi(
+            for (const path of paths) {
+              const before = transport.mock.calls.length;
+              const error = await ctx
+                .setupApi(
                   path,
                   { message: 'Extra', clientTurnId: randomUUID() },
                   'POST',
-                ),
-              ).rejects.toThrow('Setup API route refused');
+                )
+                .then(
+                  () => null,
+                  (error: Error) => error,
+                );
+              expect(transport.mock.calls).toHaveLength(before);
+              expect(error?.message).toContain('Setup API route refused');
+            }
             for (const method of ['PUT', 'PATCH', 'DELETE'])
               await expect(
                 ctx.setupApi('/api/future-route', {}, method),
               ).rejects.toThrow('Setup API route refused');
             await expect(
               ctx.setupApi('/api/orchestration/chat', undefined, 'GET'),
+            ).rejects.toThrow('Setup API route refused');
+            await expect(
+              ctx.setupApi('/\t/evil.invalid/agents'),
+            ).rejects.toThrow('Setup API route refused');
+            await expect(
+              ctx.setupApi('/agents', undefined, 'HEAD'),
             ).rejects.toThrow('Setup API route refused');
             await ctx.recall(ctx.model);
           },
@@ -1684,6 +1726,267 @@ describe('engine matrix through real foreground routes and orchestration', () =>
         ([, body]) => isRecord(body) && body.message === 'Extra',
       ),
     ).toBe(false);
+  });
+
+  test('both channels forward the normalized path, query and method and refuse method objects', async () => {
+    let coercions = 0;
+    const flippingMethod = {
+      toString() {
+        return ++coercions === 1 ? 'GET' : 'POST';
+      },
+    };
+    const transport = vi.fn(
+      async (path: string, body?: unknown, method?: string) => {
+        if (path === '//evil.invalid/agents')
+          return { success: true, data: {} }; // Must never be handed to a URL-resolving transport.
+        if (path === '/integrations/matrix-setup/reconnect?check=1')
+          return { success: true, data: {} };
+        return api(path, body, method);
+      },
+    );
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'normalized-requests',
+          maxTurns: 1,
+          async run(ctx: any) {
+            await ctx.setupApi(
+              '/integrations/./matrix-setup/reconnect?check=1',
+              {},
+              'post',
+            );
+            await ctx.api('/api/./agents?check=2', undefined, 'get');
+            await expect(
+              ctx.api('/safe/..//evil.invalid/agents', undefined, 'GET'),
+            ).rejects.toThrow('API route refused');
+            await expect(
+              ctx.api('/api/future-route', undefined, flippingMethod),
+            ).rejects.toThrow('API route refused');
+            await expect(
+              ctx.setupApi('/agents', undefined, flippingMethod),
+            ).rejects.toThrow('Setup API route refused');
+            await expect(ctx.setupApi('/api\\agents\\matrix')).rejects.toThrow(
+              'Setup API route refused',
+            );
+            await expect(
+              ctx.setupApi('/agents', { name: 'No explicit slug' }),
+            ).rejects.toThrow('Setup create requires explicit slug');
+            await ctx.recall(ctx.model);
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find((row: any) => row.scenario === 'normalized-requests'),
+    ).toMatchObject({ status: 'pass' });
+    expect(coercions).toBe(0);
+    expect(transport.mock.calls).toContainEqual([
+      '/integrations/matrix-setup/reconnect?check=1',
+      {},
+      'POST',
+    ]);
+    expect(transport.mock.calls).toContainEqual([
+      '/api/agents?check=2',
+      undefined,
+      'GET',
+    ]);
+    expect(result.reservedBillableRequests).toBe(5);
+  });
+
+  const ownedResourceCases = [
+    {
+      collection: '/integrations',
+      createPath: '/integrations',
+      field: 'id',
+      body: { id: 'matrix-owned', displayName: 'Owned' },
+    },
+    {
+      collection: '/api/skills',
+      createPath: '/api/skills/local',
+      field: 'name',
+      body: { name: 'matrix-owned', body: 'Diagnostic skill.' },
+    },
+    {
+      collection: '/agents',
+      createPath: '/agents',
+      field: 'slug',
+      body: { slug: 'matrix-owned', name: 'Owned', prompt: 'Diagnostic.' },
+    },
+  ];
+
+  test.each(ownedResourceCases)(
+    'refuses deletion and create-overwrite of pre-existing $collection ids',
+    async ({ collection, createPath, field, body }) => {
+      const deleted: string[] = [];
+      const transport = vi.fn(
+        async (path: string, payload?: unknown, method?: string) => {
+          if (method === 'GET' && path === collection)
+            return { success: true, data: [{ [field]: 'matrix-owned' }] };
+          if (method === 'DELETE' && path === `${collection}/matrix-owned`) {
+            deleted.push(path);
+            return { success: true };
+          }
+          return api(path, payload, method);
+        },
+      );
+      const result = await run({
+        api: transport,
+        modelIds: ['matrix-1'],
+        maxTurns: 5,
+        additionalScenarios: [
+          {
+            id: 'foreign-resource',
+            maxTurns: 1,
+            async run(ctx: any) {
+              await expect(
+                ctx.setupApi(`${collection}/matrix-owned`, undefined, 'DELETE'),
+              ).rejects.toThrow(
+                'Setup DELETE requires a resource created by this run',
+              );
+              await expect(ctx.setupApi(createPath, body)).rejects.toThrow(
+                'Setup resource already exists',
+              );
+              await expect(
+                ctx.setupApi(`${collection}/matrix-owned`, undefined, 'DELETE'),
+              ).rejects.toThrow(
+                'Setup DELETE requires a resource created by this run',
+              );
+              await ctx.recall(ctx.model);
+            },
+          },
+        ],
+      });
+      expect(
+        result.rows.find((row: any) => row.scenario === 'foreign-resource'),
+      ).toMatchObject({ status: 'pass' });
+      expect(deleted).toEqual([]);
+      expect(
+        transport.mock.calls.some(
+          ([path, , method]) => method === 'POST' && path === createPath,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  test.each(ownedResourceCases)(
+    'allows pre-registered lost-ack cleanup only for this run at $collection',
+    async ({ collection, createPath, body }) => {
+      let created = false;
+      let deleted = false;
+      let posts = 0;
+      const transport = async (
+        path: string,
+        payload?: unknown,
+        method?: string,
+      ) => {
+        if (method === 'GET' && path === collection)
+          return { success: true, data: [] };
+        if (method === 'POST' && path === createPath) {
+          posts++;
+          created = true;
+          throw new Error('Lost create acknowledgement');
+        }
+        if (method === 'DELETE' && path === `${collection}/matrix-owned`) {
+          deleted = true;
+          return { success: true };
+        }
+        return api(path, payload, method);
+      };
+      const result = await run({
+        api: transport,
+        modelIds: ['matrix-1'],
+        maxTurns: 5,
+        additionalScenarios: [
+          {
+            id: 'lost-ack-cleanup',
+            maxTurns: 1,
+            async run(ctx: any) {
+              const cleanup = () =>
+                ctx.setupApi(`${collection}/matrix-owned`, undefined, 'DELETE');
+              await expect(ctx.setupApi(createPath, body)).rejects.toThrow(
+                'Lost create acknowledgement',
+              );
+              await cleanup();
+              await expect(cleanup()).rejects.toThrow(
+                'Setup DELETE requires a resource created by this run',
+              );
+              await ctx.recall(ctx.model);
+            },
+          },
+        ],
+      });
+      expect(
+        result.rows.find((row: any) => row.scenario === 'lost-ack-cleanup'),
+      ).toMatchObject({ status: 'pass' });
+      expect({ created, deleted, posts }).toEqual({
+        created: true,
+        deleted: true,
+        posts: 1,
+      });
+      expect(result.reservedBillableRequests).toBe(5);
+    },
+  );
+
+  test('setup refuses incomplete inventories and never adopts a different create-response identity', async () => {
+    let incomplete = true;
+    const transport = async (
+      path: string,
+      payload?: unknown,
+      method?: string,
+    ) => {
+      if (method === 'GET' && path === '/agents')
+        return { success: true, data: incomplete ? [{}] : [] };
+      if (method === 'POST' && path === '/agents')
+        return { success: true, data: { slug: 'somebody-else' } };
+      if (method === 'DELETE' && path === '/agents/matrix-owned')
+        return { success: true };
+      return api(path, payload, method);
+    };
+    const result = await run({
+      api: transport,
+      modelIds: ['matrix-1'],
+      maxTurns: 5,
+      additionalScenarios: [
+        {
+          id: 'invalid-resource-receipts',
+          maxTurns: 1,
+          async run(ctx: any) {
+            const body = { slug: 'matrix-owned', name: 'Owned' };
+            await expect(ctx.setupApi('/agents', body)).rejects.toThrow(
+              'Setup resource inventory is incomplete',
+            );
+            await expect(
+              ctx.setupApi('/agents/matrix-owned', undefined, 'DELETE'),
+            ).rejects.toThrow(
+              'Setup DELETE requires a resource created by this run',
+            );
+            incomplete = false;
+            await expect(ctx.setupApi('/agents', body)).rejects.toThrow(
+              'Setup create returned a different resource identity',
+            );
+            await expect(
+              ctx.setupApi('/agents/somebody-else', undefined, 'DELETE'),
+            ).rejects.toThrow(
+              'Setup DELETE requires a resource created by this run',
+            );
+            await expect(
+              ctx.setupApi('/agents/matrix-owned', undefined, 'DELETE'),
+            ).rejects.toThrow(
+              'Setup DELETE requires a resource created by this run',
+            );
+            await ctx.recall(ctx.model);
+          },
+        },
+      ],
+    });
+    expect(
+      result.rows.find(
+        (row: any) => row.scenario === 'invalid-resource-receipts',
+      ),
+    ).toMatchObject({ status: 'pass' });
   });
 
   test('billable configuration requests reserve budget without counting as turn sends', async () => {
