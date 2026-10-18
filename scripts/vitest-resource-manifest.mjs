@@ -1434,6 +1434,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/instance-lock.test.ts',
   // In-process lock epochs; fingerprinting runs `ps` as a child process.
   'packages/supervisor/src/__tests__/instance-lock-module.test.ts',
+  // --break-lock as a child process against live, dead, and unverifiable holders.
+  'packages/supervisor/src/__tests__/break-lock.test.ts',
+  // runSupervisor in-process, forking a fixture core generation.
+  'packages/supervisor/src/__tests__/supervisor-embedding.test.ts',
   // A supervisor whose run directory turns read-only, and one loaded with a fatal-error injector.
   'packages/supervisor/src/__tests__/registry-failure.test.ts',
   // Runs the supervisor entry and its built bundle as child processes.

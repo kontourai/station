@@ -3,7 +3,15 @@
  * and never adopted (or chmodded) when they already exist and are not
  * private to this user.
  */
-import { chmodSync, mkdirSync, statSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from 'node:fs';
+import { createConnection, createServer } from 'node:net';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ControlServer, type ControlServerOptions } from '../control-server.ts';
@@ -11,6 +19,27 @@ import type { ControlEndpoint } from '../protocol.ts';
 import { makeShortHome } from './harness.ts';
 
 const posixOnly = process.platform === 'win32' ? it.skip : it;
+
+/** What a connection to `path` gets: the first line, 'connected', or the error code. */
+function answer(path: string): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = createConnection(path);
+    // real-time: a listener that stays silent this long has accepted the connection.
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve('connected');
+    }, 500);
+    socket.once('data', (chunk) => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(chunk.toString().trim());
+    });
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      clearTimeout(timer);
+      resolve(error.code ?? 'error');
+    });
+  });
+}
 
 function endpointIn(home: string): ControlEndpoint {
   const run = join(home, 'run');
@@ -80,6 +109,46 @@ describe('control server private directories', () => {
         /mode 755 is broader than 700/,
       );
       expect(statSync(run).mode & 0o777).toBe(0o755);
+    },
+  );
+
+  posixOnly(
+    'never deletes or steals a socket path another process now listens on',
+    async () => {
+      const home = makeShortHome();
+      const endpoint = endpointIn(home);
+      const control = server(endpoint, { mayReplaceStaleSocket: () => true });
+      await control.listen();
+      // The path is deleted and another process binds it.
+      rmSync(endpoint.path);
+      const other = createServer((socket) => socket.end('other\n'));
+      await new Promise<void>((resolve) =>
+        other.listen(endpoint.path, resolve),
+      );
+      try {
+        await expect(control.rebind()).rejects.toThrow(
+          `a process is already listening at ${endpoint.path}`,
+        );
+        expect(await answer(endpoint.path)).toBe('other');
+        await control.close();
+        expect(existsSync(endpoint.path)).toBe(true);
+        expect(await answer(endpoint.path)).toBe('other');
+      } finally {
+        await new Promise((resolve) => other.close(resolve));
+      }
+    },
+  );
+
+  posixOnly(
+    'removes its own socket file on close, and only its own',
+    async () => {
+      const home = makeShortHome();
+      const endpoint = endpointIn(home);
+      const control = server(endpoint);
+      await control.listen();
+      expect(await answer(endpoint.path)).toBe('connected');
+      await control.close();
+      expect(existsSync(endpoint.path)).toBe(false);
     },
   );
 });

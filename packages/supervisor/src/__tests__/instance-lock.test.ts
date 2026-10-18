@@ -284,6 +284,55 @@ describe('instance lock (real processes)', () => {
     60_000,
   );
 
+  posixOnly(
+    'lets one of two instances own a shared --control path, with no ping-pong',
+    async () => {
+      const shared = join(makeShortHome(), 'shared.sock');
+      const first = await startSupervisor({
+        home: makeTempDir('sup-lock-shared-a-'),
+        control: shared,
+      });
+      // The path is deleted, and a second instance (another home) binds it.
+      rmSync(shared);
+      const second = await startSupervisor({
+        home: makeTempDir('sup-lock-shared-b-'),
+        control: shared,
+      });
+      // The first finds a live listener on its path: it refuses to steal it and exits.
+      expect(await exitWithin(first, 8_000), first.output()).toEqual({
+        code: 1,
+        signal: null,
+      });
+      expect(first.output()).toContain(
+        `a process is already listening at ${shared}`,
+      );
+      // The second keeps the path through more than one self-check interval.
+      await new Promise((resolve) => setTimeout(resolve, 6_000)); // real-time: outlast one self-check interval.
+      expect(existsSync(shared)).toBe(true);
+      expect((await second.status()).supervisor.pid).toBe(second.child.pid);
+      expect(second.output()).not.toContain('re-binding');
+    },
+    60_000,
+  );
+
+  it('names the lock file, the holder, and the remedy when it refuses', async () => {
+    const home = makeTempDir('sup-lock-message-');
+    const first = await startSupervisor({ home });
+    const second = await startSupervisor({ home, waitForServing: false });
+    expect(await exitWithin(second, 20_000), second.output()).toEqual({
+      code: 1,
+      signal: null,
+    });
+    const lockFile = join(runDir(home), 'instance-test.lock.1');
+    expect(second.output()).toContain(`lock file: ${lockFile}`);
+    expect(second.output()).toContain(
+      `pid ${first.child.pid} is running as this instance's supervisor`,
+    );
+    expect(second.output()).toContain(
+      `stop it with SIGTERM to pid ${first.child.pid} or the control channel's stop request, then start again`,
+    );
+  }, 60_000);
+
   it('drains and exits 1 when its epoch is superseded while serving', async () => {
     const home = makeTempDir('sup-lock-superseded-live-');
     const first = await startSupervisor({ home });
@@ -506,7 +555,9 @@ describe('instance lock (real processes)', () => {
       createdAt: Date.now(),
       control: 'x',
     });
-    expect(await exitWithin(starter, 20_000), starter.output()).toEqual({
+    // It must step down at its post-bind check, well inside one 5 s self-check
+    // interval: never serve, never start a core, in the meantime.
+    expect(await exitWithin(starter, 4_000), starter.output()).toEqual({
       code: 1,
       signal: null,
     });

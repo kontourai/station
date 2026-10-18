@@ -214,4 +214,38 @@ describe('generation registry', () => {
       'process group 4545 of generation 4 still has members but its leader is gone; it cannot be verified, so it is not killed',
     );
   });
+
+  it('maps the Windows fingerprint script by its sentinels, never by exit code alone', async () => {
+    const windows = (code: number | string | null, stdout: string) => ({
+      platform: 'win32' as const,
+      run: async () => ({ code, stdout }),
+    });
+    // PowerShell exits 1 on any failed statement, including access denied.
+    expect((await processFingerprint(77, windows(1, ''))).status).toBe(
+      'unknown',
+    );
+    expect(
+      (await processFingerprint(77, windows(1, 'UNKNOWN Access is denied')))
+        .status,
+    ).toBe('unknown');
+    expect(
+      (await processFingerprint(77, windows(0, 'UNKNOWN no creation time')))
+        .status,
+    ).toBe('unknown');
+    expect(await processFingerprint(77, windows(0, 'GONE'))).toEqual({
+      status: 'gone',
+    });
+    expect(
+      await processFingerprint(77, windows(0, 'OK 638650000000000000')),
+    ).toEqual({
+      status: 'ok',
+      value: 'win32:638650000000000000',
+    });
+    expect(
+      (await processFingerprint(77, windows(0, 'OK not-a-number'))).status,
+    ).toBe('unknown');
+    expect((await processFingerprint(77, windows('ENOENT', ''))).status).toBe(
+      'unknown',
+    );
+  });
 });

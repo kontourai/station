@@ -53,6 +53,10 @@ reasoning, phases, and verification plan.
   fingerprint it recorded; whether it can be reached is never considered.
   The holder re-confirms its epoch after binding and every few seconds
   while serving.
+- The lock fails closed. The way out is `station-supervisor --break-lock`,
+  which refuses a holder that is verifiably running, needs `--force` for one
+  it cannot verify, and marks the top epoch released rather than deleting
+  it. A Station home shared across hosts or pid namespaces is unsupported.
 - The supervisor makes no authorization, routing, or product decisions.
 - A handoff runs only a `.js` or `.mjs` entry whose real path is strictly
   inside the supervisor's build root (`--build-root`, by default the

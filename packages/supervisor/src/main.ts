@@ -11,7 +11,7 @@ import { realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createEntryBoundary } from './entry-boundary.ts';
-import { SupervisorStartError } from './instance-lock.ts';
+import { breakInstanceLock, SupervisorStartError } from './instance-lock.ts';
 import {
   type ControlEndpoint,
   isValidInstanceId,
@@ -46,6 +46,10 @@ const USAGE = [
   '  --instance     instance id',
   "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
   '  --control      control socket path (default: derived from --home and --instance)',
+  '',
+  'usage: station-supervisor --break-lock --home <dir> --instance <id> [--force] [--reason <text>]',
+  '  Marks a stuck instance lock released. Refuses while the holder is a running',
+  '  supervisor; asks for --force when the holder cannot be verified.',
   `  tuning flags:  ${Object.keys(DURATION_FLAGS)
     .map((flag) => `--${flag}`)
     .join(', ')}`,
@@ -76,6 +80,9 @@ function parseCommandLine(): Record<string, string | boolean | undefined> {
     return parseArgs({
       options: {
         help: { type: 'boolean', short: 'h' },
+        'break-lock': { type: 'boolean' },
+        force: { type: 'boolean' },
+        reason: { type: 'string' },
         entry: { type: 'string' },
         home: { type: 'string' },
         instance: { type: 'string' },
@@ -106,6 +113,31 @@ async function main(): Promise<void> {
   if (parsed.help === true) {
     process.stdout.write(`${USAGE}\n`);
     process.exit(0);
+  }
+  if (parsed['break-lock'] === true) {
+    const home = parsed.home;
+    const instance = parsed.instance;
+    if (typeof home !== 'string' || typeof instance !== 'string') {
+      fail('--break-lock needs --home and --instance', true);
+    }
+    if (!isValidInstanceId(instance)) fail(`invalid --instance: ${instance}`);
+    const runDir = dirname(
+      resolveControlEndpoint({ home, instance }).tokenPath,
+    );
+    const result = await breakInstanceLock({
+      runDir,
+      instance,
+      force: parsed.force === true,
+      reason:
+        typeof parsed.reason === 'string'
+          ? parsed.reason
+          : 'operator break-lock',
+      breakLockCommand: `station-supervisor --break-lock --home ${resolve(home)} --instance ${instance}`,
+    });
+    (result.code === 0 ? process.stdout : process.stderr).write(
+      `station-supervisor: ${result.message}\n`,
+    );
+    process.exit(result.code);
   }
   const raw = parsed as Record<string, string | undefined>;
   if (!raw.entry || !raw.home || !raw.instance) {

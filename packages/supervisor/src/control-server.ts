@@ -6,6 +6,7 @@ import {
   chmodSync,
   closeSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   openSync,
   renameSync,
@@ -18,7 +19,7 @@ import {
   type Server,
   type Socket,
 } from 'node:net';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   HandoffOptions,
   HandoffOutcomeResult,
@@ -45,6 +46,7 @@ import {
   type SupervisorCapability,
   type SupervisorEvent,
   type SupervisorStatus,
+  unixSocketPathLimit,
 } from './protocol.ts';
 
 /** Upper bound for any client-supplied duration. */
@@ -190,57 +192,92 @@ export class ControlServer {
     const { endpoint } = this.options;
     const refuseListening = () =>
       new Error(`a process is already listening at ${endpoint.path}`);
-    if (this.platform !== 'win32') {
-      let existing: ReturnType<typeof lstatSync> | null = null;
-      try {
-        existing = lstatSync(endpoint.path);
-      } catch {
-        existing = null;
-      }
-      if (existing) {
-        if (!existing.isSocket()) {
-          throw new Error(
-            `refusing to replace non-socket file at ${endpoint.path}`,
-          );
-        }
-        const found = await probeSocket(endpoint.path);
-        if (found === 'listening') throw refuseListening();
-        if (found === 'unknown') {
-          throw new Error(
-            `cannot tell what is at ${endpoint.path}; refusing to replace it`,
-          );
-        }
-        if (!(this.options.mayReplaceStaleSocket?.() ?? false)) {
-          throw new Error(
-            `refusing to replace ${endpoint.path} without holding the instance lock`,
-          );
-        }
-        unlinkSync(endpoint.path);
-      }
-    } else if ((await probeSocket(endpoint.path)) === 'listening') {
-      throw refuseListening();
+    // Always probe, even when the file looks absent: never assume the path is free.
+    const found = await probeSocket(endpoint.path);
+    if (found === 'listening') throw refuseListening();
+    if (found === 'unknown') {
+      throw new Error(
+        `cannot tell what is at ${endpoint.path}; refusing to replace it`,
+      );
     }
+    if (this.platform === 'win32') {
+      this.server = await this.listenOn(endpoint.path, refuseListening);
+      this.bound = true;
+      return;
+    }
+    let existing: ReturnType<typeof lstatSync> | null = null;
+    try {
+      existing = lstatSync(endpoint.path);
+    } catch {
+      existing = null;
+    }
+    if (existing) {
+      if (!existing.isSocket()) {
+        throw new Error(
+          `refusing to replace non-socket file at ${endpoint.path}`,
+        );
+      }
+      if (!(this.options.mayReplaceStaleSocket?.() ?? false)) {
+        throw new Error(
+          `refusing to replace ${endpoint.path} without holding the instance lock`,
+        );
+      }
+      unlinkSync(endpoint.path);
+    }
+    // Node unlinks the path a Unix socket was bound to when the server closes,
+    // whoever owns that path by then. So bind at a private name in the same
+    // directory and publish it with link(), which refuses an existing path:
+    // a close then only ever unlinks the private name, never the real path.
+    const privateName = join(
+      dirname(endpoint.path),
+      `.s${randomBytes(3).toString('hex')}`,
+    );
+    // Only if the private name would not fit sun_path: bind directly then.
+    const direct =
+      Buffer.byteLength(privateName) > unixSocketPathLimit(this.platform);
+    const server = await this.listenOn(
+      direct ? endpoint.path : privateName,
+      refuseListening,
+    );
+    if (!direct) {
+      chmodSync(privateName, 0o600);
+      try {
+        linkSync(privateName, endpoint.path);
+      } catch (error) {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        throw (error as NodeJS.ErrnoException).code === 'EEXIST'
+          ? refuseListening()
+          : error;
+      }
+      unlinkSync(privateName);
+    } else {
+      chmodSync(endpoint.path, 0o600);
+    }
+    const bound = lstatSync(endpoint.path);
+    this.boundIdentity = { dev: bound.dev, ino: bound.ino };
+    this.bound = true;
+    this.server = server;
+  }
+
+  private async listenOn(
+    path: string,
+    refuseListening: () => Error,
+  ): Promise<Server> {
     const server = createServer((socket) => this.accept(socket));
     server.maxConnections = CONTROL_MAX_CONNECTIONS;
     await new Promise<void>((resolve, reject) => {
       server.once('error', (error: NodeJS.ErrnoException) =>
         reject(error.code === 'EADDRINUSE' ? refuseListening() : error),
       );
-      server.listen(endpoint.path, () => {
+      server.listen(path, () => {
         server.removeAllListeners('error');
         resolve();
       });
     });
-    if (this.platform !== 'win32') {
-      chmodSync(endpoint.path, 0o600);
-      const bound = lstatSync(endpoint.path);
-      this.boundIdentity = { dev: bound.dev, ino: bound.ino };
-    }
-    this.bound = true;
     server.on('error', (error) =>
       this.log(`control server error: ${String(error)}`),
     );
-    this.server = server;
+    return server;
   }
 
   /**
@@ -252,6 +289,36 @@ export class ControlServer {
     if (!this.server) return false;
     if (this.platform === 'win32') return this.server.listening;
     return this.socketFileIsOurs();
+  }
+
+  private removeOwnSocketFile(): void {
+    const { path } = this.options.endpoint;
+    if (!this.socketFileIsOurs()) return;
+    const aside = join(dirname(path), `.d${randomBytes(3).toString('hex')}`);
+    try {
+      renameSync(path, aside);
+    } catch {
+      return;
+    }
+    try {
+      const moved = lstatSync(aside);
+      if (
+        moved.dev === this.boundIdentity?.dev &&
+        moved.ino === this.boundIdentity?.ino
+      ) {
+        unlinkSync(aside);
+        return;
+      }
+      // Replaced between the check and the rename: put it back untouched.
+      try {
+        linkSync(aside, path);
+      } catch {
+        // The path is taken again; it is not ours to restore over.
+      }
+      unlinkSync(aside);
+    } catch {
+      // Best effort.
+    }
   }
 
   private socketFileIsOurs(): boolean {
@@ -270,6 +337,9 @@ export class ControlServer {
   async rebind(): Promise<void> {
     const previous = this.server;
     this.server = null;
+    // Safe: the previous server was bound at a private name (see bind), so
+    // closing it cannot unlink whatever now sits at the endpoint path.
+    // Not awaited: close's callback waits for open connections to end.
     if (previous) previous.close();
     await this.bind();
   }
@@ -290,14 +360,11 @@ export class ControlServer {
     if (server)
       await new Promise<void>((resolve) => server.close(() => resolve()));
     const { endpoint } = this.options;
-    // Remove only what this process created: never another supervisor's token or socket.
-    // The socket file only while it is still the one this process bound.
-    const ownSocket =
-      this.platform !== 'win32' && this.bound && this.socketFileIsOurs();
-    for (const path of [
-      this.published ? endpoint.tokenPath : null,
-      ownSocket ? endpoint.path : null,
-    ]) {
+    // Remove only what this process created: never another supervisor's token
+    // or socket. The socket path is moved aside first and unlinked only if the
+    // moved file is still the inode this process bound; otherwise it goes back.
+    if (this.platform !== 'win32' && this.bound) this.removeOwnSocketFile();
+    for (const path of [this.published ? endpoint.tokenPath : null]) {
       if (!path) continue;
       try {
         unlinkSync(path);

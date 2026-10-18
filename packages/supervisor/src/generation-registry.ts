@@ -64,6 +64,57 @@ function run(file: string, args: string[]): Promise<RunResult> {
 }
 
 /**
+ * PowerShell exits 1 on any failed statement, so the exit code says nothing
+ * about whether the process exists. The script prints a sentinel instead:
+ * `GONE` only when Get-Process reports no such process; `OK <microseconds>`
+ * from Get-Process StartTime or, failing that (access denied across integrity
+ * levels), CIM's CreationDate; `UNKNOWN ...` for everything else. Both sources
+ * are truncated to microseconds, CIM's resolution, so they agree.
+ */
+function windowsFingerprintScript(pid: number): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$id = ${pid}`,
+    'try { $p = Get-Process -Id $id } catch [Microsoft.PowerShell.Commands.ProcessCommandException] { Write-Output GONE; exit 0 } catch { $p = $null }',
+    '$t = $null',
+    'if ($null -ne $p) { try { $t = $p.StartTime } catch { $t = $null } }',
+    'if ($null -eq $t) { try { $c = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $id"; if ($null -ne $c) { $t = $c.CreationDate } } catch { $t = $null } }',
+    "if ($null -eq $t) { Write-Output 'UNKNOWN no start time readable'; exit 0 }",
+    "Write-Output ('OK ' + [math]::Floor($t.ToUniversalTime().Ticks / 10))",
+  ].join('; ');
+}
+
+function parseWindowsFingerprint(result: RunResult): Fingerprint {
+  const line =
+    result.stdout
+      .split(/\r?\n/)
+      .filter((entry) => entry.trim())
+      .at(-1)
+      ?.trim() ?? '';
+  const ok = /^OK (\d+)$/.exec(line);
+  if (ok) return { status: 'ok', value: `win32:${ok[1]}` };
+  if (line === 'GONE') return { status: 'gone' };
+  return {
+    status: 'unknown',
+    reason: `powershell ${String(result.code)}: ${line || 'no sentinel'}`,
+  };
+}
+
+/** The process's command line, for an operator deciding whether to break a lock. */
+export async function processCommandLine(pid: number): Promise<string> {
+  const result =
+    process.platform === 'win32'
+      ? await run('powershell.exe', [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = ${pid}").CommandLine`,
+        ])
+      : await run('ps', ['-o', 'command=', '-p', String(pid)]);
+  return result.code === null && result.stdout ? result.stdout : 'unknown';
+}
+
+/**
  * The process's start time as an opaque value. `gone` means no such process;
  * `unknown` means it could not be determined (tool missing, timeout), in
  * which case nothing may be concluded about the pid. On Linux the boot id is
@@ -107,15 +158,11 @@ export async function processFingerprint(
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+      windowsFingerprintScript(pid),
     ]);
-    if (result.code === null && /^\d+$/.test(result.stdout)) {
-      return { status: 'ok', value: `win32:${result.stdout}` };
-    }
-    return result.code === 1
-      ? { status: 'gone' }
-      : { status: 'unknown', reason: `powershell: ${String(result.code)}` };
+    return parseWindowsFingerprint(result);
   }
+
   const result = await exec('ps', ['-o', 'lstart=', '-p', String(pid)]);
   if (result.code === null && result.stdout)
     return { status: 'ok', value: `ps:${result.stdout}` };

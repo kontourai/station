@@ -21,7 +21,7 @@ import {
 export const SUPERVISOR_MAIN = fileURLToPath(
   new URL('../main.ts', import.meta.url),
 );
-const FAKE_CORE = fileURLToPath(
+export const FAKE_CORE = fileURLToPath(
   new URL('./__fixtures__/fake-core.mjs', import.meta.url),
 );
 
@@ -125,11 +125,16 @@ export async function startSupervisor(options: {
   main?: string;
   /** Node flags for the supervisor process itself, for example `--import`. */
   nodeArgs?: string[];
+  /** A `--control` socket path; the harness then connects there. */
+  control?: string;
   waitForServing?: boolean;
 }): Promise<RunningSupervisor> {
   const instance = options.instance ?? 'test';
   const port = options.port ?? (await freePort());
-  const endpoint = resolveControlEndpoint({ home: options.home, instance });
+  const derived = resolveControlEndpoint({ home: options.home, instance });
+  const endpoint = options.control
+    ? { ...derived, path: options.control, fallbackDir: null }
+    : derived;
   const child = spawn(
     process.execPath,
     [
@@ -141,6 +146,7 @@ export async function startSupervisor(options: {
       options.home,
       '--instance',
       instance,
+      ...(options.control ? ['--control', options.control] : []),
       ...(options.args ?? []),
     ],
     {

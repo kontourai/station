@@ -157,10 +157,18 @@ product decisions.
     it is refused or finds nothing; a successful connect or any other error
     refuses. The winner then confirms the top epoch is still its own,
     collects older epochs, publishes the token, reaps, and serves.
+  - Node unlinks a Unix socket's bound path when the server closes, whoever
+    owns that path by then. So the socket is bound at a private name in the
+    same directory and published at the real path with `link()`, which
+    refuses an existing path. Closing the server removes only the private
+    name; the real path is removed only after it is moved aside and found
+    to be the inode this process bound.
   - Every 5 seconds the holder confirms the top epoch is still its own,
-    draining and exiting with status 1 if not, and re-binds its socket path
-    if the file was deleted or replaced (on Windows, if the pipe server
-    stopped listening).
+    draining and exiting with status 1 if not. If its socket file was
+    deleted or replaced (on Windows, if the pipe server stopped listening)
+    it re-binds, but only when nothing else listens on the path; if another
+    process does, it refuses to take the path back, logs the conflicting
+    path, drains, and exits with status 1.
   - A clean exit never deletes the top epoch. It marks its own epoch
     released, by rewriting it through a temporary file, and only while the
     file still holds its nonce and pid. Epoch numbers therefore never go
@@ -194,7 +202,17 @@ product decisions.
     inside a job that forbids breakaway the assignment silently fails; both
     are gaps. A recorded generation that escaped anyway, for example from
     an older build, is reaped with `taskkill /T /F`. Reading a process start
-    time there takes one PowerShell call, about 145 ms. This absorbs the archive launcher's pending, trial,
+    time there takes one PowerShell call, about 145 ms. PowerShell exits 1
+    on any failed statement, so the call prints a sentinel instead: `GONE`
+    only when `Get-Process` reports no such process; the start time from
+    `Get-Process` or, if that is denied, from CIM's `Win32_Process`
+    CreationDate, truncated to microseconds so both agree; anything else is
+    unknown, which counts as live. On a Windows host both sources returned
+    the same instant for a live process at the same integrity level; under
+    a restricted token CIM was denied while `Get-Process` succeeded. A
+    non-elevated query of an elevated process is not verified.
+
+  This absorbs the archive launcher's pending, trial,
   commit, rollback transaction and the Desktop and `service run` restart
   loops.
 - **Workloads.** A workload is a process whose lifetime the supervisor owns,
@@ -249,6 +267,42 @@ product decisions.
     phase 4.
   - The types and constants are exported from
     [`@kontourai/station-supervisor/protocol`](../../packages/supervisor/src/protocol.ts).
+
+### Recovery
+
+The lock fails closed: when the supervisor cannot prove the holder is gone,
+it refuses to start. Its refusal names the lock file, the holder's pid, and
+the remedy. A holder that is running as this instance's supervisor is
+stopped with SIGTERM or the control channel's `stop` request. Anything else
+goes through the guarded command:
+
+```sh
+station-supervisor --break-lock --home <home> --instance <id> [--force] [--reason <text>]
+```
+
+It re-checks the holder itself. A holder that is live by its recorded
+process fingerprint is refused. A holder whose identity cannot be verified,
+or a lock still being written, needs `--force`; the refusal shows the
+holder's pid and command line so an operator can decide. Otherwise it marks
+the top epoch released, recording `releasedBy: break-lock` and the reason.
+It never deletes an epoch, so the next starter takes the next one.
+
+- **A zombie holder.** A zombie's pid still exists and keeps its start time,
+  so it reads as live until its parent reaps it. Reap or kill the parent;
+  `--break-lock --force` is the fallback once the operator has confirmed it
+  is not running.
+- **A holder that recorded no fingerprint and then crashed.** Its lock reads
+  as live while any process holds its pid. Once the pid is gone it is dead;
+  if the pid was reused, use `--break-lock --force` after checking the
+  command line.
+- **Windows with PowerShell blocked or slow.** Fingerprints are unknown, so
+  every holder whose pid exists reads as live. Use `--break-lock --force`
+  after checking the pid.
+- **PID namespaces, or a home shared across hosts or containers.** Process
+  ids and start times mean something only on one host in one pid namespace.
+  Sharing a Station home across hosts or containers is not supported: the
+  lock may refuse a start, or, if pids collide with a different
+  fingerprint, allow one.
 
 ### Implementation
 

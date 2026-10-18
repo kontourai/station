@@ -54,7 +54,11 @@ import {
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { type Fingerprint, processFingerprint } from './generation-registry.ts';
+import {
+  type Fingerprint,
+  processCommandLine,
+  processFingerprint,
+} from './generation-registry.ts';
 
 export class SupervisorStartError extends Error {}
 
@@ -134,55 +138,111 @@ function pidExists(pid: number): boolean {
   }
 }
 
+interface Verdict {
+  state: HolderState;
+  pid: number | null;
+  why: string;
+  /** True only when the holder is live by a known, matching fingerprint. */
+  verified: boolean;
+}
+
+function readReleased(path: string): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as {
+      releasedAt?: unknown;
+    };
+    return typeof raw.releasedAt === 'number';
+  } catch {
+    return false;
+  }
+}
+
 async function judge(
   path: string,
   graceMs: number,
   fingerprint: (pid: number) => Promise<Fingerprint>,
-): Promise<{ state: HolderState; pid: number | null; why: string }> {
+): Promise<Verdict> {
+  // A released marker wins, even on a lock that was broken while half-written.
+  if (readReleased(path)) {
+    return {
+      state: 'dead',
+      pid: readContent(path)?.pid ?? null,
+      why: 'released',
+      verified: false,
+    };
+  }
   const content = readContent(path);
   if (!content) {
     let ageMs = Number.POSITIVE_INFINITY;
     try {
       ageMs = Date.now() - statSync(path).mtimeMs;
     } catch {
-      return { state: 'dead', pid: null, why: 'lock file vanished' };
+      return {
+        state: 'dead',
+        pid: null,
+        why: 'lock file vanished',
+        verified: false,
+      };
     }
     return ageMs < graceMs
-      ? { state: 'live-pending', pid: null, why: 'lock is being written' }
-      : { state: 'dead', pid: null, why: 'lock was never completed' };
+      ? {
+          state: 'live-pending',
+          pid: null,
+          why: 'lock is being written',
+          verified: false,
+        }
+      : {
+          state: 'dead',
+          pid: null,
+          why: 'lock was never completed',
+          verified: false,
+        };
   }
-  if (content.releasedAt !== undefined) {
-    return { state: 'dead', pid: content.pid, why: 'released' };
-  }
-  if (!pidExists(content.pid))
-    return { state: 'dead', pid: content.pid, why: 'pid is gone' };
-  if (content.pid === process.pid) {
-    return { state: 'live', pid: content.pid, why: 'held by this process' };
+  const pid = content.pid;
+  if (!pidExists(pid))
+    return { state: 'dead', pid, why: 'pid is gone', verified: false };
+  if (pid === process.pid) {
+    return { state: 'live', pid, why: 'held by this process', verified: true };
   }
   if (content.startFingerprint === '') {
     return {
       state: 'live',
-      pid: content.pid,
+      pid,
       why: 'pid exists; holder recorded no fingerprint',
+      verified: false,
     };
   }
-  const current = await fingerprint(content.pid);
+  const current = await fingerprint(pid);
   if (current.status === 'gone')
-    return { state: 'dead', pid: content.pid, why: 'pid is gone' };
+    return { state: 'dead', pid, why: 'pid is gone', verified: false };
   if (current.status === 'unknown') {
     return {
       state: 'live',
-      pid: content.pid,
+      pid,
       why: `fingerprint unknown (${current.reason})`,
+      verified: false,
     };
   }
   return current.value === content.startFingerprint
-    ? { state: 'live', pid: content.pid, why: 'same process' }
+    ? { state: 'live', pid, why: 'same process', verified: true }
     : {
         state: 'dead',
-        pid: content.pid,
+        pid,
         why: 'pid was reused by another process',
+        verified: false,
       };
+}
+
+/** What to tell an operator about a holder that blocks a start. */
+function remedy(verdict: Verdict, breakLockCommand: string): string {
+  const pid = verdict.pid ?? 'unknown';
+  if (verdict.verified) {
+    return `pid ${pid} is running as this instance's supervisor: stop it with SIGTERM to pid ${pid} or the control channel's stop request, then start again`;
+  }
+  if (verdict.state === 'live-pending') {
+    return `the lock is still being written; if it stays this way, run: ${breakLockCommand} --force`;
+  }
+  return `pid ${pid} exists but its identity could not be verified (${verdict.why}). If it is not this instance's supervisor, run: ${breakLockCommand} --force`;
 }
 
 function create(path: string, content: LockContent): boolean {
@@ -213,6 +273,8 @@ export async function acquireInstanceLock(options: {
   fingerprint?: (pid: number) => Promise<Fingerprint>;
   /** Test-only: delay between judging the holder and creating the next epoch. */
   testDelayMs?: number;
+  /** The exact `--break-lock` command for this instance, for refusal messages. */
+  breakLockCommand?: string;
 }): Promise<InstanceLock> {
   const graceMs = options.pendingGraceMs ?? LOCK_PENDING_GRACE_MS;
   const fingerprint =
@@ -234,10 +296,15 @@ export async function acquireInstanceLock(options: {
         );
       }
       const holder = epochPath(options.runDir, options.instance, highest);
-      const { state, pid, why } = await judge(holder, graceMs, fingerprint);
+      const verdict = await judge(holder, graceMs, fingerprint);
+      const { state, pid, why } = verdict;
       if (state !== 'dead') {
         throw new SupervisorStartError(
-          `another supervisor (pid ${pid ?? 'unknown'}) holds ${options.description} (epoch ${highest}, ${state}: ${why}); refusing to start`,
+          [
+            `another supervisor (pid ${pid ?? 'unknown'}) holds ${options.description} (epoch ${highest}, ${state}: ${why}); refusing to start`,
+            `  lock file: ${holder}`,
+            `  ${remedy(verdict, options.breakLockCommand ?? 'station-supervisor --break-lock')}`,
+          ].join('\n'),
         );
       }
       options.log(
@@ -323,4 +390,88 @@ export function releaseInstanceLock(lock: InstanceLock): void {
       // Never created.
     }
   }
+}
+
+/**
+ * The guarded way out of a fail-closed lock. Re-checks the holder: refuses a
+ * holder that is live by a known fingerprint; requires `force` for one whose
+ * identity cannot be verified (or a lock still being written); otherwise
+ * marks the top epoch released with a reason. Never deletes an epoch.
+ */
+export async function breakInstanceLock(options: {
+  runDir: string;
+  instance: string;
+  force: boolean;
+  reason: string;
+  breakLockCommand: string;
+  fingerprint?: (pid: number) => Promise<Fingerprint>;
+  commandLine?: (pid: number) => Promise<string>;
+}): Promise<{ code: number; message: string }> {
+  let highest: number | null;
+  try {
+    highest = highestEpoch(options.runDir, options.instance);
+  } catch {
+    highest = null;
+  }
+  if (highest === null)
+    return { code: 0, message: 'no instance lock to break' };
+  const path = epochPath(options.runDir, options.instance, highest);
+  const verdict = await judge(
+    path,
+    LOCK_PENDING_GRACE_MS,
+    options.fingerprint ?? ((pid: number) => processFingerprint(pid)),
+  );
+  if (verdict.why === 'released') {
+    return {
+      code: 0,
+      message: `instance lock epoch ${highest} is already released`,
+    };
+  }
+  if (verdict.verified) {
+    return {
+      code: 1,
+      message: `refusing to break the lock: ${remedy(verdict, options.breakLockCommand)} (lock file: ${path})`,
+    };
+  }
+  if (verdict.state !== 'dead' && !options.force) {
+    const command =
+      verdict.pid !== null
+        ? await (options.commandLine ?? processCommandLine)(verdict.pid)
+        : 'unknown';
+    return {
+      code: 1,
+      message: [
+        `refusing to break the lock without --force: ${remedy(verdict, options.breakLockCommand)}`,
+        `  lock file: ${path}`,
+        `  holder command line: ${command}`,
+      ].join('\n'),
+    };
+  }
+  let content: Record<string, unknown> = {};
+  try {
+    content = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  } catch {
+    content = {};
+  }
+  const temp = `${path}.${process.pid}.break`;
+  const fd = openSync(temp, 'w', 0o600);
+  try {
+    writeSync(
+      fd,
+      JSON.stringify({
+        ...content,
+        releasedAt: Date.now(),
+        releasedBy: 'break-lock',
+        releaseReason: options.reason,
+      }),
+    );
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(temp, path);
+  return {
+    code: 0,
+    message: `marked instance lock epoch ${highest} released (${verdict.state === 'dead' ? verdict.why : `forced: ${verdict.why}`})`,
+  };
 }

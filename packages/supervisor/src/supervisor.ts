@@ -8,6 +8,7 @@ import packageJson from '../package.json' with { type: 'json' };
 import { ControlServer } from './control-server.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
 import {
+  type Clock,
   type GenerationLauncher,
   GenerationManager,
   type GenerationManagerOptions,
@@ -43,6 +44,10 @@ export interface SupervisorOptions {
   lockPendingGraceMs?: number;
   /** How often the holder re-confirms its lock epoch and socket. */
   selfCheckIntervalMs?: number;
+  /** Timers for the self-check and generation manager; tests inject one. */
+  clock?: Clock;
+  /** Install process signal, exit, and fatal-error handlers (false when embedded). */
+  processHooks?: boolean;
   /** Every entry a handoff names must be a .js/.mjs file inside this directory. */
   buildRoot: string;
   endpoint: ControlEndpoint;
@@ -155,18 +160,23 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   };
   const subscribers = new Set<(event: SupervisorEvent) => void>();
   let shuttingDown = false;
+  const clock = options.clock ?? systemClock;
+  const processHooks = options.processHooks ?? true;
+  let stopSelfCheck: () => void = () => {};
 
-  process.on('exit', () => {
+  const onProcessExit = () => {
     for (const child of children) {
       if (child.exitCode === null && child.signalCode === null)
         killTree(child, 'SIGKILL');
     }
     releaseLock();
-  });
+  };
+  if (processHooks) process.on('exit', onProcessExit);
 
   const manager = new GenerationManager({
     entry: options.entry,
     launcher: createForkLauncher({ log, children, registry }),
+    clock,
     handoff: options.handoff,
     restart: options.restart,
     log,
@@ -206,6 +216,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   async function shutdown(code: number): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
+    stopSelfCheck();
     log(`shutting down with exit code ${code}`);
     manager.closeListeners();
     await control.close();
@@ -219,7 +230,9 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   }
 
   // SIGHUP too: closing the terminal must not leave a core and a held lock.
-  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+  for (const signal of processHooks
+    ? (['SIGTERM', 'SIGINT', 'SIGHUP'] as const)
+    : []) {
     process.on(signal, () => {
       log(`received ${signal}`);
       void stopAndExit();
@@ -246,8 +259,10 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       .catch((cause: unknown) => log(`drain failed: ${String(cause)}`))
       .finally(() => void shutdown(1));
   };
-  process.on('uncaughtException', onFatal);
-  process.on('unhandledRejection', onFatal);
+  if (processHooks) {
+    process.on('uncaughtException', onFatal);
+    process.on('unhandledRejection', onFatal);
+  }
 
   // The instance lock comes first (see instance-lock.ts for why it is
   // correct). It is keyed by home and instance alone, never by --control.
@@ -260,6 +275,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     instance: options.instance,
     control: options.endpoint.path,
     description: `instance ${options.instance} in ${dirname(runDir)}`,
+    breakLockCommand: `station-supervisor --break-lock --home ${dirname(runDir)} --instance ${options.instance}`,
     log,
     pendingGraceMs: options.lockPendingGraceMs,
     testDelayMs: Number.isFinite(testDelay)
@@ -299,8 +315,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     throw error;
   }
   // While serving, keep confirming the lock is ours and the socket is in place.
-  const stopSelfCheck = startSelfCheck({
-    clock: systemClock,
+  stopSelfCheck = startSelfCheck({
+    clock,
     intervalMs: options.selfCheckIntervalMs ?? 5_000,
     log,
     check: async () => {
@@ -320,7 +336,19 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
         await control.rebind();
         log(`control socket re-bound at ${options.endpoint.path}`);
       } catch (error) {
-        log(`could not re-bind the control socket: ${String(error)}`);
+        const text = String(error);
+        if (/already listening/.test(text)) {
+          // Another process serves this path now. Taking it back would only
+          // start a tug of war: step down, naming the conflict.
+          log(
+            `control socket path ${options.endpoint.path} is now served by another process; refusing to steal it. ${text}. Draining and exiting`,
+          );
+          stopSelfCheck();
+          await manager.stop();
+          await shutdown(1);
+          return;
+        }
+        log(`could not re-bind the control socket: ${text}`);
       }
     },
   });
