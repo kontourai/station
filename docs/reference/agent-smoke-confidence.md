@@ -307,6 +307,13 @@ findings and leaves the catalog unchanged.
 
 ### Opt-in engine delivery probes (#3824)
 
+**Integration hold at base e420381:** the conservative POST budget currently
+counts the six delivery setup operations. With `maxTurns: 2`, preparation reaches
+the hard ceiling before the probe turns. Do not run this module live until the
+separate setup channel under review in #3828 is integrated. The reservation has
+not been raised to absorb setup. The full delivery and interruption cases below
+remain blocked at this boundary; the real lifecycle-only route tests still pass.
+
 Use the bundled scenario module with the same confirmation and isolated Station
 requirements above:
 

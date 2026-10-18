@@ -856,6 +856,9 @@ describe('engine matrix through real foreground routes and orchestration', () =>
       ],
     });
     expect(
+      result.rows.filter((row) => row.scenario === 'null-response'),
+    ).toHaveLength(2);
+    expect(
       result.rows
         .filter((row) => row.scenario === 'null-response')
         .every((row) => row.failure?.includes('requires an evaluator')),

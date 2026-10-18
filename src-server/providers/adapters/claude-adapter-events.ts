@@ -517,7 +517,10 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
-        engineToolNames: [...message.tools],
+        ...(Array.isArray(message.tools) &&
+        message.tools.every((name) => typeof name === 'string')
+          ? { engineToolNames: [...message.tools] }
+          : {}),
         ...(record.attemptedResumeCursor === message.session_id
           ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
           : {}),
