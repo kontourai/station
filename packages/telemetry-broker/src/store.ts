@@ -333,14 +333,15 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 6 ||
+      rows.length !== 7 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
       rows[2].version !== 3 ||
       rows[3].version !== 4 ||
       rows[4].version !== 5 ||
-      rows[5].version !== 6
+      rows[5].version !== 6 ||
+      rows[6].version !== 7
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);
