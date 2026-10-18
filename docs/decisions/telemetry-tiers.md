@@ -151,6 +151,7 @@ responses compute a conservative bound from the largest stored domain in their
 four-week window. No installation identity or unconditional install-week ε≤1
 claim is available. Replacement doubles add/remove bounds. Multiple weeks and
 publishers compose.
+
 The ideal fixed-domain two-sided geometric mechanism is **pure ε-DP**. The
 persistent-key HMAC implementation uses finite 52-bit uniforms; cryptographic
 and finite-precision qualifications apply to the implementation. Prior exact
@@ -170,7 +171,7 @@ Sparse values can be uninformative. Overlapping set histograms cannot be summed
 or joined. Calendar flags count network-days carrying that flag, not distinct people.
 
 Migration 6 stores immutable publisher/week markers and every published cell.
-Finalization sums exact daily marginals once per closed week and snapshots the
+Finalization sums daily clients per value once per closed week and snapshots the
 public domain. Public/publisher reads and reopen reuse the stored estimates.
 The HMAC coordinate includes publisher, week, dimension and value, never count;
 a changed-count re-release would reveal an exact difference and is forbidden.
@@ -182,7 +183,11 @@ Compromise reveals the noise.
 Closed-day exact marginal work commits per dimension. Erasure runs in bounded
 batches for each completed publisher/day; a stuck dimension retains only that
 publisher/day's associations while others progress. Raw/Full retention runs
-independently. Public reads do not take the ingest admission lock. Snapshot
+independently. Reads serve stored publications and finalized days without
+running finalization. Operator diagnostics record skipped daily/weekly jobs.
+Publication uses the captured cutoff and arrival fence; a pass crossing from
+Sunday into Monday waits for the next pass to publish that week. Public pages
+cache for at most 60 seconds and reset at UTC midnight. Snapshot
 refresh failure beyond 60 seconds returns 503, not unauthorized; fresh revoked
 keys are still refused immediately by database checks. These local receiver
 behaviors do not establish deployed privacy, proxy logging policy or an installed

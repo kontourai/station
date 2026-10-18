@@ -4305,13 +4305,19 @@ Public and publisher views release only four closed ISO UTC weeks over ten
 profile/adoption fields, excluding counters/friction. The fixed public domain
 contains enum values and each publisher's operator-configured public versions
 and registry IDs, including zero-count values. There is no true k pre-filter.
-Sensitivity is 40 per added/removed ping; ε=1/280 per count composes to ε≤1/7 per
-ping and ε≤1 per honest install-week at seven pings. The ideal geometric mechanism
+Published counts sum distinct daily contributor keys per value (network-days),
+so NAT undercounts installations. Sensitivity is 40 per added/removed ping;
+ε=1/280 per count gives ε≤1/7 per added ping. A network contributing at most 40
+coordinates per day has week sensitivity 280 and ε≤1; arbitrary traffic has the
+conservative domain-based bound D/40, computed from stored publication cells. The ideal geometric mechanism
 is pure ε-DP; HMAC and finite-precision sampling qualify this implementation.
 Migration 6 atomically freezes each publisher/week marker, domain and noisy
 estimates; re-finalization is forbidden. Keyset pages contain at most 200 cells.
-Public reads never take the ingest advisory lock, and successful pages cache
-until UTC midnight. Cached credential digests route unknown keys into pre-auth
+Reads serve stored publications/finalized days without invoking finalization.
+Failed daily/weekly jobs are isolated and recorded in operator diagnostics.
+Publication waits for the captured cutoff's arrival fence. HMAC-signed,
+publisher-scoped cursors are verified before caching; successful pages cache for
+at most 60 seconds and reset at UTC midnight. Cached credential digests route unknown keys into pre-auth
 refusal without storage; known product and publisher keys have per-credential
 post-auth budgets and storage rechecks. A snapshot stale beyond 60 seconds
 returns 503. See the [receiver guide](../../packages/telemetry-broker/README.md#lite-observations)

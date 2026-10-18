@@ -88,8 +88,12 @@ profile/adoption fields use a fixed public domain of enum values and
 operator-configured public release versions/registry IDs. Every value, including
 true zero, is released with noise; no k threshold or remainder suppression
 remains. Catalogs must be independent of private traffic. Per-count ε=1/280,
-sensitivity 40 and at most seven pings per honest install-week give ε≤1 per
-install-week. Expected absolute noise is about 280 weekly pings; sparse cells
+sensitivity 40 per added ping gives ε≤1/7 per ping. Published counts sum distinct
+daily contributor keys per value (network-days); NAT undercounts installations.
+With at most 40 coordinates per network/day, week sensitivity is 280 and ε≤1.
+Arbitrary traffic can exceed that premise; the API computes the conservative
+D/40 network-week bound from its stored public domain. Expected absolute noise
+is about 280 weekly network-days; sparse cells
 have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this
 before selecting a week/dimension locally. See the
 [receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
