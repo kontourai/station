@@ -3,14 +3,14 @@
  * child running the fixture core, an HTTP load client, and an SSE client.
  */
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, vi } from 'vitest';
-import { removeTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import { type ControlConnection, connectControl } from '../control-client.ts';
 import {
   type ControlEndpoint,
@@ -70,8 +70,19 @@ export interface RunningSupervisor {
   handoff(options?: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
+/**
+ * Homes short enough for the in-home socket path. The vitest temp root is too
+ * deep for a 104-byte sun_path, so these live in the ambient temp directory.
+ * Created before the teardown hook below, so they are removed after it.
+ */
+export const makeShortHome = (() => {
+  const make = trackTempDirs({
+    base: process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+  });
+  return () => make('sv-');
+})();
+
 const running = new Map<ChildProcess, ControlEndpoint>();
-const shortHomes: string[] = [];
 
 /**
  * Stops every supervisor a test started: SIGTERM first so it removes its
@@ -100,19 +111,7 @@ afterEach(async () => {
         }),
     ),
   );
-  removeTempDirs(shortHomes.splice(0));
 });
-
-/**
- * A home short enough for the in-home socket path. The vitest temp root is
- * too deep for a 104-byte sun_path, so this uses the ambient temp directory.
- */
-export function makeShortHome(): string {
-  const base = process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir();
-  const home = mkdtempSync(join(base, 'sv-'));
-  shortHomes.push(home);
-  return home;
-}
 
 const OUTPUT_LIMIT = 256 * 1024;
 
