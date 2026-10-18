@@ -202,11 +202,13 @@ export interface ExecutionResolutionReceipt {
   /** Present only for a `project-portable-prepared` intent that matched. */
   preparation?: ExecutionPreparationReceipt;
   /**
-   * #2494: the started session's confinement, read back from its own
+   * #2494: the started session's confinement, read back from its latest
    * `session.started` record after the start. Never present at resolution
-   * time: the posture is observed from the started process, which does not
-   * exist yet when the binding is resolved. Absent when the receipt was
-   * returned before a start, or the start recorded none.
+   * time: the posture comes from the started engine's report, which does
+   * not exist yet when the binding is resolved. Absent on the foreground
+   * chat handle (which does not attach it yet), on a delegation whose start
+   * record was not stored or readable when the handle returned, and for a
+   * start that recorded none.
    */
   confinement?: ExecutionConfinementRecord;
 }

@@ -10,6 +10,7 @@
  */
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { ConfinementPlan } from '@kontourai/station-contracts/execution-confinement';
@@ -20,6 +21,7 @@ import type {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
+import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -134,6 +136,12 @@ async function start(input: {
   plan?: ConfinementPlan;
   /** Codex's reported sandbox; `null` removes it from the response. */
   reported?: unknown;
+  /**
+   * Codex's reported approval policy. Absent: what Station sent, as Codex
+   * echoes an accepted request (the capture's own `never`, when it sent
+   * nothing).
+   */
+  reportedApprovalPolicy?: string;
   resume?: boolean;
 }) {
   const process = new FakeCodexProcess();
@@ -169,6 +177,10 @@ async function start(input: {
     input.resume ? 'thread/resume' : 'thread/start',
   );
   const result = structuredClone(CAPTURED);
+  result.approvalPolicy =
+    input.reportedApprovalPolicy ??
+    request.params.approvalPolicy ??
+    CAPTURED.approvalPolicy;
   if (input.reported === null) delete result.sandbox;
   else if (input.reported !== undefined) result.sandbox = input.reported;
   respond(process, request, result);
@@ -322,7 +334,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
   test('a respawn (thread/resume) is re-derived from the resumed thread, not carried from the first start', async () => {
     const first = await start({
       threadId: 'respawned',
-      approvalMode: 'never',
+      approvalMode: 'ask',
       confinement: 'workspace',
       plan: NOT_REQUIRED_WORKSPACE,
     });
@@ -332,7 +344,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
     await first.cleanup();
     const resumed = await start({
       threadId: 'respawned',
-      approvalMode: 'never',
+      approvalMode: 'ask',
       confinement: 'workspace',
       plan: NOT_REQUIRED_WORKSPACE,
       reported: { type: 'dangerFullAccess' },
@@ -357,5 +369,128 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       'stationConfinementRecord',
     );
     await run.cleanup();
+  });
+  describe('the breadth Codex reports, not only its sandbox type (F3)', () => {
+    const workspaceWrite = (writableRoots: string[]) => ({
+      type: 'workspaceWrite',
+      writableRoots,
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+
+    test.each([
+      ['the filesystem root', ['/']],
+      ['the home directory', [homedir()]],
+      ['a sibling checkout', ['/workspace/other-repo']],
+      ['a path that climbs out of the workspace', ['/workspace/repo/../other']],
+    ])(
+      'a required start whose workspaceWrite also opens %s is refused',
+      async (_label, roots) => {
+        const run = await start({
+          threadId: `broad-${roots[0]}`,
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+          reported: workspaceWrite(roots),
+        });
+        expect(run.outcome.ok).toBe(false);
+        expect(
+          (run.outcome as { error: ConfinementRefusedError }).error.code,
+        ).toBe('confinement_not_observed');
+        expect(run.sessionStarted).toBeUndefined();
+        await run.cleanup();
+      },
+    );
+
+    test.each([
+      ['inside the workspace', ['/workspace/repo/build']],
+      ["in Station's own engine temp directory", [engineSpawnTmpDirPath()]],
+    ])(
+      'a required start whose extra writable root is %s is confined',
+      async (_label, roots) => {
+        const run = await start({
+          threadId: `narrow-${roots[0]}`,
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+          reported: workspaceWrite(roots),
+        });
+        expect(run.outcome).toEqual({ ok: true });
+        expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual(
+          expect.objectContaining({ posture: 'confined', required: true }),
+        );
+        await run.cleanup();
+      },
+    );
+
+    test('an unrequired start whose workspaceWrite opens the filesystem root is recorded configured-but-failed, and still runs', async () => {
+      const run = await start({
+        threadId: 'broad-unrequired',
+        approvalMode: 'ask',
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+        reported: workspaceWrite(['/']),
+      });
+      expect(run.outcome).toEqual({ ok: true });
+      expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual(
+        expect.objectContaining({
+          posture: 'configured-but-failed',
+          required: false,
+        }),
+      );
+      await run.cleanup();
+    });
+  });
+
+  describe('the approval policy Codex reports also decides the requirement (F5)', () => {
+    test('a workspace session Station sent no knobs to, which Codex runs at never unsandboxed, is refused', async () => {
+      const run = await start({
+        threadId: 'codex-config-never-full',
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+        reportedApprovalPolicy: 'never',
+        reported: { type: 'dangerFullAccess' },
+      });
+      expect(run.request.params).not.toHaveProperty('approvalPolicy');
+      expect(run.outcome.ok).toBe(false);
+      expect(
+        (run.outcome as { error: ConfinementRefusedError }).error.code,
+      ).toBe('confinement_not_observed');
+      await run.cleanup();
+    });
+
+    test('the same session Codex runs at never inside its sandbox is recorded required and confined', async () => {
+      const run = await start({
+        threadId: 'codex-config-never-sandboxed',
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+        reportedApprovalPolicy: 'never',
+      });
+      expect(run.outcome).toEqual({ ok: true });
+      expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual(
+        expect.objectContaining({
+          posture: 'confined',
+          required: true,
+          level: 'os-profile',
+        }),
+      );
+      await run.cleanup();
+    });
+
+    test('a host session Codex runs at never at full access stays host by policy, not required', async () => {
+      const run = await start({
+        threadId: 'codex-host-config-never',
+        confinement: 'host',
+        plan: NOT_REQUIRED_HOST,
+        reportedApprovalPolicy: 'never',
+        reported: { type: 'dangerFullAccess' },
+      });
+      expect(run.outcome).toEqual({ ok: true });
+      expect(run.sessionStarted?.metadata?.stationConfinementRecord).toEqual(
+        expect.objectContaining({ posture: 'no-mechanism', required: false }),
+      );
+      await run.cleanup();
+    });
   });
 });

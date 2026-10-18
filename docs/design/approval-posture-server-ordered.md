@@ -713,12 +713,21 @@ provider interface are in
 
 - **Levels:** `host`, `os-profile`, `container`, `microvm`, weakest first.
 - **Posture:** `confined`, `no-mechanism` or `configured-but-failed`. A
-  posture comes from the started process (or its engine's own report about
-  it), never from the configuration Station sent.
+  posture is what the started engine reported applying, never the
+  configuration Station sent. It is the engine's report, not a kernel
+  observation.
 - **Workspace access:** `mounted` runs against the live checkout. `copied`
   has its own filesystem. Resolution refuses a provider that cannot run the
   start's `WorkspaceIsolationMode`, and a copied provider never pairs with
-  `shared`, whatever it declares (`confinement_workspace_incompatible`).
+  `shared`, whatever it declares (`confinement_workspace_incompatible`). The
+  mode comes from the server-resolved workspace binding: a canonically
+  provisioned or verified owned worktree is `worktree`, everything else
+  (including a respawn, an adoption, and any caller-written
+  `metadata.workspaceIsolation`) is `shared`. That can refuse a real worktree
+  session a worktree-only provider; it never grants one on the caller's say-so.
+- **Scope in time:** the record describes the session START. A per-turn
+  sandbox re-tightening (#2559) and a revoked full-access grant (#1796) do
+  not update it until the session's next start writes a new one.
 
 **Providers.** A provider declares its level, mechanism, workspace access,
 supported isolation modes and engines, and reports its availability on this
@@ -728,7 +737,10 @@ plus a pending posture, which it settles from what the started process
 reports. An `engine-native` provider leaves the spawn unchanged because the
 engine applies it from protocol settings. A `spawn-wrapper` provider rewrites
 the spawn. No start path applies a spawn wrapper yet, so a required start is
-refused rather than resolved to one and silently left unconfined.
+refused rather than resolved to one and silently left unconfined. Neither
+`confine()` nor `pending.observe` is called in production yet: the Codex
+adapter calls the same derivation (`observeCodexSandboxPosture`) directly.
+Slice 2 routes starts through the interface.
 
 **The required level (owner decisions of 2026-09-24 and 2026-10-18).** A
 `workspace` start whose engine actually runs at `never` requires
@@ -736,7 +748,10 @@ refused rather than resolved to one and silently left unconfined.
 Claude and ACP have no mechanism yet, so their `workspace` `never` is still
 applied as `auto` and requires nothing. Every other start requires `host`.
 The record's `policyBasis` is `operator-policy` for a `host` start and
-`workspace-floor` for every other start.
+`workspace-floor` for every other start. For Codex the requirement also
+follows the approval policy Codex reports in its thread response: a
+`workspace` session Codex reports at `never` (from its own configuration,
+when Station sent no knobs) is required too.
 
 **Resolution and refusal.** `prepareStart` resolves the confinement beside
 the stamp. It runs after the reserved-key strip and after the start's final
@@ -746,16 +761,22 @@ required level with no usable mechanism refuses the start before the engine is
 touched (`confinement_mechanism_unavailable`), and the refusal names the
 mechanism the host would need: Seatbelt on macOS, bubblewrap or Landlock on
 Linux. An unrequired start still engages an engine-native mechanism, so the
-record says what the engine actually ran under.
+record says what the engine reported running under. Every confinement refusal
+is a `SessionStartRefusedError`: the start boundary settles it, the command
+receipt is `rejected`, the closed code reaches the caller (also through a
+respawn on `sendTurn`), and the thread's next start is admitted rather than
+fenced as indeterminate.
 
 **Recording.** The record goes on `session.started` metadata as
 `stationConfinementRecord`. It holds the level, whether it was required, the
 posture, the mechanism, workspace access and policy basis. The key is reserved,
 so a caller's value is stripped. When no mechanism is engaged, the start path
 writes `host` / `no-mechanism`. Otherwise the adapter gets a server-only
-`confinementPlan` and writes the record from what it observed. A respawn
-re-resolves it. The previous record is stripped with the other reserved keys on
-the stored-metadata read, and is never carried forward as if observed.
+`confinementPlan` and writes the record from what its engine reported. A
+caller-supplied plan is stripped in `prepareStart` and in
+`withApprovalPostureForStart`. A respawn re-resolves it. The previous record is
+stripped with the other reserved keys on the stored-metadata read, and is never
+carried forward as the new process's.
 Recovery replay sends a turn, not a start, so it records nothing new.
 
 **Codex's own sandbox** is the first provider
@@ -763,21 +784,30 @@ Recovery replay sends a turn, not a start, so it records nothing new.
 Its posture comes from the `sandbox` of Codex's `thread/start`, `thread/resume`
 or `thread/fork` response:
 
-- `workspaceWrite` or `readOnly` is `confined`.
+- `readOnly` is `confined`. `workspaceWrite` is `confined` only when every
+  extra writable root it lists lies inside the resolved workspace or
+  Station's own engine temp directory. A root such as `/`, the home directory
+  or another checkout makes it `configured-but-failed`. Codex's implicit
+  roots (the cwd, `TMPDIR` and `/tmp`, governed by its exclude flags) are part
+  of what `workspaceWrite` means and are accepted. Network access is not
+  judged. Paths are compared lexically; symlinks are not resolved.
 - `dangerFullAccess`, an `externalSandbox`, or no report is not confined. It is
   `configured-but-failed` when Station asked for a sandbox, else
   `no-mechanism`. A `host` session at full access is therefore `host` /
   `no-mechanism`, recorded as policy.
-- A required start that is not observed `confined` is refused
+- A required start that is not reported `confined` is refused
   (`confinement_not_observed`). The start is not announced, and the process is
   stopped.
+- Codex labels the response `sandbox` field legacy in favour of
+  `activePermissionProfile`; reading the profile is a follow-up.
 
 **The receipt.** `ExecutionResolutionReceipt` is built before the session
-exists, so it cannot carry an observed posture. Its `confinement` field is
-filled where the delegation handle returns after the start. It is read back
-from the started session's own record, the same way `preparation` is added
-there. A receipt returned before a start, or for a start that recorded nothing,
-has no `confinement`.
+exists, so it cannot carry the engine's reported posture. Its `confinement`
+field is filled where the delegation handle returns after the start. It is
+read back from the started session's latest `session.started` record, the same
+way `preparation` is added there. It is absent on the foreground chat handle,
+on a delegation whose record was not stored or readable when the handle
+returned, and for a start that recorded nothing.
 
 Not in this slice: the Seatbelt provider, process wrapping, the foreground
 chat handle's receipt, and any change to Claude or ACP behaviour.

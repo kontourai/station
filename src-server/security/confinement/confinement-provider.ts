@@ -14,6 +14,7 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 
 /**
  * #2494: one interface for every confinement mechanism. See
@@ -95,12 +96,17 @@ function expectedMechanism(
   }
 }
 
-export class ConfinementRefusedError extends Error {
-  constructor(
-    readonly code: ConfinementRefusalCode,
-    message: string,
-  ) {
-    super(message);
+/**
+ * A definitive refusal to start: a `SessionStartRefusedError`, so the start
+ * boundary settles it (the thread is not fenced as indeterminate, and its
+ * next start is admitted) and the command outcome is `rejected`, with the
+ * typed code carried to the caller.
+ */
+export class ConfinementRefusedError extends SessionStartRefusedError {
+  declare readonly code: ConfinementRefusalCode;
+
+  constructor(code: ConfinementRefusalCode, message: string) {
+    super(message, code);
     this.name = 'ConfinementRefusedError';
   }
 }
@@ -299,7 +305,7 @@ export function observedConfinementRecord(
   };
 }
 
-/** Whether a required start may proceed: only once observed `confined`. */
+/** Whether a required start may proceed: only once reported `confined`. */
 export function assertRequiredConfinementObserved(
   record: ExecutionConfinementRecord,
   engine: EngineId,
@@ -307,7 +313,7 @@ export function assertRequiredConfinementObserved(
   if (record.required && record.posture !== 'confined')
     throw new ConfinementRefusedError(
       'confinement_not_observed',
-      `This ${engine} session requires ${record.level} confinement, but the started engine did not report it in force (${record.posture}). The session was not started.`,
+      `This ${engine} session requires ${record.level} confinement, but the started engine did not report it applied (${record.posture}). The session was not started.`,
     );
 }
 

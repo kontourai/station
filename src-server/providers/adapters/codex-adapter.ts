@@ -41,6 +41,7 @@ import {
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
   adapterSessionStartDuration,
@@ -137,7 +138,10 @@ import {
   reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
-import { observeCodexSandboxPosture } from './codex-confinement.js';
+import {
+  observeCodexSandboxPosture,
+  requiredByReportedPolicy,
+} from './codex-confinement.js';
 import {
   type CodexToolServerSkip,
   resolveCodexMcpServers,
@@ -1984,10 +1988,15 @@ export class CodexAdapter implements ProviderAdapterShape {
       );
       // #2494: the confinement record comes from Codex's response, never
       // from the sandbox Station sent. A start whose policy requires
-      // confinement and whose engine does not report it in force is
-      // refused here, before it is claimed or announced; the catch below
-      // stops the process.
-      const plan = input.confinementPlan;
+      // confinement and whose engine does not report it applied is refused
+      // here, before it is claimed or announced; the catch below stops the
+      // process. The requirement also follows the approval policy Codex
+      // reports: a workspace session Codex runs at `never` (its own
+      // configuration, when Station sent no knobs) requires confinement too.
+      const plan = requiredByReportedPolicy(
+        input.confinementPlan,
+        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+      );
       const confinementRecord = plan
         ? observedConfinementRecord(
             plan,
@@ -1995,6 +2004,8 @@ export class CodexAdapter implements ProviderAdapterShape {
               ? observeCodexSandboxPosture({
                   requested: approvalKnobs?.sandbox,
                   reported: reportedSandbox,
+                  workspace: input.cwd,
+                  permittedRoots: [engineSpawnTmpDirPath()],
                 })
               : 'configured-but-failed',
           )

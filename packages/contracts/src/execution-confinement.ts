@@ -1,6 +1,7 @@
 /**
  * #2494: execution confinement — what a started process can touch — as a
- * server-resolved, server-observed dimension of a session. A separate axis
+ * server-resolved dimension of a session, recorded from what the started
+ * engine reports. A separate axis
  * from `ApprovalMode` (whether a tool call needs a click) and from
  * `WorkspaceIsolationMode` (which checkout the session runs in).
  *
@@ -21,14 +22,15 @@
 export type ConfinementLevel = 'host' | 'os-profile' | 'container' | 'microvm';
 
 /**
- * What the started process was observed to run under. Derived from the
- * process (or the engine's own report about it) after it started, never from
- * the configuration Station sent:
+ * What the started process runs under, as the engine reported applying it
+ * after the start. Derived from that report, never from the configuration
+ * Station sent. It is the engine's own report, not a kernel observation:
  *
- * - `confined`: the mechanism was observed in force.
+ * - `confined`: the engine reported the mechanism applied, no wider than
+ *   the resolved workspace and Station-owned roots.
  * - `no-mechanism`: no confinement mechanism was engaged for this start.
- * - `configured-but-failed`: a mechanism was engaged, but the started
- *   process did not show it in force (it reported something weaker, or
+ * - `configured-but-failed`: a mechanism was engaged, but the engine did
+ *   not report it applied (it reported something weaker or wider, or
  *   nothing at all).
  */
 export type ConfinementPosture =
@@ -67,11 +69,14 @@ export type ConfinementMechanism =
 
 /**
  * Content-free record of a session start's confinement: no host paths and
- * no credentials.
+ * no credentials. It describes the START: a per-turn sandbox re-tightening
+ * and a revoked full-access grant do not update it until the session's next
+ * start writes a new one.
  *
  * - `level`: the level the engaged mechanism provides (also when it failed
  *   to apply); `host` when none was engaged.
- * - `required`: whether the start's policy required a level above `host`. A
+ * - `required`: whether the start's policy required a level above `host`,
+ *   from what Station sent or the approval policy the engine reported. A
  *   required start whose posture is not `confined` does not run.
  */
 export interface ExecutionConfinementRecord {
@@ -117,7 +122,7 @@ export const STATION_CONFINEMENT_RECORD_METADATA_KEY =
  *   cannot work with the start's workspace isolation (for example a copied
  *   provider and a shared live checkout).
  * - `confinement_not_observed`: the mechanism was engaged, but the started
- *   process did not show it in force; the process was stopped.
+ *   engine did not report it applied; the process was stopped.
  */
 export const CONFINEMENT_REFUSAL_CODES = [
   'confinement_mechanism_unavailable',

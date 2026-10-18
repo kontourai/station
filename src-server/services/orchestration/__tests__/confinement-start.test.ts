@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type {
   ConfinementMechanism,
   ConfinementPlan,
+  ConfinementPosture,
 } from '@kontourai/station-contracts/execution-confinement';
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -28,7 +29,11 @@ import type {
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
-import type { ConfinementProvider } from '../../../security/confinement/confinement-provider.js';
+import {
+  assertRequiredConfinementObserved,
+  type ConfinementProvider,
+  observedConfinementRecord,
+} from '../../../security/confinement/confinement-provider.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -48,10 +53,33 @@ class RecordingAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * When set, the next start is refused the way the Codex adapter refuses a
+   * required start whose engine did not report its sandbox applied: after
+   * the provider call, through the same assertion.
+   */
+  refuseNextUnobserved = false;
+  /**
+   * Postures this engine reports for its next starts, in order. Each is
+   * recorded from the start's own plan, as the Codex adapter records what
+   * its engine reported; empty, the start's metadata rides unchanged.
+   */
+  readonly observedPostures: ConfinementPosture[] = [];
+
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
     this.starts.push(input);
+    if (this.refuseNextUnobserved && input.confinementPlan) {
+      this.refuseNextUnobserved = false;
+      assertRequiredConfinementObserved(
+        observedConfinementRecord(
+          input.confinementPlan,
+          'configured-but-failed',
+        ),
+        this.provider,
+      );
+    }
     const now = new Date().toISOString();
     // Like every real adapter: the start's metadata rides `session.started`.
     this.events.push({
@@ -61,7 +89,16 @@ class RecordingAdapter implements ProviderAdapterShape {
       createdAt: now,
       method: 'session.started',
       sessionId: input.threadId,
-      metadata: input.metadata,
+      metadata:
+        input.confinementPlan && this.observedPostures.length > 0
+          ? {
+              ...input.metadata,
+              stationConfinementRecord: observedConfinementRecord(
+                input.confinementPlan,
+                this.observedPostures.shift()!,
+              ),
+            }
+          : input.metadata,
     } as CanonicalRuntimeEvent);
     const session: ProviderSession = {
       provider: this.provider,
@@ -285,6 +322,8 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     // The dispatch boundary carries the refusal's typed code.
     await expect(refused).rejects.toMatchObject({
       code: 'confinement_mechanism_unavailable',
+      // A refusal to start, not a failed start.
+      receipt: { status: 'rejected' },
       message: expect.stringMatching(
         /requires os-profile confinement, which needs .+; none is available/,
       ),
@@ -478,5 +517,161 @@ describe('#2494: a start resolves its confinement before the engine is touched',
       }),
     ).rejects.toThrow(/requires os-profile confinement/);
     expect(codex.starts).toHaveLength(0);
+  });
+  test('a start the engine refuses as not observed confined is a settled refusal: its code reaches the caller, and the thread starts again', async () => {
+    codex.refuseNextUnobserved = true;
+    await expect(
+      start('codex-unobserved', 'codex', { approvalMode: 'never' }),
+    ).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+      receipt: { status: 'rejected' },
+    });
+    // Not fenced as indeterminate: the same thread is admitted again.
+    await start('codex-unobserved', 'codex', { approvalMode: 'never' });
+    expect(codex.starts).toHaveLength(2);
+    expect(codex.sessions.has('codex-unobserved')).toBe(true);
+  });
+
+  test('a respawn the engine refuses as not observed confined leaves the conversation able to respawn', async () => {
+    stationDefault = 'never';
+    store.upsertSession({
+      provider: 'codex',
+      threadId: 'codex-resume-unobserved',
+      status: 'ready',
+      resumeCursor: { cursor: 'resume-codex-resume-unobserved' },
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:05.000Z',
+    });
+    store.appendEvent({
+      eventId: 'codex-resume-unobserved-started',
+      provider: 'codex',
+      threadId: 'codex-resume-unobserved',
+      createdAt: '2026-09-01T00:00:01.000Z',
+      method: 'session.started',
+      sessionId: 'codex-resume-unobserved',
+      metadata: { stationConfinement: 'workspace' },
+    } as CanonicalRuntimeEvent);
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    codex.refuseNextUnobserved = true;
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'codex-resume-unobserved', input: 'go' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'confinement_not_observed',
+      receipt: { status: 'rejected' },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'codex-resume-unobserved', input: 'again' },
+    });
+    expect(codex.starts).toHaveLength(2);
+    expect(codex.sessions.has('codex-resume-unobserved')).toBe(true);
+  });
+  test('the workspace isolation a caller writes on metadata never makes a worktree: a copied provider is still refused', async () => {
+    await replaceService([
+      testProvider({
+        mechanism: 'test-copied-worktree',
+        workspaceAccess: 'copied',
+        supportedIsolationModes: ['worktree'],
+      }),
+    ]);
+    await expect(
+      start('codex-claims-worktree', 'codex', {
+        approvalMode: 'never',
+        // No provisioned or verified worktree binding backs this claim.
+        isolation: 'worktree',
+      }),
+    ).rejects.toMatchObject({ code: 'confinement_workspace_incompatible' });
+    expect(codex.starts).toHaveLength(0);
+  });
+
+  test('a caller-supplied confinement plan is stripped from a public start, so an engine that engages nothing never receives one', async () => {
+    const forgedPlan: ConfinementPlan = {
+      ...CODEX_REQUIRED_PLAN,
+      requiredLevel: 'host',
+    };
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'claude-forged-plan',
+        provider: 'claude',
+        confinementPlan: forgedPlan,
+      } as never,
+    });
+    expect(claude.starts.at(-1)).not.toHaveProperty('confinementPlan');
+    // Codex gets the server's own plan, never the caller's lower one.
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'codex-forged-plan',
+        provider: 'codex',
+        modelOptions: { approvalMode: 'never' },
+        confinementPlan: forgedPlan,
+      } as never,
+    });
+    expect(codex.starts.at(-1)!.confinementPlan).toEqual(CODEX_REQUIRED_PLAN);
+  });
+
+  test('a respawn input that already carries a plan is re-resolved, never passed through', async () => {
+    // No production caller hands `withApprovalPostureForStart` a plan today;
+    // this pins its own strip at the method seam so one never survives.
+    const respawn = await (
+      service as unknown as {
+        withApprovalPostureForStart(
+          provider: 'claude' | 'codex',
+          input: ProviderSessionStartInput,
+        ): Promise<ProviderSessionStartInput>;
+      }
+    ).withApprovalPostureForStart('claude', {
+      provider: 'claude',
+      threadId: 'claude-respawn-stale-plan',
+      confinementPlan: CODEX_REQUIRED_PLAN,
+    });
+    expect(respawn).not.toHaveProperty('confinementPlan');
+    expect(respawn.metadata?.stationConfinementRecord).toEqual(
+      expect.objectContaining({ posture: 'no-mechanism' }),
+    );
+  });
+
+  test('a credential-profile restart re-derives the record from the new process, never the old one', async () => {
+    codex.observedPostures.push('confined', 'configured-but-failed');
+    await start('codex-credential', 'codex', { approvalMode: 'ask' });
+    await waitForStarted('codex-credential');
+    expect(persistedRecord('codex-credential')).toMatchObject({
+      posture: 'confined',
+    });
+    await (
+      service as unknown as {
+        restartCredentialProfileRecoverySession(input: {
+          threadId: string;
+          input: string;
+          modelOptions?: Record<string, string>;
+          recoveryCorrelationId: string;
+          signal: AbortSignal;
+          credentialProfileRef?: string;
+        }): Promise<unknown>;
+      }
+    ).restartCredentialProfileRecoverySession({
+      threadId: 'codex-credential',
+      input: 'retry',
+      modelOptions: { approvalMode: 'ask' },
+      recoveryCorrelationId: 'recovery-codex-credential',
+      signal: new AbortController().signal,
+      credentialProfileRef: 'backup',
+    });
+    const restart = codex.starts.at(-1)!;
+    expect(codex.starts).toHaveLength(2);
+    expect(restart.confinementPlan).toEqual({
+      ...CODEX_REQUIRED_PLAN,
+      requiredLevel: 'host',
+    });
+    expect(restart.metadata).not.toHaveProperty('stationConfinementRecord');
+    await waitForStarted('codex-credential', 2);
+    expect(persistedRecord('codex-credential')).toMatchObject({
+      posture: 'configured-but-failed',
+    });
   });
 });
