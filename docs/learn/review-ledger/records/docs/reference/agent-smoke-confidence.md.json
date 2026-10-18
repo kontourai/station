@@ -100,7 +100,9 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "packages/sdk/src/client/execution.ts"
+    "packages/sdk/src/client/execution.ts",
+
+    "src-server/domain/validator.ts"
   ],
 
   "checks": [
