@@ -212,7 +212,7 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length > 6 ||
+          rows.length > 7 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
