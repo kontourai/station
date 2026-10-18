@@ -80,6 +80,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  sessionStructuralSharing:
+    'shared cache-identity policy for session query hooks; not a public query or mutation.',
   catalogRequests:
     "backs catalog.ts's hooks internally; its raw fetchers are deliberately not public.",
   chatRuntimeCoding:

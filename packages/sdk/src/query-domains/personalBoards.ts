@@ -16,6 +16,7 @@ import { useApiQuery } from '../query-core';
 import { fetchAttention } from './attention';
 import { fetchOrchestrationSessions } from './chatRuntimeOrchestration';
 import { personalLayoutsKey } from './personalLayouts';
+import { shareSessionReadModel } from './sessionStructuralSharing';
 
 const key = (slug: string, scope?: ApiRequestScope) => [
   'me',
@@ -87,6 +88,7 @@ export function useBoardRecentWorkQuery(scope?: ApiRequestScope) {
       return fetchOrchestrationSessions(scope.apiBase, { requestScope: scope });
     },
     {
+      structuralSharing: shareSessionReadModel,
       enabled: !!scope,
       refetchInterval: 10000,
       refetchOnMount: 'always',

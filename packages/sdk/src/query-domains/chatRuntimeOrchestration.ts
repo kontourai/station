@@ -76,6 +76,7 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from './chatRuntimeTypes';
+import { shareSessionReadModel } from './sessionStructuralSharing';
 
 export type {
   DelegatedTaskHandle,
@@ -1280,6 +1281,7 @@ export function useOrchestrationSessionsQuery(
       gcTime: config?.gcTime,
       enabled: config?.enabled,
       refetchInterval: config?.refetchInterval,
+      structuralSharing: shareSessionReadModel,
     },
   );
 }
