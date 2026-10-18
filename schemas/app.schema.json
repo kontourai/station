@@ -195,11 +195,28 @@
         "kontour": { "enum": ["off", "lite", "full"] },
         "operator": { "enum": ["off", "lite", "full"] }
       },
+      "patternProperties": {
+        "^publisher:(?!(?:constructor|prototype)$)[a-z0-9][a-z0-9._:-]{0,127}$": {
+          "enum": ["off", "lite", "full"]
+        }
+      },
+      "maxProperties": 128,
       "additionalProperties": false
+    },
+    "publicTelemetryRegistries": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2048 },
+      "description": "Operator classification of exact public registry source keys; verified signatures are independently required for plugin telemetry."
+    },
+    "telemetryPublisherPolicy": {
+      "$ref": "#/properties/telemetryTier",
+      "description": "Per-publisher operator defaults can only lower Lite; explicit user choices win and Full is never a default."
     },
     "telemetryEnabled": {
       "type": "boolean",
-      "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off both built-in publishers."
+      "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off all known publisher choices."
     },
     "productTelemetryEndpoint": {
       "type": "string",

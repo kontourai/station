@@ -980,6 +980,52 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     }
   });
 
+  test('publisher tier choices and operator policy persist through the real app schema and restart', async () => {
+    const home = makeTempDir('station-plugin-tier-persistence-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    try {
+      await loader.loadAppConfig();
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { 'publisher:writer': 'off' } }),
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      const policy = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          publicTelemetryRegistries: [
+            'https://registry.example.test/catalog.json',
+          ],
+          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        }),
+      });
+      expect(policy.status, await policy.clone().text()).toBe(200);
+      const restarted = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      try {
+        expect(await restarted.loadAppConfig()).toMatchObject({
+          telemetryTier: { 'publisher:writer': 'off' },
+          publicTelemetryRegistries: [
+            'https://registry.example.test/catalog.json',
+          ],
+          telemetryPublisherPolicy: { 'publisher:writer': 'off' },
+        });
+      } finally {
+        restarted.dispose();
+      }
+    } finally {
+      loader.dispose();
+    }
+  });
+
   test.each([
     { foo: 'full' },
     'full',

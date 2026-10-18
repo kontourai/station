@@ -31,9 +31,9 @@ export function createPluginTelemetry(apiBase: string, pluginName: string) {
         },
         { events: [{ event, attributes: props }] },
       );
+      await response.body?.cancel();
       if (!response.ok)
         throw new Error('Plugin telemetry rejected by the kernel');
-      await response.body?.cancel();
     },
   };
 }
