@@ -60,6 +60,7 @@ const FIXTURE = `<!doctype html><html><head><title>agent fixture</title>
 </head><body>
 <p id="out">idle</p>
 <button id="go">Go</button>
+<button id="hidden" style="display:none">Hidden control</button>
 <button id="hover">Hover me</button>
 <div id="hoverOut"></div>
 <div id="drag" role="button" aria-label="Drag me">Drag me</div>
@@ -242,6 +243,12 @@ describe('browser tools against a real installed Chromium', () => {
         timeoutMs: 10_000,
       }),
     ).toMatchObject({ ok: true, matched: 'locator' });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        locator: 'css=#hidden',
+        timeoutMs: 500,
+      }),
+    ).toMatchObject({ ok: false, code: 'timeout', pageBusy: false });
 
     expect(
       await automation.hover(authority, browserSessionId, {
