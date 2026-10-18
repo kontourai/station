@@ -1425,6 +1425,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/rollback.test.ts',
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
+  'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A SIGKILLed supervisor, its orphaned core, and a second supervisor that reaps it.
+  'packages/supervisor/src/__tests__/stale-generation.test.ts',
+  // Spawns a sleeper process to prove a mismatched fingerprint is never killed.
+  'packages/supervisor/src/__tests__/generation-registry.test.ts',
+  // Runs the supervisor entry and its built bundle as child processes.
+  'packages/supervisor/src/__tests__/cli.test.ts',
+  'packages/supervisor/src/__tests__/bundle.test.ts',
   // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
   'packages/supervisor/src/__tests__/protocol.test.ts',
   // Forks two children that pass a raw listening handle through this worker.

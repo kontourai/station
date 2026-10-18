@@ -3,6 +3,7 @@
  * processes into one supervisor process.
  */
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
+import { dirname, join } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
 import { ControlServer } from './control-server.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
@@ -11,6 +12,10 @@ import {
   GenerationManager,
   type GenerationManagerOptions,
 } from './generation-manager.ts';
+import {
+  GenerationRegistry,
+  reapStaleGenerations,
+} from './generation-registry.ts';
 import {
   type ControlEndpoint,
   SUPERVISOR_ENV,
@@ -38,6 +43,7 @@ export interface SupervisorOptions {
 function createForkLauncher(options: {
   log: (message: string) => void;
   children: Set<ChildProcess>;
+  registry: GenerationRegistry;
 }): GenerationLauncher {
   return {
     launch({ entry, generation }) {
@@ -55,6 +61,13 @@ function createForkLauncher(options: {
         windowsHide: true,
       });
       options.children.add(child);
+      const running = () =>
+        child.exitCode === null && child.signalCode === null;
+      if (child.pid !== undefined) {
+        const pid = child.pid;
+        void options.registry.record(pid, generation, running);
+        child.on('exit', () => options.registry.remove(pid));
+      }
       child.on('exit', () => options.children.delete(child));
       child.on('error', (error) =>
         options.log(`generation ${generation} process error: ${String(error)}`),
@@ -96,6 +109,11 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
       ));
   const exit = options.exit ?? ((code: number) => process.exit(code));
   const children = new Set<ChildProcess>();
+  const registryPath = join(
+    dirname(options.endpoint.tokenPath),
+    `supervisor-${options.instance}.generations.json`,
+  );
+  const registry = new GenerationRegistry(registryPath);
   const subscribers = new Set<(event: SupervisorEvent) => void>();
   let shuttingDown = false;
 
@@ -108,7 +126,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
 
   const manager = new GenerationManager({
     entry: options.entry,
-    launcher: createForkLauncher({ log, children }),
+    launcher: createForkLauncher({ log, children, registry }),
     handoff: options.handoff,
     restart: options.restart,
     log,
@@ -165,6 +183,9 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   }
 
   await control.listen();
+  // Owning the control endpoint means no other supervisor for this instance is
+  // alive, so any generation still recorded was orphaned by one that died.
+  await reapStaleGenerations(registryPath, { log });
   log(
     `supervisor ${SUPERVISOR_VERSION} (protocol ${SUPERVISOR_PROTOCOL.major}.${SUPERVISOR_PROTOCOL.minor}) instance=${options.instance} control=${options.endpoint.path}`,
   );

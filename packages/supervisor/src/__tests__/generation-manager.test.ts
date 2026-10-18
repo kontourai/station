@@ -3,6 +3,7 @@
  * backoff schedule, stability reset, give-up, the sequential handoff order,
  * voice drain extension, and rollback.
  */
+import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type Clock,
@@ -29,6 +30,10 @@ type Behavior = {
   /** Ignore SIGTERM (only SIGKILL ends it). */
   ignoreTerm?: boolean;
   voiceSessions?: number;
+  /** Exit, after reporting ready: 0 in the same tick, otherwise after this many ms. */
+  exitAfterReadyMs?: number;
+  /** The listener.bound handle to send on a first boot. */
+  boundHandle?: () => unknown;
 };
 
 class FakeGeneration implements GenerationProcess {
@@ -73,7 +78,7 @@ class FakeGeneration implements GenerationProcess {
         if (message.listeners.length === 0) {
           this.emit(
             { type: 'listener.bound', name: 'api', port: 45_000 },
-            fakeHandle(),
+            (this.behavior.boundHandle ?? fakeHandle)(),
           );
         }
         this.emit({
@@ -81,6 +86,10 @@ class FakeGeneration implements GenerationProcess {
           bootId: `boot-${this.generation}`,
           port: 45_000,
         });
+        const after = this.behavior.exitAfterReadyMs;
+        if (after === 0) this.exit(1, null);
+        else if (after !== undefined)
+          setTimeout(() => this.exit(1, null), after);
       });
     }
     if (message.type === 'drain') {
@@ -123,8 +132,24 @@ class FakeGeneration implements GenerationProcess {
   }
 }
 
-function fakeHandle(): ListenerHandle {
-  return { close: () => {} };
+/** Shaped like Node's raw TCP wrap: not an EventEmitter, class named TCP. */
+class TCP implements ListenerHandle {
+  closed = false;
+  close(): void {
+    this.closed = true;
+  }
+}
+
+function fakeHandle(): TCP {
+  return new TCP();
+}
+
+/** What Node hands the receiver when a core sends its net.Server. */
+class Server extends EventEmitter {
+  closed = false;
+  close(): void {
+    this.closed = true;
+  }
 }
 
 function setup(
@@ -161,6 +186,18 @@ function setup(
   return { manager, generations, log, giveUps, launchTimes };
 }
 
+/** Advances fake time until `promise` settles (a handoff waits out the commit grace). */
+async function settle<T>(promise: Promise<T>, limitMs = 60_000): Promise<T> {
+  let done = false;
+  void promise.finally(() => {
+    done = true;
+  });
+  for (let elapsed = 0; !done && elapsed < limitMs; elapsed += 100) {
+    await vi.advanceTimersByTimeAsync(100);
+  }
+  return promise;
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ now: 0 });
 });
@@ -187,8 +224,8 @@ describe('GenerationManager', () => {
     await manager.start();
     log.length = 0;
     const phases: string[] = [];
-    const result = await manager.handoff({ entry: '/core/b.js' }, (phase) =>
-      phases.push(phase),
+    const result = await settle(
+      manager.handoff({ entry: '/core/b.js' }, (phase) => phases.push(phase)),
     );
     expect(result).toEqual({
       outcome: 'committed',
@@ -234,7 +271,7 @@ describe('GenerationManager', () => {
       outcome: 'refused',
       reason: 'busy',
     });
-    expect(await first).toMatchObject({ outcome: 'committed' });
+    expect(await settle(first)).toMatchObject({ outcome: 'committed' });
   });
 
   it('restarts a crashed generation with doubling backoff and gives up after five failures', async () => {
@@ -339,7 +376,7 @@ describe('GenerationManager', () => {
     expect(generations[0]?.signals).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(generations[0]?.signals).toEqual(['SIGTERM']);
-    expect(await handoff).toMatchObject({
+    expect(await settle(handoff)).toMatchObject({
       outcome: 'committed',
       generation: 2,
     });
@@ -357,7 +394,7 @@ describe('GenerationManager', () => {
     expect(generations[0]?.signals).toEqual(['SIGTERM']);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(generations[0]?.signals).toEqual(['SIGTERM', 'SIGKILL']);
-    expect(await handoff).toMatchObject({ outcome: 'committed' });
+    expect(await settle(handoff)).toMatchObject({ outcome: 'committed' });
   });
 
   it('rolls back to the previous entry when the trial never becomes ready', async () => {
@@ -413,7 +450,7 @@ describe('GenerationManager', () => {
 
     // Once serving again, the active generation's request runs a handoff.
     generations[0]?.emit({ type: 'handoff.request', requestId: 'r3' });
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1_000); // the commit grace
     expect(manager.status().active?.generation).toBe(3);
   });
 
@@ -442,11 +479,136 @@ describe('GenerationManager', () => {
     expect(launches).toBe(1);
     expect(manager.status().state).toBe('serving');
     // No entry named: the committed entry is reused without re-checking.
-    expect(await manager.handoff({})).toMatchObject({
+    expect(await settle(manager.handoff({}))).toMatchObject({
       outcome: 'committed',
       generation: 2,
     });
     expect(launches).toBe(2);
+  });
+
+  it('refuses a listener.bound handle that is a net.Server, and fails that generation', async () => {
+    const servers: Server[] = [];
+    const { manager, launchTimes } = setup((generation) =>
+      generation === 1
+        ? {
+            boundHandle: () => {
+              const server = new Server();
+              servers.push(server);
+              return server;
+            },
+          }
+        : {},
+    );
+    void manager.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // Closed, never held, and the generation is not treated as ready.
+    expect(servers[0]?.closed).toBe(true);
+    expect(manager.heldListenerCount()).toBe(0);
+    expect(manager.status().active).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(launchTimes).toEqual([0, 1_000]);
+    expect(manager.status()).toMatchObject({
+      state: 'serving',
+      active: { generation: 2 },
+      restarts: { consecutiveFailures: 1 },
+      listeners: [{ name: 'api', port: 45_000 }],
+    });
+  });
+
+  it('closes a handle sent with any message that does not take one', async () => {
+    const { manager, generations } = setup();
+    await manager.start();
+    const gen = generations[0];
+    const strays = [
+      'ready',
+      'drain.progress',
+      'drained',
+      'handoff.request',
+      'parked',
+      'no.such.type',
+    ].map((type) => {
+      const handle = fakeHandle();
+      gen?.emit(
+        { type, requestId: 'r', voiceSessions: 0, bootId: 'b', port: 1 },
+        handle,
+      );
+      return [type, handle.closed] as const;
+    });
+    expect(strays).toEqual([
+      ['ready', true],
+      ['drain.progress', true],
+      ['drained', true],
+      ['handoff.request', true],
+      ['parked', true],
+      ['no.such.type', true],
+    ]);
+    await manager.stop();
+  });
+
+  it('restarts a generation that dies between ready and commit instead of wedging', async () => {
+    const { manager, launchTimes } = setup((generation) =>
+      generation === 1 ? { exitAfterReadyMs: 0 } : {},
+    );
+    await manager.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(manager.status().restarts.consecutiveFailures).toBe(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(launchTimes).toEqual([0, 1_000]);
+    expect(manager.status()).toMatchObject({
+      state: 'serving',
+      active: { generation: 2, state: 'serving' },
+    });
+  });
+
+  it.each([
+    { name: 'in the same tick as ready', exitAfterReadyMs: 0 },
+    { name: 'shortly after ready', exitAfterReadyMs: 200 },
+  ])(
+    'rolls back, not commits, a trial that dies $name',
+    async ({ exitAfterReadyMs }) => {
+      const { manager } = setup((generation) =>
+        generation === 2 ? { exitAfterReadyMs } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({});
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await handoff).toMatchObject({
+        outcome: 'rolled-back',
+        reason: 'trial-exited-at-commit',
+        generation: 3,
+      });
+      expect(manager.status()).toMatchObject({
+        state: 'serving',
+        active: { generation: 3 },
+      });
+    },
+  );
+
+  it('counts a crash of the active generation during a handoff as a failure', async () => {
+    const { manager, generations } = setup((generation) =>
+      generation === 2 ? { park: false } : {},
+    );
+    await manager.start();
+    const handoff = manager.handoff({});
+    await vi.advanceTimersByTimeAsync(0);
+    generations[0]?.exit(1, null); // the serving generation crashes mid-handoff
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await handoff).toMatchObject({ outcome: 'rolled-back' });
+    expect(manager.status().restarts.consecutiveFailures).toBe(1);
+  });
+
+  it('caps the stop drain, voice sessions included, at 30s by default', async () => {
+    const { manager, generations } = setup(() => ({
+      exitOnDrain: false,
+      voiceSessions: 1,
+    }));
+    await manager.start();
+    const stopped = manager.stop(10_000);
+    await vi.advanceTimersByTimeAsync(30_000 - 1);
+    expect(generations[0]?.signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(generations[0]?.signals).toEqual(['SIGTERM']);
+    await stopped;
   });
 
   it('drains everything and closes its listeners on stop', async () => {

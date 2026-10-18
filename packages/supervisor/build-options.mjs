@@ -1,5 +1,6 @@
 // esbuild options for the self-contained supervisor bundle. Shared by the
-// root esbuild.config.mjs and the bundle test so both build the same artifact.
+// root esbuild.config.mjs and src/__tests__/bundle.test.ts, which checks the
+// output imports only Node built-ins and runs with no node_modules.
 import { fileURLToPath } from 'node:url';
 
 export const SUPERVISOR_BUNDLE_NAME = 'station-supervisor.js';

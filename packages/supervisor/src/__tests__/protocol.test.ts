@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createConnection } from 'node:net';
+import { createConnection, type Socket } from 'node:net';
 import { join } from 'node:path';
 import * as esbuild from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.t
 import { supervisorBuildOptions } from '../../build-options.mjs';
 import { ControlRefusedError, connectControl } from '../control-client.ts';
 import {
+  CONTROL_MAX_CONNECTIONS,
   CONTROL_MAX_LINE_BYTES,
   resolveControlEndpoint,
   SUPERVISOR_PROTOCOL,
@@ -172,6 +173,67 @@ describe('supervisor control protocol (real processes)', () => {
         message: `line exceeds ${CONTROL_MAX_LINE_BYTES} bytes`,
       },
     ]);
+  }, 60_000);
+
+  it('frees the slot of every refused client, even one that keeps its end open', async () => {
+    const supervisor = await startSupervisor({
+      home: makeTempDir('sup-slots-'),
+    });
+    const hello = `${JSON.stringify({
+      type: 'hello',
+      protocol: SUPERVISOR_PROTOCOL,
+      token: 'f'.repeat(64),
+      client: { kind: 'test', version: '0' },
+      capabilities: [],
+    })}\n`;
+    // Fill every slot with a bad-token client that never closes its own end.
+    // A client that lands while an earlier connection still holds a slot is
+    // dropped before it is refused; it tries again until it gets its refusal.
+    const refusedClient = () =>
+      new Promise<{ socket: Socket; closed: Promise<void> }>(
+        (resolve, reject) => {
+          const socket = createConnection({
+            path: supervisor.endpoint.path,
+            allowHalfOpen: true,
+          });
+          const closed = new Promise<void>((done) =>
+            socket.once('end', () => done()),
+          );
+          socket.once('error', reject);
+          socket.once('data', (chunk) => {
+            if (chunk.toString().includes('"reason":"auth"'))
+              resolve({ socket, closed });
+            else reject(new Error(`unexpected reply: ${chunk}`));
+          });
+          socket.write(hello);
+        },
+      );
+    const refused = await Promise.all(
+      Array.from({ length: CONTROL_MAX_CONNECTIONS }, async () => {
+        let result: { socket: Socket; closed: Promise<void> } | undefined;
+        await vi.waitFor(
+          async () => {
+            result = await refusedClient();
+          },
+          { timeout: 10_000, interval: 50 },
+        );
+        return result as { socket: Socket; closed: Promise<void> };
+      }),
+    );
+    // The supervisor ends every refused connection itself (the clients are
+    // half-open by choice, so `end` is the signal, not `close`).
+    await Promise.all(refused.map(({ closed }) => closed));
+    // Their slots are released promptly: a legitimate client gets in while all
+    // 64 refused clients still hold their own ends open.
+    await vi.waitFor(
+      async () => {
+        const good = await supervisor.connect();
+        expect(good.welcome.type).toBe('welcome');
+        good.close();
+      },
+      { timeout: 10_000, interval: 100 },
+    );
+    expect(refused.every(({ socket }) => !socket.destroyed)).toBe(true);
   }, 60_000);
 
   it('disconnects a client that never says hello', async () => {

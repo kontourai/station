@@ -11,6 +11,7 @@
  * Process creation and time are injected so the algorithm can be tested
  * in-process with a fake clock.
  */
+import { EventEmitter } from 'node:events';
 import { isRecord } from './ndjson.ts';
 import {
   type GenerationState,
@@ -97,6 +98,8 @@ interface Generation {
   voiceSessions: number;
   /** Set once the supervisor itself asked the generation to drain or die. */
   expectingExit: boolean;
+  /** Set when the generation broke the protocol and is being killed. */
+  failed: boolean;
   notify: Set<() => void>;
   exited: Promise<void>;
 }
@@ -107,8 +110,30 @@ function hasExited(gen: Generation): boolean {
   return gen.state === 'exited';
 }
 
-function isListenerHandle(value: unknown): value is ListenerHandle {
+function isClosable(value: unknown): value is ListenerHandle {
   return isRecord(value) && typeof value.close === 'function';
+}
+
+/**
+ * Only Node's raw listening wraps (TCP, or Pipe for a named pipe or Unix
+ * socket) may be held. A core that sends its `net.Server` instead makes Node
+ * rebuild a listening server in this process, which would accept connections
+ * and never answer them.
+ */
+function isRawListenerHandle(value: unknown): value is ListenerHandle {
+  if (!isClosable(value) || value instanceof EventEmitter) return false;
+  const name = (value as { constructor?: { name?: unknown } }).constructor
+    ?.name;
+  return name === 'TCP' || name === 'Pipe';
+}
+
+function closeQuietly(handle: unknown): void {
+  if (!isClosable(handle)) return;
+  try {
+    handle.close();
+  } catch {
+    // Already closed.
+  }
 }
 
 export class GenerationManager {
@@ -263,6 +288,17 @@ export class GenerationManager {
           : 'trial-readiness-timeout';
       return this.finishRollback(null, previousEntry, reason, progress);
     }
+    // A trial that dies as it reports ready, or just after, is a failed trial:
+    // committing it would report success for a generation that is gone.
+    if (
+      (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
+      this.stopping
+    ) {
+      await this.terminate(trial);
+      this.trial = null;
+      const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
+      return this.finishRollback(null, previousEntry, reason, progress);
+    }
 
     this.trial = null;
     this.entry = trial.entry;
@@ -288,7 +324,12 @@ export class GenerationManager {
     this.stopped = (async () => {
       const work: Promise<void>[] = [];
       if (this.trial) work.push(this.terminate(this.trial));
-      if (this.active) work.push(this.drain(this.active, drainDeadlineMs));
+      // A stop must finish inside a service manager's stop timeout, so its
+      // drain, voice sessions included, is capped well below the handoff cap.
+      const cap = this.handoffConfig.stopDrainCapMs;
+      if (this.active) {
+        work.push(this.drain(this.active, Math.min(drainDeadlineMs, cap), cap));
+      }
       await Promise.all(work);
       // A handoff or restart in flight may have launched a generation while
       // the above ran; it sees `stopping` and terminates it, but wait for it.
@@ -361,6 +402,7 @@ export class GenerationManager {
       port: null,
       voiceSessions: 0,
       expectingExit: false,
+      failed: false,
       notify: new Set(),
       exited: new Promise<void>((resolve) => {
         resolveExited = resolve;
@@ -388,17 +430,32 @@ export class GenerationManager {
     handle: unknown,
   ): void {
     if (!isRecord(message) || typeof message.type !== 'string') {
-      if (isListenerHandle(handle)) handle.close();
+      closeQuietly(handle);
       return;
+    }
+    // Only listener.bound carries a handle; close one sent with anything else.
+    if (handle !== undefined && message.type !== 'listener.bound') {
+      closeQuietly(handle);
+      this.log(
+        `closed a stray handle sent with ${message.type} from generation ${gen.id}`,
+      );
     }
     switch (message.type) {
       case 'listener.bound': {
         const { name, port } = message;
+        if (handle !== undefined && !isRawListenerHandle(handle)) {
+          closeQuietly(handle);
+          this.log(
+            `refused listener.bound from generation ${gen.id}: not a raw listening handle (send server._handle, not the server); failing the generation`,
+          );
+          this.failGeneration(gen);
+          return;
+        }
         const acceptable =
           typeof name === 'string' &&
           name.length > 0 &&
           typeof port === 'number' &&
-          isListenerHandle(handle) &&
+          isRawListenerHandle(handle) &&
           (gen.state === 'promoted' || gen.state === 'serving') &&
           !this.listeners.has(name);
         if (acceptable) {
@@ -407,7 +464,7 @@ export class GenerationManager {
             `holding listener ${name} on port ${port} from generation ${gen.id}`,
           );
         } else {
-          if (isListenerHandle(handle)) handle.close();
+          closeQuietly(handle);
           this.log(`ignored listener.bound from generation ${gen.id}`);
         }
         return;
@@ -417,6 +474,7 @@ export class GenerationManager {
         return;
       case 'ready':
         if (
+          !gen.failed &&
           gen.state === 'promoted' &&
           typeof message.bootId === 'string' &&
           typeof message.port === 'number'
@@ -461,14 +519,28 @@ export class GenerationManager {
         return;
       }
       default:
-        // Minor versions may add messages; ignore what this version does not know.
-        if (isListenerHandle(handle)) handle.close();
+      // Minor versions may add messages; ignore what this version does not know.
     }
+  }
+
+  /**
+   * A protocol violation: the generation is killed and its exit handled like
+   * any other failure (a failed boot, or a crash restart if it was active).
+   */
+  private failGeneration(gen: Generation): void {
+    if (gen.failed || gen.state === 'exited') return;
+    gen.failed = true;
+    gen.proc.kill('SIGKILL');
   }
 
   private onGenerationExit(gen: Generation): void {
     if (gen !== this.active || gen.expectingExit) return;
-    if (this.state !== 'serving') return; // A handoff or restart owns this generation.
+    if (this.state === 'handoff') {
+      // The handoff carries on without it, but the crash still counts.
+      this.noteFailure();
+      return;
+    }
+    if (this.state !== 'serving') return; // A restart owns this generation.
     this.clearStableTimer();
     this.active = null;
     void this.bringUp('restarting', true);
@@ -555,7 +627,8 @@ export class GenerationManager {
   }
 
   /** Counts a failure; waits out the backoff. False when giving up or stopping. */
-  private async recordFailureAndWait(): Promise<boolean> {
+  /** Counts one failure; false when that exhausts the failure budget. */
+  private noteFailure(): boolean {
     const now = this.clock.now();
     this.failures = this.failures.filter(
       (at) => now - at < this.restartConfig.failureWindowMs,
@@ -566,6 +639,11 @@ export class GenerationManager {
       this.giveUp();
       return false;
     }
+    return true;
+  }
+
+  private async recordFailureAndWait(): Promise<boolean> {
+    if (!this.noteFailure()) return false;
     const backoff = Math.min(
       this.restartConfig.initialBackoffMs * 2 ** (this.consecutiveFailures - 1),
       this.restartConfig.maxBackoffMs,
@@ -628,7 +706,11 @@ export class GenerationManager {
     };
   }
 
-  private async drain(gen: Generation, deadlineMs: number): Promise<void> {
+  private async drain(
+    gen: Generation,
+    deadlineMs: number,
+    capMs: number = this.handoffConfig.voiceDrainCapMs,
+  ): Promise<void> {
     if (gen.state === 'exited') return;
     gen.expectingExit = true;
     this.setGenerationState(gen, 'draining');
@@ -638,11 +720,8 @@ export class GenerationManager {
     for (;;) {
       if (await this.waitForExit(gen, budget)) return;
       const elapsed = this.clock.now() - started;
-      if (
-        gen.voiceSessions > 0 &&
-        elapsed < this.handoffConfig.voiceDrainCapMs
-      ) {
-        budget = Math.min(1_000, this.handoffConfig.voiceDrainCapMs - elapsed);
+      if (gen.voiceSessions > 0 && elapsed < capMs) {
+        budget = Math.min(1_000, capMs - elapsed);
         continue;
       }
       break;

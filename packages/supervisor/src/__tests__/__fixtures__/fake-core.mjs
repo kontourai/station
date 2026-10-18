@@ -15,6 +15,9 @@
  *   FAKE_CORE_VOICE_SESSIONS=<n>    report n live voice sessions while draining (never ends them)
  *   FAKE_CORE_EXIT_ON_BOOT=1        exit(1) before parking
  *   FAKE_CORE_REQUEST_HANDOFF=1     generation 1 sends handoff.request once ready
+ *   FAKE_CORE_SEND_SERVER=1         send the net.Server itself with listener.bound (a protocol violation)
+ *   FAKE_CORE_EXIT_AFTER_READY=1    exit(1) in the same tick as reporting ready
+ *   FAKE_CORE_IGNORE_DISCONNECT=1   keep running when the supervisor's IPC channel closes (a protocol violation)
  *
  * @import { CoreToSupervisorMessage, SupervisorToCoreMessage } from '../../protocol.ts'
  */
@@ -86,6 +89,7 @@ function reportReady() {
   const boundPort =
     typeof address === 'object' && address ? address.port : port;
   send({ type: 'ready', bootId, port: boundPort });
+  if (process.env.FAKE_CORE_EXIT_AFTER_READY === '1') process.exit(1);
   // Models the in-app update asking for a handoff once new code is on disk.
   if (process.env.FAKE_CORE_REQUEST_HANDOFF === '1' && generation === 1)
     requestHandoff();
@@ -144,7 +148,9 @@ process.on(
           server.listen(port, host, () => {
             send(
               { type: 'listener.bound', name: 'api', port },
-              /** @type {any} */ (server)._handle,
+              process.env.FAKE_CORE_SEND_SERVER === '1'
+                ? server
+                : /** @type {any} */ (server)._handle,
             );
             reportReady();
           });
@@ -177,6 +183,8 @@ server.on('error', (error) => {
   process.exit(1);
 });
 process.on('SIGTERM', () => process.exit(0));
-process.on('disconnect', () => process.exit(0));
+process.on('disconnect', () => {
+  if (process.env.FAKE_CORE_IGNORE_DISCONNECT !== '1') process.exit(0);
+});
 
 send({ type: 'parked' });

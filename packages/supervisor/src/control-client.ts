@@ -1,8 +1,9 @@
 /**
  * Minimal control-channel client, for the CLI, the tray bridge, and tests.
  */
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
+import { dirname } from 'node:path';
 import { encodeLine, isRecord, NdjsonDecoder } from './ndjson.ts';
 import {
   CONTROL_MAX_LINE_BYTES,
@@ -49,13 +50,47 @@ export interface ControlConnection {
   close(): void;
 }
 
+/**
+ * On Unix, the socket's directory must belong to this user and be closed to
+ * group and others, so the token is not handed to a socket another user
+ * could have planted. Windows named pipes have no such directory; see the
+ * decision record for that accepted gap.
+ */
+function socketDirectoryProblem(path: string): string | null {
+  if (process.platform === 'win32') return null;
+  const dir = dirname(path);
+  let stat: ReturnType<typeof lstatSync>;
+  try {
+    stat = lstatSync(dir);
+  } catch {
+    return `${dir} does not exist`;
+  }
+  const uid = process.getuid?.();
+  if (stat.isSymbolicLink() || !stat.isDirectory())
+    return `${dir} is not private (not a real directory)`;
+  if (uid !== undefined && stat.uid !== uid)
+    return `${dir} is not private (owned by uid ${stat.uid})`;
+  if ((stat.mode & 0o077) !== 0) {
+    return `${dir} is not private (mode ${(stat.mode & 0o777).toString(8)})`;
+  }
+  return null;
+}
+
 export function connectControl(
   options: ControlClientOptions,
 ): Promise<ControlConnection> {
+  // Check where the token is going before reading or sending it.
+  const unsafe = socketDirectoryProblem(options.path);
+  if (unsafe) {
+    return Promise.reject(
+      new Error(`refusing to send the token: socket directory ${unsafe}`),
+    );
+  }
   const token =
     options.token ?? readFileSync(options.tokenPath ?? '', 'utf8').trim();
   return new Promise((resolve, reject) => {
     const socket: Socket = createConnection(options.path);
+    let failure: Error | null = null;
     const decoder = new NdjsonDecoder(CONTROL_MAX_LINE_BYTES);
     const listeners = new Set<(message: ControlServerMessage) => void>();
     let welcomed = false;
@@ -75,9 +110,35 @@ export function connectControl(
       if (!welcomed)
         reject(new Error('supervisor closed the connection before welcome'));
     });
+    const fail = (error: Error) => {
+      failure = error;
+      clearTimeout(timer);
+      if (!welcomed) reject(error);
+      socket.destroy();
+    };
     socket.on('data', (chunk: Buffer) => {
-      for (const line of decoder.push(chunk)) {
-        const message = JSON.parse(line) as ControlServerMessage;
+      let lines: string[];
+      try {
+        lines = decoder.push(chunk);
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      for (const line of lines) {
+        let message: ControlServerMessage;
+        try {
+          message = JSON.parse(line) as ControlServerMessage;
+          if (!isRecord(message) || typeof message.type !== 'string') {
+            throw new Error('not a message object');
+          }
+        } catch {
+          fail(
+            new Error(
+              `malformed line from the supervisor: ${line.slice(0, 120)}`,
+            ),
+          );
+          return;
+        }
         if (!welcomed) {
           clearTimeout(timer);
           if (message.type === 'welcome') {
@@ -128,7 +189,7 @@ export function connectControl(
             });
             closed.then(() => {
               off();
-              rejectRequest(new Error('control connection closed'));
+              rejectRequest(failure ?? new Error('control connection closed'));
             });
             socket.write(encodeLine(message));
           }),

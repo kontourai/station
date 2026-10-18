@@ -50,14 +50,21 @@ reasoning, phases, and verification plan.
 - A handoff runs only a `.js` or `.mjs` entry whose real path is strictly
   inside the supervisor's build root (`--build-root`, by default the
   directory of the initial entry). Anything else is refused before a process
-  starts, so holding the control token does not let a client start an
-  arbitrary program as the Station server. A rollback relaunches only the
-  previously committed entry.
+  starts, and a rollback relaunches only the previously committed entry.
+  This bounds where the entry file lives, not what code it runs: a
+  same-user process that can write into the build root can still change
+  what starts. That is out of scope here and tracked for phase 4.
 - Still open for delivery phase 4: ADR 0015's finding applies when Desktop
   becomes a client. Desktop must not trust a listener because it answers on
   loopback, and a capability readable by agent-controlled processes is not
   proof of the backend's identity. The control token lives in the Station
   home, which agents running as the same user can read. How Desktop verifies
   its backend must be settled before Desktop adopts the service.
+- Accepted gaps on Windows, tracked for phase 4: Node cannot verify which
+  process serves a named pipe, so a client cannot confirm the pipe belongs
+  to the supervisor before sending its token. Node also cannot set an ACL
+  on the token file, so the token's protection there is only the Station
+  home directory's own ACL. The 0600 token and private-directory checks
+  apply on Unix only; nothing here claims an equivalent on Windows.
 - Until the core server has a supervised mode and the launch modes adopt the
   supervisor, the lifecycle described in ADR 0015 remains what ships.

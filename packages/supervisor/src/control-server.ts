@@ -50,6 +50,8 @@ import {
 /** Upper bound for any client-supplied duration. */
 const MAX_REQUEST_DURATION_MS = 60 * 60_000;
 const MAX_ID_LENGTH = 128;
+/** A refused client is disconnected within this time even if it never reads. */
+const REFUSED_CLOSE_TIMEOUT_MS = 1_000;
 
 export interface ControlHandlers {
   status(): SupervisorStatus;
@@ -68,24 +70,64 @@ export interface ControlServerOptions {
   handlers: ControlHandlers;
   platform?: NodeJS.Platform;
   log?: (message: string) => void;
+  /** The uid directories must belong to. Tests replace it to exercise the foreign-owner refusal. */
+  currentUid?: () => number | undefined;
 }
 
-function ensurePrivateDir(dir: string, platform: NodeJS.Platform): void {
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (platform === 'win32') return;
-  const stat = lstatSync(dir);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error(
-      `refusing supervisor directory that is not a real directory: ${dir}`,
-    );
+/**
+ * Creates `dir` at 0700 when it is missing. An existing directory is used only
+ * if it is already private to this user; it is never chmodded, because it may
+ * not be ours (for example `--control ~/x.sock` names the home directory).
+ */
+function ensurePrivateDir(
+  dir: string,
+  platform: NodeJS.Platform,
+  currentUid: () => number | undefined,
+): void {
+  let stat: ReturnType<typeof lstatSync> | null = null;
+  try {
+    stat = lstatSync(dir);
+  } catch {
+    stat = null;
   }
-  const uid = process.getuid?.();
+  if (!stat) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (platform === 'win32') return;
+    stat = lstatSync(dir);
+  }
+  if (platform === 'win32') {
+    if (!stat.isDirectory())
+      throw new Error(`refusing supervisor directory ${dir}: not a directory`);
+    return;
+  }
+  if (stat.isSymbolicLink()) {
+    throw new Error(`refusing supervisor directory ${dir}: it is a symlink`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`refusing supervisor directory ${dir}: not a directory`);
+  }
+  const uid = currentUid();
   if (uid !== undefined && stat.uid !== uid) {
     throw new Error(
-      `refusing supervisor directory owned by another user: ${dir}`,
+      `refusing supervisor directory ${dir}: owned by uid ${stat.uid}, not ${uid}`,
     );
   }
-  if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+  if ((stat.mode & 0o077) !== 0) {
+    throw new Error(
+      `refusing supervisor directory ${dir}: mode ${(stat.mode & 0o777).toString(8)} is broader than 700`,
+    );
+  }
+}
+
+/**
+ * Ends a refused connection and destroys it once the reply is flushed, or
+ * after a short bound if the peer never reads, so it cannot hold a slot.
+ */
+function closeAfterReply(socket: Socket): void {
+  const timer = setTimeout(() => socket.destroy(), REFUSED_CLOSE_TIMEOUT_MS);
+  timer.unref();
+  socket.once('close', () => clearTimeout(timer));
+  socket.end(() => socket.destroy());
 }
 
 /** Writes the token atomically with mode 0600. */
@@ -150,9 +192,10 @@ export class ControlServer {
 
   async listen(): Promise<void> {
     const { endpoint } = this.options;
-    ensurePrivateDir(dirname(endpoint.tokenPath), this.platform);
+    const currentUid = this.options.currentUid ?? (() => process.getuid?.());
+    ensurePrivateDir(dirname(endpoint.tokenPath), this.platform, currentUid);
     if (this.platform !== 'win32') {
-      ensurePrivateDir(dirname(endpoint.path), this.platform);
+      ensurePrivateDir(dirname(endpoint.path), this.platform, currentUid);
       let existing: ReturnType<typeof lstatSync> | null = null;
       try {
         existing = lstatSync(endpoint.path);
@@ -246,7 +289,7 @@ export class ControlServer {
 
     const refuse = (reason: RefusedReason) => {
       send({ type: 'refused', reason, protocol: { ...SUPERVISOR_PROTOCOL } });
-      socket.end();
+      closeAfterReply(socket);
     };
     const error = (code: ErrorCode, message: string, id?: string) => {
       send(
@@ -280,7 +323,7 @@ export class ControlServer {
       } catch (cause) {
         if (cause instanceof LineTooLongError) {
           error('line-too-long', cause.message);
-          socket.end();
+          closeAfterReply(socket);
           return;
         }
         throw cause;

@@ -24,6 +24,8 @@ const DURATION_FLAGS = {
   'readiness-timeout-ms': ['handoff', 'readinessTimeoutMs'],
   'drain-deadline-ms': ['handoff', 'drainDeadlineMs'],
   'kill-grace-ms': ['handoff', 'killGraceMs'],
+  'commit-grace-ms': ['handoff', 'commitGraceMs'],
+  'stop-drain-cap-ms': ['handoff', 'stopDrainCapMs'],
   'restart-backoff-ms': ['restart', 'initialBackoffMs'],
   'restart-max-backoff-ms': ['restart', 'maxBackoffMs'],
   'restart-stable-ms': ['restart', 'stableAfterMs'],
@@ -33,8 +35,24 @@ const DURATION_FLAGS = {
 
 const MAX_FLAG_VALUE = 24 * 60 * 60_000;
 
-function fail(message: string): never {
-  process.stderr.write(`station-supervisor: ${message}\n`);
+const USAGE = [
+  'usage: station-supervisor --entry <core entry> --home <dir> --instance <id>',
+  '         [--build-root <dir>] [--control <path>] [--<tuning flag> <ms>]',
+  '',
+  '  --entry        core server entry for the first generation (.js or .mjs)',
+  '  --home         Station home; the control socket and token live in <home>/run',
+  '  --instance     instance id',
+  "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
+  '  --control      control socket path (default: derived from --home and --instance)',
+  `  tuning flags:  ${Object.keys(DURATION_FLAGS)
+    .map((flag) => `--${flag}`)
+    .join(', ')}`,
+].join('\n');
+
+function fail(message: string, withUsage = false): never {
+  process.stderr.write(
+    `station-supervisor: ${message}\n${withUsage ? `${USAGE}\n` : ''}`,
+  );
   process.exit(2);
 }
 
@@ -51,28 +69,45 @@ function parsePositiveInteger(flag: string, raw: string): number {
   return value;
 }
 
-async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: {
-      entry: { type: 'string' },
-      home: { type: 'string' },
-      instance: { type: 'string' },
-      control: { type: 'string' },
-      'build-root': { type: 'string' },
-      ...Object.fromEntries(
-        Object.keys(DURATION_FLAGS).map((flag) => [
-          flag,
-          { type: 'string' as const },
-        ]),
-      ),
-    },
-    strict: true,
-  });
-  const raw = values as Record<string, string | undefined>;
-  if (!raw.entry || !raw.home || !raw.instance) {
+function parseCommandLine(): Record<string, string | boolean | undefined> {
+  try {
+    return parseArgs({
+      options: {
+        help: { type: 'boolean', short: 'h' },
+        entry: { type: 'string' },
+        home: { type: 'string' },
+        instance: { type: 'string' },
+        control: { type: 'string' },
+        'build-root': { type: 'string' },
+        ...Object.fromEntries(
+          Object.keys(DURATION_FLAGS).map((flag) => [
+            flag,
+            { type: 'string' as const },
+          ]),
+        ),
+      },
+      strict: true,
+    }).values;
+  } catch (error) {
+    // parseArgs explains the problem in its message; no stack trace for a typo.
+    const message = error instanceof Error ? error.message : String(error);
     fail(
-      'usage: --entry <core entry> --home <dir> --instance <id> [--build-root <dir>] [--control <path>]',
+      message.replace(/^Unknown option/, 'unknown option').split('. ')[0] ??
+        message,
+      true,
     );
+  }
+}
+
+async function main(): Promise<void> {
+  const parsed = parseCommandLine();
+  if (parsed.help === true) {
+    process.stdout.write(`${USAGE}\n`);
+    process.exit(0);
+  }
+  const raw = parsed as Record<string, string | undefined>;
+  if (!raw.entry || !raw.home || !raw.instance) {
+    fail('--entry, --home, and --instance are required', true);
   }
   if (!isValidInstanceId(raw.instance))
     fail(`invalid --instance: ${raw.instance}`);

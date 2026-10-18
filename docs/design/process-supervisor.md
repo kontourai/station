@@ -81,7 +81,10 @@ product decisions.
   restart wait in the kernel backlog instead of being refused. Connections
   go straight to the core server, so there is no proxy hop.
   - A `net.Server` listening in the supervisor would accept connections
-    itself, so the supervisor holds only the raw handle.
+    itself, so the supervisor holds only the raw handle. A core must send
+    `server._handle`, not the server: Node turns a sent `net.Server` into a
+    listening server in the receiver. The supervisor refuses anything but a
+    raw TCP or Pipe handle, closes it, and fails that generation.
   - Node's `cluster` module was prototyped and rejected: sibling
     generations' ephemeral `listen(0)` calls collided.
   - `_handle` is a Node internal. A guard test
@@ -100,8 +103,9 @@ product decisions.
      stays in the core server rather than becoming a workload.
   3. When N has exited, `promote` N+1 and send it each held handle with
      `listener.adopt`. N+1 boots and reports `ready` with its boot id.
-  4. Commit. If N+1 exits or misses its readiness timeout, the supervisor
-     kills it, starts N's entry again as a new generation, and reports
+  4. Commit, once N+1 has stayed up for a short grace after `ready`. If N+1
+     exits before then or misses its readiness timeout, the supervisor kills
+     it, starts N's entry again as a new generation, and reports
      `rolled-back`.
 
   Clients wait during the swap but are not refused. Draining sets
@@ -121,10 +125,20 @@ product decisions.
 
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
-  serving. After five failures within five minutes the supervisor gives up
-  and exits nonzero, so its launcher's restart policy takes over. Stopping
-  the supervisor (SIGTERM or the `stop` request) drains the active generation
-  and exits zero. This absorbs the archive launcher's pending, trial,
+  serving. A crash during a handoff counts toward the same failure budget.
+  After five failures within five minutes the supervisor gives up and exits
+  nonzero, so its launcher's restart policy takes over. Stopping the
+  supervisor (SIGTERM or the `stop` request) drains the active generation
+  and exits zero. That drain, voice calls included, is capped at 30 seconds
+  by default, below service managers' stop timeouts; the long voice cap
+  applies only to handoffs.
+
+  A core must exit when its IPC channel disconnects, which is how it learns
+  the supervisor has died. As a fallback, the supervisor records each
+  generation's pid and process start time in its run directory. A new
+  supervisor terminates a recorded generation that is still the same
+  process, so an orphan cannot keep holding the ports, and leaves a pid
+  whose start time differs alone, because that pid has been reused. This absorbs the archive launcher's pending, trial,
   commit, rollback transaction and the Desktop and `service run` restart
   loops.
 - **Workloads.** A workload is a process whose lifetime the supervisor owns,
@@ -149,7 +163,7 @@ product decisions.
   `instances.json` record. Because it owns every engine, the boot sweep only
   matters after a supervisor crash.
 - **Control channel.** A versioned protocol on a local socket in the Station
-  home (mode 0600), or a named pipe on Windows. The core server, the CLI, and
+  home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
   the tray are its clients.
   - The socket is `<home>/run/supervisor-<instance>.sock`. When that path
     exceeds the platform's socket path limit (104 bytes on macOS), a hashed
@@ -158,15 +172,25 @@ product decisions.
   - On Windows the pipe is `\\.\pipe\station-supervisor-<hash>`, named from
     a hash of the home and instance.
   - Every connection starts with `hello`, carrying the protocol version and
-    the token from `<home>/run/supervisor-<instance>.token` (mode 0600). A
-    different major version or a wrong token is refused.
+    the token from `<home>/run/supervisor-<instance>.token` (mode 0600 on
+    Unix; Windows relies on the home directory's ACL). A different major
+    version or a wrong token is refused, and the supervisor disconnects a
+    refused client promptly so it cannot hold a connection slot.
+  - The supervisor creates its run directories at 0700 and refuses an
+    existing one that is a symlink, belongs to another user, or is open to
+    group or others; it never changes the mode of a directory it did not
+    create. On Unix the client checks the same of the socket's directory
+    before sending the token.
   - Requests are `status`, `handoff` (streams progress, then a result of
     `committed`, `rolled-back`, or `refused`), `stop`, and, with the
     `events` capability, `subscribe`.
   - A handoff entry must be a `.js` or `.mjs` file whose real path is inside
     the supervisor's build root; otherwise it is refused as
-    `entry-outside-build-root` without starting a process. A token holder
-    therefore cannot run an arbitrary program as the Station server.
+    `entry-outside-build-root` without starting a process. This bounds where
+    the entry file lives, not what code runs: a process that can write into
+    the build root can still change what the supervisor starts. Same-user
+    write access to the build root is out of scope here and tracked for
+    phase 4.
   - The types and constants are exported from
     [`@kontourai/station-supervisor/protocol`](../../packages/supervisor/src/protocol.ts).
 

@@ -14,6 +14,11 @@
  * ignore fields and capabilities it does not know. A different major is
  * refused at the handshake.
  *
+ * A core generation must exit when its IPC channel disconnects (Node's
+ * `process.on('disconnect')`): that is how it learns its supervisor is gone.
+ * A core that keeps running holds the instance's ports. The next supervisor
+ * reaps such an orphan as a fallback, but that is not a substitute.
+ *
  * This module is imported by other packages through the `/protocol` subpath,
  * so it holds types, constants, and pure derivations only.
  */
@@ -54,6 +59,8 @@ export interface HandoffTimings {
   drainDeadlineMs: number;
   voiceDrainCapMs: number;
   killGraceMs: number;
+  commitGraceMs: number;
+  stopDrainCapMs: number;
 }
 
 export interface RestartPolicy {
@@ -75,6 +82,13 @@ export const HANDOFF_DEFAULTS: Readonly<HandoffTimings> = Object.freeze({
   voiceDrainCapMs: 10 * 60_000,
   /** After SIGTERM, a generation that has not exited is killed. */
   killGraceMs: 5_000,
+  /** A trial that exits this soon after `ready` is a failed trial, not committed. */
+  commitGraceMs: 1_000,
+  /**
+   * Stopping the supervisor drains for at most this long, voice sessions
+   * included, so it finishes inside service managers' stop timeouts.
+   */
+  stopDrainCapMs: 30_000,
 });
 
 export const RESTART_DEFAULTS: Readonly<RestartPolicy> = Object.freeze({
@@ -275,6 +289,15 @@ export type ControlServerMessage =
 // ---------------------------------------------------------------------------
 // Generation IPC: core -> supervisor. A handle accompanies `listener.bound`.
 
+/**
+ * Sent with the listening handle as the second argument of `process.send`.
+ * The handle must be the server's raw handle, `server._handle` (a TCP or Pipe
+ * wrap), never the `net.Server` itself: sending the server makes Node rebuild
+ * a listening server in the supervisor, which would accept connections and
+ * never answer them. The supervisor refuses anything but a raw handle, closes
+ * it, and fails the generation. No other message may carry a handle; one that
+ * does is closed.
+ */
 export interface ListenerBoundMessage {
   type: 'listener.bound';
   name: string;
