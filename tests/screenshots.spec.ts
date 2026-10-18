@@ -1909,9 +1909,10 @@ function telemetryConsentScreens(): Screen[] {
             expect(promptBox.y).toBeGreaterThanOrEqual(
               tierBox.y + tierBox.height,
             );
+            await page.locator('.telemetry-feedback').scrollIntoViewIfNeeded();
             await expect(
               page.getByRole('button', { name: 'Cancel', exact: true }),
-            ).toBeVisible();
+            ).toBeInViewport();
             return;
           }
           if (mode === 'outbox') {
