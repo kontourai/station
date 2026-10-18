@@ -1714,13 +1714,15 @@ test.each([
     const eventBus = new EventBus();
     class WeakAdapter extends GateTestAdapter {
       readonly sent: Parameters<GateTestAdapter['sendTurn']>[0][] = [];
-      override async hasSession() {
-        return true;
+      readonly opened = new Set<string>();
+      override async hasSession(threadId: string) {
+        return this.opened.has(threadId);
       }
       override async startSession(
         input: Parameters<GateTestAdapter['startSession']>[0],
       ) {
         const session = await super.startSession(input);
+        this.opened.add(input.threadId);
         this.events.push({
           eventId: `session:${input.threadId}`,
           provider: 'claude',
@@ -2009,10 +2011,18 @@ test.each([
               .all(turnDedupKey('child', 'B')),
           ).toEqual(before.dedup);
         } else {
-          expect(
-            evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
-              .satisfied,
-          ).toBe(true);
+          const settled = evaluateSessionWait(
+            waitPorts,
+            'child',
+            'turn-settled',
+            cursor,
+          );
+          expect(settled.satisfied).toBe(true);
+          expect(settled.view.settledTurn?.invocationId).toBe(
+            adapter.sent.find(
+              (input) => input.input === (mode === 'older-exact' ? 'A' : 'B'),
+            )?.invocationId,
+          );
           parentBusy = false;
           await delivery.reconcile();
           expect(starts).toHaveLength(1);
