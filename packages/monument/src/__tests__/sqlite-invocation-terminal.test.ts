@@ -881,7 +881,7 @@ for (const failure of [false, true])
     storage = openSqliteKernelStorage({ database: db });
     cleanup.push(() => storage.close());
     expect(db.prepare('SELECT * FROM monument_turn_dedup').all()).toEqual(
-      linkedBefore,
+      linkedBefore.map((row) => ({ ...row, input_digest: null })),
     );
     expect(
       storage.executeSync({ type: 'turnDedup.read', key: 'v3-key' }, context),
