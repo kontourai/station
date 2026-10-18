@@ -29,7 +29,6 @@ import {
   serializeActiveChats,
 } from './active-chats-state';
 
-import { backgroundTasksStore } from './background-tasks-store';
 import { conversationsStore } from './conversations-store';
 
 export type {
@@ -437,25 +436,10 @@ export class ActiveChatsStore {
   removeChat(sessionId: string) {
     const removed = this.chats[sessionId];
     delete this.chats[sessionId];
-    if (
-      removed?.conversationId &&
-      !Object.values(this.chats).some(
-        (chat) => chat.conversationId === removed.conversationId,
-      )
-    )
-      this.activityByConversation.delete(removed.conversationId);
     this.draftRevisions.delete(sessionId);
     // A chat re-created under the same id is a different chat, and is owed its
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
-    const threadIds = new Set([sessionId]);
-    if (removed?.currentSessionId) threadIds.add(removed.currentSessionId);
-    if (removed?.conversationId) threadIds.add(removed.conversationId);
-    for (const threadId of [...threadIds]) {
-      if (this.getChatKeyForExecutionSession(threadId))
-        threadIds.delete(threadId);
-    }
-    backgroundTasksStore.forgetChat(threadIds);
     if (
       removed?.agentSlug &&
       removed.conversationId &&

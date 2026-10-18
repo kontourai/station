@@ -46,7 +46,7 @@ describe('ActiveChatsStore', () => {
     vi.useRealTimers();
   });
 
-  test('forgets activity after the final chat for a conversation closes', () => {
+  test('reopened chats retain known activity and its sequence fence until a newer carrier arrives', () => {
     const store = new ActiveChatsStore({ storage: new MemoryStorage() });
     const metadata = {
       agentSlug: 'assistant',
@@ -68,7 +68,23 @@ describe('ActiveChatsStore', () => {
     store.removeChat('second');
     store.removeChat('third');
     store.initChat('reopened', metadata);
-    expect(store.getSnapshot().reopened.conversationActivity).toBeUndefined();
+    expect(
+      store.getSnapshot().reopened.conversationActivity?.asOfSequence,
+    ).toBe(10);
+    store.applyConversationActivity({
+      conversationId: 'conv',
+      asOfSequence: 9,
+    });
+    expect(
+      store.getSnapshot().reopened.conversationActivity?.asOfSequence,
+    ).toBe(10);
+    store.applyConversationActivity({
+      conversationId: 'conv',
+      asOfSequence: 11,
+    });
+    expect(
+      store.getSnapshot().reopened.conversationActivity?.asOfSequence,
+    ).toBe(11);
   });
 
   test('composer draft capabilities are revision-bound and single-use', () => {

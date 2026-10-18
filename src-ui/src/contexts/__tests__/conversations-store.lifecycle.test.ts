@@ -43,10 +43,12 @@ function open(key: string) {
 afterEach(() => {
   for (const key of Object.keys(activeChatsStore.getSnapshot()))
     activeChatsStore.removeChat(key);
+  backgroundTasksStore.reset();
+  activeChatsStore.clearConversationActivity();
   fetchMessages.mockReset();
 });
 
-test('closing the last chat retires its transcript, status and background task bindings', async () => {
+test('closing the last chat retires its transcript and status while preserving live delegate state', async () => {
   open('first');
   open('second');
   fetchMessages.mockResolvedValue(messages);
@@ -74,10 +76,13 @@ test('closing the last chat retires its transcript, status and background task b
   expect(
     conversationsStore.getSnapshot().statuses['assistant:conv'],
   ).toBeUndefined();
-  expect(backgroundTasksStore.getSnapshot().entries.delegate).toBeUndefined();
-  expect(
-    backgroundTasksStore.getSnapshot().delegateParents.delegate,
-  ).toBeUndefined();
+  expect(backgroundTasksStore.getSnapshot().entries.delegate).toMatchObject({
+    state: 'running',
+    chatThreadId: 'conv',
+  });
+  expect(backgroundTasksStore.getSnapshot().delegateParents.delegate).toBe(
+    'conv',
+  );
 });
 
 test.each([false, true])(
@@ -285,4 +290,47 @@ test('two guarded opens of the same conversation both succeed', async () => {
   expect(await second).toBe(true);
   finishFirst(messages);
   expect(await first).toBe(true);
+});
+
+test('the SDK open hook reuses known turn activity while refetching a closed conversation transcript', async () => {
+  open('first');
+  activeChatsStore.applyConversationActivity({
+    conversationId: 'conv',
+    asOfSequence: 10,
+    currentThreadId: 'conv',
+    openTurn: {
+      turnId: 'running-turn',
+      threadId: 'conv',
+      startedAt: '2026-07-29T00:00:00.000Z',
+    },
+  });
+  activeChatsStore.removeChat('first');
+  const refreshed: MessageData[] = [
+    { role: 'assistant', content: 'refetched transcript' },
+  ];
+  fetchMessages.mockResolvedValue(refreshed);
+  const queryClient = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ConversationsProvider, null, children),
+    );
+  const { result, unmount } = renderHook(() => useOpenConversation(''), {
+    wrapper,
+  });
+  try {
+    const id = await result.current('conv', 'assistant', 'Assistant');
+    expect(id).not.toBeNull();
+    const chat = activeChatsStore.getSnapshot()[id!];
+    expect(fetchMessages).toHaveBeenCalledOnce();
+    expect(chat.messages).toEqual([
+      expect.objectContaining({ content: 'refetched transcript' }),
+    ]);
+    expect(chat.conversationActivity?.openTurn?.turnId).toBe('running-turn');
+    expect(chat.conversationActivity?.asOfSequence).toBe(10);
+  } finally {
+    unmount();
+    queryClient.clear();
+  }
 });

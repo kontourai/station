@@ -245,12 +245,10 @@ function pruneFinished(
   const excess = finishedIds.length - FINISHED_LIMIT_PER_CHAT;
   if (excess <= 0) return { ...state, entries };
   const next = { ...entries };
-  const delegateParents = { ...state.delegateParents };
   for (let i = 0; i < excess; i++) {
     delete next[finishedIds[i]];
-    delete delegateParents[finishedIds[i]];
   }
-  return { ...state, entries: next, delegateParents };
+  return { ...state, entries: next };
 }
 
 function foldToolStarted(
@@ -563,13 +561,11 @@ export function reconcileBackgroundTasksSnapshot(
   payload: OrchestrationSnapshotPayload,
 ): BackgroundTasksState {
   let next = state;
-  const snapshotDelegateIds = new Set<string>();
   for (const session of payload.sessions) {
     const child = snapshotDelegateChildWork(session);
     const parentTaskId = child?.parent?.taskId;
     if (!child || !parentTaskId) continue;
     const taskId = snapshotSessionDelegateThreadId(session);
-    snapshotDelegateIds.add(taskId);
 
     const existing = next.entries[session.threadId];
     const isActive = child.status === 'running';
@@ -656,14 +652,6 @@ export function reconcileBackgroundTasksSnapshot(
       stale.map((entry) => entry.chatThreadId),
     ))
       next = pruneFinished(next, next.entries, chatThreadId);
-  }
-  const orphanedBindings = Object.keys(next.delegateParents).filter(
-    (taskId) => !next.entries[taskId] && !snapshotDelegateIds.has(taskId),
-  );
-  if (orphanedBindings.length) {
-    const delegateParents = { ...next.delegateParents };
-    for (const taskId of orphanedBindings) delete delegateParents[taskId];
-    next = { ...next, delegateParents };
   }
   return next;
 }
@@ -752,20 +740,6 @@ export class BackgroundTasksStore {
 
   reconcileSnapshot(payload: OrchestrationSnapshotPayload) {
     this.commit(reconcileBackgroundTasksSnapshot(this.state, payload));
-  }
-
-  forgetChat(threadIds: ReadonlySet<string>) {
-    const entries = Object.fromEntries(
-      Object.entries(this.state.entries).filter(
-        ([, entry]) => !threadIds.has(entry.chatThreadId),
-      ),
-    );
-    const delegateParents = Object.fromEntries(
-      Object.entries(this.state.delegateParents).filter(
-        ([, parent]) => !threadIds.has(parent),
-      ),
-    );
-    this.commit({ entries, delegateParents });
   }
 
   /** Test-only: clears all tracked entries/bindings between test cases. */
