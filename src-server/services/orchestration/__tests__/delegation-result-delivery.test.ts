@@ -1247,12 +1247,18 @@ test.each([
   'queued-malformed',
   'queued-unknown',
   'consistent',
+  ...(['old', 'v2'] as const).flatMap((format) =>
+    (['pending', 'claimed', 'consumed', 'delivered'] as const).map(
+      (state) => `compat-${format}-${state}` as const,
+    ),
+  ),
 ] as const)(
   'real result delivery validates %s invocation scope before its first bounded output effect',
   async (order) => {
     const eventStore = new EventStore(':memory:');
     const store = eventStore.delegationResultStore();
     const starts: string[] = [];
+    const deliveryKeys: string[] = [];
     const owned = eventStore.sessionTurnBoundaryAuthority().reserve!(
       'child',
       '2030-01-01T00:00:00Z',
@@ -1307,8 +1313,10 @@ test.each([
         return read.kind !== 'available' || read.active;
       },
       sessionOwnerId: () => 'owner',
-      start: async ({ text }) => {
+      start: async ({ text, clientTurnId }) => {
         starts.push(text);
+        deliveryKeys.push(clientTurnId);
+        if (order.endsWith('-claimed')) return { outcome: 'indeterminate' };
         return {
           outcome: 'started',
           conversationId: 'parent',
@@ -1428,6 +1436,42 @@ test.each([
             5,
           );
       eventStore.appendEvent(done);
+      if (order.startsWith('compat-')) {
+        const [, format, state] = order.split('-');
+        parentBusy = state === 'pending' || state === 'consumed';
+        await delivery.reconcile();
+        if (state === 'consumed') store.consume('child');
+        const original = store.listForChild('child')[0];
+        if (!original) throw new Error('actual recorded result prerequisite');
+        expect(original.state).toBe(state);
+        const key =
+          format === 'old'
+            ? `settled:child:invocation-${invocationId}`
+            : JSON.stringify([
+                'station.delegation-result/2',
+                'child',
+                'invocation',
+                invocationId,
+              ]);
+        eventStore['db']
+          .prepare('UPDATE delegation_result_deliveries SET transition_key=?')
+          .run(key);
+        const before = store.listForChild('child')[0]!;
+        parentBusy = false;
+        const calls = starts.length;
+        await delivery.reconcile();
+        expect(store.listForChild('child')).toHaveLength(1);
+        expect(store.listForChild('child')[0]?.deliveryId).toBe(
+          before.deliveryId,
+        );
+        expect(store.listForChild('child')[0]?.transitionKey).toBe(key);
+        if (state === 'pending') expect(starts).toHaveLength(1);
+        else if (state === 'claimed') {
+          expect(starts.length).toBeGreaterThanOrEqual(calls);
+          expect(new Set(deliveryKeys).size).toBe(1);
+        } else expect(starts).toHaveLength(calls);
+        return;
+      }
       if (
         order === 'retired' ||
         order === 'queued' ||
