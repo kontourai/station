@@ -563,15 +563,16 @@ export function reconcileBackgroundTasksSnapshot(
   payload: OrchestrationSnapshotPayload,
 ): BackgroundTasksState {
   let next = state;
+  const snapshotDelegateIds = new Set<string>();
   for (const session of payload.sessions) {
     const child = snapshotDelegateChildWork(session);
     const parentTaskId = child?.parent?.taskId;
     if (!child || !parentTaskId) continue;
     const taskId = snapshotSessionDelegateThreadId(session);
+    snapshotDelegateIds.add(taskId);
 
     const existing = next.entries[session.threadId];
     const isActive = child.status === 'running';
-    if (!existing && !isActive && !session.childWork?.asChild) continue;
 
     if (next.delegateParents[taskId] !== parentTaskId) {
       next = {
@@ -582,7 +583,9 @@ export function reconcileBackgroundTasksSnapshot(
 
     if (!existing) {
       // A current server's asChild carries the terminal fact and exact end.
-      // An older delegation-only row cannot backfill a finished card.
+      // An older delegation-only row cannot backfill a finished card, but
+      // its live binding is needed if a later turn arrives without a new bind.
+      if (!isActive && !session.childWork?.asChild) continue;
       const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
         startedAt: parseTime(child.startedAt ?? session.createdAt, Date.now()),
@@ -653,6 +656,14 @@ export function reconcileBackgroundTasksSnapshot(
       stale.map((entry) => entry.chatThreadId),
     ))
       next = pruneFinished(next, next.entries, chatThreadId);
+  }
+  const orphanedBindings = Object.keys(next.delegateParents).filter(
+    (taskId) => !next.entries[taskId] && !snapshotDelegateIds.has(taskId),
+  );
+  if (orphanedBindings.length) {
+    const delegateParents = { ...next.delegateParents };
+    for (const taskId of orphanedBindings) delete delegateParents[taskId];
+    next = { ...next, delegateParents };
   }
   return next;
 }

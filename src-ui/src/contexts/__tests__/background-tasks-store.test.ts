@@ -471,7 +471,7 @@ test('retiring finished delegate cards also bounds parent bindings', () => {
   expect(store.getSnapshot().entries['delegate-50'].state).toBe('running');
 });
 
-test('inactive legacy snapshot delegates do not leave unreachable parent bindings', () => {
+test('idle legacy delegates keep their binding until absent from both cards and the live snapshot', () => {
   const store = new BackgroundTasksStore();
   store.reconcileSnapshot({
     sessions: [
@@ -485,6 +485,15 @@ test('inactive legacy snapshot delegates do not leave unreachable parent binding
       },
     ],
   });
+  expect(store.getSnapshot()).toEqual({
+    entries: {},
+    delegateParents: { 'old-delegate': 'chat-1' },
+  });
+  store.reconcileSnapshot({ sessions: [] });
+  expect(store.getSnapshot()).toEqual({ entries: {}, delegateParents: {} });
+  store.ingest(
+    event('turn.started', { threadId: 'old-delegate', prompt: 'Late turn' }),
+  );
   expect(store.getSnapshot()).toEqual({ entries: {}, delegateParents: {} });
 });
 
