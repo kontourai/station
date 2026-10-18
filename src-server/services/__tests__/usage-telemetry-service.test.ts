@@ -15,7 +15,10 @@ import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
 } from '@kontourai/station-contracts/product-telemetry';
-import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
+import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+  parseProductTelemetryBatch,
+} from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import { FileSecretBindingAdministration } from '../secrets/secret-binding-administration.js';
@@ -152,7 +155,13 @@ describe('UsageTelemetryService', () => {
         },
         setInterval: vi.fn() as typeof setInterval,
       });
-      await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      if (dnt) {
+        await expect(
+          subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION),
+        ).rejects.toThrow('DO_NOT_TRACK');
+      } else {
+        await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+      }
       await subject.stationStarted();
       await subject.flush();
       expect(fetch).toHaveBeenCalledTimes(sends ? 1 : 0);
@@ -552,14 +561,14 @@ describe('UsageTelemetryService', () => {
       });
       expect(JSON.parse(String(request?.body))).toEqual({
         protocol: 'station-product-probe/v1',
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
       });
       release(
         Response.json({
           probe: {
             protocol: 'station-product-probe/v1',
             sourceId: '22222222-2222-4333-8444-555555555555',
-            inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+            inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             checkedAt: '2026-10-10T12:00:00.000Z',
             storage: 'postgres-schema-v1',
           },
@@ -1818,4 +1827,49 @@ describe('UsageTelemetryService', () => {
       'published telemetry inventory drifted from registry',
     ).toContain(renderUsageTelemetryInventory());
   });
+});
+
+test('Full saved under DNT remains pending after DNT removal and sends only after confirmation', async () => {
+  const root = await home();
+  const env = {
+    DO_NOT_TRACK: '1',
+    STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+  };
+  const fetch = vi.fn().mockImplementation(acceptProductBatch);
+  const subject = new UsageTelemetryService({
+    homeDir: root,
+    appConfig: configuredApp({ telemetryTier: { operator: 'full' } }),
+    version: '1.2.3',
+    logger: logger(),
+    env,
+    fetch,
+    setInterval: vi.fn() as typeof setInterval,
+  });
+  try {
+    await expect(
+      subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION),
+    ).rejects.toThrow('DO_NOT_TRACK');
+    await expect(
+      access(join(root, 'config', 'usage-telemetry-disclosure.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    env.DO_NOT_TRACK = '';
+    expect(await subject.disclosure()).toMatchObject({
+      acknowledged: false,
+      publishers: {
+        operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+      },
+    });
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).not.toHaveBeenCalled();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+    await subject.stationStarted();
+    await subject.flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    await subject.shutdown();
+  }
 });

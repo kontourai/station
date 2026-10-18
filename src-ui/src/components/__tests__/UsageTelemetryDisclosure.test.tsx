@@ -1,8 +1,5 @@
 /** @vitest-environment jsdom */
-import type {
-  TelemetryTier,
-  TelemetryTierResolution,
-} from '@kontourai/station-contracts/product-telemetry';
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -294,10 +291,7 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<
-      'kontour' | 'operator',
-      TelemetryTierResolution & { userChoice?: TelemetryTier }
-    >;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
 ) {
   return new Response(
@@ -331,10 +325,7 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<
-      'kontour' | 'operator',
-      TelemetryTierResolution & { userChoice?: TelemetryTier }
-    >;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -619,10 +610,7 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    publishers?: Record<
-      'kontour' | 'operator',
-      TelemetryTierResolution & { userChoice?: TelemetryTier }
-    >;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -894,9 +882,14 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
   resetUsageTelemetryDisclosureDismissal();
 });
 
-test.each(['full', 'lite'] as const)(
-  'under DNT, saving Off explicitly replaces the saved %s operator choice before acknowledgement',
-  async (savedChoice) => {
+test.each([
+  ['full', 'off', 'Off'],
+  ['lite', 'off', 'Off'],
+  ['off', 'full', 'Full'],
+  ['lite', 'lite', 'Lite'],
+] as const)(
+  'under DNT, saving %s as %s writes the choice without acknowledging',
+  async (savedChoice, next, label) => {
     const view = renderModal({
       telemetryEnabled: false,
       publishers: {
@@ -904,46 +897,67 @@ test.each(['full', 'lite'] as const)(
         operator: { tier: 'off', reason: 'DNT', userChoice: savedChoice },
       },
     });
-    const saveOff = await screen.findByRole('button', {
-      name: 'Save operator choice as Off',
+    const choice = await screen.findByRole('radio', { name: label });
+    fireEvent.click(choice);
+    expect(choice).toHaveProperty('checked', true);
+    expect(updateConfig).not.toHaveBeenCalled();
+    const save = screen.getByRole('button', {
+      name: `Save operator choice as ${label}`,
     });
     expect(
+      screen.getByText(/DO_NOT_TRACK is active: nothing is sent/),
+    ).toBeTruthy();
+    expect(
       screen.getByText(
-        /Saving a choice here replaces your saved operator choice/,
+        /Full will still require confirmation after DO_NOT_TRACK is removed/,
       ),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Save operator choice as Full' }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: 'Keep usage telemetry off' }),
-    ).toBeNull();
-    fireEvent.click(saveOff);
+    for (const choice of ['Off', 'Lite', 'Full'])
+      expect(screen.getByRole('radio', { name: choice })).toBeTruthy();
+    fireEvent.click(save);
     expect(updateConfig.mock.calls.map((call) => call[0])).toEqual([
-      { telemetryTier: { operator: 'off' } },
+      { telemetryTier: { operator: next } },
     ]);
+    await act(async () => {
+      updateConfig.mock.calls[0][1]?.onSuccess?.({});
+    });
     expect(
       authenticatedFetch.mock.calls.filter((call) =>
         String(call[0]).endsWith('/acknowledgements'),
       ),
     ).toEqual([]);
-    await act(async () => {
-      updateConfig.mock.calls[0][1]?.onSuccess?.({});
-    });
-    await waitFor(() =>
-      expect(authenticatedFetch).toHaveBeenLastCalledWith(
-        ACKNOWLEDGEMENTS_URL,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            acknowledgementProtocol: 2,
-            inventoryRevision: 'rev',
-          }),
-        },
-      ),
-    );
+    expect(
+      window.localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY),
+    ).toBeNull();
     view.unmount();
     resetUsageTelemetryDisclosureDismissal();
+    if (next === 'full') {
+      renderModal({
+        telemetryEnabled: false,
+        publishers: {
+          kontour: { tier: 'lite', reason: 'default' },
+          operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+        },
+      });
+      expect(await screen.findByRole('dialog')).toBeTruthy();
+      const allow = screen.getByRole('button', {
+        name: 'Allow Full usage telemetry',
+      });
+      expect(
+        authenticatedFetch.mock.calls.filter((call) =>
+          String(call[0]).endsWith('/acknowledgements'),
+        ),
+      ).toEqual([]);
+      fireEvent.click(allow);
+      await act(async () => {
+        updateConfig.mock.calls[0][1]?.onSuccess?.({});
+      });
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenLastCalledWith(
+          ACKNOWLEDGEMENTS_URL,
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    }
   },
 );

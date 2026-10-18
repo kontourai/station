@@ -12,8 +12,9 @@ Kontour Full unavailable until the UI lane connects its separate author disclosu
 the server exposes that destination-bound disclosure API.
 
 DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
-labels its Off action **Save operator choice as Off** and explains that this
-explicit action replaces the saved operator choice while DNT keeps telemetry Off.
+offers visible Off, Lite, and Full radio choices and a **Save operator choice
+as** action for the selected tier. Saving replaces the operator tier without
+acknowledging; DNT keeps telemetry Off.
 
 A standard paired device may lower tiers; only the operator or a device with
 `access:manage` may raise them. Agents cannot change telemetry choices or
@@ -89,9 +90,15 @@ an operator receipt cannot authorize it. The default selector remains operator.
 
 A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
-Full disclosure wording revision 2 participates in the inventory hash. Existing
+Full disclosure wording revision 2 participates only in the acknowledgement hash;
+batches and probes use the separate data inventory revision. Existing
 acknowledgements were reset because the earlier lede overstated anonymity; the
 accurate pseudonymous disclosure must be acknowledged again before Full resumes.
+Under DNT, the disclosure offers Off, Lite, and Full saves without writing an
+acknowledgement. Full saved this way remains pending; after DNT is removed the
+dialog appears again and sends nothing until Full is allowed. The acknowledgement
+API returns 409 while DNT is active.
+
 See the [decision and full-map concurrency limitation](../decisions/telemetry-tiers.md#consent-repair-after-foundation-review).
 
 When an operator configures `STATION_PRODUCT_TELEMETRY_ENDPOINT`, Station POSTs

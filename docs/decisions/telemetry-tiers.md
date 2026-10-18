@@ -171,18 +171,32 @@ compares with the state it replaces inside the serialized mutation. Reset
 preserves tier choices. Kontour Full is refused until a Kontour disclosure
 exists; operator acknowledgement cannot authorize another publisher.
 
+### Disclosure and wire revisions
 
-Full disclosure wording revision 2 is included in the hashed Full inventory.
-It resets existing acknowledgements because the earlier lede overstated anonymity:
-Full events are pseudonymous, with a monthly installation hash. Existing receipts,
-including the receipt revision at reviewed head `0134b835`, are stale. A saved
-operator Full choice remains pending until the accurate disclosure is acknowledged
-again. Lite notice revisions and contract names are unchanged.
+Full disclosure wording revision 2 resets existing acknowledgements because the
+earlier lede overstated anonymity: Full events are pseudonymous, with a monthly
+installation hash. `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` hashes this wording
+revision together with the event/property/envelope inventory. The existing
+`USAGE_TELEMETRY_INVENTORY_REVISION` export remains its compatibility name for
+receipts and the disclosure API. A saved operator Full choice remains pending
+until the accurate disclosure is acknowledged again.
 
-DNT itself never changes saved choices. The disclosure dialog explicitly labels
-its actions **Save operator choice as Off** and **Save operator choice as Full**
-under DNT and explains that either action replaces the saved operator choice.
-Effective telemetry remains Off while DNT is active.
+`PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` hashes only the data inventory and
+belongs in batches and probes. Receiver parser names remain unchanged. A
+wording-only bump changes acknowledgement validity without changing wire
+compatibility. Lite notice revisions are independent.
+
+### Choices while Do Not Track is active
+
+DNT itself never changes saved choices. While it is active, the disclosure
+leads with the fact that nothing is sent and that Full still needs confirmation
+after DNT is removed. It offers visible **Off**, **Lite**, and **Full** radio
+choices and a save action named **Save operator choice as** the selected tier.
+Saving writes only that operator tier, without a disclosure acknowledgement.
+Saving Lite preserves a saved-Lite user's choice. Saving Full leaves Full
+pending: removing DNT shows the unacknowledged dialog again, and no Full event
+is admitted until the person allows it. These saves do not snooze the dialog;
+the service and acknowledgement route also refuse acknowledgement under DNT.
 
 Known residual: operator and `access:manage` callers can submit full tier maps
 without compare-and-swap. Serialized per-publisher merging preserves omitted

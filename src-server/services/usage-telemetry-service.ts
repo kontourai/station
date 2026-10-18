@@ -20,6 +20,7 @@ import type {
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryCommitReceipt,
   parseProductTelemetryProbeReceipt,
 } from '@kontourai/station-shared/product-telemetry';
@@ -303,6 +304,10 @@ export class UsageTelemetryService {
     publisher: 'kontour' | 'operator' = 'operator',
     destination?: string,
   ): Promise<void> {
+    if (this.resolvedConfiguration().publishers[publisher].reason === 'DNT')
+      throw new Error(
+        'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
+      );
     if (this.publisher === 'operator' && publisher === 'kontour') {
       if (!this.author)
         throw new Error('Author telemetry destination is unconfigured.');
@@ -524,7 +529,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               protocol: 'station-product-probe/v1',
-              inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
             }),
             signal: controller.signal,
           }),
@@ -894,7 +899,7 @@ export class UsageTelemetryService {
       recordedAt: new Date().toISOString(),
       payload: {
         schema_version: 1,
-        inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
         distinct_id: distinctId,
         events: [...events],
       },
@@ -996,7 +1001,7 @@ export class UsageTelemetryService {
             },
             body: JSON.stringify({
               schema_version: 1,
-              inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
+              inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
               distinct_id: distinctId,
               events: batch,
             } satisfies ProductTelemetryBatch),

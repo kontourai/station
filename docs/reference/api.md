@@ -1187,6 +1187,8 @@ with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed ma
 return a validation error with 400 before mutation. Full without a current
 publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
+remains pending and needs confirmation after DNT is removed.
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority.
