@@ -221,7 +221,7 @@ The contracts/product-telemetry inventory declares event and envelope fields; sh
 | --- | --- |
 | `schema_version` | Protocol version 1. |
 | `inventory_revision` | SHA-256 of the disclosed envelope and event inventory. |
-| `distinct_id` | SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly, is pseudonymous rather than anonymous, and is never linked to an account by Station. |
+| `distinct_id` | SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly and is not a person identity. |
 | `events` | One through twenty inventory observations. |
 
 ### observation fields
