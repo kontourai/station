@@ -13,6 +13,7 @@ import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 import { BedrockLLMProvider } from '../llm/bedrock-llm-provider.js';
+import type { AdapterName } from './adapter-contract-test-utils.js';
 import { FakeClaudeChild } from './claude-engine-process-test-utils.js';
 import { FakeCodexProcess } from './codex-adapter-wire-harness.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
@@ -59,23 +60,6 @@ export interface ConformanceEngine {
   unconfirmTermination?(): void;
   cleanup(): Promise<void>;
 }
-export type AdapterName =
-  | 'claude'
-  | 'codex'
-  | 'acp'
-  | 'muse'
-  | 'station-agent'
-  | 'bedrock'
-  | 'ollama';
-export const ADAPTERS: AdapterName[] = [
-  'claude',
-  'codex',
-  'acp',
-  'muse',
-  'station-agent',
-  'bedrock',
-  'ollama',
-];
 
 /** Reuses the process fake with the REAL Agent SDK, including control replies. */
 export class ConformanceClaudeChild extends FakeClaudeChild {

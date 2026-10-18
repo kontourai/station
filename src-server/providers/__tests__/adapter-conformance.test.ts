@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -20,7 +14,6 @@ import {
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { ConformanceEngine } from './adapter-conformance-fixtures.js';
 import {
-  ADAPTERS,
   ConformanceClaudeChild,
   createConformanceEngine,
   FILE,
@@ -28,7 +21,10 @@ import {
   PNG,
   THREAD,
 } from './adapter-conformance-fixtures.js';
-import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
+import {
+  ADAPTERS,
+  expectCanonicalSessionLifecycle,
+} from './adapter-contract-test-utils.js';
 
 const { spawnFake } = vi.hoisted(() => ({ spawnFake: vi.fn() }));
 vi.mock('../adapters/claude-code-spawn.js', async (importOriginal) => {
@@ -55,22 +51,6 @@ const gaps = {
   interrupt: new Set(['claude', 'codex', 'acp']),
   attachment: new Set(['codex', 'muse', 'station-agent', 'bedrock', 'ollama']),
 };
-
-// This structural guard owns registration only; the cases below own behavior.
-it('every concrete ProviderAdapterShape implementation registers in the deterministic suite', () => {
-  const directory = new URL('../adapters/', import.meta.url);
-  const implementations = readdirSync(directory)
-    .filter(
-      (file) =>
-        file.endsWith('.ts') &&
-        /implements ProviderAdapterShape\b/.test(
-          readFileSync(new URL(file, directory), 'utf8'),
-        ),
-    )
-    .map((file) => file.replace(/-adapter\.ts$/, ''))
-    .sort();
-  expect([...ADAPTERS].sort()).toEqual(implementations);
-});
 
 function exempt(adapter: string, reason: string) {
   // The focused/default reporter hides skipped names. Emit every reason even there.

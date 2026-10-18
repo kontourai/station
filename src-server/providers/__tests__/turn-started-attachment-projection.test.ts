@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { ADAPTERS } from './adapter-contract-test-utils.js';
 
 const adaptersDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -37,6 +38,19 @@ const ATTACHMENT_FORWARDING_ADAPTERS = [
 ] as const;
 
 describe('turn.started attachment projection inventory (station#4134)', () => {
+  test('every concrete ProviderAdapterShape implementation registers in the deterministic conformance suite', () => {
+    // This existing repo-scans inventory runs on every PR, including additions
+    // with no import edge to an existing adapter test.
+    const implementations = readdirSync(adaptersDir)
+      .filter((name) => name.endsWith('.ts'))
+      .filter((name) =>
+        /implements ProviderAdapterShape\b/.test(adapterSource(name)),
+      )
+      .map((name) => name.replace(/-adapter\.ts$/, ''))
+      .sort();
+    expect([...ADAPTERS].sort()).toEqual(implementations);
+  });
+
   test('enumerates every provider adapter that emits turn.started', () => {
     const discovered = readdirSync(adaptersDir)
       .filter((name) => name.endsWith('-adapter.ts'))
