@@ -38,7 +38,6 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
-  DELEGATION_PROVENANCE_METADATA_KEY,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -105,6 +104,7 @@ import {
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
+import { migrateSessionParentMentions } from '../../domain/migrations/016-session-parent-mentions.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2248,6 +2248,7 @@ export class EventStore {
       ensureOrchestrationRecoverySettlementColumns(this.db);
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
+      migrateSessionParentMentions(this.db);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -5355,9 +5356,10 @@ export class EventStore {
    * session or its own runtime attested it. The stamp is a reserved key a
    * caller can never set, so a request's bare claim never reads as derived.
    *
-   * Every session.started/session.configured row is examined once for the
-   * whole batch of parents (one level of a tree read), through the method
-   * index; there is no index on the JSON fields. Reads one candidate past
+   * Per-source-event mentions are indexed at append and backfilled on open.
+   * Aggregate only events matching this chunk, preserving the scan's context
+   * precedence, MAX selection and first matching sequence. This is naming
+   * evidence, never cascade authority. Reads one candidate past
    * `limit` per chunk of parents and reports `truncated` when a chunk has
    * more than `limit`, so the caller can refuse rather than read a cut list.
    */
@@ -5383,26 +5385,20 @@ export class EventStore {
       const list = chunk.map(() => '?').join(', ');
       const rows = this.db
         .prepare(
-          `SELECT e.thread_id AS thread_id,
-                  MAX(COALESCE(
-                    json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
-                    json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
-                  MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+          `SELECT child_session_id AS thread_id,
+                  MAX(COALESCE(context_parent, legacy_parent)) AS verified_parent,
+                  MAX(task_parent) AS claimed_parent,
                   MAX(CASE
-                    WHEN e.method = 'session.started'
-                     AND json_extract(e.payload, '$.metadata.${DELEGATION_PROVENANCE_METADATA_KEY}') IN ('caller-derived', 'runtime-attested')
-                    THEN COALESCE(
-                      json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
-                      json_extract(e.payload, '$.metadata.parentConversationId'))
+                    WHEN source_method = 'session.started'
+                     AND start_provenance IN ('caller-derived', 'runtime-attested')
+                    THEN COALESCE(context_parent, legacy_parent)
                   END) AS derived_parent,
-                  MIN(e.global_sequence) AS first_sequence
-             FROM orchestration_events e
-            WHERE e.method IN ('session.started', 'session.configured')
-              AND json_valid(e.payload)
-              AND (json_extract(e.payload, '$.metadata.delegation.parentConversationId') IN (${list})
-                OR json_extract(e.payload, '$.metadata.parentConversationId') IN (${list})
-                OR json_extract(e.payload, '$.metadata.parentTaskId') IN (${list}))
-            GROUP BY e.thread_id
+                  MIN(global_sequence) AS first_sequence
+             FROM orchestration_session_parent_mentions
+            WHERE context_parent IN (${list})
+               OR legacy_parent IN (${list})
+               OR task_parent IN (${list})
+            GROUP BY child_session_id
             ORDER BY first_sequence ASC
             LIMIT ?`,
         )
