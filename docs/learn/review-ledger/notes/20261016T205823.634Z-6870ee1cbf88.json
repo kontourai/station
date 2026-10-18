@@ -1,0 +1,7 @@
+{
+  "revision": "1599359f84135040bf74d6b2ad690bafbd0aa767",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed only the Corpus decision-command pin paragraph and Docs kit/publication contract. Decisions still use the unchanged corpus-decisions.mjs pin; Docs kit and Pages bundle now select reviewed b8ec via their own workflows. Removed obsolete claim that all pins are identical. Trusted reusable gate ac67, contents-only inputs, advisory semantics, v2 manifest and manual publication boundaries unchanged.103focused/workflowgate/12Pages/pinnedbundleURLchecksPASS; no new CLI/runtime/deployment claim.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}

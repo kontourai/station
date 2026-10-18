@@ -12,7 +12,7 @@ import {
   getPersonalBoard,
   savePersonalBoard,
 } from '../client/personal-boards';
-import { useApiQuery } from '../query-core';
+import { useApiQuery, useApiQueryWithSharing } from '../query-core';
 import { fetchAttention } from './attention';
 import { fetchOrchestrationSessions } from './chatRuntimeOrchestration';
 import { personalLayoutsKey } from './personalLayouts';
@@ -81,14 +81,14 @@ export function useBoardAttentionQuery(scope?: ApiRequestScope) {
   );
 }
 export function useBoardRecentWorkQuery(scope?: ApiRequestScope) {
-  return useApiQuery(
+  return useApiQueryWithSharing(
     ['me', 'board-recent-work', scope?.authorityKey ?? 'unavailable'],
     () => {
       if (!scope) throw new StationRequestAuthorityError();
       return fetchOrchestrationSessions(scope.apiBase, { requestScope: scope });
     },
+    shareSessionReadModel,
     {
-      structuralSharing: shareSessionReadModel,
       enabled: !!scope,
       refetchInterval: 10000,
       refetchOnMount: 'always',

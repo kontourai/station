@@ -6,8 +6,10 @@ import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { setClientCredentialResolver } from '../client/http';
+import { useApiQueryWithSharing } from '../query-core';
 import { useOrchestrationSessionsQuery } from '../query-domains/chatRuntimeOrchestration';
 import { useBoardRecentWorkQuery } from '../query-domains/personalBoards';
+import { shareSessionReadModel } from '../query-domains/sessionStructuralSharing';
 
 const first = '2026-10-17T12:00:00.000Z';
 const second = '2026-10-17T12:00:10.000Z';
@@ -138,3 +140,15 @@ test.each([
     }
   },
 );
+
+// This case is enforced by typecheck:sdk; the invalid hook is never mounted.
+test('session sharing rejects a query returning unrelated data', () => {
+  const useRejectedSharing = () =>
+    useApiQueryWithSharing(
+      ['unrelated'],
+      // @ts-expect-error session sharing requires session summaries, not strings
+      async (): Promise<string[]> => [],
+      shareSessionReadModel,
+    );
+  expect(useRejectedSharing).toBeTypeOf('function');
+});

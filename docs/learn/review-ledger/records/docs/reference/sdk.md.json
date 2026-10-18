@@ -666,7 +666,11 @@
 
     "src-server/runtime/conversation/stream-orchestrator.ts",
 
-    "src-ui/src/lib/attachment-staging-queue.ts"
+    "src-ui/src/lib/attachment-staging-queue.ts",
+
+    "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
+
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx"
   ],
 
   "checks": [
