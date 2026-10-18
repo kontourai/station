@@ -1990,17 +1990,18 @@ test.each([
               )
               .every((row) => row.payload.invocationId === undefined),
           ).toBe(true);
-          expect(outcome).toBeUndefined();
-          expect(
-            evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
-              .satisfied,
-          ).toBe(false);
           const pending = ports.store.listForChild('child');
           parentBusy = false;
           await delivery.reconcile();
           expect(starts).toEqual([]);
           expect(steers).toEqual([]);
           expect(ports.store.listForChild('child')).toEqual(pending);
+          expect(outcome).toBeUndefined();
+          expect(
+            evaluateSessionWait(waitPorts, 'child', 'turn-settled', cursor)
+              .satisfied,
+          ).toBe(false);
+
           expect(
             eventStore['db']
               .prepare(
