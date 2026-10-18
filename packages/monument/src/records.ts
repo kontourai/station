@@ -28,6 +28,8 @@ export interface TurnDedupRecord {
   /** Revision of the linked pending fence; preserved independently of its creation. */
   readonly preparedUpdatedAt?: string;
   readonly settlement?: PreparedTurnSettlement;
+  /** Versioned submission digest; absent means the original input is unknown. */
+  readonly inputDigest?: string;
 }
 
 export type TurnBoundaryState =

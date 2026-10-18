@@ -1,0 +1,7 @@
+{
+  "revision": "365759ac5208135db81f4596ae666149536d1ee4",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the integration table and deployment-account boundary against the corrected authentication guide. Scoped Project Admin/Owner agent authoring and tool requests remain server-authorized; Project membership, personal credentials and execution remain separate. The adapter entry still correctly requires current session verification, refusal and revocation evidence. No prose change needed; source inspection only, no deployment or provider qualification.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment-authentication.md"]}
+  ]
+}

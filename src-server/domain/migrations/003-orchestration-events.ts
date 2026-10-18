@@ -12,6 +12,7 @@ import {
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
 import { ensureTurnBoundarySequenceFence } from './014-turn-boundary-sequence-fence.js';
+import { ensureTurnDedupInputDigest } from './015-turn-dedup-input-digest.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -265,7 +266,8 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   dedup_key TEXT PRIMARY KEY,
   value TEXT,
   created_at INTEGER NOT NULL,
-  owner_json TEXT
+  owner_json TEXT,
+  input_digest TEXT
 );
 
 -- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
@@ -823,6 +825,7 @@ export function ensureOrchestrationTurnDedupColumns(
         'ALTER TABLE orchestration_turn_dedup ADD COLUMN owner_json TEXT',
       );
     }
+    ensureTurnDedupInputDigest(db);
     // This migration is deliberately additive-only. An ownerless unresolved
     // row may belong to an older runtime that is still executing its turn;
     // deleting it would permit a new runtime to execute that same turn.

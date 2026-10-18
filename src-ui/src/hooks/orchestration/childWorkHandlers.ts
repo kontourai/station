@@ -112,7 +112,7 @@ function hasResult(item: ChildWorkItem | undefined): boolean {
 const SETTLE_HEADING: Record<ChildWorkTerminalStatus, string> = {
   completed: 'Background task finished',
   failed: 'Background task failed',
-  cancelled: '⏹ Background task stopped',
+  cancelled: 'Background task stopped',
   'stopped-unconfirmed': 'Background task stop requested — not confirmed',
   unresolved: 'Background task ended — outcome unknown',
 };
@@ -148,7 +148,13 @@ function announceSettle(
   const summary = after.result?.summary;
   activeChatsStore.addEphemeralMessage(threadId, {
     role: 'system',
+    childWorkKey: childWorkKey(after),
     content: summary ? `${label}\n\n${summary}` : label,
+    backgroundTaskNotice: {
+      status: after.status as ChildWorkTerminalStatus,
+      ...(after.title ? { title: after.title } : {}),
+      ...(summary ? { summary } : {}),
+    },
   });
 }
 

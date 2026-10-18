@@ -1,0 +1,7 @@
+{
+  "revision": "83cb39920925e14e577c9f2b708ba6b6e946f511",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed retained stalled-run identity reconciliation beyond the 48-hour history window and successive-observation HTTP regressions. Terminal delivery failures enter existing provider tracking; terminal source failures resolve only through later successful canonical Nightly source verification plus real native-ledger or registry-provenance publication, with both run links retained. Cadence-only success, unfinished/older/failed publication, missing runs and changed attempts cannot erase evidence. No source retry or publication authority added. Final owner suite passes 42/42; historical failures remain retained; live execution of this revision not yet verified.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]}
+  ]
+}

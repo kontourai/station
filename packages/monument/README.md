@@ -1,8 +1,9 @@
 # @kontourai/monument
 
 Experimental. This is an engine-neutral durability kernel. It covers
-crash-consistent turn dedup, turn boundaries and request keys, behind a
-command-shaped storage port. [CONTEXT.md](CONTEXT.md) describes what it owns
+crash-consistent turn dedup, turn boundaries and request keys behind a
+command-shaped storage port, plus engine-neutral message delivery decisions
+and record-before-effect sequencing. [CONTEXT.md](CONTEXT.md) describes what it owns
 and what it leaves to other packages.
 
 The API may change in any release until a second consumer exists.
@@ -26,10 +27,47 @@ directory and checks all of this.
 
 | Import | Contents | Runtime needs |
 | --- | --- | --- |
-| `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, and the in-memory adapter | none |
+| `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, message delivery decisions and sequencing, and the in-memory adapter | none |
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
 | `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
+
+## Message delivery
+
+`decideSessionDelivery(mode, busy)` selects start or steer: `auto` starts an
+idle session and steers a busy one, `start` refuses a busy session, and `steer`
+refuses an idle one. `parseSessionDeliveryDecision` reads a persisted
+`start:<threadId>` or `steer:<threadId>` decision without changing its id.
+
+`deliverSessionMessage(ports, input)` records a new decision synchronously
+through `input.recordDecision` before calling the selected `start` or `steer`
+port. A supplied `decided` branch bypasses both the busy check and recording.
+The sequence passes `deliveryId` as `clientTurnId` or `clientInputId`, maps
+refused and indeterminate outcomes, and never tries the other branch. A thrown
+recording or port error propagates; a failed recording invokes no effect.
+
+`conversationKeyDecision` classifies a key across every Session of a
+conversation. `startUnlessDelivered` returns a known started turn without
+calling the start port, refuses an unresolved live claim with
+`client_turn_in_flight`, and returns indeterminate for an expired key or an
+unknown effect. An age-only indeterminate claim remains in flight because
+its live owner can still deliver. Only a key no Session holds can start.
+Station supplies the authorized ledger inspection and start ports; the inbox,
+foreground continuation and delegated-result callers use this same rule.
+
+This sequence has no storage of its own. The host supplies already-authorized
+ports and owns invocation, persistence, delivery-id deduplication and receipts.
+The optional recording callback is durable only if the host makes it so.
+Station's Session Control route records in its request-key table; delegated
+result delivery records in its existing consumption row. Neither creates an
+additional queue. The package's public-API delivery tests own the decision and
+ordering contract; Station's mounted route tests also inspect its real SQLite
+key row when each effect port is entered. Adapter conformance remains the
+contract for storage commands; this primitive adds none.
+
+This completes only the delivery primitive of #3565. Recovery-ledger core and
+steer receipts remain separate extraction work. The package remains private
+`0.1.0` until its reviewed functional release.
 
 ## The port
 
@@ -52,6 +90,16 @@ may not get. A connection the host hands over (`database`) is the host's: its
 pragmas are left as they are and reported in `storage.pragmas`, so a host that
 relaxes durability on purpose is not silently undone. Pass
 `configureConnection: true` to hand the pragmas to the adapter.
+Turn-dedup claims accept an optional versioned `inputDigest`. A mismatch with a
+known original returns `conflict` before replay, contention or reclaim. Reclaim
+never attaches a retry's digest to a legacy row. Memory snapshots preserve the
+field; SQLite stores it with the current owner. A bound host may additionally
+supply `turnDedup.inputDigestColumn` after adding that nullable column. The
+adapter requires agreement with the owner JSON marker, so an older writer
+replacing the owner does not leave trusted stale proof. Owned SQLite tables
+upgrade additively on open. Older binaries and callers without digests cannot
+enforce this contract; legacy rows remain unknown.
+
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
 they are served while another connection holds the write lock. Every

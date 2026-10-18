@@ -399,6 +399,54 @@ const durability: KernelConformanceCase[] = [
 
 const turnDedup: KernelConformanceCase[] = [
   {
+    name: 'turn dedup: input conflict precedes contention, replay and dead-owner reclaim across restart',
+    areas: ['turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const contender = session.processes.spawn();
+        const original = { ...claim('digest', owner), inputDigest: 'v1:A' };
+        assert.equal((await session.run(original)).kind, 'claimed');
+        const changed = { ...claim('digest', contender), inputDigest: 'v1:B' };
+        assert.deepEqual(await session.run(changed), { kind: 'conflict' });
+        session.processes.kill(owner);
+        assert.deepEqual(await session.run(changed), { kind: 'conflict' });
+        assert.deepEqual(await session.run({ ...original, owner: contender }), {
+          kind: 'claimed',
+          reclaimed: true,
+        });
+        await session.run({
+          type: 'turnDedup.resolve',
+          key: 'digest',
+          ownerId: contender.id,
+          value: 'turn-A',
+          now: 3,
+        });
+        await session.store.reopen();
+        assert.deepEqual(await session.run(changed), { kind: 'conflict' });
+        assert.deepEqual(await session.run(original), {
+          kind: 'resolved',
+          value: 'turn-A',
+        });
+        assert.equal(
+          (await dedupRecord(session, 'digest'))?.inputDigest,
+          'v1:A',
+        );
+        // Reclaiming legacy input must never turn the retry into original proof.
+        const legacyOwner = session.processes.spawn();
+        await session.run(claim('legacy-input', legacyOwner));
+        session.processes.kill(legacyOwner);
+        await session.run({
+          ...claim('legacy-input', contender),
+          inputDigest: 'v1:B',
+        });
+        assert.equal(
+          (await dedupRecord(session, 'legacy-input'))?.inputDigest,
+          undefined,
+        );
+      }),
+  },
+  {
     name: 'turn dedup: one owner per key; only the owner settles; a resolved key replays',
     areas: ['turnDedup'],
     run: (harness) =>

@@ -3,13 +3,10 @@ import { Button } from '../components/Button';
 import { CheckboxGlyph } from '../components/Checkbox';
 import { Dialog } from '../components/Dialog';
 import { SkeletonList } from '../components/state';
-import type { Tool } from '../types';
 import type { AgentFormData } from './agent-editor/types';
-import { addIntegration, removeIntegration } from './agent-editor/utils';
 
 interface AgentAddModalProps {
-  type: 'integrations' | 'skills';
-  availableTools: Tool[];
+  type: 'skills';
   availableSkills: any[];
   form: AgentFormData;
   setForm: React.Dispatch<React.SetStateAction<AgentFormData>>;
@@ -19,7 +16,6 @@ interface AgentAddModalProps {
 
 export function AgentAddModal({
   type,
-  availableTools,
   availableSkills,
   form,
   setForm,
@@ -28,7 +24,7 @@ export function AgentAddModal({
 }: AgentAddModalProps) {
   const [search, setSearch] = useState('');
   const q = search.toLowerCase();
-  const noun = type === 'integrations' ? 'Integrations' : 'Skills';
+  const noun = 'Skills';
 
   // CAT-R06: every row rendered `<button onClick=toggle><Checkbox/></button>`,
   // and `Checkbox` is a `<label>` around a real input. A `<label>` inside a
@@ -65,45 +61,6 @@ export function AgentAddModal({
         {isLoading && (
           <SkeletonList count={4} label={`Loading ${noun.toLowerCase()}`} />
         )}
-        {type === 'integrations' &&
-          availableTools
-            .filter(
-              (t) =>
-                !q ||
-                (t.displayName || t.id).toLowerCase().includes(q) ||
-                t.description?.toLowerCase().includes(q),
-            )
-            .map((integration) => {
-              const enabled = form.tools.mcpServers.includes(integration.id);
-              return (
-                <button
-                  type="button"
-                  key={integration.id}
-                  className={`editor__tool-item${enabled ? ' editor__tool-item--active' : ''}`}
-                  aria-pressed={enabled}
-                  disabled={!enabled && integration.enabled === false}
-                  onClick={() => {
-                    setForm((current) =>
-                      enabled
-                        ? removeIntegration(current, integration.id)
-                        : addIntegration(current, integration.id),
-                    );
-                  }}
-                >
-                  <CheckboxGlyph checked={enabled} />
-                  <div className="editor__tool-info">
-                    <div className="editor__tool-name">
-                      {integration.displayName || integration.id}
-                    </div>
-                    {integration.description && (
-                      <div className="editor__tool-desc">
-                        {integration.description}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
         {type === 'skills' &&
           availableSkills
             .filter(

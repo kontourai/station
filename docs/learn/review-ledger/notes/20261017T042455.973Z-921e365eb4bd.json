@@ -1,0 +1,7 @@
+{
+  "revision": "fa531ce487e11c58b4d5f19464ff6be3ce5a3e55",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed fa531ce48: full-regression.yml provisions the existing checksum-verified actionlint binary in process-heavy jobs before the corpus runs. Code-health guidance and command contracts are unchanged; workflow gate and focused contract evidence passed, while hosted qualification remains pending.","inputs":["docs/guides/code-quality.md",".github/workflows/full-regression.yml"]}
+  ]
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertVerificationHost } from './lib/live-service-verification.mjs';
 /**
  * Run every independent `typecheck:*` sub-lane to completion and report every
  * failing one (station#4249 slice 2).
@@ -113,6 +114,7 @@ export async function runTypecheckAggregate(options = {}) {
 }
 
 if (invokedDirectly(import.meta.url)) {
+  assertVerificationHost('typecheck');
   const ok = await runTypecheckAggregate();
   if (!ok) process.exitCode = 1;
 }

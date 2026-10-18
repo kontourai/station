@@ -77,6 +77,103 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test('keyed foreground owns raw intent before target authorization awaits', async () => {
+    const deps = dependencies();
+    deps.getAgent = async () => ({
+      slug: 'station',
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    });
+    deps.getConnection = async () => ({
+      id: 'claude',
+      name: 'Claude',
+      kind: 'agent',
+      type: 'claude',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      config: { provider: 'claude' },
+      prerequisites: [],
+    });
+    const original = {
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('station'),
+        model: { override: 'model-a', options: { effort: 'low' } },
+      },
+      skillExperience: {
+        identity: {
+          pluginId: 'visual-skill-experience',
+          pluginVersion: '1.0.0',
+          experienceId: 'inspect',
+          incarnation: 'install-a',
+          materialization: 'materialization-a',
+          contentDigest: `sha256:${'a'.repeat(64)}`,
+          definitionDigest: 'b'.repeat(64),
+        },
+        inputs: { prompt: 'skill A' },
+        attachmentInputs: { source: [0] },
+      },
+      message: ' A ',
+      ambientContext: 'context A',
+      userId: 'owner',
+      clientTurnId: 'K',
+      attachments: [
+        {
+          kind: 'file' as const,
+          name: 'note.txt',
+          mimeType: 'text/plain' as const,
+          size: 1,
+          dataUrl: 'data:text/plain;base64,QQ==',
+        },
+      ],
+    };
+    const retry = structuredClone(original);
+    let entered!: () => void;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resolveAccess = deps.resolveEnvironmentAccess;
+    deps.resolveEnvironmentAccess = async (...args) => {
+      entered();
+      await held;
+      return resolveAccess(...args);
+    };
+    const pending = executeForegroundMessage(original, deps);
+    await reached;
+    original.target.model.override = 'model-b';
+    original.target.model.options.effort = 'high';
+    original.skillExperience.inputs.prompt = 'skill B';
+    original.skillExperience.attachmentInputs.source[0] = 1;
+    original.message = 'B';
+    original.ambientContext = 'context B';
+    original.attachments[0].dataUrl = 'data:text/plain;base64,Qg==';
+    release();
+    await pending;
+    expect(deps.sendTurn).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        input: 'A',
+        modelId: 'model-a',
+        modelOptions: { effort: 'low' },
+        ambientContext: 'context A',
+        attachments: retry.attachments,
+      }),
+      expect.anything(),
+    );
+    const firstDigest = vi.mocked(deps.sendTurn).mock.calls[0][2]
+      ?.submissionDigest;
+    await executeForegroundMessage(retry, deps);
+    expect(vi.mocked(deps.sendTurn).mock.calls[1][2]?.submissionDigest).toBe(
+      firstDigest,
+    );
+    expect(original.message).toBe('B');
+  });
+
   test('a request-bound sharing decision permits a paired continuation and rejects an unrelated caller', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({
@@ -174,7 +271,7 @@ describe('executeForegroundMessage', () => {
         threadId: 'conversation:test:handoff-child',
         ambientContext: 'authorized transcript seed',
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -540,7 +637,7 @@ describe('executeForegroundMessage', () => {
           requestEventId: 'opened-a',
         },
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -737,7 +834,7 @@ describe('executeForegroundMessage', () => {
         attachments: [expect.objectContaining({ name: 'screen.png' })],
         clientTurnId: 'client-turn-1',
       }),
-      { clientOrigin },
+      expect.objectContaining({ clientOrigin }),
     );
     expect(result).toMatchObject({
       conversationId: 'conversation:test',
@@ -1255,6 +1352,14 @@ describe('executeForegroundMessage', () => {
         expect.objectContaining({
           path: startInput?.cwd,
           repoPath: realpathSync(repoPath),
+          baseRef: 'HEAD',
+          baseCommit: execGitSync(['rev-parse', 'HEAD'], {
+            cwd: repoPath,
+            encoding: 'utf8',
+            stdio: 'pipe',
+          })
+            .toString()
+            .trim(),
         }),
       );
       await new WorktreeProvisioningService().cleanup({

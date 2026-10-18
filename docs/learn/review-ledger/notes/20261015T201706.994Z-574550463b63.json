@@ -1,0 +1,7 @@
+{
+  "revision": "6b0652a07c42a5bdcefceb67c4948c7ab93157eb",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed ProjectTasksSection starterId=start-task branch and its retained focused title/launch/operation correlation tests. Clarified that the guided Starter remains separate from general New Task shaping, which accepts a brief without dispatching implementation work. No new Starter completion or delivery claim.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
+  ]
+}

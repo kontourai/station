@@ -12,6 +12,8 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Telemetry delivery
+
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
 `useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
 These read current-process product and OTel delivery status and request explicit
@@ -32,6 +34,48 @@ The latter accepts `bind` or `unbind`, the exact destination grant and an
 hooks. Pass the render-captured request scope: caches partition by API base and
 authority key, and old responses cannot update a replacement authority. Existing
 MCP consumer inputs and results retain their own separate client functions.
+
+## Integration discovery
+
+`useReconnectIntegrationMutation` returns the redacted `IntegrationViewModel`
+from the connection check and invalidates the integrations query. Inspect
+`result.probe.ok`: a completed HTTP request can still report a failed discovery.
+Successful `probe.tools` entries contain bounded raw action names, descriptions,
+and category labels. The returned discovery is useful even when plugin-owned or
+personal-account state is not persisted in the ordinary integration listing.
+Metadata is for browsing; it grants no execution or credential authority.
+
+Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
+`manual`, or `unavailable`), with source/version/location where recorded. This
+identifies installation provenance, not a trust or approval verdict. Local
+registry origin is bound to the saved execution definition; changed definitions
+withhold stale provenance.
+
+`useIntegrationAccountQuery(id, projectSlug?)` reads the account summary.
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
+`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
+mutation variables and refreshes account/integration queries. Existing endpoint
+ownership checks still apply; a successful catalog install does not sign in.
+
+## Project tool library
+
+`@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
+`apiBase`, optional principal pin, and request authority options. It provides
+`useOwnToolAccess`, `useToolLibrary`, `useToolRequests`,
+`useProjectAuthoredAgents`, and `useToolLibraryChange`. Hosts supply a React Query
+client; account-bound hosts pin the current principal. Queries are authority
+scoped and refetched while mounted. Callers must include `expectedActor` and, for
+Project changes, the exact `projectId`; server authority remains decisive.
+
+The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
+responses contain descriptions, recorded provenance and recorded action metadata, never
+commands, environment variables or credential material. Personal tool accounts
+require the managed Station engine; external engines report these sources as
+unsupported. Installation, Project
+policy and personal account connection remain distinct operations. See the
+[Agent guide](../guides/agents.md#shared-projects) and
+[API reference](api.md#project-tool-library).
 
 ## Agent development entry
 
@@ -395,7 +439,8 @@ const sessionId = createSession('my-agent', 'My Agent');
 
 The default callback requires `conversationId`, `agentSlug` and `agentName`;
 it also accepts optional Project/execution/hydration context and returns
-`Promise<string | null>`. A null result means message hydration failed. Opening
+`Promise<string | null>`. A null result means message hydration failed or its
+command was superseded. Opening
 a Dock entry is not proof that continuation is authorized; use canonical
 conversation resolution and current server execution evidence, not mutable
 Agent defaults, when a host supplies that context.
@@ -1322,7 +1367,7 @@ automatically use the host's native or encrypted broker transport. For those
 hosts, choose client/Session operations that cover the required workflow and
 accept an explicit API base and current request options.
 
-### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
+### `resolveConversationOpen(conversationId, apiBase?, options?): Promise<ConversationOpenResolution>`
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
@@ -1330,7 +1375,9 @@ a caller treats it as a writable Session. The discriminated result is
 carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
-chat.
+chat. Optional `options.signal` cancels the request and `options.timeoutMs`
+sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
+per-call options; they add no command deadline.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
@@ -3325,6 +3372,10 @@ This factory is independent of the SDK's `LayoutProvider`. See the
 
 ## Refused requests
 
+Task graph requests preserve a refused HTTP status in `StationHttpError.status`.
+For example, proposal acceptance returning 409 requires a fresh matching
+proposal; retrying the same mismatched brief cannot accept it.
+
 `StationHttpError` (exported from `@kontourai/station-sdk` and
 `@kontourai/station-sdk/client`) carries HTTP/envelope refusal details for the
 fetcher families listed below. Branch on its fields, never on the message text:
@@ -4448,6 +4499,30 @@ credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
 
+### Queued foreground retries
+
+A live retry whose key already names its own waiting inbox entry stays in FIFO
+order. Identical known input returns the existing HTTP 202 queue receipt;
+different known input returns `client_turn_input_conflict` without another send.
+`queueExecutionMessage` returns the queue receipt. Ordinary
+`sendExecutionMessage` and `continueExecutionMessage` preserve their accepted
+provider-turn return types and throw `ForegroundMessageQueuedError` with
+`status: 202`, `outcome: 'queued'` and the original queue `receipt`. Inspect or
+withdraw that entry through the inbox APIs instead of resending it. This error
+does not supply a provider turn id or report an indeterminate start.
+
+### Keyed orchestration input conflicts
+
+Existing keyed foreground, background, continuation and explicit handoff sends can return HTTP
+409 with `code: client_turn_input_conflict` when the key already names different
+submitted input. Execution callers receive `ChatHttpError` with that status and
+code; no new provider turn is accepted. Resubmit the original input to replay its
+result, or use a fresh key for a distinct turn. Legacy records without original
+digest proof and older servers cannot enforce this comparison. Key generation
+and the separate `/chat` stream ledger are outside this bounded #3567 slice.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for the
+submission digest scope and mixed-version limits.
+
 ## Account preferences
 
 The React-free client entry exports `getAccountPreferences(apiBase, options)`
@@ -4462,3 +4537,40 @@ engine, and null for one engine removes only that engine's default. Import uses
 These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
+
+
+## Personal Board authoring
+
+The `@kontourai/station-contracts/personal-board` contract defines a versioned,
+data-only dashboard: a name, description and at most 24 sections. Sections are
+Tasks, attention, recent work, Projects, notes or links, with bounded item counts
+and text. The `@kontourai/station-sdk/personal-board` subpath exports the runtime
+schemas used by HTTP validation, chat tools and the visual editor.
+
+The client barrel exports `getPersonalBoard`, `proposePersonalBoard`,
+`savePersonalBoard` and `dismissPersonalBoardProposal`. Their API base and optional
+`ClientRequestOptions` retain the canonical authenticated transport. Routes live
+under `/api/me/boards/:slug`; ownership comes from authenticated request identity,
+never a supplied user ID. A returned `PersonalBoardDocument` contains the Layout,
+its saved definition, optional proposal and opaque whole-record revision.
+
+A proposal uses `POST /proposal`, `{revision, definition}`. Null revision creates
+a new draft-only Board; editing an existing one requires its current revision.
+A save uses `PUT` and `{revision, definition}`; dismissal uses `DELETE /proposal`
+and `{revision}`. Both are person actions, unavailable to Station-control tool
+requests. Changes compare the whole current Layout revision under the owning
+operation lock; stale requests return 409. Publication atomically replaces the
+definition and clears the proposal. Existing config and Layout tabs survive.
+Generic Layout config updates cannot author the reserved dashboard fields.
+
+`usePersonalBoardQuery(slug, requestScope)` and
+`useSavePersonalBoardMutation(slug, requestScope)` bind reads and writes to a
+captured host authority. Query keys partition by authority and Board slug;
+missing scope disables the read and refuses writes. The Board read polls every
+five seconds so proposals from other callers become visible. The mutation
+updates that exact cache and invalidates the personal Layout inventory.
+
+`useBoardAttentionQuery` and `useBoardRecentWorkQuery` take the same captured
+scope and read the existing authorized projections. They do not persist rows in
+the Board. The dashboard uses the scoped Task and Project queries alongside
+them. See [Personal Boards](../user/personal-boards.md) for the user journey.

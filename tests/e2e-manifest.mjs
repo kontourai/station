@@ -356,6 +356,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
+    'tests/subagent-transcript-cards.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/composer-file-mentions.spec.ts',
@@ -418,6 +419,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-recovery.spec.ts',
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
+    'tests/chat-settings-and-task-notices.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -486,6 +488,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // and re-creates two projects by fixed slug. Both are instance-wide
     // mutations no sibling spec can be running alongside.
     'tests/notifications-attention.spec.ts',
+    'tests/personal-board-authoring.spec.ts',
     'tests/board-visibility.spec.ts',
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
@@ -1483,6 +1486,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/subagent-transcript-cards.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'A subagent spawned by a tool call renders one inline transcript card at its spawn point, folded from child-work.updated events: Running with its live status line and reported model, then Completed with elapsed time and a result preview, expandable to the full summary and usage, and still inside the viewport at 390px.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agents-pane.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1613,7 +1626,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone. At a keyboard-height 390x560 viewport it proves the start sheet scrolls only its body, never a squeezed header.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-settings-and-task-notices.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
     exceptions: [],
   },
   {
@@ -1902,6 +1925,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#3806 real browser journey: Project add-pane admission, all-kind references, pointer and keyboard geometry, title/camera, exact missing-only cleanup, undo, and reload persistence through the real board routes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/personal-board-authoring.spec.ts',
+    bucket: 'product',
+    surface: 'Personal Boards',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real owner-scoped API and desktop/mobile authoring: template, edit, preview-before-save, reload persistence, arriving proposal and explicit Apply.',
     exceptions: [],
   },
   {

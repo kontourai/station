@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-contracts",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "sideEffects": false,
   "description": "Runtime, provider, and orchestration contracts for Station",
   "type": "module",
@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./tool-library": "./src/tool-library.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
     "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",
@@ -63,6 +64,7 @@
     "./automation": "./src/automation.ts",
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
+    "./personal-board": "./src/personal-board.ts",
     "./catalog": "./src/catalog.ts",
     "./child-work": "./src/child-work.ts",
     "./channel-assurance": "./src/channel-assurance.ts",

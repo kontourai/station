@@ -152,6 +152,7 @@ import type {
 import {
   AttachmentInputUnsupportedError,
   ClientTurnInFlightError,
+  ClientTurnInputConflictError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -464,6 +465,12 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import {
+  directTurnSubmissionDigest,
+  snapshotDirectTurnInput,
+  snapshotTurnSubmissionValue,
+  TurnSubmissionUnsupportedError,
+} from './turn-submission-digest.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
@@ -493,6 +500,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Original intent proof; null preserves unknown legacy inbox input. */
+  submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
@@ -4932,13 +4941,17 @@ export class OrchestrationService {
     threadId: string,
     clientTurnId: string,
     signal?: AbortSignal,
+    inputDigest?: string,
   ): Promise<{ kind: 'turn'; turnId: string } | { kind: 'given-up' | 'held' }> {
     const ledger = this.turnDeduplicator;
     if (!ledger) return { kind: 'held' };
     const turnId = await raceWithSignal(
-      ledger.awaitResolution({ threadId, clientTurnId }),
+      ledger.awaitResolution({ threadId, clientTurnId, inputDigest }),
       signal,
-    ).catch(() => undefined);
+    ).catch((error) => {
+      if (error instanceof ClientTurnInputConflictError) throw error;
+      return undefined;
+    });
     if (turnId) return { kind: 'turn', turnId };
     let givenUp = false;
     try {
@@ -4960,12 +4973,18 @@ export class OrchestrationService {
     clientTurnId: string,
     /** Stops only this wait (the caller went away); nothing is sent either way. */
     signal?: AbortSignal,
+    inputDigest?: string,
   ): Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
   > {
     this.initialize();
-    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
+    const held = await this.awaitHeldTurnKey(
+      sessionId,
+      clientTurnId,
+      signal,
+      inputDigest,
+    );
     if (held.kind === 'turn')
       return { outcome: 'started', turnId: held.turnId };
     return {
@@ -4977,26 +4996,64 @@ export class OrchestrationService {
     conversationId: string,
     clientTurnId: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
     this.initialize();
     return this.conversationLineage.inspectTurnDelivery(
       conversationId,
       clientTurnId,
       authority,
+      inputDigest,
     );
+  }
+
+  readPendingConversationSubmission(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    userId?: string,
+  ) {
+    this.initialize();
+    if (
+      this.conversationLineage.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        authority,
+      ) === null
+    )
+      throw new Error('The requested conversation is unavailable.');
+    const pending = this.options.eventStore?.readPendingThreadInboxSubmission(
+      conversationId,
+      clientTurnId,
+    );
+    if (pending && pending.userId !== userId)
+      throw Object.assign(
+        new Error("This message key belongs to someone else's queued message."),
+        { code: 'inbox_key_held' },
+      );
+    return pending;
   }
 
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): Promise<ConversationHandoffStatusProjection | null> {
     this.initialize();
-    return this.conversationLineage.readConversationHandoffStatus(
+    const status = await this.conversationLineage.readConversationHandoffStatus(
       conversationId,
       idempotencyKey,
       authority,
     );
+    if (status?.marker && inputDigest !== undefined) {
+      this.turnDeduplicator?.inspect({
+        threadId: status.marker.sessionId,
+        clientTurnId: `handoff:${crypto.createHash('sha256').update(`${conversationId}\0${idempotencyKey}`).digest('hex')}`,
+        inputDigest,
+      });
+    }
+    return status;
   }
 
   async reserveConversationContextBoundary(
@@ -6990,16 +7047,34 @@ export class OrchestrationService {
             command.target,
           );
         case 'sendTurn': {
+          const submittedInput = command.input.clientTurnId
+            ? snapshotDirectTurnInput(command.input)
+            : command.input;
+          if (submittedInput.clientTurnId && internal?.skillExperience)
+            internal = {
+              ...internal,
+              skillExperience: snapshotTurnSubmissionValue(
+                internal.skillExperience,
+              ),
+            };
+          const submissionDigest =
+            submittedInput.clientTurnId && internal?.submissionDigest !== null
+              ? (internal?.submissionDigest ??
+                directTurnSubmissionDigest(
+                  submittedInput,
+                  internal?.skillExperience,
+                ))
+              : undefined;
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(command.input.threadId);
+          this.assertTurnAdmitted(submittedInput.threadId);
           const current = await this.readSession(
-            command.input.threadId,
+            submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
           const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.input.threadId,
+            threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
@@ -7030,7 +7105,7 @@ export class OrchestrationService {
             // The client's own key for the turn.started stamp; Station's.
             clientKey: stampedClientKey,
             ...publicTurnInput
-          } = command.input as ProviderSendTurnInput & {
+          } = submittedInput as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
             clientKey?: string;
@@ -7201,8 +7276,11 @@ export class OrchestrationService {
             const claim = turnDeduplicator?.claim({
               threadId: turnInput.threadId,
               clientTurnId,
+              inputDigest: submissionDigest,
             });
             if (claim) {
+              if (claim.kind === 'conflict')
+                throw new ClientTurnInputConflictError();
               // #3559: the key's owner died after it may have handed this
               // turn to the provider, or the key's resolved row was evicted
               // after the turn was sent. Never send it again; report the same
@@ -7221,6 +7299,7 @@ export class OrchestrationService {
                       turnInput.threadId,
                       clientTurnId,
                       turnInput.signal,
+                      submissionDigest,
                     );
                 if (held.kind !== 'turn') {
                   throwIfAborted(turnInput.signal);
@@ -7329,7 +7408,7 @@ export class OrchestrationService {
                       throw new EngineParkedDuringDispatchError();
                     const invoke = async () => {
                       const assertInputRequestCurrent = () => {
-                        const expected = command.input.expectedInputRequest;
+                        const expected = submittedInput.expectedInputRequest;
                         if (
                           expected &&
                           (expected.threadId !== turnInput.threadId ||
@@ -7390,7 +7469,7 @@ export class OrchestrationService {
                             turnInput = {
                               ...turnInput,
                               displayInput:
-                                turnInput.displayInput ?? command.input.input,
+                                turnInput.displayInput ?? submittedInput.input,
                               input: `${prompt}\n\n${turnInput.input}`,
                             };
                           },
@@ -7566,7 +7645,8 @@ export class OrchestrationService {
                               turnInput = {
                                 ...turnInput,
                                 displayInput:
-                                  turnInput.displayInput ?? command.input.input,
+                                  turnInput.displayInput ??
+                                  submittedInput.input,
                                 input: `${prompt}\n\n${turnInput.input}`,
                               };
                             }
@@ -8872,7 +8952,9 @@ export class OrchestrationService {
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
           error instanceof AttachmentInputUnsupportedError ||
-          error instanceof TurnIdempotencySettledError
+          error instanceof TurnIdempotencySettledError ||
+          error instanceof ClientTurnInputConflictError ||
+          error instanceof TurnSubmissionUnsupportedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );

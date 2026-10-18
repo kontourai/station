@@ -76,7 +76,11 @@
 
     "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
 
-    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/monument/src/__tests__/session-message-delivery.test.ts"
   ],
 
   "checks": []

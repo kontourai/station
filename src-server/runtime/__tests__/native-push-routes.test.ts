@@ -114,6 +114,8 @@ function createHarness(
       clearNativePush: (deviceId) => {
         pairing.clearNativePush(deviceId);
       },
+      nativePushRegistrationId: (deviceId) =>
+        pairing.nativePushRegistrationId(deviceId),
       onRegistered,
     }),
   );
@@ -122,7 +124,7 @@ function createHarness(
       incoming: { socket: { remoteAddress: LOOPBACK_PEER } },
     } as TestBindings);
   const call = (
-    method: 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'DELETE',
     path: string,
     credential: string | undefined,
     body?: unknown,
@@ -139,6 +141,11 @@ function createHarness(
     call('POST', NATIVE_PUSH_REGISTER_PATH, credential, body);
   const unregister = (credential: string | undefined) =>
     call('DELETE', NATIVE_PUSH_REGISTRATION_PATH, credential);
+  const status = (credential: string | undefined) =>
+    request(NATIVE_PUSH_REGISTRATION_PATH, {
+      method: 'GET',
+      headers: credential ? { Authorization: `Bearer ${credential}` } : {},
+    });
   return {
     homeDir,
     pairing,
@@ -146,6 +153,7 @@ function createHarness(
     onRegistered,
     register,
     unregister,
+    status,
     keyPath: join(homeDir, 'security', 'push-signing-key.json'),
     registryPath: join(homeDir, 'security', 'paired-devices.json'),
     sidecarPath: join(homeDir, 'security', 'native-push-registrations.json'),
@@ -359,6 +367,7 @@ describe('native push routes', () => {
       (await harness.register(paired.credential, androidBody(TOKEN_A))).status,
     ).toBe(404);
     expect((await harness.unregister(paired.credential)).status).toBe(404);
+    expect((await harness.status(paired.credential)).status).toBe(404);
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
     expect(existsSync(harness.keyPath)).toBe(false);
     expect(harness.onRegistered).not.toHaveBeenCalled();
@@ -569,6 +578,132 @@ describe('native push routes', () => {
       error: 'native_push_not_allowed',
     });
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+  });
+
+  describe('registration status (GET)', () => {
+    test('an operator credential is not a paired device (403)', async () => {
+      const harness = createHarness();
+      const response = await harness.status(MASTER_CREDENTIAL);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        error: 'device_pairing_required',
+      });
+    });
+
+    test('follows the device through register, a gateway "unregistered" clear, and register again', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      const before = await harness.status(paired.credential);
+      expect(before.status).toBe(200);
+      expect(await before.json()).toEqual({
+        registered: false,
+        registrationId: null,
+      });
+
+      const { registrationId } = (await (
+        await harness.register(paired.credential, androidBody(TOKEN_A))
+      ).json()) as Record<string, string>;
+      const after = await harness.status(paired.credential);
+      const body = (await after.json()) as Record<string, unknown>;
+      // Exactly these fields: no token, key or payload key.
+      expect(body).toEqual({ registered: true, registrationId });
+      expect(JSON.stringify(body)).not.toContain(TOKEN_A);
+
+      // The publisher's 410 path: a token-guarded clear for an OLD token
+      // leaves the registration; for the current one it drops it.
+      expect(harness.pairing.clearNativePush(paired.device.id, TOKEN_B)).toBe(
+        false,
+      );
+      expect(await (await harness.status(paired.credential)).json()).toEqual({
+        registered: true,
+        registrationId,
+      });
+      expect(harness.pairing.clearNativePush(paired.device.id, TOKEN_A)).toBe(
+        true,
+      );
+      expect(await (await harness.status(paired.credential)).json()).toEqual({
+        registered: false,
+        registrationId: null,
+      });
+
+      const again = (await (
+        await harness.register(paired.credential, androidBody(TOKEN_A))
+      ).json()) as Record<string, string>;
+      expect(again.registrationId).not.toBe(registrationId);
+      expect(await (await harness.status(paired.credential)).json()).toEqual({
+        registered: true,
+        registrationId: again.registrationId,
+      });
+    });
+
+    test('a device sees only its own registration', async () => {
+      const harness = createHarness();
+      const a = await pairDevice(harness, 'A');
+      const b = await pairDevice(harness, 'B');
+      const ra = (await (
+        await harness.register(a.credential, androidBody(TOKEN_A))
+      ).json()) as Record<string, string>;
+      expect(await (await harness.status(b.credential)).json()).toEqual({
+        registered: false,
+        registrationId: null,
+      });
+      const rb = (await (
+        await harness.register(b.credential, androidBody(TOKEN_B))
+      ).json()) as Record<string, string>;
+      expect(await (await harness.status(a.credential)).json()).toEqual({
+        registered: true,
+        registrationId: ra.registrationId,
+      });
+      expect(await (await harness.status(b.credential)).json()).toEqual({
+        registered: true,
+        registrationId: rb.registrationId,
+      });
+    });
+
+    test('answers for an iOS registration without its tokens', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness, 'iPhone');
+      const alertToken = 'ef'.repeat(40);
+      const { registrationId } = (await (
+        await harness.register(paired.credential, {
+          ...iosBody(),
+          alertToken,
+        })
+      ).json()) as Record<string, string>;
+      const response = await harness.status(paired.credential);
+      const text = await response.text();
+      expect(JSON.parse(text)).toEqual({ registered: true, registrationId });
+      expect(text).not.toContain(IOS_TOKEN);
+      expect(text).not.toContain(alertToken);
+      harness.pairing.clearNativePush(paired.device.id, IOS_TOKEN);
+      expect(await (await harness.status(paired.credential)).json()).toEqual({
+        registered: false,
+        registrationId: null,
+      });
+    });
+
+    test('answers even when this Station cannot deliver', async () => {
+      const harness = createHarness({ deliverable: false });
+      const paired = await pairDevice(harness);
+      const response = await harness.status(paired.credential);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        registered: false,
+        registrationId: null,
+      });
+    });
+
+    test('an unreadable registration file answers 503, not "not registered"', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      await harness.register(paired.credential, androidBody(TOKEN_A));
+      writeFileSync(harness.sidecarPath, '{not json', { mode: 0o600 });
+      const response = await harness.status(paired.credential);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: 'native_push_unavailable',
+      });
+    });
   });
 
   describe('iOS (Live Activities)', () => {

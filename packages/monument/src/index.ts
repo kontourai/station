@@ -69,4 +69,20 @@ export {
   KernelStorageClosedError,
 } from './port.js';
 export type * from './records.js';
+export {
+  type ConversationKeyInspection,
+  conversationKeyDecision,
+  decideSessionDelivery,
+  deliverSessionMessage,
+  keyInFlightError,
+  parseSessionDeliveryDecision,
+  type SessionDeliveryBranch,
+  type SessionDeliveryDecision,
+  type SessionMessageDelivery,
+  type SessionMessageDeliveryPorts,
+  type SessionSendMode,
+  type SessionStartResult,
+  type SessionSteerResult,
+  startUnlessDelivered,
+} from './session-message-delivery.js';
 export { resolveKernelLimits } from './step.js';

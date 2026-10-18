@@ -1,0 +1,7 @@
+{
+  "revision": "ff4fc1d0e71fac5579f04d52363de3fe843d0a9b",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reused owner-authored cd753e40 approved node-forge acceptance as ff4fc1d0e71. Reviewed exact reason/expires-only delta and the guide exception contract; no prose change required. Own preimage9118a4de and exact postimage65581d47 match; lock5ab50254,14 installed-source files and4 caller/patch/policy files match the assessed source bytes. Own baseline policy failed only expired record; all6 current live audit views pass after exact integration.90 policy tests passed. Evaluator controls reject at exclusive2026-10-17T00:00Z and reject an unused scoped record; restored policy passes. Remote RSA low-exponent forgery remains open: inspected SAP/JKS/PKCS12 converter calls do not establish universal dynamic/plugin/endpoint nonreachability. Existing Brian approval and #3122 record provide risk acceptance only, no automatic renewal, version bump, policy weakening, or other record edits. Hosted qualification remains pending.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}

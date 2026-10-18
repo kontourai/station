@@ -1,5 +1,6 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import type { LayoutPaneReferences } from '@kontourai/station-contracts/layout';
+import { personalBoardDefinitionSchema } from '@kontourai/station-sdk/personal-board';
 
 /**
  * The one `LayoutConfig` → workspace-shape derivation (#2062).
@@ -78,7 +79,11 @@ export function layoutWorkspaceShape(
   const unavailableTabIds = new Set(
     layoutData.paneReferences?.unavailableTabIds ?? [],
   );
+  const dashboard = personalBoardDefinitionSchema.safeParse(
+    layoutData.config?.dashboard,
+  );
   return {
+    ...(dashboard.success ? { dashboard: dashboard.data } : {}),
     slug: layoutData.slug,
     name: layoutData.name,
     icon: layoutData.icon,

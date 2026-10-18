@@ -1,0 +1,7 @@
+{
+  "revision": "81ac140c39e57a2e85a0576248907b65878a214c",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix round 5: re-read orchestration/runtime-events ownership and conversation activity projection claims against the stream snapshot/activity callers and work-observation reset. Epoch reset is UI-local; no public contract, authorization, SDK wire shape, session projection or server behavior changed. The reference needs no prose change.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

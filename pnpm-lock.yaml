@@ -48,6 +48,7 @@ patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/server-hono@2.0.14': 1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5
   js-yaml@3.15.2: aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992
+  node-forge@1.4.0: c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e
 
 importers:
 
@@ -144,13 +145,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 3.2.0
@@ -545,7 +546,7 @@ importers:
         specifier: 0.14.0
         version: 0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -573,10 +574,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^3.2.0
@@ -619,10 +620,10 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.18.0
@@ -654,13 +655,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../shared
       commander:
         specifier: ^15.0.0
@@ -678,10 +679,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -747,10 +748,10 @@ importers:
         specifier: 6.5.1
         version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^3.2.0
@@ -787,7 +788,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.8.0
+        specifier: ^0.9.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.5.0
@@ -14292,7 +14293,7 @@ snapshots:
 
   jks-js@1.1.7:
     dependencies:
-      node-forge: 1.4.0
+      node-forge: 1.4.0(patch_hash=c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e)
       node-int64: 0.4.0
       node-rsa: 1.1.1
 
@@ -15285,7 +15286,7 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  node-forge@1.4.0: {}
+  node-forge@1.4.0(patch_hash=c54ae72104809001a0144d42af2bd8e46ba1cdc0ef41f53a873afbe61ada275e): {}
 
   node-gyp@11.5.0(supports-color@7.2.0):
     dependencies:

@@ -160,6 +160,40 @@ describe('useActiveChatTranscript', () => {
           .map((row) => row.content)
           .join(''),
       ).toBe('AB');
+      const messages = view.result.current.messages;
+      const events = view.result.current.events;
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e4', 'content.text-delta', {
+              threadId: 'another-thread',
+              delta: 'unrelated',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          4,
+        ),
+      );
+      expect(view.result.current.messages).toBe(messages);
+      expect(view.result.current.events).toBe(events);
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e5', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-fresh',
+              itemId: 'answer',
+              delta: 'C',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          5,
+        ),
+      );
+      expect(
+        view.result.current.messages.find((row) => row.role === 'assistant')
+          ?.content,
+      ).toBe('ABC');
     } finally {
       view.unmount();
       activeChatsStore.removeChat(id);

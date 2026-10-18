@@ -33,8 +33,10 @@ export interface TurnDedupClaimCommand {
    * this owner dies before that point.
    */
   readonly tracking: 'tracked' | 'untracked';
+  readonly inputDigest?: string;
 }
 export type TurnDedupClaimResult =
+  | { readonly kind: 'conflict' }
   | { readonly kind: 'claimed'; readonly reclaimed: boolean }
   | { readonly kind: 'resolved'; readonly value: string }
   | { readonly kind: 'contended' }

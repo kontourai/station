@@ -21,11 +21,13 @@ device receipts for current availability.
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
 **Cadence: a configurable minimum interval, six hours by default.**
-`Main: Qualification` runs after main source changes with an hourly fallback. A
-passing candidate can start Nightly under a separate serialized delivery lease.
-The interval is a minimum publication spacing, not a delivery latency guarantee.
-Nightly has no independent schedule and does not rerun regression on that
-qualified path. Manual dispatch retains exact-source qualification for recovery.
+Nightly checks eligibility hourly at minute 47 UTC under its serialized delivery
+lease. The default minimum publication spacing is six hours; unchanged or recent
+ships skip before source tests and builds. Eligible candidates must pass lint,
+all typecheck lanes, native boundary checks and real browser smoke on the exact
+event SHA. Full qualification runs separately every six hours; Nightly's gate
+does not produce that receipt. Manual dispatch retains the same source and
+artifact gates for recovery.
 The hourly qualification-health watchdog reports stale or missing qualification
 and failed delivery; see [the release procedure](releasing.md#release-procedure).
 The cohort decision compares its source
@@ -41,7 +43,7 @@ Admitted ships of new content take the next reserved version code. Manual `rebui
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The qualification schedule is not a
+provider processing determine delivery time. The eligibility schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
@@ -59,9 +61,8 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 section for an exceptional same-day rebuild (`rebuild_index`).
 
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
-select an older Stable/TestFlight candidate. Native staging needs the source
-gate and can run alongside full regression; promotion needs both completed
-staging and the exact-SHA full-regression receipt.
+select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
+requires that gate and completed staging. Full regression runs independently.
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,
@@ -84,7 +85,7 @@ before retrying or changing a marker.
 ## Portable server nightly
 
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
-`portable-nightly` after full regression, builds the five
+`portable-nightly` after source usability succeeds, builds the five
 `station-server-<os>-<arch>` archives through the reusable
 `portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
 `<code>` is the native Nightly's reserved version code (re-checked against the
@@ -166,8 +167,9 @@ To enable it (owner only):
 
 - Plan retention first. Each publish adds a permanent prerelease and tag
   `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
-  point at): one for each Nightly that builds, and up to four
-  scheduled runs a day.
+  point at): one for each Nightly that builds. The default six-hour minimum permits
+  about four publication opportunities a day; hourly decisions that skip add no
+  release, and a shorter configured interval increases retention needs.
 - Provision the `portable-nightly-signing` environment and its
   `STATION_PORTABLE_NIGHTLY_MANIFEST_SIGNING_KEY` secret, matching the public
   key pinned as `station-portable-nightly-2026-09` in
@@ -181,8 +183,9 @@ To enable it (owner only):
 - Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
   verify". It says whether the gate evaluated as enabled for that run. The gate
   relies on `github.workflow_ref` in a called workflow naming the top-level
-  caller (`nightly.yml`, or `main-qualification.yml` when qualification starts
-  the Nightly), as GitHub documents, and that is unverified until then. If
+  caller (`nightly.yml`), as GitHub documents. Historical qualification-driven
+  identity remains admitted, but no current workflow calls Nightly that way.
+  Actual enabled publication remains unverified until that provider run. If
   the summary says dry run, the publish job was skipped, which fails safe.
 
 Deleting the variable returns every run to a dry run.

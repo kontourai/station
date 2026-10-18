@@ -95,11 +95,15 @@ This is not a byte-preservation check: further changes to an already-dirty path
 can keep the same status entry. Preserve and inspect intentional edits separately. Expected
 caches and outputs such as `dist-*` and `src-desktop/target/` remain ignored.
 
-The path-filtered Ubuntu job in
+The Ubuntu job in
 [desktop-clean-checkout.yml](../../.github/workflows/desktop-clean-checkout.yml)
-runs the same npm command for PR heads, `main` pushes and manual dispatches.
-Its separate Windows job exercises unsigned diagnostic NSIS packaging. Neither
-job's definition establishes that the current revision passed.
+runs the same npm command. The shared
+[delivery workflow](../../.github/workflows/delivery-validation.yml) selects it
+for affected PR heads after required source checks and for scheduled main
+qualification after the full corpus succeeds; manual dispatch remains available.
+It no longer starts independently on each `main` push. Its separate Windows job
+exercises unsigned diagnostic NSIS packaging. Neither job's definition
+establishes that the current revision passed.
 
 ## Startup readiness boundary
 

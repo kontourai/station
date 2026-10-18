@@ -1,0 +1,7 @@
+{
+  "revision": "15c4a5df86ba65990a532b82b04802656e39c84b",
+
+  "notes": [
+    {"path":"docs/reviews/personal-boards-20261016/README.md","note":"Reviewed final light-theme desktop and phone images against their managed product run e6def2c99423. Both images show settled shared PageFrame and Button colors, real Task data and responsive cards. Added image dependencies so later visual edits require review; no device, external-provider or release claim.","inputs":["docs/reviews/personal-boards-20261016/README.md","docs/reviews/personal-boards-20261016/dashboard-light.jpg","docs/reviews/personal-boards-20261016/mobile-light.jpg"]}
+  ]
+}
