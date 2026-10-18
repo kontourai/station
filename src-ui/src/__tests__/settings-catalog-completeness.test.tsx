@@ -2265,6 +2265,34 @@ describe('settings catalog completeness', () => {
     },
   );
 
+  test('an unrelated setting failure does not prevent the publisher withdrawal', async () => {
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'lite', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    updateConfig.mockImplementation(async (delta) => {
+      if (!delta.telemetryTier) throw new Error('Other settings failed');
+    });
+    await renderSettings();
+    fireEvent.change(screen.getByLabelText('Default max turns'), {
+      target: { value: '201' },
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Operator telemetry' }),
+      { target: { value: 'off' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
+    expect(updateConfig.mock.calls[0][0]).toEqual({
+      telemetryTier: { operator: 'off' },
+    });
+    expect(updateConfig.mock.calls[1][0]).toEqual({ defaultMaxTurns: 201 });
+  });
+
   test('discarding an optional reason does not attach it to an imported tier change', async () => {
     window.history.replaceState({}, '', '/settings?view=overview');
     configSnapshot = {

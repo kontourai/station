@@ -699,7 +699,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       Object.keys(plainChanges).length > 0
         ? (async () => {
             const { telemetryTier, ...other } = plainChanges;
-            if (Object.keys(other).length) await updateConfig(other);
             for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
               const publisher = id as TelemetryPublisherId;
               const reason =
@@ -715,6 +714,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               };
               await updateConfig(write);
             }
+            if (Object.keys(other).length) await updateConfig(other);
           })()
         : undefined;
     const logLevelWrite =
