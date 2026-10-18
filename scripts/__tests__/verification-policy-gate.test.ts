@@ -326,7 +326,9 @@ describe('verification policy gate', () => {
     expect(
       FAST_STATIC_COMMANDS.filter(
         ([command, args]) =>
-          command === process.execPath && args.length === 1 && args[0] === guard,
+          command === process.execPath &&
+          args.length === 1 &&
+          args[0] === guard,
       ),
     ).toHaveLength(1);
 
