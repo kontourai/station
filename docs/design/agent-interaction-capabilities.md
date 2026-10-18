@@ -32,8 +32,11 @@ operator's computer.
   access to a principal, Project, profile and live session. JavaScript has a
   separate default-off permission; a person can preempt Agent control.
 - [Device sessions](../../src-server/services/devices/device-session-service.ts)
-  have live-surface video and input, but Agent device control is currently
-  refused. This is not a general desktop computer-use backend.
+  expose local `device_*` tools to bound, verified Sessions through the shared
+  lease and per-device shares. Human takeover fences input. Automatic pane
+  reveal, remote-host Agent tools and weaker-custody engine credentials remain
+  outside this slice; see the [Device guide](../guides/mobile-device-workspace.md).
+  This does not implement a general desktop computer-use backend.
 - Codex and managed Station do not gain browser or computer support from the
   editor setting alone. Their delivery paths still need implementation and
   qualification.

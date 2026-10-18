@@ -1,0 +1,7 @@
+{
+  "revision": "8d585313ab25b83c5dd54494e036d8c450896dff",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the exception section against dependency-advisory-policy.mjs, pnpm advisory normalization, dependency-advisory.yml and the four-record owner-approved 2026-10-18 renewal. Only reason/expiry changes through exclusive 2026-10-25T00:00:00Z; exact identity/severity matching, unused and expiry rejection, residuals, floors and installed node-forge binding are unchanged. Existing guide remains accurate and needs no prose change. The new policy-change attestation records owner authorization without changing protected standards or overriding advisory expiry. Registry latest and null first-patched fields plus retained issue #3150 reproduction establish no verified upstream fix; Station endpoint exploitability/non-reachability remains unproven.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}
