@@ -47,6 +47,10 @@ export interface BrowserAgentRoutesDeps {
     | 'navigate'
     | 'resize'
     | 'snapshot'
+    | 'hover'
+    | 'drag'
+    | 'selectOption'
+    | 'colorScheme'
     | 'click'
     | 'type'
     | 'press'
@@ -249,6 +253,35 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
           }),
         );
       }
+      case 'hover': {
+        const target = targetFrom(body.target);
+        if (!target) return c.json(invalid('Give a target.'));
+        return c.json(await automation.hover(authority, id, target));
+      }
+      case 'drag': {
+        const source = targetFrom(body.source);
+        const target = targetFrom(body.target);
+        if (!source || !target)
+          return c.json(invalid('Give source and target.'));
+        return c.json(await automation.drag(authority, id, source, target));
+      }
+      case 'select': {
+        const target = targetFrom(body.target);
+        if (!target || 'x' in target)
+          return c.json(invalid('Give an element ref or locator.'));
+        return c.json(
+          await automation.selectOption(authority, id, target, {
+            ...(body.value !== undefined
+              ? { value: body.value as string }
+              : {}),
+            ...(body.label !== undefined
+              ? { label: body.label as string }
+              : {}),
+          }),
+        );
+      }
+      case 'color-scheme':
+        return c.json(await automation.colorScheme(authority, id, body.scheme));
       case 'type':
         return c.json(
           await automation.type(authority, id, {

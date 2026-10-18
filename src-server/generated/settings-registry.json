@@ -206,11 +206,11 @@
     {
       "id": "usage-telemetry",
       "label": "Usage telemetry",
-      "help": "Station sends the documented anonymous product-usage events only while this is on and a telemetry endpoint is configured.",
+      "help": "Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.",
       "scope": "station",
       "section": "telemetry",
       "route": "/settings?view=telemetry&highlight=usage-telemetry",
-      "configKey": "telemetryEnabled"
+      "configKey": "telemetryTier"
     },
     {
       "id": "telemetry-destination",

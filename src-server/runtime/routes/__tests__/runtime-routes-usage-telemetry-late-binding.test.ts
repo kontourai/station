@@ -21,7 +21,10 @@ import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principa
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
+import {
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+  USAGE_TELEMETRY_EVENTS,
+} from '../../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import {
   beginOtelExport,
@@ -178,10 +181,24 @@ function configurationRuntime(
 
 const makeTempDir = trackTempDirs();
 
-const disclosure = {
+const disclosure: Awaited<ReturnType<UsageTelemetryService['disclosure']>> = {
   acknowledged: false,
   inventoryRevision: 'inventory-revision',
-  events: { station_started: { description: 'Starts', properties: {} } },
+  events: USAGE_TELEMETRY_EVENTS,
+  envelope: 'Published envelope',
+  acknowledgementProtocol: 2,
+  endpointConfigured: false,
+  telemetryEnabled: false,
+  enabledSource: 'config',
+  publishers: {
+    operator: {
+      tier: 'lite',
+      reason: 'disclosure',
+      userChoice: 'full',
+      source: 'config',
+    },
+    kontour: { tier: 'lite', reason: 'default', source: 'default' },
+  },
 };
 
 describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () => {
@@ -310,6 +327,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
         defaultModel: 'configured-model',
         invokeModel: 'configured-model',
         structureModel: 'configured-model',
+        telemetryTier: { operator: 'full' },
       },
       version: '1.2.3',
       logger: { warn: vi.fn() },
@@ -506,7 +524,8 @@ describe('persisted telemetry configuration during Agent activation', () => {
                       probe: {
                         protocol: 'station-product-probe/v1',
                         sourceId: '22222222-2222-4333-8444-555555555555',
-                        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+                        inventoryRevision:
+                          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
                         checkedAt: '2026-10-11T06:00:00.000Z',
                         storage: 'postgres-schema-v1',
                       },
@@ -542,7 +561,9 @@ describe('persisted telemetry configuration during Agent activation', () => {
         | undefined;
       let saving: Promise<Response> | undefined;
       try {
-        await live.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+        await live.acknowledgeDisclosure(
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        );
         await live.stationStarted();
         await live.flush();
         const acknowledged = await live.deliveryStatus();
@@ -600,9 +621,16 @@ describe('persisted telemetry configuration during Agent activation', () => {
         );
         const persisted = await loader.loadAppConfig();
         for (const [key, value] of Object.entries(update)) {
-          expect(persisted[key as keyof AppConfig]).toBe(
-            value === null ? undefined : value,
-          );
+          if (key === 'telemetryEnabled') {
+            expect(persisted).not.toHaveProperty('telemetryEnabled');
+            expect(persisted.telemetryTier).toEqual({
+              kontour: 'off',
+              operator: 'off',
+            });
+          } else
+            expect(persisted[key as keyof AppConfig]).toBe(
+              value === null ? undefined : value,
+            );
         }
         expect(saveSettled).toBe(false);
         expect(runtime.appConfig).toBe(initial);
@@ -837,7 +865,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       });
       try {
         await priorProcess.acknowledgeDisclosure(
-          USAGE_TELEMETRY_INVENTORY_REVISION,
+          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
         );
       } finally {
         await priorProcess.shutdown();
@@ -974,9 +1002,16 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       expect(runtime.appConfig).toBe(initial);
       const persisted = await loader.loadAppConfig();
       for (const [key, value] of Object.entries(scenario.update)) {
-        expect(persisted[key as keyof AppConfig]).toBe(
-          value === null ? undefined : value,
-        );
+        if (key === 'telemetryEnabled') {
+          expect(persisted).not.toHaveProperty('telemetryEnabled');
+          expect(persisted.telemetryTier).toEqual({
+            kontour: 'off',
+            operator: 'off',
+          });
+        } else
+          expect(persisted[key as keyof AppConfig]).toBe(
+            value === null ? undefined : value,
+          );
       }
       releaseSnapshot?.();
       releaseDisclosure?.();

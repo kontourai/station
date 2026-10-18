@@ -192,6 +192,7 @@ function report() {
           name: 'read',
           exceeded: 'cognitive',
           introduced: true,
+          line: 1,
         },
       ],
     },
@@ -220,50 +221,46 @@ test.each(['base', 'head', 'attribution', 'metrics', 'findings'])(
   },
 );
 
-test('complexity summaries count rows while attribution counts distinct path/name/metric keys', () => {
+test('complexity attribution counts every same-named finding in the pinned Fallow report', () => {
   const value = report();
   const inherited = {
     path: 'index.ts',
     name: '<arrow>',
     exceeded: 'all',
     introduced: false,
+    line: 1,
   };
   value.complexity.findings = [
     inherited,
-    { ...inherited },
-    { ...inherited, exceeded: 'cognitive' },
+    { ...inherited, line: 5 },
+    { ...inherited, line: 10, exceeded: 'cognitive' },
+    { ...inherited, line: 15, introduced: true },
   ];
-  value.summary.complexity_findings = 3;
-  value.attribution.complexity_introduced = 0;
-  value.attribution.complexity_inherited = 2;
+  value.summary.complexity_findings = 4;
+  value.attribution.complexity_introduced = 1;
+  value.attribution.complexity_inherited = 3;
   expect(evaluateCodeHealthAudit(value, base, head)).toMatchObject({
     passed: true,
-    introduced: { complexity: 0 },
-    summary: { complexity_findings: 3 },
+    introduced: { complexity: 1 },
+    summary: { complexity_findings: 4 },
   });
 });
 
 test.each([
   'missing-row-attribution',
-  'conflicting-key-attribution',
   'wrong-row-count',
-  'wrong-unique-count',
+  'wrong-introduced-count',
+  'wrong-inherited-count',
   'missing-key',
-])('deduplicating complexity keys still refuses %s', (kind) => {
+])('complexity row attribution still refuses %s', (kind) => {
   const value: any = report();
   if (kind === 'missing-row-attribution')
     delete value.complexity.findings[0].introduced;
-  if (kind === 'conflicting-key-attribution') {
-    value.complexity.findings.push({
-      ...value.complexity.findings[0],
-      introduced: false,
-    });
-    value.summary.complexity_findings = 2;
-    value.attribution.complexity_inherited = 1;
-  }
   if (kind === 'wrong-row-count') value.summary.complexity_findings = 2;
-  if (kind === 'wrong-unique-count')
+  if (kind === 'wrong-introduced-count')
     value.attribution.complexity_introduced = 0;
+  if (kind === 'wrong-inherited-count')
+    value.attribution.complexity_inherited = 1;
   if (kind === 'missing-key') delete value.complexity.findings[0].exceeded;
   expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
 });
