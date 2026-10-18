@@ -83,7 +83,8 @@ private at ingress. Daily counts include exact distinct IPv4/IPv6-/48
 contributors; weekly counts sum contributor-days, because daily salts prevent
 cross-day deduplication. Publisher `stq_` keys cannot read exact analytics. Feedback
 counts are grouped by publisher/action/reason and receiver UTC day or week over
-the retained 90-day window, including partial current periods. Daily contributor
+the configured UTC-day window (default 90: today and the prior 89 days),
+including partial current periods. Daily contributor
 hashes serve only dedupe and are erased after the day closes. Feedback is never
 included in public or third-party publisher aggregates in this PR.
 
@@ -202,7 +203,8 @@ Cloudflared has an outbound edge network and a dedicated internal connector
 network. Only cloudflared and the receiver join the latter. Its static connector
 address `172.30.242.2/32` is the sole trusted proxy; the receiver also remains on
 the private database network. Check that `172.30.242.0/29` is free on the host;
-if changing it, update both static addresses, subnet and trusted CIDR together.
+if changing it, update both static addresses, subnet, dynamic `ip_range` and
+trusted CIDR together. The `172.30.242.4/30` dynamic pool excludes static .2/.3.
 Never trust the edge ranges or the whole Docker subnet: the trust decision is
 about the receiver's immediate socket peer. Keep one receiver process.
 
@@ -213,9 +215,19 @@ Everything else terminates at `http_status:404`, including `/v1/operator/*`,
 `/v1/publishers/*` and all Full-tier product routes. No receiver or database port
 is published on a non-loopback host address. Provision sources and inspect
 `/v1/operator/lite/daily` locally through 44481 or an owned SSH forward with the
-operator credential. A source with channel `unknown` admits a real sender whose
-build lacks channel metadata; empty catalogs admit version `custom` and the
-contract's unknown distribution/layout values.
+operator credential. The receiver independently enforces the same route boundary
+for trusted-proxy socket peers, including valid operator/publisher/Full
+credentials; only the listed POST/GET methods pass. Non-proxy peers retain
+private-route access. Trust configuration refuses broad ranges (/0, IPv4 wider
+than /24, IPv6 wider than /64), non-canonical host bits and whitespace at startup.
+A source with channel `unknown` admits a sender without channel metadata.
+Provision official sources with `"versionPolicy": "semver"` to accept real
+build versions without pre-populating `releaseVersions`; the default `catalog`
+policy accepts only listed versions plus `custom`. Both policies accept `custom`.
+Under `semver`, public/publisher version cells still come only from the fixed
+`releaseVersions` catalog; empty means no version dimension from that source.
+The operator exact view shows all admitted versions. Distribution/layout unknown
+values retain their existing contract.
 
 Validate the rendered stack and ingress without starting the tunnel (commands
 that follow `run --rm` execute only the local config/rule parser):
@@ -247,6 +259,24 @@ Without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, all tunneled clients share the
 connector key for both admission and contributors. With it, an invalid single-IP
 header falls back to that same peer key and increments the private
 `/v1/operator/diagnostics` counter; no header value is logged or stored.
+
+Before public exposure, add a Cloudflare WAF rate-limit rule matching:
+
+```text
+http.host eq "telemetry.example.com" and starts_with(http.request.uri.path, "/v1/lite/")
+```
+
+Replace the hostname with the provisioned tunnel hostname. A starting policy is
+60 requests per 60 seconds per source IP (`ip.src`, with Cloudflare's data-center
+characteristic), blocking for 60 seconds. Count every matching request, including
+rejected bodies; do not key by the public source slug. Choose supported periods
+and mitigation duration for the account's plan and tune with shared-NAT traffic
+in mind. See [Cloudflare's rate-limit parameters](https://developers.cloudflare.com/waf/rate-limiting-rules/parameters/).
+This per-client edge rule reduces starvation of the receiver's global
+`liteAdmission` budget by one client. The daily per-network receiver limit
+remains in force; distributed traffic and IPv6 rotation still need capacity
+monitoring. Validate the actual rule before exposure; this recipe does not
+provision or qualify it.
 
 Cloudflared uses error-level diagnostics and Docker's `none` logging driver in
 this template; do not enable debug/request logs or log streaming. Independently

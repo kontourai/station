@@ -106,6 +106,13 @@ CREATE INDEX lite_feedback_day ON station_telemetry.lite_feedback(day);
 const FEEDBACK_DIGEST = createHash('sha256')
   .update(FEEDBACK_SCHEMA)
   .digest('hex');
+const VERSION_POLICY_SCHEMA = `
+ALTER TABLE station_telemetry.lite_sources ADD COLUMN version_policy text NOT NULL DEFAULT 'catalog'
+ CHECK(version_policy IN ('catalog','semver'));
+`;
+const VERSION_POLICY_DIGEST = createHash('sha256')
+  .update(VERSION_POLICY_SCHEMA)
+  .digest('hex');
 const tables = [
   'lite_capacity',
   'lite_feedback',
@@ -192,6 +199,17 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (feedback.rows[0].digest !== FEEDBACK_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const versionPolicy = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=8',
+  );
+  if (!versionPolicy.rows.length) {
+    await client.query(VERSION_POLICY_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(8,$1)',
+      [VERSION_POLICY_DIGEST],
+    );
+  } else if (versionPolicy.rows[0].digest !== VERSION_POLICY_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
@@ -219,7 +237,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'lite_pings|source_id:text:true,event_id:uuid:true,received_at:timestamp with time zone:true,ping:jsonb:true,client_hash:bytea:false,contributions:jsonb:false',
     'lite_publications|week:date:true,publisher:text:true',
     'lite_published|week:date:true,publisher:text:true,dimension:text:true,value:text:true,estimate:bigint:true',
-    'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true',
+    'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true',
     'publisher_keys|publisher:text:true,credential_hash:bytea:true',
   ];
   if (
@@ -263,6 +281,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_published|CHECK ((estimate >= 0))',
         'lite_published|FOREIGN KEY (week, publisher) REFERENCES station_telemetry.lite_publications(week, publisher)',
         'lite_published|PRIMARY KEY (week, publisher, dimension, value)',
+        "lite_sources|CHECK ((version_policy = ANY (ARRAY['catalog'::text, 'semver'::text])))",
         'lite_sources|PRIMARY KEY (id)',
         'publisher_keys|CHECK ((octet_length(credential_hash) = 32))',
         'publisher_keys|PRIMARY KEY (publisher)',
@@ -283,6 +302,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
       'lite_marginals|finalized|false',
       'lite_pings|received_at|clock_timestamp()',
       'lite_sources|enabled|true',
+      "lite_sources|version_policy|'catalog'::text",
     ])
   )
     throw new BrokerError('schema_incompatible');
@@ -315,6 +335,11 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'SELECT digest FROM station_telemetry.migrations WHERE version=7',
   );
   if (feedbackMarker.rows[0]?.digest !== FEEDBACK_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const versionPolicyMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=8',
+  );
+  if (versionPolicyMarker.rows[0]?.digest !== VERSION_POLICY_DIGEST)
     throw new BrokerError('schema_incompatible');
   const secret = await client.query(
     'SELECT octet_length(secret) AS length FROM station_telemetry.lite_noise_key WHERE singleton',
@@ -392,6 +417,7 @@ export class LiteRepository {
     private readonly transaction: Transaction,
     private readonly maxPings: number,
     private readonly maxBytes: number,
+    private readonly retentionDays = 90,
   ) {}
 
   async createSource(value: unknown): Promise<void> {
@@ -399,7 +425,7 @@ export class LiteRepository {
       throw new BrokerError('invalid_source');
     const v = value as Record<string, unknown>;
     if (
-      Object.keys(v).length !== 5 ||
+      (Object.keys(v).length !== 5 && Object.keys(v).length !== 6) ||
       Object.keys(v).some(
         (k) =>
           ![
@@ -408,6 +434,7 @@ export class LiteRepository {
             'channel',
             'registryIds',
             'releaseVersions',
+            'versionPolicy',
           ].includes(k),
       ) ||
       typeof v.id !== 'string' ||
@@ -415,7 +442,10 @@ export class LiteRepository {
       !publisherId(v.publisher) ||
       ![...TELEMETRY_CHANNELS, 'unknown'].some((c) => c === v.channel) ||
       !catalog(v.registryIds, 1000, 128) ||
-      !catalog(v.releaseVersions, 1000, 64)
+      !catalog(v.releaseVersions, 1000, 64) ||
+      (v.versionPolicy !== undefined &&
+        v.versionPolicy !== 'catalog' &&
+        v.versionPolicy !== 'semver')
     )
       throw new BrokerError('invalid_source');
     await this.transaction(async (client) => {
@@ -445,13 +475,14 @@ export class LiteRepository {
       if (Number(bounds.rows[0].count) >= 10000)
         throw new BrokerError('storage_limit');
       const result = await client.query(
-        'INSERT INTO station_telemetry.lite_sources(id,publisher,channel,registry_ids,release_versions) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+        'INSERT INTO station_telemetry.lite_sources(id,publisher,channel,registry_ids,release_versions,version_policy) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
         [
           v.id,
           v.publisher,
           v.channel,
           JSON.stringify(v.registryIds),
           JSON.stringify(v.releaseVersions),
+          v.versionPolicy ?? 'catalog',
         ],
       );
       if (!result.rowCount) throw new BrokerError('source_conflict');
@@ -520,7 +551,7 @@ export class LiteRepository {
     sourceId: string,
     value: unknown,
     clientKey: { day: string; hash: string },
-  ): Promise<{ inserted: number }> {
+  ): Promise<{ accepted: true }> {
     return this.transaction(async (client) => {
       await this.admission(client);
       const source = await client.query<{
@@ -528,8 +559,9 @@ export class LiteRepository {
         channel: string;
         registry_ids: string[];
         release_versions: string[];
+        version_policy: 'catalog' | 'semver';
       }>(
-        'SELECT publisher,channel,registry_ids,release_versions FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
+        'SELECT publisher,channel,registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
         [sourceId],
       );
       const config = source.rows[0];
@@ -576,14 +608,16 @@ export class LiteRepository {
             'UPDATE station_telemetry.lite_capacity SET pings=pings+1 WHERE singleton',
           );
         }
-        return { inserted: inserted.rowCount ?? 0 };
+        return { accepted: true };
       }
       let ping: StationDailyPing;
       try {
         ping = parseStationDailyPing(
           value,
           config.registry_ids,
-          config.release_versions,
+          config.version_policy === 'semver'
+            ? 'semver'
+            : config.release_versions,
         );
       } catch {
         throw new BrokerError('invalid_daily_ping');
@@ -609,7 +643,7 @@ export class LiteRepository {
       );
       if (prior.rows.length) {
         if (!prior.rows[0].same) throw new BrokerError('event_conflict');
-        return { inserted: 0 };
+        return { accepted: true };
       }
       const count = await client.query(
         'SELECT pings FROM station_telemetry.lite_capacity WHERE singleton',
@@ -651,7 +685,7 @@ export class LiteRepository {
          SELECT $1::date,$2,key FROM jsonb_object_keys($3::jsonb) key ON CONFLICT DO NOTHING`,
         [day, config.publisher, JSON.stringify(contributions)],
       );
-      return { inserted: 1 };
+      return { accepted: true };
     });
   }
   private finalizationFailures: {
@@ -771,10 +805,11 @@ export class LiteRepository {
       /* independent bounded dimension transactions */
     }
     // Erasure is separately resumable and cannot roll back already finalized dimensions.
-    while (
-      await this.transaction(async (client) => {
-        const result = await client.query(
-          `WITH batch AS MATERIALIZED (SELECT p.ctid FROM station_telemetry.lite_pings p
+    try {
+      while (
+        await this.transaction(async (client) => {
+          const result = await client.query(
+            `WITH batch AS MATERIALIZED (SELECT p.ctid FROM station_telemetry.lite_pings p
          JOIN station_telemetry.lite_sources s ON s.id=p.source_id
          WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
          AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f WHERE f.publisher=s.publisher
@@ -782,25 +817,27 @@ export class LiteRepository {
          ORDER BY received_at LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
          UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL
          WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
-          [cutoff],
-        );
-        return result.rowCount !== 0;
-      })
-    ) {
-      /* bounded erasure batches */
-    }
-    while (
-      await this.transaction(async (client) => {
-        const result = await client.query(
-          `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.lite_feedback
+            [cutoff],
+          );
+          return result.rowCount !== 0;
+        })
+      ) {
+        /* bounded erasure batches */
+      }
+    } finally {
+      while (
+        await this.transaction(async (client) => {
+          const result = await client.query(
+            `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.lite_feedback
          WHERE day < $1::date AND client_hash IS NOT NULL ORDER BY day LIMIT 2000 FOR UPDATE SKIP LOCKED)
          UPDATE station_telemetry.lite_feedback SET client_hash=NULL WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
-          [cutoff],
-        );
-        return result.rowCount !== 0;
-      })
-    ) {
-      /* bounded daily feedback key erasure */
+            [cutoff],
+          );
+          return result.rowCount !== 0;
+        })
+      ) {
+        /* bounded daily feedback key erasure */
+      }
     }
     return cutoff;
   }
@@ -835,8 +872,9 @@ export class LiteRepository {
           const config = await client.query<{
             registry_ids: string[];
             release_versions: string[];
+            version_policy: string;
           }>(
-            'SELECT registry_ids,release_versions FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
+            'SELECT registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE publisher=$1 ORDER BY id',
             [publisher],
           );
           const counts = await client.query<{
@@ -992,16 +1030,18 @@ export class LiteRepository {
         FROM station_telemetry.lite_marginals WHERE finalized AND day >= ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date-30" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date-28"}
         AND day < ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date"}
         GROUP BY 1,publisher,dimension,value ORDER BY 1,publisher,dimension,value LIMIT 10001`);
-      const feedback =
-        await client.query(`SELECT to_char(${period === 'daily' ? 'day' : "date_trunc('week',day)"},'YYYY-MM-DD') AS period,
+      const feedback = await client.query(
+        `SELECT to_char(${period === 'daily' ? 'day' : "date_trunc('week',day)"},'YYYY-MM-DD') AS period,
         publisher,action,reason,count(*)::text AS count FROM station_telemetry.lite_feedback
-        WHERE day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-90
-        GROUP BY 1,publisher,action,reason ORDER BY 1,publisher,action,reason LIMIT 10001`);
+        WHERE day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-($1::integer-1)
+        GROUP BY 1,publisher,action,reason ORDER BY 1,publisher,action,reason LIMIT 10001`,
+        [this.retentionDays],
+      );
       if (rows.rows.length > 10000 || feedback.rows.length > 10000)
         throw new BrokerError('query_limit');
       return {
         feedback: feedback.rows,
-        feedbackWindow: 'retained-90-UTC-days-including-current',
+        feedbackWindow: `retained-${this.retentionDays}-UTC-days-including-current`,
         scope: 'operator-exact-marginals',
         finalizationDiagnostics: {
           failures: [...this.finalizationFailures],

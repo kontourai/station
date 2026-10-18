@@ -32,6 +32,20 @@ export function createProductBroker(
   const liteAdmission = receiverAdmission();
   const publicPageAdmission = receiverAdmission();
   app.use('*', async (c, next) => {
+    if (
+      addresses.isTrustedPeer(c.env?.incoming?.socket.remoteAddress ?? '') &&
+      !(
+        (c.req.method === 'POST' && /^\/v1\/lite\/[^/]+$/.test(c.req.path)) ||
+        (c.req.method === 'GET' &&
+          (c.req.path === '/v1/public/aggregates' ||
+            c.req.path.startsWith('/public/') ||
+            c.req.path === '/health/live'))
+      )
+    )
+      return c.notFound();
+    await next();
+  });
+  app.use('*', async (c, next) => {
     if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
       return next();
     if (

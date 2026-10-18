@@ -148,8 +148,13 @@ export class PgProductRepository implements ProductRepository {
         }),
       maxEvents,
       maxDatabaseBytes,
+      retentionDays,
     );
-    if (retentionDays < 1 || retentionDays > 90)
+    if (
+      !Number.isInteger(retentionDays) ||
+      retentionDays < 1 ||
+      retentionDays > 90
+    )
       throw new Error('Retention must be between 1 and 90 days');
   }
   private async durable(client: PoolClient): Promise<void> {
@@ -212,7 +217,7 @@ export class PgProductRepository implements ProductRepository {
       );
       if (rows.length) {
         if (
-          rows.length > 7 ||
+          rows.length > 8 ||
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
@@ -333,7 +338,7 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 7 ||
+      rows.length !== 8 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
@@ -341,7 +346,8 @@ export class PgProductRepository implements ProductRepository {
       rows[3].version !== 4 ||
       rows[4].version !== 5 ||
       rows[5].version !== 6 ||
-      rows[6].version !== 7
+      rows[6].version !== 7 ||
+      rows[7].version !== 8
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);
@@ -593,7 +599,7 @@ export class PgProductRepository implements ProductRepository {
           await this.assertSchema(client);
           const result = await client.query(
             `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.${table}
-           WHERE ${column}<${table === 'lite_feedback' ? "(clock_timestamp() AT TIME ZONE 'UTC')::date-$1::integer" : "clock_timestamp()-$1*interval '1 day'"} LIMIT 2000 FOR UPDATE SKIP LOCKED)
+           WHERE ${column}<${table === 'lite_feedback' ? "(clock_timestamp() AT TIME ZONE 'UTC')::date-($1::integer-1)" : "clock_timestamp()-$1*interval '1 day'"} LIMIT 2000 FOR UPDATE SKIP LOCKED)
            DELETE FROM station_telemetry.${table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
             [days],
           );

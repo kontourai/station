@@ -397,6 +397,7 @@ export function parseTelemetryFeedback(value: unknown): TelemetryFeedback {
       /^publisher:\S{1,118}$/u.test(value.publisher)
     ) ||
     !TELEMETRY_FEEDBACK_ACTIONS.some((action) => action === value.action) ||
+    value.reason === 'skip' ||
     !TELEMETRY_FEEDBACK_REASONS.some((reason) => reason === value.reason)
   )
     throw new Error('Invalid telemetry feedback');
@@ -407,11 +408,20 @@ export function parseTelemetryFeedback(value: unknown): TelemetryFeedback {
   };
 }
 
+export function mapRuntimeVersionToTelemetryVersion(version: string): string {
+  return version.length <= 64 &&
+    /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+      version,
+    )
+    ? version
+    : 'custom';
+}
+
 /** Registry membership comes from the public catalog, never from a syntactic ID match. */
 export function parseStationDailyPing(
   value: unknown,
   publicRegistryIds: readonly string[] = [],
-  publicReleaseVersions: readonly string[] = [],
+  publicReleaseVersions: readonly string[] | 'semver' = [],
 ): StationDailyPing {
   if (
     !record(value) ||
@@ -449,7 +459,9 @@ export function parseStationDailyPing(
       );
     if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
     if (domain === 'public-release-version-or-custom')
-      return item === 'custom' || publicReleaseVersions.includes(item);
+      return publicReleaseVersions === 'semver'
+        ? mapRuntimeVersionToTelemetryVersion(item) === item
+        : item === 'custom' || publicReleaseVersions.includes(item);
     return (
       (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&
         ['none', 'custom', 'unknown'].includes(item)) ||

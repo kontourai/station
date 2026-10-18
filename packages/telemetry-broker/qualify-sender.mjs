@@ -257,7 +257,7 @@ try {
   );
   assert.deepEqual(
     { status: ping.status, body: ping.body },
-    { status: 202, body: { inserted: 1 } },
+    { status: 202, body: { accepted: true } },
   );
   for (const field of ['channel', 'distribution', 'layouts_customized'])
     assert.equal(ping.payload[field], 'unknown', field);
@@ -292,7 +292,7 @@ try {
       reason: 'privacy',
     },
     status: 202,
-    body: { inserted: 1 },
+    body: { accepted: true },
   });
   const feedbackResponse = await fetch(
     `${receiverBase}/v1/operator/lite/daily`,

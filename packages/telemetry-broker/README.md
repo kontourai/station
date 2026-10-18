@@ -225,7 +225,7 @@ unknown nested fields, excessive or duplicate array entries, unknown catalog
 IDs/versions, invalid enum/count values, and a channel different from the
 source's configured channel are refused with 400. Bodies, including streaming
 bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
-202 response is `{ "inserted": 1 }`, or `{ "inserted": 0 }` for a retained
+202 response is always `{ "accepted": true }`, including a retained
 source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
@@ -233,7 +233,8 @@ not create separate retries. Dedupe ends when raw rows expire.
 Feedback uses the shared `TelemetryFeedback` contract and strict
 `parseTelemetryFeedback` parser. Its only fields are `publisher`, `action`
 (`tier-lowered` or `plugin-uninstalled`) and a fixed reason enum (`privacy`,
-`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`, `skip`).
+`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`).
+`skip` dismisses the sender's reason prompt locally and is rejected on the wire.
 There is no free text, installation/event ID or sender timestamp. The publisher
 must equal the URL source's configured publisher. Daily pings retain their
 existing channel/catalog validation; every other shape returns 400.
@@ -241,13 +242,13 @@ existing channel/catalog validation; every other shape returns 400.
 Migration 7 adds permanent `lite_feedback` rows containing source, publisher,
 action, reason, receiver UTC day and a daily contributor-key hash used only for
 dedupe. The first feedback per publisher/action/day/key wins, even across source
-aliases or changed reasons. Committed retries return 202 `{ "inserted": 0 }`;
-new rows return `{ "inserted": 1 }`. Feedback uses the same body/admission limits,
+aliases or changed reasons. Both new rows and committed retries return the
+same 202 `{ "accepted": true }` body, without disclosing dedupe state. Feedback uses the same body/admission limits,
 trusted-proxy client key, transaction durability and shared Lite row/storage
 ceiling as daily pings. `lite_capacity.pings` now counts both retained Lite row
 types. The existing closed-day erasure pass clears feedback hashes in bounded
-batches; the existing retention job deletes feedback older than the 90-day UTC
-cutoff (or the configured shorter retention). No IP or User-Agent is persisted.
+batches even if ping-hash erasure fails. Retention keeps exactly the configured
+number of UTC days including today (default 90: today and the prior 89 days). No IP or User-Agent is persisted.
 Daily salts and receiver restarts limit contributor identity; these counts do
 not measure unique people or installations.
 
@@ -265,17 +266,30 @@ a secret embedded in a binary. Example operator-authenticated request body for
   "publisher": "kontour",
   "channel": "stable",
   "registryIds": [],
-  "releaseVersions": ["1.2.3"]
+  "releaseVersions": ["1.2.3"],
+  "versionPolicy": "semver"
 }
 ```
 
-The five fields are required. `publisher` uses the foundation's
+The original five fields are required; `versionPolicy` is optional and defaults
+to `catalog`. Migration 8 preserves this default for existing sources.
+`catalog` accepts only listed `releaseVersions` plus `custom`. `semver` accepts
+any valid SemVer up to 64 characters plus `custom`, using the sender's shared
+validator, including prerelease/build metadata. Use it for official senders whose
+versions are not pre-provisioned. Invalid SemVer still returns 400.
+The operator exact view retains every admitted version. Public and publisher
+publications use only the independently configured `releaseVersions` for a
+`semver` source; they never derive support from observed versions or add a
+`custom` version cell for that source. An empty SemVer catalog omits the version
+dimension unless another source for the same publisher configures it.
+ `publisher` uses the foundation's
 `TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
 Publisher IDs are bounded to 128 characters and retain scoped IDs such as
 `publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
-strings. Empty catalogs admit only contract sentinels (`custom` version,
+strings. Under the default `catalog` policy, empty catalogs admit only contract
+sentinels (`custom` version,
 `none`/`custom`/`unknown` distribution, no public plugins). Sources may select
 channel `unknown` for a sender without channel metadata; channel equality still
 applies. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
@@ -304,7 +318,14 @@ headers are ignored: without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, **all
 clients behind cloudflared share the connector's key**. NAT also merges contributors.
 
 For a Cloudflare Tunnel, trust only the connector's socket CIDR (ideally a /32
-or /128), and keep direct access to the receiver private. A trusted peer's
+or /128), and keep direct access to the receiver private. Startup rejects /0,
+IPv4 ranges wider than /24, IPv6 ranges wider than /64, host bits set in a
+network, and surrounding whitespace (including after a comma).
+From any trusted-proxy socket, the receiver itself returns 404 except for
+`POST /v1/lite/:source`, `GET /v1/public/aggregates`, `GET /public/*` and
+`GET /health/live`. This applies even with valid credentials or no client-IP
+header. Operator, publisher and Full routes remain accessible only through
+non-proxy peers such as loopback or the private tailnet. A trusted peer's
 `CF-Connecting-IP` must contain exactly one IPv4 or IPv6 address. Lists, ports,
 brackets, zone IDs and garbage fall back to the socket peer and increment the
 operator diagnostic counter. A missing header also uses the peer. Untrusted
@@ -392,7 +413,8 @@ rows with 422 rather than truncate. No exact route is linked from the dashboard.
 
 Both operator responses additionally include `feedback` rows with `period`,
 `publisher`, `action`, `reason` and exact integer-string `count`. Feedback covers
-the retained 90-day UTC window, including the current partial day/week;
+the configured retained UTC-day window (default 90 days: today plus the prior
+89 days), including the current partial day/week;
 `feedbackWindow` names this separate window. Weekly counts sum the deduplicated
 daily rows. Feedback remains queryable after daily contributor hashes are erased,
 and disappears when retention deletes its rows. The same 10,000-row refusal
@@ -418,7 +440,9 @@ customization fields remain available only to the exact operator view.
 
 The public domain is fixed independently of traffic: every enum value, both
 boolean values, empty-set `none`, operator-configured `releaseVersions` and
-`registryIds`, plus `custom` for version/distribution and `none` for distribution.
+`registryIds`, plus `custom` for catalog-policy version/distribution and `none`
+for distribution. SemVer-policy versions contribute only their configured
+catalog entries; an empty catalog contributes no public version cells.
 All values always receive noise, including true zero. **There is no true-count
 k pre-filter.** Nine attacker networks plus a victim cannot change the release
 shape. Each publisher gets its own configured catalogs; no other publisher's

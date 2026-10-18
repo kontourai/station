@@ -33,7 +33,7 @@ const dailyPing = () => ({
   plugin_disabled_after_crash: 0,
 });
 
-async function checkLiteReceiver(store, pool, base, operatorKey) {
+async function checkLiteReceiver(store, pool, base, operatorKey, privateBase) {
   const source = `qa-${randomUUID()}`;
   const other = `qa-${randomUUID()}`;
   const publisher = `publisher:@qa/plugin-${randomUUID()}`;
@@ -53,17 +53,20 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     return stderrWrite.call(this, chunk, ...args);
   };
   const request = async (path, body, auth) => {
-    const response = await fetch(`${base}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'user-agent': agent,
-        'x-forwarded-for': forwarded,
-        'cf-connecting-ip': connecting,
-        ...(auth ? { authorization: `Bearer ${auth}` } : {}),
+    const response = await fetch(
+      `${path.startsWith('/v1/operator/') || path.startsWith('/v1/publishers/') ? privateBase : base}${path}`,
+      {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': agent,
+          'x-forwarded-for': forwarded,
+          'cf-connecting-ip': connecting,
+          ...(auth ? { authorization: `Bearer ${auth}` } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    );
     return { status: response.status, body: await response.json() };
   };
   const send = (ping, id = source) => request(`/v1/lite/${id}`, ping);
@@ -145,6 +148,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     };
     for (const bad of [
       { ...feedback, reason: 'unknown' },
+      { ...feedback, reason: 'skip' },
       { ...feedback, action: 'unknown' },
       { ...feedback, publisher },
       { ...feedback, note: 'private-rejected-content' },
@@ -158,22 +162,22 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       );
     assert.deepEqual(await send(feedback), {
       status: 202,
-      body: { inserted: 1 },
+      body: { accepted: true },
     });
     assert.deepEqual(
       await send({ ...feedback, reason: 'performance' }),
-      { status: 202, body: { inserted: 0 } },
+      { status: 202, body: { accepted: true } },
       'feedback dedupe ignores reason',
     );
     assert.deepEqual(
       await send({ ...feedback, action: 'plugin-uninstalled' }),
-      { status: 202, body: { inserted: 1 } },
+      { status: 202, body: { accepted: true } },
     );
     await assertPrivateStorage();
     const ping = dailyPing();
     assert.deepEqual(
       await send(ping),
-      { status: 202, body: { inserted: 1 } },
+      { status: 202, body: { accepted: true } },
       'lite ingest without per-install secret',
     );
     await assertPrivateStorage();
@@ -183,7 +187,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         event_id: ping.event_id.toUpperCase(),
         surfaces_today: ['cli', 'web'],
       }),
-      { status: 202, body: { inserted: 0 } },
+      { status: 202, body: { accepted: true } },
       'event replay dedupe',
     );
     assert.equal(
@@ -669,6 +673,57 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       publicRead.body,
       'closed-day publication unchanged by raw deletion',
     );
+    const ShortRetentionRepository = store.constructor;
+    const shortRetention = new ShortRetentionRepository(
+      pool,
+      1_000_000,
+      1_073_741_824,
+      3,
+    );
+    await pool.query(
+      `INSERT INTO station_telemetry.lite_feedback(source_id,publisher,action,reason,day)
+      SELECT $1,'kontour','tier-lowered','privacy',(clock_timestamp() AT TIME ZONE 'UTC')::date-n
+      FROM generate_series(0,3) n`,
+      [source],
+    );
+    const shortExact = await shortRetention.lite.exact('daily');
+    assert.equal(
+      shortExact.feedbackWindow,
+      'retained-3-UTC-days-including-current',
+    );
+    assert.equal(
+      shortExact.feedback.length,
+      3,
+      'operator uses configured inclusive UTC retention window',
+    );
+    await shortRetention.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      3,
+      'three UTC days includes today and two preceding days, never a fourth',
+    );
+    const defaultRepository = new ShortRetentionRepository(pool);
+    await pool.query(
+      "UPDATE station_telemetry.lite_feedback SET day=(clock_timestamp() AT TIME ZONE 'UTC')::date-90",
+    );
+    await defaultRepository.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      0,
+      'default ninety-day window excludes day ninety',
+    );
     await store.lite.revokeSource(source);
     assert.equal((await send(dailyPing())).status, 401);
     assert.equal((await send(dailyPing(), other)).status, 202);
@@ -693,6 +748,9 @@ export async function qualifyLiteReceiver(
   operatorKey,
   clientAddressPolicy,
 ) {
+  const privateServer = createServer(
+    getRequestListener(createProductBroker(store, operatorKey).fetch),
+  );
   const server = createServer(
     getRequestListener(
       createProductBroker(
@@ -703,12 +761,32 @@ export async function qualifyLiteReceiver(
     ),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => privateServer.listen(0, '127.0.0.1', resolve));
   try {
+    const privateBase = `http://127.0.0.1:${privateServer.address().port}`;
+    const proxyBase = `http://127.0.0.1:${server.address().port}`;
+    assert.equal(
+      (
+        await fetch(`${proxyBase}/v1/operator/storage`, {
+          headers: { authorization: `Bearer ${operatorKey}` },
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await fetch(`${privateBase}/v1/operator/storage`, {
+          headers: { authorization: `Bearer ${operatorKey}` },
+        })
+      ).status,
+      200,
+    );
     const liteChecks = await checkLiteReceiver(
       store,
       pool,
       `http://127.0.0.1:${server.address().port}`,
       operatorKey,
+      privateBase,
     );
     return [
       ...liteChecks,
@@ -721,7 +799,11 @@ export async function qualifyLiteReceiver(
     ];
   } finally {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    privateServer.closeAllConnections();
+    await Promise.all([
+      new Promise((resolve) => server.close(resolve)),
+      new Promise((resolve) => privateServer.close(resolve)),
+    ]);
   }
 }
 

@@ -64,8 +64,8 @@ test.each([
   ['untrusted IPv4', '192.0.2.9', '192.0.2.10/32', false],
   ['trusted IPv4', '192.0.2.9', '192.0.2.0/24', true],
   ['trusted mapped IPv4', '::ffff:192.0.2.9', '192.0.2.9/32', true],
-  ['trusted IPv6', '2001:db8:1::9', '2001:db8:1::/48', true],
-  ['untrusted IPv6', '2001:db8:2::9', '2001:db8:1::/48', false],
+  ['trusted IPv6', '2001:db8:1::9', '2001:db8:1::/64', true],
+  ['untrusted IPv6', '2001:db8:2::9', '2001:db8:1::/64', false],
 ])('CF header admission: %s', async (_label, peer, cidrs, trusts) => {
   const store = new LiteRepository(
     async () => {
@@ -168,4 +168,49 @@ test('a full client map evicts oldest entries and continues accepting new client
     );
   for (let i = 0; i < 10001; i++) expect((await send(i)).status).toBe(401);
   expect((await send(0)).status).toBe(401);
+});
+
+test.each([
+  '0.0.0.0/0',
+  '::/0',
+  '10.0.0.0/8',
+  '192.0.2.0/23',
+  '2001:db8::/63',
+  '192.0.2.1/24',
+  '10.0.0.1/8',
+  '2001:db8::1/64',
+  ' 192.0.2.0/24',
+  '192.0.2.0/24 ',
+  '192.0.2.0/24, 2001:db8::/64',
+])('startup refuses unsafe trusted proxy CIDR %s', (cidr) => {
+  expect(() => clientAddressPolicy(cidr)).toThrow(
+    /Invalid telemetry trusted proxy CIDR/,
+  );
+});
+
+test('trusted mapped IPv4 headers share the IPv4 admission budget', async () => {
+  const store = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
+  registerLiteRoutes(app, store, clientAddressPolicy('192.0.2.9/32'));
+  app.onError((_error, c) => c.json({ error: 'source_unauthorized' }, 401));
+  const send = (value: string) =>
+    app.request(
+      '/v1/lite/unknown',
+      { method: 'POST', body: '{}', headers: { 'cf-connecting-ip': value } },
+      socketBindings('192.0.2.9'),
+    );
+  for (let i = 0; i < 60; i++)
+    expect((await send('198.51.100.1')).status).toBe(401);
+  expect((await send('::ffff:198.51.100.1')).status).toBe(429);
+  expect((await send('::ffff:c633:6401')).status).toBe(429);
+  expect((await send('::ffff:198.51.100.2')).status).toBe(401);
 });

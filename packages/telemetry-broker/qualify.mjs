@@ -329,6 +329,15 @@ async function qualifyEntrypoint(
       ['private database file', {}, null],
       ...[
         'not-a-cidr',
+        '0.0.0.0/0',
+        '::/0',
+        '10.0.0.0/8',
+        '192.0.2.0/23',
+        '2001:db8::/63',
+        '192.0.2.1/24',
+        '2001:db8::1/64',
+        ' 192.0.2.0/24',
+        '192.0.2.0/24 ',
         '127.0.0.1',
         '127.0.0.1/33',
         '::1/129',
@@ -337,7 +346,7 @@ async function qualifyEntrypoint(
       ].map((cidrs) => [
         'invalid trusted proxy CIDRs',
         { STATION_TELEMETRY_BROKER_TRUSTED_PROXY: cidrs },
-        /Invalid telemetry trusted proxy CIDR configuration/,
+        /Invalid telemetry trusted proxy CIDR/,
       ]),
       [
         'unsupported client IP header',
@@ -347,7 +356,7 @@ async function qualifyEntrypoint(
       [
         'trusted proxy configuration',
         {
-          STATION_TELEMETRY_BROKER_TRUSTED_PROXY: '127.0.0.1/32, ::1/128',
+          STATION_TELEMETRY_BROKER_TRUSTED_PROXY: '127.0.0.2/32,::2/128',
           STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER: 'cf-connecting-ip',
         },
         null,

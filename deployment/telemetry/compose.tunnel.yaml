@@ -44,7 +44,7 @@ networks:
   tunnel:
     internal: true
     ipam:
-      config: [{subnet: 172.30.242.0/29}]
+      config: [{subnet: 172.30.242.0/29, ip_range: 172.30.242.4/30}]
   edge: {}
 
 volumes:
