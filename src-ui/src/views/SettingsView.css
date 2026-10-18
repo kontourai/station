@@ -1098,6 +1098,30 @@
 
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .settings__section .page-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .settings__section .page-row__aside,
+  .settings__section .page-row__control {
+    width: 100%;
+  }
+
+  .settings__section .page-row__aside {
+    max-width: none;
+    justify-content: space-between;
+  }
+  .settings__range-row {
+    flex-wrap: wrap;
+  }
+  .settings__range-row input[type="range"] {
+    min-width: 8rem;
+  }
+  .settings__account-help summary,
+  .settings__subsection > summary {
+    min-height: 44px;
+    align-content: center;
+  }
   .settings .settings__section-nav {
     display: none;
   }
@@ -1387,27 +1411,6 @@
   margin: var(--k-space-2) 0 0;
 }
 
-@media (max-width: 640px) {
-  .settings__section .page-row__aside {
-    max-width: none;
-    justify-content: space-between;
-  }
-  .settings__range-row {
-    flex-wrap: wrap;
-  }
-  .settings__range-row input[type="range"] {
-    min-width: 8rem;
-  }
-  .settings__account-help summary,
-  .settings__subsection > summary {
-    min-height: 44px;
-    align-content: center;
-  }
-}
-
-.settings .section-nav-rail__body:focus {
-  outline: none;
-}
 .settings__section .provenance-badge {
   font-size: var(--k-text-xs);
 }
