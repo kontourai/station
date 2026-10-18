@@ -1,14 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { RegistryPackageClaim } from '@kontourai/station-contracts/registry-trust';
@@ -16,6 +8,7 @@ import { createPluginTelemetry } from '@kontourai/station-sdk/client';
 import { parsePluginDailyPing } from '@kontourai/station-shared/plugin-telemetry';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
@@ -32,6 +25,7 @@ import { registerPluginLifecycleRoutes } from '../../plugins/plugin-lifecycle-ro
 import { createTelemetryRoutes } from '../telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../usage-telemetry-disclosure.js';
 
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => void | Promise<void>> = [];
 const id = 'publisher:telemetry-writer';
 afterEach(async () => {
@@ -43,8 +37,7 @@ afterEach(async () => {
 async function fixture(
   options: { unsigned?: boolean; private?: boolean } = {},
 ) {
-  const directory = mkdtempSync(join(tmpdir(), 'station-publisher-test-'));
-  cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+  const directory = makeTempDir('station-publisher-test-');
   const home = join(directory, 'home');
   mkdirSync(home, { recursive: true });
   const source = join(directory, 'writer');
