@@ -504,7 +504,13 @@ export function breakLockCommandFor(home: string, instance: string): string {
 
 /** Removes control characters (keeping the newlines that separate message lines). */
 function printable(text: string): string {
-  return text.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '');
+  let out = '';
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    const control = code < 0x20 || (code >= 0x7f && code <= 0x9f);
+    if (!control || char === '\n') out += char;
+  }
+  return out;
 }
 
 /**
