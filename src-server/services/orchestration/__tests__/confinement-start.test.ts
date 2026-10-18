@@ -16,6 +16,7 @@ import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -26,6 +27,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
+import { codexSandboxConfinementProvider } from '../../../providers/adapters/codex-confinement.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
@@ -34,6 +36,7 @@ import {
   type ConfinementProvider,
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
+import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -111,9 +114,12 @@ class RecordingAdapter implements ProviderAdapterShape {
     return session;
   }
 
+  readonly turns: ProviderSendTurnInput[] = [];
+
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    this.turns.push(input);
     this.turnCount += 1;
     return { threadId: input.threadId, turnId: `turn-${this.turnCount}` };
   }
@@ -160,6 +166,14 @@ function testProvider(
   };
 }
 
+const CLAUDE_REQUIRED_PLAN: ConfinementPlan = {
+  requiredLevel: 'os-profile',
+  policyBasis: 'workspace-floor',
+  mechanism: 'seatbelt',
+  level: 'os-profile',
+  workspaceAccess: 'mounted',
+};
+
 const CODEX_REQUIRED_PLAN: ConfinementPlan = {
   requiredLevel: 'os-profile',
   policyBasis: 'workspace-floor',
@@ -198,7 +212,9 @@ describe('#2494: a start resolves its confinement before the engine is touched',
         agent: { slug: String(input.metadata?.agentSlug ?? 'agent') },
       }),
       logger: { debug: vi.fn(), warn: vi.fn() },
-      ...(confinementProviders ? { confinementProviders } : {}),
+      // #2494: Seatbelt available on any host unless a test replaces it.
+      confinementProviders:
+        confinementProviders ?? confinementProvidersForTests(),
     });
   }
 
@@ -297,8 +313,58 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     });
   });
 
-  test('a workspace Claude start at never is unchanged (auto) and recorded honestly: host, no mechanism, not required', async () => {
+  test('a workspace Claude start at never requires os-profile, met by Station’s Seatbelt profile around the engine', async () => {
     await start('claude-never', 'claude', { approvalMode: 'never' });
+    const input = claude.starts.at(-1)!;
+    // The adapter applies it as full access only once it observes the
+    // profile applied (claude-adapter-seatbelt.test.ts).
+    expect(input.modelOptions?.approvalMode).toBe('never');
+    expect(input.confinementPlan).toEqual(CLAUDE_REQUIRED_PLAN);
+    expect(input.metadata).not.toHaveProperty('stationConfinementRecord');
+  });
+
+  test('a turn keeps full access only for a Claude session whose start was observed confined, never from its plan', async () => {
+    // Observed: the engine's adapter recorded `confined` for this start.
+    claude.observedPostures.push('confined');
+    await start('claude-observed', 'claude', { approvalMode: 'never' });
+    await waitForStarted('claude-observed');
+    expect(persistedRecord('claude-observed')).toMatchObject({
+      mechanism: 'seatbelt',
+      posture: 'confined',
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: 'claude-observed',
+        input: 'go',
+        modelOptions: { approvalMode: 'never' },
+      },
+    });
+    expect(claude.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'never' },
+    });
+
+    // The same plan, with nothing observed (the adapter fell back to Auto,
+    // or recorded no confined posture): the turn applies Auto.
+    await start('claude-unobserved', 'claude', { approvalMode: 'never' });
+    await waitForStarted('claude-unobserved');
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: 'claude-unobserved',
+        input: 'go',
+        modelOptions: { approvalMode: 'never' },
+      },
+    });
+    expect(claude.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+  });
+
+  test('a workspace Claude start at auto engages nothing and is recorded honestly: host, no mechanism, not required', async () => {
+    await start('claude-auto', 'claude', { approvalMode: 'auto' });
     const input = claude.starts.at(-1)!;
     expect(input.modelOptions?.approvalMode).toBe('auto');
     expect(input).not.toHaveProperty('confinementPlan');
@@ -310,8 +376,51 @@ describe('#2494: a start resolves its confinement before the engine is touched',
       policyBasis: 'workspace-floor',
     };
     expect(input.metadata?.stationConfinementRecord).toEqual(record);
-    await waitForStarted('claude-never');
-    expect(persistedRecord('claude-never')).toEqual(record);
+    await waitForStarted('claude-auto');
+    expect(persistedRecord('claude-auto')).toEqual(record);
+  });
+
+  test.each(['linux', 'win32'] as const)(
+    'on %s, where Seatbelt cannot exist, a workspace Claude start at never is refused before start, naming the missing mechanism',
+    async (platform) => {
+      await replaceService([
+        codexSandboxConfinementProvider,
+        createSeatbeltConfinementProvider({ platform: () => platform }),
+      ]);
+      await expect(
+        start(`claude-never-${platform}`, 'claude', { approvalMode: 'never' }),
+      ).rejects.toMatchObject({
+        code: 'confinement_mechanism_unavailable',
+        receipt: { status: 'rejected' },
+        message: expect.stringContaining(
+          `seatbelt: Seatbelt is macOS-only; this host is ${platform}`,
+        ),
+      });
+      expect(claude.starts).toHaveLength(0);
+      // Not refused for the operator, nor at another mode.
+      await start(`claude-auto-${platform}`, 'claude', {
+        approvalMode: 'auto',
+      });
+      expect(claude.starts).toHaveLength(1);
+    },
+  );
+
+  test('a macOS host without sandbox-exec refuses the requiring start, naming it', async () => {
+    await replaceService([
+      createSeatbeltConfinementProvider({
+        platform: () => 'darwin',
+        sandboxExec: '/nonexistent/sandbox-exec',
+      }),
+    ]);
+    await expect(
+      start('claude-no-sandbox-exec', 'claude', { approvalMode: 'never' }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      message: expect.stringContaining(
+        'which needs a macOS Seatbelt profile; none is available',
+      ),
+    });
+    expect(claude.starts).toHaveLength(0);
   });
 
   test('a required level with no mechanism on this host is refused before start, naming the missing mechanism', async () => {
@@ -475,16 +584,11 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     });
     const claudeRespawn = claude.starts.at(-1)!;
     expect(claudeRespawn.threadId).toBe('claude-dormant');
-    expect(claudeRespawn.metadata?.stationConfinementRecord).toEqual({
-      level: 'host',
-      required: false,
-      posture: 'no-mechanism',
-      workspaceAccess: 'mounted',
-      policyBasis: 'workspace-floor',
-    });
-    await waitForStarted('claude-dormant', 2);
-    expect(persistedRecord('claude-dormant')).toEqual(
-      claudeRespawn.metadata?.stationConfinementRecord,
+    // #2494: the respawn re-resolves Seatbelt for its new process; its
+    // adapter records what it observes, never the stale `confined`.
+    expect(claudeRespawn.confinementPlan).toEqual(CLAUDE_REQUIRED_PLAN);
+    expect(claudeRespawn.metadata).not.toHaveProperty(
+      'stationConfinementRecord',
     );
   });
 

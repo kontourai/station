@@ -70,22 +70,48 @@ describe('resolveConfinement', () => {
     });
   });
 
-  test('a required start is never resolved to a spawn wrapper no start path applies yet', () => {
+  test('a required start is never resolved to a spawn wrapper that names no engine applying it', () => {
     expect(() =>
       resolveConfinement({
         ...WORKSPACE_NEVER,
         providers: [
           provider({ mechanism: 'test-wrapper', engagement: 'spawn-wrapper' }),
+          provider({
+            mechanism: 'test-codex-wrapper',
+            engagement: 'spawn-wrapper',
+            engines: ['codex'],
+          }),
         ],
       }),
     ).toThrow(
       expect.objectContaining({
         code: 'confinement_mechanism_unavailable',
         message: expect.stringContaining(
-          'no start path applies a spawn-wrapped confinement yet',
+          'test-wrapper: no start path applies a spawn-wrapped confinement for claude',
         ),
       }),
     );
+  });
+
+  test('#2494: a required start resolves to a spawn wrapper whose engine applies it', () => {
+    expect(
+      resolveConfinement({
+        ...WORKSPACE_NEVER,
+        providers: [
+          provider({
+            mechanism: 'seatbelt',
+            engagement: 'spawn-wrapper',
+            engines: ['claude'],
+          }),
+        ],
+      }).plan,
+    ).toEqual({
+      requiredLevel: 'os-profile',
+      policyBasis: 'workspace-floor',
+      mechanism: 'seatbelt',
+      level: 'os-profile',
+      workspaceAccess: 'mounted',
+    });
   });
 
   test('an unrequired start engages only engine-native mechanisms, and never refuses', () => {
@@ -175,7 +201,31 @@ describe('readConfinementRecord', () => {
     expect(readConfinementRecord(valid)).toEqual(valid);
   });
 
+  test('#2494: reads back a Seatbelt record with its grant kinds, and a fallback', () => {
+    const seatbelt = {
+      ...valid,
+      mechanism: 'seatbelt',
+      writeGrants: ['station-config', 'station-temp', 'workspace'],
+    };
+    expect(readConfinementRecord(seatbelt)).toEqual(seatbelt);
+    const fallback = {
+      level: 'host',
+      required: false,
+      posture: 'no-mechanism',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+      fallback: 'confined-credential-unavailable',
+    };
+    expect(readConfinementRecord(fallback)).toEqual(fallback);
+  });
+
   test.each([
+    ['an unknown write grant', { ...valid, writeGrants: ['everything'] }],
+    [
+      'write grants that are not a list',
+      { ...valid, writeGrants: 'workspace' },
+    ],
+    ['an unknown fallback', { ...valid, fallback: 'because' }],
     ['an unknown level', { ...valid, level: 'kernel' }],
     ['an unknown posture', { ...valid, posture: 'probably' }],
     ['an unknown mechanism', { ...valid, mechanism: 'trust-me' }],

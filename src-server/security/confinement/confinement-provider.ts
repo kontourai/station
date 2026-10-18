@@ -383,6 +383,7 @@ const FALLBACKS = new Set<string>([
   'confined-credential-unavailable',
   'config-root-pinned',
   'resume-bound-elsewhere',
+  'workspace-too-broad',
 ]);
 
 /** A stored record read back, or `undefined` when it is not one. */

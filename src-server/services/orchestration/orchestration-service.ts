@@ -201,8 +201,10 @@ import {
   type ConfinementProvider,
   ConfinementRefusedError,
   noMechanismConfinementRecord,
+  readConfinementRecord,
   resolveConfinement,
 } from '../../security/confinement/confinement-provider.js';
+import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -972,7 +974,7 @@ interface OrchestrationServiceOptions {
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
   /**
    * #2494: the confinement mechanisms a start can resolve to. Absent:
-   * Codex's own sandbox, the only one this Station can engage today.
+   * Codex's own sandbox and Station's Seatbelt profile for Claude.
    */
   confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */
@@ -2177,6 +2179,15 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      // #2494: read from the stored start event directly, because
+      // `readLatestSessionStartMetadata` strips the reserved record key.
+      observedConfinement: (threadId) =>
+        readConfinementRecord(
+          (
+            options.eventStore?.latestEventByMethod(threadId, 'session.started')
+              ?.payload as { metadata?: Record<string, unknown> } | undefined
+          )?.metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY],
+        ),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -11257,6 +11268,7 @@ export class OrchestrationService {
       isolationMode,
       providers: this.options.confinementProviders ?? [
         codexSandboxConfinementProvider,
+        seatbeltConfinementProvider,
       ],
     });
     if (resolution.plan) return { ...input, confinementPlan: resolution.plan };

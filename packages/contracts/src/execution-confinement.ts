@@ -105,11 +105,15 @@ export type ConfinementWriteGrant =
  *   resume), which a confined engine may not write.
  * - `resume-bound-elsewhere`: the start resumes a conversation recorded
  *   under another configuration home.
+ * - `workspace-too-broad`: the workspace is or contains the home folder or
+ *   Station's data, or sits in a hidden folder or `~/Library`, so a write
+ *   grant on it would confine nothing.
  */
 export type ConfinementFallbackReason =
   | 'confined-credential-unavailable'
   | 'config-root-pinned'
-  | 'resume-bound-elsewhere';
+  | 'resume-bound-elsewhere'
+  | 'workspace-too-broad';
 
 /**
  * Content-free record of a session start's confinement: no host paths and
