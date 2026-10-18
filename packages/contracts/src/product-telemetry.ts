@@ -1,5 +1,6 @@
 import type {
   PluginDailyPing,
+  PluginTelemetryBatch,
   PluginTelemetryEvent,
 } from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
@@ -235,6 +236,7 @@ export interface TelemetryOutboxEntry {
     | StationDailyPing
     | PluginDailyPing
     | PluginTelemetryEvent
+    | PluginTelemetryBatch
     | ProductTelemetryBatch
     | TelemetryFeedback
     | { event: 'telemetry_dropped'; count: number };

@@ -78,9 +78,9 @@ for older-server unknown-status handling and registry result types.
 
 ## Plugin publisher counts
 
-`useTelemetry()` captures the calling Pane's plugin identity and returns
+`useTelemetry()` captures the calling Pane's kernel capability and returns
 `telemetry.count(event, props)`. Non-React clients use
-`createPluginTelemetry(apiBase, pluginName)`. Both send only to the Station
+`createPluginTelemetry(apiBase, paneCapability)`. Both send only to the Station
 kernel; the kernel validates the signed public-registry declaration and applies
 publisher consent before delivery. See the
 [SDK reference](../../docs/reference/sdk.md#plugin-publisher-counts) and

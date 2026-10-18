@@ -82,7 +82,7 @@ test('broker-reusable plugin_daily parser rejects identifying fields and any und
       },
     },
   };
-  expect(parsePluginDailyPing(ping, parsed)).toEqual(ping);
+  expect(parsePluginDailyPing(ping, parsed, 'publisher:writer')).toEqual(ping);
   for (const bad of [
     { ...ping, distinct_id: 'private-id' },
     { ...ping, timestamp: '2026-10-01' },
@@ -108,7 +108,7 @@ test('broker-reusable plugin_daily parser rejects identifying fields and any und
       },
     },
   ])
-    expect(() => parsePluginDailyPing(bad, parsed)).toThrow(
+    expect(() => parsePluginDailyPing(bad, parsed, 'publisher:writer')).toThrow(
       /Invalid plugin_daily/,
     );
   expect(
@@ -117,4 +117,21 @@ test('broker-reusable plugin_daily parser rejects identifying fields and any und
       'lite',
     ),
   ).not.toBe(ping.inventory_revision);
+});
+
+test.each([
+  '127.0.0.1',
+  '169.254.169.254',
+  '[::1]',
+  '10.1.2.3',
+  'localhost',
+  '0x7f000001',
+])('declarations reject non-public destination %s', (host) => {
+  expect(() =>
+    parsePublisherTelemetryDeclaration({
+      publisher: 'writer',
+      endpoint: `https://${host}/counts`,
+      events: { opened: { properties: {} } },
+    }),
+  ).toThrow();
 });

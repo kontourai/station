@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type {
   PluginDailyPing,
@@ -18,10 +18,13 @@ import {
   parsePluginTelemetryCount,
   pluginTelemetryInventoryRevision,
   pluginTelemetryPropertyValues,
+  pluginTelemetryPublisherId,
 } from '@kontourai/station-shared/plugin-telemetry';
+import { resolvePublicAddress } from '@kontourai/station-shared/public-network';
 import { resolveTelemetryConfiguration } from '../domain/telemetry-configuration.js';
 import { writeUserNotice } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
+import { sendPluginTelemetry } from './plugin-telemetry-transport.js';
 import {
   assertPluginTelemetryAdmission,
   type PluginTelemetryCatalogOptions,
@@ -53,11 +56,17 @@ interface PublisherState {
   feedbackDay?: string;
   lowering?: { at: string; feedbackSent: boolean };
   retired?: boolean;
+  requests?: number;
+  fullEvents?: number;
+  full?: PluginTelemetryEvent[];
 }
 const bucket = (count: number): '0' | '1' | '2-3' | '4+' =>
   count === 0 ? '0' : count === 1 ? '1' : count <= 3 ? '2-3' : '4+';
 const publisherId = (binding: Binding): TelemetryPublisherId =>
-  `publisher:${binding.declaration.publisher}`;
+  pluginTelemetryPublisherId(
+    binding.receipt.registryKeyDigest,
+    binding.declaration.publisher,
+  );
 function currentNotice(binding: Binding, state: PublisherState): boolean {
   return (
     state.notice?.publisher === publisherId(binding) &&
@@ -104,6 +113,7 @@ export async function retirePluginTelemetry(
             retired: true,
             counts: {},
             previous: undefined,
+            full: undefined,
             notice: undefined,
             acknowledgement: undefined,
           }
@@ -113,6 +123,17 @@ export async function retirePluginTelemetry(
 export class PluginTelemetryService {
   private readonly local: TelemetryLocalState;
   private stopped = false;
+  private readonly withdrawn = new Set<TelemetryPublisherId>();
+  private readonly capabilities = new Map<
+    string,
+    {
+      plugin: string;
+      publisher: TelemetryPublisherId;
+      revision: string;
+      generation: string;
+      expires: number;
+    }
+  >();
   private readonly requests = new Map<AbortController, TelemetryPublisherId>();
   constructor(
     private readonly options: {
@@ -120,7 +141,6 @@ export class PluginTelemetryService {
       catalog: PluginTelemetryCatalogOptions;
       config: () => AppConfig;
       env: NodeJS.ProcessEnv;
-      fetch: typeof globalThis.fetch;
     },
   ) {
     this.local = new TelemetryLocalState(options.homeDir);
@@ -150,8 +170,37 @@ export class PluginTelemetryService {
     }
   }
   withdraw(publisher: TelemetryPublisherId) {
+    this.withdrawn.add(publisher);
+    for (const [token, claim] of this.capabilities)
+      if (claim.publisher === publisher) this.capabilities.delete(token);
     for (const [request, owner] of this.requests)
       if (owner === publisher) request.abort();
+  }
+  async mountPane(plugin: string) {
+    const binding = (await this.bindings()).find(
+      (row) => row.plugin === plugin,
+    );
+    if (!binding || this.stopped) throw new Error('Publisher unavailable');
+    const state = await this.state(binding);
+    if (!state || state.retired || this.withdrawn.has(publisherId(binding)))
+      throw new Error('Publisher retired');
+    for (const [token, claim] of this.capabilities)
+      if (claim.expires <= Date.now()) this.capabilities.delete(token);
+    if (this.capabilities.size >= 1024)
+      throw new Error('Too many mounted panes');
+    const token = randomBytes(32).toString('base64url');
+    this.capabilities.set(token, {
+      plugin,
+      publisher: publisherId(binding),
+      revision: state.revision,
+      generation: binding.generation,
+      expires: Date.now() + 300000,
+    });
+    return {
+      token,
+      publisher: publisherId(binding),
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    };
   }
   get configured(): boolean {
     return !!this.options.config().publicTelemetryRegistries?.length;
@@ -184,7 +233,9 @@ export class PluginTelemetryService {
           !state ||
           state.revision !== revision ||
           (state.retired && state.generation !== binding.generation)
-        )
+        ) {
+          if (prior?.retired && prior.generation !== binding.generation)
+            this.withdrawn.delete(publisherId(binding));
           state = {
             revision,
             generation: binding.generation,
@@ -194,7 +245,7 @@ export class PluginTelemetryService {
             reported: prior?.reported,
             feedbackDay: prior?.feedbackDay,
           };
-        else if (state.generation !== binding.generation)
+        } else if (state.generation !== binding.generation)
           state = { ...state, generation: binding.generation };
         if (state.day !== day)
           state = {
@@ -202,6 +253,9 @@ export class PluginTelemetryService {
             day,
             counts: empty(binding.declaration),
             previous: { day: state.day, counts: state.counts },
+            requests: 0,
+            fullEvents: 0,
+            full: [],
           };
         if (!state.retired) change?.(state);
         return state;
@@ -272,7 +326,7 @@ export class PluginTelemetryService {
         ]),
       ),
       envelope:
-        'Full plugin_event v1: random event_id, data_revision, inventory_revision, publisher, declared name and enum/bucket properties, server timestamp, and a per-publisher monthly pseudonymous distinct_id. Lite plugin_daily v1: only bucketed previous-day event/property marginal counts and a random event_id; no installation ID or raw day. Direct HTTPS exposes network metadata to the receiver.',
+        'Full plugin_event v1: random event_id, data_revision, inventory_revision, publisher, declared name and enum/bucket properties, server timestamp, and a per-publisher monthly pseudonymous distinct_id. Lite plugin_daily v1: only bucketed previous-day event/property marginal counts and a random event_id; Station adds no installation ID or raw day, but plugin-chosen counts can encode a stable identifier. Plugin publishers default Off and require opt-in. Direct HTTPS exposes network metadata to the receiver.',
       telemetryEnabled: resolution.tier === 'full',
       enabledSource: resolution.source,
       publishers: {
@@ -315,7 +369,7 @@ export class PluginTelemetryService {
       await this.state(binding, (state) => {
         if (!headless || currentNotice(binding, state)) return;
         writeUserNotice(
-          `${publisherId(binding)} telemetry: Lite sends one identifier-free daily ping with bucketed declared event/property counts to ${binding.declaration.endpoint}. Turn off: station telemetry set ${publisherId(binding)} off. Inventory: ${state.revision}`,
+          `${publisherId(binding)} telemetry is Off until you choose Lite or Full. Lite sends plugin-chosen bucketed counts that can encode identifiers to ${binding.declaration.endpoint}. Choose Lite/Full or keep Off: station telemetry set ${publisherId(binding)} <off|lite|full>. Inventory: ${state.revision}`,
         );
         state.notice = {
           publisher: publisherId(binding),
@@ -340,18 +394,25 @@ export class PluginTelemetryService {
     });
   }
   async count(
-    plugin: string,
+    capability: string,
     events: Array<{
       event: string;
       attributes: Record<string, string | number>;
     }>,
   ) {
     if (this.stopped) throw new Error('Telemetry stopped');
+    const claim = this.capabilities.get(capability);
+    if (!claim || claim.expires <= Date.now())
+      throw new Error('Pane capability expired');
     const binding = (await this.bindings()).find(
-      (row) => row.plugin === plugin,
+      (row) =>
+        row.plugin === claim.plugin &&
+        publisherId(row) === claim.publisher &&
+        row.generation === claim.generation &&
+        pluginTelemetryInventoryRevision(row.declaration, 'lite') ===
+          claim.revision,
     );
-    if (!binding)
-      throw new Error('Plugin has no verified telemetry declaration');
+    if (!binding) throw new Error('Pane capability no longer current');
     // Validate the entire batch before admitting any of it. Caller timestamps and plugin IDs are never forwarded.
     const parsed = events.map((event) =>
       parsePluginTelemetryCount(
@@ -362,17 +423,26 @@ export class PluginTelemetryService {
     );
     if (!(await binding.isCurrent())) throw new Error('Plugin changed');
     let state = (await this.state(binding))!;
-    if (state.retired) throw new Error('Publisher retired');
+    if (state.retired || this.withdrawn.has(publisherId(binding)))
+      throw new Error('Publisher retired');
+    let admitted = false;
+    state = (await this.state(binding, (next) => {
+      if ((next.requests ?? 0) < 100) {
+        next.requests = (next.requests ?? 0) + 1;
+        admitted = true;
+      }
+    }))!;
+    if (!admitted) {
+      await this.drop(binding, 'overflow', parsed.length);
+      return;
+    }
     const resolution = this.resolution(binding, state);
     if (resolution.tier === 'off') {
-      await this.local.record({
-        publisher: publisherId(binding),
-        tier: 'lite',
-        recordedAt: new Date().toISOString(),
-        outcome: 'dropped',
-        reason: resolution.reason === 'DNT' ? 'DNT' : 'off',
-        payload: { event: 'telemetry_dropped', count: parsed.length },
-      });
+      await this.drop(
+        binding,
+        resolution.reason === 'DNT' ? 'DNT' : 'off',
+        parsed.length,
+      );
       return;
     }
     state = (await this.state(binding, (next) => {
@@ -393,23 +463,61 @@ export class PluginTelemetryService {
       undefined,
       { month: new Date(), publisherId: publisherId(binding) },
     );
-    for (const event of parsed) {
-      const payload: PluginTelemetryEvent = {
-        event: 'plugin_event',
-        schema_version: 1,
-        data_revision: PLUGIN_TELEMETRY_DATA_REVISION,
-        inventory_revision: pluginTelemetryInventoryRevision(
-          binding.declaration,
+    const payloads: PluginTelemetryEvent[] = parsed.map((event) => ({
+      event: 'plugin_event',
+      schema_version: 1,
+      data_revision: PLUGIN_TELEMETRY_DATA_REVISION,
+      inventory_revision: pluginTelemetryInventoryRevision(
+        binding.declaration,
+        'full',
+      ),
+      event_id: randomUUID(),
+      publisher: publisherId(binding),
+      name: event.name,
+      properties: event.properties,
+      distinct_id,
+      timestamp: new Date().toISOString(),
+    }));
+    let dropped = 0;
+    await this.state(binding, (next) => {
+      const available = Math.max(0, 100 - (next.fullEvents ?? 0));
+      const accepted = payloads.slice(0, available);
+      next.fullEvents = (next.fullEvents ?? 0) + accepted.length;
+      next.full ??= [];
+      next.full.push(...accepted);
+      dropped = payloads.length - accepted.length;
+    });
+    if (dropped) await this.drop(binding, 'overflow', dropped);
+  }
+
+  private async drop(
+    binding: Binding,
+    reason: TelemetryOutboxEntry['reason'],
+    count: number,
+  ) {
+    await this.local.record({
+      publisher: publisherId(binding),
+      tier: 'lite',
+      recordedAt: new Date().toISOString(),
+      outcome: 'dropped',
+      reason,
+      payload: { event: 'telemetry_dropped', count },
+    });
+  }
+  async flushFull() {
+    for (const binding of await this.bindings()) {
+      let events: PluginTelemetryEvent[] = [];
+      const state = await this.state(binding, (next) => {
+        events = next.full ?? [];
+        next.full = [];
+      });
+      if (events.length && state)
+        await this.send(
+          binding,
+          { event: 'plugin_events', events },
           'full',
-        ),
-        event_id: randomUUID(),
-        publisher: publisherId(binding),
-        name: event.name,
-        properties: event.properties,
-        distinct_id,
-        timestamp: new Date().toISOString(),
-      };
-      await this.send(binding, payload, 'full', state);
+          state,
+        );
     }
   }
   async flushDaily() {
@@ -460,6 +568,7 @@ export class PluginTelemetryService {
             ),
           },
           binding.declaration,
+          publisherId(binding),
         );
       });
       if (payload && state) await this.send(binding, payload, 'lite', state);
@@ -473,7 +582,7 @@ export class PluginTelemetryService {
     const binding = await this.binding(publisher);
     let allowed = false;
     const state = (await this.state(binding, (state) => {
-      if (this.resolution(binding, state).reason === 'DNT') return;
+      if (this.resolution(binding, state).tier === 'off') return;
       const day = new Date().toISOString().slice(0, 10);
       allowed = !!reason && reason !== 'skip' && state.feedbackDay !== day;
       if (allowed) state.feedbackDay = day;
@@ -495,7 +604,7 @@ export class PluginTelemetryService {
         : -1;
       const today = new Date().toISOString().slice(0, 10);
       if (
-        this.resolution(binding, state).reason !== 'DNT' &&
+        this.resolution(binding, state).tier !== 'off' &&
         state.lowering &&
         !state.lowering.feedbackSent &&
         elapsed >= 0 &&
@@ -515,7 +624,10 @@ export class PluginTelemetryService {
   }
   private async send(
     binding: Binding,
-    payload: PluginDailyPing | PluginTelemetryEvent | TelemetryFeedback,
+    payload:
+      | PluginDailyPing
+      | { event: 'plugin_events'; events: PluginTelemetryEvent[] }
+      | TelemetryFeedback,
     tier: 'lite' | 'full',
     snapshot: PublisherState,
   ) {
@@ -549,7 +661,7 @@ export class PluginTelemetryService {
       reason =
         resolution.reason === 'DNT'
           ? 'DNT'
-          : resolution.tier === 'off' && !('action' in payload)
+          : resolution.tier === 'off'
             ? 'off'
             : tier === 'full' && resolution.tier !== 'full'
               ? 'disclosure'
@@ -561,26 +673,49 @@ export class PluginTelemetryService {
       if (reason === 'transport') {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 1000);
-        this.requests.set(controller, publisherId(binding));
         try {
-          const response = await abortableTelemetryOperation(
-            this.options.fetch(binding.declaration.endpoint, {
-              method: 'POST',
-              redirect: 'error',
-              signal: controller.signal,
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(payload),
-            }),
+          const selected = await abortableTelemetryOperation(
+            resolvePublicAddress(
+              new URL(binding.declaration.endpoint).hostname,
+            ),
             controller.signal,
           );
-          if (response.ok) {
+          this.requests.set(controller, publisherId(binding));
+          assertPluginTelemetryAdmission(
+            binding.declaration,
+            binding.receipt,
+            this.options.config().publicTelemetryRegistries,
+          );
+          const finalResolution = this.resolution(binding, state);
+          if (finalResolution.tier === 'off') {
+            reason = finalResolution.reason === 'DNT' ? 'DNT' : 'off';
+            throw new Error('Publisher disabled');
+          }
+          if (tier === 'full' && finalResolution.tier !== 'full') {
+            reason = 'disclosure';
+            throw new Error('Full withdrawn');
+          }
+          // Withdrawal may happen before controller registration during DNS/admission.
+          if (
+            (this.withdrawn.has(publisherId(binding)) &&
+              !('action' in payload)) ||
+            !binding.isSelected() ||
+            controller.signal.aborted
+          )
+            throw new Error('Publisher withdrawn');
+          const sent = await abortableTelemetryOperation(
+            sendPluginTelemetry(
+              binding.declaration.endpoint,
+              JSON.stringify(payload),
+              selected,
+              controller.signal,
+            ),
+            controller.signal,
+          );
+          if (sent) {
             outcome = 'sent';
             reason = 'acknowledged';
           }
-          await abortableTelemetryOperation(
-            Promise.resolve(response.body?.cancel()),
-            controller.signal,
-          );
         } catch {
           /* Bounded optional delivery; no retry, credentials or error text. */
         } finally {
@@ -595,7 +730,16 @@ export class PluginTelemetryService {
       recordedAt: new Date().toISOString(),
       outcome,
       reason,
-      payload,
+      payload:
+        outcome === 'dropped'
+          ? {
+              event: 'telemetry_dropped',
+              count:
+                'events' in payload && Array.isArray(payload.events)
+                  ? payload.events.length
+                  : 1,
+            }
+          : payload,
     });
   }
 }

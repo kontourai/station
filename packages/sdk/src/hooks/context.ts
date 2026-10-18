@@ -17,16 +17,18 @@ export function useSDK() {
   return {
     apiBase: sdk.apiBase,
     pluginName: sdk.pluginApiIdentity?.pluginName ?? '',
+    telemetryCapability: sdk.pluginApiIdentity?.telemetryCapability,
     getPluginHeaders: sdk.pluginApiIdentity?.getHeaders ?? getPluginHeaders,
   };
 }
 
 /** The calling Pane's publisher counts, through its Station kernel. */
 export function useTelemetry() {
-  const { apiBase, pluginName } = useSDK();
+  const { apiBase, telemetryCapability } = useSDK();
   return useMemo(
-    () => createPluginTelemetry(apiBase, pluginName),
-    [apiBase, pluginName],
+    () =>
+      createPluginTelemetry(apiBase, telemetryCapability ?? (() => undefined)),
+    [apiBase, telemetryCapability],
   );
 }
 

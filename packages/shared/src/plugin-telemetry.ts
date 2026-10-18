@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 import {
   PLUGIN_TELEMETRY_LIMITS as LIMITS,
   type PluginDailyPing,
   type PluginTelemetryCountBucket,
   type PublisherTelemetryDeclaration,
 } from '@kontourai/station-contracts/plugin-telemetry';
+import { isPublicIp } from './public-network.js';
 
 const TOKEN = /^[a-z][a-z0-9_]{0,47}$/;
 const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/;
@@ -31,7 +33,8 @@ export function isTelemetryPublisherId(
     value === 'operator' ||
     (typeof value === 'string' &&
       value.startsWith('publisher:') &&
-      ID.test(value.slice(10)) &&
+      (ID.test(value.slice(10)) ||
+        /^[a-f0-9]{24}\/[a-z0-9][a-z0-9._:-]{0,127}$/.test(value.slice(10))) &&
       !RESERVED.has(value.slice(10)))
   );
 }
@@ -56,6 +59,10 @@ export function parsePublisherTelemetryDeclaration(
   }
   if (
     url.protocol !== 'https:' ||
+    url.hostname.replace(/\.$/, '').toLowerCase().endsWith('.localhost') ||
+    url.hostname.replace(/\.$/, '').toLowerCase() === 'localhost' ||
+    (isIP(url.hostname.replace(/^\[|\]$/g, '')) !== 0 &&
+      !isPublicIp(url.hostname.replace(/^\[|\]$/g, ''))) ||
     url.username ||
     url.password ||
     url.search ||
@@ -195,7 +202,7 @@ const digest = (value: unknown) =>
 /** Wire shape only; declaration/destination changes independently invalidate receipts. */
 export const PLUGIN_TELEMETRY_DATA_REVISION = digest({
   version: 1,
-  events: ['plugin_daily', 'plugin_event'],
+  events: ['plugin_daily', 'plugin_events', 'plugin_event'],
   count: ['0', '1', '2-3', '4+'],
   limits: LIMITS,
   daily:
@@ -210,12 +217,13 @@ export function pluginTelemetryInventoryRevision(
     declaration,
     tier,
     data: PLUGIN_TELEMETRY_DATA_REVISION,
-    wording: 1,
+    wording: 2,
   });
 }
 export function parsePluginDailyPing(
   value: unknown,
   input: PublisherTelemetryDeclaration,
+  publisher: import('@kontourai/station-contracts/product-telemetry').TelemetryPublisherId,
 ): PluginDailyPing {
   const declaration = parsePublisherTelemetryDeclaration(input);
   if (
@@ -234,7 +242,7 @@ export function parsePluginDailyPing(
     value.data_revision !== PLUGIN_TELEMETRY_DATA_REVISION ||
     value.inventory_revision !==
       pluginTelemetryInventoryRevision(declaration, 'lite') ||
-    value.publisher !== `publisher:${declaration.publisher}` ||
+    value.publisher !== publisher ||
     typeof value.event_id !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       value.event_id,
@@ -279,7 +287,15 @@ export function parsePluginDailyPing(
     data_revision: PLUGIN_TELEMETRY_DATA_REVISION,
     inventory_revision: pluginTelemetryInventoryRevision(declaration, 'lite'),
     event_id: value.event_id,
-    publisher: `publisher:${declaration.publisher}`,
+    publisher,
     events,
   };
+}
+
+/** Registry identity and item identity jointly own consent and daily state. */
+export function pluginTelemetryPublisherId(
+  registryKeyDigest: string,
+  id: string,
+): import('@kontourai/station-contracts/product-telemetry').TelemetryPublisherId {
+  return `publisher:${registryKeyDigest.replace(/^sha256:/, '').slice(0, 24)}/${id}`;
 }

@@ -50,3 +50,8 @@ export interface PluginTelemetryEvent {
   distinct_id: string;
   timestamp: string;
 }
+
+export interface PluginTelemetryBatch {
+  event: 'plugin_events';
+  events: PluginTelemetryEvent[];
+}

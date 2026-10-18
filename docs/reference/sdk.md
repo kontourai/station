@@ -3330,10 +3330,7 @@ const telemetry = useTelemetry();
 await telemetry.count('opened', { surface: 'main', items: 2 });
 ```
 
-`useTelemetry()` captures that Pane's Station and plugin attribution. Outside
-React, use `createPluginTelemetry(apiBase, pluginName)` from the root or
-`@kontourai/station-sdk/client`. Existing imperative code can obtain the same
-scoped object with `telemetry.forPlugin(pluginName)` after API-base setup.
+`useTelemetry()` captures that Pane's Station and kernel-issued five-minute capability, renewed by the host while mounted. Outside React, pass a capability supplied by the owning host to `createPluginTelemetry(apiBase, paneCapability)` from the root or `@kontourai/station-sdk/client`. Plugin names and headers cannot substitute for a capability.
 `count(event, props?)` returns a Promise; a kernel rejection rejects it. It sends
 only to `/api/telemetry/events`, through the SDK's authenticated request boundary,
 with a five-second deadline and no retry. Broker routes are unavailable for this
@@ -3346,13 +3343,7 @@ input and bucket labels at output. Collection and receiver delivery are separate
 a successful kernel response does not prove receiver acceptance. Inspect
 `station telemetry outbox --publisher publisher:<id>` for local delivery results.
 
-The old unqualified `telemetry.track`/`instrument` diagnostics path is deprecated.
-Its plugin-name getter is deliberately empty because simultaneous Panes have
-separate owners; it cannot infer attribution. Its best-effort buffer is capped at
-100 observations, with a ten-second flush and no retry. Such undeclared or
-unattributed calls are now rejected by the kernel rather than logged. New code
-must obtain a scoped object and declare its event inventory. Do not put prompts,
-paths, names, account identifiers or error text in telemetry properties.
+The old unqualified `telemetry.count`/`track` and automatic `instrument()` diagnostics are no-ops. In development, instrumentation warns. Use a Pane-scoped object and declared inventory; do not put prompts, paths, names, account identifiers or error text in telemetry properties.
 
 ---
 

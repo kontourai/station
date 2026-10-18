@@ -4336,15 +4336,14 @@ projects declared SDK counts through the authenticated kernel telemetry route.
 [Admission](../../src-server/services/plugins/plugin-telemetry-admission.ts) binds
 selected immutable plugin code to the applied signature receipt, its verified
 registry item ID and the operator's public-catalog classification. Declaration
-validation runs during install before activation. A caller's plugin header is
-attribution, not a grant to change tiers or consent.
+validation runs during install before activation. Counts require a kernel-issued five-minute Pane capability bound to the namespaced registry/item identity, installation and declaration revision; plugin headers confer no attribution authority. Agents cannot count. Pane-marked and capability-bearing requests cannot raise tiers or write consent. Same-origin plugin frames remain a platform-wide trust boundary tracked separately.
 
 The service uses the foundation tier resolver, monthly identity helper, atomic
-publisher daily state and shared bounded outbox. Daily reservations precede I/O;
+publisher daily state and shared bounded outbox. Plugin publishers default Off; plugin-chosen Lite counts can encode identifiers. A notice alone does not enable sending. Each publisher admits at most 100 count requests and 100 Full observations per day; Full sends are batched per flush and drops coalesce by publisher/day/reason. Daily reservations precede I/O;
 there is no backlog or automatic retry. Current installation/trust, effective tier,
 notice or Full receipt are checked before dispatch. The central uninstall
 transaction retires persistent snapshots and receipts; runtime also aborts requests
-already waiting to dispatch. Explicit fixed-enum feedback can send before removal.
+already waiting to dispatch, with a synchronous final withdrawal fence. Explicit fixed-enum feedback can send before removal only while enabled; Off and DNT suppress it. Declaration literals and every DNS answer must be public; TLS is pinned to a validated address with redirects refused.
 The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.routes.test.ts)
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.

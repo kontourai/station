@@ -20,19 +20,20 @@ The numbered ADR directory is frozen; new decisions use this topic-keyed record.
 ## Consent and publishers
 
 Each publisher has its own Off, Lite, or Full choice. `kontour` is the app author;
-`operator` is the existing configured product receiver; `publisher:<registry id>`
+`operator` is the existing configured product receiver; `publisher:<registry-key-digest>/<registry item id>`
 identifies a plugin or distribution publisher. The two built-in choices are
 stored in `telemetryTier` in Station configuration. Plugin publisher registration and storage use verified signed public-registry
 installations; distribution manifest loading remains future work. Sinks are independent: an operator endpoint never
 replaces, disables or grants consent to an author endpoint.
 
-Off stops automatic telemetry for that publisher. Explicit feedback for a recent
-lowering is the limited exception described below. Lite is the default: one identifier-free
+Off stops telemetry for that publisher, including plugin uninstall feedback. Built-in publishers retain the explicit lowering-feedback exception described below. Kontour and operator default to Lite: one identifier-free
 daily aggregate per publisher, after clear notice and with an always-available
 Off switch. It requires no acknowledgement. Headless/CLI/portable/Docker startup
 must print a one-time notice and record its inventory revision before Lite sends.
 An updated Lite inventory requires showing the updated notice. The daily sender implements that notice and startup behavior; desktop sidecars
 retain the UI receipt gate.
+
+Third-party plugin publishers default **Off**. A notice is an opt-in prompt: choose Lite, Full, or keep Off. Recording a notice does not enable sending. Station adds no identifier to plugin Lite, but plugin-chosen counts within the declared inventory can encode a stable identifier; plugin Lite is not identifier-free. Operator policy cannot raise this default.
 
 Full is an explicit choice and requires the current inventory-bound disclosure
 acknowledgement. A changed Full inventory invalidates that acknowledgement. The
@@ -234,7 +235,8 @@ explicitly list public catalog source keys in `publicTelemetryRegistries`.
 Signature verification and matching registry item identity are independently
 required. `telemetryPublisherPolicy` feeds the foundation resolver and can only
 lower defaults. The authoring API uses a Pane-scoped `useTelemetry()` or explicit
-`createPluginTelemetry(apiBase, pluginName)`; the old global plugin label is empty
-by design and cannot identify concurrent Panes. Kernel consent surfaces retain
+`createPluginTelemetry(apiBase, paneCapability)`; the kernel mints a five-minute, unforgeable token per mounted Pane, bound to plugin, namespaced publisher, installation generation and declaration revision. Only the token attributes counts; plugin headers confer no count authority. Agent principals cannot count. Pane-marked requests and capability-bearing requests cannot raise tiers, acknowledge Full, or write notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately; unmarked same-origin code is not isolated by these checks. Legacy ambient count/track and automatic instrument() observations are no-ops; development instrumentation warns. Kernel consent surfaces retain
 their ownership and appearance. Broker acceptance and distribution manifest
 loading remain deferred; no deployment or real endpoint is enabled.
+
+Plugin destinations reject non-public literal hosts during declaration parsing. Before every send the shared development-proxy validator checks every DNS answer; the HTTPS connection is pinned to one validated address with TLS hostname verification. Redirects are refused. Each publisher admits at most 100 count requests and 100 Full observations per UTC day. Full delivery batches queued observations into one request per flush without retries. Dropped observations coalesce in the outbox per publisher/day/reason. Uninstall synchronously fences ordinary sends and aborts active requests before asynchronous withdrawal; Off and DNT suppress explicit uninstall reasons.

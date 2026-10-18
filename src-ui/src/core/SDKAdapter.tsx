@@ -11,8 +11,12 @@ import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { getPluginHeaders } from '@kontourai/station-sdk/client';
-import { type ReactNode, useEffect, useMemo } from 'react';
+import {
+  getPluginHeaders,
+  mountPluginTelemetryPane,
+} from '@kontourai/station-sdk/client';
+import { useQuery } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useId, useMemo } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -70,16 +74,32 @@ export function SDKAdapter({
   const { apiBase } = useApiBase();
 
   _setApiBase(apiBase);
+  const paneId = useId();
+  const paneTelemetry = useQuery({
+    queryKey: ['plugin-telemetry-pane', apiBase, boundPluginName, paneId],
+    enabled: !!boundPluginName,
+    staleTime: 240000,
+    gcTime: 0,
+    refetchInterval: 240000,
+    retry: false,
+    queryFn: ({ signal }) =>
+      mountPluginTelemetryPane(apiBase, boundPluginName!, signal),
+  });
   const pluginApiIdentity = useMemo(
     () =>
       boundPluginName
         ? Object.freeze({
             pluginName: boundPluginName,
+            telemetryCapability: () =>
+              paneTelemetry.data &&
+              Date.parse(paneTelemetry.data.expiresAt) > Date.now()
+                ? paneTelemetry.data.token
+                : undefined,
             getHeaders: (extraHeaders?: Record<string, string>) =>
               getPluginHeaders(extraHeaders, boundPluginName),
           })
         : undefined,
-    [boundPluginName],
+    [boundPluginName, paneTelemetry.data],
   );
 
   // Configure process-wide host functions only. Plugin request identity stays

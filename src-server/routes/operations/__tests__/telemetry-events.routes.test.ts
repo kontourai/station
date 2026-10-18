@@ -1,11 +1,15 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { RegistryPackageClaim } from '@kontourai/station-contracts/registry-trust';
 import { createPluginTelemetry } from '@kontourai/station-sdk/client';
-import { parsePluginDailyPing } from '@kontourai/station-shared/plugin-telemetry';
+import {
+  parsePluginDailyPing,
+  pluginTelemetryPublisherId,
+} from '@kontourai/station-shared/plugin-telemetry';
+import * as publicNetwork from '@kontourai/station-shared/public-network';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -14,10 +18,12 @@ import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { replacePluginProvidersForSource } from '../../../providers/registries/registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import * as transport from '../../../services/plugin-telemetry-transport.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import { registryPackageSignaturePayload } from '../../../services/plugins/registry-supply-chain.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../../services/plugins/registry-trust-policy.js';
+import { TelemetryLocalState } from '../../../services/telemetry-local-state.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import { createLogger } from '../../../utils/logger.js';
 import { registerPluginInstallRoutes } from '../../plugins/plugin-install-routes.js';
@@ -25,17 +31,33 @@ import { registerPluginLifecycleRoutes } from '../../plugins/plugin-lifecycle-ro
 import { createTelemetryRoutes } from '../telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../usage-telemetry-disclosure.js';
 
+const dns = vi.hoisted(() => ({
+  answers: [{ address: '8.8.8.8', family: 4 }],
+}));
+vi.mock('node:dns', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:dns')>()),
+  lookup: (
+    _host: string,
+    _options: unknown,
+    callback: (error: null, answers: unknown) => void,
+  ) => callback(null, dns.answers),
+}));
 const makeTempDir = trackTempDirs();
 const cleanups: Array<() => void | Promise<void>> = [];
-const id = 'publisher:telemetry-writer';
+
 afterEach(async () => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   await replacePluginProvidersForSource('telemetry-fixture', []);
 });
 async function fixture(
-  options: { unsigned?: boolean; private?: boolean } = {},
+  options: {
+    unsigned?: boolean;
+    private?: boolean;
+    wrongPublisher?: boolean;
+  } = {},
 ) {
   const directory = makeTempDir('station-publisher-test-');
   const home = join(directory, 'home');
@@ -46,6 +68,13 @@ async function fixture(
     join(source, 'plugin.json'),
     readFileSync(new URL('./fixtures/telemetry-plugin.json', import.meta.url)),
   );
+  if (options.wrongPublisher) {
+    const path = join(source, 'plugin.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.extensions['io.kontourai.station'].telemetry.publisher =
+      'someone-else';
+    writeFileSync(path, JSON.stringify(manifest));
+  }
   await ensureStationHomeSchema(home);
   mkdirSync(join(home, 'plugins'), { recursive: true });
   const store = new EventStore(join(home, 'events.sqlite'));
@@ -56,6 +85,10 @@ async function fixture(
   const loader = new ConfigLoader({ projectHomeDir: home });
   const catalogPath = join(directory, 'registry.json');
   const catalog = new JsonManifestRegistryProvider(catalogPath, home);
+  const id = pluginTelemetryPublisherId(
+    `sha256:${createHash('sha256').update(catalog.registryKey).digest('hex')}`,
+    'telemetry-writer',
+  );
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const config: AppConfig = {
     defaultModel: 'fixture',
@@ -214,6 +247,26 @@ async function fixture(
     return { arrived, release };
   };
   const receiverFetch = globalThis.fetch;
+  vi.spyOn(publicNetwork, 'resolvePublicAddress').mockResolvedValue({
+    address: '8.8.8.8',
+    family: 4,
+  });
+  vi.spyOn(transport, 'sendPluginTelemetry').mockImplementation(
+    async (url, body, _selected, signal) => {
+      expect(url).toBe('https://publisher.example.test/counts');
+      const queued = nextSend;
+      nextSend = undefined;
+      if (queued) {
+        queued.started();
+        await queued.wait;
+      }
+      const response = await receiverFetch(
+        `http://127.0.0.1:${address.port}/`,
+        { method: 'POST', body, signal },
+      );
+      return response.ok;
+    },
+  );
   const serviceOptions: ConstructorParameters<typeof UsageTelemetryService>[0] =
     {
       homeDir: home,
@@ -222,17 +275,6 @@ async function fixture(
       env,
       logger,
       pluginTelemetry: { homeDir: home, journal, trustPolicy },
-      // Preserve the declared HTTPS admission boundary; only test transport is mapped to the loopback receiver.
-      fetch: async (url, init) => {
-        expect(String(url)).toBe('https://publisher.example.test/counts');
-        const queued = nextSend;
-        nextSend = undefined;
-        if (queued) {
-          queued.started();
-          await queued.wait;
-        }
-        return receiverFetch(`http://127.0.0.1:${address.port}/`, init);
-      },
     };
   let service = new UsageTelemetryService(serviceOptions);
   const restart = async () => {
@@ -255,12 +297,31 @@ async function fixture(
     onTelemetryRemoval: (publisher, reason) =>
       service.pluginUninstalled(publisher, reason),
   });
-  const post = (path: string, body: unknown) =>
+  let token: string | undefined;
+  let tokenExpires = 0;
+  const capability = async () => {
+    if (!token || tokenExpires <= Date.now()) {
+      const response = await app.request('/api/telemetry/panes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ plugin: 'telemetry-writer' }),
+      });
+      const json = (await response.json()) as {
+        data?: { token: string; expiresAt: string };
+      };
+      token = json.data?.token;
+      tokenExpires = Date.parse(json.data?.expiresAt ?? '');
+    }
+    return token ?? 'missing';
+  };
+  const post = async (path: string, body: unknown) =>
     app.request(path, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-station-plugin': 'telemetry-writer',
+        ...(path === '/api/telemetry/events'
+          ? { 'x-station-plugin-capability': await capability() }
+          : {}),
       },
       body: JSON.stringify(body),
     });
@@ -269,6 +330,8 @@ async function fixture(
     attributes: Record<string, string | number> = { surface: 'main', items: 2 },
   ) => post('/api/telemetry/events', { events: [{ event, attributes }] });
   return {
+    id,
+    capability,
     pauseNextSend,
     restart,
     home,
@@ -297,7 +360,7 @@ test('real signed install and kernel route reject undeclared events, props and v
   );
   const telemetry = createPluginTelemetry(
     'https://station.example.test',
-    'telemetry-writer',
+    await f.capability(),
   );
   await telemetry.count('opened', { surface: 'main', items: 2 });
   await expect(telemetry.count('undeclared')).rejects.toThrow(/rejected/);
@@ -315,7 +378,7 @@ test('real signed install and kernel route reject undeclared events, props and v
   );
 });
 
-test.each([{ unsigned: true }, { private: true }])(
+test.each([{ unsigned: true }, { private: true }, { wrongPublisher: true }])(
   'installation rejects telemetry from unqualified registry %j',
   async (options) => {
     const f = await fixture(options);
@@ -332,24 +395,27 @@ test('publisher policy only lowers defaults, and a user choice wins downward thr
   for (const policy of ['full', 'lite', 'off'] as const) {
     f.service.reconfigure({
       ...f.config,
-      telemetryPublisherPolicy: { [id]: policy },
+      telemetryPublisherPolicy: { [f.id]: policy },
     });
-    expect((await f.service.telemetryStatus()).publishers[id].tier).toBe(
-      policy === 'off' ? 'off' : 'lite',
+    expect((await f.service.telemetryStatus()).publishers[f.id].tier).toBe(
+      'off',
     );
     f.service.reconfigure({
       ...f.config,
-      telemetryPublisherPolicy: { [id]: policy },
-      telemetryTier: { [id]: 'off' },
+      telemetryPublisherPolicy: { [f.id]: policy },
+      telemetryTier: { [f.id]: 'off' as const },
     });
-    expect((await f.service.telemetryStatus()).publishers[id]).toMatchObject({
+    expect((await f.service.telemetryStatus()).publishers[f.id]).toMatchObject({
       tier: 'off',
       reason: 'user',
     });
   }
   f.env.DO_NOT_TRACK = '1';
-  f.service.reconfigure({ ...f.config, telemetryTier: { [id]: 'full' } });
-  expect((await f.service.telemetryStatus()).publishers[id]).toMatchObject({
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  expect((await f.service.telemetryStatus()).publishers[f.id]).toMatchObject({
     tier: 'off',
     reason: 'DNT',
     userChoice: 'full',
@@ -361,21 +427,25 @@ test('publisher policy only lowers defaults, and a user choice wins downward thr
 test('Lite needs its own notice and sends only bucketed yesterday counts once', async () => {
   const f = await fixture();
   await f.install();
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'lite' as const },
+  });
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
   expect((await f.count()).status).toBe(200);
   vi.setSystemTime(new Date('2026-09-02T12:00:00Z'));
   await f.service.flushDaily();
   expect(f.received).toEqual([]);
-  expect(await f.service.outbox(id)).toEqual([
+  expect(await f.service.outbox(f.id)).toEqual([
     expect.objectContaining({ reason: 'notice' }),
   ]);
   const status = await f.service.telemetryStatus();
-  const revision = status.publishers[id].liteInventoryRevision;
+  const revision = status.publishers[f.id].liteInventoryRevision;
   expect(
     (
       await f.post('/api/usage-telemetry/lite-notices', {
-        publisher: id,
+        publisher: f.id,
         inventoryRevision: status.liteInventoryRevision,
       })
     ).status,
@@ -383,7 +453,7 @@ test('Lite needs its own notice and sends only bucketed yesterday counts once', 
   expect(
     (
       await f.post('/api/usage-telemetry/lite-notices', {
-        publisher: id,
+        publisher: f.id,
         inventoryRevision: revision,
       })
     ).status,
@@ -392,7 +462,7 @@ test('Lite needs its own notice and sends only bucketed yesterday counts once', 
   vi.setSystemTime(new Date('2026-09-03T12:00:00Z'));
   await Promise.all([f.service.flushDaily(), f.service.flushDaily()]);
   expect(f.received).toHaveLength(1);
-  const ping = parsePluginDailyPing(f.received[0], f.declaration);
+  const ping = parsePluginDailyPing(f.received[0], f.declaration, f.id);
   expect(ping.events.opened).toEqual({
     count: '4+',
     properties: {
@@ -403,10 +473,12 @@ test('Lite needs its own notice and sends only bucketed yesterday counts once', 
   expect(JSON.stringify(ping)).not.toMatch(
     /distinct_id|timestamp|2026-09|main.*secret/,
   );
-  expect(existsSync(join(f.home, 'config', 'usage-telemetry-id'))).toBe(false);
+  expect(existsSync(join(f.home, 'config', 'usage-telemetry-f.id'))).toBe(
+    false,
+  );
   await f.restart();
   expect(
-    (await f.service.telemetryStatus()).publishers[id].liteNoticeShown,
+    (await f.service.telemetryStatus()).publishers[f.id].liteNoticeShown,
   ).toBe(true);
   await f.service.flushDaily();
   expect(f.received).toHaveLength(1);
@@ -415,17 +487,20 @@ test('Lite needs its own notice and sends only bucketed yesterday counts once', 
 test('Full requires a destination/inventory-bound publisher acknowledgement and uses a monthly publisher ID', async () => {
   const f = await fixture();
   await f.install();
-  f.service.reconfigure({ ...f.config, telemetryTier: { [id]: 'full' } });
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
   expect((await f.count()).status).toBe(200);
   expect(f.received).toEqual([]);
   const disclosureResponse = await f.app.request(
-    `/api/usage-telemetry/disclosure?publisher=${id}`,
+    `/api/usage-telemetry/disclosure?publisher=${f.id}`,
   );
   const { data: disclosure } = (await disclosureResponse.json()) as {
     data: { inventoryRevision: string; destination: string };
   };
   const acknowledgement = {
-    publisher: id,
+    publisher: f.id,
     acknowledgementProtocol: 2,
     inventoryRevision: disclosure.inventoryRevision,
     destination: disclosure.destination,
@@ -449,10 +524,18 @@ test('Full requires a destination/inventory-bound publisher acknowledgement and 
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
   await f.count();
+  await f.service.flush();
   await f.count();
+  await f.service.flush();
   vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
-  await f.count();
-  const events = f.received as Array<{
+  await f.service.countPluginTelemetry(
+    (await f.service.mountPluginTelemetryPane('telemetry-writer')).token,
+    [{ event: 'opened', attributes: { surface: 'main', items: 2 } }],
+  );
+  await f.service.flush();
+  const events = (f.received as Array<{ events: unknown[] }>).flatMap(
+    (batch) => batch.events,
+  ) as Array<{
     distinct_id: string;
     properties: unknown;
   }>;
@@ -477,12 +560,16 @@ test('Full requires a destination/inventory-bound publisher acknowledgement and 
 test('uninstall sends explicit capped feedback before removal and retires pending daily counts', async () => {
   const f = await fixture();
   await f.install();
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'lite' as const },
+  });
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
   const status = await f.service.telemetryStatus();
   await f.post('/api/usage-telemetry/lite-notices', {
-    publisher: id,
-    inventoryRevision: status.publishers[id].liteInventoryRevision,
+    publisher: f.id,
+    inventoryRevision: status.publishers[f.id].liteInventoryRevision,
   });
   await f.count();
   const removal = await f.app.request(
@@ -491,9 +578,9 @@ test('uninstall sends explicit capped feedback before removal and retires pendin
   );
   expect(removal.status, await removal.clone().text()).toBe(200);
   expect(f.received).toEqual([
-    { publisher: id, action: 'plugin-uninstalled', reason: 'not-useful' },
+    { publisher: f.id, action: 'plugin-uninstalled', reason: 'not-useful' },
   ]);
-  expect((await f.service.telemetryStatus()).publishers[id]).toBeUndefined();
+  expect((await f.service.telemetryStatus()).publishers[f.id]).toBeUndefined();
   expect((await f.count()).status).toBe(400);
   await f.install();
   expect(
@@ -510,10 +597,10 @@ test('uninstall sends explicit capped feedback before removal and retires pendin
   await f.service.flushDaily();
   expect(f.received).toHaveLength(1);
   expect(
-    (await f.service.telemetryStatus()).publishers[id].liteNoticeShown,
+    (await f.service.telemetryStatus()).publishers[f.id].liteNoticeShown,
   ).toBe(false);
   const outbox = await f.app.request(
-    `/api/usage-telemetry/outbox?publisher=${id}`,
+    `/api/usage-telemetry/outbox?publisher=${f.id}`,
   );
   expect(outbox.status).toBe(200);
 });
@@ -521,15 +608,19 @@ test('uninstall sends explicit capped feedback before removal and retires pendin
 test('uninstall aborts an already admitted Full send still waiting to reach the receiver', async () => {
   const f = await fixture();
   await f.install();
-  f.service.reconfigure({ ...f.config, telemetryTier: { [id]: 'full' } });
-  const disclosure = await f.service.disclosure(id);
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  const disclosure = await f.service.disclosure(f.id);
   await f.service.acknowledgeDisclosure(
     disclosure.inventoryRevision,
-    id,
+    f.id,
     disclosure.destination,
   );
   const gate = f.pauseNextSend();
-  const pending = f.count();
+  await f.count();
+  const pending = f.service.flush();
   await gate.arrived;
   try {
     const response = await f.app.request('/telemetry-writer', {
@@ -539,9 +630,9 @@ test('uninstall aborts an already admitted Full send still waiting to reach the 
   } finally {
     gate.release();
   }
-  expect((await pending).status).toBe(200);
+  await pending;
   expect(f.received).toEqual([]);
-  expect(await f.service.outbox(id)).toEqual([
+  expect(await f.service.outbox(f.id)).toEqual([
     expect.objectContaining({ outcome: 'dropped' }),
   ]);
 });
@@ -553,30 +644,248 @@ test.each(['off', 'DNT'] as const)(
     await f.install();
     const fullConfig = {
       ...f.config,
-      telemetryTier: { [id]: 'full' as const },
+      telemetryTier: { [f.id]: 'full' as const },
     };
     f.service.reconfigure(fullConfig);
-    const disclosure = await f.service.disclosure(id);
+    const disclosure = await f.service.disclosure(f.id);
     await f.service.acknowledgeDisclosure(
       disclosure.inventoryRevision,
-      id,
+      f.id,
       disclosure.destination,
     );
     const gate = f.pauseNextSend();
-    const pending = f.count();
+    await f.count();
+    const pending = f.service.flush();
     await gate.arrived;
     try {
       if (withdrawal === 'DNT') f.env.DO_NOT_TRACK = '1';
       f.service.reconfigure(
         withdrawal === 'DNT'
           ? fullConfig
-          : { ...f.config, telemetryTier: { [id]: 'off' } },
+          : { ...f.config, telemetryTier: { [f.id]: 'off' as const } },
       );
     } finally {
       gate.release();
     }
-    expect((await pending).status).toBe(200);
+    await pending;
     expect(f.received).toEqual([]);
-    expect((await f.service.telemetryStatus()).publishers[id].tier).toBe('off');
+    expect((await f.service.telemetryStatus()).publishers[f.id].tier).toBe(
+      'off',
+    );
   },
 );
+
+test('a fresh plugin stays Off after its notice, including explicit uninstall feedback', async () => {
+  const f = await fixture();
+  await f.install();
+  expect((await f.service.telemetryStatus()).publishers[f.id].tier).toBe('off');
+  await f.post('/api/usage-telemetry/lite-notices', {
+    publisher: f.id,
+    inventoryRevision: (await f.service.telemetryStatus()).publishers[f.id]
+      .liteInventoryRevision,
+  });
+  await f.count();
+  await f.service.flush();
+  await f.service.flushDaily();
+  await f.app.request('/telemetry-writer?telemetryFeedbackReason=privacy', {
+    method: 'DELETE',
+  });
+  expect(f.received).toEqual([]);
+});
+
+test('forged plugin headers confer no counting authority; tokens own publisher attribution and cannot acknowledge consent', async () => {
+  const f = await fixture();
+  await f.install();
+  const events = [
+    { event: 'opened', attributes: { surface: 'main', items: 2 } },
+  ];
+  const forged = await f.app.request('/api/telemetry/events', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-station-plugin': 'telemetry-writer',
+    },
+    body: JSON.stringify({ events }),
+  });
+  expect(forged.status).toBe(400);
+  const token = await f.capability();
+  const agent = await f.app.request('/api/telemetry/events', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-station-plugin-capability': token,
+      'x-station-control-origin': 'agent-tool',
+    },
+    body: JSON.stringify({ events }),
+  });
+  expect(agent.status).toBe(403);
+  const foreign = await f.app.request('/api/telemetry/events', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-station-plugin-capability': token,
+      'x-station-plugin': 'another-plugin',
+    },
+    body: JSON.stringify({ events, publisher: 'publisher:another-plugin' }),
+  });
+  expect(foreign.status).toBe(200);
+  expect(await f.service.outbox('publisher:another-plugin')).toEqual([]);
+  expect(await f.service.outbox(f.id)).toHaveLength(1);
+  for (const path of [
+    '/api/usage-telemetry/lite-notices',
+    '/api/usage-telemetry/disclosure/acknowledgements',
+  ]) {
+    const response = await f.app.request(path, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-station-plugin-capability': token,
+      },
+      body: '{}',
+    });
+    expect(response.status).toBe(403);
+  }
+});
+
+test('every DNS answer must be public before a plugin send', async () => {
+  const f = await fixture();
+  await f.install();
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  const disclosure = await f.service.disclosure(f.id);
+  await f.service.acknowledgeDisclosure(
+    disclosure.inventoryRevision,
+    f.id,
+    disclosure.destination,
+  );
+  await f.count();
+  vi.mocked(publicNetwork.resolvePublicAddress).mockRestore();
+  dns.answers = [
+    { address: '8.8.8.8', family: 4 },
+    { address: '127.0.0.1', family: 4 },
+  ];
+  await f.service.flush();
+  expect(f.received).toEqual([]);
+  expect(await f.service.outbox(f.id)).toEqual([
+    expect.objectContaining({ outcome: 'dropped', reason: 'transport' }),
+  ]);
+});
+
+test.each(['uninstall', 'off', 'DNT', 'registry'] as const)(
+  '%s fences a Full send paused after retirement observation and before controller registration',
+  async (withdrawal) => {
+    const f = await fixture();
+    await f.install();
+    f.service.reconfigure({
+      ...f.config,
+      telemetryTier: { [f.id]: 'full' as const },
+    });
+    const disclosure = await f.service.disclosure(f.id);
+    await f.service.acknowledgeDisclosure(
+      disclosure.inventoryRevision,
+      f.id,
+      disclosure.destination,
+    );
+    await f.count();
+    let release!: () => void;
+    let arrived!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    vi.mocked(publicNetwork.resolvePublicAddress).mockImplementationOnce(
+      async () => {
+        arrived();
+        await gate;
+        return { address: '8.8.8.8', family: 4 };
+      },
+    );
+    const pending = f.service.flush();
+    await started;
+    try {
+      if (withdrawal === 'uninstall') await f.service.pluginUninstalled(f.id);
+      else if (withdrawal === 'DNT') f.env.DO_NOT_TRACK = '1';
+      else if (withdrawal === 'off')
+        f.service.reconfigure({
+          ...f.config,
+          telemetryTier: { [f.id]: 'off' as const },
+        });
+      else
+        f.service.reconfigure({ ...f.config, publicTelemetryRegistries: [] });
+    } finally {
+      release();
+    }
+    await pending;
+    expect(f.received).toEqual([]);
+  },
+);
+
+test('publisher floods coalesce local drops and Full events are sent as one bounded batch per flush', async () => {
+  const f = await fixture();
+  await f.install();
+  const local = new TelemetryLocalState(f.home);
+  await local.record({
+    publisher: 'kontour',
+    tier: 'lite',
+    recordedAt: new Date().toISOString(),
+    outcome: 'dropped',
+    reason: 'off',
+    payload: { event: 'telemetry_dropped', count: 1 },
+  });
+  await local.record({
+    publisher: 'operator',
+    tier: 'lite',
+    recordedAt: new Date().toISOString(),
+    outcome: 'dropped',
+    reason: 'off',
+    payload: { event: 'telemetry_dropped', count: 1 },
+  });
+  f.service.reconfigure({
+    ...f.config,
+    telemetryTier: { [f.id]: 'full' as const },
+  });
+  const disclosure = await f.service.disclosure(f.id);
+  await f.service.acknowledgeDisclosure(
+    disclosure.inventoryRevision,
+    f.id,
+    disclosure.destination,
+  );
+  const token = await f.capability();
+  const events = Array.from({ length: 100 }, () => ({
+    event: 'opened',
+    attributes: { surface: 'main', items: 2 },
+  }));
+  await f.service.countPluginTelemetry(token, events);
+  await f.service.countPluginTelemetry(token, events);
+  await f.service.flush();
+  expect(f.received).toHaveLength(1);
+  expect((f.received[0] as { events: unknown[] }).events).toHaveLength(100);
+  for (let i = 0; i < 105; i++) await f.count();
+  expect(await local.outbox('kontour')).toHaveLength(1);
+  expect(await local.outbox('operator')).toHaveLength(1);
+  expect(
+    (await local.outbox(f.id)).filter((row) => row.reason === 'overflow'),
+  ).toHaveLength(1);
+});
+
+test('expired Pane capabilities cannot count or borrow a renewed capability', async () => {
+  const f = await fixture();
+  await f.install();
+  const token = await f.capability();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.now() + 300001);
+  const old = await f.app.request('/api/telemetry/events', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-station-plugin-capability': token,
+    },
+    body: JSON.stringify({ events: [{ event: 'closed', attributes: {} }] }),
+  });
+  expect(old.status).toBe(400);
+  expect((await f.count()).status).toBe(200);
+});

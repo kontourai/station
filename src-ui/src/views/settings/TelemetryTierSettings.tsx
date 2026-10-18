@@ -1,4 +1,5 @@
 import type {
+  TelemetryPublisherId,
   TelemetryPublisherStatus,
   TelemetryTier,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -13,13 +14,25 @@ export function TelemetryTierSettings({
 }: {
   config: AppConfig;
   onChange: (config: AppConfig) => void;
-  publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
+  publishers?: Record<TelemetryPublisherId, TelemetryPublisherStatus>;
 }) {
   return (
     <div {...settingsRow('usage-telemetry')} tabIndex={-1}>
-      {(['kontour', 'operator'] as const).map((publisher) => {
+      {(
+        [
+          'kontour',
+          'operator',
+          ...Object.keys(publishers ?? {}).filter((id) =>
+            id.startsWith('publisher:'),
+          ),
+        ] as TelemetryPublisherId[]
+      ).map((publisher) => {
         const label =
-          publisher === 'kontour' ? 'Kontour telemetry' : 'Operator telemetry';
+          publisher === 'kontour'
+            ? 'Kontour telemetry'
+            : publisher === 'operator'
+              ? 'Operator telemetry'
+              : `${publisher} telemetry`;
         const status = publishers?.[publisher];
         const choice =
           config.telemetryTier?.[publisher] ?? status?.userChoice ?? '';
@@ -28,9 +41,11 @@ export function TelemetryTierSettings({
             key={publisher}
             label={label}
             description={
-              publisher === 'kontour'
-                ? 'Off sends nothing. Lite sending is not available yet. Kontour Full is unavailable.'
-                : 'Off sends nothing. Lite sending is not available yet. Full sends pseudonymous events with an installation hash that rotates monthly and is never linked to an account by Station. Full requires acknowledgement of the current event inventory.'
+              publisher.startsWith('publisher:')
+                ? 'Choose Lite or Full, or keep Off. Off sends nothing. Lite contains plugin-chosen counts which can encode a stable identifier; Station adds no identifier. Full also adds a monthly publisher ID and needs the current disclosure acknowledgement.'
+                : publisher === 'kontour'
+                  ? 'Off sends nothing. Lite sending is not available yet. Kontour Full is unavailable.'
+                  : 'Off sends nothing. Lite sending is not available yet. Full sends pseudonymous events with an installation hash that rotates monthly and is never linked to an account by Station. Full requires acknowledgement of the current event inventory.'
             }
             control={
               <select

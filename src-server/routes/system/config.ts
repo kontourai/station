@@ -1,5 +1,6 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
+import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 /**
  * Config Routes - app configuration management
  */
@@ -845,7 +846,10 @@ export function createConfigRoutes(
               const after =
                 next.telemetryTier?.[key] ?? defaults[key]?.tier ?? 'lite';
               if (rank[after] < rank[before]) lowerings.push(key);
-              if (rank[after] > rank[before] && !mayRaiseTelemetry)
+              if (
+                rank[after] > rank[before] &&
+                (!mayRaiseTelemetry || requestFromPluginPane(c.req.raw))
+              )
                 throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             }
             if (

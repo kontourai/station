@@ -530,16 +530,15 @@ in `publicTelemetryRegistries`; absent classification refuses the declaration.
 Distribution manifests remain design-only and will share the declaration schema
 and tier resolver.
 
-Publishers appear in the existing status map as `publisher:<verified registry item
-id>`. `station telemetry set publisher:writer off` stores an independent choice;
-`station telemetry outbox --publisher publisher:writer` filters the shared ledger.
+Publishers appear in the existing status map as `publisher:<24 hex registry-key digest>/<verified registry item id>`. `station telemetry set publisher:<digest>/writer off` stores an independent choice;
+`station telemetry outbox --publisher publisher:<digest>/writer` filters the shared ledger.
 The status API keeps its top-level built-in inventory fields. Each plugin publisher
 adds `destination`, `endpointConfigured`, `liteInventoryRevision`, `liteInventory`,
 `fullInventoryRevision` and `liteNoticeShown` to its tier/reason/source/choice entry.
 The UI lane consumes these entries generically; this lane does not implement UI.
 
-Use that publisher's `liteInventoryRevision` with the existing Lite notice POST.
-Its disclosure and acknowledgement use `?publisher=publisher:writer` and the
+Plugin publishers default Off. A notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone does not enable sending. Plugin-chosen counts can encode a stable identifier, even though Station adds none to Lite. Use that publisher's `liteInventoryRevision` with the existing Lite notice POST.
+Its disclosure and acknowledgement use `?publisher=publisher:<digest>/writer` and the
 existing acknowledgement body, including the displayed `destination`. Built-in
 operator or Kontour receipts do not authorize it. Headless servers show a separate
 log notice for each discovered plugin publisher; desktop sidecars require the UI
@@ -547,14 +546,18 @@ receipt. Full uses the existing installation secret with a publisher-specific
 monthly ID. DO_NOT_TRACK applies to every publisher.
 
 Operator `telemetryPublisherPolicy` maps publisher IDs to tiers. It lowers defaults
-through `resolveTelemetryTier`, never raises the Lite default or grants Full.
+through `resolveTelemetryTier`, never raises the plugin Off default or grants Full.
 Saved choices win; setting a user choice Off still wins over a Full/Lite policy.
 Changing public registry classification or withdrawing applied signature trust
 stops admission and dispatch. Kernel choice/disclosure surfaces remain unbrandable.
 Uninstall stops queued sends, withdraws accumulators/receipts, and accepts an
-optional fixed-enum reason on the uninstall request before removal. The ordinary
+optional fixed-enum reason on the uninstall request before removal only while the publisher is enabled. Off and DNT suppress that reason. The ordinary
 standalone feedback route cannot manufacture an uninstall action.
 
 `plugin_daily` and `plugin_event` have an independent data revision. The reusable
 strict daily parser is in `@kontourai/station-shared/plugin-telemetry`; broker
 acceptance is deferred. No endpoint is enabled by these changes.
+
+Plugin count requests require a short-lived kernel-issued Pane capability bound to plugin, namespaced publisher, installation generation and declaration revision. A plugin header is ignored for attribution. Agent principals are refused. Capability-bearing and Pane-marked requests cannot raise tiers or write Full acknowledgements or notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately; unmarked same-origin plugin code is not isolated by these checks.
+
+Plugin declarations reject non-public literals. Each send checks every DNS answer with the shared development-proxy validator and pins TLS to a validated address; redirects are refused. Each publisher admits at most 100 count requests and 100 Full observations per UTC day. Full delivery sends one `plugin_events` batch per flush containing the queued `plugin_event` records. Dropped records coalesce per publisher/day/reason. Synchronous uninstall fencing prevents pending ordinary sends from crossing asynchronous withdrawal.

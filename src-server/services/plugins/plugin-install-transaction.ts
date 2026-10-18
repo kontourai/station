@@ -1,4 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
 import { retirePluginTelemetry } from '../plugin-telemetry-service.js';
 import { assertPluginNameSegment } from './plugin-name.js';
@@ -4770,7 +4771,10 @@ async function uninstallPluginUnderPublication(
       trust.receipt?.signer &&
       trust.receipt.registryId === manifest.telemetry.publisher
     ) {
-      const publisher: TelemetryPublisherId = `publisher:${trust.receipt.registryId}`;
+      const publisher: TelemetryPublisherId = pluginTelemetryPublisherId(
+        trust.receipt.registryKeyDigest,
+        trust.receipt.registryId,
+      );
       try {
         await deps.beforeTelemetryRemoval?.(publisher);
       } catch {

@@ -709,9 +709,11 @@ station telemetry status
 station telemetry set kontour off
 station telemetry set operator full
 station telemetry outbox --publisher operator
-station telemetry set publisher:writer off
-station telemetry outbox --publisher publisher:writer
+station telemetry set publisher:<registry-digest>/writer off
+station telemetry outbox --publisher publisher:<registry-digest>/writer
 ```
+
+Plugin publishers default Off. Choose Lite or Full explicitly after reviewing the opt-in prompt; a notice receipt does not enable sending. Plugin Lite contains plugin-chosen counts which can encode identifiers.
 
 Status prints each publisher's tier and reason: `DNT`, `policy`, `default`,
 `user`, `disclosure`, or `environment`. Kontour Full is refused until a Kontour disclosure exists. The normal target and credential flags apply; `--json`

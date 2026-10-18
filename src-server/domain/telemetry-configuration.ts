@@ -56,7 +56,8 @@ export function resolveTelemetryConfiguration(
     const acknowledged = disclosures[publisher] === true;
     const userChoice =
       config.telemetryTier?.[publisher] ??
-      (config.telemetryTier === undefined &&
+      (!publisher.startsWith('publisher:') &&
+      config.telemetryTier === undefined &&
       config.telemetryEnabled !== undefined
         ? config.telemetryEnabled === false
           ? 'off'
@@ -77,7 +78,7 @@ export function resolveTelemetryConfiguration(
         config.telemetryPublisherPolicy?.[publisher] ??
         policies[publisher]?.operatorPolicy,
       distributionDefault:
-        environmentTier === 'off'
+        publisher.startsWith('publisher:') || environmentTier === 'off'
           ? 'off'
           : policies[publisher]?.distributionDefault,
       userChoice,

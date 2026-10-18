@@ -217,7 +217,6 @@ export class UsageTelemetryService {
         catalog: options.pluginTelemetry,
         config: () => this.appConfig,
         env,
-        fetch: this.fetchImpl,
       });
     if (
       publisher === 'operator' &&
@@ -850,6 +849,10 @@ export class UsageTelemetryService {
       this.warn('Usage telemetry event dropped.', error);
     }
   }
+  async mountPluginTelemetryPane(plugin: string) {
+    if (!this.pluginPublishers) throw new Error('Plugin telemetry unavailable');
+    return this.pluginPublishers.mountPane(plugin);
+  }
   async countPluginTelemetry(
     plugin: string,
     events: Array<{
@@ -865,6 +868,7 @@ export class UsageTelemetryService {
     publisher: TelemetryPublisherId,
     reason?: TelemetryFeedback['reason'],
   ) {
+    this.pluginPublishers?.withdraw(publisher);
     try {
       await this.pluginPublishers?.tierLowered(
         publisher,
@@ -1154,6 +1158,7 @@ export class UsageTelemetryService {
   async flush(): Promise<void> {
     if (!this.acceptingTracks) return this.flushing;
     await Promise.all([
+      this.pluginPublishers?.flushFull(),
       this.flushDropped(),
       this.author?.flushDropped(),
       this.flushWithDeadline(),

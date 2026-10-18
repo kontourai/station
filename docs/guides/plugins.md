@@ -1845,7 +1845,7 @@ and enum tokens are lowercase ASCII identifiers up to 48 characters. There are n
 free-text properties. `countBuckets` must start at zero, increase strictly and end
 at or below 65,535; input values are integers from 0 to 65,535. For the example,
 2 becomes `2-3`, 9 becomes `4-10`, and 11 becomes `11+`. The HTTPS destination
-cannot contain credentials, a query or a fragment. Every count supplies exactly
+cannot contain credentials, a query or a fragment. Non-public literals (including loopback, private, link-local and metadata addresses) are rejected at parse time. Every DNS answer is checked before each send, and the TLS connection is pinned to a validated address. Redirects are refused. Every count supplies exactly
 the declared properties; undeclared names/values and extra fields are rejected.
 
 In a Pane, `const telemetry = useTelemetry()` provides
@@ -1854,18 +1854,18 @@ In a Pane, `const telemetry = useTelemetry()` provides
 The kernel sends; this API gives the plugin no transport to its endpoint. It does
 not restrict other networking performed by separately trusted plugin code.
 
-Publisher `publisher:writer` defaults to Lite. After its current notice is shown,
+Publishers are namespaced as `publisher:<24 hex registry-key digest>/writer` so identical item IDs in different registries have separate state and consent. Third-party plugin publishers default **Off**. The notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone never enables sending. After an explicit Lite choice and its current notice,
 its receiver gets at most one `plugin_daily` v1 ping for the completed previous
 UTC day. Each declared event has a total count and separate property-value
 histograms, with counts bucketed as `0`, `1`, `2-3`, `4+`. These are marginal
 histograms, never cross-property combinations. Zero cells are included. Pings
 carry a random deduplication event ID, publisher, schema/data and inventory
-revisions; they have no installation ID, raw date, timestamp or cross-day key.
+revisions. Station adds no installation ID, raw date, timestamp or cross-day key. The content is plugin-chosen within the declared inventory and can encode a stable identifier, so plugin Lite is not identifier-free.
 Days without collection and older offline days are not backfilled. Attempts are
 reserved before network I/O and are not retried, so network loss can reduce totals.
 
 Full additionally requires that publisher's own current inventory/destination
-acknowledgement and an explicit user Full choice. Receivers get `plugin_event` v1
+acknowledgement and an explicit user Full choice. Each flush sends one `plugin_events` batch containing `plugin_event` v1 records
 with the declared event and bucketed properties, random event ID, server timestamp,
 revisions and a publisher-specific monthly hash of the existing random installation
 secret. Full is pseudonymous. Receivers must not treat monthly hashes as people.
@@ -1874,16 +1874,18 @@ Uninstall retires pending counts and receipts; reinstall does not revive them.
 
 `DO_NOT_TRACK` except empty/0 forces Off. Operator
 `telemetryPublisherPolicy` may lower defaults to Off; Lite/Full policy values never
-raise them above Lite. Explicit user choices take precedence. Distributions cannot
+raise the plugin Off default. Explicit user choices take precedence. Distributions cannot
 hide, rebrand or restyle kernel consent surfaces. Status, choices, disclosures and
 the 30-day/5-MiB outbox use the same kernel APIs as built-in publishers. An uninstall
 request may carry `?telemetryFeedbackReason=not-useful` (or another fixed reason
 from the [telemetry reference](../reference/usage-telemetry.md)); it sends only to
 that publisher before removal, at most once per publisher per UTC day. Skip or an
-omitted reason sends nothing; DNT suppresses feedback. Already transmitted bodies
+omitted reason sends nothing; Off and DNT suppress plugin feedback. Already transmitted bodies
 cannot be recalled.
 
 The shared [plugin_daily parser](../../packages/shared/src/plugin-telemetry.ts) is
 available for receiver authors. The Station broker does not yet accept this
 contract. A direct HTTPS receiver sees network metadata, including source IP;
 these shapes do not establish network unlinkability or aggregate-only reception.
+
+The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its plugin, namespaced publisher, installation and declaration revision. `useTelemetry()` uses that capability; `x-station-plugin` cannot authorize counts. Agent principals cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a tier, acknowledge Full, or write an opt-in/notice receipt. Same-origin plugin frames remain a platform-wide trust boundary tracked separately: this feature does not isolate unmarked same-origin plugin code. Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.

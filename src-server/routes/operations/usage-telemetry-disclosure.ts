@@ -7,6 +7,7 @@ import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemet
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   checkOtelTelemetryConnection,
@@ -31,7 +32,7 @@ export function createUsageTelemetryDisclosureRoutes(
   const app = new Hono();
   for (const path of ['/feedback', '/lite-notices']) {
     app.on('POST', path, async (c, next) => {
-      if (requestMayBeAnAgent(c.req.raw))
+      if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
         return c.json(
           { success: false, error: { code: 'telemetry_user_action_required' } },
           403,
@@ -202,7 +203,7 @@ export function createUsageTelemetryDisclosureRoutes(
     return c.json({ success: true, data: await service.disclosure(publisher) });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
-    if (requestMayBeAnAgent(c.req.raw))
+    if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
       return c.json(
         {
           success: false,

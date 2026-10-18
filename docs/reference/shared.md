@@ -1380,8 +1380,8 @@ See the [connection factory](../../packages/shared/src/mcp-connection.ts),
 ## Plugin publisher telemetry
 
 `@kontourai/station-shared/plugin-telemetry` is a Node-only leaf for strict
-`parsePublisherTelemetryDeclaration`, `parsePluginDailyPing(payload, declaration)`,
-count bucketing and inventory fingerprints. It exports
+`parsePublisherTelemetryDeclaration`, `parsePluginDailyPing(payload, declaration, namespacedPublisher)`,
+count bucketing, namespaced publisher IDs and inventory fingerprints. The Node-only `public-network` subpath shares the development proxy public-address validator and pinned lookup with plugin telemetry; it validates every resolved DNS answer. It exports
 `PLUGIN_TELEMETRY_DATA_REVISION` separately from Station's built-in data revision.
 The parser is reusable by a future broker lane; importing it does not enable
 broker acceptance. See [Publisher analytics](../guides/plugins.md#publisher-analytics)

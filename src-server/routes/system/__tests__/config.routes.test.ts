@@ -1064,6 +1064,20 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       expect(
         (await loader.loadAppConfig()).telemetryTier?.['publisher:writer'],
       ).toBeUndefined();
+      for (const context of [
+        { 'x-station-plugin-capability': 'forged' },
+        { 'x-station-plugin': 'writer' },
+        { 'sec-fetch-dest': 'iframe' },
+      ]) {
+        const response = await operator.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json', ...context },
+          body: JSON.stringify({
+            telemetryTier: { 'publisher:writer': 'lite' },
+          }),
+        });
+        expect(response.status).toBe(403);
+      }
       expect((await put(operator, 'lite')).status).toBe(200);
       expect((await put(paired, 'off')).status).toBe(200);
       expect(
