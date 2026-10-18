@@ -501,7 +501,9 @@ describe('instance lock (real processes)', () => {
       // The previous holder released cleanly, but something else listens on the path.
       const endpointHome = makeShortHome();
       const path = join(endpointHome, 'shared.sock');
-      const impostor: Server = createServer(() => {});
+      const impostor: Server = createServer((socket) => {
+        socket.on('error', () => {});
+      });
       await new Promise<void>((resolve) => impostor.listen(path, resolve));
       cleanups.push(() => impostor.close());
       writeEpoch(home, '1', {
