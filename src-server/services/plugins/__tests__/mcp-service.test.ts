@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
@@ -21,6 +22,8 @@ import { EventStore } from '../../orchestration/event-store.js';
 //
 // `afterAll` removes THIS root; other `mkdtempSync` roots in this file are
 // pre-existing and still uncleaned.
+const makeAppPolicyTempDir = trackTempDirs();
+
 const MCP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-mcp-service-home-'));
 const STORED_ENV_HOME = join(MCP_TEMP_ROOT, 'station-stored-env-migration');
 const SECRET_BINDING_HOME = join(
@@ -2393,7 +2396,7 @@ describe('MCPService', () => {
   ] as const)(
     'completion stamping and membership both obey current %s policy',
     async (policy) => {
-      const home = await mkdtemp(join(tmpdir(), 'mcp-app-policy-'));
+      const home = makeAppPolicyTempDir('mcp-app-policy-');
       try {
         const loader = new ConfigLoader({ projectHomeDir: home });
         await loader.saveIntegration('mcp-1', {
