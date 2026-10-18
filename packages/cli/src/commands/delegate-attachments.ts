@@ -8,7 +8,6 @@ import {
   CHAT_ATTACHMENT_MAX_COUNT,
   type ChatAttachmentInput,
   type ChatAttachmentMimeType,
-  validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
 import {
   cancelAttachmentStage,
@@ -16,6 +15,11 @@ import {
   prepareAttachmentStage,
   uploadAttachmentStage,
 } from '@kontourai/station-sdk/client';
+import {
+  assertDelegationFileData,
+  assertDelegationFileNames,
+  DelegationFileRefusal,
+} from '@kontourai/station-shared/delegation-files';
 
 const MIME: Record<string, ChatAttachmentMimeType> = {
   '.json': 'application/json',
@@ -33,9 +37,8 @@ export async function loadDelegateAttachments(
   paths: string[],
 ): Promise<ChatAttachmentInput[]> {
   if (paths.length > CHAT_ATTACHMENT_MAX_COUNT)
-    throw new Error(
-      `A delegation can include at most ${CHAT_ATTACHMENT_MAX_COUNT} attachments.`,
-    );
+    throw new DelegationFileRefusal('delegation_files_count');
+  assertDelegationFileNames(paths.map((path) => basename(path)));
   const attachments: ChatAttachmentInput[] = [];
   for (const path of paths) {
     if (!path.trim()) throw new Error('--attach requires a non-empty path.');
@@ -43,11 +46,10 @@ export async function loadDelegateAttachments(
     let bytes: Buffer;
     try {
       const stat = await file.stat();
-      if (!stat.isFile()) throw new Error('--attach requires a regular file.');
+      if (!stat.isFile())
+        throw new DelegationFileRefusal('delegation_files_invalid_data');
       if (stat.size > CHAT_ATTACHMENT_MAX_BYTES)
-        throw new Error(
-          `Attachment exceeds the ${CHAT_ATTACHMENT_MAX_BYTES}-byte limit.`,
-        );
+        throw new DelegationFileRefusal('delegation_files_size');
       // Bound the read as well as the stat: the file can grow between them.
       const buffer = Buffer.alloc(CHAT_ATTACHMENT_MAX_BYTES + 1);
       let size = 0;
@@ -61,9 +63,7 @@ export async function loadDelegateAttachments(
         size += bytesRead;
       }
       if (size > CHAT_ATTACHMENT_MAX_BYTES)
-        throw new Error(
-          `Attachment exceeds the ${CHAT_ATTACHMENT_MAX_BYTES}-byte limit.`,
-        );
+        throw new DelegationFileRefusal('delegation_files_size');
       bytes = buffer.subarray(0, size);
     } finally {
       await file.close();
@@ -76,8 +76,7 @@ export async function loadDelegateAttachments(
       size: bytes.length,
       dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
     });
-    const error = validateChatAttachments(attachments);
-    if (error) throw new Error(error);
+    assertDelegationFileData(attachments);
   }
   return attachments;
 }
@@ -88,7 +87,7 @@ export async function stageDelegateAttachments(
 ): Promise<StagedAttachmentReference[]> {
   const capability = await getAttachmentStagingCapability(apiBase);
   if (capability.state !== 'supported' || capability.delegationFiles !== true)
-    throw new Error('This Station does not support delegation files.');
+    throw new DelegationFileRefusal('delegation_files_unsupported');
   const stages: string[] = [];
   try {
     const references: StagedAttachmentReference[] = [];
@@ -105,9 +104,17 @@ export async function stageDelegateAttachments(
     return references;
   } catch (error) {
     // No delegation has been sent yet. Do not retain a partial upload batch.
-    await Promise.allSettled(
-      stages.map((id) => cancelAttachmentStage(apiBase, id)),
-    );
+    await cancelDelegateAttachmentStages(apiBase, stages);
     throw error;
   }
+}
+
+/** Cancellation is best-effort cleanup and must never replace the dispatch failure. */
+export async function cancelDelegateAttachmentStages(
+  apiBase: string,
+  stageIds: readonly string[],
+): Promise<void> {
+  await Promise.allSettled(
+    stageIds.map((id) => cancelAttachmentStage(apiBase, id)),
+  );
 }

@@ -3,6 +3,8 @@ import {
   readdir,
   readFile,
   realpath,
+  rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
@@ -27,11 +29,16 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  SendTurnRefusedError,
+  SessionStartRefusedError,
+} from '../../../providers/adapter-shape.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
 import { delegateTask } from '../../../tools/station-control-delegation.js';
 import { createAttachmentStagingRoutes } from '../attachment-staging.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
@@ -85,6 +92,14 @@ describe('CLI delegation files through staging, route and real orchestration', (
   let worktree = false;
   let posted: { attachmentRefs?: unknown[] };
   const turns: ProviderSendTurnInput[] = [];
+  let dispatchDelegate: ReturnType<typeof vi.fn<typeof delegateTask>>;
+  let remote: ReturnType<typeof createRemoteStationForwarder>;
+  let remoteResolve: ReturnType<typeof vi.spyOn>;
+  let remotePosts: ReturnType<typeof vi.fn<() => void>>;
+  let continueTask: ReturnType<
+    typeof vi.fn<() => Promise<{ taskId: string; status: string }>>
+  >;
+  let portableAdmission: ReturnType<typeof vi.fn<() => Promise<never>>>;
 
   beforeEach(async () => {
     root = await realpath(makeTempDir('delegate-files-'));
@@ -115,7 +130,59 @@ describe('CLI delegation files through staging, route and real orchestration', (
         resolveSkillDir: async () => null,
       }),
     });
+    remote = createRemoteStationForwarder({
+      ssh: {
+        list: () => [],
+        connect: async () => {
+          throw new Error('Unexpected SSH connection');
+        },
+      },
+      peers: {
+        get: (id) =>
+          id === 'other-host'
+            ? {
+                environmentId: id,
+                apiBase: `${apiBase}/receiver`,
+                credential: 'fixture-peer',
+                label: 'Receiver',
+                scope: 'orchestration:read orchestration:operate',
+                createdAt: 0,
+                updatedAt: 0,
+              }
+            : null,
+      },
+    });
+    remoteResolve = vi.spyOn(remote, 'resolve');
+    dispatchDelegate = vi.fn((input: Parameters<typeof delegateTask>[0]) =>
+      delegateTask(input, service, remote),
+    );
+    continueTask = vi.fn(async () => ({
+      taskId: 'continued',
+      status: 'dispatched',
+    }));
+    portableAdmission = vi.fn(async () => {
+      throw new Error('Unexpected portable admission');
+    });
+    remotePosts = vi.fn();
     const app = new Hono();
+    app.get('/receiver/.well-known/station/v1', (c) =>
+      c.json({ environmentId: 'other-host' }),
+    );
+    app.post('/receiver/api/orchestration/delegations', (c) => {
+      remotePosts();
+      return c.json({
+        success: true,
+        data: {
+          taskId: 'remote-task',
+          conversationId: 'remote-task',
+          sessionId: 'remote-task',
+          currentSessionId: 'remote-task',
+          status: 'dispatched',
+          environment: { id: 'other-host', name: 'Receiver', kind: 'peer' },
+          target: { kind: 'agent', id: 'reviewer' },
+        },
+      });
+    });
     app.get('/.well-known/station/v1', (c) =>
       c.json({ environmentId: 'delegate-file-host' }),
     );
@@ -171,11 +238,20 @@ describe('CLI delegation files through staging, route and real orchestration', (
         eventBus: bus,
         logger: { debug: vi.fn() },
         resolvePrincipal: () => actor,
-        delegateTask: (input) => delegateTask(input, service),
+        delegateTask: dispatchDelegate,
+        continueDelegatedTask: continueTask,
+        respondToDelegatedTaskRequest: vi.fn(async () => ({})),
+        interruptDelegatedTask: vi.fn(async () => {
+          throw new Error('Unexpected task interruption');
+        }),
+        discoverDelegationOptions: vi.fn(async () => ({})),
+        authorizeReceiverExecution: portableAdmission,
         hydrateStagedAttachments: (owner, refs, binding) =>
           staging.bindAndHydrate({ principalId: owner.id }, refs, binding),
         acceptStagedAttachments: (owner, refs, binding) =>
           staging.acceptBinding({ principalId: owner.id }, refs, binding),
+        releaseStagedAttachments: (owner, refs, binding) =>
+          staging.releaseBinding({ principalId: owner.id }, refs, binding),
       }),
     );
     server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
@@ -324,6 +400,9 @@ describe('CLI delegation files through staging, route and real orchestration', (
 
   test.each([
     'owner',
+    'portable',
+    'portable-prepared',
+    'case-duplicate',
     'duplicate',
     'portable-name',
     'worktree',
@@ -341,6 +420,29 @@ describe('CLI delegation files through staging, route and real orchestration', (
       const ref = stage();
       const body: Record<string, unknown> = { attachmentRefs: [ref] };
       if (fault === 'duplicate') body.attachmentRefs = [ref, stage()];
+      if (fault === 'case-duplicate')
+        body.attachmentRefs = [stage('A.txt'), stage('a.txt')];
+      if (fault === 'portable' || fault === 'portable-prepared')
+        body.target = {
+          environment: { kind: 'current' },
+          agent: 'reviewer',
+          workspace: {
+            kind: 'project-portable',
+            portableProjectId: 'portable-project',
+            resourceId: 'git:repo',
+            ...(fault === 'portable-prepared'
+              ? {
+                  kind: 'project-portable-prepared',
+                  preparation: {
+                    protocol: 'station.execution-preparation/v1',
+                    mode: 'existing-realization',
+                    version: { scheme: 'git-commit', value: 'a'.repeat(40) },
+                    guarantees: ['version-matched-when-checked'],
+                  },
+                }
+              : {}),
+          },
+        };
       if (fault === 'portable-name')
         body.attachmentRefs = [stage('value:hash.txt')];
       if (fault === 'worktree') worktree = true;
@@ -367,6 +469,39 @@ describe('CLI delegation files through staging, route and real orchestration', (
       }
       const response = await post(body);
       expect(response.status).toBe(400);
+      const codes: Record<typeof fault, string> = {
+        owner: 'stage_forbidden',
+        duplicate: 'delegation_files_duplicate_name',
+        'case-duplicate': 'delegation_files_duplicate_name',
+        'portable-name': 'delegation_files_invalid_name',
+        worktree: 'delegation_files_unsupported',
+        digest: 'stage_forbidden',
+        name: 'stage_forbidden',
+        missing: 'stage_not_found',
+        replay: 'stage_incomplete',
+        count: 'delegation_files_count',
+        remote: 'delegation_files_unsupported',
+        attempt: 'delegation_files_unsupported',
+        inline: 'delegation_files_unsupported',
+        portable: 'delegation_files_unsupported',
+        'portable-prepared': 'delegation_files_unsupported',
+      };
+      const result = (await response.json()) as {
+        code?: string;
+        error?: string;
+      };
+      expect(result.code).toBe(codes[fault]);
+      expect(result.error).not.toContain(workspace);
+      expect(result.error).not.toContain('EEXIST');
+      if (
+        ['remote', 'count', 'portable', 'portable-prepared', 'inline'].includes(
+          fault,
+        )
+      )
+        expect(dispatchDelegate).not.toHaveBeenCalled();
+      expect(remoteResolve).not.toHaveBeenCalled();
+      expect(remotePosts).not.toHaveBeenCalled();
+      expect(portableAdmission).not.toHaveBeenCalled();
       expect(turns).toHaveLength(0);
       if (fault !== 'replay') expect(await readdir(workspace)).toEqual([]);
     },
@@ -388,7 +523,195 @@ describe('CLI delegation files through staging, route and real orchestration', (
       },
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).not.toHaveProperty('uploadGrant');
+    expect(await response.json()).toMatchObject({
+      code: 'stage_invalid_upload',
+    });
     expect(turns).toHaveLength(0);
   });
+  test.each([
+    ['continue', { message: 'continue' }],
+    ['respond', { requestId: 'request-1', decision: 'accept' }],
+    ['interrupt', {}],
+  ] as const)(
+    'the %s route refuses refs rather than stripping them from a successful request',
+    async (action, body) => {
+      const response = await fetch(
+        `${apiBase}/api/orchestration/delegations/task-1/${action}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...body, attachmentRefs: [stage()] }),
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: 'delegation_files_unsupported',
+      });
+      expect(continueTask).not.toHaveBeenCalled();
+    },
+  );
+
+  test('discovery refuses attached refs instead of accepting a stripped body', async () => {
+    const response = await fetch(
+      `${apiBase}/api/orchestration/delegations/options`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attachmentRefs: [stage()] }),
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: 'delegation_files_unsupported',
+    });
+  });
+
+  test.each([
+    'duplicate',
+    'materialization-failed',
+    'start-refused',
+    'turn-refused',
+  ] as const)(
+    'a %s pre-effect refusal releases refs for a successful resend and removes workspace files',
+    async (failure) => {
+      const reference = stage();
+      const hydrate = vi.spyOn(staging, 'bindAndHydrate');
+      if (failure === 'materialization-failed') {
+        await rm(workspace, { recursive: true });
+        await writeFile(workspace, 'not a directory');
+      }
+      const other = failure === 'duplicate' ? stage() : undefined;
+      if (failure === 'start-refused')
+        vi.spyOn(adapter, 'startSession').mockRejectedValueOnce(
+          new SessionStartRefusedError(
+            'Refused before start',
+            'fixture_start_refused',
+          ),
+        );
+      if (failure === 'turn-refused')
+        vi.mocked(adapter.sendTurn).mockRejectedValueOnce(
+          new SendTurnRefusedError('Refused before turn'),
+        );
+      const response = await post({
+        attachmentRefs: other ? [reference, other] : [reference],
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code:
+          failure === 'materialization-failed'
+            ? 'delegation_files_unavailable'
+            : failure === 'duplicate'
+              ? 'delegation_files_duplicate_name'
+              : `delegation_files_${failure === 'start-refused' ? 'start' : 'turn'}_refused`,
+      });
+      expect(hydrate).toHaveBeenCalledTimes(1);
+      if (failure === 'materialization-failed') {
+        await rm(workspace);
+        await mkdir(workspace);
+      }
+      expect(await readdir(workspace)).toEqual([]);
+      expect(turns).toHaveLength(0);
+      const retry = await post({ attachmentRefs: [reference] });
+      expect(retry.status).toBe(200);
+      expect(turns).toHaveLength(1);
+      const [directory] = await readdir(workspace);
+      expect(
+        await readFile(join(workspace, directory, 'revision.txt')),
+      ).toEqual(exact);
+    },
+  );
+
+  test.each(['start', 'turn'] as const)(
+    'an uncertain %s retains files and the staged binding',
+    async (phase) => {
+      const reference = stage();
+      if (phase === 'start')
+        vi.spyOn(adapter, 'startSession').mockRejectedValueOnce(
+          new Error('Synthetic uncertain start'),
+        );
+      else
+        vi.mocked(adapter.sendTurn).mockRejectedValueOnce(
+          new Error('Synthetic uncertain turn'),
+        );
+      const response = await post({ attachmentRefs: [reference] });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: 'delegation_files_outcome_unknown',
+      });
+      const directories = await readdir(workspace);
+      expect(directories).toHaveLength(1);
+      expect(
+        await readFile(join(workspace, directories[0], 'revision.txt')),
+      ).toEqual(exact);
+      const retry = await post({ attachmentRefs: [reference] });
+      expect(retry.status).toBe(400);
+      expect(await retry.json()).toMatchObject({ code: 'stage_forbidden' });
+    },
+  );
+
+  test('the server refuses combined declared size max+1 before delegation or staged hydration', async () => {
+    const reference = stage();
+    const hydrate = vi.spyOn(staging, 'bindAndHydrate');
+    const refs = [
+      CHAT_ATTACHMENT_MAX_BYTES,
+      CHAT_ATTACHMENT_MAX_BYTES,
+      CHAT_ATTACHMENT_MAX_BYTES,
+      1,
+    ].map((size, i) => ({ ...reference, size, name: `large-${i}.txt` }));
+    const response = await post({ attachmentRefs: refs });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: 'delegation_files_size',
+    });
+    expect(dispatchDelegate).not.toHaveBeenCalled();
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(turns).toHaveLength(0);
+    expect(await readdir(workspace)).toEqual([]);
+  });
+
+  test('the CLI cancels successfully uploaded stages when dispatch is refused', async () => {
+    const path = join(root, 'value.txt');
+    await writeFile(path, exact);
+    worktree = true;
+    const cancel = vi.spyOn(staging, 'cancel');
+    // Vitest turns process.exit into a thrown error; the CLI has already emitted its refusal.
+    await expect(run([path])).rejects.toThrow('process.exit');
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(
+      staging.reconcile({ principalId: principal.id }, [
+        cancel.mock.calls[0][1],
+      ]),
+    ).toMatchObject([{ state: 'cancelled' }]);
+  });
+
+  test('the CLI refuses case-insensitive duplicate basenames before preparing uploads', async () => {
+    const left = join(root, 'left');
+    const right = join(root, 'right');
+    await mkdir(left);
+    await mkdir(right);
+    await writeFile(join(left, 'A.txt'), exact);
+    await writeFile(join(right, 'a.txt'), exact);
+    const prepare = vi.spyOn(staging, 'prepare');
+    await expect(
+      run([join(left, 'A.txt'), join(right, 'a.txt')]),
+    ).rejects.toMatchObject({ code: 'delegation_files_duplicate_name' });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(dispatchDelegate).not.toHaveBeenCalled();
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'a CLI symlink to a regular file delivers target bytes under the link basename',
+    async () => {
+      const target = join(root, 'target.txt');
+      const link = join(root, 'link.txt');
+      await writeFile(target, exact);
+      await symlink(target, link);
+      await run([link]);
+      const [directory] = await readdir(workspace);
+      expect(await readdir(join(workspace, directory))).toEqual(['link.txt']);
+      expect(await readFile(join(workspace, directory, 'link.txt'))).toEqual(
+        exact,
+      );
+    },
+  );
 });

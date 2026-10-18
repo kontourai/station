@@ -79,6 +79,7 @@ import {
   StationHttpError,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
+import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
 import {
   formatProviderQuotaEventText,
   formatProviderQuotaReasonDetail,
@@ -130,9 +131,10 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
-import type {
-  OrchestrationService,
-  PeerReportedPendingRequest,
+import {
+  OrchestrationCommandDispatchError,
+  type OrchestrationService,
+  type PeerReportedPendingRequest,
 } from '../services/orchestration/orchestration-service.js';
 import {
   type PresentableOpenRequest,
@@ -5194,13 +5196,13 @@ export async function delegateTask(
   if (
     input.stagedFiles &&
     (input.target.environment.kind !== 'current' ||
+      input.target.workspace?.kind === 'project-portable' ||
+      input.target.workspace?.kind === 'project-portable-prepared' ||
       input.delegationAttemptId ||
       input.taskRoomInvocationAdmission ||
       input.sessionId)
   )
-    throw new Error(
-      'Delegation files require a new current-host task without an attempt id or Task room request.',
-    );
+    throw new DelegationFileRefusal('delegation_files_unsupported');
   const readAuthority = readAuthorityForInput(input);
   // #2875: a prepared intent IS a portable intent with a version
   // requirement — every portable rule below (admission, no-onward-hop, SSH
@@ -5239,9 +5241,7 @@ export async function delegateTask(
       selectedTarget.relayEnvironmentId ||
       !orchestrationService)
   )
-    throw new Error(
-      'Current-host delegation files cannot be forwarded to another Station.',
-    );
+    throw new DelegationFileRefusal('delegation_files_unsupported');
   if (portableIntent && selectedTarget.kind !== 'current') {
     // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
     // peer must execute on THIS verified receiver or refuse — a caller
@@ -5584,6 +5584,11 @@ export async function delegateTask(
       // Deliberately conservative: see the classification comment above.
     }
   };
+  let fileBinding: { threadId: string; clientTurnId: string } | undefined;
+  let workspaceFiles:
+    | Awaited<ReturnType<typeof materializeDelegationFiles>>
+    | undefined;
+  let retainFiles = false;
   // #2875: the matched version check, bound to the claim and returned on
   // the resolution receipt. Replaced by the pre-start recheck below.
   let preparationReceipt:
@@ -5853,24 +5858,23 @@ export async function delegateTask(
         );
       }
     }
-    const fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
+    fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
     let delegatePrompt = input.prompt;
     if (input.stagedFiles) {
       if (!resolvedCwd)
-        throw new Error(
-          'Delegation files require a resolved workspace directory.',
-        );
+        throw new DelegationFileRefusal('delegation_files_unsupported');
       if (
         resolved.workspace?.kind === 'project' &&
         resolved.workspace.workspaceIsolation.mode !== 'shared'
       )
-        throw new Error(
-          'Delegation files require a shared workspace; worktree provisioning is not supported by this delegation path.',
-        );
+        throw new DelegationFileRefusal('delegation_files_unsupported');
       const attachments = input.stagedFiles.resolve(fileBinding);
       input.dispatchCwdAdmission?.recheck(resolvedCwd, 'session');
-      const paths = await materializeDelegationFiles(resolvedCwd, attachments);
-      delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${paths.map((path) => JSON.stringify(path)).join('\n')}`;
+      workspaceFiles = await materializeDelegationFiles(
+        resolvedCwd,
+        attachments,
+      );
+      delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${workspaceFiles.paths.map((path) => JSON.stringify(path)).join('\n')}`;
     }
     const session = await orchestrationService.readSession(
       sessionId,
@@ -5936,6 +5940,8 @@ export async function delegateTask(
       // #485: from this point the invocation may happen — classification
       // below (and in the outer catch) flips to `unresolved`.
       attemptStartInvoked = true;
+      // A thrown/indeterminate start may have spawned an engine that can read files.
+      retainFiles = true;
       const started = await orchestrationService.startSessionInternal(
         {
           type: 'start-session',
@@ -6050,11 +6056,16 @@ export async function delegateTask(
         },
       );
       if (started.status === 'indeterminate') {
+        if (input.stagedFiles)
+          throw new DelegationFileRefusal('delegation_files_outcome_unknown');
         throw new Error(
           `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
         );
       }
+      retainFiles = false;
       if (started.status !== 'accepted') {
+        if (input.stagedFiles)
+          throw new DelegationFileRefusal('delegation_files_start_refused');
         const error = new Error(started.message) as Error & { code?: string };
         error.code = started.code;
         throw error;
@@ -6091,6 +6102,7 @@ export async function delegateTask(
     // Only the dispatch RETURNING its real provider turn id advances the
     // claim to `accepted` with that turn recorded — never invented, never
     // a second dispatch for the same claim.
+    retainFiles = true;
     const attemptTurnDispatch = await orchestrationService.dispatchWithReceipt(
       {
         type: 'sendTurn',
@@ -6217,6 +6229,40 @@ export async function delegateTask(
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
   } catch (attemptError) {
+    // Only an explicit rejected receipt proves dispatch never reached a turn.
+    if (
+      attemptError instanceof OrchestrationCommandDispatchError &&
+      attemptError.receipt.status === 'rejected' &&
+      attemptError.outcome !== 'indeterminate'
+    )
+      retainFiles = false;
+    if (input.stagedFiles && fileBinding && !retainFiles) {
+      try {
+        await workspaceFiles?.remove();
+      } catch (cause) {
+        throw new DelegationFileRefusal('delegation_files_cleanup_failed', {
+          cause,
+        });
+      } finally {
+        input.stagedFiles.release(fileBinding);
+      }
+    }
+    if (
+      input.stagedFiles &&
+      retainFiles &&
+      !(attemptError instanceof DelegationFileRefusal)
+    )
+      throw new DelegationFileRefusal('delegation_files_outcome_unknown', {
+        cause: attemptError,
+      });
+    if (
+      input.stagedFiles &&
+      attemptError instanceof OrchestrationCommandDispatchError &&
+      !retainFiles
+    )
+      throw new DelegationFileRefusal('delegation_files_turn_refused', {
+        cause: attemptError,
+      });
     if (attemptClaim) {
       if (attemptInitialTurnAccepted || attemptInitialTurnReturned) {
         // The initial turn was durably accepted by the adapter (the

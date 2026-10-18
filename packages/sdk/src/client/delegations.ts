@@ -298,7 +298,10 @@ export async function delegateTask(
   if (request.attachmentRefs?.length) {
     const capability = await getAttachmentStagingCapability(apiBase, opts);
     if (capability.state !== 'supported' || capability.delegationFiles !== true)
-      throw new Error('This Station does not support delegation files.');
+      throw new DelegationApiError(
+        'This Station does not support delegation files.',
+        'delegation_files_unsupported',
+      );
   }
   const response = await mutateJson(
     `${apiBase}/api/orchestration/delegations`,

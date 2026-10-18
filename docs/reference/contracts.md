@@ -18,6 +18,16 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
   `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
+### Delegation file refusals
+
+`@kontourai/station-contracts/attachment-staging` owns
+`DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
+`@kontourai/station-shared/delegation-files` supplies the runtime refusal class
+and batch name/size/data validation used by CLI preflight and the server
+materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
+remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
+references describe cleanup and uncertain delivery outcomes.
+
 ## Modules
 
 The authored `@kontourai/station-contracts/usage-export` module defines the

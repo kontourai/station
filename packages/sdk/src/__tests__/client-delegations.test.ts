@@ -96,7 +96,10 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
             },
           ],
         }),
-      ).rejects.toThrow('does not support delegation files');
+      ).rejects.toMatchObject({
+        code: 'delegation_files_unsupported',
+        message: 'This Station does not support delegation files.',
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0][0])).toContain(
         '/attachment-staging/capability',

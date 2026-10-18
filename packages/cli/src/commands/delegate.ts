@@ -1,3 +1,4 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 /**
  * `station delegate` — hand Station a Task (create) and headlessly supervise
  * it (status, events, continue, respond, interrupt), or discover ready
@@ -97,6 +98,7 @@ import {
   requirePositional,
 } from './core-api.js';
 import {
+  cancelDelegateAttachmentStages,
   loadDelegateAttachments,
   stageDelegateAttachments,
 } from './delegate-attachments.js';
@@ -822,8 +824,9 @@ async function runDelegateCreate(
     : undefined;
 
   let data: DelegatedTaskHandle;
+  let attachmentRefs: StagedAttachmentReference[] | undefined;
   try {
-    const attachmentRefs = attachments
+    attachmentRefs = attachments
       ? await stageDelegateAttachments(apiBase, attachments)
       : undefined;
     data = await delegateTask(apiBase, {
@@ -854,6 +857,11 @@ async function runDelegateCreate(
       ...(prepared ? { attemptId: prepared.attemptId } : {}),
     });
   } catch (error) {
+    if (attachmentRefs?.length)
+      await cancelDelegateAttachmentStages(
+        apiBase,
+        attachmentRefs.map(({ stageId }) => stageId),
+      );
     // `return` here (not just a bare call) guards the on-request-fail
     // probe below from ever running with an unassigned `data` — relying on
     // `process.exit`'s real-world termination alone is fragile whenever a

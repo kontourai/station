@@ -61,3 +61,18 @@ export type AttachmentStagingStatus =
   /** Accepted turns retain only an idempotency tombstone; bytes are released. */
   | { stageId: string; state: 'accepted'; expiresAt: string }
   | { stageId: string; state: 'expired' | 'missing' | 'cancelled' };
+
+/** Closed, file-delivery refusals shared by the CLI and executing host. */
+export type DelegationFileRefusalCode =
+  | 'delegation_files_unsupported'
+  | 'delegation_files_duplicate_name'
+  | 'delegation_files_count'
+  | 'delegation_files_size'
+  | 'delegation_files_invalid_name'
+  | 'delegation_files_invalid_data'
+  | 'delegation_files_ref_invalid'
+  | 'delegation_files_unavailable'
+  | 'delegation_files_start_refused'
+  | 'delegation_files_turn_refused'
+  | 'delegation_files_outcome_unknown'
+  | 'delegation_files_cleanup_failed';
