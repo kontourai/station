@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 
 function modelVendor(model) {
   if (/^claude-/.test(model)) return 'anthropic';
-  if (/^(?:gpt-|chatgpt-|o[134](?:-|$))/.test(model)) return 'openai';
+  if (/^(?:gpt-|chatgpt-|codex-|o[134](?:-|$))/.test(model)) return 'openai';
   if (/^(?:gemini|gemma)-/.test(model)) return 'google';
   if (/^llama/i.test(model)) return 'meta';
-  if (/^(?:mistral|mixtral|codestral|ministral)-/.test(model)) return 'mistral';
+  if (/^(?:mistral|mixtral|codestral|ministral|pixtral)-/.test(model))
+    return 'mistral';
   if (/^(?:nova|titan)-/.test(model)) return 'amazon';
 }
 
@@ -13,12 +14,15 @@ function modelIdentity(value) {
   // OpenRouter still names the model's vendor; Bedrock adds a regional profile.
   const unwrapped = value
     .replace(/^openrouter\//, '')
-    .replace(/^(?:us|eu|apac|global)\.(?=anthropic\.)/, '');
+    .replace(
+      /^(?:us|eu|apac|global|jp|au|us-gov)\.(?=(?:anthropic|openai|google|meta|mistral|amazon)[/.])/,
+      '',
+    );
   const prefix = /^(anthropic|openai|google|meta|mistral|amazon)[/.]/.exec(
     unwrapped,
   );
   const model = prefix ? unwrapped.slice(prefix[0].length) : unwrapped;
-  return { model, valid: !prefix || prefix[1] === modelVendor(model) };
+  return { model, vendor: prefix?.[1] };
 }
 
 function modelSnapshot(model) {
@@ -33,7 +37,13 @@ export function checkServedModel(requested, reported) {
   if (!requested || !reported) return 'unverified';
   const a = modelIdentity(requested);
   const b = modelIdentity(reported);
-  if (!a.valid || !b.valid) return 'fail';
+  const familyVendor = modelVendor(a.model);
+  const requestedVendor = familyVendor ?? a.vendor;
+  if (
+    (familyVendor && a.vendor && a.vendor !== familyVendor) ||
+    (requestedVendor && b.vendor && b.vendor !== requestedVendor)
+  )
+    return 'fail';
   const left = modelSnapshot(a.model);
   const right = modelSnapshot(b.model);
   if (
@@ -42,7 +52,7 @@ export function checkServedModel(requested, reported) {
     (left.version && right.version && left.version !== right.version)
   )
     return 'fail';
-  return 'pass';
+  return b.vendor && !requestedVendor ? 'unverified' : 'pass';
 }
 
 function comparisonModel(engine, entry) {
@@ -181,18 +191,18 @@ async function waitForTurn(api, sessionId, turnId, deadline, priorEventIds) {
           (!event.turnId && !priorEventIds.has(event.eventId))),
     );
     if (error) throw new Error(error.message);
-    if (
-      events.some(
-        (event) => event.turnId === turnId && event.method === 'turn.completed',
-      )
-    )
-      break;
+    const terminalIndex = events.findIndex(
+      (event) => event.turnId === turnId && event.method === 'turn.completed',
+    );
+    if (terminalIndex >= 0)
+      return new Set(
+        events.slice(0, terminalIndex + 1).map((event) => event.eventId),
+      );
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  if (Date.now() >= deadline)
-    throw new Error(
-      'Turn completion timed out; provider termination is not confirmed',
-    );
+  throw new Error(
+    'Turn completion timed out; provider termination is not confirmed',
+  );
 }
 
 async function readStoredOutputs(api, sessionId, turnId, deadline) {
@@ -255,7 +265,7 @@ function planRun(catalog, modelIds, additionalScenarios, maxTurns) {
       );
   if (minimumPlannedTurns > maxTurns)
     throw new Error(
-      `Planned ${minimumPlannedTurns} turns exceeds --max-turns=${maxTurns}; refusing the entire run`,
+      `Planned ${minimumPlannedTurns} turns exceeds --max-turns=${maxTurns}; refusing the entire run. Select fewer models with --model=ID (repeatable). You may explicitly raise --max-turns up to 1000; this plan requires ${minimumPlannedTurns}.`,
     );
   const plan = {
     modelIds: models,
@@ -347,13 +357,13 @@ export async function runMatrix({
   );
   await onPlan(plan);
   let sentTurns = 0;
-  const checkedApi = async (path, body) => {
+  const checkedApi = async (path, body, ...rest) => {
     if (path === '/api/orchestration/commands' && body?.type === 'sendTurn') {
       if (sentTurns >= Math.min(maxTurns, plan.plannedTurnCount))
         throw new Error('Hard turn ceiling reached; refusing another send');
       sentTurns++;
     }
-    return api(path, body);
+    return api(path, body, ...rest);
   };
   const result = {
     version: 1,
@@ -371,6 +381,7 @@ export async function runMatrix({
     const nonce = randomUUID();
     const base = { engine, connectionId, model, sessionId };
     let started = false;
+    let completedEventIds;
     try {
       // A start may take effect even if its HTTP acknowledgement is lost.
       started = true;
@@ -438,9 +449,17 @@ export async function runMatrix({
             const priorEvents = (
               await api(`/api/orchestration/sessions/${sessionId}/events`)
             ).data;
-            const priorEventIds = new Set(
+            // Baseline once; later reads must retain the gap after the last terminal.
+            completedEventIds ??= new Set(
               priorEvents.map((event) => event.eventId),
             );
+            const pendingError = priorEvents.find(
+              (event) =>
+                event.method === 'runtime.error' &&
+                !event.turnId &&
+                !completedEventIds.has(event.eventId),
+            );
+            if (pendingError) throw new Error(pendingError.message);
             const ack = await command({
               type: 'sendTurn',
               input: {
@@ -454,12 +473,12 @@ export async function runMatrix({
               throw new Error('Turn was not acknowledged; no automatic retry');
             turn.turnId = ack.turnId;
             const deadline = Date.now() + timeoutMs;
-            await waitForTurn(
+            completedEventIds = await waitForTurn(
               api,
               sessionId,
               ack.turnId,
               deadline,
-              priorEventIds,
+              completedEventIds,
             );
             const messages = (
               await api(`/api/orchestration/sessions/${sessionId}/messages`)

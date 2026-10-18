@@ -52,9 +52,9 @@ export async function main() {
     const extension = modulePath
       ? await import(pathToFileURL(resolve(modulePath)).href)
       : {};
-    const api = async (path, body) => {
+    const api = async (path, body, method = body ? 'POST' : 'GET') => {
       const response = await fetch(`${origin}${path}`, {
-        method: body ? 'POST' : 'GET',
+        method,
         headers: headers(credential, !!body),
         ...(body ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(timeoutMs),

@@ -117,7 +117,11 @@ selected model. Repeat `--model=ID` to allowlist launch selectors; omitted model
 are never called, including during switch-and-back. Without an allowlist, all
 advertised models are planned. `--max-turns=N` is a hard send ceiling (default 24,
 allowed 1–1000). A plan larger than the ceiling refuses the entire run before
-starting sessions; it does not truncate the catalog. The accepted plan and its
+starting sessions; it does not truncate the catalog. Refusal reports the planned
+count and explains how to select fewer models with repeatable `--model=ID` or
+explicitly increase `--max-turns`. Four models with only the built-in scenarios
+fit exactly at 24 turns; five require 30. Extension reservations add to that
+count. The accepted plan and its
 turn count are printed as JSON on stderr before session commands; stdout stays
 one JSON results document. Each model gets up to six built-in sends:
 
@@ -158,9 +162,12 @@ Missing reported model or engine is unverified. Launch selectors stay unchanged
 in sends. When the catalog provides `resolvedModel`, that concrete identity is
 the comparison target. A Claude SDK alias such as `sonnet` or `default` without
 resolution is recorded as **alias without resolution**, never a substitution.
-Vendor prefixes must agree with the model family's vendor. Known OpenRouter
-vendor-qualified forms, Bedrock regional Anthropic forms such as
-`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, and Vertex's
+Vendor prefixes must agree with the requested model's vendor: known families
+supply that identity, while an explicitly vendor-qualified request also covers
+new families. A bare unknown family cannot establish a reported prefix's vendor
+and remains unverified. Known OpenRouter vendor-qualified forms, Bedrock regional
+forms (`us`, `eu`, `apac`, `global`, `jp`, `au`, `us-gov`) immediately before a
+matching vendor, including `us.meta.*`, and Vertex's
 `claude-sonnet-4-5@20250929` are accepted. Semantic family/version/tier changes,
 cross-vendor prefixes, arbitrary suffixes, and distinct explicit dates or
 versions fail. The accepted/rejected table in the
@@ -189,11 +196,13 @@ trusted local ES module. It may export either or both:
   per-model planning bound. Without declarations, the plan reserves the
   remaining run ceiling for extensions (at least one send per scenario/model);
   its printed count is an upper bound. Every managed `sendTurn` command still
-  consumes both the printed plan reservation and the hard run ceiling, including `ctx.api` and `ctx.command` calls.
+  consumes both the printed plan reservation and the hard run ceiling, including
+  `ctx.api` and `ctx.command` calls.
   An extension exceeding either bound gets an explicit failure before another
-  send. Trusted modules retain their existing authority; this is not a sandbox. `ctx` provides `sessionId`, `model`, `switchModel`,
-  `nonce`, `artifactName`, `artifactContent`, `api(path, optionalPostBody)`,
-  `command(command)`,
+  send. Trusted modules retain their existing authority; this is not a sandbox.
+  `ctx` provides `sessionId`, `model`, `switchModel`,
+  `nonce`, `artifactName`, `artifactContent`,
+  `api(path, optionalBody, optionalMethod)`, `command(command)`,
   `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent)` and
   `recall(model)`. `send` returns the checked turn, including `turnId`, for
   subsequent API observations. Throw on a failed additional assertion; return a
@@ -202,14 +211,29 @@ trusted local ES module. It may export either or both:
   registration seam without another runner. Added scenarios may send additional
   billable turns; review extension code before confirming.
 
+`ctx.api` forwards every supplied transport argument. Its third argument is the
+HTTP method: `ctx.api(path, undefined, 'DELETE')` performs DELETE cleanup. If the
+method is omitted, the command transport retains its GET default without a body
+and POST default with a body. Existing two-argument calls remain valid.
+
+The adapter catalog and orchestration return types explicitly retain optional
+`resolvedModel`. The [server route test](../../src-server/routes/orchestration/__tests__/orchestration.routes.test.ts)
+checks that a fake adapter's concrete alias resolution survives real discovery,
+service dispatch and JSON serialization. A catalog resolution is not per-turn
+served-model proof.
+
 JSON goes to stdout and a timestamped `.json` file alongside a generated,
 dated Markdown matrix in `docs/reference/engine-matrix-runs/` by default.
 Use `--output-dir=PATH` for private receipts. Both include engine, connection,
 launch selector, scenario, verdict, engine-inferred connection, served-as and
 failure text; JSON also retains concrete comparison models, the send plan/count,
 session/turn IDs and individual checks. New session-level `runtime.error` events
-without a turn ID retain their actual error text; pre-send historical errors are
-not reassigned to a later turn. Exit 0 requires every row
+without a turn ID retain their actual error text. An initial snapshot establishes
+the session error cursor; it then advances only through a completed-turn event.
+Reads before later sends do not reset it. Errors in the gap after a terminal,
+including errors emitted during `stopSession`, fail the next attempted scenario
+before another billable send. Initial historical errors remain excluded.
+Exit 0 requires every row
 to pass; failures or unverified rows exit 1. Review receipts before committing:
 provider errors receive bounded redaction, but arbitrary error text and model
 or connection identifiers can still be sensitive.

@@ -88,6 +88,34 @@ describe('engine matrix verdicts', () => {
       'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
       'pass',
     ],
+    [
+      'claude-sonnet-4-5',
+      'jp.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'pass',
+    ],
+    [
+      'claude-sonnet-4-5',
+      'au.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'pass',
+    ],
+    [
+      'claude-sonnet-4-5',
+      'us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'pass',
+    ],
+    ['llama3-70b-instruct', 'us.meta.llama3-70b-instruct', 'pass'],
+    ['amazon/nova-pro', 'au.amazon.nova-pro', 'pass'],
+    ['meta/llama3-70b-instruct', 'us.mistral.llama3-70b-instruct', 'fail'],
+    ['claude-sonnet-4-5', 'jp.meta.claude-sonnet-4-5', 'fail'],
+    ['claude-sonnet-4-5', 'zz.anthropic.claude-sonnet-4-5', 'fail'],
+    ['openai/codex-mini-latest', 'openai/codex-mini-latest', 'pass'],
+    ['codex-mini-latest', 'openai/codex-mini-latest', 'pass'],
+    ['mistral/pixtral-large', 'mistral/pixtral-large', 'pass'],
+    ['pixtral-large', 'mistral/pixtral-large', 'pass'],
+    ['mistral/future-family-1', 'jp.mistral.future-family-1-20260101', 'pass'],
+    ['mistral/future-family-1', 'openai/future-family-1', 'fail'],
+    ['mistral/future-family-1', 'us.meta.future-family-1', 'fail'],
+    ['future-family-1', 'mistral/future-family-1', 'unverified'],
     ['gpt-4.1', 'gpt-4.1-mini', 'fail'],
     ['gpt-4.1-mini', 'gpt-4.1', 'fail'],
     ['gpt-4.1', 'gpt-4.2', 'fail'],
@@ -203,14 +231,20 @@ type Fault =
   | 'claude-alias'
   | 'unresolved-alias'
   | 'overspend'
-  | 'legacy-extension';
+  | 'legacy-extension'
+  | 'cleanup-delete'
+  | 'between-turns-error'
+  | 'recycle-error'
+  | 'four-models'
+  | 'five-models';
 
 async function runCli(
   fault?: Fault,
   options: { confirmed?: boolean; args?: string[]; credential?: string } = {},
 ) {
   const directory = makeTempDir('station-matrix-');
-  const requests: Array<{ url: string; body?: any }> = [];
+  const requests: Array<{ url: string; method?: string; body?: any }> = [];
+  const deleted = new Set<string>();
   const sessions = new Map<
     string,
     {
@@ -253,14 +287,24 @@ async function runCli(
             : {}),
         },
       ]
-    : (fault === 'one-model' ? ['model-1'] : ['model-1', 'model-2']).map(
-        (id) => ({ id, name: id, originalId: id }),
-      );
+    : (fault === 'four-models' || fault === 'five-models'
+        ? Array.from(
+            { length: fault === 'four-models' ? 4 : 5 },
+            (_, index) => `model-${index + 1}`,
+          )
+        : fault === 'one-model'
+          ? ['model-1']
+          : ['model-1', 'model-2']
+      ).map((id) => ({ id, name: id, originalId: id }));
   const observer = join(directory, 'observer.mjs');
   // This independent rendered fixture never reads the stored-output endpoint.
+  const extensionScenarios =
+    fault === 'four-models' || fault === 'five-models'
+      ? '[]'
+      : `[{ id: '${fault === 'duplicate-scenario' ? 'first' : 'extension'}', ${fault === 'legacy-extension' ? '' : 'maxTurns: 1,'} async run(ctx) { ${fault === 'overspend' ? 'for (let i=0;i<3;i++)' : ''} await ctx.recall(ctx.model); ${fault === 'cleanup-delete' ? "await ctx.api('/api/matrix-fixture/' + ctx.sessionId, undefined, 'DELETE');" : ''} } }]`;
   await writeFile(
     observer,
-    `export async function observeOutputs({sessionId,turnId}) { const match = /:artifact:(.+)$/.exec(turnId); return {sessionId,turnId: ${fault === 'observer-identity' ? "'different-turn'" : 'turnId'},names: ${fault === 'extra-rendered' ? "['phantom.txt']" : 'match ? [match[1]] : []'}}; }\nexport const scenarios = [{ id: '${fault === 'duplicate-scenario' ? 'first' : 'extension'}', ${fault === 'legacy-extension' ? '' : 'maxTurns: 1,'} async run(ctx) { ${fault === 'overspend' ? 'for (let i=0;i<3;i++)' : ''} await ctx.recall(ctx.model); } }];\n`,
+    `export async function observeOutputs({sessionId,turnId}) { const match = /:artifact:(.+)$/.exec(turnId); return {sessionId,turnId: ${fault === 'observer-identity' ? "'different-turn'" : 'turnId'},names: ${fault === 'extra-rendered' ? "['phantom.txt']" : 'match ? [match[1]] : []'}}; }\nexport const scenarios = ${extensionScenarios};\n`,
   );
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -269,7 +313,7 @@ async function runCli(
       ? JSON.parse(Buffer.concat(chunks).toString())
       : undefined;
     const url = request.url ?? '';
-    requests.push({ url, body });
+    requests.push({ url, method: request.method, body });
     response.setHeader('content-type', 'application/json');
     const send = (data: unknown) =>
       response.end(JSON.stringify({ success: true, data }));
@@ -277,6 +321,11 @@ async function runCli(
       response.statusCode = 400;
       response.end(JSON.stringify({ success: false, error: message }));
     };
+    if (url.startsWith('/api/matrix-fixture/')) {
+      if (request.method !== 'DELETE') return reject('Expected DELETE cleanup');
+      deleted.add(url.slice('/api/matrix-fixture/'.length));
+      return send({ deleted: true });
+    }
     if (url === '/api/connections/agents')
       return send(
         fault === 'isolation'
@@ -316,6 +365,16 @@ async function runCli(
       if (!session) return reject();
       if (body.type === 'stopSession') {
         if (fault === 'cleanup') return reject();
+        if (
+          fault === 'recycle-error' &&
+          session.turns.length === 5 &&
+          !session.events.some((event) => event.eventId === 'stop-error')
+        )
+          session.events.push({
+            eventId: 'stop-error',
+            method: 'runtime.error',
+            message: 'Recycle transport disconnected',
+          });
         if (fault !== 'no-op-stop') session.stopped = true;
         if (fault === 'forget-on-stop') session.secret = undefined;
         return send(null);
@@ -370,8 +429,21 @@ async function runCli(
     const [, sessionId, resource, suffix] = match;
     const session = sessions.get(sessionId);
     if (!session) return reject();
-    if (resource === 'events')
-      return send(fault === 'timeout' ? [] : session.events);
+    if (resource === 'events') {
+      const result = send(fault === 'timeout' ? [] : session.events);
+      // Arrive after the first terminal has been serialized to the caller.
+      if (
+        fault === 'between-turns-error' &&
+        session.turns.length === 1 &&
+        !session.events.some((event) => event.eventId === 'gap-error')
+      )
+        session.events.push({
+          eventId: 'gap-error',
+          method: 'runtime.error',
+          message: 'Between-turn transport disconnected',
+        });
+      return result;
+    }
     if (resource === 'messages')
       return send(
         session.turns.map((turn) => ({
@@ -489,6 +561,7 @@ async function runCli(
         : null,
       requests,
       sessions,
+      deleted,
     };
   } finally {
     await new Promise<void>((resolve, reject) =>
@@ -823,5 +896,59 @@ describe('matrix CLI against a loopback stub API (no providers)', () => {
     expect(stderr).toContain('--model is not advertised');
     expect(sessions.size).toBe(0);
     expect(requests).toHaveLength(2);
+  });
+  it('forwards a scenario DELETE method to the HTTP transport and performs cleanup', async () => {
+    const { code, requests, sessions, deleted } =
+      await runCli('cleanup-delete');
+    expect(code).toBe(0);
+    expect(
+      requests
+        .filter((request) => request.url.startsWith('/api/matrix-fixture/'))
+        .map((request) => request.method),
+    ).toEqual(['DELETE', 'DELETE']);
+    expect([...deleted].sort()).toEqual([...sessions.keys()].sort());
+  });
+
+  it.each(['between-turns-error', 'recycle-error'] as const)(
+    'fails on %s in the gap since the previous terminal without spending another turn',
+    async (fault) => {
+      const { code, result, requests } = await runCli(fault);
+      expect(code).toBe(1);
+      const scenario =
+        fault === 'between-turns-error' ? 'follow-up' : 'recycle';
+      const reason =
+        fault === 'between-turns-error'
+          ? 'Between-turn transport disconnected'
+          : 'Recycle transport disconnected';
+      const rows = result.rows.filter((row: any) => row.scenario === scenario);
+      expect(rows).toHaveLength(2);
+      expect(
+        rows.every(
+          (row: any) => row.status === 'fail' && row.failure === reason,
+        ),
+      ).toBe(true);
+      expect(
+        requests.filter((request) => request.body?.type === 'sendTurn'),
+      ).toHaveLength(fault === 'between-turns-error' ? 2 : 10);
+    },
+  );
+
+  it('admits four built-in model runs at exactly the default 24-turn ceiling', async () => {
+    const { code, result } = await runCli('four-models');
+    expect(code).toBe(0);
+    expect(result.plan.plannedTurnCount).toBe(24);
+    expect(result.sentTurns).toBe(24);
+  });
+
+  it('explains how to proceed when the default plan exceeds the ceiling', async () => {
+    const { code, stderr, requests } = await runCli('five-models');
+    expect(code).toBe(1);
+    expect(stderr).toContain('Planned 30 turns');
+    expect(stderr).toContain('--model=ID');
+    expect(stderr).toContain('--max-turns');
+    expect(requests.map((request) => request.url)).toEqual([
+      '/api/connections/agents',
+      '/api/orchestration/providers/fake/models',
+    ]);
   });
 });
