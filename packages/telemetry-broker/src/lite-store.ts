@@ -6,10 +6,14 @@ import {
 } from 'node:crypto';
 import type {
   StationDailyPing,
+  TelemetryFeedback,
   TelemetryPublisherId,
 } from '@kontourai/station-contracts/product-telemetry';
 import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemetry';
-import { parseStationDailyPing } from '@kontourai/station-shared/product-telemetry';
+import {
+  parseStationDailyPing,
+  parseTelemetryFeedback,
+} from '@kontourai/station-shared/product-telemetry';
 import type { QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
 import { noisyCount } from './noisy-count.js';
@@ -91,8 +95,20 @@ CREATE TABLE station_telemetry.lite_published (
  FOREIGN KEY(week,publisher) REFERENCES station_telemetry.lite_publications(week,publisher));
 `;
 const WEEKLY_DIGEST = createHash('sha256').update(WEEKLY_SCHEMA).digest('hex');
+const FEEDBACK_SCHEMA = `
+CREATE TABLE station_telemetry.lite_feedback (
+ source_id text NOT NULL REFERENCES station_telemetry.lite_sources(id), publisher text NOT NULL,
+ action text NOT NULL, reason text NOT NULL, day date NOT NULL,
+ client_hash bytea CHECK(client_hash IS NULL OR octet_length(client_hash)=32),
+ UNIQUE(day,publisher,action,client_hash));
+CREATE INDEX lite_feedback_day ON station_telemetry.lite_feedback(day);
+`;
+const FEEDBACK_DIGEST = createHash('sha256')
+  .update(FEEDBACK_SCHEMA)
+  .digest('hex');
 const tables = [
   'lite_capacity',
+  'lite_feedback',
   'lite_finalization',
   'lite_marginals',
   'lite_noise_key',
@@ -165,11 +181,22 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (weekly.rows[0].digest !== WEEKLY_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const feedback = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=7',
+  );
+  if (!feedback.rows.length) {
+    await client.query(FEEDBACK_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(7,$1)',
+      [FEEDBACK_DIGEST],
+    );
+  } else if (feedback.rows[0].digest !== FEEDBACK_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   await client.query(
-    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_finalization,station_telemetry.lite_noise_key,station_telemetry.lite_capacity,station_telemetry.lite_publications,station_telemetry.lite_published IN ACCESS SHARE MODE',
+    'LOCK TABLE station_telemetry.lite_sources,station_telemetry.publisher_keys,station_telemetry.lite_pings,station_telemetry.lite_marginals,station_telemetry.lite_finalization,station_telemetry.lite_noise_key,station_telemetry.lite_capacity,station_telemetry.lite_publications,station_telemetry.lite_published,station_telemetry.lite_feedback IN ACCESS SHARE MODE',
   );
   const { rows } = await client.query<{
     name: string;
@@ -185,6 +212,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   );
   const expected = [
     'lite_capacity|singleton:boolean:true,pings:bigint:true',
+    'lite_feedback|source_id:text:true,publisher:text:true,action:text:true,reason:text:true,day:date:true,client_hash:bytea:false',
     'lite_finalization|day:date:true,publisher:text:true,dimension:text:true',
     'lite_marginals|day:date:true,publisher:text:true,dimension:text:true,value:text:true,pings:bigint:true,clients:bigint:true,finalized:boolean:true',
     'lite_noise_key|singleton:boolean:true,secret:bytea:true',
@@ -218,6 +246,9 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_capacity|CHECK ((pings >= 0))',
         'lite_capacity|CHECK (singleton)',
         'lite_capacity|PRIMARY KEY (singleton)',
+        'lite_feedback|CHECK (((client_hash IS NULL) OR (octet_length(client_hash) = 32)))',
+        'lite_feedback|FOREIGN KEY (source_id) REFERENCES station_telemetry.lite_sources(id)',
+        'lite_feedback|UNIQUE (day, publisher, action, client_hash)',
         'lite_finalization|PRIMARY KEY (day, publisher, dimension)',
         'lite_marginals|CHECK ((clients > 0))',
         'lite_marginals|CHECK ((pings > 0))',
@@ -279,6 +310,11 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'SELECT digest FROM station_telemetry.migrations WHERE version=6',
   );
   if (weeklyMarker.rows[0]?.digest !== WEEKLY_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const feedbackMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=7',
+  );
+  if (feedbackMarker.rows[0]?.digest !== FEEDBACK_DIGEST)
     throw new BrokerError('schema_incompatible');
   const secret = await client.query(
     'SELECT octet_length(secret) AS length FROM station_telemetry.lite_noise_key WHERE singleton',
@@ -498,6 +534,50 @@ export class LiteRepository {
       );
       const config = source.rows[0];
       if (!config) throw new BrokerError('source_unauthorized');
+      if (value && typeof value === 'object' && 'action' in value) {
+        let feedback: TelemetryFeedback;
+        try {
+          feedback = parseTelemetryFeedback(value);
+        } catch {
+          throw new BrokerError('invalid_daily_ping');
+        }
+        if (feedback.publisher !== config.publisher)
+          throw new BrokerError('invalid_daily_ping');
+        await client.query(
+          "SELECT pg_advisory_xact_lock_shared(hashtext('station.lite.day'),hashtext($1))",
+          [clientKey.day],
+        );
+        const {
+          rows: [{ day }],
+        } = await client.query<{ day: string }>(
+          "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day",
+        );
+        if (clientKey.day !== day || !/^[0-9a-f]{64}$/.test(clientKey.hash))
+          throw new BrokerError('storage_busy');
+        const inserted = await client.query(
+          `INSERT INTO station_telemetry.lite_feedback(source_id,publisher,action,reason,day,client_hash)
+           VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+          [
+            sourceId,
+            feedback.publisher,
+            feedback.action,
+            feedback.reason,
+            day,
+            Buffer.from(clientKey.hash, 'hex'),
+          ],
+        );
+        if (inserted.rowCount) {
+          const count = await client.query(
+            'SELECT pings FROM station_telemetry.lite_capacity WHERE singleton',
+          );
+          if (Number(count.rows[0].pings) >= this.maxPings)
+            throw new BrokerError('storage_limit');
+          await client.query(
+            'UPDATE station_telemetry.lite_capacity SET pings=pings+1 WHERE singleton',
+          );
+        }
+        return { inserted: inserted.rowCount ?? 0 };
+      }
       let ping: StationDailyPing;
       try {
         ping = parseStationDailyPing(
@@ -709,6 +789,19 @@ export class LiteRepository {
     ) {
       /* bounded erasure batches */
     }
+    while (
+      await this.transaction(async (client) => {
+        const result = await client.query(
+          `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.lite_feedback
+         WHERE day < $1::date AND client_hash IS NOT NULL ORDER BY day LIMIT 2000 FOR UPDATE SKIP LOCKED)
+         UPDATE station_telemetry.lite_feedback SET client_hash=NULL WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
+          [cutoff],
+        );
+        return result.rowCount !== 0;
+      })
+    ) {
+      /* bounded daily feedback key erasure */
+    }
     return cutoff;
   }
   private async publishWeeks(cutoff: string): Promise<void> {
@@ -899,8 +992,16 @@ export class LiteRepository {
         FROM station_telemetry.lite_marginals WHERE finalized AND day >= ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date-30" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date-28"}
         AND day < ${period === 'daily' ? "(statement_timestamp() AT TIME ZONE 'UTC')::date" : "date_trunc('week',statement_timestamp() AT TIME ZONE 'UTC')::date"}
         GROUP BY 1,publisher,dimension,value ORDER BY 1,publisher,dimension,value LIMIT 10001`);
-      if (rows.rows.length > 10000) throw new BrokerError('query_limit');
+      const feedback =
+        await client.query(`SELECT to_char(${period === 'daily' ? 'day' : "date_trunc('week',day)"},'YYYY-MM-DD') AS period,
+        publisher,action,reason,count(*)::text AS count FROM station_telemetry.lite_feedback
+        WHERE day >= (statement_timestamp() AT TIME ZONE 'UTC')::date-90
+        GROUP BY 1,publisher,action,reason ORDER BY 1,publisher,action,reason LIMIT 10001`);
+      if (rows.rows.length > 10000 || feedback.rows.length > 10000)
+        throw new BrokerError('query_limit');
       return {
+        feedback: feedback.rows,
+        feedbackWindow: 'retained-90-UTC-days-including-current',
         scope: 'operator-exact-marginals',
         finalizationDiagnostics: {
           failures: [...this.finalizationFailures],

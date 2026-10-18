@@ -106,9 +106,13 @@ export const TELEMETRY_FEEDBACK_REASONS = [
 ] as const;
 export type TelemetryFeedbackReason =
   (typeof TELEMETRY_FEEDBACK_REASONS)[number];
+export const TELEMETRY_FEEDBACK_ACTIONS = [
+  'tier-lowered',
+  'plugin-uninstalled',
+] as const;
 export interface TelemetryFeedback {
   publisher: TelemetryPublisherId;
-  action: 'tier-lowered' | 'plugin-uninstalled';
+  action: (typeof TELEMETRY_FEEDBACK_ACTIONS)[number];
   reason: TelemetryFeedbackReason;
 }
 

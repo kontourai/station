@@ -508,9 +508,9 @@ test('expired full and publisher credential snapshots return 503 after refresh f
   }
 });
 
-test('migration 5 to 6 is transactional and idempotent without changing exact marginals or noise key', async () => {
+test('migrations 5 to 7 are transactional and idempotent without changing exact marginals or noise key', async () => {
   await db.exec(
-    'DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version=6',
+    'DROP TABLE station_telemetry.lite_feedback; DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version IN (6,7)',
   );
   await db.query(
     "INSERT INTO station_telemetry.lite_marginals VALUES($1,'kontour','platform','linux',123,45,true)",
@@ -531,7 +531,7 @@ test('migration 5 to 6 is transactional and idempotent without changing exact ma
   expect(
     (
       await db.query(
-        'SELECT version FROM station_telemetry.migrations WHERE version=6',
+        'SELECT version FROM station_telemetry.migrations WHERE version IN (6,7)',
       )
     ).rows,
   ).toEqual([]);
@@ -829,4 +829,148 @@ test('forged cursors return 400 without evicting a cached public page', async ()
     (await app.request(`/v1/public/aggregates?cursor=${page.nextCursor}`))
       .status,
   ).toBe(200);
+});
+
+test('feedback HTTP admission, publisher/action/day dedupe, operator counts and erasure stay separate from public releases', async () => {
+  const payload = {
+    publisher: 'kontour',
+    action: 'tier-lowered',
+    reason: 'privacy',
+  };
+  const post = (body: unknown, source = 'kontour', address = '198.51.100.43') =>
+    app.request(
+      `/v1/lite/${source}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'private-feedback-agent',
+        },
+        body: JSON.stringify(body),
+      },
+      socketBindings(address),
+    );
+  const operator = { headers: { authorization: `Bearer ${operatorKey}` } };
+  for (const bad of [
+    { ...payload, reason: 'unknown' },
+    { ...payload, action: 'unknown' },
+    { ...payload, publisher: 'publisher:example' },
+    { ...payload, publisher: 'publisher:' },
+    { ...payload, event: 'station_daily' },
+    { ...payload, note: 'secret-feedback' },
+    { ...payload, id: 'secret-id' },
+    { ...payload, timestamp: today },
+    { ...payload, reason: ['privacy'] },
+    [payload],
+    null,
+  ])
+    expect((await post(bad)).status).toBe(400);
+  expect((await post(payload, 'missing')).status).toBe(401);
+  expect((await post({ ...payload, padding: 'x'.repeat(16385) })).status).toBe(
+    413,
+  );
+  const publicBefore = await (
+    await app.request('/v1/public/aggregates')
+  ).json();
+  const publisherBefore = await (
+    await app.request('/v1/publishers/publisher%3Aexample/aggregates', {
+      headers: { authorization: `Bearer ${publisherKey}` },
+    })
+  ).json();
+  expect(await (await post(payload)).json()).toEqual({ inserted: 1 });
+  await lite.createSource({
+    id: 'kontour-alias',
+    publisher: 'kontour',
+    channel: 'stable',
+    registryIds: [],
+    releaseVersions: [],
+  });
+  expect(
+    await (
+      await post({ ...payload, reason: 'performance' }, 'kontour-alias')
+    ).json(),
+  ).toEqual({ inserted: 0 });
+  expect(
+    await (await post({ ...payload, action: 'plugin-uninstalled' })).json(),
+  ).toEqual({ inserted: 1 });
+  expect(
+    await (await post(payload, 'kontour', '198.51.100.44')).json(),
+  ).toEqual({ inserted: 1 });
+  expect(
+    await (
+      await post({ ...payload, publisher: 'publisher:example' }, 'third-party')
+    ).json(),
+  ).toEqual({ inserted: 1 });
+  for (const period of ['daily', 'weekly']) {
+    const path = `/v1/operator/lite/${period}`;
+    expect((await app.request(path)).status).toBe(401);
+    expect(
+      (
+        await app.request(path, {
+          headers: { authorization: `Bearer ${publisherKey}` },
+        })
+      ).status,
+    ).toBe(401);
+    const response = await app.request(path, operator);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const exact = await response.json();
+    expect(exact.feedback).toContainEqual({
+      period:
+        period === 'daily'
+          ? today
+          : new Date(Date.parse(closedWeek) + 7 * 86400000)
+              .toISOString()
+              .slice(0, 10),
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'privacy',
+      count: '2',
+    });
+    expect(
+      exact.feedback.some(
+        (row: { reason: string }) => row.reason === 'performance',
+      ),
+    ).toBe(false);
+  }
+  expect(await (await app.request('/v1/public/aggregates')).json()).toEqual(
+    publicBefore,
+  );
+  expect(
+    await (
+      await app.request('/v1/publishers/publisher%3Aexample/aggregates', {
+        headers: { authorization: `Bearer ${publisherKey}` },
+      })
+    ).json(),
+  ).toEqual(publisherBefore);
+  const persisted = JSON.stringify(
+    (await db.query('SELECT * FROM station_telemetry.lite_feedback')).rows,
+  );
+  for (const secret of [
+    '198.51.100.43',
+    'private-feedback-agent',
+    'secret-feedback',
+  ])
+    expect(persisted).not.toContain(secret);
+  await expect(
+    lite.ingest('kontour', payload, {
+      day: '2000-01-01',
+      hash: 'a'.repeat(64),
+    }),
+  ).rejects.toMatchObject({ code: 'storage_busy' });
+  await db.query('UPDATE station_telemetry.lite_feedback SET day=$1', [
+    closedWeek,
+  ]);
+  await lite.finalize();
+  expect(
+    (await db.query('SELECT client_hash FROM station_telemetry.lite_feedback'))
+      .rows,
+  ).toEqual(Array(4).fill({ client_hash: null }));
+  expect((await lite.exact('weekly')).feedback).toContainEqual({
+    period: closedWeek,
+    publisher: 'kontour',
+    action: 'tier-lowered',
+    reason: 'privacy',
+    count: '2',
+  });
+  expect(await (await post(payload)).json()).toEqual({ inserted: 1 });
 });

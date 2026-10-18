@@ -138,6 +138,38 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       ).status,
       201,
     );
+    const feedback = {
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    };
+    for (const bad of [
+      { ...feedback, reason: 'unknown' },
+      { ...feedback, action: 'unknown' },
+      { ...feedback, publisher },
+      { ...feedback, note: 'private-rejected-content' },
+      { ...feedback, id: 'private-rejected-content' },
+      { ...feedback, timestamp: '2026-01-01' },
+    ])
+      assert.equal(
+        (await send(bad)).status,
+        400,
+        'strict feedback shape/source binding',
+      );
+    assert.deepEqual(await send(feedback), {
+      status: 202,
+      body: { inserted: 1 },
+    });
+    assert.deepEqual(
+      await send({ ...feedback, reason: 'performance' }),
+      { status: 202, body: { inserted: 0 } },
+      'feedback dedupe ignores reason',
+    );
+    assert.deepEqual(
+      await send({ ...feedback, action: 'plugin-uninstalled' }),
+      { status: 202, body: { inserted: 1 } },
+    );
+    await assertPrivateStorage();
     const ping = dailyPing();
     assert.deepEqual(
       await send(ping),
@@ -296,8 +328,19 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       "UPDATE station_telemetry.lite_pings SET received_at=$1::date::timestamp AT TIME ZONE 'UTC' WHERE received_at >= $2::date::timestamp AT TIME ZONE 'UTC'",
       [closedDay, today],
     );
+    await pool.query('UPDATE station_telemetry.lite_feedback SET day=$1', [
+      closedDay,
+    ]);
     await store.retain();
     await store.lite.finalize();
+    assert.ok(
+      (
+        await pool.query(
+          'SELECT client_hash FROM station_telemetry.lite_feedback',
+        )
+      ).rows.every((row) => row.client_hash === null),
+      'feedback daily contributor erasure',
+    );
     assert.equal(
       (
         await pool.query(
@@ -320,6 +363,16 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         );
         assert.equal(page.status, 200);
         assert.ok(page.body.cells.length <= 200);
+        assert.equal(
+          JSON.stringify(page.body).includes('tier-lowered'),
+          false,
+          'feedback must not be public or publisher-visible',
+        );
+        assert.equal(
+          'feedback' in page.body,
+          false,
+          'feedback must not be public or publisher-visible',
+        );
         cells.push(...page.body.cells);
         cursor = page.body.nextCursor;
       } while (cursor);
@@ -378,6 +431,17 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         operatorKey,
       );
       assert.equal(exact.status, 200);
+      assert.deepEqual(
+        exact.body.feedback,
+        ['plugin-uninstalled', 'tier-lowered'].map((action) => ({
+          period: closedDay,
+          publisher: 'kontour',
+          action,
+          reason: 'privacy',
+          count: '1',
+        })),
+        'operator exact feedback',
+      );
       assert.deepEqual(
         exact.body.marginals.find(
           (c) =>
@@ -569,7 +633,21 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     await pool.query(
       "UPDATE station_telemetry.lite_pings SET received_at=clock_timestamp()-interval '91 days'",
     );
+    await pool.query(
+      "UPDATE station_telemetry.lite_feedback SET day=(clock_timestamp() AT TIME ZONE 'UTC')::date-91",
+    );
     await store.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      0,
+      'feedback 90-day retention',
+    );
     assert.equal(
       Number(
         (await pool.query('SELECT count(*) FROM station_telemetry.lite_pings'))
@@ -596,6 +674,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     assert.equal((await send(dailyPing(), other)).status, 202);
     await assertPrivateStorage();
     return [
+      'feedback: strict shape/source binding, action/day/contributor dedupe, operator-only exact counts, daily hash erasure and 90-day retention',
       'lite HTTP/PostgreSQL: public sources, strict unknown/nested/array/catalog rejection, bounded streaming bodies, commit/dedupe/conflict',
       'lite exact daily/weekly operator marginals: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
       'weekly fixed-domain noisy publication, immutable re-finalization; scoped publisher keys, revocation, static same-origin dashboard',

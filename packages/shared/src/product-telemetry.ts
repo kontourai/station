@@ -20,6 +20,9 @@ import {
   type StationDailyPing,
   TELEMETRY_COUNT_BUCKETS,
   TELEMETRY_ENGINES,
+  TELEMETRY_FEEDBACK_ACTIONS,
+  TELEMETRY_FEEDBACK_REASONS,
+  type TelemetryFeedback,
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -378,6 +381,30 @@ export function monthlyTelemetryId(installSecret: string, date: Date): string {
   return createHash('sha256')
     .update(installSecret + date.toISOString().slice(0, 7))
     .digest('hex');
+}
+
+/** Feedback has no content, identity or sender-controlled time fields. */
+export function parseTelemetryFeedback(value: unknown): TelemetryFeedback {
+  if (
+    !record(value) ||
+    Object.keys(value).length !== 3 ||
+    !onlyKeys(value, ['publisher', 'action', 'reason']) ||
+    typeof value.publisher !== 'string' ||
+    value.publisher.length > 128 ||
+    !(
+      value.publisher === 'kontour' ||
+      value.publisher === 'operator' ||
+      /^publisher:\S{1,118}$/u.test(value.publisher)
+    ) ||
+    !TELEMETRY_FEEDBACK_ACTIONS.some((action) => action === value.action) ||
+    !TELEMETRY_FEEDBACK_REASONS.some((reason) => reason === value.reason)
+  )
+    throw new Error('Invalid telemetry feedback');
+  return {
+    publisher: value.publisher as TelemetryFeedback['publisher'],
+    action: value.action as TelemetryFeedback['action'],
+    reason: value.reason as TelemetryFeedback['reason'],
+  };
 }
 
 /** Registry membership comes from the public catalog, never from a syntactic ID match. */

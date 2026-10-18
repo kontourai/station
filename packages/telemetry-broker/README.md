@@ -203,22 +203,22 @@ and marking that prior build's channel unavailable (`unknown`). The next real
 sender serializes it; invalid build version maps to `custom`, while distribution
 and layouts retain `unknown`. A loopback relay captures exact request/response
 bodies and supplies a trusted CF header. The receiver is a real built Unix
-entrypoint with its own database. The runner checks 202 acceptance, feedback's
-current 400 refusal, finalized operator marginals and contributor-hash erasure.
-It makes no assertion that a feedback payload was delivered successfully.
+entrypoint with its own database. The runner checks 202 acceptance for both daily pings and tier-lowered/privacy
+feedback, operator feedback counts, finalized ping marginals and contributor-hash
+erasure.
 
 Station runs under `sandbox-exec` with outbound networking limited to loopback.
 Because macOS refuses setuid `/bin/ps` there, the fixture uses a private,
 unprivileged ad-hoc-signed copy for the real process-birth lock probe. The runner
 retains owned failed homes/databases for diagnosis and removes successful ones.
 The outer tmpfs PostgreSQL container remains the caller's cleanup responsibility.
-This establishes built sender/receiver interoperability for the daily ping;
+This establishes built sender/receiver interoperability for daily pings and feedback;
 Cloudflare, container images, persistent deployment and native shells remain
 separate acceptance work.
 
 ## Lite observations
 
-`POST /v1/lite/:source` accepts exactly one `StationDailyPing` from
+`POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
 `parseStationDailyPing`. It requires no installation credential. Unknown fields,
 unknown nested fields, excessive or duplicate array entries, unknown catalog
@@ -230,14 +230,30 @@ source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
 
-This endpoint accepts only `station_daily`. A `TelemetryFeedback` body such as
-`{"publisher":"kontour","action":"tier-lowered","reason":"privacy"}` returns
-400 `invalid_daily_ping` and stores nothing. The Lite sender currently posts
-both payload types to its configured URL; that does not establish feedback
-interoperability. A destination must explicitly support feedback before a
-sender routes it there. Durable receiver support needs its own strict
-validation, storage migration, retention/capacity policy and operator view;
-no feedback route or discarded-payload 202 is introduced here.
+Feedback uses the shared `TelemetryFeedback` contract and strict
+`parseTelemetryFeedback` parser. Its only fields are `publisher`, `action`
+(`tier-lowered` or `plugin-uninstalled`) and a fixed reason enum (`privacy`,
+`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`, `skip`).
+There is no free text, installation/event ID or sender timestamp. The publisher
+must equal the URL source's configured publisher. Daily pings retain their
+existing channel/catalog validation; every other shape returns 400.
+
+Migration 7 adds permanent `lite_feedback` rows containing source, publisher,
+action, reason, receiver UTC day and a daily contributor-key hash used only for
+dedupe. The first feedback per publisher/action/day/key wins, even across source
+aliases or changed reasons. Committed retries return 202 `{ "inserted": 0 }`;
+new rows return `{ "inserted": 1 }`. Feedback uses the same body/admission limits,
+trusted-proxy client key, transaction durability and shared Lite row/storage
+ceiling as daily pings. `lite_capacity.pings` now counts both retained Lite row
+types. The existing closed-day erasure pass clears feedback hashes in bounded
+batches; the existing retention job deletes feedback older than the 90-day UTC
+cutoff (or the configured shorter retention). No IP or User-Agent is persisted.
+Daily salts and receiver restarts limit contributor identity; these counts do
+not measure unique people or installations.
+
+Feedback is available only in the operator views described below. It is excluded
+from public aggregates, the public dashboard and third-party publisher APIs in
+this PR; no feedback publication/noise mechanism is defined here.
 
 The operator provisions a **public per-publisher/per-channel identifier**, not
 a secret embedded in a binary. Example operator-authenticated request body for
@@ -373,6 +389,14 @@ weekly covers four closed ISO weeks, Monday through Sunday in UTC. Both read
 all publishers and all dimensions from finalized `lite_marginals`, with exact
 integer strings for `pings` and `contributors`. They refuse more than 10,000
 rows with 422 rather than truncate. No exact route is linked from the dashboard.
+
+Both operator responses additionally include `feedback` rows with `period`,
+`publisher`, `action`, `reason` and exact integer-string `count`. Feedback covers
+the retained 90-day UTC window, including the current partial day/week;
+`feedbackWindow` names this separate window. Weekly counts sum the deduplicated
+daily rows. Feedback remains queryable after daily contributor hashes are erased,
+and disappears when retention deletes its rows. The same 10,000-row refusal
+applies independently to feedback.
 
 Daily `contributors` counts distinct daily IPv4/IPv6-/48 network hashes per
 value, not people or installations. Weekly `contributors` is the **sum of daily

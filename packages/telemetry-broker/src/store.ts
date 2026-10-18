@@ -574,19 +574,32 @@ export class PgProductRepository implements ProductRepository {
   }
   async retain(): Promise<void> {
     // Each retention owner commits independently, even if finalization is unavailable.
-    for (const table of ['commits', 'events', 'lite_pings'] as const) {
-      const column = table === 'commits' ? 'stored_at' : 'received_at';
+    for (const table of [
+      'commits',
+      'events',
+      'lite_pings',
+      'lite_feedback',
+    ] as const) {
+      const column =
+        table === 'commits'
+          ? 'stored_at'
+          : table === 'lite_feedback'
+            ? 'day'
+            : 'received_at';
       const days = table === 'commits' ? 7 : this.retentionDays;
       while (
         await this.transaction(async (client) => {
           await this.assertSchema(client);
           const result = await client.query(
             `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.${table}
-           WHERE ${column}<clock_timestamp()-$1*interval '1 day' LIMIT 2000 FOR UPDATE SKIP LOCKED)
+           WHERE ${column}<${table === 'lite_feedback' ? "(clock_timestamp() AT TIME ZONE 'UTC')::date-$1::integer" : "clock_timestamp()-$1*interval '1 day'"} LIMIT 2000 FOR UPDATE SKIP LOCKED)
            DELETE FROM station_telemetry.${table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
             [days],
           );
-          if (table === 'lite_pings' && result.rowCount)
+          if (
+            (table === 'lite_pings' || table === 'lite_feedback') &&
+            result.rowCount
+          )
             await client.query(
               'UPDATE station_telemetry.lite_capacity SET pings=pings-$1 WHERE singleton',
               [result.rowCount],

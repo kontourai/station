@@ -291,9 +291,25 @@ try {
       action: 'tier-lowered',
       reason: 'privacy',
     },
-    status: 400,
-    body: { error: 'invalid_daily_ping' },
+    status: 202,
+    body: { inserted: 1 },
   });
+  const feedbackResponse = await fetch(
+    `${receiverBase}/v1/operator/lite/daily`,
+    { headers: { authorization: `Bearer ${operatorKey}` } },
+  );
+  assert.equal(feedbackResponse.status, 200);
+  assert.equal(feedbackResponse.headers.get('cache-control'), 'no-store');
+  const feedbackExact = await feedbackResponse.json();
+  assert.ok(
+    feedbackExact.feedback.some(
+      (row) =>
+        row.publisher === 'operator' &&
+        row.action === 'tier-lowered' &&
+        row.reason === 'privacy' &&
+        row.count === '1',
+    ),
+  );
   const rows = await pool.query(
     'SELECT ping FROM station_telemetry.lite_pings',
   );
@@ -352,6 +368,7 @@ try {
           .server_version,
         exchanges,
         operatorExact: exact,
+        feedbackExact,
       },
       null,
       2,
