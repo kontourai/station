@@ -68,7 +68,31 @@
 
     "src-server/services/orchestration/orchestration-service.ts",
 
-    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts",
+
+    "scripts/__tests__/engine-delivery-routes.test.ts",
+
+    "scripts/fixtures/capture-skill-delivery.mjs",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/agents/tools.ts",
+
+    "src-server/routes/agents/agents.ts",
+
+    "src-server/routes/schemas/schema-definitions/content.ts",
+
+    "src-server/routes/schemas/schema-definitions/runtime.ts",
+
+    "src-server/routes/schemas/schema-validation.ts"
   ],
 
   "checks": [

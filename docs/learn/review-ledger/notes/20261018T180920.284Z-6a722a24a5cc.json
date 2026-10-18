@@ -1,0 +1,7 @@
+{
+  "revision": "36542aef5847fba7db4b4f439ef63564db88e6f9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the one-line resource-manifest addition for the actual-route delivery suite. It owns real local MCP children and temporary persistence, so it uses the existing independent process group alongside delivery/matrix tests. No worker counts, policy, fixture authority or generated lane changes. Fixture guard 33/33, scripts and e2e typechecks pass. Manual loopback CLI capture runs separately; ordinary tests replay scrubbed fixtures and do not call a provider.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
