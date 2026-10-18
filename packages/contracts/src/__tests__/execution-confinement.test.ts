@@ -6,7 +6,7 @@ import type { ExecutionResolutionReceipt } from '../execution-target.js';
 // resolution receipt, whose recursive access/credential/transport ban lives
 // in execution-target.test.ts; this pins the record's own finite key set.
 describe('execution confinement contract', () => {
-  it('keeps the confinement record to its six content-free fields', () => {
+  it('keeps the confinement record to its eight content-free fields', () => {
     expectTypeOf<keyof ExecutionConfinementRecord>().toEqualTypeOf<
       | 'level'
       | 'required'
@@ -14,6 +14,8 @@ describe('execution confinement contract', () => {
       | 'mechanism'
       | 'workspaceAccess'
       | 'policyBasis'
+      | 'writeGrants'
+      | 'fallback'
     >();
   });
 

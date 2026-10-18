@@ -31,6 +31,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
@@ -322,6 +323,8 @@ async function fixture(
     eventBus,
     eventStore: store,
     resolveStationDefaultApprovalMode: async () => defaults.station,
+    // #2494: Seatbelt available on any host, so Claude resolves the same.
+    confinementProviders: confinementProvidersForTests(),
     ...(liveGrantCheck
       ? {
           isFullAccessGrantorCurrent: (deviceId: string) =>
@@ -515,6 +518,9 @@ function lastStart(f: Fixture, agent: keyof typeof AGENTS) {
     confinement: start!.confinement,
     approvalMode: start!.modelOptions?.approvalMode,
     stamp: start!.metadata?.stationConfinement,
+    // #2494: named only for Seatbelt; Codex engages its own sandbox always.
+    plan:
+      start!.confinementPlan?.mechanism === 'seatbelt' ? 'seatbelt' : undefined,
   };
 }
 
@@ -542,7 +548,7 @@ describe('#2493: who may start a session unconfined', () => {
     });
   });
 
-  test('a device without the grant reaching never through the Station default is confined: Codex keeps never, Claude applies auto', async () => {
+  test('a device without the grant reaching never through the Station default is confined: Codex keeps never, Claude keeps never under its Seatbelt plan', async () => {
     const f = await fixture();
     const phone = f.pair('Phone');
     await f.chat(f.bearer(phone.credential), 'codex-agent');
@@ -556,7 +562,10 @@ describe('#2493: who may start a session unconfined', () => {
     await f.chat(f.bearer(phone.credential), 'claude-agent');
     expect(lastStart(f, 'claude-agent')).toEqual({
       confinement: 'workspace',
-      approvalMode: 'auto',
+      // #2494: requested as full access, with the Seatbelt plan the
+      // adapter applies it under (Auto unless it observes the profile).
+      approvalMode: 'never',
+      plan: 'seatbelt',
       stamp: 'workspace',
     });
   });
@@ -567,7 +576,10 @@ describe('#2493: who may start a session unconfined', () => {
     await f.chat(f.bearer(phone.credential), 'claude-agent');
     expect(lastStart(f, 'claude-agent')).toEqual({
       confinement: 'workspace',
-      approvalMode: 'auto',
+      // #2494: requested as full access, with the Seatbelt plan the
+      // adapter applies it under (Auto unless it observes the profile).
+      approvalMode: 'never',
+      plan: 'seatbelt',
       stamp: 'workspace',
     });
     // The operator starting the same Agent is not.
@@ -589,7 +601,10 @@ describe('#2493: who may start a session unconfined', () => {
       await f.chat(headers, 'claude-agent', env);
       expect(lastStart(f, 'claude-agent')).toEqual({
         confinement: 'workspace',
-        approvalMode: 'auto',
+        // #2494: requested as full access, with the Seatbelt plan the
+        // adapter applies it under (Auto unless it observes the profile).
+        approvalMode: 'never',
+        plan: 'seatbelt',
         stamp: 'workspace',
       });
     },
@@ -655,7 +670,10 @@ describe('#2493: who may start a session unconfined', () => {
     );
     expect(lastStart(f, 'claude-agent')).toMatchObject({
       confinement: 'workspace',
-      approvalMode: 'auto',
+      // #2494: requested as full access, with the Seatbelt plan the
+      // adapter applies it under (Auto unless it observes the profile).
+      approvalMode: 'never',
+      plan: 'seatbelt',
     });
   });
 
@@ -710,7 +728,10 @@ describe('#2493: who may start a session unconfined', () => {
     expect(response.status, response.text).toBe(200);
     expect(lastStart(f, 'claude-agent')).toEqual({
       confinement: 'workspace',
-      approvalMode: 'auto',
+      // #2494: requested as full access, with the Seatbelt plan the
+      // adapter applies it under (Auto unless it observes the profile).
+      approvalMode: 'never',
+      plan: 'seatbelt',
       stamp: 'workspace',
     });
 
@@ -2021,7 +2042,10 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(f.claude.starts.length).toBe(starts + 1);
     expect(lastStart(f, 'claude-agent')).toMatchObject({
       confinement: 'workspace',
-      approvalMode: 'auto',
+      // #2494: requested as full access, with the Seatbelt plan the
+      // adapter applies it under (Auto unless it observes the profile).
+      approvalMode: 'never',
+      plan: 'seatbelt',
       stamp: 'workspace',
     });
   });
@@ -2532,7 +2556,9 @@ describe('#3567: keyed input and model changes', () => {
 
 describe('#2494: the confinement a start records reaches the delegation receipt', () => {
   test('a delegation receipt carries the confinement read back from the started session, keyed on who started it', async () => {
-    const f = await fixture();
+    // At Auto, so Claude engages nothing: since #2494 a workspace Claude
+    // start at full access engages Seatbelt, whose record its adapter writes.
+    const f = await fixture({ station: 'auto' });
     const phone = f.pair('Phone');
     const delegate = (credential: string, agent: keyof typeof AGENTS) =>
       f.request(f.bearer(credential), '/api/orchestration/delegations', {
