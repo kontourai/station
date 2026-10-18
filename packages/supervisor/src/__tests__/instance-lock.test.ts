@@ -242,7 +242,11 @@ describe('instance lock (real processes)', () => {
   it('refuses an old lock whose endpoint accepts but never answers', async () => {
     const home = makeTempDir('sup-lock-mute-');
     const pid = await liveSleeper();
-    const mute = join(makeShortHome(), 'mute.sock');
+    // A named pipe on Windows, where a filesystem path cannot be listened on.
+    const mute =
+      process.platform === 'win32'
+        ? `\\\\.\\pipe\\station-supervisor-test-mute-${nonce()}`
+        : join(makeShortHome(), 'mute.sock');
     const server = createServer((socket) => {
       accepted.push(socket);
     });
