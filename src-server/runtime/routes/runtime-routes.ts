@@ -4,6 +4,7 @@ import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-li
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
+import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
 import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
@@ -69,6 +70,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
   createDeviceHostResolver,
   LOCAL_DEVICE_HOST_ID,
@@ -3604,6 +3606,42 @@ export function configureRuntimeRoutes(
                   : JSON.stringify(error),
           }),
       });
+    const agentDeviceSessions = deviceSessions;
+    const agentDeviceSurfaces = liveSurfaceRegistry;
+    if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      context.app.route(
+        '/api/device-agent',
+        createDeviceAgentRoutes({
+          agentAccessEnabled: () => devices.agentAccessEnabled(),
+          isInternalRequest: isStationInternalRequest,
+          resolveCaller: (request) =>
+            resolveStationControlCallerForRequest(
+              request,
+              resolveStationControlCallerRecord,
+            ),
+          authorizePrincipal: createBrowserPrincipalAuthorizer({
+            isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+            ...(context.projectMembership
+              ? { membership: context.projectMembership }
+              : {}),
+          }),
+          shares: deviceShareAccess.shares,
+          ...(deviceShareAccess.resolveAndroidAvd
+            ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
+            : {}),
+          automation: new DeviceAutomation({
+            host: deviceHost,
+            sessions: agentDeviceSessions,
+            surfaces: agentDeviceSurfaces,
+            tools: new DeviceToolsService({
+              hostId: LOCAL_DEVICE_HOST_ID,
+              runner: createDeviceToolRunner(),
+              hub: deviceHubEndpoint,
+            }),
+          }),
+        }),
+      );
+    }
     // Device access reads the request principal (operator and Project
     // membership); prime it for every device route before any of them runs.
     context.app.use('/api/mobile-devices/*', async (c, next) => {
