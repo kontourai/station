@@ -59,6 +59,7 @@ const SUPPRESSION_DIGEST = createHash('sha256')
   .digest('hex');
 const NOISE_SCHEMA = `
 DROP TABLE station_telemetry.lite_clients;
+CREATE INDEX lite_pending ON station_telemetry.lite_pings(received_at) WHERE client_hash IS NOT NULL OR contributions IS NOT NULL;
 ALTER TABLE station_telemetry.lite_marginals DROP COLUMN publishable;
 CREATE TABLE station_telemetry.lite_finalization (
  day date NOT NULL, publisher text NOT NULL, dimension text NOT NULL,
@@ -240,14 +241,16 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
   );
   if (secret.rows.length !== 1 || secret.rows[0].length !== 32)
     throw new BrokerError('schema_incompatible');
-  const index = await client.query(
-    "SELECT indisvalid AND indisready AS valid,pg_get_indexdef(indexrelid) AS definition FROM pg_index WHERE indexrelid=to_regclass('station_telemetry.lite_received') AND indrelid='station_telemetry.lite_pings'::regclass",
+  const indexes = await client.query(
+    "SELECT indisvalid AND indisready AS valid,pg_get_indexdef(indexrelid) AS definition FROM pg_index WHERE indexrelid IN (to_regclass('station_telemetry.lite_received'),to_regclass('station_telemetry.lite_pending')) AND indrelid='station_telemetry.lite_pings'::regclass ORDER BY pg_get_indexdef(indexrelid)",
   );
   if (
-    index.rows.length !== 1 ||
-    !index.rows[0].valid ||
-    index.rows[0].definition !==
-      'CREATE INDEX lite_received ON station_telemetry.lite_pings USING btree (received_at)'
+    indexes.rows.some((row) => !row.valid) ||
+    JSON.stringify(indexes.rows.map((row) => row.definition)) !==
+      JSON.stringify([
+        'CREATE INDEX lite_pending ON station_telemetry.lite_pings USING btree (received_at) WHERE ((client_hash IS NOT NULL) OR (contributions IS NOT NULL))',
+        'CREATE INDEX lite_received ON station_telemetry.lite_pings USING btree (received_at)',
+      ])
   )
     throw new BrokerError('schema_incompatible');
 }
@@ -576,7 +579,7 @@ export class LiteRepository {
         const result = await client.query(
           `WITH batch AS (SELECT p.ctid FROM station_telemetry.lite_pings p
          JOIN station_telemetry.lite_sources s ON s.id=p.source_id
-         WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND client_hash IS NOT NULL
+         WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
          AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f
           WHERE f.day=(p.received_at AT TIME ZONE 'UTC')::date AND f.publisher=s.publisher)
          LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
@@ -655,7 +658,7 @@ export class LiteRepository {
         scope: 'daily-per-dimension-marginals',
         publisher,
         minimumDistinctDailyClients: 10,
-        privacyUnit: 'daily-salted-IPv4-or-IPv6-/48',
+        privacyUnit: 'one-received-ping-per-publisher-UTC-day',
         dayBasis: 'UTC-receiver-arrival',
         deliveryCoverage: 'unknown',
         days: [...days.values()],

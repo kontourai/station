@@ -355,7 +355,11 @@ Preserve the key for published days; a future rotation must retain old keys or
 persist their published estimates. Key compromise exposes the noise and removes
 its count protection.
 
-Migration 5 removes secondary suppression and `lite_clients`, drops
+The API `privacyUnit` names one received ping per publisher/UTC day; network
+keys describe only the k pre-filter.
+
+Migration 5 adds a partial `lite_pending` index for bounded association erasure,
+removes secondary suppression and `lite_clients`, drops
 `lite_marginals.publishable`, and creates `lite_finalization` jobs. Ingest stores
 bounded contribution arrays and one job per (day, publisher, dimension).
 Closed-day finalization computes all values of a dimension with one grouped SQL
