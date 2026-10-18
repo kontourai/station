@@ -832,6 +832,11 @@ test('forged cursors return 400 without evicting a cached public page', async ()
 });
 
 test('feedback HTTP admission, publisher/action/day dedupe, operator counts and erasure stay separate from public releases', async () => {
+  app = createProductBroker(
+    Object.assign(new PgProductRepository({} as Pool), { lite }),
+    operatorKey,
+    clientAddressPolicy('192.0.2.2/32'),
+  );
   const payload = {
     publisher: 'kontour',
     action: 'tier-lowered',
@@ -880,6 +885,20 @@ test('feedback HTTP admission, publisher/action/day dedupe, operator counts and 
   expect(publicBefore).not.toHaveProperty('feedback');
   expect(publisherBefore).not.toHaveProperty('feedback');
   expect(await (await post(payload)).json()).toEqual({ accepted: true });
+  for (const header of ['::ffff:198.51.100.43', '::ffff:c633:642b']) {
+    const response = await app.request(
+      '/v1/lite/kontour',
+      {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': header },
+        body: JSON.stringify({ ...payload, reason: 'performance' }),
+      },
+      socketBindings('192.0.2.2'),
+    );
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+  }
+
   await lite.createSource({
     id: 'kontour-alias',
     publisher: 'kontour',

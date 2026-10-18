@@ -221,8 +221,8 @@ separate acceptance work.
 `POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
 `parseStationDailyPing`. It requires no installation credential. Unknown fields,
-unknown nested fields, excessive or duplicate array entries, unknown catalog
-IDs/versions, invalid enum/count values, and a channel different from the
+unknown nested fields, excessive or duplicate array entries, unlisted registry
+IDs or catalog-policy versions, invalid enum/count values, and a channel different from the
 source's configured channel are refused with 400. Bodies, including streaming
 bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
 202 response is always `{ "accepted": true }`, including a retained

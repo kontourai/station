@@ -686,6 +686,9 @@ async function checkLiteReceiver(store, pool, base, operatorKey, privateBase) {
       FROM generate_series(0,3) n`,
       [source],
     );
+    await pool.query(
+      'UPDATE station_telemetry.lite_capacity SET pings=pings+4 WHERE singleton',
+    );
     const shortExact = await shortRetention.lite.exact('daily');
     assert.equal(
       shortExact.feedbackWindow,
