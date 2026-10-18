@@ -76,24 +76,44 @@ secret. Publisher read keys are separate `stq_` credentials provisioned through
 the operator boundary. Do not route lite traffic through the authenticated
 full-tier endpoint or treat a public source ID as authenticating a binary.
 
-The broker also serves `/public/` and `/v1/public/aggregates` (Kontour's
-k-suppressed daily per-dimension marginals only). The private Compose profile does not publish
-these on the Internet. A public deployment must independently qualify TLS,
-ingress access/error logging without client IP/user-agent retention, proxy/NAT
-rate-limit behavior, database capacity, restart and backup/restore. The process
-uses IPv4 addresses or IPv6 /64s for daily rate limits, but IPv4 addresses or
-IPv6 /48s for distinct-contributor HMACs; forwarded headers are ignored.
-Migration 4 discards prior marginals that cannot establish /48 counts or safe
-complements. Finalization requires ten distinct daily keys per visible value
-and either zero uncovered pings or ten distinct contributors to each dimension's
-uncovered remainder, suppressing additional values as needed. Set histograms
-overlap and cannot be summed to a total. An attacker controlling k−1 distinct
-contributor keys can still pad a victim. Run a single receiver process:
-restarts change the salt and inflate same-day distinct counts. The first public
-read finalizes closed days before caching; cached reads take no ingest lock.
-Clock-disagreement responses are not cached. Raw retention and hash deletion
-are periodic, and downtime delays them. No ingress, endpoint
-variable or production data flow is enabled by this source change.
+The broker's **owner analytics are exact** at `/v1/operator/lite/daily` and
+`/weekly`, authenticated with the private operator `sto_` key. Keep these routes
+private at ingress. Daily counts include exact distinct IPv4/IPv6-/48
+contributors; weekly counts sum contributor-days, because daily salts prevent
+cross-day deduplication. Publisher `stq_` keys cannot read exact analytics.
+
+`/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
+Publisher keys receive only their own publisher's weekly publication. The ten
+profile/adoption fields use a fixed public domain of enum values and
+operator-configured public release versions/registry IDs. Every value, including
+true zero, is released with noise; no k threshold or remainder suppression
+remains. Catalogs must be independent of private traffic. Per-count ε=1/280,
+sensitivity 40 and at most seven pings per honest install-week give ε≤1 per
+install-week. Expected absolute noise is about 280 weekly pings; sparse cells
+have poor utility. Follow bounded 200-cell cursor pages; the dashboard does this
+before selecting a week/dimension locally. See the
+[receiver privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates).
+
+Schema 6 atomically persists each publisher/week's marker and frozen noisy cells.
+Never re-finalize a published week. Back up and restore the complete schema,
+including `lite_noise_key`, `lite_publications` and `lite_published`, together;
+never clear/regenerate historical publication receipts. Older binaries refuse
+schema 6. Run migrations and qualification against an isolated restored copy
+before upgrading a persistent receiver.
+
+The private Compose profile does not publish these endpoints on the Internet.
+A public deployment must independently qualify TLS, ingress access/error logging
+without client IP/user-agent retention, proxy/NAT rate limits, database capacity,
+restart and backup/restore. IPv4 or IPv6 /64s select daily rate-limit keys;
+IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored.
+Run one receiver process; restarts change the salt and inflate same-day distinct
+counts. A failed publisher/day dimension retains only that publisher/day's
+associations while completed publishers' erasure progresses. Public reads never
+take the ingest lock; cache hits perform no database work. Clock-disagreement
+responses are not cached. Failed credential refresh beyond 60 seconds returns
+503, not unauthorized. Raw retention and hash deletion are periodic, and
+downtime delays them. No production endpoint or data flow is enabled by this
+source change.
 
 ## Render, validate, then run
 

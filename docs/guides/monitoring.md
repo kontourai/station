@@ -21,21 +21,29 @@ must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
 The companion receiver additionally accepts identifier-free `station_daily`
-Lite pings through public publisher/channel source IDs. It keeps daily
-per-dimension marginals and applies the same k=10 distinct-network pre-filter
-and fixed per-count geometric noise to publisher and public reads. IPv4 addresses
-or IPv6 /48s supply contributor keys, separately from /64 rate limits. Counts are
-noisy estimates: ε=1/57 per count, at most 57 increments per ping, hence ε≤1 per
-added/removed ping on fixed release support. The true-count threshold itself
-reveals 9→10 crossings, so the complete response is not pure ε-DP. Multiple days,
-pings and publishers compose. A persistent restricted database HMAC key makes
-repeated estimates identical, including across restarts. Set histograms overlap;
-counters contribute buckets. Resumable dimension transactions finalize counts,
-then batches erase contributor associations. Independent retention expires raw
-pings after 90 days. Public reads never acquire the ingest admission lock. The
-first public read finalizes closed days before filling its UTC-day cache. This
-receiver implementation does not establish an installed Station sender or a
-deployment. See the [Lite contract, privacy policy and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Sensitivity 40 and per-count ε=1/280
+compose to ε≤1/7 per ping and ε≤1 per honest install-week at seven pings. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly pings. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Public reads never acquire the ingest admission lock; successful pages
+cache until UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
 before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker example for Collector → Prometheus
