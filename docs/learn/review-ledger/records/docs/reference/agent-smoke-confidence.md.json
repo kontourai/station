@@ -70,7 +70,19 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "packages/sdk/src/client/execution.ts"
+    "packages/sdk/src/client/execution.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/orchestration-request-principal.ts",
+
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "packages/contracts/src/provider.ts"
   ],
 
   "checks": [
