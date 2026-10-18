@@ -522,6 +522,7 @@ async function main() {
       connectionTimeoutMillis: 1500,
       statement_timeout: 3000,
       query_timeout: 3500,
+      idle_in_transaction_session_timeout: 5000,
     });
     const store = new PgProductRepository(pool);
     await store.migrate();

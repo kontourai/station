@@ -579,9 +579,9 @@ export class PgProductRepository implements ProductRepository {
         await this.transaction(async (client) => {
           await this.assertSchema(client);
           const result = await client.query(
-            `WITH batch AS (SELECT ctid FROM station_telemetry.${table}
+            `WITH batch AS MATERIALIZED (SELECT ctid FROM station_telemetry.${table}
            WHERE ${column}<clock_timestamp()-$1*interval '1 day' LIMIT 2000 FOR UPDATE SKIP LOCKED)
-           DELETE FROM station_telemetry.${table} p USING batch WHERE p.ctid=batch.ctid`,
+           DELETE FROM station_telemetry.${table} WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
             [days],
           );
           if (table === 'lite_pings' && result.rowCount)

@@ -577,13 +577,14 @@ export class LiteRepository {
     while (
       await this.transaction(async (client) => {
         const result = await client.query(
-          `WITH batch AS (SELECT p.ctid FROM station_telemetry.lite_pings p
+          `WITH batch AS MATERIALIZED (SELECT p.ctid FROM station_telemetry.lite_pings p
          JOIN station_telemetry.lite_sources s ON s.id=p.source_id
          WHERE received_at < $1::date::timestamp AT TIME ZONE 'UTC' AND (client_hash IS NOT NULL OR contributions IS NOT NULL)
          AND NOT EXISTS (SELECT 1 FROM station_telemetry.lite_finalization f
           WHERE f.day=(p.received_at AT TIME ZONE 'UTC')::date AND f.publisher=s.publisher)
-         LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
-         UPDATE station_telemetry.lite_pings p SET client_hash=NULL,contributions=NULL FROM batch WHERE p.ctid=batch.ctid`,
+         ORDER BY p.received_at LIMIT 2000 FOR UPDATE OF p SKIP LOCKED)
+         UPDATE station_telemetry.lite_pings SET client_hash=NULL,contributions=NULL
+         WHERE ctid=ANY(ARRAY(SELECT ctid FROM batch))`,
           [cutoff],
         );
         return result.rowCount !== 0;
