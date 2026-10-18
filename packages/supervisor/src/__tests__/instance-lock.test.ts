@@ -198,7 +198,16 @@ describe('instance lock (real processes)', () => {
             }),
         ),
       );
-      expect(outcomes).toContain('ECONNREFUSED');
+      // The backlog is saturated: some connects were not queued. macOS refuses
+      // them (ECONNREFUSED); Linux fails them or leaves them pending.
+      const counts = outcomes.reduce<Record<string, number>>((all, outcome) => {
+        all[outcome] = (all[outcome] ?? 0) + 1;
+        return all;
+      }, {});
+      expect(
+        outcomes.some((outcome) => outcome !== 'queued'),
+        JSON.stringify(counts),
+      ).toBe(true);
 
       const second = await startSupervisor({
         home,
