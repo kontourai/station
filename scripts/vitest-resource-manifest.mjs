@@ -878,6 +878,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/station-agent-smoke.test.ts',
   // Bounded matrix CLI children exercise billable refusal and loopback API contracts.
   'scripts/__tests__/station-engine-matrix.test.ts',
+  'scripts/__tests__/engine-delivery-probes.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry

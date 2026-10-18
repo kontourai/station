@@ -159,7 +159,22 @@ async function readStoredOutputs(api, sessionId, turnId, deadline) {
   return stored;
 }
 
-/** Additional scenarios use the same send/recall verdict path; #3824 can register here. */
+/**
+ * @typedef {{declared: string, probe?: string, reason?: string, turnId?: string, checks?: string[]}} DeliveryEvidence
+ * @typedef {{requestedModel?: string, reportedModel?: string|null, servedBy?: string|null,
+ * servedEngine?: string|null, turnId?: string, status?: string,
+ * checks?: Record<string,string>, storedOutputs?: string[], renderedOutputs?: string[]|null}} MatrixTurn
+ * @typedef {{engine: string, connectionId: string, model: string, sessionId: string,
+ * scenario: string, status: string, turns: MatrixTurn[], failure: string|null,
+ * delivery?: Record<string,DeliveryEvidence>}} MatrixRow
+ * @typedef {{version: number, generatedAt: string, evidence: string, rows: MatrixRow[]}} MatrixResult
+ */
+
+/**
+ * @param {{api: Function, connectionId: string, cwd: string, timeoutMs?: number,
+ * observeOutputs?: Function, additionalScenarios?: Array<{id: string, scope?: string, prepare?: Function, run: Function}>}} options
+ * @returns {Promise<MatrixResult>}
+ */
 export async function runMatrix({
   api,
   connectionId,
@@ -197,6 +212,7 @@ export async function runMatrix({
     registered.length
   )
     throw new Error('Duplicate scenario id');
+  /** @type {MatrixResult} */
   const result = {
     version: 1,
     generatedAt: new Date().toISOString(),
@@ -207,12 +223,49 @@ export async function runMatrix({
   };
   const command = (value) =>
     api('/api/orchestration/commands', value).then((body) => body.data);
-  for (const model of models) {
+  const modelScenarios = registered.filter(
+    (scenario) => scenario.scope !== 'engine',
+  );
+  const jobs = [
+    ...models.map((model) => ({ model, selected: modelScenarios })),
+    ...registered
+      .filter((scenario) => scenario.scope === 'engine')
+      .map((scenario) => ({
+        model: models[0],
+        selected: [scenario],
+        lifecycle: scenario,
+      })),
+  ];
+  for (const { model, selected, lifecycle } of jobs) {
     const sessionId = `station-matrix-${randomUUID()}`;
     const nonce = randomUUID();
     const base = { engine, connectionId, model, sessionId };
     let started = false;
+    const cleanup = [];
+    const delivery = {};
+    const setup = {
+      api,
+      engine,
+      connectionId,
+      cwd,
+      model,
+      sessionId,
+      delivery,
+      deferCleanup: (label, run) => cleanup.push({ label, run }),
+    };
     try {
+      const prepared = await lifecycle?.prepare?.(setup);
+      if (prepared?.skipReason) {
+        result.rows.push({
+          ...base,
+          scenario: lifecycle.id,
+          status: 'skipped',
+          turns: [],
+          failure: prepared.skipReason,
+          delivery,
+        });
+        continue;
+      }
       // A start may take effect even if its HTTP acknowledgement is lost.
       started = true;
       await command({
@@ -222,17 +275,18 @@ export async function runMatrix({
           provider: engine,
           modelId: model,
           cwd,
-          metadata: { connectionId },
+          metadata: { ...prepared?.metadata, connectionId },
         },
       });
       let priorFailed = false;
-      for (const scenario of registered) {
+      for (const scenario of selected) {
         const row = {
           ...base,
           scenario: scenario.id,
           status: 'unverified',
           turns: [],
           failure: null,
+          ...(lifecycle ? { delivery } : {}),
         };
         result.rows.push(row);
         if (priorFailed) {
@@ -240,7 +294,8 @@ export async function runMatrix({
           continue;
         }
         const ctx = {
-          sessionId,
+          ...setup,
+          state: prepared?.state,
           nonce,
           model,
           switchModel: models.find((candidate) => candidate !== model),
@@ -253,7 +308,13 @@ export async function runMatrix({
               requested,
               nonce,
             ),
-          async send(input, requestedModel, expectedText, artifactName) {
+          async send(
+            input,
+            requestedModel,
+            expectedText,
+            artifactName,
+            evaluate,
+          ) {
             // Recheck isolation before every billable turn, including switches.
             const current = await api('/api/connections/agents');
             if (
@@ -326,7 +387,10 @@ export async function runMatrix({
               .join('')
               .trim();
             turn.checks = {
-              response: text === expectedText ? 'pass' : 'fail',
+              response:
+                expectedText === null || text === expectedText
+                  ? 'pass'
+                  : 'fail',
               servedModel: checkServedModel(requestedModel, turn.reportedModel),
               servedConnection: checkServedConnection(
                 connectionId,
@@ -340,6 +404,34 @@ export async function runMatrix({
                   ? 'pass'
                   : 'fail',
             };
+            if (evaluate) {
+              const events = (
+                await api(`/api/orchestration/sessions/${sessionId}/events`)
+              ).data.filter((event) => event.turnId === ack.turnId);
+              const checks = await evaluate({
+                text,
+                storedOutputs: stored,
+                events,
+                turnId: ack.turnId,
+                identityChecks: {
+                  servedModel: turn.checks.servedModel,
+                  servedConnection: turn.checks.servedConnection,
+                },
+              });
+              if (
+                !checks ||
+                Object.keys(checks).length === 0 ||
+                Object.values(checks).some(
+                  (value) => !['pass', 'fail', 'unverified'].includes(value),
+                )
+              )
+                throw new Error('Scenario returned invalid checks');
+              for (const [name, value] of Object.entries(checks)) {
+                if (name in turn.checks)
+                  throw new Error(`Scenario cannot replace check ${name}`);
+                turn.checks[name] = value;
+              }
+            }
             turn.status = aggregate(Object.values(turn.checks));
             if (turn.status === 'fail')
               throw new Error(
@@ -380,13 +472,14 @@ export async function runMatrix({
         }
       }
     } catch (error) {
-      for (const scenario of registered)
+      for (const scenario of selected)
         result.rows.push({
           ...base,
           scenario: scenario.id,
           status: 'fail',
           turns: [],
-          failure: `Start failed: ${String(error.message ?? error).slice(0, 500)}`,
+          failure: `Setup/start failed: ${String(error.message ?? error).slice(0, 500)}`,
+          ...(lifecycle ? { delivery } : {}),
         });
     } finally {
       if (started) {
@@ -402,9 +495,34 @@ export async function runMatrix({
           });
         }
       }
+      for (const obligation of cleanup.reverse()) {
+        try {
+          await obligation.run();
+        } catch (error) {
+          result.rows.push({
+            ...base,
+            scenario: 'cleanup',
+            status: 'fail',
+            turns: [],
+            failure: `Cleanup not confirmed (${obligation.label}): ${String(error.message ?? error).slice(0, 500)}`,
+          });
+        }
+      }
     }
   }
   return result;
+}
+
+function deliveryVerdict(row, evidence) {
+  if (evidence.declared === 'unsupported') return 'unsupported';
+  if (evidence.probe === 'fail') return 'fail';
+  const turn = row.turns.find((entry) => entry.turnId === evidence.turnId);
+  return evidence.probe === 'pass' &&
+    turn &&
+    evidence.checks?.length &&
+    evidence.checks.every((name) => turn.checks?.[name] === 'pass')
+    ? 'pass'
+    : 'unverified';
 }
 
 export function renderMatrix(result) {
@@ -425,5 +543,18 @@ export function renderMatrix(result) {
         `| ${[row.engine, row.connectionId, row.model, row.scenario, row.status, row.turns.map((turn) => turn.servedBy ?? 'unverified').join(', '), row.turns.map((turn) => turn.reportedModel ?? 'unverified').join(', '), row.failure ?? ''].map(cell).join(' | ')} |`,
     ),
     '',
+    ...(result.rows.some((row) => row.delivery)
+      ? [
+          '| Engine | Delivery claim | Declared | Probe | Reason |',
+          '| --- | --- | --- | --- | --- |',
+          ...result.rows.flatMap((row) =>
+            Object.entries(row.delivery ?? {}).map(
+              ([claim, evidence]) =>
+                `| ${[row.engine, claim, evidence.declared, deliveryVerdict(row, evidence), evidence.reason ?? ''].map(cell).join(' | ')} |`,
+            ),
+          ),
+          '',
+        ]
+      : []),
   ].join('\n');
 }

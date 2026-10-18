@@ -211,6 +211,24 @@ refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
+## Opt-in delivery evidence (#3824)
+
+The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
+register with the live matrix runner. They use a temporary API-created Agent,
+skill and MCP integration. A script-only nonce and its declared output test
+skill consumption; a follow-up `tool.started` record tests MCP use. A known
+fixture action is disabled through Station's integration policy and checked
+against the same run's discovered tool inventory before absence can count as
+success. A recorded call to the fixture's enabled action is also required.
+
+This is an MCP tool-selection probe for Station, Claude and Codex, not evidence
+that external built-in tools can be disabled. ACP cannot carry restricted MCP
+selection and reports that probe unsupported. Unsupported skills and missing
+passing evidence are not promoted to delivered. Cleanup failure remains a failed
+result, and an unreachable third-party dependency is skipped with a reason.
+These deterministic fixtures do not refresh the historical live Claude results
+below; live delivery and UI rendering remain NOT_VERIFIED until explicitly run.
+
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the

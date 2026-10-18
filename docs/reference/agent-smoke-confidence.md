@@ -160,13 +160,24 @@ trusted local ES module. It may export either or both:
   without one.
 - `scenarios: [{ id, async run(ctx) { /* probe */ } }]`: append unique scenario
   IDs after the built-ins. `ctx` provides `sessionId`, `model`, `switchModel`,
-  `nonce`, `artifactName`, `api(path, optionalPostBody)`, `command(command)`,
-  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath)` and
+  `nonce`, `artifactName`, `api(path, optionalBody, optionalMethod)`, `command(command)`,
+  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalEvaluator)` and
   `recall(model)`. `send` returns the checked turn, including `turnId`, for
   subsequent API observations. Throw on a failed additional assertion; return a
   reason string for an unverified prerequisite. A scenario with no checked turns
-  cannot pass. #3824 can add nonce-based skill/MCP/tool-policy probes at this
-  registration seam without another runner. Added scenarios may send additional
+  cannot pass. An engine-scoped scenario uses `scope: 'engine'` and gets a fresh
+  session on the first advertised model, once per invocation. Its optional
+  `prepare(ctx)` runs before session startup and can return `{ metadata, state }`
+  or `{ skipReason }`. Register each cleanup with
+  `ctx.deferCleanup(label, asyncCleanup)` before attempting its mutation;
+  obligations run in reverse order after the final session stop, including on
+  setup, startup or turn failure and skip. Each cleanup failure adds a failed
+  row while the remaining obligations are still attempted. Engine-scoped setup
+  also exposes `engine`, `connectionId`, `cwd`, `model` and a `delivery` evidence
+  map. The evaluator receives the exact turn's assistant text, complete stored
+  output names, events, and identity checks. It returns additional named verdicts;
+  it cannot overwrite the built-in checks. Passing `null` as the expected text
+  delegates response judgment to those checks. Added scenarios may send additional
   billable turns; review extension code before confirming.
 
 JSON goes to stdout and a timestamped `.json` file alongside a generated,
@@ -184,3 +195,72 @@ advertised model is unsupported. A follow-up needs an engine/catalog owner,
 a durable failure taxonomy, invalidation/recovery rules and picker tests before
 using failed sends to suppress advertised models. This runner only records
 findings and leaves the catalog unchanged.
+
+### Opt-in engine delivery probes (#3824)
+
+Use the bundled scenario module with the same confirmation and isolated Station
+requirements above:
+
+```sh
+station environment credential show | npm run dogfood:agent-smoke -- \
+  --matrix --confirm-billable-engine-matrix \
+  --origin=http://127.0.0.1:43000 --credential-file=- \
+  --connection=example-engine --cwd=/path/on/server/disposable-matrix-workspace \
+  --scenario-module=./scripts/engine-delivery-probes.ts
+```
+
+This appends one delivery session per engine/connection invocation, using the
+first advertised model. It adds at most two sends: a skill turn where the
+capability matrix declares skill delivery, then an MCP follow-up. The existing
+model scenarios still run per model. The CLI loads trusted TypeScript extensions
+through the installed `tsx` loader. No live model execution is part of the
+fixture tests or a default smoke run.
+
+The probe creates a unique integration through `/integrations`, handshakes it
+through `/integrations/:id/reconnect`, and checks Station's discovered tool list
+before applying a disable through `/integrations/:id/tools/apply`. The bundled
+local stdio MCP server exposes harmless `ping` and `blocked` actions. The table
+in `scripts/engine-delivery-probes.ts` names `blocked` for Station, Claude and
+Codex; the deterministic test reads the fixture's actual MCP `tools/list`, and
+runtime preflight repeats the existence check against Station's integration
+inventory. The disabled-tool verdict requires a recorded positive `ping` call
+and no recorded `blocked` call across either probe turn. Unknown IDs fail before
+sending. This tests MCP selection, not a native-tool disable or the entire
+pre-tool approval chain. ACP has no MCP per-tool selection channel, and its
+policy probe is unsupported; it receives an unrestricted fixture for the MCP
+use check. Muse and unknown engines without server delivery are skipped.
+
+The temporary Agent binds the selected connection, integration, Station Control
+(for `declare_output`), and supported skill through Station's APIs. The skill's
+nonce appears only in `scripts/probe.mjs`, never its `SKILL.md` or a prompt. The
+script prints it and creates a uniquely named workspace file. The answer must
+contain the nonce and the exact file must appear in that turn's stored outputs.
+The skill API currently creates `SKILL.md` but cannot upload bundled resources,
+so this diagnostic adds the script directly to the API-created package after
+checking its path and body locally. Run it on the same host/filesystem as Station;
+a remote-only client cannot perform this step. Codex and ACP currently declare
+skills unsupported, so they receive only the MCP turn.
+
+The MCP verdict uses exact, server-qualified names in `tool.started` events,
+never assistant prose. Missing identity provenance cannot verify a delivery
+cell. A declared delivery without a passing probe renders **unverified** in a
+separate delivery table. The overall scenario still requires the existing UI
+output observer for a pass; a passing stored-output delivery probe does not
+establish rendering. Native built-in tool disables remain unverified because
+external adapters have no such enforcement path or complete native inventory.
+
+For an optional third-party Streamable HTTP fixture, set
+`STATION_DELIVERY_PROBE_MCP_ENDPOINT` to an endpoint implementing the same
+`ping`/`blocked` contract. Station probes it before enabling it or sending a
+delivery turn. An unreachable dependency skips the delivery row with its reason;
+a reachable endpoint missing a required action fails the inventory guard.
+ACP authored MCP passthrough is stdio-only, so this override skips ACP.
+
+Cleanup stops the probe session, deletes the temporary Agent and skill through
+Station's APIs, and deletes the integration (including its disable policy).
+Obligations are registered before creation so a lost acknowledgement still
+triggers a cleanup attempt. Every failed cleanup is reported as a failed row,
+including alongside a skipped dependency. Session receipts and declared workspace
+outputs remain for inspection; remove the disposable instance/workspace after
+review. Provider loading, real Station lifecycle, native-tool policy enforcement,
+and rendered outputs are **NOT_VERIFIED** by the deterministic fixture suite.
