@@ -1363,7 +1363,22 @@ test.each(['retained', 'retired', 'consistent'] as const)(
           turnId: 'M',
           invocationId,
         };
-      if (order === 'retained') eventStore.appendEvent(conflicting);
+      if (order === 'retained')
+        eventStore['db']
+          .prepare(
+            `INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?,?)`,
+          )
+          .run(
+            conflicting.eventId,
+            base.provider,
+            base.threadId,
+            'M',
+            conflicting.method,
+            JSON.stringify(conflicting),
+            base.createdAt,
+            5,
+            5,
+          );
       eventStore.appendEvent(done);
       if (order === 'retired') {
         expect(

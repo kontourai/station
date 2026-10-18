@@ -399,6 +399,15 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       expect(cold.readForThread(ROOT)?.runningTools).toEqual([
         { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
       ]);
+      for (const invocationId of ['A', undefined]) {
+        append(ROOT, {
+          method: 'turn.completed',
+          turnId: 'N',
+          invocationId,
+          createdAt: '2100-01-01T00:00:00Z',
+        });
+        expect(cold.readForThread(ROOT)?.openTurn?.turnId).toBe('N');
+      }
       append(ROOT, {
         method: 'tool.started',
         turnId: 'N',
@@ -417,15 +426,6 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       expect(cold.readForThread(ROOT)?.runningTools).toEqual([
         { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
       ]);
-      for (const invocationId of ['A', undefined]) {
-        append(ROOT, {
-          method: 'turn.completed',
-          turnId: 'N',
-          invocationId,
-          createdAt: '2100-01-01T00:00:00Z',
-        });
-        expect(cold.readForThread(ROOT)?.openTurn?.turnId).toBe('N');
-      }
       append(ROOT, {
         method: 'turn.completed',
         turnId: 'N',
@@ -471,9 +471,9 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
         invocationId: 'A',
       });
       append(ROOT, {
-        method: 'session.state-changed',
-        from: 'running',
-        to: 'idle',
+        method: 'runtime.warning',
+        severity: 'warning',
+        message: 'trailing observer fact',
       });
       append(ROOT, {
         method: 'content.text-delta',
