@@ -8,6 +8,7 @@ packages:
   - packages/connect
   - packages/telemetry-broker
   - packages/monument
+  - packages/supervisor
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
 linkWorkspacePackages: true

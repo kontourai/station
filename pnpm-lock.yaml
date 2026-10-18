@@ -817,6 +817,8 @@ importers:
         specifier: 6.2.12
         version: 6.2.12
 
+  packages/supervisor: {}
+
   packages/telemetry-broker:
     dependencies:
       '@hono/node-server':
