@@ -84,7 +84,7 @@ for (const current of ['1', '2'] as const)
         expect(f.calls[0]!.prompt).toEqual(nativeOptions.prompt);
       }
     });
-for (const change of ['none', 'revoke', 'cancel', 'model'] as const)
+for (const change of ['none', 'revoke', 'writer', 'cancel', 'model'] as const)
   it(`R2 replay held tape read ${change} checks final data release before native parts`, async () => {
     const f = await runtimeFixture();
     cleanup.push(() => f.close());
@@ -180,6 +180,7 @@ for (const change of ['none', 'revoke', 'cancel', 'model'] as const)
       );
     await entered.promise;
     if (change === 'revoke') revoked = true;
+    if (change === 'writer') f.admission.writerGeneration = 'writer-2';
     if (change === 'model') Object.assign(f.model, { modelId: 'changed' });
     const cancelled = change === 'cancel' ? control.cancel() : undefined;
     release.resolve();

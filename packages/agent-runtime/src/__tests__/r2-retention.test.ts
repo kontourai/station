@@ -88,11 +88,11 @@ for (const kind of ['memory', 'sqlite'] as const)
           f.context,
         ),
       ).toEqual({ kind: 'refused', reason: 'conflict' });
-      expect(await f.storage.execute(f.replay, f.context)).toEqual({
+      expect.soft(await f.storage.execute(f.replay, f.context)).toEqual({
         kind: 'refused',
         reason: 'expired',
       });
-      expect(await f.storage.execute(f.savedOpen, f.context)).toEqual({
+      expect.soft(await f.storage.execute(f.savedOpen, f.context)).toEqual({
         kind: 'refused',
         reason: 'expired',
       });
