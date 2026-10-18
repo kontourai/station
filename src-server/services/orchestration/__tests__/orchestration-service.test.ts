@@ -158,7 +158,6 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
-import type { TurnDeduplicator } from '../turn-deduplicator.js';
 import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -13263,12 +13262,12 @@ describe('OrchestrationService', () => {
     });
     expect(sessionScoped.sendTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        modelId: undefined,
         metadata: expect.objectContaining({
           modelLaunchRequestedOverride: false,
         }),
       }),
     );
+    expect(sessionScoped.sendTurn.mock.calls.at(-1)?.[0].modelId).toBeUndefined();
     await expect(
       scopedService.dispatch({
         type: 'sendTurn',
@@ -15674,6 +15673,7 @@ describe('OrchestrationService', () => {
         type: 'sendTurn',
         input: {
           threadId: 'thread-refused-turn',
+          clientTurnId: 'original-refused-key',
           input: 'inspect this',
           attachments: [
             {
@@ -15700,12 +15700,15 @@ describe('OrchestrationService', () => {
     expect(dispatchError.code).toBeUndefined();
     expect(dispatchError.outcome).toBeUndefined();
 
-    // The refusal retired its turn boundary instead of leaving an
-    // indeterminate row behind, so the thread stays usable: a follow-up
-    // text turn dispatches normally.
+    await expect(service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-refused-turn', clientTurnId: 'original-refused-key', input: 'inspect this' },
+    })).rejects.toMatchObject({ code: 'client_turn_settled', receipt: { status: 'rejected' } });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    // Its passive refusal audit closes this key without fencing a new request.
     const followUp = await service.dispatch({
       type: 'sendTurn',
-      input: { threadId: 'thread-refused-turn', input: 'plain follow-up' },
+      input: { threadId: 'thread-refused-turn', clientTurnId: 'new-follow-up-key', input: 'plain follow-up' },
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
@@ -16418,68 +16421,37 @@ describe('OrchestrationService', () => {
       expect(claude.sendTurn).not.toHaveBeenCalled();
     });
 
-    test('#3559: records invocation before the provider call, and sends nothing when that record fails', async () => {
-      const ledger = eventStore.createTurnDeduplicator();
-      let failBegin = true;
-      const events: string[] = [];
-      const recording: TurnDeduplicator = {
-        ...ledger,
-        claim: (input) => {
-          const claim = ledger.claim(input);
-          if (claim.kind !== 'owner') return claim;
-          return {
-            kind: 'owner',
-            claim: {
-              ...claim.claim,
-              beginInvocation: () => {
-                events.push('beginInvocation');
-                if (failBegin) throw new Error('injected durable failure');
-                claim.claim.beginInvocation();
-              },
-            },
-          };
-        },
-      };
-      const recordingService = new OrchestrationService({
-        adapterRegistry: createRegistry([claude]),
-        eventBus: new EventBus(),
-        eventStore,
-        turnDeduplicator: recording,
-        listProjects: () => [],
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
-      await recordingService.dispatch({
-        type: 'startSession',
-        input: { threadId: 'thread-3559-begin', provider: 'claude' },
-      });
+    test('#3559: a failed compound begin retains prepared custody and never enters the provider', async () => {
+      const threadId = 'thread-3559-begin';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
       claude.sendTurn.mockClear();
-      claude.sendTurn.mockImplementation(async (input) => {
-        events.push('sendTurn');
+      eventStore['db'].exec(`CREATE TRIGGER fail_compound_begin BEFORE UPDATE OF owner_json ON orchestration_turn_dedup
+        WHEN json_extract(NEW.owner_json, '$.invocation') = 'begun'
+        BEGIN SELECT RAISE(ABORT, 'injected durable begin failure'); END`);
+      const send = () => service.dispatch({ type: 'sendTurn', input: { threadId, input: 'hello', clientTurnId: 'client-3559-begin' } });
+      await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      expect(eventStore['db'].prepare('SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ?').get(threadId)?.state).toBe('prepared');
+      const pending = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup').all();
+      expect(pending).toHaveLength(1);
+      expect(JSON.parse(String(pending[0].owner_json)).invocation).toBe('pending');
+      eventStore['db'].exec('DROP TRIGGER fail_compound_begin');
+      await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+
+      const nextThread = 'thread-3559-success';
+      await service.dispatch({ type: 'startSession', input: { threadId: nextThread, provider: 'claude' } });
+      claude.sendTurn.mockImplementationOnce(async (input) => {
+        const boundary = eventStore['db'].prepare('SELECT state, dedup_key FROM orchestration_turn_boundaries WHERE thread_id = ?').get(input.threadId);
+        expect(boundary?.state).toBe('invoking');
+        if (!boundary || typeof boundary.dedup_key !== 'string')
+          throw new Error('Expected the actual linked claim before provider entry.');
+        const dedup = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?').get(boundary.dedup_key);
+        expect(JSON.parse(String(dedup?.owner_json)).invocation).toBe('begun');
         return { threadId: input.threadId, turnId: 'turn-3559-begin' };
       });
-      const send = () =>
-        recordingService.dispatch({
-          type: 'sendTurn',
-          input: {
-            threadId: 'thread-3559-begin',
-            input: 'hello',
-            clientTurnId: 'client-3559-begin',
-          },
-        });
-
-      await expect(send()).rejects.toThrow('injected durable failure');
-      expect(claude.sendTurn).not.toHaveBeenCalled();
-      // Nothing was invoked, so the claim is released rather than retained.
-      failBegin = false;
-      await expect(send()).resolves.toMatchObject({
-        turnId: 'turn-3559-begin',
-      });
-      expect(events).toEqual([
-        'beginInvocation',
-        'beginInvocation',
-        'sendTurn',
-      ]);
-      await recordingService.shutdown();
+      await expect(service.dispatch({ type: 'sendTurn', input: { threadId: nextThread, input: 'hello', clientTurnId: 'new-key' } })).resolves.toMatchObject({ turnId: 'turn-3559-begin' });
+      expect(claude.sendTurn).toHaveBeenCalledOnce();
     });
 
     test('a DIFFERENT clientTurnId on the same thread executes independently', async () => {
@@ -16528,7 +16500,7 @@ describe('OrchestrationService', () => {
       const cappedService = new OrchestrationService({
         adapterRegistry: createRegistry([claude]),
         eventBus: new EventBus(),
-        eventStore,
+        eventStore: cappedStore,
         turnDeduplicator: cappedStore.createTurnDeduplicator(),
         listProjects: () => [],
         logger: { debug: vi.fn(), warn: vi.fn() },

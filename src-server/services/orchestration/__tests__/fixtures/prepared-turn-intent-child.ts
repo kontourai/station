@@ -113,7 +113,14 @@ void service
     type: 'sendTurn',
     input: {
       threadId,
-      clientTurnId,
+      ...([
+        'sparse-array',
+        'array-subclass',
+        'non-enumerable',
+        'dense-array',
+      ].includes(phase)
+        ? {}
+        : { clientTurnId }),
       input,
       ambientContext,
       ...{ invocationId: 'untrusted-caller-invocation' },
