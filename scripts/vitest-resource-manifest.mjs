@@ -129,6 +129,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Disposable Chromium previews, including renderer limits and process cleanup.
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
+  'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Invokes the real pinned actionlint parser against isolated stdin fixtures.
   'scripts/__tests__/actionlint-queue-compat.test.ts',
   // Owns a bounded Datum child and a private fake CLI; asserts exact cancellation cleanup.

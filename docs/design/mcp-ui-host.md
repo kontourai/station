@@ -264,9 +264,11 @@ connection, and returns byte-capped content. The resource content may declare:
 ```
 
 Station ignores tool-level `csp` and `permissions`. Policy construction filters
-source strings by secure URL scheme: HTTPS for resource, frame and base-URI
+source strings by secure URL scheme: HTTPS for resource and base-URI
 sources, and HTTPS or WSS for connections. It emits restrictive defaults plus
-the declared sources. Scheme filtering is not a complete CSP source-expression
+the declared sources. Child-frame sources are refused even when `frameDomains`
+is declared. Direct peer/ICE constructors are disabled by the shared bootstrap;
+CSP alone does not govern WebRTC. Scheme filtering is not a complete CSP source-expression
 validator or proof of effective browser egress containment. Keep that assurance
 separate from metadata acceptance. Permissions are limited to the supported
 Apps fields.
@@ -331,7 +333,7 @@ credentials or direct MCP transport to the App.
 | --- | --- |
 | App reaches Station DOM, cookies, or storage | Different-origin proxy plus an opaque inner frame |
 | App impersonates the trusted proxy | Inner frame has a distinct `WindowProxy`; source checks pin messages |
-| Network exfiltration | Resource-specific CSP; effective restrictions require source-expression and browser validation |
+| Network exfiltration | CSP blocks ordinary loads; shared bootstrap disables direct RTC. Nested srcdoc can obtain fresh RTC constructors and send UDP, so this is not complete network isolation. See [the review amendment](../decisions/html-replies.md#review-amendment-network-and-link-boundaries). |
 | Camera, microphone, location, or clipboard access | Allow only validated declared permissions |
 | Cross-server tool calls | Re-resolve the frame reference and pin `serverId` |
 | Model-only tool called by an App | Enforce Apps visibility on the server |

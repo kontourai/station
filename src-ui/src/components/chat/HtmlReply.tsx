@@ -46,6 +46,14 @@ export function HtmlReply({
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [link, setLink] = useState<string | null>(null);
+  const linksMuted = useRef(false);
+  const [canOpenLink, setCanOpenLink] = useState(false);
+  useEffect(() => {
+    setCanOpenLink(false);
+    if (!link) return;
+    const timer = setTimeout(() => setCanOpenLink(true), 500);
+    return () => clearTimeout(timer);
+  }, [link]);
   const distinct =
     isDistinctFrameOrigin(frameOrigin) &&
     /^https?:$/.test(new URL(frameOrigin).protocol);
@@ -61,6 +69,8 @@ export function HtmlReply({
       if (event.data?.type === 'html-reply-ready') setReady(origin);
       if (
         event.data?.type === 'html-reply-link' &&
+        navigator.userActivation?.isActive &&
+        !linksMuted.current &&
         typeof event.data.url === 'string' &&
         event.data.url.length <= 2048
       ) {
@@ -190,12 +200,17 @@ export function HtmlReply({
       )}
       {link && (
         <ConfirmModal
-          title="Open external link?"
+          title="Open link from visual reply?"
           message={link}
           isOpen
           confirmLabel="Open link"
-          onCancel={() => setLink(null)}
+          confirmDisabled={!canOpenLink}
+          onCancel={() => {
+            linksMuted.current = true;
+            setLink(null);
+          }}
           onConfirm={() => {
+            if (!canOpenLink) return;
             const url = link;
             setLink(null);
             void openNativeExternalLink(url).then((result) => {

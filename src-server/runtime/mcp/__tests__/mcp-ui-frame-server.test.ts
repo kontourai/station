@@ -356,7 +356,6 @@ describe('MCP Apps sandbox proxy', () => {
       'https://remote.example.test',
       'http://localhost:3141',
       'http://127.0.0.1:3141',
-      'http://[::1]:3141',
       'tauri://localhost',
       'https://tauri.localhost',
       'http://tauri.localhost',

@@ -87,3 +87,25 @@ describe('HTML reply preparation', () => {
     ).rejects.toThrow();
   });
 });
+
+test('expanded page accepts exactly 8 MiB and rejects the independent max plus one byte', async () => {
+  const { root, image, bytes } = await fixture();
+  await writeFile(
+    image,
+    Buffer.concat([bytes, Buffer.alloc(1048500 - bytes.length)]),
+  );
+  const imageLength =
+    'data:image/png;base64,'.length + 4 * Math.ceil(1048500 / 3);
+  const html = Array(6).fill(`"${image}"`).join('');
+  const padding = HTML_REPLY_LIMITS.pageBytes - 6 * (imageLength + 2);
+  const source = html + 'x'.repeat(padding);
+  expect(Buffer.byteLength(source)).toBeLessThan(HTML_REPLY_LIMITS.sourceBytes);
+  expect(
+    Buffer.byteLength(
+      (await prepareHtmlReply({ html: source, height: 400 }, root)).html,
+    ),
+  ).toBe(HTML_REPLY_LIMITS.pageBytes);
+  await expect(
+    prepareHtmlReply({ html: source + 'x', height: 400 }, root),
+  ).rejects.toThrow('page exceeds');
+});

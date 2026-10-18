@@ -872,7 +872,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   html_preview: {
     assurance: 'any',
     role: 'self',
-    toolClass: 'read-only',
+    toolClass: 'bounded-write',
     personOnly: 'never',
     enforcedBy: 'route',
     routes: [post('/api/html-replies/preview')],

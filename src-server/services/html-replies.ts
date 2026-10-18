@@ -58,6 +58,7 @@ export async function prepareHtmlReply(
   let pageBytes = Buffer.byteLength(input.html);
   for (const match of references) {
     const source = match[2];
+    if (source.startsWith('//')) continue;
     let embedded = images.get(source);
     if (!embedded) {
       if (images.size >= HTML_REPLY_LIMITS.images)

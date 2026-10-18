@@ -11,6 +11,7 @@ import { createHtmlReplyRoutes } from '../../../../../src-server/routes/orchestr
 import { createHtmlReplyPages } from '../../../../../src-server/services/orchestration/html-reply-pages.js';
 import { conversationPartToContentParts } from '../../../hooks/orchestration/conversationTranscriptParts';
 import { MessageContent } from '../message-bubble/MessageContent';
+import { StreamingMessageView } from '../StreamingMessage';
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://html-reply.test' }),
@@ -146,8 +147,14 @@ test('render route stores immutable bytes and the transcript mounts its replayed
         />
       </QueryClientProvider>,
     );
-    const iframe = await screen.findByTitle('Visual reply');
-    expect(iframe).toBeInstanceOf(HTMLIFrameElement);
+    await waitFor(() =>
+      expect(screen.queryByTitle('Visual reply')).toBeInstanceOf(
+        HTMLIFrameElement,
+      ),
+    );
+    const iframe = screen.getByTitle('Visual reply');
+    if (!(iframe instanceof HTMLIFrameElement))
+      throw new Error('Missing visual reply frame');
     const post = vi.spyOn(
       (iframe as HTMLIFrameElement).contentWindow!,
       'postMessage',
@@ -183,6 +190,54 @@ test('render route stores immutable bytes and the transcript mounts its replayed
       (await readApp.request(`/api/html-replies/session-a/${reference.pageId}`))
         .status,
     ).toBe(404);
+    view.unmount();
+    // The live renderer receives completed tool parts while the turn continues.
+    const liveParts = row.parts.flatMap(conversationPartToContentParts);
+    const live = render(
+      <QueryClientProvider client={query}>
+        <StreamingMessageView
+          sessionId="session-a"
+          agentIcon={null}
+          agentIconStyle={{}}
+          fontSize={14}
+          streamingText=""
+          hasContent
+          contentParts={[]}
+          contentRevision={0}
+          suppressActivity
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByTitle('Visual reply')).toBeNull();
+    // Restore bytes for the distinct streaming mount assertion.
+    const liveRef = pages.publish('session-a', 'conversation-a', {
+      version: 1,
+      html: '<h1>Live page</h1>',
+      height: 400,
+    });
+    live.rerender(
+      <QueryClientProvider client={query}>
+        <StreamingMessageView
+          sessionId="session-a"
+          agentIcon={null}
+          agentIconStyle={{}}
+          fontSize={14}
+          streamingText=""
+          hasContent
+          contentRevision={1}
+          suppressActivity
+          contentParts={liveParts.map((part) => ({
+            ...part,
+            htmlReply: liveRef,
+          }))}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.queryByTitle('Visual reply')).toBeInstanceOf(
+        HTMLIFrameElement,
+      ),
+    );
     query.clear();
   } finally {
     db.close();

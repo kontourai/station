@@ -16,6 +16,8 @@ vi.mock('../../../platform/openExternalLink', () => ({
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   document.documentElement.removeAttribute('style');
 });
 const page = {
@@ -68,6 +70,8 @@ test('refuses the app origin and loads HTML only after the isolated frame identi
 });
 
 test('requires confirmation for even an authenticated page link request and bounds zoom', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('navigator', { userActivation: { isActive: true } });
   const open = vi.spyOn(window, 'open').mockReturnValue(null);
   render(<HtmlReply page={page} frameOrigin={origin} theme="dark" />);
   const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
@@ -81,7 +85,9 @@ test('requires confirmation for even an authenticated page link request and boun
     );
   });
   expect(open).not.toHaveBeenCalled();
-  expect(screen.getByText('Open external link?')).toBeTruthy();
+  expect(screen.getByText('Open link from visual reply?')).toBeTruthy();
+  expect(screen.getByText('Open link').hasAttribute('disabled')).toBe(true);
+  act(() => vi.advanceTimersByTime(500));
   await act(async () => {
     fireEvent.click(screen.getByText('Open link'));
   });
@@ -95,4 +101,34 @@ test('requires confirmation for even an authenticated page link request and boun
   expect(screen.getByLabelText('Zoom in').hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByLabelText('Reset zoom'));
   expect(screen.getByLabelText('Reset zoom').textContent).toBe('100%');
+});
+
+test('ignores gesture-less link messages and permanently mutes this reply after Cancel', () => {
+  const activation = { isActive: false };
+  vi.stubGlobal('navigator', { userActivation: activation });
+  render(<HtmlReply page={page} frameOrigin={origin} theme="dark" />);
+  const frame = screen.getByTitle('Visual reply');
+  expect(frame).toBeInstanceOf(HTMLIFrameElement);
+  if (!(frame instanceof HTMLIFrameElement))
+    throw new Error('Missing visual reply frame');
+  const request = () =>
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: frame.contentWindow,
+          origin,
+          data: { type: 'html-reply-link', url: 'https://example.com/' },
+        }),
+      ),
+    );
+  request();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  activation.isActive = true;
+  request();
+  expect(
+    screen.getByRole('dialog', { name: 'Open link from visual reply?' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByText('Cancel'));
+  request();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });

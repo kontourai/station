@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
@@ -7,7 +8,7 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
   const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
   const result = await service.render(
     {
-      html: `<h1>Preview integration</h1><script>console.log('preview log');console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
+      html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
       height: 400,
     },
     800,
@@ -15,6 +16,13 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
   );
   expect(Buffer.from(result.png, 'base64').subarray(0, 8)).toEqual(
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+  const heap = result.console.find((entry) =>
+    entry.text.startsWith('heap limit '),
+  );
+  expect(heap).toBeDefined();
+  expect(Number(heap?.text.split(' ').at(-1))).toBeLessThanOrEqual(
+    256 * 1024 * 1024,
   );
   expect(result.width).toBe(800);
   expect(result.contentHeight).toBeGreaterThan(40);
@@ -73,3 +81,43 @@ test('preview rejects oversized layout, overflowing console and invalid viewport
     service.render({ html: '', height: 400 }, 10000, 'light'),
   ).rejects.toThrow('width');
 }, 40_000);
+
+test('preview navigation and fetch cannot reach a loopback listener', async () => {
+  let hits = 0;
+  const server = createServer((_request, response) => {
+    hits++;
+    response.end('unexpected network access');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('No listener address');
+  try {
+    const url = `http://127.0.0.1:${address.port}/preview-probe`;
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-egress-'));
+    const control = await service.render(
+      { html: '<h1>egress prerequisite</h1>', height: 400 },
+      800,
+      'dark',
+    );
+    expect(control.contentHeight).toBeGreaterThan(0);
+    await expect(
+      service.render(
+        {
+          html: `<script>fetch('${url}').catch(()=>{});location.href='${url}'</script>`,
+          height: 400,
+        },
+        800,
+        'dark',
+      ),
+    ).rejects.toThrow('HTML preview exceeded 15 seconds');
+    expect(
+      hits,
+      'preview must not send any HTTP request, including navigation',
+    ).toBe(0);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}, 40000);

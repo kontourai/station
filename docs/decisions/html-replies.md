@@ -25,8 +25,9 @@ Do not add executable content to `render_component` or `UIBlock`.
 The trusted outer frame accepts messages only from the configured Station
 parent origins. The inner frame has `sandbox="allow-scripts"`, without same
 origin, forms, popups, downloads, top navigation or permissions. Its host-built
-CSP precedes authored bytes and denies network connections, remote scripts,
-remote images, forms, base URLs and nested frames. Inline scripts/styles and
+CSP precedes authored bytes and denies ordinary network connections, remote scripts,
+remote images, forms, base URLs and declared frame navigations. Nested srcdoc
+execution and WebRTC remain possible as described in the review amendment. Inline scripts/styles and
 data images/fonts are permitted, following the MCP CSP model. The outer
 frame's HTTP policy restricts child navigation to the isolated origin. No
 Station assets, cookies or session credentials are delivered to page HTML.
@@ -130,3 +131,29 @@ canonical result projection, mounted transcript rendering, deletion rollback,
 quotas, preview PNG/height/console and output rejection. Real Codex delivery has
 been exercised locally; Claude/ACP use the existing shared passthroughs, with
 live provider and native/mobile qualification reported separately.
+
+## Review amendment: network and link boundaries
+
+The earlier blanket no-network description was incorrect. CSP denies ordinary
+fetch, resource and frame navigation, but does not regulate WebRTC ICE sockets.
+The shared MCP wrapper now disables direct peer/ICE constructors before authored
+scripts and refuses declared child-frame sources. HTML replies and MCP-UI both
+use that bootstrap. This is defense in depth, **not a network isolation boundary**:
+a nested srcdoc document inherits CSP, can execute inline code, and gets fresh
+constructors. Real UDP listeners observed this bypass in Chromium and WebKit
+after the direct-constructor hardening. Permissions-Policy camera/microphone
+restrictions do not prevent data-channel ICE. Browser sandbox tokens provide no
+portable RTC-denial flag. Preview's process egress policy is separate.
+
+A complete guarantee for remote viewers requires a different execution model
+(such as a trusted interpreter without browser networking) or browser/OS network
+policy under Station's control. Removing arbitrary scripts would change the
+published-page contract. This PR does not claim that guarantee and does not
+silently reduce authored scripts to inert content. Viewer IP disclosure and
+exfiltration of data a viewer enters into a deceptive page remain residual risks.
+
+The app host and page proxy require live user activation for link requests.
+The trusted confirmation names the visual reply, delays Open by 500 ms, and
+Cancel mutes further link requests from that mounted reply. Message provenance
+alone never establishes user intent. Preview now has operate scope and bounded-
+write classification because it launches a browser process.

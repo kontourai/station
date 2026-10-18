@@ -1178,7 +1178,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/html-replies/preview',
     exact: true,
-    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   {

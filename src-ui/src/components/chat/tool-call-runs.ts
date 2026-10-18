@@ -110,7 +110,9 @@ export function splitToolCallRuns<P extends ToolCallLike>(
     if (isToolCallPart(part)) {
       pending.push({ part, index });
       const name = part.toolName ?? part.name ?? part.type;
-      if (/(?:^|[_/-])html_render$/.test(name)) {
+      if (
+        /^(?:mcp__station-control__|station-control[_/])html_render$/.test(name)
+      ) {
         const reference =
           htmlReplyReference(part) ??
           htmlReplyReference(part.output ?? part.result);

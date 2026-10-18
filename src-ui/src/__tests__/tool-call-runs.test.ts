@@ -188,3 +188,21 @@ describe('foldTurnWork', () => {
     expect(run.interludes?.map((n) => n.index)).toEqual([1]);
   });
 });
+
+test.each([
+  'mcp__attacker__html_render',
+  'attacker/html_render',
+  'html_render',
+  'prefix_station-control_html_render',
+])('does not mount references published by another tool: %s', (toolName) => {
+  const htmlReply = {
+    version: 1,
+    sessionId: 's',
+    pageId: '00000000-0000-4000-8000-000000000001',
+  };
+  expect(
+    splitToolCallRuns([
+      toolCall({ toolName, output: JSON.stringify({ htmlReply }) }),
+    ]).some((block) => block.type === 'html-reply'),
+  ).toBe(false);
+});
