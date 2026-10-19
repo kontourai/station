@@ -85,14 +85,20 @@ export function providerShapeImplementations(root: string): string[] {
           node.heritageClauses?.some((clause) =>
             clause.types.some((type) => shape(checker.getTypeAtLocation(type))),
           );
-        if (!abstract && (shape(type) || shape(contextual) || heritage)) {
-          let owner: ts.Node = node;
-          while (
-            ts.isParenthesizedExpression(owner.parent) ||
-            ts.isSatisfiesExpression(owner.parent) ||
-            ts.isAsExpression(owner.parent)
-          )
-            owner = owner.parent;
+        let owner: ts.Node = node;
+        while (
+          ts.isParenthesizedExpression(owner.parent) ||
+          ts.isSatisfiesExpression(owner.parent) ||
+          ts.isAsExpression(owner.parent)
+        )
+          owner = owner.parent;
+        // A double assertion gives the inner object an unknown context.
+        const asserted =
+          isObject && owner !== node && shape(checker.getTypeAtLocation(owner));
+        if (
+          !abstract &&
+          (shape(type) || shape(contextual) || heritage || asserted)
+        ) {
           const named =
             isClass && node.name
               ? node.name.text

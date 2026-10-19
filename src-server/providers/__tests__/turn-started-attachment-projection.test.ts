@@ -69,7 +69,8 @@ describe('turn.started attachment projection inventory (station#4134)', () => {
       join(services, 'candidate.ts'),
       `import type { ProviderAdapterShape } from '../../providers/adapter-shape';
        export class Candidate implements
-         ProviderAdapterShape {}`,
+         ProviderAdapterShape {}
+       export const asserted = {} as unknown as ProviderAdapterShape;`,
     );
     writeFileSync(
       join(services, 'structural.ts'),
@@ -77,6 +78,7 @@ describe('turn.started attachment projection inventory (station#4134)', () => {
     );
     expect(providerShapeImplementations(root)).toEqual([
       'services/nested/candidate.ts#Candidate',
+      'services/nested/candidate.ts#asserted',
       'services/nested/structural.ts#structural',
     ]);
   });
