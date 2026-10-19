@@ -614,6 +614,10 @@ describe('one inventory host per chat', () => {
       // The admitted occurrence renders through that one host, which hands the
       // entry the phone/desktop presentation it was mounted for.
       const entry = await screen.findByTestId('inventory-entry');
+      // One host, so one presentation: a second host under the same id would
+      // render the occurrence twice, and one under another id would make the
+      // admission above refuse.
+      expect(screen.getAllByTestId('inventory-entry')).toHaveLength(1);
       if (phone) expect(entry.dataset.host).toBe('full-fallback');
       else expect(entry.dataset.host).not.toBe('full-fallback');
       // And the card's footer is pressable once that host exists.
