@@ -466,7 +466,13 @@
 
     "src-server/domain/telemetry-configuration.ts",
 
-    "packages/cli/src/commands/telemetry.ts"
+    "packages/cli/src/commands/telemetry.ts",
+
+    "src-server/monitoring/otlp-receiver.ts",
+
+    "src-server/routes/telemetry-producers.ts",
+
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts"
   ],
 
   "checks": [
