@@ -29,7 +29,7 @@ import type {
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';

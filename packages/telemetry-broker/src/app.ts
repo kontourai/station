@@ -10,12 +10,14 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { receiverAdmission } from './admission.js';
 import { BrokerError } from './broker-error.js';
+import { clientAddressPolicy } from './client-address.js';
 import { registerLiteRoutes } from './lite-routes.js';
 import type { ProductRepository } from './store.js';
 
 export function createProductBroker(
   store: ProductRepository,
   operatorKey: string,
+  addresses = clientAddressPolicy(),
 ) {
   if (!/^sto_[A-Za-z0-9_-]{43}$/.test(operatorKey))
     throw new Error('A private product operator credential is required');
@@ -29,6 +31,20 @@ export function createProductBroker(
   const credentials = new Map<string, ReturnType<typeof receiverAdmission>>();
   const liteAdmission = receiverAdmission();
   const publicPageAdmission = receiverAdmission();
+  app.use('*', async (c, next) => {
+    if (
+      addresses.isTrustedPeer(c.env?.incoming?.socket.remoteAddress ?? '') &&
+      !(
+        (c.req.method === 'POST' && /^\/v1\/lite\/[^/]+$/.test(c.req.path)) ||
+        (c.req.method === 'GET' &&
+          (c.req.path === '/v1/public/aggregates' ||
+            c.req.path.startsWith('/public/') ||
+            c.req.path === '/health/live'))
+      )
+    )
+      return c.notFound();
+    await next();
+  });
   app.use('*', async (c, next) => {
     if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
       return next();
@@ -123,6 +139,7 @@ export function createProductBroker(
     await store.ready();
     return c.json({ state: 'ready', scope: 'postgres-schema-v1' });
   });
+  app.get('/v1/operator/diagnostics', (c) => c.json(addresses.diagnostics()));
   app.post('/v1/operator/sources', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     if (
@@ -203,7 +220,7 @@ export function createProductBroker(
       ? c.json({ receipt })
       : c.json({ error: 'receipt_unavailable' }, 404);
   });
-  if (store.lite) registerLiteRoutes(app, store.lite);
+  if (store.lite) registerLiteRoutes(app, store.lite, addresses);
   app.onError((error, c) => {
     if (error instanceof BrokerError) {
       const status =

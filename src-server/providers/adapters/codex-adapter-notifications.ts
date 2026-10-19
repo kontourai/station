@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
+import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   observeCodexSubagentItem,
@@ -366,6 +370,11 @@ export function handleCodexNotification(
           threadId: record.externalThreadId,
           createdAt: nowIso(),
           method: 'runtime.error',
+          ...providerFailure(
+            usageLimit ? 'quota_exhausted' : 'provider_error',
+            'failed',
+            usageLimit?.resetAt,
+          ),
           severity: 'error',
           turnId,
           message: extractString(turnError?.message) ?? 'Codex turn failed.',
@@ -383,7 +392,7 @@ export function handleCodexNotification(
             codexErrorInfo: turnError?.codexErrorInfo,
             ...usageLimit,
           },
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         providerOps.add(1, {
           operation: 'adapter-turn-complete',
           provider: 'codex',
@@ -444,6 +453,11 @@ export function handleCodexNotification(
         threadId: record.externalThreadId,
         createdAt: nowIso(),
         method: 'runtime.error',
+        ...providerFailure(
+          usageLimit ? 'quota_exhausted' : 'provider_error',
+          'failed',
+          usageLimit?.resetAt,
+        ),
         severity: 'error',
         turnId: errorTurnId ?? undefined,
         message:
@@ -456,7 +470,7 @@ export function handleCodexNotification(
           ),
           ...usageLimit,
         },
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       return;
     }
     default:

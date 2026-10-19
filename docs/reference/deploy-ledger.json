@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-10-19T20:55:48Z",
+    "channel": "nightly-npm",
+    "version": "0.9.0-nightly.2483.39321642672",
+    "sha": "cd1929819a5dba3ab71596d37e2df7dcd1f4cb55",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39321642672",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.9.0-nightly.2483.39321642672 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "742cc451669039237e30302fe47f88b9bbda9707",
+      "groups": {
+        "feat": [
+          "[#3780](https://github.com/kontourai/station/pull/3780) feat(chat): publish sandboxed HTML replies end to end",
+          "[#3831](https://github.com/kontourai/station/pull/3831) feat(providers): engine-neutral failure kinds and computed retryability",
+          "[#3849](https://github.com/kontourai/station/pull/3849) feat(telemetry-broker): trusted proxy client address, feedback ingest and sender interoperability",
+          "[#3783](https://github.com/kontourai/station/pull/3783) feat(mcp): preview declared apps inline in chat"
+        ],
+        "fix": [
+          "[#3850](https://github.com/kontourai/station/pull/3850) fix(telemetry): prevent disclosure loops and diagnose config refusals",
+          "[#3841](https://github.com/kontourai/station/pull/3841) fix(ci): catch PR failures early and bound title API recovery"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-19T15:12:13Z",
     "channel": "nightly-npm",
     "version": "0.9.0-nightly.2483.39273874686",

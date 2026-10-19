@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Added the 2026-10-19 session context card section; traced each row to its ChatDock source (gitStatus, useOptionalObservedWorkStatus over the inbox row, useChatBackgroundTasksRunningCount, queuedMessages, useConversationPullRequestLinks) and action (handleOpenLayout/setProject, setActiveWorkPanel files, showBackgroundTasks, showSurface activity, toggleSessionInventoryOccurrence); threshold is CODING_TRANSCRIPT_MIN_WIDTH + SESSION_CONTEXT_CARD_WIDTH in sessionContextCardModel.ts; phone entry is the ChatDockMobileOverflowSheet row; phone inventory host mount in ChatDock. Executed: SessionContextCard.dock.test.tsx (21 tests) and harness screenshots; no live Station run. Existing sections unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

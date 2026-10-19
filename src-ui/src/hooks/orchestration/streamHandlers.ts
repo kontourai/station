@@ -363,6 +363,7 @@ export function handleToolCompletedEvent(
             ? 'unresolved'
             : 'error',
     result: event.output,
+    ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated
       ? { outputTruncated: true as const }

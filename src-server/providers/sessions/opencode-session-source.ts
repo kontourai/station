@@ -4,10 +4,14 @@ import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorBody,
+} from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { PARAGRAPH_BREAK } from '../adapters/paragraph-boundary.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   boundedPrompt,
   projectBoundedToolOutput,
@@ -1194,13 +1198,14 @@ function mapAssistantMessage(
     }
     emitter.emit('turn-error', {
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       turnId,
       severity: 'error',
       message:
         diagnosticText(info.errorMessage) ??
         info.errorName ??
         'OpenCode reported an error.',
-    });
+    } satisfies ProviderRuntimeErrorBody);
     emitter.closeTurn({ kind: 'completed', finishReason: 'other' });
   } else if (
     info.finish !== undefined &&

@@ -26,6 +26,7 @@ import {
   trackOrchestrationSession,
 } from '../orchestration-session-state.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { SessionStartIndeterminateError } from '../session-turn-boundary.js';
 
 /**
  * archive#3476: the engine-start half of recovery, which boot no longer runs.
@@ -694,6 +695,9 @@ describe('orchestration-session-state', () => {
           method: 'runtime.error',
           severity: 'error',
           code: SESSION_RECOVERY_FAILED_CODE,
+          kind: 'unavailable',
+          retryable: true,
+          failurePhase: 'failed',
           retriable: true,
           message: expect.stringContaining(
             'started under a different engine connection configuration',
@@ -702,6 +706,25 @@ describe('orchestration-session-state', () => {
       );
       expect(eventStore.appendEventIfAbsent.mock.calls[0][0].message).toContain(
         'This conversation could not be reopened',
+      );
+    });
+
+    test('a recovered start with possible provider creation projects indeterminate metadata', async () => {
+      const { adapter, eventStore, session } = failingRecovery();
+      vi.mocked(adapter.startSession).mockRejectedValueOnce(
+        new SessionStartIndeterminateError(),
+      );
+      await run(adapter, eventStore, session);
+      expect(adapter.startSession).toHaveBeenCalledTimes(1);
+      expect(eventStore.appendEventIfAbsent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'runtime.error',
+          code: 'SESSION_START_INDETERMINATE',
+          kind: 'indeterminate',
+          retryable: false,
+          failurePhase: 'indeterminate',
+          retriable: false,
+        }),
       );
     });
 
