@@ -96,6 +96,10 @@ export type ExitClassification =
   | 'expected_recovery_stop'
   | 'expected_rollback'
   | 'unexpected_signal'
+  /** The process supervisor asked this generation to drain, and it did. */
+  | 'supervisor_drain'
+  /** The process supervisor's IPC channel closed, so this generation left. */
+  | 'supervisor_disconnect'
   | 'crash'
   | 'crash_unobserved';
 
@@ -1241,6 +1245,25 @@ export function classifyLifecycleExit(
       intent: null,
       sender: 'unknown',
     };
+  const supervisorShutdown = [...matching]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === 'shutdown_observed' &&
+        (event.reason === 'supervisor_drain' ||
+          event.reason === 'supervisor_disconnect'),
+    );
+  if (supervisorShutdown && !actual.signal) {
+    return {
+      classification:
+        supervisorShutdown.reason === 'supervisor_drain'
+          ? 'supervisor_drain'
+          : 'supervisor_disconnect',
+      event: actual,
+      intent: null,
+      sender: 'unknown',
+    };
+  }
   if (observedSignal || actual.signal) {
     return {
       classification: 'unexpected_signal',

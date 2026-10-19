@@ -94,6 +94,34 @@ describe('lifecycle event journal', () => {
     },
   );
 
+  it.each(['supervisor_drain', 'supervisor_disconnect'] as const)(
+    'classifies a %s shutdown as itself, not a crash',
+    (reason) => {
+      const events = [
+        {
+          ...identity,
+          version: 1 as const,
+          type: 'shutdown_observed' as const,
+          reason,
+          sender: 'unknown' as const,
+          timestamp: '2026-07-10T12:00:01.000Z',
+        },
+        {
+          ...identity,
+          version: 1 as const,
+          type: 'process_exit' as const,
+          exitCode: 0,
+          signal: null,
+          sender: 'unknown' as const,
+          timestamp: '2026-07-10T12:00:02.000Z',
+        },
+      ];
+      expect(classifyLifecycleExit(events, identity).classification).toBe(
+        reason,
+      );
+    },
+  );
+
   it.each(['failed', 'expired', 'orphan'] as const)(
     'does not let a %s stop intent misclassify a later signal',
     (shape) => {
