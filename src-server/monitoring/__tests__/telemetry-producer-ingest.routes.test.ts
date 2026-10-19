@@ -371,6 +371,36 @@ describe('telemetry producer tokens on the ingest routes', () => {
     expect(h.emitted).toHaveLength(0);
   });
 
+  test('timestamps are epoch-ms digits or ISO 8601 within the Date range', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    const statusFor = async (timestamp: string) =>
+      (
+        await h.send('/v1/agent-events', {
+          token,
+          body: agentEvent({ timestamp }),
+        })
+      ).status;
+    // Out of range: these passed isFinite and then threw in toISOString.
+    expect(await statusFor('99999999999999999')).toBe(400);
+    expect(await statusFor('8640000000000001')).toBe(400);
+    // Date-parseable prose is not the documented contract.
+    expect(await statusFor('Tue Oct 19 2026')).toBe(400);
+    expect(await statusFor('2026-10-19')).toBe(400);
+    expect(h.emitted).toHaveLength(0);
+
+    expect(await statusFor('8640000000000000')).toBe(200);
+    expect(await statusFor('0')).toBe(200);
+    expect(await statusFor('2026-10-19T12:00:00.123Z')).toBe(200);
+    expect(await statusFor('2026-10-19T12:00:00+02:00')).toBe(200);
+    expect(h.emitted.map((event) => event.timestamp)).toEqual([
+      '+275760-09-13T00:00:00.000Z',
+      '1970-01-01T00:00:00.000Z',
+      '2026-10-19T12:00:00.123Z',
+      '2026-10-19T10:00:00.000Z',
+    ]);
+  });
+
   test('a paired credential with the operate tier keeps working, unattributed', async () => {
     const operate = await h.send('/v1/agent-events', {
       token: OPERATE_DEVICE,

@@ -52,7 +52,12 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
     !allowed[action] ||
     extra.length > 0 ||
     (action === 'list') !== (name === undefined) ||
-    flags.some((flag) => !allowed[action]!.includes(flag))
+    flags.some((flag) => !allowed[action]!.includes(flag)) ||
+    // Switches are bare: `--allow-remote=true` must not silently mean
+    // "this machine only".
+    ['allow-remote', 'json'].some(
+      (flag) => parsed.flags[flag] !== undefined && parsed.flags[flag] !== true,
+    )
   )
     throw new Error(PRODUCERS_USAGE);
   const resolved = resolveApiBaseDetailed(parsed);
@@ -118,18 +123,29 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
   }
   let data: { producer: ProducerView; token: string };
   try {
-    data = (await requestJson<{ producer: ProducerView; token: string }>(
-      resolved.apiBase,
-      '/api/telemetry-producers',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          allowRemote: parsed.flags['allow-remote'] === true,
-          expiresInDays,
-        }),
-      },
-    )) as { producer: ProducerView; token: string };
+    try {
+      data = (await requestJson<{ producer: ProducerView; token: string }>(
+        resolved.apiBase,
+        '/api/telemetry-producers',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            allowRemote: parsed.flags['allow-remote'] === true,
+            expiresInDays,
+          }),
+        },
+      )) as { producer: ProducerView; token: string };
+    } catch (error) {
+      // A refusal carries the server's status: nothing was created. Any
+      // other failure (connection lost, unreadable reply) may have followed
+      // a successful create whose token never reached this command.
+      if (typeof (error as { status?: unknown }).status === 'number')
+        throw error;
+      throw new Error(
+        `The create request did not complete (${error instanceof Error ? error.message : String(error)}). Telemetry producer ${name} may exist without a usable token: run \`station telemetry producers revoke ${name}\`, then create it again.`,
+      );
+    }
     if (descriptor !== undefined) {
       try {
         writeFileSync(descriptor, `${data.token}\n`, { encoding: 'utf8' });

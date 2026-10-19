@@ -42,8 +42,8 @@ const agentTelemetryIngestEventSchema = z.looseObject({
     .string()
     .max(64)
     .refine(
-      (value) => Number.isFinite(parseIngestTimestamp(value)),
-      'must be epoch milliseconds or an ISO-8601 time',
+      (value) => parseIngestTimestamp(value) !== undefined,
+      'must be epoch milliseconds or an ISO-8601 date-time',
     ),
   session_id: boundedText(256),
   event_id: boundedText(256),
@@ -67,8 +67,24 @@ const agentTelemetryIngestEventSchema = z.looseObject({
   delegation: z.looseObject({}).optional(),
 });
 
-function parseIngestTimestamp(value: string): number {
-  return /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
+/** Largest magnitude a JavaScript Date holds (ECMA-262 time value range). */
+const MAX_DATE_MS = 8.64e15;
+const ISO_8601_DATE_TIME =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Epoch milliseconds (digits only) or an ISO 8601 date-time with an explicit
+ * offset; anything else, including `Date`-parseable prose, is `undefined`.
+ * The range check matters: an out-of-range time value passes `isFinite` but
+ * makes `toISOString()` throw, which was a 500 instead of a 400.
+ */
+function parseIngestTimestamp(value: string): number | undefined {
+  const ms = /^\d{1,16}$/.test(value)
+    ? Number(value)
+    : ISO_8601_DATE_TIME.test(value)
+      ? new Date(value).getTime()
+      : Number.NaN;
+  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS ? ms : undefined;
 }
 
 type IngestRefusal = {
@@ -291,6 +307,18 @@ export function createOtlpReceiverRoutes(
       );
     const ev = validated.event;
     const tsMs = parseIngestTimestamp(ev.timestamp);
+    // Unreachable after validation; kept so the two can never disagree.
+    if (tsMs === undefined)
+      return c.json(
+        {
+          error: {
+            code: 'invalid_agent_event',
+            message:
+              'timestamp: must be epoch milliseconds or an ISO-8601 date-time',
+          },
+        },
+        400,
+      );
     const type = knownType(ev.event_type);
     // Unlike the OTLP paths above there is no producer-reported user to
     // prefer: `AgentTelemetryIngestEvent` declares no user field at all.

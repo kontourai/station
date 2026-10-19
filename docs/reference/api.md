@@ -1832,22 +1832,26 @@ Responses for a producer token:
 | `401` | `authentication_required` | No credential, an unknown or revoked token, or a credential in the query string |
 | `403` | `telemetry_producer_expired` | The token passed its expiry |
 | `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
-| `429` | `authentication_rate_limited` | Too many unknown tokens from this address; `Retry-After` says when to try again. A recognized token is never limited this way |
+| `429` | `authentication_rate_limited` | Too many unknown tokens (or query-string credentials) from this address; `Retry-After` says when to try again. A recognized token sent as a bearer is not counted |
 | `413`, `429` | `rate_limited` (429) | The ordinary per-credential body and rate budgets; `429` carries `Retry-After` |
 | `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted |
 
 `POST /v1/agent-events` validates the body before reading it: `schema_version`
 must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
-`session_id`, `event_id`, `event_type` and `agent.name` are required; extra
-fields are ignored. An `event_type` outside `session.start`, `session.end`,
+`session_id`, `event_id`, `event_type` and `agent.name` are required.
+`timestamp` is either digits (epoch milliseconds) or an ISO 8601 date-time with
+`Z` or a numeric offset, within the JavaScript date range; other date text is
+refused. Unknown top-level fields are ignored. The contents of `context`,
+`enrichment` and `tool.input`/`tool.output` are stored as sent, within the
+body limit (tool content passes the usual monitoring redaction). An `event_type` outside `session.start`, `session.end`,
 `turn.user`, `tool.invoke`, `tool.result` and `agent.delegate` is recorded as
 an `unknown` event. `/v1/traces` and `/v1/logs` answer `400` for a body they
 cannot read.
 
 A request counts as from this machine when it arrives on a loopback socket
 with a loopback `Host`, carries no forwarding or Tailscale headers and has no
-verified ingress identity, or when Station's own UI proxy relays a loopback
-client. Tailscale Serve connects from loopback, so its requests are remote. A
+verified ingress identity. Station's UI proxy does not forward `/v1`, so
+producers send to the API port directly. Tailscale Serve connects from loopback, so its requests are remote. A
 plain SSH local forward is indistinguishable from a local sender.
 
 ### Telemetry producer management

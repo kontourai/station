@@ -544,8 +544,9 @@ function telemetryProducerBearer(c: Context): string | undefined {
  * expired (403), sender position allowed (403).
  *
  * "Same machine" is `classifyOperatorCredentialPosition`: a direct loopback
- * socket with a loopback `Host` and no forwarding or ingress evidence, or
- * Station's own attested UI proxy relaying a loopback client. Tailscale Serve
+ * socket with a loopback `Host` and no forwarding or ingress evidence. (Its
+ * attested-UI-proxy branch cannot apply: the UI proxy does not forward
+ * `/v1`, see `UI_PROXY_BACKEND_PREFIXES`.) Tailscale Serve
  * dials Station from loopback, so the socket alone would count every tailnet
  * sender as local; its ingress identity and forwarding headers are what mark
  * it remote. A plain SSH local forward still reads as same-machine; the

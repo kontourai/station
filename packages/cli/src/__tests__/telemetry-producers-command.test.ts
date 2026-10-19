@@ -236,6 +236,26 @@ describe('station telemetry producers', () => {
     ]);
   }, 60_000);
 
+  test('a switch given a value is a usage error, not local-only', async () => {
+    reply = () => ({ status: 500, body: { success: false } });
+    const result = await run(['create', 'x', '--allow-remote=true']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('station telemetry producers create');
+    expect(seen).toHaveLength(0);
+  }, 60_000);
+
+  test('a create whose reply is lost says the producer may exist', async () => {
+    // A 201 whose body is not JSON: the server created it, the CLI cannot
+    // read the token.
+    reply = () => ({ status: 201, body: undefined });
+    const result = await run(['create', 'lost-reply']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      'station telemetry producers revoke lost-reply',
+    );
+    expect(seen).toHaveLength(1);
+  }, 60_000);
+
   test('a usage error exits non-zero without calling Station', async () => {
     reply = () => ({ status: 500, body: { success: false } });
     const result = await run(['revoke']);

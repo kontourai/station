@@ -571,14 +571,16 @@ boundary recognizes one only on the exact leaves `POST /v1/agent-events`,
 `/v1/traces` and `/v1/logs`; anywhere else it is an unknown bearer (`401`, or
 `403` for an undeclared path). A presented producer token never falls through
 to the paired-credential checks, and is refused beside a credential in the
-query string. Only unknown tokens spend the per-address failure budget and
-only an admitted token resets it, so a stale or misplaced token neither locks
+query string. Only unknown tokens and query-string credentials (even a valid
+token sent as `?token=`) spend the per-address failure budget, and only an
+admitted token resets it, so a stale or misplaced token neither locks
 out the other producers on that address (Tailscale Serve senders share the
 loopback address) nor resets the budget for guessers. It is refused when expired (`403`), and when the sender is not on this
 machine unless the token was created with remote access (`403`). "This
 machine" is the same position test used for raw operator-credential use:
-loopback socket and `Host`, no forwarding, Tailscale or ingress-identity
-evidence, or Station's own attested UI proxy relaying a loopback client. An
+loopback socket and `Host`, and no forwarding, Tailscale or ingress-identity
+evidence (the UI proxy does not forward `/v1`, so its relay branch never
+applies here). An
 SSH local forward still looks local, so the default narrows exposure rather
 than proving locality. Only the operator can create, list or revoke these
 tokens (`access:manage` plus an operator check). Secrets are shown once and
