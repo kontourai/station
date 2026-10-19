@@ -1,5 +1,6 @@
 import { copyFile } from 'node:fs/promises';
 import { buildStationTaskBasisMcpAppResource } from '@kontourai/station-basis-pane/task-basis-mcp-app';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import { buildStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
 import { encodeTaskToolResultReference } from '@kontourai/station-contracts/task-graph';
 import {
@@ -18,6 +19,9 @@ import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 const taskId = 'answer-support-ui';
 const referenceId = 'answer-reference-ui';
 const basisFrameOrigin = 'http://basis-proxy.test';
+// Real Station session ids carry ':' (`${agentSlug}:${epoch}`). Surface 6.x
+// rejects that in contribution refs, so this routed fixture keeps a bare id.
+// FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS: use a colon id here.
 const executionRef = {
   authority: '@kontourai/thread',
   schemaVersion: '1.2.0',
@@ -428,6 +432,38 @@ async function seedStationAccess(page: Page) {
       });
       return;
     }
+    // The app shell gates on account preferences (#3694) before any Task view.
+    if (route.request().method() === 'GET' && path === '/api/me/preferences')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            schemaVersion: 1,
+            values: {},
+            revision: 'task-answer-support-fixture',
+          } satisfies AccountPreferencesView,
+        }),
+      );
+    // The Task conversation pane discovers delegation targets on open. This
+    // fixture models a Station with none ready; delegation is not under test.
+    if (
+      route.request().method() === 'POST' &&
+      path === '/api/orchestration/delegations/options'
+    )
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            environment: {
+              id: '11111111-1111-4111-8111-111111111111',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            project: { slug: 'project-ui' },
+            targets: [],
+          },
+        }),
+      );
     if (
       await fulfillStationShellRead(route, {
         environmentId: 'task-answer-support-fixture',
@@ -909,9 +945,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
 
   await page.goto(`/tasks/${taskId}`);
   await expect(
-    page
-      .getByRole('button', { name: /^Manage Stations/ })
-      .getByLabel('connected'),
+    page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toBeVisible();
   const answerReference = page.locator('.task-workspace__answer-reference');
   await expect(answerReference).toHaveCount(1);

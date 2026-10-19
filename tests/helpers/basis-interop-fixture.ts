@@ -25,7 +25,12 @@ export function preserveBasisInteropEnvironment(): () => void {
   };
 }
 
-/** Non-sensitive, positively parsed owner fixture for real host interoperability. */
+/**
+ * Non-sensitive, positively parsed owner fixture for real host interoperability.
+ * Its session ids are bare because Surface 6.x rejects real colon-shaped
+ * Station ids in contribution refs. FLIP WHEN SURFACE ACCEPTS OPAQUE
+ * CONTRIBUTION-REF IDS: use `${agentSlug}:${epoch}`-shaped ids here.
+ */
 export function basisInteropCollection(): StationTaskBasisCollection {
   const answers = Array.from({ length: 9 }, (_, index) => {
     const assessment =
