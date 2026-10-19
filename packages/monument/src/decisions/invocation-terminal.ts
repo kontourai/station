@@ -78,9 +78,7 @@ function intent(value: unknown): value is PreparedTurnIntent {
     optionalText(value, 'dedupKey')
   );
 }
-function isTerminalBoundaryRecord(
-  value: unknown,
-): value is TurnBoundaryRecord {
+function isTerminalBoundaryRecord(value: unknown): value is TurnBoundaryRecord {
   return (
     terminalDataObject(
       value,
@@ -121,9 +119,7 @@ function isTerminalBoundaryRecord(
       isPreparedTurnSettlement(value.settlement))
   );
 }
-function isTerminalDedupRecord(
-  value: unknown,
-): value is TurnDedupRecord {
+function isTerminalDedupRecord(value: unknown): value is TurnDedupRecord {
   return (
     terminalDataObject(
       value,
