@@ -73,6 +73,10 @@ returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. The outbox
 command is reserved for the later transparency lane.
 
+`station telemetry producers` is unrelated to these tiers: it manages the
+tokens external programs use to add rows to this Station's local monitoring
+history. See [Telemetry ingest](api.md#telemetry-ingest).
+
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
 Full disclosure wording revision 2 participates only in the acknowledgement hash;
