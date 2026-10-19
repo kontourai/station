@@ -13525,7 +13525,9 @@ describe('OrchestrationService', () => {
         }),
       }),
     );
-    expect(sessionScoped.sendTurn.mock.calls.at(-1)?.[0].modelId).toBeUndefined();
+    expect(
+      sessionScoped.sendTurn.mock.calls.at(-1)?.[0].modelId,
+    ).toBeUndefined();
     await expect(
       scopedService.dispatch({
         type: 'sendTurn',
@@ -15967,15 +15969,28 @@ describe('OrchestrationService', () => {
     expect(dispatchError.code).toBeUndefined();
     expect(dispatchError.outcome).toBeUndefined();
 
-    await expect(service.dispatch({
-      type: 'sendTurn',
-      input: { threadId: 'thread-refused-turn', clientTurnId: 'original-refused-key', input: 'inspect this' },
-    })).rejects.toMatchObject({ code: 'client_turn_settled', receipt: { status: 'rejected' } });
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-refused-turn',
+          clientTurnId: 'original-refused-key',
+          input: 'inspect this',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'client_turn_settled',
+      receipt: { status: 'rejected' },
+    });
     expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     // Its passive refusal audit closes this key without fencing a new request.
     const followUp = await service.dispatch({
       type: 'sendTurn',
-      input: { threadId: 'thread-refused-turn', clientTurnId: 'new-follow-up-key', input: 'plain follow-up' },
+      input: {
+        threadId: 'thread-refused-turn',
+        clientTurnId: 'new-follow-up-key',
+        input: 'plain follow-up',
+      },
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
@@ -16636,93 +16651,262 @@ describe('OrchestrationService', () => {
     test.each([
       { name: 'text', change: { input: 'B' } },
       { name: 'exact whitespace', change: { input: 'A ' } },
-      { name: 'ambient context', change: { ambientContext: 'different context' } },
+      {
+        name: 'ambient context',
+        change: { ambientContext: 'different context' },
+      },
       { name: 'requested model', change: { modelId: 'claude-sonnet' } },
-      { name: 'requested options', change: { modelOptions: { effort: 'high' } } },
-      { name: 'attachment content', change: { attachments: [{ kind: 'file' as const, name: 'note.txt', mimeType: 'text/plain' as const, size: 1, dataUrl: 'data:text/plain;base64,Qg==' }] } },
-    ])('#3567: same key with changed $name conflicts without accepting B or invoking again', async ({ change }) => {
-      const threadId = 'thread-input-conflict';
-      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
-      claude.sendTurn.mockClear();
-      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
-      const first = await service.dispatch({ type: 'sendTurn', input: original });
-      await expect(service.dispatch({ type: 'sendTurn', input: { ...original, ...change } })).rejects.toMatchObject({ code: 'client_turn_input_conflict', receipt: { status: 'rejected' } });
-      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
-      expect(claude.sendTurn.mock.calls[0][0].input).toBe('A');
-      expect(await service.dispatch({ type: 'sendTurn', input: original })).toEqual(first);
-      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
-    });
+      {
+        name: 'requested options',
+        change: { modelOptions: { effort: 'high' } },
+      },
+      {
+        name: 'attachment content',
+        change: {
+          attachments: [
+            {
+              kind: 'file' as const,
+              name: 'note.txt',
+              mimeType: 'text/plain' as const,
+              size: 1,
+              dataUrl: 'data:text/plain;base64,Qg==',
+            },
+          ],
+        },
+      },
+    ])(
+      '#3567: same key with changed $name conflicts without accepting B or invoking again',
+      async ({ change }) => {
+        const threadId = 'thread-input-conflict';
+        await service.dispatch({
+          type: 'startSession',
+          input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+        });
+        claude.sendTurn.mockClear();
+        const original: ProviderSendTurnInput = {
+          threadId,
+          input: 'A',
+          clientTurnId: 'K',
+          attachments: [
+            {
+              kind: 'file',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              size: 1,
+              dataUrl: 'data:text/plain;base64,QQ==',
+            },
+          ],
+        };
+        const first = await service.dispatch({
+          type: 'sendTurn',
+          input: original,
+        });
+        await expect(
+          service.dispatch({
+            type: 'sendTurn',
+            input: { ...original, ...change },
+          }),
+        ).rejects.toMatchObject({
+          code: 'client_turn_input_conflict',
+          receipt: { status: 'rejected' },
+        });
+        expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+        expect(claude.sendTurn.mock.calls[0][0].input).toBe('A');
+        expect(
+          await service.dispatch({ type: 'sendTurn', input: original }),
+        ).toEqual(first);
+        expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('#3567: retained caller mutations cannot change the submitted adapter payload or replay identity', async () => {
       const threadId = 'thread-owned-submission';
-      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
       claude.sendTurn.mockClear();
-      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', ambientContext: 'context A', modelOptions: { effort: 'low' }, attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const original: ProviderSendTurnInput = {
+        threadId,
+        input: 'A',
+        clientTurnId: 'K',
+        ambientContext: 'context A',
+        modelOptions: { effort: 'low' },
+        attachments: [
+          {
+            kind: 'file',
+            name: 'note.txt',
+            mimeType: 'text/plain',
+            size: 1,
+            dataUrl: 'data:text/plain;base64,QQ==',
+          },
+        ],
+      };
       const retry = structuredClone(original);
-      const signal = new AbortController().signal; original.signal = signal;
+      const signal = new AbortController().signal;
+      original.signal = signal;
       let entered!: () => void;
       let release!: () => void;
-      const held = new Promise<void>((resolve) => { release = resolve; });
-      const reached = new Promise<void>((resolve) => { entered = resolve; });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const reached = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
       const read = service.readSession.bind(service);
-      const spy = vi.spyOn(service, 'readSession').mockImplementationOnce(async (...args) => { entered(); await held; return read(...args); });
+      const spy = vi
+        .spyOn(service, 'readSession')
+        .mockImplementationOnce(async (...args) => {
+          entered();
+          await held;
+          return read(...args);
+        });
       const pending = service.dispatch({ type: 'sendTurn', input: original });
       await reached;
-      original.modelOptions!.effort = 'high'; original.input = 'B'; original.ambientContext = 'context B'; original.attachments![0].dataUrl = 'data:text/plain;base64,Qg==';
+      original.modelOptions!.effort = 'high';
+      original.input = 'B';
+      original.ambientContext = 'context B';
+      original.attachments![0].dataUrl = 'data:text/plain;base64,Qg==';
       release();
       const first = await pending;
       spy.mockRestore();
-      expect(claude.sendTurn.mock.calls[0][0]).toMatchObject({ displayInput: 'A', modelOptions: { effort: 'low' }, attachments: retry.attachments });
+      expect(claude.sendTurn.mock.calls[0][0]).toMatchObject({
+        displayInput: 'A',
+        modelOptions: { effort: 'low' },
+        attachments: retry.attachments,
+      });
       expect(claude.sendTurn.mock.calls[0][0].signal).toBe(signal);
       expect(claude.sendTurn.mock.calls[0][0].input).not.toContain('context B');
-      expect(await service.dispatch({ type: 'sendTurn', input: retry })).toEqual(first);
-      await expect(service.dispatch({ type: 'sendTurn', input: original })).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+      expect(
+        await service.dispatch({ type: 'sendTurn', input: retry }),
+      ).toEqual(first);
+      await expect(
+        service.dispatch({ type: 'sendTurn', input: original }),
+      ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     });
 
     test('#3567: unsupported JSON options are refused before any adapter send', async () => {
       const threadId = 'thread-unsupported-digest';
-      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+      });
       claude.sendTurn.mockClear();
-      await expect(service.dispatch({ type: 'sendTurn', input: { threadId, input: 'A', clientTurnId: 'K', modelOptions: { effort: undefined } } })).rejects.toMatchObject({ code: 'client_turn_input_unsupported', receipt: { status: 'rejected' } });
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: 'A',
+            clientTurnId: 'K',
+            modelOptions: { effort: undefined },
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: 'client_turn_input_unsupported',
+        receipt: { status: 'rejected' },
+      });
       expect(claude.sendTurn).not.toHaveBeenCalled();
     });
 
     test('#3559: a failed compound begin retains prepared custody and never enters the provider', async () => {
       const threadId = 'thread-3559-begin';
-      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
       claude.sendTurn.mockClear();
-      eventStore['db'].exec(`CREATE TRIGGER fail_compound_begin BEFORE UPDATE OF owner_json ON orchestration_turn_dedup
+      eventStore[
+        'db'
+      ].exec(`CREATE TRIGGER fail_compound_begin BEFORE UPDATE OF owner_json ON orchestration_turn_dedup
         WHEN json_extract(NEW.owner_json, '$.invocation') = 'begun'
         BEGIN SELECT RAISE(ABORT, 'injected durable begin failure'); END`);
-      const send = () => service.dispatch({ type: 'sendTurn', input: { threadId, input: 'hello', clientTurnId: 'client-3559-begin' } });
-      await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
+      const send = () =>
+        service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: 'hello',
+            clientTurnId: 'client-3559-begin',
+          },
+        });
+      await expect(send()).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
       expect(claude.sendTurn).not.toHaveBeenCalled();
-      expect(eventStore['db'].prepare('SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ?').get(threadId)).toMatchObject({ state: 'prepared' });
-      const pending = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup').all();
+      expect(
+        eventStore['db']
+          .prepare(
+            'SELECT state FROM orchestration_turn_boundaries WHERE thread_id = ?',
+          )
+          .get(threadId),
+      ).toMatchObject({ state: 'prepared' });
+      const pending = eventStore['db']
+        .prepare('SELECT owner_json FROM orchestration_turn_dedup')
+        .all();
       expect(pending).toHaveLength(1);
       const pendingClaim = pending[0];
-      if (typeof pendingClaim !== 'object' || pendingClaim === null || !('owner_json' in pendingClaim) || typeof pendingClaim.owner_json !== 'string')
+      if (
+        typeof pendingClaim !== 'object' ||
+        pendingClaim === null ||
+        !('owner_json' in pendingClaim) ||
+        typeof pendingClaim.owner_json !== 'string'
+      )
         throw new Error('Expected the actual retained pending owner.');
       expect(JSON.parse(pendingClaim.owner_json).invocation).toBe('pending');
       eventStore['db'].exec('DROP TRIGGER fail_compound_begin');
-      await expect(send()).rejects.toMatchObject({ code: 'foreground_message_indeterminate' });
+      await expect(send()).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
       expect(claude.sendTurn).not.toHaveBeenCalled();
 
       const nextThread = 'thread-3559-success';
-      await service.dispatch({ type: 'startSession', input: { threadId: nextThread, provider: 'claude' } });
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: nextThread, provider: 'claude' },
+      });
       claude.sendTurn.mockImplementationOnce(async (input) => {
-        const boundary = eventStore['db'].prepare('SELECT state, dedup_key FROM orchestration_turn_boundaries WHERE thread_id = ?').get(input.threadId);
+        const boundary = eventStore['db']
+          .prepare(
+            'SELECT state, dedup_key FROM orchestration_turn_boundaries WHERE thread_id = ?',
+          )
+          .get(input.threadId);
         expect(boundary).toMatchObject({ state: 'invoking' });
-        if (typeof boundary !== 'object' || boundary === null || !('dedup_key' in boundary) || typeof boundary.dedup_key !== 'string')
-          throw new Error('Expected the actual linked claim before provider entry.');
-        const dedup = eventStore['db'].prepare('SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?').get(boundary.dedup_key);
-        if (typeof dedup !== 'object' || dedup === null || !('owner_json' in dedup) || typeof dedup.owner_json !== 'string')
+        if (
+          typeof boundary !== 'object' ||
+          boundary === null ||
+          !('dedup_key' in boundary) ||
+          typeof boundary.dedup_key !== 'string'
+        )
+          throw new Error(
+            'Expected the actual linked claim before provider entry.',
+          );
+        const dedup = eventStore['db']
+          .prepare(
+            'SELECT owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?',
+          )
+          .get(boundary.dedup_key);
+        if (
+          typeof dedup !== 'object' ||
+          dedup === null ||
+          !('owner_json' in dedup) ||
+          typeof dedup.owner_json !== 'string'
+        )
           throw new Error('Expected the actual linked begun owner.');
         expect(JSON.parse(dedup.owner_json).invocation).toBe('begun');
         return { threadId: input.threadId, turnId: 'turn-3559-begin' };
       });
-      await expect(service.dispatch({ type: 'sendTurn', input: { threadId: nextThread, input: 'hello', clientTurnId: 'new-key' } })).resolves.toMatchObject({ turnId: 'turn-3559-begin' });
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: nextThread,
+            input: 'hello',
+            clientTurnId: 'new-key',
+          },
+        }),
+      ).resolves.toMatchObject({ turnId: 'turn-3559-begin' });
       expect(claude.sendTurn).toHaveBeenCalledOnce();
     });
 
