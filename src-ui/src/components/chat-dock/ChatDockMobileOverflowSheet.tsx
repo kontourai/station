@@ -19,14 +19,12 @@ export function ChatDockMobileOverflowSheet({
   projectScope,
   showConnection,
   onNewChat,
-  branchLabel,
   returnFocusTarget,
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
   showConnection?: boolean;
   onNewChat?: () => void;
-  branchLabel?: string | null;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
   returnFocusTarget?: HTMLElement | null;
@@ -67,7 +65,6 @@ export function ChatDockMobileOverflowSheet({
             New chat
           </button>
         )}
-        {branchLabel && <p>{branchLabel}</p>}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read

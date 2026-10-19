@@ -1,5 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
+  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -91,7 +92,6 @@ interface ChatDockMobileHeaderProps {
   routeLabel?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
-  branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
   projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
@@ -103,6 +103,8 @@ interface ChatDockMobileHeaderProps {
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
   dockToggle: ChatDockMobileDockToggle | null;
   onNewChat: () => void;
+  /** Opens the session context sheet (the card's rows on a phone). */
+  sessionContextChip?: ReactNode;
   overflow: ChatDockMobileOverflowActions;
 }
 
@@ -114,7 +116,6 @@ export function ChatDockMobileHeader({
   routeLabel,
   sessionProjectMismatchLabel,
   agentIdentity,
-  branchLabel,
   projectScope,
   projectSwitcher,
   activeCount,
@@ -126,6 +127,7 @@ export function ChatDockMobileHeader({
   onDragClickCapture,
   dockToggle,
   onNewChat,
+  sessionContextChip,
   overflow,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
@@ -259,6 +261,7 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <div className="chat-dock__mobile-actions">
+        {sessionContextChip ?? null}
         <button
           ref={chatActionsTriggerRef}
           type="button"
@@ -312,7 +315,6 @@ export function ChatDockMobileHeader({
             projectScope,
             showConnection,
             onNewChat,
-            branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
             onClose: () => setIsOverflowOpen(false),
           }}

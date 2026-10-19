@@ -1,0 +1,253 @@
+/* The session context card (lazy chunk with the card and its sheet). Inline,
+   it is a fixed column at the dock's right edge; its width is set from
+   `SESSION_CONTEXT_CARD_WIDTH` on the element so the fit measurement and the
+   column agree. No responsive at-rules: when it shows is the dock's own
+   measured width (sessionContextCardModel.ts), and the phone presentation is
+   the shared sheet's (`data-sheet`). */
+.session-context-card {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: var(--k-border-thin, 1px) solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.session-context-card--sheet {
+  width: auto;
+  border-left: 0;
+  background: transparent;
+}
+
+.session-context-card__title {
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-3) var(--k-space-1);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-context-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: var(--k-space-1) var(--k-space-2);
+  list-style: none;
+}
+
+.session-context-card__action,
+.session-context-card__static {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-md, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.session-context-card__action {
+  cursor: pointer;
+}
+
+.session-context-card__action:hover {
+  background: var(--bg-tertiary);
+}
+
+.session-context-card__action:focus-visible,
+.session-context-card__link:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.session-context-card__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__glyph {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.session-context-card__value {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.session-context-card__primary,
+.session-context-card__path,
+.session-context-card__pr-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-context-card__primary {
+  font-weight: 600;
+}
+
+.session-context-card__secondary,
+.session-context-card__hint,
+.session-context-card__gap,
+.session-context-card__more {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* A long worktree path keeps its tail, the part that tells two apart. */
+.session-context-card__path {
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+}
+
+.session-context-card__hint {
+  color: var(--accent-primary);
+}
+
+/* The ladder's colour discipline, as the inbox row draws it. */
+.session-context-card__status[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+.session-context-card__status[data-tone="caution"] {
+  color: var(--warning-text);
+}
+.session-context-card__status[data-tone="active"] {
+  color: var(--success-text);
+}
+.session-context-card__status[data-tone="broken"] {
+  color: var(--status-error);
+}
+
+.session-context-card__prs {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-context-card__prs li {
+  display: flex;
+  gap: var(--k-space-1);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.session-context-card__pr-ref {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__pr-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-context-card__pr-state {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__footer {
+  margin-top: auto;
+  padding: var(--k-space-2);
+  border-top: var(--k-border-thin, 1px) solid var(--border-primary);
+}
+
+.session-context-card__link {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--k-radius-md, 6px);
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  padding: 0 var(--k-space-2);
+}
+
+.session-context-card__link:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.session-context-card__link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Behind the chip on a desktop dock: anchored under the chip, from its right
+   edge, like the dock's other header popovers. */
+.session-context-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.session-context-sheet-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 24px));
+  overflow-y: auto;
+  border: var(--k-border-thin, 1px) solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+.session-context-sheet-overlay[data-anchored] .session-context-sheet-panel {
+  position: fixed;
+  top: calc(var(--responsive-anchor-top, 0px) + 36px);
+  left: clamp(
+    12px,
+    var(--responsive-anchor-left, 12px),
+    calc(100vw - min(320px, calc(100vw - 24px)) - 12px)
+  );
+  max-height: max(
+    160px,
+    calc(100dvh - var(--responsive-anchor-top, 0px) - 64px)
+  );
+}
+
+/* A phone: the shared sheet geometry, docked to the bottom edge. */
+.session-context-sheet-overlay[data-sheet] {
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.session-context-sheet-overlay[data-sheet] .session-context-sheet-panel {
+  width: 100%;
+  max-height: min(80dvh, 640px);
+  border-radius: 14px 14px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
