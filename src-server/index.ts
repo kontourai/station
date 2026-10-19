@@ -11,7 +11,9 @@ import './telemetry.js';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -34,9 +36,9 @@ import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-bro
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
+import { runSupervisorDrain } from './runtime/bootstrap/supervisor-drain.js';
 import {
   allowHomeAccess,
-  type DrainRequest,
   installListenerLink,
   parkUnderSupervisor,
   type SupervisorLink,
@@ -69,8 +71,6 @@ function flushLogSink(): void {
   }
 }
 
-const VOICE_DRAIN_POLL_MS = 500;
-
 async function parkOrExit(): Promise<SupervisorLink | null> {
   try {
     return await parkUnderSupervisor();
@@ -88,40 +88,21 @@ async function main() {
   const supervisorLink = await parkOrExit();
   if (supervisorLink) installListenerLink(supervisorLink);
   allowHomeAccess();
-  // Set once the runtime can report its live voice calls and shut down.
-  let liveVoiceSessions: () => number = () => 0;
+  // Set as boot reaches them; a drain before then exits without them.
+  let runtimeForDrain: StationRuntime | undefined;
   let gracefulShutdown:
-    | ((signal: string, forcedExitCode?: number) => Promise<void>)
+    | ((
+        signal: LifecycleShutdownReason,
+        forcedExitCode?: number,
+      ) => Promise<void>)
     | undefined;
-  const drainForSupervisor = async (
-    link: SupervisorLink,
-    request: DrainRequest,
-  ): Promise<void> => {
-    // A live voice call keeps this generation until it ends or the
-    // supervisor's cap kills us; the supervisor extends its deadline while
-    // the reported count is above zero.
-    let reported = liveVoiceSessions();
-    link.reportDrainProgress(reported);
-    await request.idleConnectionsClosed;
-    for (;;) {
-      const live = liveVoiceSessions();
-      if (live !== reported) {
-        link.reportDrainProgress(live);
-        reported = live;
-      }
-      if (live === 0) break;
-      await new Promise((resolve) => setTimeout(resolve, VOICE_DRAIN_POLL_MS));
-    }
-    if (gracefulShutdown) {
-      await gracefulShutdown('supervisor_drain', 0);
-      return;
-    }
-    // Drained before boot finished: nothing to shut down gracefully.
-    await link.reportDrained();
-    process.exit(0);
-  };
   supervisorLink?.onDrain((request) => {
-    void drainForSupervisor(supervisorLink, request);
+    void runSupervisorDrain(request, {
+      link: supervisorLink,
+      runtime: () => runtimeForDrain,
+      shutdown: () => gracefulShutdown,
+      exit: (code) => process.exit(code),
+    });
   });
 
   if (process.env.STATION_SERVICE_MANAGED === '1') {
@@ -217,6 +198,7 @@ async function main() {
         }
       : {}),
   });
+  runtimeForDrain = runtime;
 
   let stdoutBrokenPipe = false;
   // Install before runtime initialization: boot logs are still stdout writes,
@@ -229,7 +211,6 @@ async function main() {
   });
   try {
     await runtime.initialize();
-    liveVoiceSessions = () => runtime.activeVoiceSessionCount();
     let shuttingDown = false;
 
     // The read side of archive#1903: a self-update that never confirmed the
@@ -249,12 +230,13 @@ async function main() {
     console.log('═══════════════════════════════════════════════════\\n');
     logger.info('Station started', { port, host, agents: loadedAgents });
 
-    gracefulShutdown = async (signal: string, forcedExitCode?: number) => {
+    gracefulShutdown = async (
+      signal: LifecycleShutdownReason,
+      forcedExitCode?: number,
+    ) => {
       if (shuttingDown) return;
       shuttingDown = true;
-      processLifecycle.observeShutdown(
-        signal as 'SIGINT' | 'SIGTERM' | 'uncaughtException',
-      );
+      processLifecycle.observeShutdown(signal);
       console.log(`\n\nShutting down gracefully (${signal})...`);
       logger.info('Station shutting down', { signal });
       let exitCode = forcedExitCode ?? (signal === 'uncaughtException' ? 1 : 0);
@@ -275,7 +257,18 @@ async function main() {
     };
 
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
-    process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
+    process.on('SIGTERM', () => {
+      // A supervised generation drains first, like a supervisor drain: it is
+      // serving the supervisor's sockets, and shutting down at once would
+      // reset its keep-alive clients. The supervisor kills it after its kill
+      // grace, so that bounds the drain. A second SIGTERM, or one during a
+      // drain, shuts down at once.
+      if (supervisorLink && !supervisorLink.draining) {
+        supervisorLink.beginDrain(HANDOFF_DEFAULTS.killGraceMs);
+        return;
+      }
+      void gracefulShutdown?.('SIGTERM');
+    });
     // The supervisor's IPC channel closing means it is gone (protocol).
     supervisorLink?.setShutdownHandler(() =>
       gracefulShutdown?.('supervisor_disconnect', 1),

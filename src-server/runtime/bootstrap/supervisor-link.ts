@@ -10,16 +10,23 @@
  *    (`listener.adopt`), or binds normally and hands each raw handle back
  *    (`listener.bound`) when the supervisor holds none yet;
  * 3. reports `ready` once every listener is bound;
- * 4. on `drain`, stops accepting, lets keep-alive clients reconnect into the
- *    supervisor's backlog, finishes its work, and exits.
+ * 4. on `drain`, stops accepting (new connections wait in the supervisor's
+ *    backlog), marks every response `Connection: close`, ends event streams,
+ *    and waits for requests already in progress, bounded by the drain
+ *    deadline; then it shuts down and exits. A request still running past
+ *    that bound is cut off when the process exits.
  *
  * An unsupervised process uses the same `listen` seam through the direct
  * link, so every stable listener has one code path. The link is
  * process-global because the IPC channel it wraps is (`process.send`).
  */
 import { randomUUID } from 'node:crypto';
-import type { Server as HttpServer, ServerResponse } from 'node:http';
-import { Server as NetServer } from 'node:net';
+import type {
+  Server as HttpServer,
+  IncomingMessage,
+  ServerResponse,
+} from 'node:http';
+import { Server as NetServer, type Socket } from 'node:net';
 import {
   type CoreToSupervisorMessage,
   SUPERVISOR_ENV,
@@ -41,6 +48,10 @@ export type SupervisorListenerName = (typeof SUPERVISOR_LISTENER_NAMES)[number];
  * the connections still idle after this grace.
  */
 export const DRAIN_IDLE_GRACE_MS = 1_000;
+/** How often a drain re-checks for connections that have gone idle. */
+export const DRAIN_SWEEP_INTERVAL_MS = 100;
+/** A drain stops waiting for requests this long before its deadline. */
+export const DRAIN_DEADLINE_MARGIN_MS = 2_000;
 /** After `promote`, every named handle must arrive within this time. */
 export const ADOPT_TIMEOUT_MS = 10_000;
 /** After the supervisor disconnects, graceful shutdown gets this long. */
@@ -95,8 +106,32 @@ export interface SupervisorLinkOptions {
 
 export interface DrainRequest {
   deadlineMs: number;
-  /** Settles once idle connections have been closed after the grace. */
-  idleConnectionsClosed: Promise<void>;
+  /** `supervisor` for a `drain` message; `signal` when SIGTERM started it. */
+  source: 'supervisor' | 'signal';
+  /**
+   * Settles once every HTTP connection has closed, or when the bound (the
+   * deadline less a margin) passes; `lingering` counts the connections still
+   * open then.
+   */
+  connectionsSettled: Promise<{ lingering: number }>;
+}
+
+/** The drain's bound on waiting for connections: the deadline less a margin. */
+export function drainWaitBoundMs(deadlineMs: number, graceMs: number): number {
+  const margin = Math.min(DRAIN_DEADLINE_MARGIN_MS, deadlineMs / 5);
+  return Math.max(graceMs, deadlineMs - margin);
+}
+
+const EVENT_STREAM_HEADER = /\r\ncontent-type:\s*text\/event-stream/i;
+
+/**
+ * Whether a response is a server-sent event stream. Station's HTTP adapter
+ * writes its headers in one `writeHead`, which `getHeader` cannot read back,
+ * so this reads the header block Node already sent (`_header`).
+ */
+function isEventStream(res: ServerResponse): boolean {
+  const header = (res as unknown as { _header?: unknown })._header;
+  return typeof header === 'string' && EVENT_STREAM_HEADER.test(header);
 }
 
 export type HandoffRequestOutcome =
@@ -128,6 +163,10 @@ function closeQuietly(handle: unknown): void {
   } catch {
     // Already closed.
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isListenerName(name: string): name is SupervisorListenerName {
@@ -204,6 +243,9 @@ export class SupervisorLink implements ListenerLink {
   private parkSettled = false;
   private readonly adopted = new Map<string, unknown>();
   private readonly servers = new Set<NetServer>();
+  /** Open HTTP connections on tracked servers; upgraded sockets are not HTTP. */
+  private readonly connections = new Set<Socket>();
+  private readonly responses = new Set<ServerResponse>();
   private readonly pendingListens = new Set<Promise<unknown>>();
   private readonly drainListeners = new Set<(request: DrainRequest) => void>();
   private readonly handoffWaiters = new Map<
@@ -295,9 +337,29 @@ export class SupervisorLink implements ListenerLink {
     const handle = this.adopted.get(name);
     if (handle !== undefined) {
       this.adopted.delete(name);
-      await listenOn(server, (target) =>
-        target.listen(handle as Parameters<NetServer['listen']>[0]),
-      );
+      try {
+        await listenOn(server, (target) =>
+          target.listen(handle as Parameters<NetServer['listen']>[0]),
+        );
+      } catch (error) {
+        // Ours alone now; the supervisor keeps its own copy.
+        closeQuietly(handle);
+        throw error;
+      }
+      const bound = server.address();
+      if (typeof bound === 'object' && bound) {
+        // The held socket wins: say so when configuration asks for another.
+        if (address.port !== 0 && address.port !== bound.port) {
+          this.log(
+            `listener ${name}: configured port ${address.port} differs from the supervisor-held port ${bound.port}; serving on ${bound.port}`,
+          );
+        }
+        if (address.host && address.host !== bound.address) {
+          this.log(
+            `listener ${name}: configured host ${address.host} differs from the supervisor-held address ${bound.address}; serving on ${bound.address}`,
+          );
+        }
+      }
       return { port: boundPort(server, address.port) };
     }
     await listenOn(server, (target) =>
@@ -326,6 +388,15 @@ export class SupervisorLink implements ListenerLink {
     }
     this.adopted.clear();
     this.send({ type: 'ready', bootId, port });
+  }
+
+  /**
+   * Drains as if the supervisor had asked, for a supervised generation that
+   * receives SIGTERM: the supervisor kills it after `deadlineMs`.
+   */
+  beginDrain(deadlineMs: number): DrainRequest {
+    this.startDrain(deadlineMs, 'signal');
+    return this.drainRequest as DrainRequest;
   }
 
   onDrain(listener: (request: DrainRequest) => void): () => void {
@@ -423,11 +494,44 @@ export class SupervisorLink implements ListenerLink {
   private track(server: NetServer): void {
     if (this.servers.has(server)) return;
     this.servers.add(server);
-    // First, so the header is set before any route writes its response.
-    server.prependListener('request', (_req: unknown, res: ServerResponse) => {
-      if (this.draining && !res.headersSent)
-        res.setHeader('Connection', 'close');
+    server.on('connection', (socket: Socket) => {
+      this.connections.add(socket);
+      socket.once('close', () => this.connections.delete(socket));
     });
+    // An upgraded socket belongs to its WebSocket server, which ends it.
+    server.on('upgrade', (_req: IncomingMessage, socket: Socket) => {
+      this.connections.delete(socket);
+    });
+    // First, so the header is set before any route writes its response.
+    server.prependListener(
+      'request',
+      (_req: IncomingMessage, res: ServerResponse) => {
+        if (this.draining && !res.headersSent)
+          res.setHeader('Connection', 'close');
+        this.responses.add(res);
+        res.once('close', () => this.responses.delete(res));
+      },
+    );
+  }
+
+  /** Ends server-sent event streams cleanly; clients reconnect into the backlog. */
+  private endEventStreams(): void {
+    for (const res of [...this.responses]) {
+      if (res.writableEnded || !isEventStream(res)) continue;
+      try {
+        res.end();
+      } catch {
+        // Already torn down.
+      }
+    }
+  }
+
+  private closeIdleConnections(): void {
+    // Node closes only connections with no request in progress: one whose
+    // next request has started arriving, even partially, is left to finish.
+    for (const server of this.servers) {
+      (server as Partial<HttpServer>).closeIdleConnections?.call(server);
+    }
   }
 
   private onMessage(message: unknown, handle: unknown): void {
@@ -448,8 +552,11 @@ export class SupervisorLink implements ListenerLink {
         this.onAdopt(message.name, handle);
         return;
       case 'drain':
-        this.onDrainMessage(
-          typeof message.deadlineMs === 'number' ? message.deadlineMs : 0,
+        this.startDrain(
+          typeof message.deadlineMs === 'number' && message.deadlineMs > 0
+            ? message.deadlineMs
+            : DRAIN_DEADLINE_MARGIN_MS,
+          'supervisor',
         );
         return;
       case 'handoff.refused': {
@@ -532,30 +639,45 @@ export class SupervisorLink implements ListenerLink {
     this.rejectPark?.(error);
   }
 
-  private onDrainMessage(deadlineMs: number): void {
+  private startDrain(deadlineMs: number, source: DrainRequest['source']): void {
     if (this.drainRequest) return;
     // Stop accepting on this generation's copy of each listener. The
     // supervisor still holds the sockets, so new connections wait in the
     // kernel backlog for the next generation. net.Server's close, not
-    // http.Server's: the latter closes idle connections at once.
+    // http.Server's: the latter closes idle connections at once, racing a
+    // keep-alive client whose next request is already on its way.
     for (const server of this.servers) {
       if (server.listening) NetServer.prototype.close.call(server);
     }
-    const idleConnectionsClosed = new Promise<void>((resolve) => {
-      setTimeout(() => {
-        for (const server of this.servers) {
-          (server as Partial<HttpServer>).closeIdleConnections?.call(server);
+    const started = Date.now();
+    const bound = drainWaitBoundMs(deadlineMs, this.drainIdleGraceMs);
+    const connectionsSettled = (async () => {
+      this.endEventStreams();
+      // From here every response says Connection: close, so busy keep-alive
+      // connections close after their response. Wait the grace before closing
+      // idle ones, then keep closing connections as they go idle until none
+      // is left or the bound passes.
+      await sleep(this.drainIdleGraceMs);
+      for (;;) {
+        this.endEventStreams();
+        this.closeIdleConnections();
+        if (this.connections.size === 0) return { lingering: 0 };
+        if (Date.now() - started >= bound) {
+          this.log(
+            `drain: ${this.connections.size} connection(s) still open after ${bound}ms; shutting down anyway`,
+          );
+          return { lingering: this.connections.size };
         }
-        resolve();
-      }, this.drainIdleGraceMs);
-    });
-    this.drainRequest = { deadlineMs, idleConnectionsClosed };
+        await sleep(DRAIN_SWEEP_INTERVAL_MS);
+      }
+    })();
+    this.drainRequest = { deadlineMs, source, connectionsSettled };
     for (const settle of [...this.handoffWaiters.values()]) {
       settle({ status: 'draining' });
     }
     if (this.drainListeners.size === 0) {
       // Nothing booted far enough to drain: report and leave.
-      void idleConnectionsClosed
+      void connectionsSettled
         .then(() => this.reportDrained())
         .then(() => this.proc.exit(0));
       return;

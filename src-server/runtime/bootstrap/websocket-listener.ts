@@ -4,10 +4,9 @@
  * `new WebSocketServer({ port })` creates and binds its own HTTP server, which
  * cannot listen on a handle the supervisor holds. This creates that server
  * here instead, answering non-upgrade requests exactly as `ws` does for a
- * port it owns, so clients see no difference. Closing the WebSocket server
- * also closes the HTTP server, as it does when `ws` owns it.
+ * port it owns, so clients see no difference.
  */
-import { createServer, STATUS_CODES } from 'node:http';
+import { createServer, type Server, STATUS_CODES } from 'node:http';
 import { type ServerOptions, WebSocketServer } from 'ws';
 import {
   closeStableListener,
@@ -15,6 +14,25 @@ import {
   listenerLink,
   type SupervisorListenerName,
 } from './supervisor-link.js';
+
+/**
+ * Closing it stops the listener at once, as `ws` does for a port it owns.
+ * With an external server `ws` would leave the port bound until every client
+ * had gone, since it emits 'close' only then.
+ */
+class StableWebSocketServer extends WebSocketServer {
+  private readonly listener: Server;
+
+  constructor(options: ServerOptions & { server: Server }) {
+    super(options);
+    this.listener = options.server;
+  }
+
+  override close(callback?: (error?: Error) => void): void {
+    void closeStableListener(this.listener);
+    super.close(callback);
+  }
+}
 
 export function startWebSocketListener(
   name: SupervisorListenerName,
@@ -30,8 +48,7 @@ export function startWebSocketListener(
     });
     res.end(body);
   });
-  const wss = new WebSocketServer({ ...options, server });
-  wss.once('close', () => void closeStableListener(server));
+  const wss = new StableWebSocketServer({ ...options, server });
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
   void listenerLink()

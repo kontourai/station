@@ -7,12 +7,13 @@ import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import net from 'node:net';
 import { dirname, join } from 'node:path';
-import { STATION_HOME_SUPERVISOR_RUN_DIR } from '@kontourai/station-shared/station-home-schema';
 import { resolveControlEndpoint } from '@kontourai/station-supervisor/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeStableListener,
   DIRECT_LISTENER_LINK,
+  type DrainRequest,
+  drainWaitBoundMs,
   parkUnderSupervisor,
   type SupervisorChannelProcess,
   SupervisorLink,
@@ -268,6 +269,32 @@ describe('later generation: promote with held listeners', () => {
   });
 });
 
+describe('adopted listener details', () => {
+  it('closes an adopted handle that fails to listen, and warns when configuration names another port or host', async () => {
+    const channel = new FakeChannel();
+    const logs: string[] = [];
+    const held = await rawListeningHandle();
+    const broken = { close: vi.fn() };
+    const link = await promoted(
+      channel,
+      ['api', 'voice'],
+      { api: held.handle, voice: broken },
+      { log: (message: string) => logs.push(message) },
+    );
+    await expect(
+      link.listen('voice', okServer(), { port: 0, host: HOST }),
+    ).rejects.toThrow();
+    expect(broken.close).toHaveBeenCalledTimes(1);
+    await link.listen('api', okServer(), { port: 1, host: '0.0.0.0' });
+    expect(logs.join('\n')).toContain(
+      `configured port 1 differs from the supervisor-held port ${held.port}`,
+    );
+    expect(logs.join('\n')).toContain(
+      'configured host 0.0.0.0 differs from the supervisor-held address 127.0.0.1',
+    );
+  });
+});
+
 describe('unsolicited handles', () => {
   it('closes a handle for a name not promoted, a late adopt, an unknown listener, and a handle on any other message', async () => {
     const channel = new FakeChannel();
@@ -342,6 +369,153 @@ describe('drain', () => {
     expect(reused).toMatchObject({ status: 200, connection: 'close' });
     // The idle connection survives the grace, then is closed.
     expect(await idleClosed).toBeGreaterThanOrEqual(drainedAt + 140);
+  });
+
+  it('lets a request whose headers have started arriving finish, then settles', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const { port } = await link.listen('api', okServer(), {
+      port: 0,
+      host: HOST,
+    });
+    let settled: DrainRequest['connectionsSettled'] | undefined;
+    link.onDrain((request) => {
+      settled = request.connectionsSettled;
+    });
+    const socket = net.connect(port, HOST);
+    cleanups.push(() => socket.destroy());
+    await new Promise((resolve) => socket.once('connect', resolve));
+    let reply = '';
+    const errors: string[] = [];
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => {
+      reply += chunk;
+    });
+    socket.on('error', (error: NodeJS.ErrnoException) =>
+      errors.push(error.code ?? error.message),
+    );
+    const ended = new Promise((resolve) => socket.once('close', resolve));
+    socket.write('GET / HTTP/1.1\r\nHost: x');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    channel.deliver({ type: 'drain', deadlineMs: 10_000 });
+    let early = false;
+    void settled?.then(() => {
+      early = true;
+    });
+    // Well past the idle grace and several sweeps: still waiting for us.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(socket.destroyed).toBe(false);
+    expect(early).toBe(false);
+    socket.write('\r\n\r\n');
+    await ended;
+    expect(errors).toEqual([]);
+    expect(reply).toMatch(/^HTTP\/1\.1 200/);
+    expect(reply.toLowerCase()).toContain('connection: close');
+    await expect(settled).resolves.toEqual({ lingering: 0 });
+  });
+
+  it('waits for a slow handler, ends event streams cleanly, and ignores upgraded sockets', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = track(
+      http.createServer((req, res) => {
+        if (req.url === '/events') {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          res.write('data: hello\n\n');
+          return;
+        }
+        setTimeout(() => res.end('slow'), 700);
+      }),
+    );
+    server.on('upgrade', (_req, socket) => {
+      socket.write('HTTP/1.1 101 Switching Protocols\r\n\r\n');
+    });
+    const { port } = await link.listen('terminal', server, {
+      port: 0,
+      host: HOST,
+    });
+    let settled: DrainRequest['connectionsSettled'] | undefined;
+    link.onDrain((request) => {
+      settled = request.connectionsSettled;
+    });
+
+    const stream = new Promise<{ body: string; error?: string }>((resolve) => {
+      http.get({ host: HOST, port, path: '/events', agent: false }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => resolve({ body }));
+        res.on('error', (error) => resolve({ body, error: error.message }));
+      });
+    });
+    const upgraded = net.connect(port, HOST);
+    cleanups.push(() => upgraded.destroy());
+    await new Promise((resolve) => upgraded.once('connect', resolve));
+    upgraded.write(
+      'GET / HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n',
+    );
+    const slow = get(port);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const drainedAt = Date.now();
+    channel.deliver({ type: 'drain', deadlineMs: 10_000 });
+    let settledAt = 0;
+    void settled?.then(() => {
+      settledAt = Date.now();
+    });
+    let slowAt = 0;
+    void slow.then(() => {
+      slowAt = Date.now();
+    });
+
+    await expect(stream).resolves.toEqual({ body: 'data: hello\n\n' });
+    await expect(slow).resolves.toMatchObject({ status: 200, body: 'slow' });
+    // The upgraded socket stays open; it is its WebSocket server's to end.
+    await expect(settled).resolves.toEqual({ lingering: 0 });
+    expect(settledAt).toBeGreaterThanOrEqual(slowAt);
+    expect(Date.now() - drainedAt).toBeLessThan(5_000);
+    expect(upgraded.destroyed).toBe(false);
+  });
+
+  it('stops waiting at the deadline less its margin', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 100 });
+    const server = track(http.createServer(() => {}));
+    const { port } = await link.listen('api', server, { port: 0, host: HOST });
+    let settled: DrainRequest['connectionsSettled'] | undefined;
+    link.onDrain((request) => {
+      settled = request.connectionsSettled;
+    });
+    const hung = http.get({ host: HOST, port, path: '/', agent: false });
+    hung.on('error', () => {});
+    cleanups.push(() => hung.destroy());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const drainedAt = Date.now();
+    channel.deliver({ type: 'drain', deadlineMs: 1_500 });
+    await expect(settled).resolves.toEqual({ lingering: 1 });
+    const waited = Date.now() - drainedAt;
+    // drainWaitBoundMs(1500, 100) is 1500 - 300.
+    expect(drainWaitBoundMs(1_500, 100)).toBe(1_200);
+    expect(waited).toBeGreaterThanOrEqual(1_150);
+    expect(waited).toBeLessThan(1_500);
+  });
+
+  it('starts the same drain from SIGTERM', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 10 });
+    const server = okServer();
+    await link.listen('api', server, { port: 0, host: HOST });
+    const sources: string[] = [];
+    link.onDrain((request) => sources.push(request.source));
+    const request = link.beginDrain(5_000);
+    expect(request).toMatchObject({ source: 'signal', deadlineMs: 5_000 });
+    expect(sources).toEqual(['signal']);
+    expect(server.listening).toBe(false);
+    expect(link.draining).toBe(true);
+    // A later supervisor drain is the same drain, not a second one.
+    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+    expect(sources).toEqual(['signal']);
   });
 
   it('reports progress and drained, and exits when nothing booted far enough to drain', async () => {
@@ -433,15 +607,16 @@ describe('closeStableListener', () => {
   });
 });
 
-describe('the supervisor run directory inside the Station home', () => {
-  it('is the directory the home schema gate accepts as scaffolding', () => {
+describe('the supervisor run directory', () => {
+  it('lies beside the Station home, never inside it', () => {
     const endpoint = resolveControlEndpoint({
-      home: '/station/home',
+      home: '/station/instances/stable',
       instance: 'default',
       platform: 'linux',
     });
     expect(dirname(endpoint.tokenPath)).toBe(
-      join('/station/home', STATION_HOME_SUPERVISOR_RUN_DIR),
+      '/station/instances/.stable.station-supervisor',
     );
+    expect(endpoint.path.startsWith('/station/instances/stable/')).toBe(false);
   });
 });

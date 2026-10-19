@@ -41,12 +41,16 @@ export function stationHonoServer(
       async start() {
         if (running) throw new Error('Server is already running');
         const { app } = await createVoltAgentApp(deps, config, config.port);
+        const hostname = config.hostname || '0.0.0.0';
         const next = createAdaptorServer({
           fetch: app.fetch.bind(app),
+          // The request URL's host when a request names none (HTTP/1.0
+          // without Host), as VoltAgent's own provider passes it.
+          hostname,
         }) as HttpServer;
         const { port } = await link().listen('api', next, {
           port: config.port,
-          host: config.hostname || '0.0.0.0',
+          host: hostname,
         });
         server = next;
         running = true;
