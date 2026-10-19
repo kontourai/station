@@ -494,7 +494,7 @@ const respondToRequestCommandSchema = z.object({
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
-  // `content` by the service. Removed in 0.10.0.
+  // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
     .record(
       z.string().min(1).max(256),

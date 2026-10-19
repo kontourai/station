@@ -552,8 +552,11 @@ answers retain question IDs and the original RPC ID; cancellation sends Codex
 an empty answer map.
 
 The pre-#3390 `answers` field (`{ "question-id": { "optionIds": [...],
-"custom": "..." } }`) is deprecated since 0.9.0 and removed in 0.10.0. It is
-translated to `content` and validated the same way; never send both. `blocking: false` means an optional question: opening or resolving it does
+"custom": "..." } }`) is deprecated since 0.9.0 and remains accepted in
+0.10.0 for compatibility. It is translated to `content` and validated the
+same way; new callers should send `content`, never both.
+
+`blocking: false` means an optional question: opening or resolving it does
 not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a

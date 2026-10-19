@@ -4365,8 +4365,8 @@ continue to govern resolution.
 `respondToRequest` from `@kontourai/station-sdk/client` accepts form
 `content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
 `expectedRequestEventId`, for a harness question or a tool server's form.
-The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
-0.10.0.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and remains
+accepted in 0.10.0 for compatibility. New callers should send `content`.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
