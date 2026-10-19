@@ -57,8 +57,13 @@ async function mount(
     commandResults,
   );
   render(<DesktopUpdateCheck />);
+  // The card shows a skeleton until the native state is read.
   await waitFor(() =>
-    expect(screen.queryByText(/Reading the desktop/)).toBeNull(),
+    expect(
+      screen.queryByRole('status', {
+        name: 'Reading desktop app update state',
+      }),
+    ).toBeNull(),
   );
   return fake;
 }
