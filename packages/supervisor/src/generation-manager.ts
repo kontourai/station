@@ -100,6 +100,10 @@ interface Generation {
   expectingExit: boolean;
   /** Set when the generation broke the protocol and is being killed. */
   failed: boolean;
+  /** It reported `drained`: it shut down on purpose, not in a crash. */
+  drained: boolean;
+  /** Exit code, once exited. */
+  exitCode: number | null;
   notify: Set<() => void>;
   exited: Promise<void>;
 }
@@ -290,7 +294,7 @@ export class GenerationManager {
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
-      await this.retire(trial, drainDeadlineMs);
+      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
       this.trial = null;
       const reason = this.stopping
         ? 'stopping'
@@ -305,7 +309,7 @@ export class GenerationManager {
       (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
       this.stopping
     ) {
-      await this.retire(trial, drainDeadlineMs);
+      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
       this.trial = null;
       const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
       return this.finishRollback(null, previousEntry, reason, progress);
@@ -338,7 +342,12 @@ export class GenerationManager {
       // drain, voice sessions included, is capped well below the handoff cap.
       const cap = this.handoffConfig.stopDrainCapMs;
       if (this.trial) {
-        work.push(this.retire(this.trial, Math.min(drainDeadlineMs, cap)));
+        work.push(
+          this.retire(
+            this.trial,
+            this.failedDrainMs(Math.min(drainDeadlineMs, cap)),
+          ),
+        );
       }
       if (this.active) {
         work.push(this.drain(this.active, Math.min(drainDeadlineMs, cap), cap));
@@ -416,6 +425,8 @@ export class GenerationManager {
       voiceSessions: 0,
       expectingExit: false,
       failed: false,
+      drained: false,
+      exitCode: null,
       notify: new Set(),
       exited: new Promise<void>((resolve) => {
         resolveExited = resolve;
@@ -429,6 +440,7 @@ export class GenerationManager {
     );
     proc.onExit((code, signal) => {
       this.log(`generation ${id} exited code=${code} signal=${signal}`);
+      gen.exitCode = code;
       this.setGenerationState(gen, 'exited');
       resolveExited();
       this.onGenerationExit(gen);
@@ -506,6 +518,7 @@ export class GenerationManager {
         }
         return;
       case 'drained':
+        gen.drained = true;
         return;
       case 'handoff.request': {
         const requestId =
@@ -548,15 +561,24 @@ export class GenerationManager {
 
   private onGenerationExit(gen: Generation): void {
     if (gen !== this.active || gen.expectingExit) return;
+    // A generation that drained and exited cleanly without being asked (an
+    // operator's SIGTERM, say) is restarted, but it did not crash: it does
+    // not count toward giving up, and it restarts without a backoff.
+    const crashed = !(gen.drained && gen.exitCode === 0);
     if (this.state === 'handoff') {
-      // The handoff carries on without it, but the crash still counts.
-      this.noteFailure();
+      // The handoff carries on without it, but a crash still counts.
+      if (crashed) this.noteFailure();
       return;
     }
     if (this.state !== 'serving') return; // A restart owns this generation.
     this.clearStableTimer();
     this.active = null;
-    void this.bringUp('restarting', true);
+    if (!crashed) {
+      this.log(
+        `generation ${gen.id} drained and exited on its own; restarting it`,
+      );
+    }
+    void this.bringUp('restarting', crashed);
   }
 
   private promote(gen: Generation): void {
@@ -611,7 +633,10 @@ export class GenerationManager {
         return gen;
       }
     }
-    await this.retire(gen, this.handoffConfig.drainDeadlineMs);
+    await this.retire(
+      gen,
+      this.failedDrainMs(this.handoffConfig.drainDeadlineMs),
+    );
     this.trial = null;
     return null;
   }
@@ -741,6 +766,15 @@ export class GenerationManager {
     }
     this.log(`generation ${gen.id} missed its drain deadline`);
     await this.terminate(gen);
+  }
+
+  /**
+   * How long a failed or abandoned trial drains. It may be frozen, and the
+   * previous entry cannot start until it is gone, so it gets no longer than
+   * the kill grace; the committed handoff's old generation drains in full.
+   */
+  private failedDrainMs(deadlineMs: number): number {
+    return Math.min(deadlineMs, this.handoffConfig.killGraceMs);
   }
 
   /**

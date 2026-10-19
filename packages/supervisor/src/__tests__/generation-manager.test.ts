@@ -430,6 +430,33 @@ describe('GenerationManager', () => {
     });
   });
 
+  it('drains a frozen failed trial for no longer than the kill grace', async () => {
+    const { manager, generations } = setup((_generation, entry) =>
+      entry === '/core/bad.js' ? { ready: false, exitOnDrain: false } : {},
+    );
+    await manager.start();
+    // The default 10s drain deadline; the default kill grace is 5s.
+    const handoff = manager.handoff({
+      entry: '/core/bad.js',
+      readinessTimeoutMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(generations[1]?.sent.at(-1)?.message).toEqual({
+      type: 'drain',
+      deadlineMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(generations[1]?.signals).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    expect(await settle(handoff)).toMatchObject({ outcome: 'rolled-back' });
+    // The old generation of that handoff drained with the full deadline.
+    expect(
+      generations[0]?.sent.find(({ message }) => message.type === 'drain')
+        ?.message,
+    ).toEqual({ type: 'drain', deadlineMs: 10_000 });
+  });
+
   it('signals a failed promoted trial only after it ignores the drain deadline', async () => {
     const { manager, generations } = setup((_generation, entry) =>
       entry === '/core/bad.js' ? { ready: false, exitOnDrain: false } : {},
@@ -631,6 +658,25 @@ describe('GenerationManager', () => {
       });
     },
   );
+
+  it('restarts a generation that drained and exited on its own, without counting a failure', async () => {
+    const { manager, generations } = setup();
+    await manager.start();
+    // An operator's SIGTERM to the core: it drains, says so, and exits 0.
+    generations[0]?.emit({ type: 'drained' });
+    generations[0]?.exit(0, null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(generations).toHaveLength(2);
+    expect(manager.status()).toMatchObject({
+      state: 'serving',
+      active: { generation: 2 },
+      restarts: { consecutiveFailures: 0, lastBackoffMs: null },
+    });
+    // Without `drained`, the same clean exit code is still a crash.
+    generations[1]?.exit(0, null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(manager.status().restarts.consecutiveFailures).toBe(1);
+  });
 
   it('counts a crash of the active generation during a handoff as a failure', async () => {
     const { manager, generations } = setup((generation) =>
