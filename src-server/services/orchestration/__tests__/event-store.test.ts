@@ -8228,13 +8228,8 @@ describe('EventStore', () => {
     } finally {
       const close = await closed;
       try {
-        const diagnosticDir = mkdtempSync(
-          join(tmpdir(), 'event-store-contention-diagnostic-'),
-        );
-        const diagnosticPath = join(diagnosticDir, 'holder-outcome.json');
-        writeFileSync(
-          diagnosticPath,
-          `${JSON.stringify(
+        process.stdout.write(
+          `\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_BEGIN>>>\n${JSON.stringify(
             {
               test: 'waits through writer contention before recovery-settlement migration',
               pid: holder.pid,
@@ -8252,11 +8247,7 @@ describe('EventStore', () => {
             },
             null,
             2,
-          )}\n`,
-          { flag: 'wx' },
-        );
-        process.stdout.write(
-          `EventStore contention diagnostic: ${diagnosticPath}\n`,
+          )}\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_END>>>\n`,
         );
       } finally {
         first?.close();
