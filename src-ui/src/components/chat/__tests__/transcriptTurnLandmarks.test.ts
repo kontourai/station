@@ -1,5 +1,6 @@
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import { describe, expect, test } from 'vitest';
+import { compactTurnText } from '../../../hooks/orchestration/replay/timeline';
 import type { ChatMessage } from '../../../types';
 import { turnStepTarget } from '../TranscriptTurnRail';
 import {
@@ -200,5 +201,54 @@ describe('turnStepTarget', () => {
     expect(
       turnStepTarget({ activeTurn: 0, activeStartVisible: true }, -1, 10),
     ).toBeUndefined();
+  });
+});
+
+describe('compactTurnText', () => {
+  /** The original definition: collapse every run, trim, then cut. */
+  const reference = (text: string | undefined, max = 72) => {
+    const compact = text?.replace(/\s+/g, ' ').trim();
+    if (!compact) return undefined;
+    return compact.length > max ? `${compact.slice(0, max - 3)}…` : compact;
+  };
+  const cases = [
+    undefined,
+    '',
+    '   \n\t  ',
+    'short',
+    '  leading and trailing  ',
+    'tabs\tand\nnewlines\r\n  mixed\u00a0nbsp\u2028line',
+    'x'.repeat(72),
+    'x'.repeat(73),
+    `${'word '.repeat(14)}word`,
+    `${'a'.repeat(70)}   ${'b'.repeat(10)}`,
+    `${'a'.repeat(71)} 😀😀 tail`,
+    `😀${' '.repeat(5)}${'é'.repeat(100)}`,
+  ];
+  test.each(cases.map((text) => [text]))(
+    'matches the collapse-trim-cut definition for %j',
+    (text) => {
+      for (const max of [5, 72, 140])
+        expect(compactTurnText(text, max)).toBe(reference(text, max));
+    },
+  );
+
+  test('a long paste is read only as far as the label needs', () => {
+    let reads = 0;
+    const long = 'word '.repeat(200_000);
+    const counted = new Proxy(new String(long), {
+      get(target, key, receiver) {
+        if (key === 'codePointAt') {
+          return (index: number) => {
+            reads += 1;
+            return long.codePointAt(index);
+          };
+        }
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as unknown as string;
+    expect(compactTurnText(counted)).toBe(reference(long));
+    expect(reads).toBeLessThan(200);
   });
 });

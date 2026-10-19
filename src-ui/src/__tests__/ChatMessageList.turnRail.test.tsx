@@ -118,7 +118,10 @@ function session(turns: number, tail = '') {
 
 type Session = ReturnType<typeof session>;
 
-function renderList(activeSession: Session) {
+function renderList(
+  activeSession: Session,
+  extra: { hasOlderMessages?: boolean } = {},
+) {
   const element = (next: Session) => (
     <ChatMessageList
       activeSession={next}
@@ -126,6 +129,7 @@ function renderList(activeSession: Session) {
       showReasoning={false}
       showToolDetails={false}
       renderOverride={(message) => <>{message.content}</>}
+      {...extra}
     />
   );
   const view = render(element(activeSession));
@@ -165,8 +169,11 @@ const turnRail = () =>
 
 const tick = (turn: number) =>
   within(turnRail()!).getByRole('button', {
-    name: new RegExp(`^Turn ${turn + 1} of `),
+    name: new RegExp(`^(Loaded turn|Turn) ${turn + 1} of `),
   });
+
+const announcement = () =>
+  screen.getByTestId('transcript-turn-announcement').textContent;
 
 beforeEach(() => {
   virtualizerProps.length = 0;
@@ -325,5 +332,71 @@ describe('jumping to a turn in a short transcript', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Previous turn' }),
     );
+  });
+});
+
+describe('turn positions with older history unloaded', () => {
+  test('a complete transcript numbers its turns absolutely', () => {
+    renderList(session(30));
+    expect(tick(0).getAttribute('aria-label')).toBe('Turn 1 of 30: Question 0');
+  });
+
+  test('with older history unloaded, a position is only among the loaded turns', () => {
+    renderList(session(30), { hasOlderMessages: true });
+    expect(tick(0).getAttribute('aria-label')).toBe(
+      'Loaded turn 1 of 30: Question 0',
+    );
+    act(() => tick(0).focus());
+    expect(screen.getByRole('tooltip').textContent).toContain(
+      'Loaded turn 1 of 30',
+    );
+    expect(screen.getByRole('tooltip').textContent).not.toMatch(/^Turn /);
+  });
+});
+
+describe('the turn preview and announcements', () => {
+  test('Escape dismisses a focus preview, keeps focus, and the next turn previews again', () => {
+    renderList(session(30));
+    act(() => tick(7).focus());
+    expect(screen.getByRole('tooltip').textContent).toContain('Question 7');
+    const notCancelled = fireEvent.keyDown(tick(7), { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    // Handled here: the surface behind the rail does not also close.
+    expect(notCancelled).toBe(false);
+    expect(document.activeElement).toBe(tick(7));
+    fireEvent.keyDown(tick(7), { key: 'ArrowDown' });
+    expect(screen.getByRole('tooltip').textContent).toContain('Question 8');
+  });
+
+  test('Previous and Next say where they landed in a polite live region', () => {
+    const { scroller } = renderList(session(10));
+    expect(announcement()).toBe('');
+    expect(
+      screen.getByTestId('transcript-turn-announcement').getAttribute('role'),
+    ).toBe('status');
+    fireEvent.click(tick(5));
+    fireEvent.scroll(scroller);
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+    expect(announcement()).toBe('Turn 5 of 10: Question 4');
+    fireEvent.scroll(scroller);
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Next turn' }));
+    expect(announcement()).toBe('Turn 6 of 10: Question 5');
+  });
+
+  test('with older history unloaded, an announcement claims only a loaded position', () => {
+    const { scroller } = renderList(session(10), { hasOlderMessages: true });
+    fireEvent.click(tick(5));
+    fireEvent.scroll(scroller);
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous turn' }));
+    expect(announcement()).toBe('Loaded turn 5 of 10: Question 4');
   });
 });

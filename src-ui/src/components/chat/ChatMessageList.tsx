@@ -63,6 +63,7 @@ import {
   TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS,
   TranscriptTurnActions,
   TranscriptTurnRail,
+  turnLabel,
   turnStepTarget,
   useTranscriptTurnViewport,
 } from './TranscriptTurnRail';
@@ -1292,6 +1293,26 @@ function ChatMessageListComponent({
   );
   const previousTurn = turnStepTarget(turnViewport, -1, turnLandmarks.length);
   const nextTurn = turnStepTarget(turnViewport, 1, turnLandmarks.length);
+  // A step keeps focus on itself, so where it landed is said aloud: the
+  // rail's ticks are named by focus, the steps have only this.
+  const [turnAnnouncement, setTurnAnnouncement] = useState('');
+  const stepToTurn = useCallback(
+    (turnIndex: number) => {
+      const landmarks = turnLandmarksRef.current;
+      const landmark = landmarks[turnIndex];
+      if (!landmark) return;
+      jumpToTurn(turnIndex);
+      setTurnAnnouncement(
+        turnLabel(
+          landmark,
+          turnIndex,
+          landmarks.length,
+          Boolean(hasOlderMessages),
+        ),
+      );
+    },
+    [jumpToTurn, hasOlderMessages],
+  );
 
   // A glide belongs to the chat it started in; a switch or unmount ends it
   // where the reader asked to be — following the tail.
@@ -1565,7 +1586,7 @@ function ChatMessageListComponent({
       <TranscriptTurnActions
         previousTurn={previousTurn}
         nextTurn={nextTurn}
-        onJump={jumpToTurn}
+        onJump={stepToTurn}
         floating={!scrollControlsTarget}
       >
         {scrollToBottomControl}
@@ -1836,7 +1857,19 @@ function ChatMessageListComponent({
               railRef={turnRailRef}
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
+              olderHistory={Boolean(hasOlderMessages)}
             />
+          )}
+          {/* Mounted with the navigation, before anything is said: a region
+          created together with its text is often not read. */}
+          {turnNavigation && (
+            <span
+              className="sr-only"
+              role="status"
+              data-testid="transcript-turn-announcement"
+            >
+              {turnAnnouncement}
+            </span>
           )}
           {scrollControls &&
             (scrollControlsTarget

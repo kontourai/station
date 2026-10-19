@@ -192,15 +192,34 @@ interface TranscriptTurnRailProps {
   readonly railRef: RefObject<HTMLElement | null>;
   readonly activeTurn: number;
   readonly onJump: (turnIndex: number) => void;
+  /** Older history exists beyond the loaded rows (see `turnPosition`). */
+  readonly olderHistory: boolean;
 }
 
-function turnLabel(
+/**
+ * A turn's position. The landmarks cover only the loaded rows; while older
+ * history exists, the first loaded turn is not the conversation's first, so
+ * the position is named as one among the loaded turns.
+ */
+export function turnPosition(
+  index: number,
+  count: number,
+  olderHistory: boolean,
+): string {
+  return olderHistory
+    ? `Loaded turn ${index + 1} of ${count}`
+    : `Turn ${index + 1} of ${count}`;
+}
+
+/** A turn's full name: position, prompt excerpt and any marker. */
+export function turnLabel(
   landmark: TranscriptTurnLandmark,
   index: number,
   count: number,
+  olderHistory: boolean,
 ): string {
   const marker = landmark.marker ? ` (${MARKER_TEXT[landmark.marker]})` : '';
-  return `Turn ${index + 1} of ${count}: ${landmark.prompt}${marker}`;
+  return `${turnPosition(index, count, olderHistory)}: ${landmark.prompt}${marker}`;
 }
 
 /**
@@ -217,6 +236,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   railRef,
   activeTurn,
   onJump,
+  olderHistory,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -324,8 +344,28 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
     focusTurn(target);
   };
 
-  const preview = hovered ?? focused;
+  // Escape dismisses the preview where it stands (WCAG 1.4.13); pointing at
+  // or focusing another turn, or leaving the rail, shows previews again.
+  const [dismissed, setDismissed] = useState<number>();
+  const target = hovered ?? focused;
+  useEffect(() => {
+    if (dismissed !== undefined && target !== dismissed)
+      setDismissed(undefined);
+  }, [dismissed, target]);
+  const preview = target === dismissed ? undefined : target;
   const previewed = preview === undefined ? undefined : landmarks[preview];
+  // A hover preview shows while focus is elsewhere (often the composer), so
+  // its Escape is heard on the window. Focus inside the rail handles its own.
+  useEffect(() => {
+    if (preview === undefined) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (railRef.current?.contains(document.activeElement)) return;
+      setDismissed(preview);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [preview, railRef]);
   const tabStop = focused ?? Math.min(activeTurn, landmarks.length - 1);
 
   // Keep the preview beside its tick but inside the rail's height.
@@ -350,6 +390,13 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         onPointerUp={endScrub}
         onPointerCancel={endScrub}
         onPointerLeave={() => setHovered(undefined)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || preview === undefined) return;
+          // The preview is what Escape closes here, not the surface behind it.
+          event.preventDefault();
+          event.stopPropagation();
+          setDismissed(preview);
+        }}
         // A press here moves the transcript, not focus: a reader typing in
         // the composer keeps the caret where it was.
         onMouseDown={(event) => event.preventDefault()}
@@ -379,7 +426,12 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
                 data-marker={landmark.marker}
                 tabIndex={index === tabStop ? 0 : -1}
                 aria-current={index === activeTurn ? 'location' : undefined}
-                aria-label={turnLabel(landmark, index, landmarks.length)}
+                aria-label={turnLabel(
+                  landmark,
+                  index,
+                  landmarks.length,
+                  olderHistory,
+                )}
                 aria-describedby={
                   focused === index && preview === index ? previewId : undefined
                 }
@@ -401,7 +453,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
             role="tooltip"
           >
             <span className="transcript-turn-rail__preview-turn">
-              Turn {preview + 1} of {landmarks.length}
+              {turnPosition(preview, landmarks.length, olderHistory)}
               {previewed.marker ? ` · ${MARKER_TEXT[previewed.marker]}` : ''}
             </span>
             <span className="transcript-turn-rail__preview-prompt">

@@ -338,7 +338,8 @@ message row starts a turn.
   the rows. The rows on screen are drawn as a band, and their turns' ticks are
   highlighted; both are written from the scroll handler, once per frame. Hover
   or keyboard focus previews a turn: its prompt and the start of its first
-  reply. A press or drag jumps to the nearest turn without taking focus from
+  reply. Escape dismisses the preview without moving focus or the pointer;
+  pointing at or focusing another turn shows previews again. A press or drag jumps to the nearest turn without taking focus from
   the composer. The ticks are one tab stop: arrow keys move between turns
   (jumping as they go), Home and End reach the ends. The rail is hidden when
   the transcript column is narrower than 560px or shorter than 200px
@@ -352,7 +353,11 @@ message row starts a turn.
   whenever that control shows, at every width; on a phone they are the turn
   navigation. Previous goes to the start of the turn in view when its prompt
   is above the screen, otherwise to the turn before. The steps stay focusable
-  at either end.
+  at either end, and announce the turn they reached (its position and prompt)
+  in a polite status region.
+- **Positions.** A turn is named "Turn N of M". While older history is not
+  loaded, the map covers only the loaded window, so it is named "Loaded turn
+  N of M" instead, and the numbers change as earlier history loads.
 - **Jumping.** A jump reveals the turn's prompt row, centred, through the same
   path a message link uses (`revealRowId`, then the virtualizer's
   `scrollToIndex`); a short transcript, with every row mounted, is scrolled

@@ -232,3 +232,99 @@ test('a phone gets no gutter; the turn steps sit with Scroll to bottom at 44px',
     await browser.close();
   }
 });
+
+/** The rail's drawn viewport against the rows actually on screen. */
+async function drawnViewport(page: Page) {
+  return page.evaluate(() => {
+    const scroller = document.querySelector('.chat-messages')!;
+    const box = scroller.getBoundingClientRect();
+    const visible = [
+      ...document.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+    ]
+      .filter((row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.bottom > box.top && rect.top < box.bottom;
+      })
+      .map((row) => Number(row.dataset.index));
+    const rowCount = Number(
+      document
+        .querySelector('[data-testid="virtualized-transcript-spacer"]')!
+        .getAttribute('data-transcript-row-count'),
+    );
+    const band = document.querySelector<HTMLElement>(
+      '.transcript-turn-rail__band',
+    )!;
+    return {
+      first: Math.min(...visible),
+      last: Math.max(...visible),
+      rowCount,
+      inView: [
+        ...document.querySelectorAll<HTMLElement>(
+          '.transcript-turn-rail__tick[data-in-view]',
+        ),
+      ].map((tick) => Number(tick.dataset.turnIndex)),
+      bandTop: Number.parseFloat(band.style.top),
+      bandHeight: Number.parseFloat(band.style.height),
+    };
+  });
+}
+
+test('the in-view ticks and the viewport band follow a reader scroll', async () => {
+  const { browser, page, errors } = await turnRailBrowserFixture(DESKTOP);
+  try {
+    await page.waitForSelector('.transcript-turn-rail__tick');
+    await settledScrollTop(page);
+    const check = async () => {
+      const drawn = await drawnViewport(page);
+      // Fixture rows alternate prompt and reply: row r belongs to turn r>>1.
+      const turns = [];
+      for (let turn = drawn.first >> 1; turn <= drawn.last >> 1; turn += 1)
+        turns.push(turn);
+      expect(drawn.inView).toEqual(turns);
+      expect(drawn.bandTop).toBeCloseTo((drawn.first / drawn.rowCount) * 100);
+      expect(drawn.bandHeight).toBeCloseTo(
+        ((drawn.last + 1 - drawn.first) / drawn.rowCount) * 100,
+      );
+      return drawn;
+    };
+    const atEnd = await check();
+    expect(atEnd.inView).toContain(TURNS - 1);
+
+    await page.locator('.chat-messages').hover();
+    await page.mouse.wheel(0, -4000);
+    await settledScrollTop(page);
+    const scrolled = await check();
+    expect(scrolled.inView).not.toContain(TURNS - 1);
+    expect(scrolled.bandTop).toBeLessThan(atEnd.bandTop);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('Escape dismisses a hover preview while focus stays in the composer', async () => {
+  const { browser, page, errors } = await turnRailBrowserFixture(DESKTOP);
+  try {
+    await page.waitForSelector('.transcript-turn-rail__tick');
+    await settledScrollTop(page);
+    await page.evaluate(() => {
+      const input = document.createElement('textarea');
+      input.setAttribute('aria-label', 'Draft');
+      document.querySelector('.chat-input__meta')!.append(input);
+      input.focus();
+    });
+    const rail = (await page.locator('.transcript-turn-rail').boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, rail.y + rail.height * 0.3);
+    const preview = page.getByRole('tooltip');
+    await preview.waitFor();
+    await page.keyboard.press('Escape');
+    await preview.waitFor({ state: 'detached' });
+    expect(await activeLabel(page)).toBe('Draft');
+    // Pointing at another turn previews again.
+    await page.mouse.move(rail.x + rail.width / 2, rail.y + rail.height * 0.6);
+    await preview.waitFor();
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
