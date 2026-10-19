@@ -1,5 +1,5 @@
 import { type RefObject, useLayoutEffect, useState } from 'react';
-import { CODING_TRANSCRIPT_MIN_WIDTH } from '../coding-layout/codingPanels';
+import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 
 /**
  * The session context card's column, border included. One number for the
@@ -10,7 +10,7 @@ export const SESSION_CONTEXT_CARD_WIDTH = 280;
 
 /**
  * Whether the card fits beside the transcript: the conversation surface keeps
- * the transcript's own floor (`CODING_TRANSCRIPT_MIN_WIDTH`, derived from the
+ * the transcript's own floor (`TRANSCRIPT_MIN_WIDTH`, derived from the
  * message column's gutters, bubble width and padding) after giving the card
  * its column.
  *
@@ -24,7 +24,7 @@ export function sessionContextCardFits(
   cardShown: boolean,
 ): boolean {
   const room = surfaceWidth + (cardShown ? SESSION_CONTEXT_CARD_WIDTH : 0);
-  return room >= CODING_TRANSCRIPT_MIN_WIDTH + SESSION_CONTEXT_CARD_WIDTH;
+  return room >= TRANSCRIPT_MIN_WIDTH + SESSION_CONTEXT_CARD_WIDTH;
 }
 
 /**

@@ -1882,8 +1882,10 @@ server read beyond the pull request links Chat details already reads.
   open chat to prefill a row is not cheap.
 - **Width decides, measured on the conversation surface.** The card shows
   when the room beside it keeps the transcript's floor:
-  `CODING_TRANSCRIPT_MIN_WIDTH` (640px, derived from the message column's
-  rules in [codingPanels.ts](../../src-ui/src/components/coding-layout/codingPanels.ts))
+  the transcript's 640px floor (`TRANSCRIPT_MIN_WIDTH`, derived from the
+  message column's rules in
+  [transcriptMeasure.ts](../../src-ui/src/components/chat/transcriptMeasure.ts),
+  which the Coding workbench's `CODING_TRANSCRIPT_MIN_WIDTH` also reads)
   plus the card's 280px column, so at least 920px
   ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts)).
   The room is the surface plus the card while it shows, so showing it cannot
