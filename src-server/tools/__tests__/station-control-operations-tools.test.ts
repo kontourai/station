@@ -195,6 +195,17 @@ describe('station-control operations tools (characterization)', () => {
       'External, unverified data reported by telemetry producer "flow-agents-codex"',
     );
     expect('station.external_producer_notice' in (rows[1] ?? {})).toBe(false);
+    // First in the row, and once at the top of the envelope, so a reader
+    // that truncates still meets it.
+    expect(Object.keys(rows[0] ?? {})[0]).toBe(
+      'station.external_producer_notice',
+    );
+    expect(Object.keys(body as object)[0]).toBe(
+      'station.external_producer_notice',
+    );
+    expect(
+      (body as Record<string, unknown>)['station.external_producer_notice'],
+    ).toContain('"flow-agents-codex"');
   });
 
   test('routes every independent-review operation through the shared strict client', async () => {

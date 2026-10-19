@@ -186,7 +186,11 @@ describe('telemetry producer management over the production composition', () => 
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
       );
-    const ingest = (token: string, sessionId: string) =>
+    const ingest = (
+      token: string,
+      sessionId: string,
+      overrides: Record<string, unknown> = {},
+    ) =>
       app.request(
         `${ORIGIN}/v1/agent-events`,
         {
@@ -203,12 +207,17 @@ describe('telemetry producer management over the production composition', () => 
             event_id: `event-${sessionId}`,
             event_type: 'tool.invoke',
             agent: { name: 'codex', runtime: 'codex', version: '1.0.0' },
+            ...overrides,
             tool: { name: 'shell', input: { command: 'ls' } },
           }),
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
       );
-    const ingestSpan = (token: string, conversationId: string) =>
+    const ingestSpan = (
+      token: string,
+      conversationId: string,
+      extraAttributes: { key: string; value: { stringValue: string } }[] = [],
+    ) =>
       app.request(
         `${ORIGIN}/v1/traces`,
         {
@@ -243,6 +252,7 @@ describe('telemetry producer management over the production composition', () => 
                             key: K.TOOL_NAME,
                             value: { stringValue: 'injected' },
                           },
+                          ...extraAttributes,
                         ],
                       },
                     ],
@@ -434,6 +444,80 @@ describe('telemetry producer management over the production composition', () => 
         if (row[key] !== undefined)
           expect(row[key]).toBe(`producer:spoofer:${STATION_SESSION}`);
       }
+    }
+  });
+
+  test('a producer claiming a Station agent and engine counts toward neither', async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'claimer',
+    );
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    // Station's own chat for agent `default`, on engine `station`.
+    for (const kind of ['start', 'end'] as const)
+      h.emitRaw({
+        timestamp: new Date().toISOString(),
+        [K.TIMESTAMP_MS]: Date.now(),
+        [K.OP_NAME]: 'invoke_agent',
+        [K.SPAN_KIND]: kind,
+        [K.TRACE_ID]: 'station-trace',
+        [K.AGENT_SLUG]: 'default',
+        [K.PROVIDER]: 'station',
+        [K.USER_ID]: getCachedUser().alias,
+      });
+    await h.flush();
+    const insights = async () => {
+      const response = await h.read(
+        '/api/insights?days=1',
+        h.operatorCredential,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = (await response.json()) as {
+        data: { agentUsage: Record<string, { chats: number }> };
+      };
+      return body.data.agentUsage;
+    };
+    const before = await insights();
+    expect(before.default?.chats).toBe(1);
+
+    // The producer claims the same agent and engine on both ingest paths.
+    expect(
+      (
+        await h.ingest(token, 'claimed', {
+          event_type: 'session.start',
+          agent: { name: 'default', runtime: 'station', version: '1' },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.ingestSpan(token, 'claimed', [
+          { key: K.AGENT_SLUG, value: { stringValue: 'default' } },
+          { key: K.PROVIDER, value: { stringValue: 'station' } },
+          { key: K.OP_NAME, value: { stringValue: 'invoke_agent' } },
+        ])
+      ).status,
+    ).toBe(200);
+    await h.flush();
+
+    const after = await insights();
+    expect(after.default?.chats).toBe(1);
+    expect(after['producer:claimer:default']?.chats).toBeGreaterThan(0);
+
+    const rows = async (query: string) => {
+      const response = await h.read(
+        `/monitoring/events?start=0${query}`,
+        h.operatorCredential,
+      );
+      return ((await response.json()) as { data: Record<string, unknown>[] })
+        .data;
+    };
+    for (const query of ['&agent=default', '&engine=station']) {
+      const matched = await rows(query);
+      expect(matched).toHaveLength(2);
+      expect(matched.some((row) => K.TELEMETRY_PRODUCER in row)).toBe(false);
     }
   });
 });

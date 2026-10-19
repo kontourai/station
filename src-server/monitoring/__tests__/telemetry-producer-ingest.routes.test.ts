@@ -479,6 +479,9 @@ describe('telemetry producer tokens on the ingest routes', () => {
     expect(span?.[K.TRACE_ID]).toBe(own);
     expect(span?.[K.CONVERSATION_ID]).toBe(own);
     expect(span?.[K.TOOL_CALL_ID]).toBe('producer:flow-agents:call-1');
+    // Agent, engine and event ids too: readers filter and de-duplicate by them.
+    expect(event?.[K.AT_EVENT_ID]).toBe('producer:flow-agents:event-1');
+    expect(event?.[K.AGENT_SLUG]).toBe('producer:flow-agents:codex');
   });
 
   test('a paired credential cannot forge producer attribution on any ingest path', async () => {

@@ -593,9 +593,9 @@ principal who created it, and the rows it ingests are readable only by that
 principal: the producer-reported session id does not grant or decide
 readership, the owner key is set from the admitted token rather than the body,
 and insights never shares a per-session decision between a producer row and a
-Station row with the same id. Every identity a producer reports is namespaced
-(`producer:<name>:<id>`), so a producer cannot attach rows to a real Station
-conversation and so inject text into that conversation's monitoring timeline
+Station row with the same id. Every identity a producer reports, including its agent slug and engine, is
+namespaced (`producer:<name>:<id>`), so a producer cannot attach rows to a
+real Station conversation, agent or engine and so inject text into that conversation's monitoring timeline
 or into what an agent reads about it; the station-control monitoring tool
 also labels producer rows as external, unverified data. Paired credentials with
 `orchestration:operate` keep their existing access to the ingest leaves.

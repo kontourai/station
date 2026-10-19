@@ -942,9 +942,10 @@ contract a producer implements:
    old one with `station telemetry producers revoke <name>`. Revocation and
    expiry take effect on the next request.
 
-Session, conversation, trace and tool-call ids a producer reports are stored
-as `producer:<token name>:<id>`, so a producer row never joins a Station
-conversation. Agents reading monitoring through station-control see producer
+Session, conversation, trace, tool-call and event ids, the agent slug and the
+engine a producer reports are stored as `producer:<token name>:<value>`, so a
+producer row never joins a Station conversation, agent or engine, and a
+re-created token with the same name shares the old one's namespace. Agents reading monitoring through station-control see producer
 rows marked as external, unverified data, and the Monitoring view shows a
 `Producer:` label on them.
 

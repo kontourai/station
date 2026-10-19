@@ -163,10 +163,20 @@ function validateAgentEvent(
 
 /** Prefix of every identity a telemetry producer reported. */
 const PRODUCER_ID_PREFIX = 'producer:';
-/** Session, trace and tool-call identities a producer row may carry. */
+/**
+ * Every identity a producer row may carry that a reader groups, filters or
+ * de-duplicates by: session, trace, tool-call and event ids, and the agent
+ * and engine. Namespacing the agent and engine (rather than dropping producer
+ * rows from agent aggregates) keeps Insights honest both ways: a producer
+ * claiming agent `default` or engine `station` adds nothing to that Station
+ * agent or engine, and its own activity still appears, under its own name.
+ */
 const PRODUCER_NAMESPACED_KEYS: readonly string[] = [
   K.TRACE_ID,
   K.TOOL_CALL_ID,
+  K.AT_EVENT_ID,
+  K.AGENT_SLUG,
+  K.PROVIDER,
   ...MONITORING_SESSION_ID_KEYS,
 ];
 

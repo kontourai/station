@@ -1860,13 +1860,21 @@ session is not a Station session. The owner comes from the admitted token,
 never from the body, and stays on each row: revoking a token stops further
 ingest but its earlier rows remain readable by their owner.
 
-Every identity a producer reports (session, conversation, trace and tool-call
-ids) is stored as `producer:<token name>:<reported id>`. A producer that
-reports a real Station session id therefore never joins that session: its
-rows do not appear under the Station conversation in Monitoring, Insights or
-the station-control `read_monitoring_events` tool, which also marks every
-producer row with `station.external_producer_notice` as external, unverified
-data. The Monitoring view names the producer on each such row.
+Every identity a producer reports (session, conversation, trace, tool-call and
+event ids, the agent slug and the engine) is stored as
+`producer:<token name>:<reported value>`. A producer that reports a real
+Station session, agent or engine therefore never joins it: its rows do not
+appear under that conversation, match `?agent=` or `?engine=` for it, or count
+toward it in Insights, and its activity shows under its own namespaced agent
+instead. Re-creating a revoked token under the same name reuses that
+namespace, so the new token's rows group with the old one's.
+
+The station-control `read_monitoring_events` tool puts
+`station.external_producer_notice` first on every producer row and once at
+the top of its result when any are present. The Monitoring view names the
+producer on each such row. Other readers (the CLI, the SDK, raw
+`/monitoring/events` and its SSE stream) receive `station.telemetry.producer`
+on those rows but no notice text.
 
 A request counts as from this machine when it arrives on a loopback socket
 with a loopback `Host`, carries no forwarding or Tailscale headers and has no
