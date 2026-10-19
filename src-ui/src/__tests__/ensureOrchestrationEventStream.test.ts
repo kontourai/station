@@ -467,10 +467,29 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     );
     // The terminal event refreshed immediately; the turn.started fell inside
     // its window...
-    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    const sessionRefreshes = () =>
+      invalidateQueries.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters) ===
+          JSON.stringify({ queryKey: ['orchestration-sessions'] }),
+      );
+    expect(sessionRefreshes()).toHaveLength(1);
+    expect(
+      invalidateQueries.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters) ===
+          JSON.stringify({
+            queryKey: [
+              'conversation-inbox',
+              'https://ensure-orchestration-readmodel-first-turn.example.test',
+            ],
+            type: 'active',
+          }),
+      ),
+    ).toHaveLength(2);
     // ...and is deferred, not dropped: it fires once the window closes.
     await vi.advanceTimersByTimeAsync(1000);
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(sessionRefreshes()).toHaveLength(2);
     expect(invalidateQueries).toHaveBeenLastCalledWith({
       queryKey: ['orchestration-sessions'],
     });
