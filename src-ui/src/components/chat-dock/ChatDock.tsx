@@ -2403,22 +2403,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             collapseDockForNavigation();
             showSurface('activity', { session });
           },
-          inventory: sessionInventoryOffered
-            ? {
-                ready: sessionInventoryReady,
-                onOpen: (trigger: HTMLElement) => {
-                  if (
-                    !toggleSessionInventoryOccurrence({
-                      hostId: sessionInventoryHostId,
-                      projectId: inventoryProjectId,
-                      executionRead: activeOrchestrationSessionRead,
-                      trigger,
-                    })
-                  )
-                    showToast('Chat inventory is not ready for this chat yet.');
-                },
-              }
-            : undefined,
+          inventory:
+            sessionInventoryOffered && sessionInventoryReady
+              ? {
+                  onOpen: (trigger: HTMLElement) => {
+                    if (
+                      !toggleSessionInventoryOccurrence({
+                        hostId: sessionInventoryHostId,
+                        projectId: inventoryProjectId,
+                        executionRead: activeOrchestrationSessionRead,
+                        trigger,
+                      })
+                    )
+                      showToast(
+                        'Chat inventory is not ready for this chat yet.',
+                      );
+                  },
+                }
+              : undefined,
         }
       : null;
   /**

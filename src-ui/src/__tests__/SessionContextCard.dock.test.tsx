@@ -687,6 +687,28 @@ describe('one inventory host per chat', () => {
   );
 });
 
+describe('the Chat inventory footer', () => {
+  test('is absent while no host has registered (no authority yet), never a standing loading label', async () => {
+    fixture.authority = undefined;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(card()!.textContent).not.toContain('Chat inventory');
+  });
+
+  test('appears, pressable, once the host registers', async () => {
+    fixture.authority = AUTHORITY;
+    renderDock();
+    const footer = await screen.findByRole('button', {
+      name: 'Chat inventory',
+    });
+    expect(footer).toHaveProperty('disabled', false);
+    expect(card()!.contains(footer)).toBe(true);
+  });
+});
+
 describe('linked pull requests', () => {
   test('a linked pull request shows its row, which opens Chat details', async () => {
     fixture.authority = AUTHORITY;

@@ -34,8 +34,12 @@ export interface SessionContextCardProps {
   conversationId: string | null;
   /** Chat details, where the linked pull requests are managed. */
   onOpenChatDetails?: () => void;
+  /**
+   * Chat inventory, offered only once its host has registered: a host that
+   * never arrives (no authority yet, a chunk that failed) leaves no footer,
+   * rather than a "loading" label that may never resolve.
+   */
   inventory?: {
-    ready: boolean;
     onOpen: (trigger: HTMLElement) => void;
   };
 }
@@ -279,13 +283,12 @@ export function SessionContextRows({
             type="button"
             className="session-context-card__link"
             aria-haspopup="dialog"
-            disabled={!inventory.ready}
             onClick={(event) => {
               const trigger = inventoryTrigger ?? event.currentTarget;
               wrap(() => inventory.onOpen(trigger));
             }}
           >
-            {inventory.ready ? 'Chat inventory' : 'Chat inventory — loading'}
+            Chat inventory
           </button>
         </div>
       ) : null}
