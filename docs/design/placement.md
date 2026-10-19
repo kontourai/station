@@ -1898,11 +1898,13 @@ server read beyond the pull request links Chat details already reads.
   body — and both must read one derivation. A phone never shows it inline.
   By the inbox's own width rule a full-width bottom dock keeps it from about
   1211px with the inbox open (920px without); a side dock folds it.
-- **One copy of each fact.** While the card shows, the header's branch badge,
-  its "This chat: <project>" lead-in and the More trigger's running-count
-  badge stand down. "Shows" is the card's own report that it has mounted,
-  not the width answer alone: while its lazy chunk loads, or if it fails to
-  load, the header keeps all three. The card's props are memoised on the
+- **One copy of each fact.** While the card shows, the header's branch badge
+  and the More trigger's running-count badge stand down. "Shows" is the
+  card's own report that it has mounted, not the width answer alone: while
+  its lazy chunk loads, or if it fails to load, the header keeps both. The
+  header's "This chat: <project>" lead-in stays: it is the contrast with the
+  badge's bound project (#4525 MED-1), which the card's Workspace row does
+  not state beside the badge. The card's props are memoised on the
   facts they show, so the dock's resize frames and stream renders do not
   re-render it. While it is folded,
   a chip after the project context names the ladder word and opens the same

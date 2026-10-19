@@ -2850,12 +2850,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? undefined
                         : gitStatus
                     }
-                    // The card's Workspace row names this chat's project, so
-                    // the header's "This chat: <project>" stands down too.
+                    // Kept while the session context card shows: the lead-in
+                    // is the owner-ruled contrast beside the badge (#4525
+                    // MED-1), so the header never implies the transcript is
+                    // the bound project's. The card's Workspace row is the
+                    // chat's project, not that contrast.
                     sessionProjectMismatchLabel={
-                      sessionContextCardShown
-                        ? null
-                        : visibleSessionProjectMismatchLabel
+                      visibleSessionProjectMismatchLabel
                     }
                     projects={projects}
                     onSelectProject={handleSelectProject}

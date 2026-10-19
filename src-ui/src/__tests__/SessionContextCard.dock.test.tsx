@@ -512,7 +512,9 @@ describe('session context card visibility follows the dock body width', () => {
     await waitFor(() => expect(card()).not.toBeNull());
     expect(branchBadge()).toBeNull();
     expect(moreBadge()).toBeNull();
-    expect(mismatchLabel()).toBeNull();
+    // Not a repeat: the lead-in is the header's contrast with the bound
+    // project (#4525 MED-1), so it stays beside the badge.
+    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
     expect(chip()).toBeNull();
     const aside = card()!;
     expect(aside.textContent).toContain('feature/parser');
@@ -823,8 +825,8 @@ describe('linked pull requests', () => {
     const row = await screen.findByRole('button', {
       name: '1 linked pull request — open chat details',
     });
-    // Shown, so the header's lead-in stands down.
-    expect(mismatchLabel()).toBeNull();
+    // The card is shown and the header's lead-in still stands.
+    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
     expect(row.textContent).toContain('#42');
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();
