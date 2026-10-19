@@ -19,6 +19,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY packages/telemetry-broker/package.json packages/telemetry-broker/
 COPY packages/monument/package.json packages/monument/
+COPY packages/agent-runtime/package.json packages/agent-runtime/
 COPY packages/supervisor/package.json packages/supervisor/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
 COPY examples/fieldwork-review/package.json examples/fieldwork-review/
