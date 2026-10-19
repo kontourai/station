@@ -419,7 +419,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.getByText('Operator Person')).toBeTruthy();
   });
 
-  it('keeps Basis inside Provenance and never renders it as a sibling action', async () => {
+  it('puts Basis on the answer row rather than inside Provenance', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -428,20 +428,25 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       provenance: envelope,
     });
 
-    expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
-    await openProvenanceDialog();
+    const chip = await screen.findByRole(
+      'button',
+      { name: /^Basis/ },
+      { timeout: 10_000 },
+    );
     expect(
-      await screen.findByRole(
-        'button',
-        { name: /^Basis/ },
-        { timeout: 10_000 },
-      ),
-    ).toBeTruthy();
-    expect(
-      document
-        .querySelector('.turn-provenance__detail')
-        ?.contains(screen.getByRole('button', { name: /^Basis/ })),
+      document.querySelector('.turn-footer__actions')?.contains(chip),
     ).toBe(true);
+    await openProvenanceDialog();
+    const detail = document.querySelector('.turn-provenance__detail');
+    expect(detail).not.toBeNull();
+    // One Basis entry: the dialog no longer repeats it (it opened Basis
+    // behind its own modal, where nothing visibly happened).
+    expect(
+      [...(detail?.querySelectorAll('button') ?? [])].filter((button) =>
+        button.textContent?.startsWith('Basis'),
+      ),
+    ).toEqual([]);
+    expect(screen.getAllByRole('button', { name: /^Basis/ })).toEqual([chip]);
   });
 
   it('renders no provenance affordance on a user row', () => {
@@ -520,13 +525,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
    * ABORTED turn asked for a basis the server can only refuse and rendered that
    * refusal as "Basis · Unavailable" on a healthy instance.
    */
-  describe('the Basis affordance asks only what the route can answer', () => {
-    /** The affordance lives inside the dialog-hosted card's detail. */
-    async function expandProvenance() {
-      await openProvenanceDialog();
-      await act(async () => {});
-    }
-
+  describe('the Basis chip asks only what the route can answer', () => {
     it('offers Basis for a turn whose envelope records a completed outcome', async () => {
       renderRow({
         role: 'assistant',
@@ -535,9 +534,8 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
         answerEligible: true,
         provenance: envelope,
       });
-      await expandProvenance();
 
-      // The Basis affordance mounts through a lazy chunk inside the dialog.
+      // The chip mounts through a lazy chunk in the answer's footer.
       expect(
         await screen.findByRole(
           'button',
@@ -555,7 +553,8 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
         answerEligible: true,
         provenance: { ...envelope, outcome: 'aborted' },
       });
-      await expandProvenance();
+      await openProvenanceDialog();
+      await act(async () => {});
 
       expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
       // The rest of the provenance card is unaffected: an aborted turn still

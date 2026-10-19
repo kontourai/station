@@ -49,8 +49,10 @@ const loadConnectedAttachUserInputToTaskButton = () =>
     default: module.ConnectedAttachUserInputToTaskButton,
   }));
 
+// The Basis chip mounts on every eligible settled answer, so it loads its
+// own small chunk rather than the Task picker's.
 const loadConnectedAnswerBasisAffordance = () =>
-  import('./AttachAnswerToTaskButton').then((module) => ({
+  import('./ConnectedAnswerBasisAffordance').then((module) => ({
     default: module.ConnectedAnswerBasisAffordance,
   }));
 
@@ -636,6 +638,39 @@ function MessageBubbleComponent({
         )}
     </>
   );
+  // #1536 B3: the same precondition the Basis route applies. A turn whose
+  // envelope records an aborted outcome can only ever be answered 404, so it
+  // gets no Basis entry; nor does the still-streaming last answer.
+  const basisChip =
+    isAssistant &&
+    msg.turnId &&
+    answerSessionId &&
+    msg.answerEligible === true &&
+    turnCompletedNormally(msg) &&
+    (!isLastMessage || !activeSession.isThinking) ? (
+      <LazyBoundary
+        load={loadConnectedAnswerBasisAffordance}
+        componentProps={{
+          projectSlug: activeSession.projectSlug,
+          chatStoreId: activeSession.id,
+          sessionId: answerSessionId,
+          turnId: msg.turnId,
+        }}
+        pending={null}
+        shareAcrossMounts
+        // A chunk that failed to load leaves a visible, retryable chip
+        // rather than an answer that silently lost its Basis entry.
+        unavailable={(retry) => (
+          <button
+            type="button"
+            className="answer-basis-chip answer-basis-chip--unavailable"
+            onClick={retry}
+          >
+            Basis didn’t load · Retry
+          </button>
+        )}
+      />
+    ) : null;
   // A settled answer's per-turn actions: the desktop footer row, or the phone
   // sheet's action group.
   const footerActions = (
@@ -651,6 +686,7 @@ function MessageBubbleComponent({
           {msg.traceId.slice(-8)}
         </a>
       )}
+      {!isMobile && basisChip}
       {desktopCopy}
       {((msg.turnId &&
         answerSessionId &&
@@ -694,29 +730,6 @@ function MessageBubbleComponent({
                         pending={null}
                       />
                     ),
-                    basisContent:
-                      msg.turnId &&
-                      answerSessionId &&
-                      msg.answerEligible === true &&
-                      // #1536 B3: the same precondition the Basis route
-                      // applies. A turn whose envelope records an aborted
-                      // outcome can only ever be answered 404, and the
-                      // affordance rendered that refusal as
-                      // "Basis · Unavailable" on a healthy instance.
-                      turnCompletedNormally(msg) &&
-                      (!isLastMessage || !activeSession.isThinking) ? (
-                        <LazyBoundary
-                          load={loadConnectedAnswerBasisAffordance}
-                          componentProps={{
-                            projectSlug: activeSession.projectSlug,
-                            chatStoreId: activeSession.id,
-                            sessionId: answerSessionId,
-                            turnId: msg.turnId,
-                          }}
-                          pending={null}
-                          unavailable={() => null}
-                        />
-                      ) : null,
                   }
                 : undefined,
             reasoning:
@@ -882,6 +895,7 @@ function MessageBubbleComponent({
           {time}
         </time>
       )}
+      {basisChip}
       {inlineCopy}
       {details}
     </div>

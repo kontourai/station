@@ -1,4 +1,3 @@
-import { AnswerBasisAffordance } from '@kontourai/station-basis-pane/answer-basis-affordance';
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { useCallback, useEffect, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -6,6 +5,12 @@ import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
 import { openSessionInventoryOccurrence } from '../chat-dock/sessionInventoryOccurrence';
 
+/**
+ * The answer's Basis chip: one tap from a settled answer's own action row to
+ * that exact answer's Basis (`current-answer` scope for this session and
+ * turn), through the same session-inventory host or Basis Pane launcher every
+ * other Basis entry uses.
+ */
 export function ConnectedAnswerBasisAffordance({
   projectSlug,
   chatStoreId,
@@ -87,18 +92,23 @@ export function ConnectedAnswerBasisAffordance({
   ]);
   return (
     <>
-      <span>
-        <AnswerBasisAffordance
-          sessionId={sessionId}
-          turnId={turnId}
-          enabled
-          onOpen={(trigger) => {
-            setEnabled(true);
-            if (projectId || !projectSlug) launch(trigger, projectId);
-            else setPendingTrigger(trigger);
-          }}
-        />
-      </span>
+      {/* The chip states no standing, source count or gap count: nothing on
+          the row computes one, and reading Basis per rendered answer would
+          fire one request per message. The opened Basis states all three. */}
+      <button
+        type="button"
+        className="answer-basis-chip"
+        title="Open the basis for this answer"
+        aria-busy={pendingTrigger ? true : undefined}
+        onClick={(event) => {
+          const trigger = event.currentTarget;
+          setEnabled(true);
+          if (projectId || !projectSlug) launch(trigger, projectId);
+          else setPendingTrigger(trigger);
+        }}
+      >
+        Basis
+      </button>
       {fallback}
     </>
   );

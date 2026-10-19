@@ -33,17 +33,6 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../workspace-panes/BasisPaneLauncher', () => ({
   useBasisPaneLauncher: () => ({ openBasis: mocks.openBasis, fallback: null }),
 }));
-vi.mock('@kontourai/station-basis-pane/answer-basis-affordance', () => ({
-  AnswerBasisAffordance: ({
-    onOpen,
-  }: {
-    onOpen(trigger: HTMLButtonElement): void;
-  }) => (
-    <button type="button" onClick={(event) => onOpen(event.currentTarget)}>
-      Basis
-    </button>
-  ),
-}));
 const { ConnectedAnswerBasisAffordance } = await import(
   '../ConnectedAnswerBasisAffordance'
 );
@@ -58,8 +47,8 @@ describe('ConnectedAnswerBasisAffordance', () => {
     unregisterHost?.();
     unregisterHost = registerSessionInventoryHost('chat-host', {
       authorityKey: mocks.authority.authorityKey,
-      chatStoreId: 'session-a',
-      executionId: 'session-a',
+      chatStoreId: 'agent:1792425046978',
+      executionId: 'agent:1792425046978',
     });
   });
 
@@ -70,7 +59,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
     render(
       <ConnectedAnswerBasisAffordance
         projectSlug="project-route-slug"
-        sessionId="session-a"
+        sessionId="agent:1792425046978"
         turnId="turn-a"
       />,
     );
@@ -92,7 +81,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       projectId: 'project-canonical-id',
       requestedScope: {
         kind: 'current-answer',
-        sessionId: 'session-a',
+        sessionId: 'agent:1792425046978',
         turnId: 'turn-a',
       },
     });
@@ -113,7 +102,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
     render(
       <ConnectedAnswerBasisAffordance
         projectSlug="project-route-slug"
-        sessionId="session-a"
+        sessionId="agent:1792425046978"
         turnId="turn-a"
       />,
     );

@@ -2159,6 +2159,39 @@
   min-height: 44px;
 }
 
+/* The answer's Basis chip: the one labelled control in the answer's action
+   row, drawn in the copy and ⋯ chip family (28px on a pointer). Touch gets
+   the 44px floor here and in the phone's meta row. Styled from the entry
+   sheet so the chip's own unavailable state is styled when its chunk is not. */
+.answer-basis-chip {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--k-text-xs);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.answer-basis-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.answer-basis-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.turn-footer__actions .answer-basis-chip,
+.message-meta .answer-basis-chip {
+  min-height: 44px;
+}
+
 @media (hover: hover) {
   .turn-footer__actions {
     opacity: 0;
@@ -2168,6 +2201,10 @@
 
   .turn-footer__actions .message__rating {
     min-height: 0;
+  }
+
+  .turn-footer__actions .answer-basis-chip {
+    min-height: 28px;
   }
 
   .message:is(:hover, :focus-within) .turn-footer__actions {
