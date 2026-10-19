@@ -3141,7 +3141,13 @@ are also exported from `@kontourai/station-sdk/client`.
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
-  current-answer inventory cache before active observers refetch.
+  current-answer inventory cache before active observers refetch. A mount
+  shows no cached projection until its own read lands; after that, a
+  background refetch keeps the loaded projection in `data`. Only lost
+  authority (401, 403 or the route's non-disclosing 404) tombstones the
+  scope's cached projection and pages. A 503, a network failure or a
+  projection the contract refuses is a query `error` beside whatever was
+  already loaded, and is not retried automatically.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.

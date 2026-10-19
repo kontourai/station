@@ -223,7 +223,12 @@ function ConnectedSessionInventorySurface({
   const pageFailed = Boolean(
     page.error && nextPage?.scopeKey === selectedScopeKey,
   );
-  const unavailable = Boolean(inventory.error || pageFailed);
+  // A failed refresh of an inventory already on screen keeps it, marked as
+  // not refreshed; only a read with nothing to show is unavailable. Lost
+  // authority tombstones the data in the SDK, so it lands here too.
+  const unavailable = Boolean(
+    (inventory.error && !inventory.data) || pageFailed,
+  );
   if (unavailable) {
     return (
       <section role="alert">
@@ -232,7 +237,11 @@ function ConnectedSessionInventorySurface({
           <button type="button" onClick={() => void page.refetch()}>
             Retry page
           </button>
-        ) : null}
+        ) : (
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        )}
       </section>
     );
   }
@@ -240,6 +249,14 @@ function ConnectedSessionInventorySurface({
     return <SkeletonBlock count={4} label="Loading Session inventory" />;
   return (
     <>
+      {inventory.error ? (
+        <p role="status">
+          Couldn’t refresh this inventory; showing the last read.{' '}
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       {model.scope.kind === 'current-answer' &&
       projection?.scope.kind === 'current-answer' &&
       projection.basis ? (

@@ -60,12 +60,18 @@ type ProtectedConfig<T> = QueryConfig<T> & { requestScope?: ApiRequestScope };
 function sameScope(left: SessionInventoryScope, right: SessionInventoryScope) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
+/**
+ * Tombstones (sets to `null`) every cached projection and page for `scope`
+ * under `requestScope`'s authority. It never removes an entry: removing a
+ * query a mounted observer still holds makes that observer re-create and
+ * refetch it, and a read that keeps being refused then loops forever.
+ */
 export function clearSessionInventoryCache(
   client: ReturnType<typeof useQueryClient>,
   scope: SessionInventoryScope,
   requestScope?: ApiRequestScope,
 ) {
-  client.removeQueries({
+  const matching = client.getQueryCache().findAll({
     predicate: (query) => {
       const key = query.queryKey;
       if (!Array.isArray(key)) return false;
@@ -80,6 +86,21 @@ export function clearSessionInventoryCache(
       );
     },
   });
+  for (const query of matching) query.setState({ data: null });
+}
+/**
+ * Only a refusal that means this principal may not (or may no longer) read the
+ * Session revokes what it already holds. The route answers a denied, missing
+ * or stale-principal read alike (404, non-disclosing); 401 and 403 come from
+ * the authentication layer. A 503, a network failure or a projection the
+ * contract refuses (status 0) is an ordinary failed read: what was already
+ * authorized stays, and the surface reports the failure.
+ */
+function lostAuthority(error: unknown): boolean {
+  return (
+    error instanceof SessionInventoryRequestError &&
+    (error.status === 401 || error.status === 403 || error.status === 404)
+  );
 }
 function useProtected<T>(
   queryKey: (string | number | object)[],
@@ -100,8 +121,7 @@ function useProtected<T>(
       try {
         return await fetcher(signal);
       } catch (error) {
-        if (!signal?.aborted && error instanceof SessionInventoryRequestError)
-          (onRevoke ?? revoke)();
+        if (!signal?.aborted && lostAuthority(error)) (onRevoke ?? revoke)();
         throw error;
       }
     },
@@ -114,16 +134,18 @@ function useProtected<T>(
       cancelWhenInactive: config?.cancelWhenInactive ?? true,
     },
   );
+  // Nothing cached before this mount is shown until this mount's own read
+  // settles. After that, a background refetch keeps what is on screen: a
+  // refused one tombstones it (`null`, above), and a merely failed one leaves
+  // it beside `error`, for the surface to mark as not refreshed.
+  const data =
+    query.isFetchedAfterMount && query.data != null ? query.data : undefined;
   return {
     ...query,
-    data:
-      query.isFetchedAfterMount &&
-      query.status === 'success' &&
-      !query.isFetching
-        ? (query.data ?? undefined)
-        : undefined,
+    data,
     isLoading:
-      !query.isFetchedAfterMount || query.isLoading || query.isFetching,
+      !query.isFetchedAfterMount ||
+      ((query.isLoading || query.isFetching) && data === undefined),
   };
 }
 export function useSessionInventoryQuery(
