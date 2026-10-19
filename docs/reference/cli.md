@@ -2156,6 +2156,48 @@ client. An update that needs an operator is not visible from a client: in that
 state the service runs no Station to answer, so the card keeps waiting and
 names `station service status --instance=<name>` on the host.
 
+A request can also do half of that (#3851). A **stage** request (`mode:
+"stage"`) is staged the same way and ends as `staged` in
+`runtime/update-request-result.json`. The launcher is never asked, and the
+running version keeps serving. While it stages, the running version records
+the installer's step and, while downloading, the archive's size on disk
+against the signed manifest's size in `runtime/update-stage-progress.json`
+(only `install.sh` reports these; on Windows staging shows no step). An
+**apply** request (`mode: "apply"`) names a staged version and hands it to the
+launcher's trial without downloading anything; it fails when that version is
+not staged. A request with no mode (what `install.sh` and older clients write)
+does both, as before, and skips the download when the version is already
+staged. The launcher itself is unchanged by this.
+
+A server the launcher runs uses these requests itself:
+- **Checks:** it checks for a release about a minute after it boots, and when
+  a client whose version is newer than the server's connects. Each check is
+  cached for 30 minutes.
+- **Automatic download:** `serverUpdateDownloadPolicy` (`never`, `after-24h` by
+  default, or `immediately`; see
+  [configuration](config.md)) stages an available version once it has been
+  available that long. The clock starts at the first check that saw the
+  version and is kept in `runtime/server-update.json` across restarts.
+  Downloading never restarts the server.
+- **Restart:** only a person's Restart, or the **Update when idle** request
+  they made, restarts the server. Update when idle is also kept in
+  `runtime/server-update.json`. It applies the staged version once no agent
+  turn is running, and can be cancelled.
+
+The client API:
+- `GET /api/system/core-update/state` returns the state. Every change is also
+  pushed to clients as the `server-update:changed` event.
+- `POST /api/system/core-update` takes `{"action":"stage"}` or
+  `{"action":"apply","version":"<staged version>"}`. With no body it is the
+  one-click update.
+- `PUT` and `DELETE /api/system/core-update/apply-when-idle` set and cancel
+  Update when idle.
+- `GET /api/system/core-update/running-turns` lists the agent turns a restart
+  would interrupt, as far as the caller may read those sessions.
+- The progress routes report `staged` only to a client that asks with
+  `?staged=1`. An older client's parser would read that state as unreadable
+  progress.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
