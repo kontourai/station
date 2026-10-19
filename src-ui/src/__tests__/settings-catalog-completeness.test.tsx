@@ -655,7 +655,7 @@ describe('settings catalog completeness', () => {
       container.querySelector(
         '[aria-label="This Station settings"] .settings__scope-caption',
       )?.textContent,
-    ).toContain('Saved to this Station');
+    ).toContain('Station');
   });
 
   /**
@@ -728,11 +728,9 @@ describe('settings catalog completeness', () => {
    * promises over nothing. A caption is a claim about contents; with no
    * contents it is a claim about nothing.
    */
-  describe('scope-group captions', () => {
-    const CONTROL_CAPTION = 'Saved to this Station.';
-    const STATION_CAPTION = 'Saved to this Station.';
-    const DEVICE_CAPTION =
-      'Personal choices follow your account on this Station. Device settings stay here.';
+  describe('scope-group indicators', () => {
+    const CONTROL_CAPTION = 'Station';
+    const STATION_CAPTION = 'Station';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -752,14 +750,19 @@ describe('settings catalog completeness', () => {
       expect(captions(container)).toEqual([CONTROL_CAPTION]);
     });
 
-    test('a This device view shows only the device caption', async () => {
+    test('personal preferences show their scope beside the row instead of an explanatory caption', async () => {
       window.history.replaceState({}, '', '/settings?view=chat');
       const { container } = await renderSettings();
 
       await waitFor(() =>
         expect(container.querySelector('#section-chat')).toBeTruthy(),
       );
-      expect(captions(container)).toEqual([DEVICE_CAPTION]);
+      expect(captions(container)).toEqual([]);
+      expect(
+        within(container.querySelector('#section-chat')!).getAllByText(
+          'This device',
+        ).length,
+      ).toBeGreaterThan(0);
     });
 
     test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
@@ -767,7 +770,11 @@ describe('settings catalog completeness', () => {
       await waitFor(() =>
         expect(container.querySelector('#section-knowledge')).toBeTruthy(),
       );
-      expect(captions(container).length).toBeGreaterThanOrEqual(4);
+      expect(captions(container)).toEqual([
+        STATION_CAPTION,
+        CONTROL_CAPTION,
+        STATION_CAPTION,
+      ]);
     });
 
     /**

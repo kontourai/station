@@ -62,6 +62,14 @@ sound choices open under **Notification sounds** and still save and preview on
 this device. These presentation changes do not change settings persistence,
 permissions, or runtime defaults.
 
+Scope indicators use short **Account**, **This device**, and **Station** pills.
+Account and Station pills use quiet theme tints; the written label carries the
+meaning. Account means this person’s preferences on the connected Station, not
+cross-Station cloud sync. Scope details are available on hover. Reset actions
+sit with their controls, separate from the scope label. The mixed personal/device
+group no longer repeats a paragraph explaining storage. Experimental switches
+have their own **Experimental features** heading and spacing.
+
 ## Experimental project tools
 
 Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
@@ -126,7 +134,7 @@ General → Your account. It copies only portable choices that remain unset unde
 the server's mutation lock. It keeps the old device record and never imports
 execution permissions, grants, hardware selection or geometry. Device reset
 excludes account preferences while an account is active. Per-setting resets
-use **Use default** to remove the account value and use the registry default,
+use **Reset** beside the control to remove the account value and use the registry default,
 including both fields of Answer delivery. Approval defaults offer **Use inherited
 default**, which resumes the Agent → Station → engine chain.
 

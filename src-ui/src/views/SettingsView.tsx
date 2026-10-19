@@ -2,6 +2,7 @@ import { SectionNavigation } from '../components/SectionNavigation';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import { DeveloperFeatures } from './settings/DeveloperFeatures';
+import { SettingsScopeBadge } from './settings/SettingsScopeBadge';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -371,28 +372,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
-  /**
-   * Whether a scope group has anything to show (#2182, review L7).
-   *
-   * Each `.settings__scope-group` opens with the storage rule its sections
-   * are saved under. Three of the four rendered that caption unconditionally,
-   * so a `?view=` naming one section — or a search matching rows in one
-   * group — printed "Saved to this Station", "Saved to this Station — what
-   * agents may do…" and "Saved to this device only" over nothing at all: a
-   * promise about a box with no contents, twice over.
-   *
-   * Derived from the catalog rather than listed, so a new section joins its
-   * group's visibility the day it is added. It can be a plain `some` over
-   * `sectionVisible` because that set already carries the search filter, the
-   * active `?view=`, and the operator gate on all three paths (search,
-   * overview, direct view — the last since review M-b).
-   *
-   * What it does NOT know is whether a selected section will render anything.
-   * It counts SELECTION, not content: a selected section whose component
-   * returns null (for instance while its own data loads) still makes its
-   * group visible, so the caption can precede it for that interval. That
-   * transient is accepted; this function claims only what it computes.
-   */
+  /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
       (section) => section.group === group && sectionVisible(section.id),
@@ -958,12 +938,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     <>
       <div className="settings">
         {highlightNotice}
-        {/* archive#1826: the three-card "This device / Station / Defaults"
-            legend is gone. It restated the taxonomy the grouped nav below
-            already shows, in implementation vocabulary, and treated
-            "Defaults" (a precedence rule) as a peer of two storage
-            locations. Each scope group's caption states the persistence
-            fact where it applies instead. */}
         {error && (
           <div className="settings__error-banner">
             <span className="settings__error-banner-msg">{error}</span>
@@ -1044,9 +1018,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="This Station settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('system') && (
                   <>
@@ -1236,9 +1210,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Control settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('permissions') && (
                   <StationConfigSection
@@ -1292,11 +1266,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Personal and device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Personal choices follow your account on this Station. Device
-                  settings stay here.
-                </p>
-
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
                     <PageRow
@@ -1619,9 +1588,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Knowledge settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
                 <KnowledgeStoreSection />
               </section>
             )}

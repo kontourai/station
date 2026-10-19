@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { SettingsScopeBadge } from './SettingsScopeBadge';
 import { SETTINGS_CATALOG } from './settings-catalog';
 
 export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
@@ -26,12 +27,12 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
       ? undefined
       : entry?.scope === 'account'
         ? account.status === 'account'
-          ? 'Account · this Station'
+          ? 'Account'
           : account.status === 'loading'
-            ? 'Account preferences loading'
+            ? 'Account loading'
             : account.status === 'error'
-              ? 'Account preferences unavailable'
-              : 'This device · sign in to share'
+              ? 'Account unavailable'
+              : 'This device'
         : entry?.scope === 'device'
           ? 'This device'
           : undefined;
@@ -39,29 +40,50 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
     <PageRow
       {...props}
       statusPlacement="label"
+      control={
+        account.status === 'account' && canReset ? (
+          <div className="settings__row-controls">
+            {props.control}
+            <Button
+              size="sm"
+              variant="link"
+              disabled={account.saving}
+              aria-label={`Reset ${entry?.title ?? key} to default`}
+              title="Reset this preference to its default."
+              onClick={() =>
+                account.save(
+                  key
+                    ? { [key]: null }
+                    : { smoothReveal: null, bufferedDelivery: null },
+                )
+              }
+            >
+              Reset
+            </Button>
+          </div>
+        ) : (
+          props.control
+        )
+      }
       status={
         label ? (
           <>
             {props.status}
-            <span className="settings__row-scope">{label}</span>
-            {account.status === 'account' && canReset && (
-              <Button
-                size="sm"
-                variant="link"
-                disabled={account.saving}
-                aria-label={`Use default for ${entry?.title ?? key}`}
-                title="Remove your saved choice and use the built-in default."
-                onClick={() =>
-                  account.save(
-                    key
-                      ? { [key]: null }
-                      : { smoothReveal: null, bufferedDelivery: null },
-                  )
-                }
-              >
-                Use default
-              </Button>
-            )}
+            <SettingsScopeBadge
+              scope={
+                entry?.scope === 'account' && account.status !== 'device'
+                  ? 'account'
+                  : 'device'
+              }
+              label={label}
+              description={
+                entry?.scope === 'account' && account.status === 'loading'
+                  ? 'Account preferences are loading.'
+                  : entry?.scope === 'account' && account.status === 'error'
+                    ? 'Account preferences could not be loaded.'
+                    : undefined
+              }
+            />
           </>
         ) : (
           props.status

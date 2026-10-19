@@ -297,14 +297,14 @@ test('personal display overrides can return to built-in defaults without changin
     .mockResolvedValueOnce({ schemaVersion: 1, values: {} });
   const view = render(tree(client()));
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Use default for Theme' }),
+    await screen.findByRole('button', { name: 'Reset Theme to default' }),
   );
   await waitFor(() =>
     expect(screen.getByLabelText('Current theme').textContent).toBe('dark'),
   );
   expect(fixture.patch.mock.calls[0]?.[1]).toEqual({ theme: null });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Use default for Answer delivery' }),
+    screen.getByRole('button', { name: 'Reset Answer delivery to default' }),
   );
   await waitFor(() => expect(fixture.patch).toHaveBeenCalledTimes(2));
   expect(fixture.patch.mock.calls[1]?.[1]).toEqual({
@@ -313,7 +313,9 @@ test('personal display overrides can return to built-in defaults without changin
   });
   await waitFor(() =>
     expect(
-      screen.queryByRole('button', { name: 'Use default for Answer delivery' }),
+      screen.queryByRole('button', {
+        name: 'Reset Answer delivery to default',
+      }),
     ).toBeNull(),
   );
   view.unmount();

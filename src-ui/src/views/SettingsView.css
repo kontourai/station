@@ -1074,17 +1074,17 @@
   .settings__section .page-row__control:has(input, select, textarea) {
     width: 100%;
   }
-  .settings__section .page-row:has(.page-row__control > [role="switch"]) {
+  .settings__section .page-row:has(.page-row__control [role="switch"]) {
     flex-direction: row;
     align-items: center;
   }
   .settings__section
-    .page-row:has(.page-row__control > [role="switch"])
+    .page-row:has(.page-row__control [role="switch"])
     .page-row__content {
     flex: 1;
   }
   .settings__section
-    .page-row:has(.page-row__control > [role="switch"])
+    .page-row:has(.page-row__control [role="switch"])
     .page-row__aside {
     flex: 0 0 auto;
     align-self: center;
@@ -1326,8 +1326,7 @@
   min-width: 0;
   max-width: 100%;
 }
-.settings__section .page-row__status,
-.settings__row-scope {
+.settings__section .page-row__status {
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
@@ -1421,4 +1420,41 @@
 }
 .settings__section .page-row__control > button:not([role="switch"]) {
   width: auto;
+}
+
+.settings__scope-pill.badge {
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-1) var(--k-space-2);
+  font-size: var(--k-text-xs);
+  font-weight: 500;
+  line-height: var(--k-leading-normal);
+  white-space: nowrap;
+}
+.settings__scope-pill--account.badge {
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-action) 10%, var(--k-panel));
+  border-color: color-mix(in srgb, var(--k-action) 24%, var(--k-line));
+}
+.settings__scope-pill--device.badge {
+  color: var(--k-text-muted);
+  background: var(--k-panel);
+  border-color: var(--k-line);
+}
+.settings__scope-pill--station.badge {
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-brand) 10%, var(--k-panel));
+  border-color: color-mix(in srgb, var(--k-brand) 24%, var(--k-line));
+}
+.settings__row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.settings__experimental-features {
+  margin-top: var(--k-space-4);
+}
+.settings__experimental-features > h3 {
+  margin: 0;
 }
