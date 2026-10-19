@@ -13,6 +13,8 @@ vi.mock('../views/monitoring-utils', () => ({
 vi.mock('../views/monitoring/view-utils', () => ({
   getHistoricalAgentSlugs: () => ['historical-agent'],
   getMonitoringAgentCountLabel: () => '2 agents',
+  getProducerAgentSlugs: (events: unknown[]) =>
+    events.length > 0 ? ['producer:flow-agents:default'] : [],
   getRunningConversations: () => [{ id: 'conv:abc12345', color: '#00aa88' }],
 }));
 
@@ -194,5 +196,22 @@ describe('MonitoringSidebar', () => {
       expect(node.getAttribute('role')).not.toBe('button');
       node = node.parentElement;
     }
+  });
+
+  test('lists external producer agents in their own labelled group', () => {
+    render(
+      <MonitoringSidebar
+        stats={{ summary: {}, agents: [] } as any}
+        events={[]}
+        filteredEvents={[{} as any]}
+        selectedAgents={[]}
+        onAgentClick={vi.fn()}
+        onConversationClick={vi.fn()}
+        resolveModelName={(modelId) => modelId}
+      />,
+    );
+    expect(screen.getByText('External producers')).toBeTruthy();
+    expect(screen.getByText('producer:flow-agents:default')).toBeTruthy();
+    expect(screen.getByText('External')).toBeTruthy();
   });
 });

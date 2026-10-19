@@ -707,4 +707,96 @@ describe('telemetry producer management over the production composition', () => 
       producerRows.every((row) => row[K.TELEMETRY_PRODUCER] === 'claimer'),
     ).toBe(true);
   });
+
+  test('a Station tool export never includes producer rows (export count check, archive#3130)', async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'bulk',
+    );
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    for (let index = 0; index < 40; index += 1)
+      h.emitRaw({
+        timestamp: new Date().toISOString(),
+        [K.TIMESTAMP_MS]: Date.now(),
+        [K.OP_NAME]: 'execute_tool',
+        [K.SPAN_KIND]: 'start',
+        [K.TOOL_NAME]: 'Bash',
+        [K.USER_ID]: getCachedUser().alias,
+      });
+    for (let index = 0; index < 70; index += 1)
+      expect(
+        (
+          await h.ingest(token, `s${index}`, {
+            event_id: `e${index}`,
+            tool: { name: 'Bash' },
+          })
+        ).status,
+      ).toBe(200);
+    await h.flush();
+    const rows = async (query: string) => {
+      const response = await h.read(
+        `/monitoring/events?start=0${query}`,
+        h.operatorCredential,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { data: Record<string, unknown>[] })
+        .data;
+    };
+    // What the dashboard export reads: Station's 40, not 110. Against an
+    // expected 100 the export is refused instead of passing on producer rows.
+    const exported = await rows('&tools=true');
+    expect(exported).toHaveLength(40);
+    expect(exported.length < 100).toBe(true);
+    expect(exported.some((row) => K.TELEMETRY_PRODUCER in row)).toBe(false);
+    expect(await rows('&tools=true&producer=bulk')).toHaveLength(70);
+  });
+
+  test('producerActivity follows filters and counts chats per distinct trace; a bad producer value is 400', async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'chats',
+    );
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    for (const event_type of ['session.start', 'session.end'])
+      expect(
+        (
+          await h.ingest(token, 'one-session', {
+            event_type,
+            event_id: event_type,
+          })
+        ).status,
+      ).toBe(200);
+    await h.flush();
+    const insights = async (query: string) => {
+      const response = await h.read(
+        `/api/insights?days=1${query}`,
+        h.operatorCredential,
+      );
+      return {
+        status: response.status,
+        body: (await response.json()) as {
+          data?: { producerActivity?: Record<string, { chats: number }> };
+        },
+      };
+    };
+    expect((await insights('')).body.data?.producerActivity?.chats?.chats).toBe(
+      1,
+    );
+    // A Station filter matches no producer row, so nothing is reported.
+    expect(
+      (await insights('&agent=producer:chats:codex')).body.data
+        ?.producerActivity,
+    ).toEqual({});
+    for (const bad of ['', 'Not%20A%20Name', '-leading'])
+      expect((await insights(`&producer=${bad}`)).status).toBe(400);
+    const events = await h.read(
+      '/monitoring/events?start=0&producer=',
+      h.operatorCredential,
+    );
+    expect(events.status).toBe(400);
+  });
 });

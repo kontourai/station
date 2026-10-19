@@ -1873,13 +1873,22 @@ conversation it names:
 - `/api/insights` never counts it toward Station's figures (agent, model and
   tool usage, error totals and rates, chat and tool-call totals, hourly
   activity). Each producer's activity is reported apart in
-  `producerActivity: {<token name>: {events, chats, toolCalls}}`. With
+  `producerActivity: {<token name>: {events, chats, toolCalls}}`, with chats
+  counted once per distinct trace as Station's are. An `agent`, `tool` or
+  `engine` filter matches no producer row, so a filtered response's
+  `producerActivity` is empty. With
   `producer=<token name>`, every figure in the response is that producer's
   alone and `applied.producer` echoes it.
 - `/monitoring/events` (and the station-control `read_monitoring_events`
-  tool) never matches it for `agent`, `engine`, `tool` or `conversation`.
+  tool) never matches it for `agent`, `engine`, `tool`, `conversation` or
+  `tools=true`, so a Station tool export never includes producer rows.
   `producer=<token name>` returns only that producer's rows. An unfiltered
-  read lists producer rows alongside Station's.
+  read lists producer rows alongside Station's. On both routes an empty or
+  invalid `producer` value (outside the token-name grammar) is a `400`.
+
+The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and
+the Monitoring view lists producer agents in a separate "External producers"
+group, outside Station's agent list and count.
 
 The ingest receiver records no tool outcome for producer rows, so a producer
 cannot report tool errors in any case. Re-creating a revoked token under the same name reuses that

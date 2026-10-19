@@ -1948,12 +1948,18 @@ station feedback test [--api-base=<url>]
 
 ```
 station insights get [--days=<n>] [--agent=<slug>] [--tool=<name>]
-                     [--engine=<provider>] [--limit=<n>] [--api-base=<url>]
+                     [--engine=<provider>] [--producer=<name>] [--limit=<n>]
+                     [--api-base=<url>]
 station insights events [--days=<n>] [--start=<epoch-ms|iso>] [--end=<...>] [--agent=<slug>]
                         [--tool=<name>] [--engine=<provider>]
-                        [--conversation=<id>] [--tools] [--limit=<n>]
-                        [--api-base=<url>]
+                        [--conversation=<id>] [--producer=<name>] [--tools]
+                        [--limit=<n>] [--api-base=<url>]
 ```
+
+`--producer=<name>` selects one external telemetry producer's activity. Without
+it, producer rows never count toward the rollup (they are summarized in
+`producerActivity`) and never match `--agent`, `--tool`, `--engine`,
+`--conversation` or `--tools`. An empty or invalid name is a 400.
 
 `get` returns the rollup; `events` returns the rows behind it via
 `/monitoring/events`, which owns the per-user and tenant authorization those

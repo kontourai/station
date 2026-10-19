@@ -290,6 +290,11 @@ export interface MonitoringEventFilters {
   tool?: string;
   engine?: string;
   conversation?: string;
+  /**
+   * Only rows this external telemetry producer reported. Without it, the
+   * other filters (including `tools`) never match producer rows.
+   */
+  producer?: string;
   /** Only tool call/result events. */
   tools?: boolean;
   /**
@@ -330,6 +335,7 @@ export async function fetchMonitoringEventWindow(
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
   if (filters.conversation) params.set('conversation', filters.conversation);
+  if (filters.producer) params.set('producer', filters.producer);
   if (filters.tools) params.set('tools', 'true');
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   const response = await authenticatedFetch(

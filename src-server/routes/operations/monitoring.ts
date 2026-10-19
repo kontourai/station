@@ -35,6 +35,7 @@ import {
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
+import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
   stationControlRefusal,
   stationControlRefusalBody,
@@ -417,6 +418,18 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         producer: c.req.query('producer'),
       };
       const toolsOnly = c.req.query('tools') === 'true';
+      if (
+        dimension.producer !== undefined &&
+        !isTelemetryProducerName(dimension.producer)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'producer must be a telemetry producer name.',
+          },
+          400,
+        );
+      }
       // Limits are opt-in. The UI requests a bounded window and discloses
       // truncation; CLI/SDK export callers may still request all matching rows.
       // Apply the cap only after both authorization layers and content filters.
@@ -442,15 +455,18 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         deps,
       ).filter((event) => {
         const record = event as Record<string, unknown>;
-        // A Station filter (agent, engine, tool, conversation) never matches
-        // an external producer's row, whatever names it reported; naming the
-        // producer selects only its rows. Unfiltered reads list everything.
+        // A Station filter (agent, engine, tool, conversation, tools-only)
+        // never matches an external producer's row, whatever names it
+        // reported; naming the producer selects only its rows. Unfiltered
+        // reads list everything. `tools` is a Station filter because its
+        // callers compare the rows with Station's own tool totals.
         const producer = record[K.TELEMETRY_PRODUCER];
         if (dimension.producer !== undefined) {
           if (producer !== dimension.producer) return false;
         } else if (
           typeof producer === 'string' &&
-          (dimension.agent !== undefined ||
+          (toolsOnly ||
+            dimension.agent !== undefined ||
             dimension.tool !== undefined ||
             dimension.engine !== undefined ||
             dimension.conversation !== undefined)

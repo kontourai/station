@@ -82,7 +82,7 @@ export function isTelemetryProducerSecret(candidate: string): boolean {
   return SECRET_PATTERN.test(candidate);
 }
 
-function isTelemetryProducerName(candidate: unknown): boolean {
+export function isTelemetryProducerName(candidate: unknown): boolean {
   return typeof candidate === 'string' && NAME_PATTERN.test(candidate);
 }
 

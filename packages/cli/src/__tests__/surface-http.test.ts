@@ -1657,6 +1657,17 @@ describe('CLI surface commands over HTTP', () => {
     expect(state.monitoringEventQueries[0]).toContain('tools=true');
   });
 
+  test('insights events forwards --producer', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'insights',
+      'events',
+      '--producer=flow-agents',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(state.monitoringEventQueries[0]).toContain('producer=flow-agents');
+  });
+
   test('insights events rejects a --days it cannot use', async () => {
     const { runCli } = await import('../cli.js');
 

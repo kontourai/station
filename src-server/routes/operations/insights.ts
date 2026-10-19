@@ -17,6 +17,7 @@ import {
   SPAN,
 } from '../../../src-shared/monitoring-keys.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
+import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { insightOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { getCachedUser } from '../system/auth.js';
@@ -181,6 +182,17 @@ export function createInsightsRoutes(
       engine: c.req.query('engine'),
       producer: c.req.query('producer'),
     };
+    if (
+      filters.producer !== undefined &&
+      !isTelemetryProducerName(filters.producer)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'producer must be a telemetry producer name.',
+        },
+        400,
+      );
     const limitParam = Number.parseInt(c.req.query('limit') ?? '', 10);
     const limit =
       Number.isFinite(limitParam) && limitParam > 0
@@ -228,6 +240,7 @@ export function createInsightsRoutes(
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
     const producerActivity: NonNullable<UsageInsights['producerActivity']> = {};
+    const producerChatTraces = new Map<string, Set<string>>();
     const agentUsage: UsageInsights['agentUsage'] = {};
     const modelUsage: Record<string, number> = {};
     const chatTraceIds = new Set<string>();
@@ -403,14 +416,36 @@ export function createInsightsRoutes(
             const producer = event[K.TELEMETRY_PRODUCER];
             if (filters.producer === undefined) {
               if (typeof producer === 'string') {
+                // Station's agent, tool and engine filters never match a
+                // producer row (the same rule as /monitoring/events), so a
+                // filtered rollup reports no producer activity.
+                if (
+                  filters.agent !== undefined ||
+                  filters.tool !== undefined ||
+                  filters.engine !== undefined
+                )
+                  continue;
                 const tally = (producerActivity[producer] ??= {
                   events: 0,
                   chats: 0,
                   toolCalls: 0,
                 });
                 tally.events++;
-                if (operation === OP.INVOKE_AGENT && spanKind === SPAN.START)
-                  tally.chats++;
+                // Chats counted as Station's are: once per distinct trace.
+                const traceId = event[K.TRACE_ID];
+                if (
+                  operation === OP.INVOKE_AGENT &&
+                  (spanKind === SPAN.START || spanKind === SPAN.END) &&
+                  typeof traceId === 'string' &&
+                  traceId
+                ) {
+                  const traces = producerChatTraces.get(producer) ?? new Set();
+                  if (!traces.has(traceId)) {
+                    traces.add(traceId);
+                    tally.chats++;
+                  }
+                  producerChatTraces.set(producer, traces);
+                }
                 if (operation === OP.EXECUTE_TOOL && spanKind === SPAN.START)
                   tally.toolCalls++;
                 continue;

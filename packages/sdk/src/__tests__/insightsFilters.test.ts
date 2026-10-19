@@ -28,6 +28,30 @@ const legacyInsights = {
 };
 
 describe('insights filters reach the server (station#3075)', () => {
+  test('forwards the producer filter and keeps producerActivity', async () => {
+    authenticatedFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          ...legacyInsights,
+          producerActivity: {
+            'flow-agents': { events: 3, chats: 1, toolCalls: 2 },
+          },
+        },
+      }),
+    });
+    const insights = await fetchInsights(7, { producer: 'flow-agents' });
+    expect(String(authenticatedFetch.mock.calls.at(-1)?.[0])).toContain(
+      'producer=flow-agents',
+    );
+    expect(insights.producerActivity?.['flow-agents']).toEqual({
+      events: 3,
+      chats: 1,
+      toolCalls: 2,
+    });
+  });
+
   test('failed or absent scan result rejects instead of becoming an empty successful query', async () => {
     for (const result of [
       { success: false, error: 'unavailable' },

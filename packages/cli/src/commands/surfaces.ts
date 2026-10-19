@@ -1172,6 +1172,7 @@ async function runInsightsCommand(args: string[]) {
       { flag: 'tool' },
       { flag: 'engine' },
       { flag: 'conversation' },
+      { flag: 'producer' },
       { flag: 'limit' },
     ]);
     // `--tools` is a bare boolean flag, and buildQuery only forwards string
@@ -1188,6 +1189,7 @@ async function runInsightsCommand(args: string[]) {
     { flag: 'agent' },
     { flag: 'tool' },
     { flag: 'engine' },
+    { flag: 'producer' },
     { flag: 'limit' },
   ]);
   await requestAndPrint(apiBase, `/api/insights/${query}`);
