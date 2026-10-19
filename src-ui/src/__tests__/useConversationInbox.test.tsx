@@ -92,9 +92,7 @@ test('shows actual server states and keeps keyless entries read-only without per
   const { client } = mount();
   await screen.findByText('2 pending messages held by Station');
   expect(screen.getByText('another sender')).toBeTruthy();
-  expect(
-    screen.getByText('Sent, outcome unknown. Station will not resend it.'),
-  ).toBeTruthy();
+  expect(screen.getByText('Delivery outcome unknown.')).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Dismiss held/ })).toBeNull();
   expect(
     screen.queryByRole('button', { name: /Remove held message: sending/ }),
@@ -190,4 +188,52 @@ test('a refused removal stays visible and refreshes rather than fabricating a ca
   await screen.findByRole('alert');
   expect(screen.getByText('own')).toBeTruthy();
   await waitFor(() => expect(methods).toEqual(['GET', 'DELETE', 'GET']));
+});
+
+test('successful removal targets the exact key and an older read cannot restore it or remove a same-text sibling', async () => {
+  const first = { ...entry('queued', 'own/first'), message: 'same text' };
+  const second = { ...entry('queued', 'own/second'), message: 'same text' };
+  let releaseOld!: (answer: Response) => void;
+  const oldRead = new Promise<Response>((resolve) => {
+    releaseOld = resolve;
+  });
+  const deletions: string[] = [];
+  let reads = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit | undefined) => {
+      if (init?.method === 'DELETE') {
+        deletions.push(url);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { entry: { ...first, state: 'cancelled' } },
+          }),
+        );
+      }
+      reads += 1;
+      if (reads === 1) return response([first, second]);
+      if (reads === 2) return oldRead;
+      return response([{ ...first, state: 'cancelled' }, second]);
+    }),
+  );
+  const { client } = mount();
+  await screen.findByText('2 pending messages held by Station');
+  const previous = client.refetchQueries({ queryKey: ['conversation-inbox'] });
+  await waitFor(() => expect(reads).toBe(2));
+  fireEvent.click(
+    screen.getAllByRole('button', {
+      name: 'Remove held message: same text',
+    })[0],
+  );
+  await screen.findByText('1 pending message held by Station');
+  expect(screen.getAllByText('same text')).toHaveLength(1);
+  releaseOld(response([first, second]));
+  await previous;
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(screen.getByText('1 pending message held by Station')).toBeTruthy();
+  expect(screen.getAllByText('same text')).toHaveLength(1);
+  expect(deletions).toEqual([
+    'http://station.test/api/orchestration/conversations/conversation/inbox/own%2Ffirst',
+  ]);
 });

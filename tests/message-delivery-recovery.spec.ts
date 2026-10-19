@@ -425,6 +425,64 @@ test.describe('A send whose app closed before Station answered', () => {
         observer.getByRole('region', { name: 'Messages held by Station' }),
       ).toContainText('1 pending message');
 
+      const retainedKey = `${clientTurnId}-second`;
+      const secondQueued = await authenticatedRequest.post(
+        '/api/orchestration/chat',
+        {
+          data: {
+            target: {
+              environment: { kind: 'current' },
+              agent: seededAgentSlug,
+              workspace: { kind: 'directory', cwd: binding.data.session.cwd },
+            },
+            message: followUp,
+            conversationId,
+            clientTurnId: retainedKey,
+            whenBusy: 'queue',
+          },
+        },
+      );
+      expect(secondQueued.status(), await secondQueued.text()).toBe(202);
+      expect(await secondQueued.json()).toMatchObject({
+        data: {
+          clientTurnId: retainedKey,
+          entry: { state: 'queued', message: followUp },
+        },
+      });
+      for (const client of [page, observer])
+        await expect(
+          client.getByRole('region', { name: 'Messages held by Station' }),
+        ).toContainText('2 pending messages');
+      const removeButtons = page
+        .getByRole('region', { name: 'Messages held by Station' })
+        .getByRole('button', {
+          name: `Remove held message: ${followUp}`,
+          exact: true,
+        });
+      await expect(removeButtons).toHaveCount(2);
+      await removeButtons.nth(0).click();
+      await expect
+        .poll(async () => {
+          const answer = await authenticatedRequest.get(inboxPath);
+          expect(answer.status()).toBe(200);
+          return answer.json();
+        })
+        .toMatchObject({
+          data: {
+            entries: expect.arrayContaining([
+              expect.objectContaining({ clientTurnId, state: 'cancelled' }),
+              expect.objectContaining({
+                clientTurnId: retainedKey,
+                state: 'queued',
+              }),
+            ]),
+          },
+        });
+      for (const client of [page, observer])
+        await expect(
+          client.getByRole('region', { name: 'Messages held by Station' }),
+        ).toContainText('1 pending message');
+
       runningStream?.finish();
       runningStream = undefined;
       await expect.poll(() => followUpStream !== undefined).toBe(true);
@@ -440,7 +498,11 @@ test.describe('A send whose app closed before Station answered', () => {
       expect(await delivered.json()).toMatchObject({
         data: {
           entries: expect.arrayContaining([
-            expect.objectContaining({ clientTurnId, state: 'sent' }),
+            expect.objectContaining({ clientTurnId, state: 'cancelled' }),
+            expect.objectContaining({
+              clientTurnId: retainedKey,
+              state: 'sent',
+            }),
           ]),
         },
       });

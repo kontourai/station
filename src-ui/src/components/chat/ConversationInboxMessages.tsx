@@ -5,7 +5,7 @@ import './ConversationInboxMessages.css';
 const STATE_LABEL = {
   queued: 'Waiting for the current turn',
   sending: 'Sending',
-  unconfirmed: 'Sent, outcome unknown. Station will not resend it.',
+  unconfirmed: 'Delivery outcome unknown.',
   refused: 'Not sent',
   sent: 'Sent',
   cancelled: 'Removed',
@@ -42,6 +42,9 @@ export function ConversationInboxMessages({
           Refresh
         </Button>
       </div>
+      {inbox.availability === 'available' && inbox.refreshing && (
+        <span className="conversation-inbox__state">Refreshing queue…</span>
+      )}
       {inbox.removalError && (
         <p role="alert">
           Removal was not confirmed. Read the queue again before trying another
