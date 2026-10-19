@@ -277,44 +277,136 @@ it('maintenance participant observes actual compacted rows and never runs on rea
   );
   expect(observed).toHaveLength(1);
 });
-it('acknowledgment alone cannot compact when the real sink disposition is lagging', async () => {
-  const { hash } = await import('../encoding.js');
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(epoch);
-  const { f, sink } = await settled();
-  const list = await f.storage.execute(
-    { type: 'listOutbox', key, limit: 10 },
-    f.context,
-  );
-  if (list.kind !== 'listed') throw Error('outbox prerequisite');
-  for (const entry of list.entries)
-    await f.storage.execute(
-      operation({
-        type: 'acknowledge',
-        key,
-        projectionId: entry.id,
-        projectionDigest: hash(entry),
-      }),
+it.each(['open', 'acknowledge'] as const)(
+  'acknowledgment alone cannot compact while the sink lags; %s later preserves full maintenance',
+  async (trigger) => {
+    const { hash } = await import('../encoding.js');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(epoch);
+    let failMaintenance = false;
+    const observed: { command: string; runs: number; expired: number }[] = [];
+    const { f, sink } = await settled([
+      {
+        name: 'actual-ACK-maintenance',
+        maintenance({ command }, db) {
+          observed.push({
+            command: command.type,
+            runs: Number(
+              db.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()
+                ?.n,
+            ),
+            expired: Number(
+              db
+                .prepare(
+                  "SELECT count(*) AS n FROM agent_runtime_receipts WHERE json_extract(record,'$.answer.reason')='expired'",
+                )
+                .get()?.n,
+            ),
+          });
+          if (failMaintenance) throw Error('actual ACK maintenance rollback');
+        },
+      },
+    ]);
+    const list = await f.storage.execute(
+      { type: 'listOutbox', key, limit: 10 },
       f.context,
     );
-  vi.setSystemTime(epoch + 7 * day);
-  await f.storage.execute(
-    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
-    f.context,
-  );
-  expect(
-    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
-  ).toBe(1);
-  expect(await sink.readModelContext(key)).toEqual({ kind: 'unavailable' });
-  for (const entry of list.entries) await sink.apply(entry);
-  await f.storage.execute(
-    operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
-    f.context,
-  );
-  expect(
-    f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()?.n,
-  ).toBe(0);
-});
+    if (list.kind !== 'listed') throw Error('outbox prerequisite');
+    for (const entry of list.entries)
+      await f.storage.execute(
+        operation({
+          type: 'acknowledge',
+          key,
+          projectionId: entry.id,
+          projectionDigest: hash(entry),
+        }),
+        f.context,
+      );
+    vi.setSystemTime(epoch + 7 * day);
+    await f.storage.execute(
+      operation({ type: 'open', spec: f.opened.snapshot.spec, owner }),
+      f.context,
+    );
+    expect(
+      f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()
+        ?.n,
+    ).toBe(1);
+    expect(await sink.readModelContext(key)).toEqual({ kind: 'unavailable' });
+    for (const entry of list.entries) await sink.apply(entry);
+    const entry = list.entries[0];
+    if (!entry) throw Error('actual projection prerequisite');
+    const command =
+      trigger === 'open'
+        ? operation({ type: 'open', spec: f.opened.snapshot.spec, owner })
+        : operation({
+            type: 'acknowledge',
+            key,
+            projectionId: entry.id,
+            projectionDigest: hash(entry),
+          });
+    const before = {
+      runs: f.database
+        .prepare('SELECT id,record FROM agent_runtime_runs ORDER BY id')
+        .all(),
+      receipts: f.database
+        .prepare('SELECT id,record FROM agent_runtime_receipts ORDER BY id')
+        .all(),
+      outbox: f.database
+        .prepare('SELECT id,record FROM agent_runtime_outbox ORDER BY id')
+        .all(),
+    };
+    if (trigger === 'acknowledge') {
+      failMaintenance = true;
+      await expect(f.storage.execute(command, f.context)).rejects.toThrow(
+        'actual ACK maintenance rollback',
+      );
+      expect(
+        f.database
+          .prepare('SELECT id,record FROM agent_runtime_runs ORDER BY id')
+          .all(),
+      ).toEqual(before.runs);
+      expect(
+        f.database
+          .prepare('SELECT id,record FROM agent_runtime_receipts ORDER BY id')
+          .all(),
+      ).toEqual(before.receipts);
+      expect(
+        f.database
+          .prepare('SELECT id,record FROM agent_runtime_outbox ORDER BY id')
+          .all(),
+      ).toEqual(before.outbox);
+      expect(
+        f.database.prepare('SELECT * FROM agent_runtime_retired').all(),
+      ).toEqual([]);
+      failMaintenance = false;
+    }
+    expect(await f.storage.execute(command, f.context)).toEqual({
+      kind: 'refused',
+      reason: 'expired',
+    });
+    expect(
+      f.database.prepare('SELECT count(*) AS n FROM agent_runtime_runs').get()
+        ?.n,
+    ).toBe(0);
+    expect(observed).toEqual(
+      Array.from({ length: trigger === 'acknowledge' ? 2 : 1 }, () => ({
+        command: trigger,
+        runs: 0,
+        expired: before.receipts.length,
+      })),
+    );
+    expect(
+      f.database
+        .prepare('SELECT count(*) AS n FROM agent_runtime_retired')
+        .get()?.n,
+    ).toBe(1);
+    expect(
+      f.database
+        .prepare('SELECT id,record FROM agent_runtime_outbox ORDER BY id')
+        .all(),
+    ).toEqual(before.outbox);
+  },
+);
 for (const kind of ['memory', 'sqlite'] as const)
   it(`retention ${kind} maintenance observes the real expired command and detaches its view`, async () => {
     vi.useFakeTimers({ toFake: ['Date'] });

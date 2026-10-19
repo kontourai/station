@@ -263,7 +263,7 @@ export function openSqliteRuntimeBodies(options: {
   };
 }
 const stored = z.object({ id: z.string(), record: z.string() });
-type RecordImage = { text: string; probe: string };
+type RecordImage = { text: string; probe?: string };
 type BeforeImage = {
   runs: Map<string, RecordImage>;
   retired: Map<string, RecordImage>;
@@ -272,13 +272,23 @@ type BeforeImage = {
 };
 // Only strict-decoded private records reach this transaction-local probe.
 // Host callbacks receive detached views; changed records retain canonical writes.
-function recordImage(text: string, record: object): RecordImage {
-  return { text, probe: JSON.stringify(record) };
+function recordImage(
+  text: string,
+  record: object,
+  captureProbe: boolean,
+): RecordImage {
+  return captureProbe ? { text, probe: JSON.stringify(record) } : { text };
 }
 function unchanged(image: RecordImage | undefined, record: object): boolean {
-  return image !== undefined && image.probe === JSON.stringify(record);
+  if (!image) return false;
+  if (image.probe !== undefined) return image.probe === JSON.stringify(record);
+  return canonical(JSON.parse(image.text)) === canonical(record);
 }
-function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
+function loadState(
+  database: DatabaseSync,
+  before?: BeforeImage,
+  captureProbe = true,
+): ModelState {
   const result = emptyState();
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_runs')
@@ -290,7 +300,7 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
     if (value.id !== keyOf(record.spec.key))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.runs.set(value.id, record);
-    before?.runs.set(value.id, recordImage(value.record, record));
+    before?.runs.set(value.id, recordImage(value.record, record, captureProbe));
   }
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_retired')
@@ -300,7 +310,10 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
     if (keyOf(retired.key) !== value.id || result.runs.has(value.id))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.retired.set(value.id, retired);
-    before?.retired.set(value.id, recordImage(value.record, retired));
+    before?.retired.set(
+      value.id,
+      recordImage(value.record, retired, captureProbe),
+    );
   }
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_receipts')
@@ -308,7 +321,10 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
     const value = stored.parse(row);
     const record = receiptSchema.parse(JSON.parse(value.record));
     result.receipts.set(value.id, record);
-    before?.receipts.set(value.id, recordImage(value.record, record));
+    before?.receipts.set(
+      value.id,
+      recordImage(value.record, record, captureProbe),
+    );
   }
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_outbox')
@@ -321,7 +337,10 @@ function loadState(database: DatabaseSync, before?: BeforeImage): ModelState {
     )
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.outbox.set(value.id, record);
-    before?.outbox.set(value.id, recordImage(value.record, record));
+    before?.outbox.set(
+      value.id,
+      recordImage(value.record, record, captureProbe),
+    );
   }
   const positions = new Map<string, number[]>();
   for (const row of result.outbox.values()) {
@@ -491,7 +510,11 @@ export function openSqliteModelStorage(options: {
             receipts: new Map(),
             outbox: new Map(),
           };
-          const state = loadState(database, before);
+          const state = loadState(
+            database,
+            before,
+            command.type !== 'acknowledge',
+          );
           validateLinks(database, policy, state);
           for (const ref of commandBodies(command))
             readBody(database, policy, ref);
@@ -530,7 +553,33 @@ export function openSqliteModelStorage(options: {
             verifyParticipantState();
             return result;
           }
-          if (!isRead(command)) {
+          if (command.type === 'acknowledge' && !maintained) {
+            const receiptId = canonical([keyOf(key), command.operationId]);
+            const receipt = state.receipts.get(receiptId);
+            const outbox = state.outbox.get(command.projectionId);
+            if (!receipt || !outbox)
+              throw new RuntimeError('DURABLE_RECORD_DAMAGED');
+            const receiptImage = before.receipts.get(receiptId);
+            if (!unchanged(receiptImage, receipt)) {
+              const text = canonical(receipt);
+              if (receiptImage?.text !== text)
+                database
+                  .prepare(
+                    'INSERT INTO agent_runtime_receipts VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
+                  )
+                  .run(receiptId, text);
+            }
+            const outboxImage = before.outbox.get(command.projectionId);
+            if (!unchanged(outboxImage, outbox)) {
+              const text = canonical(outbox);
+              if (outboxImage?.text !== text)
+                database
+                  .prepare(
+                    'INSERT INTO agent_runtime_outbox VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
+                  )
+                  .run(command.projectionId, text);
+            }
+          } else if (!isRead(command)) {
             for (const [id, record] of state.retired) {
               const image = before.retired.get(id);
               if (unchanged(image, record)) continue;
