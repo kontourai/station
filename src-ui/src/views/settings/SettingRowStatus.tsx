@@ -21,7 +21,9 @@ import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
-import { Badge, Popover } from '@kontourai/ui/react';
+import { Badge } from '@kontourai/ui/react';
+import { useRef, useState } from 'react';
+import { Dialog } from '../../components/Dialog';
 import { InfoGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
@@ -34,7 +36,7 @@ import type { SettingsCatalogEntry } from './settings-catalog';
  * memoizes on the `load` function, and an inline arrow would re-create the
  * lazy component (and re-run the import) on every keystroke in the page.
  *
- * A real `import()`, not a re-export: this body is the reason the popover is
+ * A real `import()`, not a re-export: this body is the reason the dialog is
  * code-split at all, and a static import would put the layer list in the
  * entry bundle for every row that never opens it.
  */
@@ -118,6 +120,8 @@ export function SettingRowStatus({
   onResetToInherited,
 }: SettingRowStatusProps) {
   const scopeLabel = scopeBadgeLabel(catalogScope, provenance, containerScope);
+  const [showInheritance, setShowInheritance] = useState(false);
+  const inheritanceTrigger = useRef<HTMLButtonElement>(null);
   const overriddenByProject =
     provenance?.source === 'file' && provenance.scope === 'project';
   // `required` has no inherited value to fall back TO — dropping the override
@@ -141,53 +145,57 @@ export function SettingRowStatus({
         />
       )}
       <ProvenanceBadge provenance={provenance} />
-      <Popover
-        ariaLabel={`Where ${definition.label} comes from`}
-        placement="bottom-end"
-        className="setting-row-status__inheritance"
-        trigger={
-          <button
-            type="button"
-            className="setting-row-status__inheritance-trigger"
-            aria-label={`Where ${definition.label} comes from`}
-          >
-            <InfoGlyph />
-          </button>
-        }
+      <button
+        type="button"
+        className="setting-row-status__inheritance-trigger"
+        ref={inheritanceTrigger}
+        aria-label={`Where ${definition.label} comes from`}
+        onClick={() => setShowInheritance(true)}
       >
-        <LazyBoundary
-          load={loadInheritanceLayers}
-          componentProps={{
-            definition,
-            provenance,
-            projectName,
-            projectValue,
-            stationValue,
-            pending,
-          }}
-          // The shared loading vocabulary, not a new sentence: SHELL-13's
-          // ratchet counts a bespoke "Loading…" string as a regression, and
-          // `SkeletonBlock`'s `label` is where the wait gets named.
-          pending={
-            <SkeletonBlock
-              count={2}
-              label="Loading where this value comes from"
-            />
-          }
-          unavailable={(onRetry) => (
-            <p className="setting-row-status__pending">
-              This explanation could not be loaded.{' '}
-              <button
-                type="button"
-                className="button button--link"
-                onClick={onRetry}
-              >
-                Retry
-              </button>
-            </p>
-          )}
-        />
-      </Popover>
+        <InfoGlyph />
+      </button>
+      {showInheritance && (
+        <Dialog
+          title={`Where ${definition.label} comes from`}
+          closeLabel="Close setting sources"
+          onClose={() => setShowInheritance(false)}
+          size="sm"
+          returnFocusTarget={inheritanceTrigger.current}
+        >
+          <LazyBoundary
+            load={loadInheritanceLayers}
+            componentProps={{
+              definition,
+              provenance,
+              projectName,
+              projectValue,
+              stationValue,
+              pending,
+            }}
+            // The shared loading vocabulary, not a new sentence: SHELL-13's
+            // ratchet counts a bespoke "Loading…" string as a regression, and
+            // `SkeletonBlock`'s `label` is where the wait gets named.
+            pending={
+              <SkeletonBlock
+                count={2}
+                label="Loading where this value comes from"
+              />
+            }
+            unavailable={(onRetry) => (
+              <p className="setting-row-status__pending">
+                This explanation could not be loaded.{' '}
+                <button
+                  type="button"
+                  className="button button--link"
+                  onClick={onRetry}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
+          />
+        </Dialog>
+      )}
       {canReset && (
         <button
           type="button"

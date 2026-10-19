@@ -34,6 +34,7 @@ import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../../contexts/navigation-store';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
@@ -255,7 +256,10 @@ vi.mock('../../components/coding-layout/CodingInspectorPanel', () => ({
   TrustInspectorContent: () => <div>Trust pane</div>,
 }));
 vi.mock('../../workspace-panes/resolvedWorkspacePaneCatalog', () => ({
-  useResolvedWorkspacePaneCatalog: (...args: unknown[]) => catalogMock(...args),
+  useResolvedWorkspacePaneCatalog: (...args: unknown[]) => {
+    const catalog = catalogMock(...args);
+    return { ...catalog, registeredEntries: catalog?.entries ?? [] };
+  },
 }));
 vi.mock(
   '../../workspace-panes/workspacePaneRendererSelection',
@@ -441,6 +445,12 @@ function drillIntoHostPane(instanceId?: string) {
 
 describe('ProjectLayoutRenderer', () => {
   afterEach(() => {
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+      'experimentalReadinessEnabled',
+      'experimentalTrustEnabled',
+    ]);
     navigationStore.navigate('/', { pane: null, paneScope: null });
   });
 
@@ -1026,8 +1036,8 @@ describe('ProjectLayoutRenderer', () => {
 
     drillIntoHostPane();
     expect(screen.getByText(/Hosted 3008a697/)).toBeTruthy();
-    // Six panes: the Coding occurrence is the Chat page, not a pane.
-    expect(screen.getByText(/instances 6/)).toBeTruthy();
+    // Files, diff and terminal remain available with previews off.
+    expect(screen.getByText(/instances 3/)).toBeTruthy();
     expect(screen.getByText('Diff unavailable')).toBeTruthy();
     expect(
       screen.getByText(/Choose a Git repository before opening this pane/),
@@ -1372,8 +1382,8 @@ describe('ProjectLayoutRenderer', () => {
     );
     drillIntoHostPane();
     expect(screen.getByText(/Hosted project-uuid/)).toBeTruthy();
-    // Six panes: the Coding occurrence is the Chat page, not a pane.
-    expect(screen.getByText(/instances 6/)).toBeTruthy();
+    // Files, diff and terminal remain available with previews off.
+    expect(screen.getByText(/instances 3/)).toBeTruthy();
     expect(screen.queryByText('Coding chat pane')).toBeNull();
     expect(screen.getByTestId('coding-center-chat')).toBeTruthy();
     // A drill-in is its page: the host is drawn chromeless (no tab strip, no
@@ -1413,6 +1423,15 @@ describe('ProjectLayoutRenderer', () => {
     ).toBeTruthy();
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
     expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+    expect(screen.queryByText('Plan pane')).toBeNull();
+    expect(screen.queryByText('Readiness pane')).toBeNull();
+    expect(screen.queryByText('Trust pane')).toBeNull();
+    act(() => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      deviceSettingsStore.set('experimentalReadinessEnabled', true);
+      deviceSettingsStore.set('experimentalTrustEnabled', true);
+    });
     expect(screen.getByText('Plan pane')).toBeTruthy();
     expect(screen.getByText('Readiness pane')).toBeTruthy();
     expect(screen.getByText('Trust pane')).toBeTruthy();
@@ -2366,7 +2385,7 @@ describe('ProjectLayoutRenderer', () => {
     );
 
     expect(
-      screen.getByText(/Hosted project-uuid; instances 6; compact yes/),
+      screen.getByText(/Hosted project-uuid; instances 3; compact yes/),
     ).toBeTruthy();
     expect(hostMock.mock.lastCall?.[0].runtime).toBeInstanceOf(
       WorkspacePaneHostRuntime,

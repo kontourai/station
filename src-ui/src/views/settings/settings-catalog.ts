@@ -70,7 +70,12 @@ export interface SettingsCatalogEntry {
    * search cannot offer a jump to a section that will not be there. A caller
    * that does know may pass it and get the entry back.
    */
-  conditional?: 'mobile' | 'desktop' | 'operator';
+  conditional?:
+    | 'mobile'
+    | 'desktop'
+    | 'operator'
+    | 'developer'
+    | 'experimental-trust';
 }
 
 /**
@@ -109,7 +114,7 @@ export const SETTINGS_SECTIONS = [
   // #3557: operator-only, like device hosts: the groups and every person's
   // tokens live on this Station, and only its operator changes them.
   { id: 'people', title: 'People', group: 'this-station' },
-  { id: 'host-runtime', title: 'Station host', group: 'this-station' },
+  { id: 'host-runtime', title: 'Host options', group: 'this-station' },
   // #2182: where this Station gets agents, skills, plugins and layouts from.
   { id: 'sources', title: 'Sources', group: 'this-station' },
   // #2182: whether anything is sent, and whether there is anywhere to send
@@ -239,6 +244,27 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['developerToolsEnabled'],
   },
   {
+    id: 'experimental-flow',
+    title: 'Flow delivery preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalFlowEnabled'],
+  },
+  {
+    id: 'experimental-readiness',
+    title: 'Veritas readiness preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalReadinessEnabled'],
+  },
+  {
+    id: 'experimental-trust',
+    title: 'Trust preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalTrustEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',
@@ -267,7 +293,7 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'host-runtime',
-    title: 'Station host',
+    title: 'Host diagnostics',
     section: 'host-runtime',
     keywords: ['environment prerequisites detected software'],
   },
@@ -292,6 +318,7 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'surface-trust',
+    conditional: 'experimental-trust',
     title: 'Surface trust from Veritas evidence',
     section: 'host-runtime',
     configKeys: ['surfaceTrustFromVeritasEvidence'],
@@ -932,11 +959,25 @@ export function matchingSettingsRows(
    * collaborator's Settings search cannot offer a jump to a section the
    * server will refuse to populate.
    */
-  options: { isOperator?: boolean } = {},
+  options: {
+    isOperator?: boolean;
+    developerToolsEnabled?: boolean;
+    experimentalTrustEnabled?: boolean;
+  } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   return SETTINGS_CATALOG.filter((entry) => {
+    if (
+      entry.conditional === 'developer' &&
+      options.developerToolsEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-trust' &&
+      options.experimentalTrustEnabled !== true
+    )
+      return false;
     if (entry.conditional === 'operator' && options.isOperator !== true) {
       return false;
     }
@@ -971,6 +1012,8 @@ export function matchingSettingsRows(
 export function settingsPaletteCommands(options: {
   isMobile: boolean;
   isDesktop: boolean;
+  developerToolsEnabled?: boolean;
+  experimentalTrustEnabled?: boolean;
 }): readonly SettingsPaletteCommand[] {
   // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
   //
@@ -984,7 +1027,13 @@ export function settingsPaletteCommands(options: {
   // reaches it through the PALETTE (not the Settings search, which IS
   // filtered — `matchingSettingsRows`) lands on Settings with a highlight
   // that finds nothing. A cosmetic no-op carrying no plugin data.
-  return SETTINGS_CATALOG.map((entry) => {
+  return SETTINGS_CATALOG.filter(
+    (entry) =>
+      (entry.conditional !== 'developer' ||
+        options.developerToolsEnabled === true) &&
+      (entry.conditional !== 'experimental-trust' ||
+        options.experimentalTrustEnabled === true),
+  ).map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile
         ? ('mobile' as const)

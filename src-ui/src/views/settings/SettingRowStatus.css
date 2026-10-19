@@ -12,8 +12,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  position: relative;
   padding: 0;
   color: var(--text-secondary);
   background: none;
@@ -28,4 +30,10 @@
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--k-text-sm);
+}
+
+.setting-row-status__inheritance-trigger::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }

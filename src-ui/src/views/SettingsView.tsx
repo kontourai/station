@@ -1,5 +1,7 @@
 import { SectionNavigation } from '../components/SectionNavigation';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
+import { DeveloperFeatures } from './settings/DeveloperFeatures';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -239,6 +241,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  const developerFeatures = useDeveloperFeatures();
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
@@ -357,9 +360,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     operatorSectionsSelectable || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
-      ? matchingSettingsRows(searchQuery, { isOperator }).map(
-          (entry) => entry.section,
-        )
+      ? matchingSettingsRows(searchQuery, {
+          isOperator,
+          developerToolsEnabled,
+          experimentalTrustEnabled: developerFeatures.trust,
+        }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
         : settingsSectionsForView(activeSection).filter(operatorMayView),
@@ -426,6 +431,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           formatSettingsMessage('targetUnavailable', locale),
         );
       }
+      return;
+    }
+    if (
+      (entry.conditional === 'developer' && !developerToolsEnabled) ||
+      (entry.conditional === 'experimental-trust' && !developerFeatures.trust)
+    ) {
+      setHighlightAnnouncement(
+        'This experimental tool is off. Enable it in Advanced → Developer tools.',
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState(window.history.state, '', url);
       return;
     }
     if (entry.conditional === 'mobile' && !isMobile) {
@@ -556,7 +573,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
       pulsedTarget?.classList.remove('settings__highlight-pulse');
     };
-  }, [highlightRequest, isMobile, isDesktop, locale]);
+  }, [
+    highlightRequest,
+    isMobile,
+    isDesktop,
+    locale,
+    developerToolsEnabled,
+    developerFeatures.trust,
+  ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
   // not about values: a just-invalidated query can still hold the pre-save
@@ -1567,7 +1591,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette."
+                      description="Show Developer navigation and experimental feature opt-ins."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
@@ -1578,6 +1602,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         />
                       }
                     />
+                    <DeveloperFeatures />
                   </Section>
                 )}
               </section>

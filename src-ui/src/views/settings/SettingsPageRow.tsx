@@ -38,6 +38,7 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
   return (
     <PageRow
       {...props}
+      statusPlacement="label"
       status={
         label ? (
           <>

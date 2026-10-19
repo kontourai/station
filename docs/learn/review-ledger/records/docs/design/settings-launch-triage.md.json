@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/settings-launch-triage.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Dated Settings decision inventory and launch qualification recommendations; records three implemented independent UI opt-ins without certifying complete feature value.",
+
+  "limits": "Source-based triage plus focused UI fixtures and browser geometry; no full Flow delivery, live voice provider, native push or app-wide launch certification.",
+
+  "sources": [
+    "src-ui/src/views/settings/settings-catalog.ts",
+
+    "src-ui/src/hooks/useDeveloperFeatures.ts",
+
+    "src-ui/src/views/settings/LocalAccountsSection.tsx",
+
+    "src-ui/src/views/settings/EnvironmentStatus.tsx",
+
+    "packages/contracts/src/device-settings.ts",
+
+    "packages/contracts/src/settings-registry.ts"
+  ],
+
+  "checks": [
+    "76 catalog controls enumerated with explicit dispositions; nested notification/account controls listed separately. Recommendations remain decisions, not readiness verdicts."
+  ]
+}

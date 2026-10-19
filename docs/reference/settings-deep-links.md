@@ -76,6 +76,16 @@ Moves so far:
   `/developer/config` path now redirects to `/settings` with no `view` at all,
   because a redirect cannot choose one of six.
 
+### Developer previews
+
+Advanced → Developer tools reveals three independent, default-off device opt-ins:
+`experimental-flow`, `experimental-readiness`, and `experimental-trust`.
+`surface-trust` is visible only with the Trust preview enabled. Search and the
+command palette omit hidden preview settings. A deep link to an opted-out
+control announces that the tool is off rather than waiting for a missing row.
+The registry remains a build-wide inventory; its presence does not mean a row
+is available on this device.
+
 ### Platform and rendering limits
 
 A mobile-only or desktop-only target opened on another platform produces an
@@ -105,7 +115,7 @@ Read `GET /config/app` for values.
       {
         "id": "default-max-turns",
         "label": "Default max turns",
-        "help": "Station stops an agent run once it has taken this many steps.",
+        "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
         "scope": "station",
         "section": "agent-runs",
         "route": "/settings?view=agent-runs&highlight=default-max-turns",

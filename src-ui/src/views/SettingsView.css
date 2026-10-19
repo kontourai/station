@@ -1097,13 +1097,6 @@
 }
 
 /* ── Mobile touch targets ── */
-.settings__section .page-row__aside {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--k-space-2);
-  max-width: 50%;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .settings__section .page-row {
     flex-direction: column;
@@ -1111,12 +1104,28 @@
   }
   .settings__section .page-row__aside,
   .settings__section .page-row__control {
+    width: auto;
+    max-width: 100%;
+    align-self: flex-start;
+  }
+  .settings__section .page-row__aside:has(input, select, textarea),
+  .settings__section .page-row__control:has(input, select, textarea) {
     width: 100%;
   }
-
-  .settings__section .page-row__aside {
-    max-width: none;
-    justify-content: space-between;
+  .settings__section .page-row:has(.page-row__control > [role="switch"]) {
+    flex-direction: row;
+    align-items: center;
+  }
+  .settings__section
+    .page-row:has(.page-row__control > [role="switch"])
+    .page-row__content {
+    flex: 1;
+  }
+  .settings__section
+    .page-row:has(.page-row__control > [role="switch"])
+    .page-row__aside {
+    flex: 0 0 auto;
+    align-self: center;
   }
   .settings__range-row {
     flex-wrap: wrap;
@@ -1430,4 +1439,24 @@
 }
 .settings__notification-sound input[type="checkbox"] {
   accent-color: var(--k-action);
+}
+
+.settings__section .page-row__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+.settings__section .page-row__heading .page-row__status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.settings__section .page-row__aside {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings__section .page-row__control > button:not([role="switch"]) {
+  width: auto;
 }

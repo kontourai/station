@@ -706,7 +706,7 @@ describe('settings catalog completeness', () => {
     );
     const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
       (key) => idForKey.get(key as string) as string,
-    );
+    ).filter((id) => id !== 'surface-trust');
     expect(expected.filter(Boolean)).toHaveLength(expected.length);
     const domOrder = () =>
       [...container.querySelectorAll('[data-catalog-id]')]
@@ -1617,14 +1617,14 @@ describe('settings catalog completeness', () => {
     ).toBeNull();
   });
 
-  test('the developer-tools row points to Customize', async () => {
+  test('the developer-tools row explains navigation and experimental opt-ins', async () => {
     window.history.replaceState({}, '', '/settings?view=developer-tools');
     const { container } = await renderSettings();
     expect(
       container.querySelector(
         '[data-catalog-id="enable-developer-tools"] .page-row__description',
       )?.textContent,
-    ).toContain('Customize');
+    ).toContain('experimental feature opt-ins');
   });
 
   test('opens General by default and switches topics without leaving Settings', async () => {
@@ -2848,10 +2848,20 @@ describe('settings catalog completeness', () => {
         { name: `Where ${WORKSPACE_ROW} comes from` },
       );
 
+      const closeSources = async () => {
+        const traversed = new Promise<Event>((resolve) =>
+          window.addEventListener('popstate', resolve, { once: true }),
+        );
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Close setting sources' }),
+        );
+        await traversed;
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      };
       // Saved state first: the project layer is claimed as in effect.
       fireEvent.click(trigger);
       expect(await screen.findByText('in effect')).toBeTruthy();
-      fireEvent.click(trigger);
+      await closeSources();
 
       fireEvent.change(workspace, { target: { value: 'shared' } });
       fireEvent.click(trigger);
@@ -2861,6 +2871,7 @@ describe('settings catalog completeness', () => {
         ),
       ).toBeTruthy();
       expect(screen.queryByText('in effect')).toBeNull();
+      await closeSources();
     });
   });
 

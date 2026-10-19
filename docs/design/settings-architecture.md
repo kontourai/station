@@ -62,6 +62,28 @@ sound choices open under **Notification sounds** and still save and preview on
 this device. These presentation changes do not change settings persistence,
 permissions, or runtime defaults.
 
+## Experimental project tools
+
+Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
+and Trust preview switches. All three default off on each device; enabling
+Developer tools alone enables none of them. Disabling it withdraws previews
+without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
+and chat remain available. Pane discovery omits disabled previews, and restored
+or direct Flow console renderers show an off state before reading Flow data.
+The Trust evidence setting also leaves Settings search and the command palette
+until Trust is enabled. These are UI gates, not authorization or backend feature
+switches; stored evidence and server configuration remain intact. Withdrawing
+panes can change a saved pane arrangement.
+
+Host options retain their editable settings. **Host diagnostics** is a collapsed,
+on-demand troubleshooting disclosure; Settings does not run discovery until it
+is opened. Setting source information opens in a responsive dialog rather than
+a viewport-dependent popover. It no longer occupies a separate mobile row.
+
+The [launch triage](settings-launch-triage.md) records the complete Settings
+inventory, value questions, and remaining qualification work. It is not a claim
+that every listed option has passed a live workflow.
+
 ## Account preferences and device settings
 
 Personal display choices now belong to the authenticated person on this Station:

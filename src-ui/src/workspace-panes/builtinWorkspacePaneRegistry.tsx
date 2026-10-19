@@ -98,6 +98,7 @@ import {
   useOpenPullRequestInRegion,
 } from '../contexts/useOpenInRegion';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { BrowserPreviewWorkspacePane } from './BrowserPreviewWorkspacePane';
 import {
   type BuiltinWorkspacePaneRendererName,
@@ -642,7 +643,19 @@ export function workflowPlanRuntimeState(
   };
 }
 
-function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
+function WorkspacePlanPane(props: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
+  if (!developerFeatures.flow)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable Flow delivery preview in Settings → Advanced → Developer tools."
+      />
+    );
+  return <EnabledWorkspacePlanPane {...props} />;
+}
+
+function EnabledWorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
@@ -684,7 +697,15 @@ function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function WorkspaceReadinessPane({ instance }: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
   const identity = useResolvedPaneIdentity(instance, false);
+  if (!developerFeatures.readiness)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable this tool in Settings → Advanced → Developer tools on this device."
+      />
+    );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceReadinessPaneInstance(instance))
@@ -697,7 +718,15 @@ function WorkspaceReadinessPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
   const identity = useResolvedPaneIdentity(instance, false);
+  if (!developerFeatures.trust)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable this tool in Settings → Advanced → Developer tools on this device."
+      />
+    );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceTrustPaneInstance(instance))

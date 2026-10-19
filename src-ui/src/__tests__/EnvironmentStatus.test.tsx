@@ -1,148 +1,116 @@
 /** @vitest-environment jsdom */
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, expect, test, vi } from 'vitest';
 
-import { render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-
-// EnvironmentStatus reflects the connected Station HOST's detected engines
-// and Model connections, not the user's own device. These tests pin the IA
-// reframe: a "Host runtime" section, the full detected-CLI matrix collapsed by
-// default, and an inline alert only for genuinely-unmet REQUIRED items.
+interface Prerequisite {
+  id: string;
+  name: string;
+  description: string;
+  status: 'installed' | 'missing' | 'error';
+  category: 'required' | 'optional';
+  source?: string;
+}
 const fixtures = vi.hoisted(() => ({
-  status: null as any,
+  status: null as {
+    prerequisites: Prerequisite[];
+    recommendation?: { code: string };
+  } | null,
   loading: false,
+  queried: vi.fn(),
 }));
-
 vi.mock('@kontourai/station-sdk', () => ({
-  useSystemStatusForApiBaseQuery: () => ({
-    data: fixtures.status,
-    isLoading: fixtures.loading,
-  }),
+  useSystemStatusForApiBaseQuery: () => {
+    fixtures.queried();
+    return {
+      data: fixtures.status,
+      isLoading: fixtures.loading,
+      isError: false,
+    };
+  },
 }));
 
 import { EnvironmentStatus } from '../views/settings/EnvironmentStatus';
 
-function setStatus(prerequisites: any[], recommendationCode?: string) {
+beforeEach(() => {
+  fixtures.status = null;
   fixtures.loading = false;
-  fixtures.status = {
-    prerequisites,
-    ...(recommendationCode
-      ? { recommendation: { code: recommendationCode } }
-      : {}),
-  };
+  fixtures.queried.mockClear();
+});
+
+async function openDiagnostics() {
+  fireEvent.click(
+    screen.getByText('Host diagnostics', { selector: 'summary' }),
+  );
+  await waitFor(() => expect(fixtures.queried).toHaveBeenCalled());
 }
 
-const installedOptional = {
-  id: 'ollama',
-  name: 'Ollama',
-  description: 'Local model server',
-  status: 'installed' as const,
-  category: 'optional' as const,
-  source: 'Engines',
-};
+test('keeps editable host settings available without starting a discovery query', async () => {
+  fixtures.loading = true;
+  render(
+    <EnvironmentStatus apiBase="http://host">
+      <input aria-label="Terminal shell" defaultValue="zsh" />
+    </EnvironmentStatus>,
+  );
+  expect(screen.getByRole('textbox', { name: 'Terminal shell' })).toBeTruthy();
+  expect(fixtures.queried).not.toHaveBeenCalled();
+  await openDiagnostics();
+  expect(screen.getByRole('status').textContent).toBe(
+    'Checking the Station host…',
+  );
+  expect(screen.getByRole('textbox', { name: 'Terminal shell' })).toBeTruthy();
+});
 
-const installedRequired = {
-  id: 'node',
-  name: 'Node.js',
-  description: 'JavaScript engine',
-  status: 'installed' as const,
-  category: 'required' as const,
-  source: 'Core',
-};
+test('does not claim an unavailable discovery is healthy or a required repair', async () => {
+  render(<EnvironmentStatus apiBase="http://host" />);
+  await openDiagnostics();
+  expect(screen.getByRole('status').textContent).toContain(
+    'Host diagnostics are unavailable',
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
+});
 
-const missingRequired = {
-  id: 'bedrock-credentials',
-  name: 'AWS credentials',
-  description: 'Required for Bedrock models',
-  status: 'missing' as const,
-  category: 'required' as const,
-  source: 'Model connections',
-};
+test('keeps a required discovery failure collapsed and shows it once when requested', async () => {
+  fixtures.status = {
+    prerequisites: [
+      {
+        id: 'discovery',
+        name: 'Discovery timed out',
+        description: 'No result',
+        status: 'error',
+        category: 'required',
+      },
+    ],
+  };
+  render(<EnvironmentStatus apiBase="http://host" />);
+  expect(screen.queryByText('Discovery timed out')).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  await openDiagnostics();
+  expect(screen.getAllByText('Discovery timed out')).toHaveLength(1);
+  expect(screen.queryByText(/required item.*resolve/i)).toBeNull();
+});
 
-describe('EnvironmentStatus (Host runtime IA)', () => {
-  beforeEach(() => {
-    fixtures.status = null;
-    fixtures.loading = false;
-  });
-
-  test('mounts an honest Station host loading status', () => {
-    fixtures.loading = true;
-    render(<EnvironmentStatus apiBase="http://host" />);
-
-    const heading = screen.getByRole('heading', { name: 'Station host' });
-    const section = heading.closest('section');
-    expect(section).toBeTruthy();
-    const stationHost = within(section!);
-    expect(stationHost.getByRole('heading', { name: 'Station host' })).toBe(
-      heading,
-    );
-    expect(stationHost.getByRole('status').textContent).toBe(
-      'Checking prerequisites on the Station host…',
-    );
-    expect(stationHost.queryByRole('alert')).toBeNull();
-    expect(stationHost.queryByText('Detected prerequisites')).toBeNull();
-    expect(stationHost.queryByText('Node.js')).toBeNull();
-    expect(stationHost.queryByText(/required item to resolve/i)).toBeNull();
-    expect(stationHost.queryByText(/prerequisites detected/i)).toBeNull();
-    expect(
-      stationHost.queryByText(/^Station host (?:is )?(?:ready|healthy)\.?$/i),
-    ).toBeNull();
-  });
-
-  test('frames detected tooling as the host runtime, not user settings', () => {
-    setStatus([installedRequired, installedOptional]);
-    render(<EnvironmentStatus apiBase="http://host" />);
-
-    expect(screen.getByText('Station host')).toBeTruthy();
-    // Clarifies host semantics for a remote client using glossary vocabulary.
-    expect(
-      screen.getByText(
-        /model-connection prerequisites detected on the computer running this Station/i,
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/describes the Station host—not your device/i),
-    ).toBeTruthy();
-  });
-
-  test('collapses the full detected checklist by default when all required met', () => {
-    setStatus([installedRequired, installedOptional]);
-    render(<EnvironmentStatus apiBase="http://host" />);
-
-    // No actionable alert when nothing required is unmet.
-    expect(screen.queryByRole('alert')).toBeNull();
-
-    // The green wall of detected CLIs lives behind a closed disclosure.
-    const disclosure = document.querySelector(
-      'details.host-runtime__disclosure',
-    );
-    expect(disclosure).toBeTruthy();
-    expect((disclosure as HTMLDetailsElement).open).toBe(false);
-    expect(screen.getByText('Detected prerequisites')).toBeTruthy();
-  });
-
-  test('surfaces an inline alert and auto-opens when a required item is unmet', () => {
-    setStatus([installedRequired, missingRequired]);
-    render(<EnvironmentStatus apiBase="http://host" />);
-
-    const alert = screen.getByRole('alert');
-    expect(alert).toBeTruthy();
-    expect(alert.textContent).toContain(
-      '1 required item to resolve on this host',
-    );
-    expect(alert.textContent).toContain('AWS credentials');
-
-    const disclosure = document.querySelector(
-      'details.host-runtime__disclosure',
-    );
-    expect((disclosure as HTMLDetailsElement).open).toBe(true);
-  });
-
-  test('honors the runtime-only recommendation by hiding implicit bedrock creds', () => {
-    setStatus([installedRequired, missingRequired], 'runtime-only');
-    render(<EnvironmentStatus apiBase="http://host" />);
-
-    // bedrock-credentials filtered out → no unmet required → no alert.
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByText('AWS credentials')).toBeNull();
-  });
+test('retains runtime-only filtering of implicit Bedrock prerequisites', async () => {
+  fixtures.status = {
+    recommendation: { code: 'runtime-only' },
+    prerequisites: [
+      {
+        id: 'bedrock-credentials',
+        name: 'AWS credentials',
+        description: 'Bedrock access',
+        status: 'missing',
+        category: 'required',
+      },
+      {
+        id: 'codex',
+        name: 'Codex',
+        description: 'Agent app',
+        status: 'installed',
+        category: 'optional',
+      },
+    ],
+  };
+  render(<EnvironmentStatus apiBase="http://host" />);
+  await openDiagnostics();
+  expect(screen.queryByText('AWS credentials')).toBeNull();
+  expect(screen.getByText('Codex')).toBeTruthy();
 });

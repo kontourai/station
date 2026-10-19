@@ -24,6 +24,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
@@ -36,6 +37,7 @@ import {
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useShowSurfacePage } from '../contexts/useShowSurface';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -270,10 +272,23 @@ export function CommandPalette() {
     };
   }, [open, query, settingsCatalog]);
 
+  const developerFeatures = useDeveloperFeatures();
+  const { developerToolsEnabled } = useDeviceSettings();
   const settingsCommands = useMemo(
     () =>
-      settingsCatalog?.settingsPaletteCommands({ isMobile, isDesktop }) ?? [],
-    [isMobile, isDesktop, settingsCatalog],
+      settingsCatalog?.settingsPaletteCommands({
+        isMobile,
+        isDesktop,
+        developerToolsEnabled,
+        experimentalTrustEnabled: developerFeatures.trust,
+      }) ?? [],
+    [
+      isMobile,
+      isDesktop,
+      settingsCatalog,
+      developerToolsEnabled,
+      developerFeatures.trust,
+    ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
     settingsCatalog

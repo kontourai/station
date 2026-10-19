@@ -1,12 +1,12 @@
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   CheckGlyph,
   CloseGlyph,
   WarningGlyph,
 } from '../../components/icons/Glyph';
-import { PageSection } from '../../components/PageSection';
 import { activatable } from '../../utils/activatable';
+import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
 interface Prerequisite {
@@ -19,31 +19,41 @@ interface Prerequisite {
   installGuide?: { steps: string[]; commands?: string[] };
 }
 
-// The host's detected engines and Model connections (Bedrock/Claude
-// CLI/Codex/Ollama/Kiro/…). This reflects the connected Station HOST's own
-// machine — on a remote client it is host runtime diagnostics, not the user's
-// device or their own Settings — so it is framed as "Host runtime" and lives
-// low in Settings behind a disclosure, surfacing only genuinely-unmet REQUIRED
-// items inline (glossary: "Engine", "Model connections", "host").
 export function EnvironmentStatus({
   apiBase,
   children,
 }: {
   apiBase: string;
-  /**
-   * Rows that belong to this section but are not part of the host report
-   * (#2182: the three Station settings whose subject is the machine). They
-   * render inside this card in BOTH branches — a host report that has not
-   * arrived must not also withhold the settings, which are readable and
-   * editable regardless of whether the prerequisite scan answered.
-   */
   children?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [guideOpen, setGuideOpen] = useState<Set<string>>(new Set());
+  return (
+    <SettingsSection id="section-host-runtime" icon="" title="Host options">
+      {children}
+      <details
+        {...settingsRow('host-runtime')}
+        tabIndex={-1}
+        className="settings__subsection host-runtime__disclosure"
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+      >
+        <summary>Host diagnostics</summary>
+        <p className="settings__field-hint">
+          Detected agent apps and model prerequisites on the computer running
+          Station. Use this when troubleshooting a connection.
+        </p>
+        {expanded && <HostDiagnostics apiBase={apiBase} />}
+      </details>
+    </SettingsSection>
+  );
+}
 
-  const { data: systemStatus, isLoading: loading } =
-    useSystemStatusForApiBaseQuery(apiBase);
+function HostDiagnostics({ apiBase }: { apiBase: string }) {
+  const [guideOpen, setGuideOpen] = useState<Set<string>>(new Set());
+  const {
+    data: systemStatus,
+    isLoading: loading,
+    isError,
+  } = useSystemStatusForApiBaseQuery(apiBase);
   const hideImplicitProviderPrereq =
     systemStatus?.recommendation?.code === 'runtime-only';
   const prerequisites = Array.isArray(systemStatus?.prerequisites)
@@ -54,43 +64,14 @@ export function EnvironmentStatus({
       )
     : [];
 
-  const requiredUnmet = prerequisites.filter(
-    (prerequisite) =>
-      prerequisite.category === 'required' &&
-      prerequisite.status !== 'installed',
-  );
-  const hasRequiredUnmet = requiredUnmet.length > 0;
-
-  useEffect(() => {
-    // Auto-open the full checklist only when the host is missing a REQUIRED
-    // prerequisite; otherwise it stays collapsed so the green wall of detected
-    // CLIs never dominates Settings.
-    if (hasRequiredUnmet) {
-      setExpanded(true);
-    }
-  }, [hasRequiredUnmet]);
-
-  // A missing host report is an observation boundary, not evidence that the
-  // host is healthy. Keep the catalog target mounted so deep links and screen
-  // readers receive an honest pending/unavailable state.
-  if (loading || !Array.isArray(systemStatus?.prerequisites)) {
+  if (loading) return <p role="status">Checking the Station host…</p>;
+  if (isError || !Array.isArray(systemStatus?.prerequisites)) {
     return (
-      <PageSection
-        id="section-host-runtime"
-        className="settings__section host-runtime"
-        title="Station host"
-      >
-        <div {...settingsRow('host-runtime')} tabIndex={-1} role="status">
-          {loading
-            ? 'Checking prerequisites on the Station host…'
-            : 'Host runtime status is unavailable. Try again when the Station host is reachable.'}
-        </div>
-        {children}
-      </PageSection>
+      <p role="status">
+        Host diagnostics are unavailable. Your saved settings remain available.
+      </p>
     );
   }
-
-  const allRequiredMet = !hasRequiredUnmet;
 
   const toggleGuide = (id: string) =>
     setGuideOpen((previous) => {
@@ -163,57 +144,13 @@ export function EnvironmentStatus({
   };
 
   return (
-    <PageSection
-      id="section-host-runtime"
-      className="settings__section host-runtime"
-      title={
-        <>
-          <span className="settings__section-icon" aria-hidden="true">
-            ◇
-          </span>{' '}
-          Station host
-        </>
-      }
-      description="Engine CLIs and model-connection prerequisites detected on the computer running this Station. On a remote client, this describes the Station host—not your device."
-    >
-      <div {...settingsRow('host-runtime')} tabIndex={-1}>
-        {hasRequiredUnmet && (
-          <div className="host-runtime__alert" role="alert">
-            <div className="host-runtime__alert-title">
-              {requiredUnmet.length} required item
-              {requiredUnmet.length !== 1 ? 's' : ''} to resolve on this host
-            </div>
-            {requiredUnmet.map(renderItem)}
-          </div>
-        )}
-
-        <details
-          className="host-runtime__disclosure"
-          open={expanded}
-          onToggle={(event) => setExpanded(event.currentTarget.open)}
-        >
-          <summary className="host-runtime__summary">
-            <span
-              className={`host-runtime__summary-status host-runtime__summary-status--${allRequiredMet ? 'ok' : 'warn'}`}
-              aria-hidden="true"
-            >
-              {allRequiredMet ? '●' : '○'}
-            </span>
-            <span className="host-runtime__summary-label">
-              Detected prerequisites
-            </span>
-          </summary>
-          <div className="host-runtime__panel settings__env-panel">
-            {[...grouped.entries()].map(([source, items]) => (
-              <div key={source}>
-                <div className="settings__env-source">{source}</div>
-                {items.map(renderItem)}
-              </div>
-            ))}
-          </div>
-        </details>
-      </div>
-      {children}
-    </PageSection>
+    <div className="host-runtime__panel settings__env-panel">
+      {[...grouped.entries()].map(([source, items]) => (
+        <div key={source}>
+          <div className="settings__env-source">{source}</div>
+          {items.map(renderItem)}
+        </div>
+      ))}
+    </div>
   );
 }

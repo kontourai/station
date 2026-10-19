@@ -69,6 +69,7 @@ import {
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
@@ -454,6 +455,7 @@ function BuiltinCodingLayoutHost({
   if (!workspacePaneRuntime.current)
     workspacePaneRuntime.current = new WorkspacePaneHostRuntime();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
+  const developerFeatures = useDeveloperFeatures();
   const { navigate } = useNavigationActions();
   const projectId = catalog.projectId;
   const compact = useIsMobile();
@@ -891,7 +893,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspaceCodingTerminalPaneInstance(candidate.instance) &&
       isCanonicalBuiltinCodingTerminalDescriptor(candidate.descriptor),
   );
-  const planEntry = catalog.entries.find(
+  const planEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_PLAN_PANE_DESCRIPTOR_ID &&
@@ -899,7 +901,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspacePlanPaneInstance(candidate.instance) &&
       isCanonicalBuiltinPlanDescriptor(candidate.descriptor),
   );
-  const readinessEntry = catalog.entries.find(
+  const readinessEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_READINESS_PANE_DESCRIPTOR_ID &&
@@ -907,7 +909,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspaceReadinessPaneInstance(candidate.instance) &&
       isCanonicalBuiltinReadinessDescriptor(candidate.descriptor),
   );
-  const trustEntry = catalog.entries.find(
+  const trustEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_TRUST_PANE_DESCRIPTOR_ID &&
@@ -1151,8 +1153,13 @@ function BuiltinCodingLayoutHost({
     ['readiness', readinessEntry],
     ['trust', trustEntry],
   ] as const;
-  const evidenceComposition =
+  const evidenceCompositionActive =
     evidenceCompositionControl !== 'legacy' &&
+    (developerFeatures.flow ||
+      developerFeatures.readiness ||
+      developerFeatures.trust);
+  const evidenceComposition =
+    evidenceCompositionActive &&
     evidenceEntries.every(([, candidate]) => candidate?.instance)
       ? selectCodingEvidenceComposition({
           control: evidenceCompositionControl,
@@ -1180,7 +1187,7 @@ function BuiltinCodingLayoutHost({
       : null;
   const evidenceCompositionReceipts =
     evidenceComposition?.receipts ??
-    (evidenceCompositionControl !== 'legacy'
+    (evidenceCompositionActive
       ? [
           {
             category: 'evidence' as const,
@@ -1192,10 +1199,7 @@ function BuiltinCodingLayoutHost({
           },
         ]
       : []);
-  if (
-    evidenceCompositionControl !== 'legacy' &&
-    !evidenceComposition?.document
-  ) {
+  if (evidenceCompositionActive && !evidenceComposition?.document) {
     return chatOnly(
       <>
         {evidenceCompositionReceipts.map((receipt) => (
@@ -1215,16 +1219,19 @@ function BuiltinCodingLayoutHost({
     evidenceComposition?.instances.find(
       (instance) => instance.descriptorId === descriptorId,
     );
-  const selectedPlanInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedPlanInstance = !developerFeatures.flow
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? planInstance
       : selectedEvidence(WORKSPACE_PLAN_PANE_DESCRIPTOR_ID);
-  const selectedReadinessInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedReadinessInstance = !developerFeatures.readiness
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? readinessInstance
       : selectedEvidence(WORKSPACE_READINESS_PANE_DESCRIPTOR_ID);
-  const selectedTrustInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedTrustInstance = !developerFeatures.trust
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? trustInstance
       : selectedEvidence(WORKSPACE_TRUST_PANE_DESCRIPTOR_ID);
   // The Coding occurrence gates the host (above) but is not one of its panes:
@@ -1555,9 +1562,20 @@ function BuiltinCodingLayoutHost({
           receipt={receipt}
         />
       ))}
-      {(evidenceComposition?.unavailablePanes ?? []).map((entry) => (
-        <Empty key={entry.category} {...codingEvidenceUnavailableCopy(entry)} />
-      ))}
+      {(evidenceComposition?.unavailablePanes ?? [])
+        .filter((entry) =>
+          entry.category === 'plan'
+            ? developerFeatures.flow
+            : entry.category === 'readiness'
+              ? developerFeatures.readiness
+              : developerFeatures.trust,
+        )
+        .map((entry) => (
+          <Empty
+            key={entry.category}
+            {...codingEvidenceUnavailableCopy(entry)}
+          />
+        ))}
       {document ? (
         <WorkspacePaneHost
           document={document}
