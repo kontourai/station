@@ -1,7 +1,17 @@
-import { mkdtempSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { EventStore, type PersistedRuntimeEvent } from '../event-store.js';
 
@@ -130,13 +140,72 @@ describe('EventStore high-cardinality batched projection', () => {
       );
     };
     const profiler = new Session();
-    const profilePath = join(
-      mkdtempSync(join(tmpdir(), 'station-large-projection-profile-')),
-      'projection.cpuprofile',
+    const hostTmp = process.env.STATION_VITEST_HOST_TMPDIR;
+    const declaredRunRoot = process.env.STATION_VITEST_RUN_ROOT;
+    if (
+      !hostTmp ||
+      !declaredRunRoot ||
+      !isAbsolute(hostTmp) ||
+      !isAbsolute(declaredRunRoot) ||
+      !process.getuid
+    ) {
+      throw new Error('Profile retention requires owned host and run roots.');
+    }
+    const ownerUid = process.getuid();
+    const hostRoot = realpathSync(hostTmp);
+    const runRoot = realpathSync(declaredRunRoot);
+    const containsPath = (parent: string, child: string): boolean => {
+      const suffix = relative(parent, child);
+      return (
+        suffix === '' ||
+        (!isAbsolute(suffix) &&
+          suffix !== '..' &&
+          !suffix.startsWith(`..${sep}`))
+      );
+    };
+    const hostIdentity = statSync(hostRoot);
+    const runIdentity = statSync(runRoot);
+    if (
+      !hostIdentity.isDirectory() ||
+      !runIdentity.isDirectory() ||
+      hostIdentity.uid !== ownerUid ||
+      runIdentity.uid !== ownerUid ||
+      containsPath(runRoot, hostRoot) ||
+      !containsPath(hostRoot, runRoot) ||
+      realpathSync(tmpdir()) !== runRoot ||
+      !containsPath(runRoot, realpathSync(dir))
+    ) {
+      throw new Error(
+        'Profile host/run root ownership or containment mismatch.',
+      );
+    }
+    const profileDirectory = mkdtempSync(
+      join(hostRoot, 'station-large-projection-profile-'),
     );
+    const directoryIdentity = lstatSync(profileDirectory);
+    if (
+      !directoryIdentity.isDirectory() ||
+      directoryIdentity.uid !== ownerUid ||
+      realpathSync(profileDirectory) !== profileDirectory ||
+      !containsPath(hostRoot, profileDirectory) ||
+      containsPath(runRoot, profileDirectory)
+    ) {
+      throw new Error(
+        'Profile directory is not an owned durable host artifact.',
+      );
+    }
+    const profilePath = join(profileDirectory, 'projection.cpuprofile');
     let profiling = false;
     try {
-      trace('entry');
+      trace('entry', {
+        hostRoot,
+        runRoot,
+        profilePath,
+        ownerUid,
+        workerPid: process.pid,
+        directoryDevice: directoryIdentity.dev,
+        directoryInode: directoryIdentity.ino,
+      });
       profiler.connect();
       await profiler.post('Profiler.enable');
       await profiler.post('Profiler.start');
@@ -182,8 +251,41 @@ describe('EventStore high-cardinality batched projection', () => {
       try {
         if (profiling) {
           const { profile } = await profiler.post('Profiler.stop');
-          writeFileSync(profilePath, JSON.stringify(profile));
-          trace('exit', { profilePath });
+          const currentDirectory = lstatSync(profileDirectory);
+          if (
+            !currentDirectory.isDirectory() ||
+            currentDirectory.uid !== ownerUid ||
+            currentDirectory.dev !== directoryIdentity.dev ||
+            currentDirectory.ino !== directoryIdentity.ino ||
+            realpathSync(profileDirectory) !== profileDirectory
+          ) {
+            throw new Error('Profile artifact directory identity changed.');
+          }
+          const profileBytes = Buffer.from(JSON.stringify(profile));
+          writeFileSync(profilePath, profileBytes, { flag: 'wx', mode: 0o600 });
+          const fileIdentity = lstatSync(profilePath);
+          const retainedBytes = readFileSync(profilePath);
+          if (
+            !fileIdentity.isFile() ||
+            fileIdentity.uid !== ownerUid ||
+            fileIdentity.nlink !== 1 ||
+            fileIdentity.size !== profileBytes.length ||
+            !retainedBytes.equals(profileBytes)
+          ) {
+            throw new Error(
+              'Profile artifact file ownership or bytes mismatch.',
+            );
+          }
+          trace('exit', {
+            profilePath,
+            profileBytes: retainedBytes.length,
+            profileSHA256: createHash('sha256')
+              .update(retainedBytes)
+              .digest('hex'),
+            fileDevice: fileIdentity.dev,
+            fileInode: fileIdentity.ino,
+            ownerUid: fileIdentity.uid,
+          });
         }
       } finally {
         profiler.disconnect();
