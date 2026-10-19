@@ -10,7 +10,8 @@ import {
   text,
 } from './encoding.js';
 import type { RetiredRecord } from './retention.js';
-export const attemptRecordSchema = z
+
+const attemptRecordSchema = z
   .object({
     attempt: attemptSchema,
     state: z.enum(['running', 'completed', 'aborted']),

@@ -153,7 +153,7 @@ const promptMessage = z.union([
     })
     .strict(),
 ]);
-export const functionSchema = z
+const functionSchema = z
   .object({
     type: z.literal('function'),
     name: text,
@@ -163,7 +163,7 @@ export const functionSchema = z
     providerOptions: empty.optional(),
   })
   .strict();
-export const generationSchema = z
+const generationSchema = z
   .object({
     maxOutputTokens: finite.int().positive().optional(),
     temperature: finite.optional(),
@@ -202,7 +202,6 @@ export const requestSchema = generationSchema
     includeRawChunks: z.literal(false).optional(),
   })
   .strict();
-export type RequestData = z.infer<typeof requestSchema>;
 export function requestBytes(value: unknown): Uint8Array {
   const raw = ownFields(value, [
     ...Object.keys(requestSchema.shape),
@@ -270,7 +269,7 @@ const entryCommon = {
   authoredDigest: digest,
   tools: z.array(functionSchema),
 };
-export const voltEntrySchema = z
+const voltEntrySchema = z
   .object({
     ...entryCommon,
     messages: z.array(uiMessage).min(1),
@@ -278,7 +277,7 @@ export const voltEntrySchema = z
   })
   .strict()
   .refine((v) => v.binding.framework === 'voltagent');
-export const strandsEntrySchema = z
+const strandsEntrySchema = z
   .object({
     ...entryCommon,
     prefix: z.array(nativeMessage),

@@ -15,7 +15,7 @@ import {
 
 const operation = { operationId: text, digest };
 const owned = { ...operation, key: runKey, expected: fence };
-export const commandSchema = z.discriminatedUnion('type', [
+const commandSchema = z.discriminatedUnion('type', [
   z
     .object({ type: z.literal('open'), ...operation, spec: specSchema, owner })
     .strict(),

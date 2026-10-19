@@ -18,7 +18,8 @@ import {
 } from '../index.js';
 import { openSqliteModelStorage, openSqliteRuntimeBodies } from '../sqlite.js';
 import { captureVoltEntry } from '../voltagent.js';
-export const binding: ImplementationBinding = {
+
+const binding: ImplementationBinding = {
   framework: 'voltagent',
   frameworkVersion: '2.10.0',
   adapterDigest: `sha256:${'a'.repeat(64)}`,

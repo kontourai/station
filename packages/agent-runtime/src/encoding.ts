@@ -144,7 +144,7 @@ export const bindingSchema = z
       v.frameworkVersion ===
       (v.framework === 'voltagent' ? '2.10.0' : '1.19.0'),
   );
-export const entryPin = z
+const entryPin = z
   .object({
     body: bodyRef,
     sourceCutoff: text,

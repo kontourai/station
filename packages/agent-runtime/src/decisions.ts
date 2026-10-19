@@ -46,7 +46,7 @@ const refuse = (reason: Refused['reason']): Refused => ({
   kind: 'refused',
   reason,
 });
-export const snapshotOf = (run: RunRecord): Snapshot => ({
+const snapshotOf = (run: RunRecord): Snapshot => ({
   spec: run.spec,
   fence: run.fence,
   state: run.state,
