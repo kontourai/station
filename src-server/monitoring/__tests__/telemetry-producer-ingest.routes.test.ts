@@ -374,7 +374,7 @@ describe('telemetry producer tokens on the ingest routes', () => {
   test('timestamps are epoch-ms digits or ISO 8601 within the Date range', async () => {
     const h = harness();
     const token = await h.create('flow-agents');
-    const statusFor = async (timestamp: string) =>
+    const statusFor = async (timestamp: string | number) =>
       (
         await h.send('/v1/agent-events', {
           token,
@@ -387,17 +387,31 @@ describe('telemetry producer tokens on the ingest routes', () => {
     // Date-parseable prose is not the documented contract.
     expect(await statusFor('Tue Oct 19 2026')).toBe(400);
     expect(await statusFor('2026-10-19')).toBe(400);
+    // Impossible calendar values are refused, not rolled over.
+    expect(await statusFor('2026-02-30T12:00:00Z')).toBe(400);
+    expect(await statusFor('2026-10-19T24:00:00Z')).toBe(400);
+    // Only the strict form: no lowercase z, no space separator.
+    expect(await statusFor('2026-10-19T12:00:00z')).toBe(400);
+    expect(await statusFor('2026-10-19 12:00:00Z')).toBe(400);
+    // A JSON number must be a non-negative integer in range.
+    expect(await statusFor(1.5)).toBe(400);
+    expect(await statusFor(8_640_000_000_000_001)).toBe(400);
     expect(h.emitted).toHaveLength(0);
 
     expect(await statusFor('8640000000000000')).toBe(200);
     expect(await statusFor('0')).toBe(200);
     expect(await statusFor('2026-10-19T12:00:00.123Z')).toBe(200);
     expect(await statusFor('2026-10-19T12:00:00+02:00')).toBe(200);
+    expect(await statusFor('2028-02-29T00:00:00Z')).toBe(200);
+    // Older producers sent a JSON number; it is still epoch milliseconds.
+    expect(await statusFor(1_792_400_000_000)).toBe(200);
     expect(h.emitted.map((event) => event.timestamp)).toEqual([
       '+275760-09-13T00:00:00.000Z',
       '1970-01-01T00:00:00.000Z',
       '2026-10-19T12:00:00.123Z',
       '2026-10-19T10:00:00.000Z',
+      '2028-02-29T00:00:00.000Z',
+      new Date(1_792_400_000_000).toISOString(),
     ]);
   });
 

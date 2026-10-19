@@ -738,8 +738,10 @@ made. A token works only from this machine unless created with
 `--allow-remote`, and has no expiry unless `--expires-in-days=<n>` is given.
 Value flags take the `--flag=value` form; the switches `--allow-remote` and
 `--json` take no value (`--allow-remote=true` is a usage error). `--json`
-prints the result object. If the create reply is lost after Station may have
-made the producer, the command says so and names the `revoke` to run.
+prints the result object. If the request was sent but no usable reply came back
+(a dropped connection, a timeout, a success with no readable body), the command
+says the producer may exist and names the `revoke` to run. A refusal, or a
+Station that could not be reached at all, is reported as a plain error.
 To rotate a token, create a new one, point the producer at it, then revoke the
 old one. See [Telemetry ingest](api.md#telemetry-ingest).
 

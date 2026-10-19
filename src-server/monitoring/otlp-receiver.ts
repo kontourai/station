@@ -39,8 +39,7 @@ const boundedText = (max: number) => z.string().min(1).max(max);
 const agentTelemetryIngestEventSchema = z.looseObject({
   schema_version: z.string().max(32),
   timestamp: z
-    .string()
-    .max(64)
+    .union([z.string().max(64), z.number()])
     .refine(
       (value) => parseIngestTimestamp(value) !== undefined,
       'must be epoch milliseconds or an ISO-8601 date-time',
@@ -70,20 +69,50 @@ const agentTelemetryIngestEventSchema = z.looseObject({
 /** Largest magnitude a JavaScript Date holds (ECMA-262 time value range). */
 const MAX_DATE_MS = 8.64e15;
 const ISO_8601_DATE_TIME =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 /**
- * Epoch milliseconds (digits only) or an ISO 8601 date-time with an explicit
- * offset; anything else, including `Date`-parseable prose, is `undefined`.
- * The range check matters: an out-of-range time value passes `isFinite` but
- * makes `toISOString()` throw, which was a 500 instead of a 400.
+ * The ISO form, with every component in range: `Date` would otherwise roll
+ * `2026-02-30` over to March 2 and accept hour 24. Lowercase `z` and a space
+ * separator are refused; the contract names the strict form only.
  */
-function parseIngestTimestamp(value: string): number | undefined {
-  const ms = /^\d{1,16}$/.test(value)
-    ? Number(value)
-    : ISO_8601_DATE_TIME.test(value)
-      ? new Date(value).getTime()
-      : Number.NaN;
+function parseIsoDateTime(value: string): number | undefined {
+  const match = ISO_8601_DATE_TIME.exec(value);
+  if (!match) return undefined;
+  const [year, month, day, hour, minute, second = '0', offH = '0', offM = '0'] =
+    match.slice(1).map((part) => part ?? '0');
+  const [y, mo, d] = [Number(year), Number(month), Number(day)];
+  const calendar = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    calendar.getUTCFullYear() !== y ||
+    calendar.getUTCMonth() !== mo - 1 ||
+    calendar.getUTCDate() !== d ||
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    Number(second) > 59 ||
+    Number(offH) > 23 ||
+    Number(offM) > 59
+  )
+    return undefined;
+  return new Date(value).getTime();
+}
+
+/**
+ * Epoch milliseconds (digits, or a JSON integer as older producers sent) or
+ * an ISO 8601 date-time with an explicit offset; anything else, including
+ * `Date`-parseable prose, is `undefined`. The range check matters: an
+ * out-of-range time value passes `isFinite` but makes `toISOString()`
+ * throw, which was a 500 instead of a 400.
+ */
+function parseIngestTimestamp(value: string | number): number | undefined {
+  const ms =
+    typeof value === 'number'
+      ? Number.isSafeInteger(value) && value >= 0
+        ? value
+        : Number.NaN
+      : /^\d{1,16}$/.test(value)
+        ? Number(value)
+        : (parseIsoDateTime(value) ?? Number.NaN);
   return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS ? ms : undefined;
 }
 

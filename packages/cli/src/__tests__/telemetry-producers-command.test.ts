@@ -27,7 +27,14 @@ const makeTempDir = trackTempDirs();
 let server: Server;
 let base: string;
 let seen: Seen[];
-let reply: (request: Seen) => { status: number; body: unknown };
+let reply: (request: Seen) => {
+  status: number;
+  body: unknown;
+  /** Sent verbatim as text/plain instead of JSON. */
+  text?: string;
+  /** Close the connection after reading the request, without replying. */
+  drop?: boolean;
+};
 
 const readBody = (request: IncomingMessage) =>
   new Promise<string>((done) => {
@@ -48,7 +55,16 @@ beforeEach(async () => {
       body: await readBody(request),
     };
     seen.push(entry);
-    const { status, body } = reply(entry);
+    const { status, body, text, drop } = reply(entry);
+    if (drop) {
+      request.socket.destroy();
+      return;
+    }
+    if (text !== undefined) {
+      response.writeHead(status, { 'content-type': 'text/plain' });
+      response.end(text);
+      return;
+    }
     response.writeHead(status, { 'content-type': 'application/json' });
     response.end(JSON.stringify(body));
   });
@@ -60,7 +76,7 @@ afterEach(async () => {
   await new Promise<void>((done) => server.close(() => done()));
 });
 
-function run(args: string[]) {
+function run(args: string[], apiBase?: string) {
   const home = makeTempDir('station-cli-producers-');
   return new Promise<{ status: number | null; stdout: string; stderr: string }>(
     (done) => {
@@ -73,7 +89,7 @@ function run(args: string[]) {
           'telemetry',
           'producers',
           ...args,
-          `--api-base=${base}`,
+          `--api-base=${apiBase ?? base}`,
           `--credential=${CREDENTIAL}`,
         ],
         {
@@ -242,6 +258,38 @@ describe('station telemetry producers', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('station telemetry producers create');
     expect(seen).toHaveLength(0);
+  }, 60_000);
+
+  test('a create dropped after it was sent says the producer may exist', async () => {
+    reply = () => ({ status: 0, body: undefined, drop: true });
+    const result = await run(['create', 'dropped']);
+    expect(result.status).not.toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(result.stderr).toContain(
+      'station telemetry producers revoke dropped',
+    );
+  }, 60_000);
+
+  test('a Station that is not running gets the plain error, no revoke hint', async () => {
+    reply = () => ({ status: 500, body: { success: false } });
+    // A port nothing listens on: bind one, then close it.
+    const probe = createServer();
+    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+    const closed = `http://127.0.0.1:${(probe.address() as AddressInfo).port}`;
+    await new Promise<void>((done) => probe.close(() => done()));
+    const result = await run(['create', 'never-sent'], closed);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).not.toContain('revoke');
+    expect(result.stderr).not.toContain('may exist');
+  }, 60_000);
+
+  test('a plain-text refusal is a refusal, no revoke hint', async () => {
+    reply = () => ({ status: 404, body: undefined, text: 'Not Found' });
+    const result = await run(['create', 'refused']);
+    expect(result.status).not.toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(result.stderr).toContain('HTTP 404');
+    expect(result.stderr).not.toContain('revoke');
   }, 60_000);
 
   test('a create whose reply is lost says the producer may exist', async () => {

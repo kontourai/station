@@ -147,7 +147,8 @@ interface AgentTelemetryEnrichment {
  */
 export interface AgentTelemetryIngestEvent {
   schema_version: string;
-  timestamp: string;
+  /** Epoch milliseconds (digits or a JSON integer) or ISO 8601 with an offset. */
+  timestamp: string | number;
   session_id: string;
   event_id: string;
   /**

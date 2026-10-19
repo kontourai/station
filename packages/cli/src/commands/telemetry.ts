@@ -37,6 +37,45 @@ function openTokenFile(path: string): number {
   return openSync(path, 'wx', 0o600);
 }
 
+/**
+ * Connection failures that happen before a request reaches the server:
+ * nothing can have been created.
+ */
+const NOT_SENT_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EADDRNOTAVAIL',
+  'ERR_INVALID_URL',
+]);
+/** SDK refusals raised before any request is sent. */
+const NOT_SENT_ERRORS = new Set([
+  'StationReadOnlyError',
+  'StationCredentialConflictError',
+]);
+
+/**
+ * Whether a failed create may still have created the producer. A server
+ * refusal (any `status`) did not; nor did a failure before the request was
+ * sent. Anything else (a reset connection, a timeout, a 2xx with no
+ * readable body) is ambiguous.
+ */
+function createMayHaveHappened(error: unknown): boolean {
+  if (typeof (error as { status?: unknown })?.status === 'number') return false;
+  if (error instanceof Error && NOT_SENT_ERRORS.has(error.name)) return false;
+  for (
+    let current: unknown = error, depth = 0;
+    current && typeof current === 'object' && depth < 5;
+    current = (current as { cause?: unknown }).cause, depth += 1
+  ) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === 'string' && NOT_SENT_CODES.has(code)) return false;
+  }
+  return true;
+}
+
 async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
   const [, action, name, ...extra] = parsed.positionals;
   const allowed: Record<string, readonly string[]> = {
@@ -137,11 +176,9 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
         },
       )) as { producer: ProducerView; token: string };
     } catch (error) {
-      // A refusal carries the server's status: nothing was created. Any
-      // other failure (connection lost, unreadable reply) may have followed
-      // a successful create whose token never reached this command.
-      if (typeof (error as { status?: unknown }).status === 'number')
-        throw error;
+      // Only an ambiguous outcome (request sent, no usable reply) may hide
+      // a created producer.
+      if (!createMayHaveHappened(error)) throw error;
       throw new Error(
         `The create request did not complete (${error instanceof Error ? error.message : String(error)}). Telemetry producer ${name} may exist without a usable token: run \`station telemetry producers revoke ${name}\`, then create it again.`,
       );

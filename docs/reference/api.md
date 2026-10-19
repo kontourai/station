@@ -1839,9 +1839,13 @@ Responses for a producer token:
 `POST /v1/agent-events` validates the body before reading it: `schema_version`
 must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
 `session_id`, `event_id`, `event_type` and `agent.name` are required.
-`timestamp` is either digits (epoch milliseconds) or an ISO 8601 date-time with
-`Z` or a numeric offset, within the JavaScript date range; other date text is
-refused. Unknown top-level fields are ignored. The contents of `context`,
+`timestamp` is epoch milliseconds, as a string of digits or a non-negative JSON
+integer, or an ISO 8601 date-time (`YYYY-MM-DDTHH:MM[:SS[.fraction]]`) with an
+uppercase `Z` or a `±HH:MM` offset, within the JavaScript date range. Impossible
+calendar values (`2026-02-30`, hour 24) are refused rather than rolled over, and
+so are a lowercase `z`, a space separator, a bare date and other date text.
+Earlier Stations read any text `Date` could parse; that looser input now
+answers 400. Unknown top-level fields are ignored. The contents of `context`,
 `enrichment` and `tool.input`/`tool.output` are stored as sent, within the
 body limit (tool content passes the usual monitoring redaction). An `event_type` outside `session.start`, `session.end`,
 `turn.user`, `tool.invoke`, `tool.result` and `agent.delegate` is recorded as
