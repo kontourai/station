@@ -178,3 +178,67 @@ test.each([
     }
   },
 );
+
+test.each(['read_file', 'mcp__station-control__html_render'])(
+  'ingress discards an incoming page reference for %s and only snapshots a qualified result reference',
+  (toolName) => {
+    const store = new EventStore(
+      join(makeTempDir('html-ingress-ref-'), 'events.sqlite'),
+    );
+    const derived = {
+      version: 1,
+      sessionId: 'publisher',
+      pageId: '00000000-0000-4000-8000-000000000001',
+    };
+    const forged = {
+      ...derived,
+      pageId: '00000000-0000-4000-8000-000000000002',
+    };
+    const event = {
+      eventId: 'completion',
+      provider: 'codex' as const,
+      threadId: 'publisher',
+      turnId: 'turn',
+      createdAt: new Date().toISOString(),
+      method: 'tool.completed' as const,
+      toolCallId: 'call',
+      itemId: 'call',
+      toolName,
+      status: 'success' as const,
+      htmlReply: forged,
+      output: {
+        content: [
+          { type: 'text', text: JSON.stringify({ htmlReply: derived }) },
+        ],
+      },
+    };
+    try {
+      store.appendEvent({
+        eventId: 'start',
+        provider: event.provider,
+        threadId: event.threadId,
+        turnId: event.turnId,
+        createdAt: event.createdAt,
+        method: 'turn.started',
+        prompt: 'Publish',
+      });
+      store.appendEvent(event);
+      expect(
+        store.listEvents('publisher').find((row) => row.id === event.eventId)
+          ?.payload,
+      ).not.toHaveProperty('htmlReply');
+      const completion = store
+        .listEventWindowByTurn('publisher', { turnLimit: 1 })
+        .events.find((row) => row.id === event.eventId);
+      expect(completion?.payload.method).toBe('tool.completed');
+      if (completion?.payload.method !== 'tool.completed')
+        throw new Error('Missing completion');
+      expect(completion.payload.htmlReply).toEqual(
+        toolName === 'read_file' ? undefined : derived,
+      );
+      expect(completion.payload.htmlReply).not.toEqual(forged);
+    } finally {
+      store.close();
+    }
+  },
+);

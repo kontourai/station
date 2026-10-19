@@ -3429,8 +3429,9 @@ export class EventStore {
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
-    // Never accept a provider/import's claim to this Station-owned field.
+    // Never accept a provider/import's claim to these Station-owned fields.
     if (projectedEvent.method === 'tool.completed') {
+      delete projectedEvent.htmlReply;
       delete projectedEvent.mcpAppResourceUri;
       const replay = this.db
         .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
