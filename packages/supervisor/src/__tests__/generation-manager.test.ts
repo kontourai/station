@@ -448,7 +448,8 @@ describe('GenerationManager', () => {
     await vi.advanceTimersByTimeAsync(4_999);
     expect(generations[1]?.signals).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    // Killed outright: it already ignored a drain.
+    expect(generations[1]?.signals).toEqual(['SIGKILL']);
     expect(await settle(handoff)).toMatchObject({ outcome: 'rolled-back' });
     // The old generation of that handoff drained with the full deadline.
     expect(
@@ -472,7 +473,8 @@ describe('GenerationManager', () => {
     await vi.advanceTimersByTimeAsync(3_999);
     expect(generations[1]?.signals).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(generations[1]?.signals).toEqual(['SIGTERM']);
+    // Killed outright: it already ignored a drain.
+    expect(generations[1]?.signals).toEqual(['SIGKILL']);
     expect(await settle(handoff)).toMatchObject({
       outcome: 'rolled-back',
       reason: 'trial-readiness-timeout',
@@ -659,9 +661,11 @@ describe('GenerationManager', () => {
     },
   );
 
-  it('restarts a generation that drained and exited on its own, without counting a failure', async () => {
+  it('restarts a stable generation that drained and exited on its own, without counting a failure', async () => {
     const { manager, generations } = setup();
     await manager.start();
+    // Serving past the default 60s stability window.
+    await vi.advanceTimersByTimeAsync(60_000);
     // An operator's SIGTERM to the core: it drains, says so, and exits 0.
     generations[0]?.emit({ type: 'drained' });
     generations[0]?.exit(0, null);
@@ -676,6 +680,23 @@ describe('GenerationManager', () => {
     generations[1]?.exit(0, null);
     await vi.advanceTimersByTimeAsync(0);
     expect(manager.status().restarts.consecutiveFailures).toBe(1);
+  });
+
+  it('counts a clean drained exit before the generation is stable, so drains cannot loop', async () => {
+    const { manager, generations } = setup();
+    await manager.start();
+    // Drains and exits cleanly right after serving, again and again.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const current = generations.at(-1);
+      current?.emit({ type: 'drained' });
+      current?.exit(0, null);
+      await vi.advanceTimersByTimeAsync(31_000);
+    }
+    // Each counted: the failure budget ends the loop.
+    expect(
+      manager.status().restarts.consecutiveFailures,
+    ).toBeGreaterThanOrEqual(4);
+    expect(generations.length).toBeLessThanOrEqual(5);
   });
 
   it('counts a crash of the active generation during a handoff as a failure', async () => {

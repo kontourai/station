@@ -562,9 +562,13 @@ export class GenerationManager {
   private onGenerationExit(gen: Generation): void {
     if (gen !== this.active || gen.expectingExit) return;
     // A generation that drained and exited cleanly without being asked (an
-    // operator's SIGTERM, say) is restarted, but it did not crash: it does
-    // not count toward giving up, and it restarts without a backoff.
-    const crashed = !(gen.drained && gen.exitCode === 0);
+    // operator's SIGTERM, say) is restarted, but it did not crash: once it had
+    // served stably (stableAfterMs), it does not count toward giving up and
+    // restarts without a backoff. One that drains before then counts like a
+    // crash, so a generation that drains right after serving, or repeated
+    // signals, cannot restart it in an unbounded loop.
+    const stable = gen === this.active && this.stableTimer === null;
+    const crashed = !(gen.drained && gen.exitCode === 0 && stable);
     if (this.state === 'handoff') {
       // The handoff carries on without it, but a crash still counts.
       if (crashed) this.noteFailure();
@@ -748,6 +752,8 @@ export class GenerationManager {
     gen: Generation,
     deadlineMs: number,
     capMs: number = this.handoffConfig.voiceDrainCapMs,
+    /** After the deadline: SIGTERM then SIGKILL, or SIGKILL at once. */
+    escalation: 'terminate' | 'kill' = 'terminate',
   ): Promise<void> {
     if (gen.state === 'exited') return;
     gen.expectingExit = true;
@@ -765,6 +771,11 @@ export class GenerationManager {
       break;
     }
     this.log(`generation ${gen.id} missed its drain deadline`);
+    if (escalation === 'kill') {
+      gen.proc.kill('SIGKILL');
+      await gen.exited;
+      return;
+    }
     await this.terminate(gen);
   }
 
@@ -789,7 +800,9 @@ export class GenerationManager {
     // Already draining: that drain signals it after its own deadline.
     if (gen.state === 'draining') return gen.exited;
     if (gen.state === 'promoted' || gen.state === 'serving') {
-      await this.drain(gen, deadlineMs, deadlineMs);
+      // It has had its drain; a SIGTERM grace on top would only delay the
+      // rollback, so a trial still running at the deadline is killed.
+      await this.drain(gen, deadlineMs, deadlineMs, 'kill');
       return;
     }
     await this.terminate(gen);
