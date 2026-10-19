@@ -10,6 +10,7 @@ import * as React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   sessionInventoryQueries,
+  useSessionInventoryGroupPage,
   useSessionInventoryQuery,
 } from '../session-inventory.js';
 
@@ -251,4 +252,103 @@ describe('session inventory query lifecycle', () => {
       ).toBeTruthy();
     },
   );
+
+  /**
+   * Lost authority on ANY read of a scope revokes everything held for that
+   * scope, not only the read that was refused: a denied page must clear the
+   * projection another observer already shows, and a denied projection must
+   * clear a page another observer already shows. Both observers share one
+   * client, as the compact inventory and the full pane do.
+   */
+  describe('a refusal on one read revokes the whole scope', () => {
+    const scope = { kind: 'whole-session' as const, sessionId: SESSION };
+    const page = () => ({
+      version: SESSION_INVENTORY_V2,
+      scope,
+      group: {
+        id: 'outputs',
+        owner: { owner: 'station.inventory', id: 'v1' },
+        state: 'empty',
+        count: { kind: 'exact', value: 0 },
+        items: [],
+        gaps: [],
+      },
+    });
+
+    function mountBoth(denied: 'projection' | 'page') {
+      let refuse = false;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>().mockImplementation(async (input) => {
+          const isPage = String(input).includes('/inventory/groups/');
+          if (refuse && (denied === 'page') === isPage)
+            return respond(404, { success: false });
+          return respond(200, {
+            success: true,
+            data: isPage ? page() : wholeSession(),
+          });
+        }),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client }, children);
+      const projection = renderHook(() => useSessionInventoryQuery(scope), {
+        wrapper,
+      });
+      const pages = renderHook(
+        () => useSessionInventoryGroupPage(scope, 'outputs', 'next'),
+        { wrapper },
+      );
+      return {
+        client,
+        projection,
+        pages,
+        refuse: () => {
+          refuse = true;
+        },
+      };
+    }
+
+    test('a denied page clears the loaded projection', async () => {
+      const { client, projection, pages, refuse } = mountBoth('page');
+      await waitFor(() => {
+        expect(projection.result.current.data).toBeTruthy();
+        expect(pages.result.current.data).toBeTruthy();
+      });
+
+      refuse();
+      await act(async () => {
+        await pages.result.current.refetch();
+      });
+
+      await waitFor(() =>
+        expect(projection.result.current.data).toBeUndefined(),
+      );
+      expect(
+        client.getQueryData(sessionInventoryQueries.projection(scope).queryKey),
+      ).toBeNull();
+    });
+
+    test('a denied projection clears the loaded page', async () => {
+      const { client, projection, pages, refuse } = mountBoth('projection');
+      await waitFor(() => {
+        expect(projection.result.current.data).toBeTruthy();
+        expect(pages.result.current.data).toBeTruthy();
+      });
+
+      refuse();
+      await act(async () => {
+        await projection.result.current.refetch();
+      });
+
+      await waitFor(() => expect(pages.result.current.data).toBeUndefined());
+      expect(
+        client.getQueryData(
+          sessionInventoryQueries.page(scope, 'outputs', 'next').queryKey,
+        ),
+      ).toBeNull();
+    });
+  });
 });
