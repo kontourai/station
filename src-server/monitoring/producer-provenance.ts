@@ -1,7 +1,7 @@
 import { K } from '../../src-shared/monitoring-keys.js';
 
 /** The key an agent-facing reader adds to a telemetry producer's row. */
-export const EXTERNAL_PRODUCER_NOTICE_KEY = 'station.external_producer_notice';
+const EXTERNAL_PRODUCER_NOTICE_KEY = 'station.external_producer_notice';
 
 /**
  * Marks every row a telemetry producer delivered as external, unverified
