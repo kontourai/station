@@ -1219,6 +1219,10 @@ mod tauri_glue {
         }
 
         fn app_for(feed: &str) -> tauri::App<tauri::test::MockRuntime> {
+            app_with_key(feed, "not-a-real-key")
+        }
+
+        fn app_with_key(feed: &str, pubkey: &str) -> tauri::App<tauri::test::MockRuntime> {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
             serve(listener);
@@ -1226,7 +1230,7 @@ mod tauri_glue {
             context.config_mut().plugins.0.insert(
                 "updater".into(),
                 serde_json::json!({
-                    "pubkey": "not-a-real-key",
+                    "pubkey": pubkey,
                     "endpoints": [format!("http://127.0.0.1:{port}/{feed}")],
                     "dangerousInsecureTransportProtocol": true,
                 }),
@@ -1289,6 +1293,79 @@ mod tauri_glue {
                 .recv_timeout(Duration::from_secs(4))
                 .expect("a stalled download must fail within the stall bound");
             assert!(result.is_err());
+        }
+
+        // A throwaway minisign key made with `tauri signer generate`; its
+        // private half was deleted. `versioned.sig` was signed with
+        // `--app-version 99.0.0`, `unversioned.sig` without, as the macOS
+        // release signed before #3851.
+        const SIGNING_KEY: &str = include_str!("fixtures/desktop-update-signing/key.pub");
+        const SIGNED_PACKAGE: &[u8] = include_bytes!("fixtures/desktop-update-signing/package.bin");
+        const VERSIONED_SIGNATURE: &str =
+            include_str!("fixtures/desktop-update-signing/versioned.sig");
+        const UNVERSIONED_SIGNATURE: &str =
+            include_str!("fixtures/desktop-update-signing/unversioned.sig");
+
+        fn signed_manifest(signature: &str) -> serde_json::Value {
+            serde_json::json!({
+                "version": "99.0.0",
+                "platforms": { tauri_plugin_updater::target().unwrap(): {
+                    "url": "https://example.invalid/package.bin",
+                    "signature": signature.trim(),
+                }},
+            })
+        }
+
+        /// The whole restart path with the real plugin: a package cached by
+        /// one run, restored by the next through `native_restore`.
+        fn restored_after_restart(
+            signature: &str,
+            bytes: &[u8],
+        ) -> (bool, DesktopUpdateState, bool) {
+            let app = app_with_key("latest.json", SIGNING_KEY.trim());
+            let cache = tempfile::tempdir().unwrap();
+            let packages = PackageStore::new(cache.path().to_path_buf());
+            packages
+                .save("99.0.0", signed_manifest(signature), bytes)
+                .unwrap();
+            let updater = AppDesktopUpdater::new(
+                Controller::new(true, "0.1.11".into(), None),
+                Arc::new(|_: &DesktopUpdateState| {}),
+                Arc::new(now_ms),
+                packages.clone(),
+            );
+            let handle = app.handle().clone();
+            let restored =
+                updater.restore_cached(|manifest, bytes| native_restore(&handle, manifest, bytes));
+            (restored, updater.snapshot(), packages.record().is_some())
+        }
+
+        #[test]
+        fn a_package_signed_for_its_version_is_restored_by_the_real_plugin() {
+            let (restored, state, kept) =
+                restored_after_restart(VERSIONED_SIGNATURE, SIGNED_PACKAGE);
+            assert!(restored);
+            assert_eq!(
+                state.phase,
+                UpdatePhase::Ready {
+                    version: "99.0.0".into()
+                }
+            );
+            assert!(kept);
+        }
+
+        #[test]
+        fn a_package_signed_without_its_version_is_discarded_by_the_real_plugin() {
+            let (restored, state, kept) =
+                restored_after_restart(UNVERSIONED_SIGNATURE, SIGNED_PACKAGE);
+            assert!(!restored);
+            assert_eq!(state.phase, UpdatePhase::Idle);
+            assert!(!kept);
+            // Different bytes under a valid versioned signature fail too.
+            let (restored, _, kept) =
+                restored_after_restart(VERSIONED_SIGNATURE, b"tampered package");
+            assert!(!restored);
+            assert!(!kept);
         }
 
         #[test]
