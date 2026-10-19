@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -127,6 +128,133 @@ afterEach(() => {
 });
 
 describe('ServerOlderLaunchCheck', () => {
+  test.each(['accepted', 'refused'] as const)(
+    'keeps the current update pending when the previous server reply is %s',
+    async (oldReply) => {
+      const actualSdk = await vi.importActual<
+        typeof import('@kontourai/station-sdk')
+      >('@kontourai/station-sdk');
+      sdk.useApplyCoreUpdateMutation.mockImplementation(
+        actualSdk.useApplyCoreUpdateMutation,
+      );
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: Infinity },
+          mutations: { retry: false, gcTime: Infinity },
+        },
+      });
+      const pending: Array<{
+        url: string;
+        resolve: (response: Response) => void;
+      }> = [];
+      const response = (requestId: string) =>
+        new Response(
+          JSON.stringify({ success: true, serviceUpdate: { requestId } }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (
+          init?.method !== 'POST' ||
+          ![
+            'http://station.test:38141/api/system/core-update',
+            'http://second.test:38142/api/system/core-update',
+          ].includes(url)
+        )
+          throw new Error(
+            `Unexpected update fixture request: ${init?.method} ${url}`,
+          );
+        return new Promise<Response>((resolve) =>
+          pending.push({ url, resolve }),
+        );
+      });
+      const tree = () => (
+        <QueryClientProvider client={client}>
+          <ServerOlderLaunchCheck clientVersion={NEWER_CLIENT} />
+          <BannerHost />
+        </QueryClientProvider>
+      );
+      const view = render(tree());
+      try {
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: 'Update server to Nightly Oct 1',
+          }),
+        );
+        await waitFor(() => expect(pending).toHaveLength(1));
+        const firstMutation = client.getMutationCache().getAll()[0];
+        connected.current = {
+          ...connected.current,
+          apiBase: 'http://second.test:38142',
+          scopeKey: 'second-scope',
+          identity: { instanceId: 'second', bootId: 'second-boot', sha: 'def' },
+        };
+        status = serviceArchive({
+          serverIdentity: {
+            instanceId: 'second',
+            bootId: 'second-boot',
+            sha: 'def',
+          },
+        });
+        view.rerender(tree());
+        fireEvent.click(
+          await screen.findByRole('button', {
+            name: 'Update server to Nightly Oct 1',
+          }),
+        );
+        await waitFor(() => expect(pending).toHaveLength(2));
+        expect(pending.map((request) => request.url)).toEqual([
+          'http://station.test:38141/api/system/core-update',
+          'http://second.test:38142/api/system/core-update',
+        ]);
+        await act(async () => {
+          pending[0].resolve(
+            oldReply === 'accepted'
+              ? response('previous-request')
+              : new Response(
+                  JSON.stringify({
+                    success: false,
+                    error: 'Previous server refused',
+                  }),
+                  {
+                    headers: { 'Content-Type': 'application/json' },
+                  },
+                ),
+          );
+          await waitFor(() =>
+            expect(firstMutation.state.status).toBe(
+              oldReply === 'accepted' ? 'success' : 'error',
+            ),
+          );
+        });
+        expect(screen.getByText('Requesting the server update…')).toBeTruthy();
+        const secondMutation = client.getMutationCache().getAll()[1];
+        await act(async () => {
+          pending[1].resolve(response('current-request'));
+          await waitFor(() =>
+            expect(secondMutation.state.status).toBe('success'),
+          );
+        });
+        expect(
+          screen.getByText(
+            'Update requested. Waiting for the Station service to start it…',
+          ),
+        ).toBeTruthy();
+      } finally {
+        await act(async () => {
+          for (const request of pending)
+            request.resolve(response('cleanup-request'));
+          await Promise.resolve();
+        });
+        view.unmount();
+        client.clear();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   test('offers a one-click update and follows it through the restart to its outcome', async () => {
     const view = renderWithChrome(NEWER_CLIENT);
     expect(

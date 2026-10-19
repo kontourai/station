@@ -253,8 +253,7 @@ export type ServerUpdateEvent =
   | { type: 'progress-unreachable' }
   | { type: 'expired' }
   /** The reader dismissed the banner. Only a finished story closes. */
-  | { type: 'dismiss' }
-  | { type: 'reset' };
+  | { type: 'dismiss' };
 
 function correlates(
   progress: ServiceUpdateProgress,
@@ -268,8 +267,6 @@ export function serverUpdateFlowReducer(
   event: ServerUpdateEvent,
 ): ServerUpdateFlow {
   switch (event.type) {
-    case 'reset':
-      return { phase: 'idle' };
     case 'dismiss':
       // Dismissing a running update hides the banner; it does not forget
       // the update, so the stale offer cannot come back mid-update.

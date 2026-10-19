@@ -64,6 +64,27 @@ export function ServerOlderLaunchCheck({
 
 function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
   const context = useConnectedServerUpdateContext();
+  // Each selection owns its mutation observer and update-following state.
+  const connectionScope = `${context.apiBase}\u0000${context.scopeKey ?? 'no-scope'}`;
+  return (
+    <ScopedServerOlderCheck
+      key={connectionScope}
+      clientVersion={clientVersion}
+      context={context}
+      connectionScope={connectionScope}
+    />
+  );
+}
+
+function ScopedServerOlderCheck({
+  clientVersion,
+  context,
+  connectionScope,
+}: {
+  clientVersion: string;
+  context: ReturnType<typeof useConnectedServerUpdateContext>;
+  connectionScope: string;
+}) {
   const { apiBase } = context;
   const sameOrigin = servedByServer(apiBase);
   const scopeKey = coreUpdateScopeFromContext(context);
@@ -88,18 +109,9 @@ function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
     { scopeKey, assertCurrent: context.isCurrent },
   );
 
-  // A service update restarts the server, so it is followed per connection,
-  // not per boot.
-  const connectionScope = `${apiBase}\u0000${context.scopeKey ?? 'no-scope'}`;
   const [flow, dispatch] = useReducer(serverUpdateFlowReducer, {
     phase: 'idle',
   });
-  const flowScope = flow.phase === 'idle' ? null : flow.scope;
-  useEffect(() => {
-    if (flowScope !== null && flowScope !== connectionScope) {
-      dispatch({ type: 'reset' });
-    }
-  }, [flowScope, connectionScope]);
 
   const apply = useApplyCoreUpdateMutation(apiBase, {
     onSuccess: (data) => {
@@ -220,10 +232,11 @@ function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
       onDismiss: () => dispatch({ type: 'dismiss' }),
       actions,
     });
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
     if (focusProgressRef.current && content.actions.length === 0) {
       focusProgressRef.current = false;
       // After the host renders the new message.
-      setTimeout(() => {
+      focusTimer = setTimeout(() => {
         const text = document.querySelector<HTMLElement>(
           `[data-banner-id="${BANNER_IDS.serverOlder}"] .banner-host__live`,
         );
@@ -233,6 +246,7 @@ function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
       }, 0);
     }
     return () => {
+      if (focusTimer !== undefined) clearTimeout(focusTimer);
       bannerStore.dismiss(BANNER_IDS.serverOlder);
     };
   }, [contentJson, connectionScope, mutate]);
