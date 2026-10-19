@@ -4134,8 +4134,10 @@ than passing it on. `applyMethod` is `'service-update'` for an
 `archive-service`, `'station-upgrade'` for an installed archive no launcher
 runs, and `'reinstall'` for any other archive copy. An `archive-service`
 status also carries `serviceUpdate`, a `ServiceUpdateProgress` from
-`@kontourai/station-contracts/system-status` (an update under way, or the
-last one's outcome). `applyCoreUpdate` returns `serviceUpdate: { requestId }`
+`@kontourai/station-contracts/system-status` (an update under way, a downloaded
+and verified release waiting for a restart (`staged`), or the last one's
+outcome). `requestCoreUpdateStatus` and `requestServiceUpdateProgress` ask for
+`staged` with `?staged=1`. `applyCoreUpdate` returns `serviceUpdate: { requestId }`
 when it queued such an update; follow it with
 `requestServiceUpdateProgress(apiBase, signal?)` (`GET
 /api/system/core-update/service-update`) or
@@ -4143,6 +4145,19 @@ when it queued such an update; follow it with
 })`, correlating the outcome by `requestId`. A progress body this SDK cannot
 read parses as `{ state: 'unavailable' }`, never as a neighbouring state, and
 a non-ok status throws a `StationHttpError`.
+
+For a server the service launcher runs (#3851), the SDK has these server
+update functions:
+- `requestServerUpdateState(apiBase, signal?)` and `useServerUpdateStateQuery`
+  read `GET /api/system/core-update/state`.
+- `applyServerUpdateStateEvent(queryClient, apiBase, payload)` writes a
+  `server-update:changed` payload into that cached state, under the key
+  `serverUpdateStateQueryKey(apiBase)`.
+- `requestServerUpdateRunningTurns` and `useServerUpdateRunningTurnsQuery`
+  read the agent turns a restart would interrupt.
+- `requestServerUpdateAction` and `useServerUpdateActionMutation` send a
+  `ServerUpdateAction`: stage, apply the staged version, or set or cancel
+  apply-when-idle.
 
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When

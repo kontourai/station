@@ -2080,8 +2080,9 @@ records which version it runs. An update request
 into `versions/<version>`, nothing else changed). The launcher then stops the
 running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
-manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
-service owns), and but the default project directories under `workspaces/`
+manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
+restore marker `update-restore.json` (which the service and its updates own),
+and but the default project directories under `workspaces/`
 and the browser's `browser/chromium` and `browser/profiles`: an update neither
 copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into

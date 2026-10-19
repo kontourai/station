@@ -3136,15 +3136,38 @@ The retained desktop-bundle apply path is macOS-only and requires the recorded
 source checkout, matching origin, and owned installer. It starts that installer
 detached and returns 202 with `updating: true` and a log path. That is initiation,
 not installation or relaunch proof. A launcher-supervised archive writes an
-update request and returns 202 with `serviceUpdate: {requestId}`; the service
-stages, trials, and may roll back the release afterward, so 202 is not update
-proof. It returns 409 when another update is in flight or needs an operator,
+update request and returns 202 with `serviceUpdate: {requestId, intent}`. The
+optional JSON body chooses what the request does:
+- No body, or `{"action":"update"}`: the service downloads and verifies the
+  release, then trials it and may roll it back afterward.
+- `{"action":"stage"}`: it only downloads and verifies, and the running version
+  keeps serving.
+- `{"action":"apply","version":"<staged version>"}`: it trials an
+  already-staged version without downloading, and is refused when that
+  version is not the staged one.
+
+An unknown action, a malformed `version`, or an apply without `version` returns
+400. A 202 is not update proof. It returns 409 when another update is in flight or needs an operator,
 when no newer verified release this host and launcher can run is found, or for
 any other archive. `GET /api/system/core-update/service-update` reads that
 install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The server's own update routes (#3851):
+- `GET /api/system/core-update/state` returns its update state
+  (`ServerUpdateState`, with `supported: false` when no launcher supervises
+  the server). The same state is pushed to every client as the broadcast
+  `server-update:changed` event.
+- `GET /api/system/core-update/running-turns` lists the agent turns a restart
+  would interrupt. Only sessions the caller may read are listed;
+  `hiddenCount` counts the rest.
+- `PUT /api/system/core-update/apply-when-idle` (body `{"version": "<staged
+  version>"}`) asks the server to apply the staged version once no agent turn
+  runs; `DELETE` on the same route cancels it.
+- `GET /core-update` and `GET /core-update/service-update` report the `staged`
+  progress state only when called with `?staged=1`.
 
 ### Get Server Capabilities
 
