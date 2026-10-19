@@ -899,6 +899,7 @@ Station extensions:
 | `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
 | `station.telemetry.producer` | The telemetry producer token that delivered an ingested row. Absent on rows Station wrote itself or a paired credential sent. |
+| `station.telemetry.producer_owner` | The principal who created that token. A producer row is readable only by this principal, whatever session id the producer reported. Set from the admitted token, never from the body. |
 
 ### Emitter Methods
 

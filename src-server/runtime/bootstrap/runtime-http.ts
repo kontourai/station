@@ -627,7 +627,7 @@ async function admitTelemetryProducerRequest(call: {
       'telemetry_producer_remote_not_allowed',
     );
   limiter.clear(limiterKey);
-  bindAdmittedTelemetryProducer(c, producer.name);
+  bindAdmittedTelemetryProducer(c, producer);
   // The existing mutation budget keys on this principal, so a producer's
   // event rate is bounded like any other credential's.
   setBudgetPrincipal(

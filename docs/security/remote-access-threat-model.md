@@ -586,7 +586,12 @@ than proving locality. Only the operator can create, list or revoke these
 tokens (`access:manage` plus an operator check). Secrets are shown once and
 stored as a sha256 hash in `<home>/security/telemetry-producers.json` under
 the same owner-only, locked-write and fail-closed rules as personal access
-tokens, with at most 32 stored. Paired credentials with
+tokens, with at most 32 stored. Each token records the
+principal who created it, and the rows it ingests are readable only by that
+principal: the producer-reported session id does not grant or decide
+readership, the owner key is set from the admitted token rather than the body,
+and insights never shares a per-session decision between a producer row and a
+Station row with the same id. Paired credentials with
 `orchestration:operate` keep their existing access to the ingest leaves.
 
 The pairing UI offers two presets when creating an offer: **Read-only**

@@ -64,6 +64,11 @@ export interface StoredTelemetryProducer {
   createdAt: number;
   expiresAt: number | null;
   allowRemote: boolean;
+  /**
+   * The principal who created the token. Rows the token ingests are readable
+   * by this principal only (`monitoring.ts`), never by whoever reads them.
+   */
+  ownerPrincipalId: string;
   lastUsedAt: number | null;
 }
 
@@ -95,20 +100,32 @@ interface ContextVariables {
   set(key: string, value: unknown): void;
 }
 
+/** The admitted producer: its name and the principal who created it. */
+export interface AdmittedTelemetryProducer {
+  name: string;
+  ownerPrincipalId: string;
+}
+
 export function bindAdmittedTelemetryProducer(
   context: unknown,
-  name: string,
+  producer: AdmittedTelemetryProducer,
 ): void {
-  (context as ContextVariables).set(ADMITTED_TELEMETRY_PRODUCER_VAR, name);
+  (context as ContextVariables).set(ADMITTED_TELEMETRY_PRODUCER_VAR, {
+    name: producer.name,
+    ownerPrincipalId: producer.ownerPrincipalId,
+  });
 }
 
 export function admittedTelemetryProducer(
   context: unknown,
-): string | undefined {
+): AdmittedTelemetryProducer | undefined {
   const value = (context as ContextVariables).get(
     ADMITTED_TELEMETRY_PRODUCER_VAR,
-  );
-  return typeof value === 'string' ? value : undefined;
+  ) as Partial<AdmittedTelemetryProducer> | undefined;
+  return typeof value?.name === 'string' &&
+    typeof value.ownerPrincipalId === 'string'
+    ? { name: value.name, ownerPrincipalId: value.ownerPrincipalId }
+    : undefined;
 }
 
 /** What the auth boundary needs from the store. */
@@ -130,6 +147,8 @@ function isRecord(value: unknown): value is StoredTelemetryProducer {
     typeof record.createdAt === 'number' &&
     (record.expiresAt === null || typeof record.expiresAt === 'number') &&
     typeof record.allowRemote === 'boolean' &&
+    typeof record.ownerPrincipalId === 'string' &&
+    record.ownerPrincipalId.length > 0 &&
     (record.lastUsedAt === null || typeof record.lastUsedAt === 'number')
   );
 }
@@ -221,6 +240,7 @@ export class TelemetryProducerStore {
     name: string;
     allowRemote: boolean;
     expiresInDays: number | null;
+    ownerPrincipalId: string;
   }): Promise<{ producer: StoredTelemetryProducer; secret: string }> {
     if (!isTelemetryProducerName(input.name))
       throw new TelemetryProducerError(
@@ -237,6 +257,11 @@ export class TelemetryProducerStore {
         'invalid_request',
         `expiresInDays must be a whole number from 1 through ${TELEMETRY_PRODUCER_MAX_EXPIRY_DAYS}.`,
       );
+    if (!input.ownerPrincipalId)
+      throw new TelemetryProducerError(
+        'invalid_request',
+        'A telemetry producer needs the principal who owns it.',
+      );
     const createdAt = this.#now();
     const secret = `${TELEMETRY_PRODUCER_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
     const producer: StoredTelemetryProducer = {
@@ -248,6 +273,7 @@ export class TelemetryProducerStore {
           ? null
           : createdAt + input.expiresInDays * DAY_MS,
       allowRemote: input.allowRemote,
+      ownerPrincipalId: input.ownerPrincipalId,
       lastUsedAt: null,
     };
     await this.#mutate((producers) => {

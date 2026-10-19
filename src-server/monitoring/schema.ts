@@ -96,6 +96,8 @@ export interface MonitoringEvent {
    * paired credential or Station itself wrote.
    */
   'station.telemetry.producer'?: string;
+  /** The principal who owns that producer token; the row's only reader. */
+  'station.telemetry.producer_owner'?: string;
 
   /** Catch-all for forward compatibility */
   [key: string]: unknown;

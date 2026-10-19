@@ -76,6 +76,8 @@ const invalidBody = (c: Context) =>
 export function createTelemetryProducerRoutes(options: {
   store: TelemetryProducerStore;
   isOperator: (c: Context) => boolean;
+  /** The caller's principal id, recorded as the new producer's owner. */
+  resolvePrincipalId: (c: Context) => string | undefined;
 }): Hono {
   const { store } = options;
   const app = new Hono();
@@ -134,8 +136,19 @@ export function createTelemetryProducerRoutes(options: {
           typeof input.expiresInDays !== 'number')
       )
         return invalidBody(c);
+      const ownerPrincipalId = options.resolvePrincipalId(c);
+      if (!ownerPrincipalId)
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can manage telemetry producers.',
+            code: 'operator_required',
+          },
+          403,
+        );
       try {
         const created = await store.create({
+          ownerPrincipalId,
           name: input.name,
           allowRemote: input.allowRemote === true,
           expiresInDays:

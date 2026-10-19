@@ -231,12 +231,21 @@ export function createOtlpReceiverRoutes(
    * `undefined` for a paired credential. Required for the same reason
    * `resolveUserId` is: a defaulted resolver silently drops attribution.
    */
-  resolveProducer: (c: Context) => string | undefined,
+  resolveProducer: (
+    c: Context,
+  ) => { name: string; ownerPrincipalId: string } | undefined,
 ): Hono {
   const app = new Hono();
   const attributed = (c: Context, event: MonitoringEvent): MonitoringEvent => {
     const producer = resolveProducer(c);
-    return producer ? { ...event, [K.TELEMETRY_PRODUCER]: producer } : event;
+    // Last, so no mapped field can shadow the server-derived attribution.
+    return producer
+      ? {
+          ...event,
+          [K.TELEMETRY_PRODUCER]: producer.name,
+          [K.TELEMETRY_PRODUCER_OWNER]: producer.ownerPrincipalId,
+        }
+      : event;
   };
 
   app.post('/v1/traces', async (c) => {

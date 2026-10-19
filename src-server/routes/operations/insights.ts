@@ -338,7 +338,13 @@ export function createInsightsRoutes(
       // which is the hazard the export exists to prevent.
       // The same identity the predicate itself keys on, so the memo can never
       // conflate two sessions.
-      const threadKey = monitoringSessionIdentity(event);
+      // A producer row is decided by its owner, not its session: memoising it
+      // under the session id would let a producer-reported id share a
+      // decision with a Station session of the same id, in either direction.
+      const threadKey =
+        K.TELEMETRY_PRODUCER in record
+          ? undefined
+          : monitoringSessionIdentity(event);
       const cached =
         threadKey === undefined ? undefined : perThreadDecision.get(threadKey);
       if (cached !== undefined) return cached;

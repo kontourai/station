@@ -609,8 +609,25 @@ export function canReadMonitoringEvent(
   // A partial hosted composition must not turn into an authorization bypass.
   // Generic non-session telemetry has no session/content identifier and stays
   // available; session-bearing rows require both pieces of central policy.
-  const sessionId = monitoringSessionIdentity(event);
   const hosted = authority && isHostedSessionReadAuthority(authority);
+  // A row a telemetry producer delivered belongs to the principal who owns
+  // that token, whatever session id its producer reported: an external
+  // agent's session is not a Station session, so the session predicate below
+  // refused every such row. The owner key is written by the ingest receiver
+  // from the admitted token, never copied from a body. Producer rows are
+  // personal-mode only; hosted readers never see them.
+  if (event && typeof event === 'object' && K.TELEMETRY_PRODUCER in event) {
+    const owner = (event as Record<string, unknown>)[
+      K.TELEMETRY_PRODUCER_OWNER
+    ];
+    return (
+      !hosted &&
+      typeof owner === 'string' &&
+      owner.length > 0 &&
+      authority?.userId === owner
+    );
+  }
+  const sessionId = monitoringSessionIdentity(event);
   if (sessionId) {
     // In hosted mode an identity is necessary but not sufficient: route
     // composition must also supply the central session predicate.

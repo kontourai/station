@@ -5,11 +5,15 @@
  * `resolveOrchestrationRequestPrincipal`-backed `isOperator` predicate. The
  * route-level suite stubs that predicate; this one pins what it decides.
  */
+import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { K } from '../../../../src-shared/monitoring-keys.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { MonitoringEmitter } from '../../../monitoring/emitter.js';
+import { getCachedUser } from '../../../routes/system/auth.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -17,6 +21,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { RuntimeEventLog } from '../../conversation/runtime-event-log.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -84,7 +89,20 @@ describe('telemetry producer management over the production composition', () => 
     const security = new EnvironmentSecurityService({ homeDir });
     const { credential: operatorCredential } = await security.initialize();
     const app = new Hono();
+    // Real monitoring storage, wired the way station-runtime.ts wires it.
+    const eventLogPath = join(homeDir, 'monitoring');
+    const quiet = { debug() {}, info() {}, warn() {}, error() {} };
+    const eventLog = new RuntimeEventLog(eventLogPath, quiet);
+    const monitoringEvents = new EventEmitter();
+    const monitoringEmitter = new MonitoringEmitter(monitoringEvents, (event) =>
+      eventLog.persist(event),
+    );
     const context = deepStub({
+      monitoringEmitter,
+      monitoringEvents,
+      eventLogPath,
+      queryEventsFromDisk: (start: number, end: number, userId: string) =>
+        eventLog.queryEvents(start, end, userId),
       // Personal mode: no account authentication, native pilots or relay.
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -110,7 +128,6 @@ describe('telemetry producer management over the production composition', () => 
       agentStatus: new Map(),
       memoryAdapters: new Map(),
       metricsLog: [],
-      monitoringEvents: [],
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
@@ -126,11 +143,11 @@ describe('telemetry producer management over the production composition', () => 
     await result.kitLifecycleReady;
 
     /** A paired device holding `access:manage`, approved by the operator. */
-    const pairManageDevice = () => {
+    const pairManageDevice = (scope = 'access:manage') => {
       const pairing = security.devicePairing;
       const offer = pairing.createOffer({
         endpoint: ORIGIN,
-        scope: 'access:manage',
+        scope,
       });
       const pending = pairing.requestPairing({
         requesterPosition: 'off-box',
@@ -162,7 +179,44 @@ describe('telemetry producer management over the production composition', () => 
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
       );
-    return { operatorCredential, pairManageDevice, create };
+    const ingest = (token: string, sessionId: string) =>
+      app.request(
+        `${ORIGIN}/v1/agent-events`,
+        {
+          method: 'POST',
+          headers: {
+            host: '127.0.0.1:4321',
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            schema_version: '0.3.0',
+            timestamp: `${Date.now()}`,
+            session_id: sessionId,
+            event_id: `event-${sessionId}`,
+            event_type: 'tool.invoke',
+            agent: { name: 'codex', runtime: 'codex', version: '1.0.0' },
+            tool: { name: 'shell', input: { command: 'ls' } },
+          }),
+        },
+        { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+      );
+    const read = (path: string, credential: string) =>
+      app.request(
+        `${ORIGIN}${path}`,
+        { headers: { Authorization: `Bearer ${credential}`, Origin: ORIGIN } },
+        { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+      );
+    return {
+      operatorCredential,
+      pairManageDevice,
+      create,
+      ingest,
+      read,
+      flush: () => monitoringEmitter.flush(),
+      emitRaw: (event: Parameters<MonitoringEmitter['emitRaw']>[0]) =>
+        monitoringEmitter.emitRaw(event),
+    };
   }
 
   test('the operator credential may create a producer', async () => {
@@ -211,5 +265,58 @@ describe('telemetry producer management over the production composition', () => 
     expect(((await response.json()) as { code: string }).code).toBe(
       'operator_required',
     );
+  });
+
+  test('rows a producer ingests are read by its owner and nobody else', async () => {
+    const h = await setup();
+    const created = await h.create(
+      { Authorization: `Bearer ${h.operatorCredential}` },
+      'e2e-codex',
+    );
+    expect(created.status, await created.clone().text()).toBe(201);
+    const { token } = ((await created.json()) as { data: { token: string } })
+      .data;
+    // An external Codex session id: no Station session has it.
+    const ingested = await h.ingest(token, 'codex-session-123');
+    expect(ingested.status, await ingested.clone().text()).toBe(200);
+    // A non-producer row reporting the SAME session id. It is judged by the
+    // Station session rule (no such session: unreadable), and must not
+    // inherit the producer row's owner decision through a per-session memo.
+    h.emitRaw({
+      timestamp: new Date().toISOString(),
+      [K.TIMESTAMP_MS]: Date.now(),
+      [K.OP_NAME]: 'execute_tool',
+      [K.SPAN_KIND]: 'start',
+      [K.TOOL_NAME]: 'shell',
+      [K.AT_SESSION_ID]: 'codex-session-123',
+      [K.USER_ID]: getCachedUser().alias,
+    });
+    await h.flush();
+
+    const events = async (credential: string) => {
+      const response = await h.read('/monitoring/events?start=0', credential);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { data: Record<string, unknown>[] })
+        .data;
+    };
+    const toolCalls = async (credential: string) => {
+      const response = await h.read('/api/insights?days=1', credential);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const body = (await response.json()) as Record<string, unknown>;
+      const data = (body.data ?? body) as { totalToolCalls?: number };
+      return data.totalToolCalls;
+    };
+
+    const operatorRows = await events(h.operatorCredential);
+    expect(operatorRows).toHaveLength(1);
+    expect(operatorRows[0]?.[K.TELEMETRY_PRODUCER]).toBe('e2e-codex');
+    expect(await toolCalls(h.operatorCredential)).toBe(1);
+
+    // Another paired person who may read monitoring, just not these rows.
+    const other = h.pairManageDevice(
+      'orchestration:read orchestration:operate',
+    );
+    expect(await events(other)).toEqual([]);
+    expect(await toolCalls(other)).toBe(0);
   });
 });

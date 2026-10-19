@@ -40,6 +40,11 @@ export const K = {
   AT_ENRICHMENT: 'station.agent_telemetry.enrichment',
   /** The telemetry producer token name that delivered an ingested row. */
   TELEMETRY_PRODUCER: 'station.telemetry.producer',
+  /**
+   * The principal who owns that producer token: the only reader of the row.
+   * Written by the ingest receiver from the admitted token, never the body.
+   */
+  TELEMETRY_PRODUCER_OWNER: 'station.telemetry.producer_owner',
   SYSTEM_TYPE: 'station.system.type',
 } as const;
 

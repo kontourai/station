@@ -6897,6 +6897,14 @@ export function configureRuntimeRoutes(
           return false;
         }
       },
+      // The same principal id monitoring reads scope by (`authority.userId`).
+      resolvePrincipalId: (c) => {
+        try {
+          return resolveOrchestrationRequestPrincipal(c).id;
+        } catch {
+          return undefined;
+        }
+      },
     }),
   );
   context.app.route(

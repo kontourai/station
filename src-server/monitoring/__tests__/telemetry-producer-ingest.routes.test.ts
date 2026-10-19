@@ -115,6 +115,10 @@ function harness(
       // The production predicate resolves the principal; here the operator
       // credential is the operator.
       isOperator: (c) => c.req.header('authorization') === `Bearer ${OPERATOR}`,
+      resolvePrincipalId: (c) =>
+        c.req.header('authorization') === `Bearer ${OPERATOR}`
+          ? 'operator-principal'
+          : undefined,
     }),
   );
   app.get('/api/projects', (c) => c.json({ success: true, data: [] }));
@@ -171,6 +175,7 @@ function harness(
           name,
           allowRemote: options.allowRemote ?? false,
           expiresInDays: options.expiresInDays ?? null,
+          ownerPrincipalId: 'operator-principal',
         })
       ).secret,
   };
@@ -200,6 +205,9 @@ describe('telemetry producer tokens on the ingest routes', () => {
     expect(response.status).toBe(200);
     expect(h.emitted).toHaveLength(1);
     expect(h.emitted[0]?.[K.TELEMETRY_PRODUCER]).toBe('flow-agents-codex');
+    expect(h.emitted[0]?.[K.TELEMETRY_PRODUCER_OWNER]).toBe(
+      'operator-principal',
+    );
     expect(h.emitted[0]?.[K.TOOL_NAME]).toBe('shell');
     expect(h.emitted[0]?.[K.AT_SCHEMA_VERSION]).toBe('0.3.0');
   });

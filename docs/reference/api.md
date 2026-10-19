@@ -1827,7 +1827,7 @@ Responses for a producer token:
 
 | Status | `error.code` | Meaning |
 | --- | --- | --- |
-| `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` |
+| `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` and `station.telemetry.producer_owner: <principal id>` |
 | `400` | `invalid_json`, `unsupported_schema_version`, `invalid_agent_event` | Body refused (agent events); nothing was written |
 | `401` | `authentication_required` | No credential, an unknown or revoked token, or a credential in the query string |
 | `403` | `telemetry_producer_expired` | The token passed its expiry |
@@ -1852,6 +1852,13 @@ body limit (tool content passes the usual monitoring redaction). An `event_type`
 an `unknown` event. `/v1/traces` and `/v1/logs` answer `400` for a body they
 cannot read.
 
+Rows a producer token delivers are readable, through `/monitoring/events` and
+`/api/insights`, only by the principal who created the token (today always the
+Station operator); other people never see them, and hosted readers never do.
+The session id a producer reports does not decide this: an external agent's
+session is not a Station session. The owner comes from the admitted token,
+never from the body.
+
 A request counts as from this machine when it arrives on a loopback socket
 with a loopback `Host`, carries no forwarding or Tailscale headers and has no
 verified ingress identity. Station's UI proxy does not forward `/v1`, so
@@ -1874,7 +1881,8 @@ Names are 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a
 letter or digit. `expiresInDays` is a whole number from 1 to 3650, or absent
 for no expiry. At most 32 producers exist at once; creating another, or reusing
 a name, answers `409` (`producer_limit_reached`, `producer_exists`). Station
-stores only a SHA-256 hash of each token in
+records the creating principal as the token's owner and stores only a SHA-256
+hash of each token in
 `<home>/security/telemetry-producers.json` (mode `0600`). An expired token stays
 listed, as `expired`, until it is revoked.
 
