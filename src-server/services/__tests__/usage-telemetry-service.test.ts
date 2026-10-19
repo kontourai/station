@@ -130,6 +130,49 @@ async function service(
 
 describe('UsageTelemetryService', () => {
   test.each([
+    ['beta', 'preview'],
+    ['stable', 'stable'],
+    ['preview', 'preview'],
+    ['nightly', 'nightly'],
+    ['dev', 'dev'],
+    ['source-checkout', 'source-checkout'],
+    ['private-branch', undefined],
+    [undefined, undefined],
+  ] as const)(
+    'sends runtime channel %s as telemetry channel %s, omitting unknown channels',
+    async (runtimeChannel, expectedChannel) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementation(acceptProductBatch);
+      const subject = await service({
+        buildProvenance: { channel: runtimeChannel },
+        env: {
+          STATION_PRODUCT_TELEMETRY_ENDPOINT: 'https://receiver.test/events',
+        },
+        fetch,
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      try {
+        await subject.stationStarted();
+        await subject.flush();
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const batch = parseProductTelemetryBatch(
+          JSON.parse(String(fetch.mock.calls[0][1]?.body)),
+        );
+        expect(batch.events).toHaveLength(1);
+        expect(batch.events[0].build).toEqual({
+          version: '1.2.3',
+          platform: process.platform,
+          arch: process.arch,
+          ...(expectedChannel ? { channel: expectedChannel } : {}),
+        });
+      } finally {
+        await subject.shutdown();
+      }
+    },
+  );
+
+  test.each([
     { tier: undefined, dnt: undefined, sends: false },
     { tier: 'lite', dnt: undefined, sends: false },
     { tier: 'off', dnt: undefined, sends: false },

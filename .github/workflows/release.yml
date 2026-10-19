@@ -227,6 +227,8 @@ jobs:
       - name: Build an unsigned macOS staging candidate
         working-directory: src-desktop
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
@@ -346,8 +348,11 @@ jobs:
           if (-not $imported.Thumbprint) { throw 'Windows signing certificate import failed' }
           $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
           $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+      - name: Build signed Windows staging candidate
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
@@ -434,14 +439,19 @@ jobs:
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+      - name: Build Linux deb and rpm packages
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
       - name: Build signed AppImage with the contained runtime overlay
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'

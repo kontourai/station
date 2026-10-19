@@ -48,6 +48,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
+import { authorTelemetryWorkflowFindings } from './check-author-telemetry-workflows.mjs';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -3567,6 +3568,15 @@ function main() {
         `    ${finding.file} job '${finding.jobId}': ${finding.message}`,
       );
     }
+    return 1;
+  }
+
+  const telemetryFindings = authorTelemetryWorkflowFindings(
+    readWorkflowDocuments(),
+  );
+  if (telemetryFindings.length > 0) {
+    for (const finding of telemetryFindings)
+      console.error(`[actionlint] ${finding}`);
     return 1;
   }
 
