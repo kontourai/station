@@ -1,5 +1,7 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { expect, type Page } from '@playwright/test';
+import { join } from 'node:path';
+import { type BrowserContext, expect, type Page } from '@playwright/test';
 import { waitForSeededAgent } from './helpers/agents-journey';
 import {
   type AuthenticatedE2ERequest,
@@ -8,8 +10,10 @@ import {
 import { test } from './helpers/fixture-audit';
 import {
   closeFixtureServer,
+  type OllamaFixtureStream,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 /**
  * A composer send whose app is closed before Station's answer arrives,
@@ -179,6 +183,7 @@ test.describe('A send whose app closed before Station answered', () => {
     page: Page,
     authenticatedRequest: AuthenticatedE2ERequest,
     baseURL: string,
+    onStream?: Parameters<typeof startOllamaFixture>[3],
   ) {
     suspended = await enabledLlmConnections(authenticatedRequest);
     await setConnectionsEnabled(authenticatedRequest, suspended, false);
@@ -186,6 +191,7 @@ test.describe('A send whose app closed before Station answered', () => {
       FIXTURE_MODEL,
       () => undefined,
       FIXTURE_REPLY,
+      onStream,
     );
     fixtureServer = fixture.server;
     const connectionCreated = await authenticatedRequest.post(
@@ -251,6 +257,182 @@ test.describe('A send whose app closed before Station answered', () => {
     ).toHaveCount(1, { timeout: 60_000 });
     return conversationId;
   }
+
+  test('a server-held follow-up hydrates in another client and after reload, then leaves both pending counts when placed', async ({
+    page,
+    browser,
+    request,
+    baseURL,
+  }) => {
+    test.setTimeout(240_000);
+    if (!baseURL) throw new Error('Playwright baseURL is required');
+    const authenticatedRequest = createAuthenticatedE2ERequest(request);
+    const stamp = Date.now();
+    const runningMessage = `Hold this running turn ${stamp}`;
+    const followUp = `Server-held follow-up ${stamp}`;
+    const clientTurnId = `e2e-server-held-${stamp}`;
+    let runningStream: OllamaFixtureStream | undefined;
+    let followUpStream: OllamaFixtureStream | undefined;
+    let observerContext: BrowserContext | undefined;
+    const browserSends: unknown[] = [];
+    try {
+      const conversationId = await openFixtureChat(
+        page,
+        authenticatedRequest,
+        baseURL,
+        (stream, body) => {
+          const actualRequest = JSON.stringify(body);
+          if (actualRequest.includes(followUp)) {
+            followUpStream = stream;
+            stream.text('The placed follow-up is running.');
+          } else if (actualRequest.includes(runningMessage)) {
+            runningStream = stream;
+            stream.text('The first turn is still running.');
+          } else {
+            stream.text(FIXTURE_REPLY);
+            stream.finish();
+          }
+        },
+      );
+      const home = process.env.STATION_E2E_HOME;
+      const apiBase = process.env.PW_API_BASE_URL;
+      if (process.env.STATION_E2E_RUNNER !== '1' || !home || !apiBase)
+        throw new Error('The isolated E2E runner must own this Station home.');
+      const registryDir = join(process.cwd(), '.station', 'instances');
+      const instances = readdirSync(registryDir)
+        .filter((name) => name.endsWith('.json'))
+        .filter((name) => {
+          const record: unknown = JSON.parse(
+            readFileSync(join(registryDir, name), 'utf8'),
+          );
+          return (
+            typeof record === 'object' &&
+            record !== null &&
+            'baseDir' in record &&
+            record.baseDir === home
+          );
+        });
+      expect(instances).toHaveLength(1);
+      observerContext = await browser.newContext();
+      const observer = await observerContext.newPage();
+      await pairBrowser(observer, {
+        root: process.cwd(),
+        instance: instances[0].slice(0, -'.json'.length),
+        serverPort: Number(new URL(apiBase).port),
+        uiOrigin: new URL(baseURL).origin,
+      });
+      for (const client of [page, observer]) {
+        client.on('request', (sent) => {
+          if (
+            sent.method() === 'POST' &&
+            new URL(sent.url()).pathname === '/api/orchestration/chat'
+          )
+            browserSends.push(sent.postDataJSON());
+        });
+      }
+      await observer.goto(page.url());
+      await expect(
+        observer.getByRole('log', { name: 'Conversation transcript' }),
+      ).toBeVisible();
+
+      const running = await authenticatedRequest.post(
+        '/api/orchestration/chat',
+        {
+          data: {
+            target: {
+              environment: { kind: 'current' },
+              agent: seededAgentSlug,
+            },
+            message: runningMessage,
+            conversationId,
+            clientTurnId: `e2e-running-${stamp}`,
+          },
+        },
+      );
+      expect(running.status(), await running.text()).toBe(200);
+      await expect.poll(() => runningStream !== undefined).toBe(true);
+      await expect
+        .poll(() => turnPrompts(authenticatedRequest, conversationId))
+        .toEqual([FIRST_MESSAGE, runningMessage]);
+
+      const queued = await authenticatedRequest.post(
+        '/api/orchestration/chat',
+        {
+          data: {
+            target: {
+              environment: { kind: 'current' },
+              agent: seededAgentSlug,
+            },
+            message: followUp,
+            conversationId,
+            clientTurnId,
+            whenBusy: 'queue',
+          },
+        },
+      );
+      expect(queued.status(), await queued.text()).toBe(202);
+      expect(await queued.json()).toMatchObject({
+        success: true,
+        data: {
+          outcome: 'queued',
+          clientTurnId,
+          entry: { state: 'queued', message: followUp },
+        },
+      });
+      const inboxPath = `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+      const inbox = await authenticatedRequest.get(inboxPath);
+      expect(inbox.status()).toBe(200);
+      expect(await inbox.json()).toMatchObject({
+        data: {
+          entries: expect.arrayContaining([
+            expect.objectContaining({ clientTurnId, state: 'queued' }),
+          ]),
+        },
+      });
+
+      for (const client of [observer, page]) {
+        const held = client.getByRole('region', {
+          name: 'Messages held by Station',
+        });
+        await expect(held).toContainText('1 pending message');
+        await expect(held).toContainText(followUp);
+      }
+      await observer.reload();
+      await expect(
+        observer.getByRole('region', { name: 'Messages held by Station' }),
+      ).toContainText('1 pending message');
+
+      runningStream?.finish();
+      runningStream = undefined;
+      await expect.poll(() => followUpStream !== undefined).toBe(true);
+      await expect
+        .poll(() => turnPrompts(authenticatedRequest, conversationId))
+        .toEqual([FIRST_MESSAGE, runningMessage, followUp]);
+      for (const client of [page, observer])
+        await expect(
+          client.getByRole('region', { name: 'Messages held by Station' }),
+        ).toContainText('0 pending messages');
+      const delivered = await authenticatedRequest.get(inboxPath);
+      expect(delivered.status()).toBe(200);
+      expect(await delivered.json()).toMatchObject({
+        data: {
+          entries: expect.arrayContaining([
+            expect.objectContaining({ clientTurnId, state: 'sent' }),
+          ]),
+        },
+      });
+      expect(browserSends).toEqual([]);
+      expect(await turnPrompts(authenticatedRequest, conversationId)).toEqual([
+        FIRST_MESSAGE,
+        runningMessage,
+        followUp,
+      ]);
+    } finally {
+      runningStream?.finish();
+      followUpStream?.finish();
+      await observerContext?.close();
+    }
+  });
 
   for (const { forward, outcome, label } of [
     {
