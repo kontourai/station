@@ -209,4 +209,46 @@ describe('session inventory query lifecycle', () => {
     expect(observer.result.current.data).toBeUndefined();
     expect(observer.result.current.isLoading).toBe(true);
   });
+
+  /**
+   * `isFetchedAfterMount` is also true after a FAILED read, so it cannot by
+   * itself release data that was cached before this mount: a mount whose own
+   * first read failed must not show what an earlier mount was authorized to
+   * read.
+   */
+  test.each([
+    ['a 503', async () => respond(503, { success: false })],
+    [
+      'a network failure',
+      async (): Promise<Response> => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+  ])(
+    'a mount whose first read fails (%s) shows no previously cached projection',
+    async (_label, answer) => {
+      const fetchMock = vi.fn<typeof fetch>().mockImplementation(answer);
+      vi.stubGlobal('fetch', fetchMock);
+      const scope = { kind: 'whole-session' as const, sessionId: SESSION };
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      client.setQueryData(
+        sessionInventoryQueries.projection(scope).queryKey,
+        wholeSession(),
+      );
+      const { observer } = mount(scope, client);
+
+      await waitFor(() => {
+        expect(observer.result.current.error).toBeTruthy();
+        expect(observer.result.current.isFetching).toBe(false);
+      });
+      expect(observer.result.current.data).toBeUndefined();
+      expect(observer.result.current.isLoading).toBe(false);
+      // The cache itself is untouched: a 503 is not lost authority.
+      expect(
+        client.getQueryData(sessionInventoryQueries.projection(scope).queryKey),
+      ).toBeTruthy();
+    },
+  );
 });

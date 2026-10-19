@@ -3,7 +3,7 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
@@ -134,12 +134,30 @@ function useProtected<T>(
       cancelWhenInactive: config?.cancelWhenInactive ?? true,
     },
   );
-  // Nothing cached before this mount is shown until this mount's own read
-  // settles. After that, a background refetch keeps what is on screen: a
-  // refused one tombstones it (`null`, above), and a merely failed one leaves
-  // it beside `error`, for the surface to mark as not refreshed.
+  // Nothing cached before this mount is shown until a read made during this
+  // mount SUCCEEDS. `isFetchedAfterMount` is not enough: it is also true after
+  // a failed read, which would release data an earlier mount was authorized to
+  // see. So the data's own update time is compared with the one this mount
+  // (for this key) first observed. After a success, a background refetch keeps
+  // what is on screen: lost authority tombstones it (`null`, above), and a
+  // merely failed refresh leaves it beside `error`, for the surface to mark as
+  // not refreshed.
+  const queryHash = JSON.stringify(queryKey);
+  const mountedWith = useRef<{
+    queryHash: string;
+    dataUpdatedAt: number;
+  } | null>(null);
+  if (mountedWith.current?.queryHash !== queryHash)
+    mountedWith.current = { queryHash, dataUpdatedAt: query.dataUpdatedAt };
+  // The second clause is the answer-basis rule; it also covers a success that
+  // lands in the same millisecond as the data this mount first observed.
+  const succeededSinceMount =
+    query.dataUpdatedAt > mountedWith.current.dataUpdatedAt ||
+    (query.status === 'success' && !query.isFetching);
   const data =
-    query.isFetchedAfterMount && query.data != null ? query.data : undefined;
+    query.isFetchedAfterMount && succeededSinceMount && query.data != null
+      ? query.data
+      : undefined;
   return {
     ...query,
     data,
