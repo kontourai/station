@@ -1297,3 +1297,29 @@ describe('the server update state (#3851)', () => {
     });
   });
 });
+
+describe('a broadcast that withholds a failed download’s detail (#3851 review F12)', () => {
+  it('is not written as the state; the state is read again from its route', async () => {
+    const { QueryClient } = await import('@tanstack/react-query');
+    const { applyServerUpdateStateEvent, serverUpdateStateQueryKey } =
+      await import('../query-domains/systemRuntime');
+    const client = new QueryClient();
+    const key = serverUpdateStateQueryKey('https://a.test');
+    client.setQueryData(key, { supported: true, marker: 'before' });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    applyServerUpdateStateEvent(client, 'https://a.test', {
+      supported: true,
+      progress: {
+        state: 'staging-failed',
+        requestId: 'r-1',
+        reason: 'withheld',
+        finishedAt: '2026-10-19T10:00:00Z',
+      },
+    });
+    expect(client.getQueryData(key)).toEqual({
+      supported: true,
+      marker: 'before',
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
+  });
+});

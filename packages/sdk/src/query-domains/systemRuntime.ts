@@ -893,8 +893,18 @@ export function applyServerUpdateStateEvent(
   apiBase: string,
   payload: unknown,
 ): void {
-  queryClient.setQueryData(
-    serverUpdateStateQueryKey(apiBase),
-    parseServerUpdateState(payload),
-  );
+  const state = parseServerUpdateState(payload);
+  // The broadcast withholds a failed download's detail (the installer's
+  // error line): the state route, authenticated per caller, has it.
+  if (
+    (state.progress.state === 'staging-failed' ||
+      state.progress.state === 'rejected') &&
+    state.progress.reason === 'withheld'
+  ) {
+    void queryClient.invalidateQueries({
+      queryKey: serverUpdateStateQueryKey(apiBase),
+    });
+    return;
+  }
+  queryClient.setQueryData(serverUpdateStateQueryKey(apiBase), state);
 }

@@ -1522,6 +1522,40 @@ describe('download, then a confirmed restart (#3851)', () => {
     expect(serverUpdateActions).toEqual([{ action: 'cancel-apply-when-idle' }]);
   });
 
+  test('once the offered release is staged, only the staged line speaks (review F11)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService());
+    expect(
+      screen.getByText(
+        new RegExp(`Station ${STAGED} is downloaded and verified`),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(new RegExp(`${STAGED} is available`))).toBeNull();
+  });
+
+  test('a release newer than the staged one is offered for download again (review F7)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService({ latestVersion: '0.8.0-preview.3' }));
+    expect(
+      screen.getByRole('button', { name: 'Download 0.8.0-preview.3' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: `Restart server to update to ${STAGED}`,
+      }),
+    ).toBeTruthy();
+  });
+
   test('a server without stagedUpdates keeps the one-click update', () => {
     renderWith(stagedService({ stagedUpdates: undefined }));
     expect(

@@ -11,6 +11,7 @@ import {
   useServerUpdateActionMutation,
   useServerUpdateRunningTurnsQuery,
 } from '@kontourai/station-sdk';
+import { compareStationReleaseVersions } from '@kontourai/station-shared/release-version-order';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionRow } from '../../components/ActionRow';
@@ -38,6 +39,11 @@ export function ServerUpdateStageApply({
   const action = useServerUpdateActionMutation(apiBase);
   const progress = state.progress;
   const staged = progress.state === 'staged' ? progress : null;
+  // A release newer than the staged one is offered again (review F7).
+  const newerThanStaged =
+    !!latestVersion &&
+    (!staged ||
+      compareStationReleaseVersions(latestVersion, staged.version) === 1);
   const idle = state.applyWhenIdle;
   const run = (
     request: Parameters<typeof action.mutate>[0],
@@ -75,9 +81,10 @@ export function ServerUpdateStageApply({
             Cancel update when idle
           </button>
         )}
-        {!staged &&
+        {newerThanStaged &&
           canDownload &&
           latestVersion &&
+          !idle &&
           progress.state !== 'queued' &&
           progress.state !== 'staging' && (
             <button
@@ -180,7 +187,8 @@ function RestartConfirmation({
     >
       <p className="station-dialog__message">
         The server stops, tries {version}, and returns to the current version if
-        it does not start.
+        it does not start. To decide later, close this dialog: nothing restarts
+        until you choose.
       </p>
       {turns.isPending && (
         <SkeletonBlock count={1} label="Checking for running agent turns" />
@@ -201,7 +209,7 @@ function RestartConfirmation({
               ? 'This agent turn will be interrupted:'
               : `These ${total} agent turns will be interrupted:`}
           </p>
-          <ul className="settings__update-running-turns">
+          <ul className="station-dialog__message settings__update-running-turns">
             {listed.map((turn) => (
               <li key={turn.sessionId}>
                 {turn.title ?? 'Untitled conversation'} ({turn.engine})

@@ -694,7 +694,14 @@ export function CoreUpdateCheck({
       {/* A superseded comparison (stale scope or an accepted rebuild serving
         the old build) never speaks with a current voice: the historical line
         above replaces every derived state claim. */}
-      {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
+      {/* #3851 review F11: once the offered release is downloaded, the
+        staged line says all of it; "is available" beside it is noise. */}
+      {view &&
+        !comparisonSuperseded &&
+        !(
+          serviceProgress?.state === 'staged' &&
+          serviceProgress.version === status?.latestVersion
+        ) && <ComparisonMessage view={view} />}
       {technicalDisclosure}
       <span className="settings__field-hint">
         {stagedFlow
