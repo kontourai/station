@@ -3141,8 +3141,11 @@ are also exported from `@kontourai/station-sdk/client`.
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
-  current-answer inventory cache before active observers refetch. A mount
-  shows no cached projection until its own read lands; after that, a
+  current-answer inventory cache before active observers refetch. Every
+  mount, and every key a mounted hook switches to, makes its own read
+  (`refetchOnMount` is always `'always'` here, whatever the caller passes),
+  and no cached projection is shown until a read made during that mount
+  succeeds; after that, a
   background refetch keeps the loaded projection in `data`. Only lost
   authority (401, 403 or the route's non-disclosing 404) tombstones the
   scope's cached projection and pages. A 503, a network failure or a

@@ -301,6 +301,96 @@ describe('session inventory query lifecycle', () => {
   });
 
   /**
+   * Each mount, and each key a mounted hook switches to, makes its own read:
+   * data is released only after one succeeds (above), so a read skipped
+   * because the cached entry is still fresh would leave the hook loading
+   * forever.
+   */
+  describe('every mount and key switch reads', () => {
+    const other = 'codex:1792426448999';
+    function projectionFor(sessionId: string) {
+      return { ...wholeSession(), scope: { kind: 'whole-session', sessionId } };
+    }
+    function routedFetch() {
+      return vi.fn<typeof fetch>().mockImplementation(async (input) => {
+        const sessionId = decodeURIComponent(
+          /sessions\/([^/]+)\/inventory/.exec(String(input))![1]!,
+        );
+        return respond(200, { success: true, data: projectionFor(sessionId) });
+      });
+    }
+
+    test('switching onto a key with a fresh cached entry fetches and shows it', async () => {
+      const fetchMock = routedFetch();
+      vi.stubGlobal('fetch', fetchMock);
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const second = { kind: 'whole-session' as const, sessionId: other };
+      // Fresh (well inside staleTime) before the hook ever reaches it.
+      client.setQueryData(
+        sessionInventoryQueries.projection(second).queryKey,
+        projectionFor(other),
+      );
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client }, children);
+      const observer = renderHook(
+        ({ scope }) => useSessionInventoryQuery(scope),
+        {
+          wrapper,
+          initialProps: {
+            scope: { kind: 'whole-session', sessionId: SESSION } as {
+              kind: 'whole-session';
+              sessionId: string;
+            },
+          },
+        },
+      );
+      await waitFor(() => expect(observer.result.current.data).toBeTruthy());
+
+      observer.rerender({ scope: second });
+
+      await waitFor(() =>
+        expect(
+          (observer.result.current.data as { scope: { sessionId: string } })
+            ?.scope.sessionId,
+        ).toBe(other),
+      );
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).includes(encodeURIComponent(other)),
+        ),
+      ).toBe(true);
+    });
+
+    test('a caller asking not to refetch on mount still reads before showing', async () => {
+      const fetchMock = routedFetch();
+      vi.stubGlobal('fetch', fetchMock);
+      const scope = { kind: 'whole-session' as const, sessionId: SESSION };
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      client.setQueryData(
+        sessionInventoryQueries.projection(scope).queryKey,
+        wholeSession(),
+      );
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client }, children);
+      const observer = renderHook(
+        () =>
+          useSessionInventoryQuery(scope, {
+            refetchOnMount: false,
+            staleTime: 30_000,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(observer.result.current.data).toBeTruthy());
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
    * Lost authority on ANY read of a scope revokes everything held for that
    * scope, not only the read that was refused: a denied page must clear the
    * projection another observer already shows, and a denied projection must
