@@ -619,31 +619,13 @@ test.each([
       expect(
         await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
       ).toBe(true);
-      if (key === 'ArrowDown') {
-        // Hold growth after one step so one native ArrowDown can reach the tail.
-        await page.locator('#content').evaluate((content: HTMLElement) => {
-          content.style.height = `${content.offsetHeight + 20}px`;
-        });
-        expect(await tailGap(page)).toBe(up + 20);
-      } else {
-        await startGrowth(page, interval, ticks);
-      }
+      await startGrowth(page, interval, ticks);
       await page.keyboard.press(key);
-      if (key === 'ArrowDown') {
-        await page.waitForFunction(() => {
-          const scroll = document.querySelector('#scroll')!;
-          return (
-            scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight === 0
-          );
-        });
-      } else {
-        await page.waitForTimeout(500);
-      }
+      await page.waitForTimeout(500);
       expect(await tailGap(page)).toBe(0);
       expect(
         await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
       ).toBe(false);
-      if (key === 'ArrowDown') await startGrowth(page, interval, ticks - 1);
       await finishGrowth(page);
       expect(await tailGap(page)).toBe(0);
       expect(
