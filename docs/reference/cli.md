@@ -2082,7 +2082,7 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-and but the default project directories under `workspaces/`
+the default project directories under `workspaces/`,
 and the browser's `browser/chromium` and `browser/profiles`: an update neither
 copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into
@@ -2179,11 +2179,21 @@ A server the launcher runs uses these requests itself:
   [configuration](config.md)) stages an available version once it has been
   available that long. The clock starts at the first check that saw the
   version and is kept in `runtime/server-update.json` across restarts.
-  Downloading never restarts the server.
+  The policy runs after the server's own checks and when the setting itself
+  changes, not when a client checks or another setting is saved.
+  Downloading never restarts the server. It downloads a given version once:
+  a version whose download it already started, or whose update was rolled
+  back or failed, waits for a person's **Download** or a newer release. It
+  downloads nothing while an Update when idle request waits.
 - **Restart:** only a person's Restart, or the **Update when idle** request
   they made, restarts the server. Update when idle is also kept in
-  `runtime/server-update.json`. It applies the staged version once no agent
-  turn is running, and can be cancelled.
+  `runtime/server-update.json`. Once the server is listening and its turn
+  recovery has run, it applies the staged version when no session has an
+  active turn. That count includes sessions no list shows, such as webhook,
+  delegation and execution-target turns. It is checked again as runtime
+  events arrive, and the request can be cancelled. A turn that starts in
+  the moment between that check and the launcher stopping the server is
+  interrupted; nothing holds new turns back while the restart is requested.
 
 The client API:
 - `GET /api/system/core-update/state` returns the state. Every change is also
@@ -2195,9 +2205,30 @@ The client API:
   Update when idle.
 - `GET /api/system/core-update/running-turns` lists the agent turns a restart
   would interrupt, as far as the caller may read those sessions.
+  `hiddenCount` counts the running sessions the caller may not read, so any
+  caller of this read-tier route learns how many of those exist (not what
+  they are).
+- `server-update:changed` withholds a failed download's error text (its
+  `reason` reads `withheld`); `GET /api/system/core-update/state` has it.
 - The progress routes report `staged` only to a client that asks with
   `?staged=1`. An older client's parser would read that state as unreadable
-  progress.
+  progress. Without it, a download under way is not reported either, since
+  older clients present any queued or staging request as a coming restart.
+
+A supervised update handoff leaves `update-restore.json` in the home (see the
+restore marker in `@kontourai/station-shared/station-home-restore-marker`).
+The release that boots next restores the home from the marker's backup if it
+is the release the handoff left, and does nothing if it is the target.
+Anything else refuses to start: the marker cannot be read, it names neither
+release, the backup is missing, or the restore fails. The refusal is logged
+in `logs/server` and on the console, and it names the way back. Restoring by
+hand uses the one command that reads this backup format, run with the
+from-release's own CLI:
+`<from-release root>/bin/station service update-home restore
+--backup-dir=<backup> --base=<home>`. Then remove `update-restore.json`.
+`service update-home` is otherwise an internal launcher command; this is the
+case it is documented for. If the home already belongs to the release being
+started, removing the marker is enough.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse

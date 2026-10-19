@@ -3162,12 +3162,18 @@ The server's own update routes (#3851):
   `server-update:changed` event.
 - `GET /api/system/core-update/running-turns` lists the agent turns a restart
   would interrupt. Only sessions the caller may read are listed;
-  `hiddenCount` counts the rest.
+  `hiddenCount` counts the rest, so a caller learns how many running
+  sessions it cannot read exist, not what they are.
 - `PUT /api/system/core-update/apply-when-idle` (body `{"version": "<staged
   version>"}`) asks the server to apply the staged version once no agent turn
-  runs; `DELETE` on the same route cancels it.
+  runs (every session's active turn counts, ephemeral ones included);
+  `DELETE` on the same route cancels it, and answers 409 once the restart
+  was already requested.
 - `GET /core-update` and `GET /core-update/service-update` report the `staged`
-  progress state only when called with `?staged=1`.
+  progress state, and a download under way, only when called with
+  `?staged=1`.
+- The `server-update:changed` broadcast reports a failed download's `reason`
+  as `withheld`; the state route returns the text.
 
 ### Get Server Capabilities
 
