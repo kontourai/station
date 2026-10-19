@@ -544,12 +544,15 @@ function telemetryProducerBearer(c: Context): string | undefined {
  * expired (403), sender position allowed (403).
  *
  * "Same machine" is `classifyOperatorCredentialPosition`: a direct loopback
- * socket with a loopback `Host` and no forwarding or ingress evidence. (Its
- * attested-UI-proxy branch cannot apply: the UI proxy does not forward
- * `/v1`, see `UI_PROXY_BACKEND_PREFIXES`.) Tailscale Serve
- * dials Station from loopback, so the socket alone would count every tailnet
- * sender as local; its ingress identity and forwarding headers are what mark
- * it remote. A plain SSH local forward still reads as same-machine; the
+ * socket with a loopback `Host` and no forwarding or ingress evidence, or
+ * Station's own attested UI proxy relaying a loopback client that addressed
+ * loopback. The UI proxy forwards every non-GET request, so ingest POSTs
+ * reach here through it; that is the remote producer path (Tailscale Serve
+ * terminates TLS and dials the UI port). Serve dials from loopback, so the
+ * sockets alone would count every tailnet sender as local; the proxy's
+ * forwarded-Host, forwarding-evidence and ingress-identity attestations are
+ * what mark it remote
+ * (`telemetry-producer-ui-proxy-transport.test.ts`). A plain SSH local forward still reads as same-machine; the
  * default is a narrowing, not proof of locality.
  */
 async function admitTelemetryProducerRequest(call: {

@@ -924,8 +924,10 @@ contract a producer implements:
    `station telemetry producers create <name> --token-file=<path>`. The file
    holds one `sti_…` token and has mode `0600`. Station keeps only its hash.
 2. **Configuration.** The producer is given the full URL of the ingest route,
-   for example `http://127.0.0.1:3141/v1/agent-events`, and the token file's
-   path. It does not guess Station's port.
+   for example `http://127.0.0.1:3141/v1/agent-events` on this machine, or
+   `https://<host>.<tailnet>.ts.net/v1/agent-events` through Tailscale Serve in
+   front of the UI port for a remote producer, and the token file's path. It
+   does not guess Station's port.
 3. **Request.** One event per `POST`, with `Authorization: Bearer <token>`,
    `Content-Type: application/json`, and the event JSON as the body
    (`schema_version` `0.x`; see the reference for required fields).

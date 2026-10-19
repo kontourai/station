@@ -579,8 +579,10 @@ loopback address) nor resets the budget for guessers. It is refused when expired
 machine unless the token was created with remote access (`403`). "This
 machine" is the same position test used for raw operator-credential use:
 loopback socket and `Host`, and no forwarding, Tailscale or ingress-identity
-evidence (the UI proxy does not forward `/v1`, so its relay branch never
-applies here). An
+evidence, or Station's attested UI proxy relaying a loopback client that
+addressed loopback. Tailscale Serve dials the UI port from loopback, but the
+proxy's forwarded-Host and forwarding-evidence attestations still mark its
+requests remote (a real-socket test pins this). An
 SSH local forward still looks local, so the default narrows exposure rather
 than proving locality. Only the operator can create, list or revoke these
 tokens (`access:manage` plus an operator check). Secrets are shown once and
