@@ -4,12 +4,14 @@ import {
   workspacePaneHostScopeMatches,
 } from '@kontourai/station-contracts/workspace-pane-host';
 import { reduceWorkspacePaneHost } from '../workspace-panes/workspacePaneHostReducer';
+import type { WorkspacePaneHostRestoredInstanceAdmission } from '../workspace-panes/workspacePaneHostStorage';
 
 /** Apply changed built-in membership without replacing the reader's other panes. */
 export function reconcileCodingWorkspaceDocument(
   previousBaseline: WorkspacePaneHostDocumentV1,
   nextBaseline: WorkspacePaneHostDocumentV1,
   current: WorkspacePaneHostDocumentV1,
+  admitInstance: WorkspacePaneHostRestoredInstanceAdmission,
 ): WorkspacePaneHostDocumentV1 {
   if (
     current.id !== nextBaseline.id ||
@@ -25,9 +27,12 @@ export function reconcileCodingWorkspaceDocument(
     previousBaseline.instances.map((instance) => instance.instanceId),
   );
   const known = [
-    ...current.instances.filter(
-      (instance) => !previousIds.has(instance.instanceId),
-    ),
+    ...current.instances
+      .filter((instance) => !previousIds.has(instance.instanceId))
+      .flatMap((instance) => {
+        const admitted = admitInstance(instance);
+        return admitted ? [admitted] : [];
+      }),
     ...nextBaseline.instances,
   ];
   const restored = restoreWorkspacePaneHostDocument(current, known).document;

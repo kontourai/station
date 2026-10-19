@@ -421,13 +421,19 @@ function retainWorkspacePaneHostDocument(
   },
   next: WorkspacePaneHostDocumentV1 | null,
   live: WorkspacePaneHostDocumentV1 | null,
+  admitInstance: (candidate: unknown) => WorkspacePaneInstance | null,
 ): WorkspacePaneHostDocumentV1 | null {
   if (!next) return next;
   const content = JSON.stringify(next);
   if (published.current?.content === content) return published.current.document;
   const document =
     published.current && live
-      ? reconcileCodingWorkspaceDocument(published.current.baseline, next, live)
+      ? reconcileCodingWorkspaceDocument(
+          published.current.baseline,
+          next,
+          live,
+          admitInstance,
+        )
       : next;
   published.current = { content, document, baseline: next };
   return document;
@@ -1266,6 +1272,21 @@ function BuiltinCodingLayoutHost({
             drillInInstances,
           ),
           liveHostDocument.current,
+          (candidate) => {
+            const parsed = parseWorkspacePaneInstance(candidate);
+            const current =
+              parsed &&
+              catalog.entries.find(
+                (entry) =>
+                  entry.instance?.instanceId === parsed.instanceId &&
+                  entry.descriptor.id === parsed.descriptorId &&
+                  entry.availability.state === 'available',
+              );
+            return current?.instance &&
+              isWorkspacePaneInstanceOwnedByProject(current.instance, projectId)
+              ? current.instance
+              : admitRestoredInstance(candidate);
+          },
         )
       : null;
   if (drillInInstances.length > 0 && !document) {

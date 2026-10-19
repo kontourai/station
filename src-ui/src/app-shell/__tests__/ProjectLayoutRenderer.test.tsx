@@ -1853,6 +1853,20 @@ describe('ProjectLayoutRenderer', () => {
         customized.root.type === 'split' ? customized.root.second : undefined,
     });
     expect(withdrawn.activeInstanceId).toBe(pluginInstance.instanceId);
+    const beforeRevocation = catalogMock.mock.results.at(-1)?.value;
+    catalogMock.mockReturnValue({
+      ...beforeRevocation,
+      entries: beforeRevocation.entries.filter(
+        (candidate: { descriptor: { id: string } }) =>
+          candidate.descriptor.id !== pluginDescriptor.id,
+      ),
+    });
+    act(() => deviceSettingsStore.set('experimentalTrustEnabled', true));
+    expect(
+      hostMock.mock.lastCall?.[0].document.instances.map(
+        (instance: { instanceId: string }) => instance.instanceId,
+      ),
+    ).not.toContain(pluginInstance.instanceId);
     const liveCatalog = catalogMock.mock.results.at(-1)?.value;
     catalogMock.mockReturnValue({
       ...liveCatalog,

@@ -2927,14 +2927,24 @@ test('a Coding preview baseline delta preserves and persists unrelated panes and
       storage.getItem(workspacePaneHostStorageKey(original.scope, original.id)),
     ).not.toBeNull(),
   );
-  const enabled = reconcileCodingWorkspaceDocument(previous, added, current);
+  const enabled = reconcileCodingWorkspaceDocument(
+    previous,
+    added,
+    current,
+    (instance) => parseWorkspacePaneInstance(instance),
+  );
   view.rerender(tree(enabled));
   await waitFor(() =>
     expect(current.instances.map((instance) => instance.instanceId)).toContain(
       four.instanceId,
     ),
   );
-  const disabled = reconcileCodingWorkspaceDocument(added, previous, current);
+  const disabled = reconcileCodingWorkspaceDocument(
+    added,
+    previous,
+    current,
+    (instance) => parseWorkspacePaneInstance(instance),
+  );
   view.rerender(tree(disabled));
   await waitFor(() =>
     expect(
@@ -2951,4 +2961,27 @@ test('a Coding preview baseline delta preserves and persists unrelated panes and
   ).toEqual([one.instanceId, two.instanceId, three.instanceId]);
   expect(saved.root).toEqual(original.root);
   expect(saved.activeInstanceId).toBe(original.activeInstanceId);
+  const revoked = reconcileCodingWorkspaceDocument(
+    previous,
+    added,
+    current,
+    (candidate) => {
+      const parsed = parseWorkspacePaneInstance(candidate);
+      return parsed?.instanceId === two.instanceId ? null : parsed;
+    },
+  );
+  view.rerender(tree(revoked));
+  await waitFor(() =>
+    expect(
+      current.instances.map((instance) => instance.instanceId),
+    ).not.toContain(two.instanceId),
+  );
+  const persistedRevocation = JSON.parse(
+    storage.getItem(workspacePaneHostStorageKey(original.scope, original.id))!,
+  );
+  expect(
+    persistedRevocation.instances.map(
+      (instance: WorkspacePaneInstance) => instance.instanceId,
+    ),
+  ).toEqual([one.instanceId, three.instanceId, four.instanceId]);
 });
