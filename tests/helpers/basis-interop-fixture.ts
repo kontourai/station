@@ -25,12 +25,10 @@ export function preserveBasisInteropEnvironment(): () => void {
   };
 }
 
-/**
- * Non-sensitive, positively parsed owner fixture for real host interoperability.
- * Its session ids are bare because Surface 6.x rejects real colon-shaped
- * Station ids in contribution refs. FLIP WHEN SURFACE ACCEPTS OPAQUE
- * CONTRIBUTION-REF IDS: use `${agentSlug}:${epoch}`-shaped ids here.
- */
+/** A real-shape Station session id (`${agentSlug}:${epoch}`), colon included (#418). */
+export const BASIS_INTEROP_SESSION_ID = 'station:1792425046978';
+
+/** Non-sensitive, positively parsed owner fixture for real host interoperability. */
 export function basisInteropCollection(): StationTaskBasisCollection {
   const answers = Array.from({ length: 9 }, (_, index) => {
     const assessment =
@@ -130,7 +128,7 @@ export function basisInteropCollection(): StationTaskBasisCollection {
             schemaVersion: '1.2.0',
             kind: 'assistant-message',
             standing: 'observed',
-            threadId: 'fixture-session',
+            threadId: BASIS_INTEROP_SESSION_ID,
             messageId: `fixture-message-${index}`,
           },
           fact: 'answer-observed',
@@ -170,7 +168,7 @@ export function basisInteropCollection(): StationTaskBasisCollection {
         authority: '@kontourai/thread' as const,
         schemaVersion: '1.2.0' as const,
         kind: 'result' as const,
-        threadId: 'fixture-session',
+        threadId: BASIS_INTEROP_SESSION_ID,
         resultId: `fixture-result-${index}`,
       },
       kept: true as const,

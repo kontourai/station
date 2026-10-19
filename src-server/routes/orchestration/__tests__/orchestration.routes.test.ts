@@ -205,10 +205,10 @@ describe('direct Basis response revocation fence', () => {
     expect(await response.text()).not.toContain('fieldwork');
   });
 
-  // FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS (see the
-  // durable colon-id case in tasks.routes.test.ts): until then the composed
-  // fallback path must refuse, not publish Surface's owner-blaming fallback.
-  test('refuses a chat-dock colon session id Surface cannot represent instead of publishing a fallback', async () => {
+  // The composed fallback path must refuse a projection Station built but
+  // Surface rejects (a lone-surrogate event id), not publish Surface's
+  // owner-blaming fallback with a 1970 observation time.
+  test('refuses a Station-built contribution Surface cannot represent instead of publishing a fallback', async () => {
     const threadId = 'station:1792425046978';
     const app = createOrchestrationRoutes(
       {
@@ -233,7 +233,7 @@ describe('direct Basis response revocation fence', () => {
             },
             inputs: [
               {
-                eventId: '9c2e4a6b-8d0f-4a1c-b3e5-7f9a1c3e5b7d',
+                eventId: 'input-\ud800',
                 kind: 'initial' as const,
                 prompt: 'initial prompt',
                 attachments: [],

@@ -35,6 +35,7 @@ import {
 } from '../src-server/utils/internal-api-token.js';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import {
+  BASIS_INTEROP_SESSION_ID,
   basisInteropCollection,
   preserveBasisInteropEnvironment,
 } from './helpers/basis-interop-fixture';
@@ -149,7 +150,7 @@ test('Whole Task resource interoperates with an independent official AppBridge h
       collection.answers.map((answer, index) => ({
         id: answer.answerReferenceId,
         targetId: encodeTaskTurnReference(
-          'fixture-session',
+          BASIS_INTEROP_SESSION_ID,
           `fixture-turn-${index}`,
         ),
       })),
@@ -175,7 +176,7 @@ test('Whole Task resource interoperates with an independent official AppBridge h
       taskBasisAppRead: readModule,
       readAuthorityForRequest: () =>
         sessionReadAuthorityFromRequest('fixture-user', undefined, undefined),
-      canReadSession: (sessionId) => sessionId === 'fixture-session',
+      canReadSession: (sessionId) => sessionId === BASIS_INTEROP_SESSION_ID,
       isRequestPrincipalCurrent: (request) =>
         isTrustedInternalApiToken(
           getRuntimeAuthenticatedRequestPrincipal(request)?.credential,

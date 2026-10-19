@@ -622,11 +622,8 @@ test.describe
       await expect(attachDialog).toHaveCount(0);
 
       // The pinned answer's real Session id is minted `${agentSlug}:${epoch}`;
-      // it must reach Basis as-is. Surface 6.x refuses colon ids in
-      // contribution refs, so today Station reports that honestly as an
-      // unavailable answer instead of a fabricated 1970 owner gap.
-      // FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS: both reads
-      // below must then publish an available `execution-only` projection.
+      // it must reach Basis as-is, with its Station input contribution
+      // (#418; Surface before 6.2.1 rejected the colon and Basis fell back).
       expect(sessionId).toContain(':');
       const basisReads = await page.evaluate(
         async ({ sourceSessionId, sourceTurnId, keptTaskId }) => {
@@ -653,13 +650,25 @@ test.describe
         expect(read.text).not.toContain('unsupported-owner-version');
         expect(read.text).not.toContain('1970-01-01');
       }
-      expect(basisReads.direct).toEqual({
-        status: 503,
-        text: JSON.stringify({ success: false, error: 'Basis unavailable' }),
+      const published = {
+        standing: 'execution-only',
+        answer: { state: 'available', value: { ref: { threadId: sessionId } } },
+        regions: {
+          inputs: [
+            expect.objectContaining({
+              ref: expect.objectContaining({ kind: 'input', sessionId }),
+            }),
+          ],
+        },
+      };
+      expect(basisReads.direct.status).toBe(200);
+      expect(JSON.parse(basisReads.direct.text)).toMatchObject({
+        success: true,
+        data: published,
       });
       expect(basisReads.whole.status).toBe(200);
       expect(JSON.parse(basisReads.whole.text)).toMatchObject({
-        data: { answers: [], gaps: [{ state: 'unavailable' }] },
+        data: { answers: [{ projection: published }] },
       });
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);

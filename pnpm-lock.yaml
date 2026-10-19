@@ -162,8 +162,8 @@ importers:
         specifier: ^0.10.0
         version: link:packages/shared
       '@kontourai/surface':
-        specifier: 6.1.0
-        version: 6.1.0(supports-color@7.2.0)
+        specifier: 6.2.1
+        version: 6.2.1(supports-color@7.2.0)
       '@kontourai/survey':
         specifier: 8.2.0
         version: 8.2.0(supports-color@7.2.0)(typescript@7.0.2)
@@ -532,8 +532,8 @@ importers:
         specifier: '*'
         version: link:../../packages/sdk
       '@kontourai/surface':
-        specifier: ^6.1.0
-        version: 6.1.0(supports-color@7.2.0)
+        specifier: ^6.2.1
+        version: 6.2.1(supports-color@7.2.0)
       ajv:
         specifier: ^8.12.0
         version: 8.20.0
@@ -591,8 +591,8 @@ importers:
         specifier: ^0.10.0
         version: link:../sdk
       '@kontourai/surface':
-        specifier: ^6.1.0
-        version: 6.1.0(supports-color@7.2.0)
+        specifier: ^6.2.1
+        version: 6.2.1(supports-color@7.2.0)
       '@kontourai/ui':
         specifier: ^1.19.0
         version: 1.20.1(react@19.3.1)
@@ -739,8 +739,8 @@ importers:
         specifier: 6.5.1
         version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.64.1))(playwright@1.64.1)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/surface':
-        specifier: ^6.1.0
-        version: 6.1.0(supports-color@7.2.0)
+        specifier: ^6.2.1
+        version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
         specifier: 0.5.0
         version: 0.5.0
@@ -765,8 +765,8 @@ importers:
         specifier: ^0.10.0
         version: link:../shared
       '@kontourai/surface':
-        specifier: ^6.1.0
-        version: 6.1.0(supports-color@7.2.0)
+        specifier: ^6.2.1
+        version: 6.2.1(supports-color@7.2.0)
       '@kontourai/thread':
         specifier: 0.5.0
         version: 0.5.0
@@ -2454,8 +2454,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/surface@6.1.0':
-    resolution: {integrity: sha512-HOAYFlKoAsm80qjyWXoD5tJiemIyhfDB/Img0/QWLpy9CX6K8Qm1EaxjiUMlu0oVrk+msvLgN5i1w+w+P5oi+A==}
+  '@kontourai/surface@6.2.1':
+    resolution: {integrity: sha512-Kbf39vuJZrBERVsvhXV4U1STr5q5hWzD2ZesWJpoLppZAHtRE9frEhxZ3xxHt7jhpo6bmb0OGFw0dVjU8NpVEA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10115,7 +10115,7 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/surface@6.1.0(supports-color@7.2.0)':
+  '@kontourai/surface@6.2.1(supports-color@7.2.0)':
     optionalDependencies:
       '@sigstore/bundle': 5.0.0
       '@sigstore/sign': 5.0.0(supports-color@7.2.0)

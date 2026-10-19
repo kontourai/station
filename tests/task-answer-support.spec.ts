@@ -19,14 +19,14 @@ import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 const taskId = 'answer-support-ui';
 const referenceId = 'answer-reference-ui';
 const basisFrameOrigin = 'http://basis-proxy.test';
-// Real Station session ids carry ':' (`${agentSlug}:${epoch}`). Surface 6.x
-// rejects that in contribution refs, so this routed fixture keeps a bare id.
-// FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS: use a colon id here.
+// Real Station session ids carry ':' (`${agentSlug}:${epoch}`), so the routed
+// fixture uses that shape end to end (#418).
+const sessionId = 'station:1792425046978';
 const executionRef = {
   authority: '@kontourai/thread',
   schemaVersion: '1.2.0',
   kind: 'result',
-  threadId: 'session-ui',
+  threadId: sessionId,
   resultId: 'terminal-result-ui',
 } as const;
 const executionText = `<img src=x onerror=alert(1)> inert tool output ${'x'.repeat(2400)}`;
@@ -57,7 +57,7 @@ const basisProjection = {
         schemaVersion: '1.2.0',
         kind: 'assistant-message',
         standing: 'observed',
-        threadId: 'session-ui',
+        threadId: sessionId,
         messageId: 'message-ui',
       },
       fact: 'answer-observed',
@@ -141,7 +141,7 @@ function surface3Projection(options: {
           schemaVersion: '1.2.0',
           kind: 'assistant-message',
           standing: 'observed',
-          threadId: 'session-ui',
+          threadId: sessionId,
           messageId: 'message-ui',
         },
         fact: 'answer-observed',
@@ -256,7 +256,7 @@ function surface3Projection(options: {
               schemaVersion: '1.2.0',
               kind: 'assistant-message',
               standing: 'observed',
-              threadId: 'session-ui',
+              threadId: sessionId,
               messageId: 'message-ui',
             },
             role: 'execution',
@@ -535,7 +535,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     associatedAnswerReferenceIds,
   });
   await page.route(
-    `**/api/orchestration/sessions/${executionRef.threadId}/tool-results/${executionRef.resultId}`,
+    `**/api/orchestration/sessions/${encodeURIComponent(executionRef.threadId)}/tool-results/${executionRef.resultId}`,
     (route) => {
       resultReads += 1;
       return route.fulfill({
@@ -633,7 +633,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
           {
             id: referenceId,
             state: 'available',
-            sessionId: 'session-ui',
+            sessionId,
             turnId: 'turn-ui',
             answer: {
               role: 'assistant',
@@ -994,7 +994,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     throw new Error('The routed server-event stream did not subscribe.');
   firstSsePublisher(
     'event: answer.assessment.updated\n' +
-      'data: {"sessionId":"session-ui","turnId":"turn-ui","revision":4,"active":true}\n\n',
+      `data: ${JSON.stringify({ sessionId, turnId: 'turn-ui', revision: 4, active: true })}\n\n`,
   );
   await expect(nativeBasis.getByRole('status')).toContainText('Policy met');
   await expect(nativeBasis).toContainText('Explicitly entailing evidence');
@@ -1323,7 +1323,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await replace.click();
   const dialog = page.getByRole('dialog', { name: 'Replace answer support' });
   await expect(
-    dialog.getByText('Session session-ui · turn turn-ui'),
+    dialog.getByText(`Session ${sessionId} · turn turn-ui`),
   ).toBeVisible();
   await dialog.getByRole('button', { name: 'opaque-A' }).click();
   await expect(
@@ -1350,7 +1350,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     throw new Error('The routed server-event stream did not reconnect.');
   publishSse(
     'event: answer.assessment.updated\n' +
-      'data: {"sessionId":"session-ui","turnId":"turn-ui","revision":5,"active":false}\n\n',
+      `data: ${JSON.stringify({ sessionId, turnId: 'turn-ui', revision: 5, active: false })}\n\n`,
   );
   await expect(
     basisDialog.getByRole('button', { name: 'Retry' }),
@@ -1404,7 +1404,7 @@ test('renders pinned input context without leaking a revoked projection', async 
           {
             id: 'input-link-ui',
             state: 'available',
-            sessionId: 'session-ui',
+            sessionId,
             turnId: 'turn-ui',
             eventId: 'event-ui',
             input: {

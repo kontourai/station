@@ -365,14 +365,9 @@ describe('Task routes', () => {
   // Real Station session ids are never bare tokens: the chat dock mints
   // `${agentSlug}:${Date.now()}` (useActiveChatSessionLifecycle) and attached
   // Claude Code sessions use `external:claude:<32 hex>`
-  // (claudeAttachedThreadId). Surface 6.x validates contribution-ref
-  // owner ids as restricted contract tokens, which reject `:`, so it refuses
-  // the input/result contributions Station builds for these answers.
-  //
-  // FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS: this pins the
-  // honest current failure (Station invariant reported, 503 / unavailable
-  // gap, never Surface's 1970 fallback blaming an owner). After the Surface
-  // bump these ids must instead compose to 200 `execution-only`.
+  // (claudeAttachedThreadId). Surface before 6.2.1 rejected `:` in the
+  // input/result contribution refs Station builds for these answers, so every
+  // real chat's Basis was unavailable (kontourai/surface#346, #418).
   test.each([
     ['chat dock', 'station:1792425046978'],
     [
@@ -380,7 +375,7 @@ describe('Task routes', () => {
       'external:claude:0f3a5c7e9b1d2f4a6c8e0b2d4f6a8c0e',
     ],
   ])(
-    'reports a %s colon session id Surface cannot represent as an unavailable Station invariant',
+    'publishes Basis for a %s colon session id with its real input contribution',
     async (_label, threadId) => {
       const home = makeTempDir('station-basis-colon-');
       const store = new EventStore(join(home, 'orchestration.sqlite'));
@@ -480,8 +475,9 @@ describe('Task routes', () => {
           }),
           readNarrative: async ({ authorizedAnswer }) => ({
             owner: { authority: '@kontourai/flow-agents' },
-            state: 'not-captured',
+            state: 'observed-empty',
             observedAt: authorizedAnswer.observedAt,
+            value: [],
           }),
           readReviewedSource: async () => undefined,
           reportCompositionInvariant: report,
@@ -509,8 +505,6 @@ describe('Task routes', () => {
           }),
         );
 
-        // The durable owner really found this answer and its input; only
-        // Station's Surface projection cannot carry the colon id.
         const answer = await sessionQueries.readAnswerBasis!(
           { type: 'answer-basis', threadId, turnId },
           authority,
@@ -520,33 +514,56 @@ describe('Task routes', () => {
           sessionId: threadId,
           inputs: [expect.objectContaining({ kind: 'initial' })],
         });
+        const inputRef = {
+          authority: '@kontourai/station',
+          schemaVersion: '1',
+          kind: 'input',
+          sessionId: threadId,
+          eventId: '9c2e4a6b-8d0f-4a1c-b3e5-7f9a1c3e5b7d',
+        };
+        const publishedProjection = {
+          version: 'surface.basis-projection/v1',
+          standing: 'execution-only',
+          answer: {
+            state: 'available',
+            observedAt: '2026-10-19T00:00:03.000Z',
+            value: { ref: { threadId } },
+          },
+          regions: { inputs: [expect.objectContaining({ ref: inputRef })] },
+          gaps: [],
+        };
 
         const direct = await app.request(
           `/api/orchestration/sessions/${encodeURIComponent(threadId)}/turns/${turnId}/basis`,
         );
-        expect(direct.status).toBe(503);
-        expect(await direct.text()).toBe(
-          JSON.stringify({ success: false, error: 'Basis unavailable' }),
-        );
+        expect(direct.status).toBe(200);
+        await expect(readJson(direct)).resolves.toMatchObject({
+          success: true,
+          data: publishedProjection,
+        });
 
         const selected = await app.request(
           `/api/tasks/${task.id}/basis?answerReferenceId=${encodeURIComponent(reference.id)}`,
         );
-        expect(selected.status).toBe(503);
+        expect(selected.status).toBe(200);
+        await expect(readJson(selected)).resolves.toMatchObject({
+          data: publishedProjection,
+        });
 
         const whole = await app.request(`/api/tasks/${task.id}/basis`);
         expect(whole.status).toBe(200);
-        const wholeText = await whole.text();
-        expect(JSON.parse(wholeText)).toMatchObject({
-          data: { answers: [], gaps: [{ state: 'unavailable' }] },
+        await expect(readJson(whole)).resolves.toMatchObject({
+          data: {
+            answers: [
+              {
+                answerReferenceId: reference.id,
+                projection: publishedProjection,
+              },
+            ],
+            gaps: [],
+          },
         });
-        expect(wholeText).not.toContain('unsupported-owner-version');
-        expect(wholeText).not.toContain('1970-01-01');
-
-        // Each read reported Station's own invariant with Surface's parser
-        // gap, instead of publishing that gap as Basis data.
-        expect(reported).toHaveLength(3);
-        expect(reported[0]?.code).toBe('unsupported-owner-version');
+        expect(reported).toEqual([]);
       } finally {
         store.close();
       }
