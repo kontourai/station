@@ -33,13 +33,14 @@ const dailyPing = () => ({
   plugin_disabled_after_crash: 0,
 });
 
-async function checkLiteReceiver(store, pool, base, operatorKey) {
+async function checkLiteReceiver(store, pool, base, operatorKey, privateBase) {
   const source = `qa-${randomUUID()}`;
   const other = `qa-${randomUUID()}`;
   const publisher = `publisher:@qa/plugin-${randomUUID()}`;
   const key = `stq_${randomBytes(32).toString('base64url')}`;
   const agent = 'private-user-agent-must-never-persist';
   const forwarded = '198.51.100.73';
+  const connecting = '203.0.113.84';
   const logs = [];
   const stdoutWrite = process.stdout.write,
     stderrWrite = process.stderr.write;
@@ -52,16 +53,20 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     return stderrWrite.call(this, chunk, ...args);
   };
   const request = async (path, body, auth) => {
-    const response = await fetch(`${base}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'user-agent': agent,
-        'x-forwarded-for': forwarded,
-        ...(auth ? { authorization: `Bearer ${auth}` } : {}),
+    const response = await fetch(
+      `${path.startsWith('/v1/operator/') || path.startsWith('/v1/publishers/') ? privateBase : base}${path}`,
+      {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': agent,
+          'x-forwarded-for': forwarded,
+          'cf-connecting-ip': connecting,
+          ...(auth ? { authorization: `Bearer ${auth}` } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    );
     return { status: response.status, body: await response.json() };
   };
   const send = (ping, id = source) => request(`/v1/lite/${id}`, ping);
@@ -84,6 +89,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     for (const sentinel of [
       '127.0.0.1',
       forwarded,
+      connecting,
       agent,
       'private-rejected-content',
     ]) {
@@ -135,10 +141,43 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       ).status,
       201,
     );
+    const feedback = {
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    };
+    for (const bad of [
+      { ...feedback, reason: 'unknown' },
+      { ...feedback, reason: 'skip' },
+      { ...feedback, action: 'unknown' },
+      { ...feedback, publisher },
+      { ...feedback, note: 'private-rejected-content' },
+      { ...feedback, id: 'private-rejected-content' },
+      { ...feedback, timestamp: '2026-01-01' },
+    ])
+      assert.equal(
+        (await send(bad)).status,
+        400,
+        'strict feedback shape/source binding',
+      );
+    assert.deepEqual(await send(feedback), {
+      status: 202,
+      body: { accepted: true },
+    });
+    assert.deepEqual(
+      await send({ ...feedback, reason: 'performance' }),
+      { status: 202, body: { accepted: true } },
+      'feedback dedupe ignores reason',
+    );
+    assert.deepEqual(
+      await send({ ...feedback, action: 'plugin-uninstalled' }),
+      { status: 202, body: { accepted: true } },
+    );
+    await assertPrivateStorage();
     const ping = dailyPing();
     assert.deepEqual(
       await send(ping),
-      { status: 202, body: { inserted: 1 } },
+      { status: 202, body: { accepted: true } },
       'lite ingest without per-install secret',
     );
     await assertPrivateStorage();
@@ -148,7 +187,7 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         event_id: ping.event_id.toUpperCase(),
         surfaces_today: ['cli', 'web'],
       }),
-      { status: 202, body: { inserted: 0 } },
+      { status: 202, body: { accepted: true } },
       'event replay dedupe',
     );
     assert.equal(
@@ -293,8 +332,19 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       "UPDATE station_telemetry.lite_pings SET received_at=$1::date::timestamp AT TIME ZONE 'UTC' WHERE received_at >= $2::date::timestamp AT TIME ZONE 'UTC'",
       [closedDay, today],
     );
+    await pool.query('UPDATE station_telemetry.lite_feedback SET day=$1', [
+      closedDay,
+    ]);
     await store.retain();
     await store.lite.finalize();
+    assert.ok(
+      (
+        await pool.query(
+          'SELECT client_hash FROM station_telemetry.lite_feedback',
+        )
+      ).rows.every((row) => row.client_hash === null),
+      'feedback daily contributor erasure',
+    );
     assert.equal(
       (
         await pool.query(
@@ -317,6 +367,16 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         );
         assert.equal(page.status, 200);
         assert.ok(page.body.cells.length <= 200);
+        assert.equal(
+          JSON.stringify(page.body).includes('tier-lowered'),
+          false,
+          'feedback must not be public or publisher-visible',
+        );
+        assert.equal(
+          'feedback' in page.body,
+          false,
+          'feedback must not be public or publisher-visible',
+        );
         cells.push(...page.body.cells);
         cursor = page.body.nextCursor;
       } while (cursor);
@@ -375,6 +435,17 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
         operatorKey,
       );
       assert.equal(exact.status, 200);
+      assert.deepEqual(
+        exact.body.feedback,
+        ['plugin-uninstalled', 'tier-lowered'].map((action) => ({
+          period: closedDay,
+          publisher: 'kontour',
+          action,
+          reason: 'privacy',
+          count: '1',
+        })),
+        'operator exact feedback',
+      );
       assert.deepEqual(
         exact.body.marginals.find(
           (c) =>
@@ -566,7 +637,21 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
     await pool.query(
       "UPDATE station_telemetry.lite_pings SET received_at=clock_timestamp()-interval '91 days'",
     );
+    await pool.query(
+      "UPDATE station_telemetry.lite_feedback SET day=(clock_timestamp() AT TIME ZONE 'UTC')::date-91",
+    );
     await store.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      0,
+      'feedback 90-day retention',
+    );
     assert.equal(
       Number(
         (await pool.query('SELECT count(*) FROM station_telemetry.lite_pings'))
@@ -588,11 +673,66 @@ async function checkLiteReceiver(store, pool, base, operatorKey) {
       publicRead.body,
       'closed-day publication unchanged by raw deletion',
     );
+    const ShortRetentionRepository = store.constructor;
+    const shortRetention = new ShortRetentionRepository(
+      pool,
+      1_000_000,
+      1_073_741_824,
+      3,
+    );
+    await pool.query(
+      `INSERT INTO station_telemetry.lite_feedback(source_id,publisher,action,reason,day)
+      SELECT $1,'kontour','tier-lowered','privacy',(clock_timestamp() AT TIME ZONE 'UTC')::date-n
+      FROM generate_series(0,3) n`,
+      [source],
+    );
+    await pool.query(
+      'UPDATE station_telemetry.lite_capacity SET pings=pings+4 WHERE singleton',
+    );
+    const shortExact = await shortRetention.lite.exact('daily');
+    assert.equal(
+      shortExact.feedbackWindow,
+      'retained-3-UTC-days-including-current',
+    );
+    assert.equal(
+      shortExact.feedback.length,
+      3,
+      'operator uses configured inclusive UTC retention window',
+    );
+    await shortRetention.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      3,
+      'three UTC days includes today and two preceding days, never a fourth',
+    );
+    const defaultRepository = new ShortRetentionRepository(pool);
+    await pool.query(
+      "UPDATE station_telemetry.lite_feedback SET day=(clock_timestamp() AT TIME ZONE 'UTC')::date-90",
+    );
+    await defaultRepository.retain();
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            'SELECT count(*) FROM station_telemetry.lite_feedback',
+          )
+        ).rows[0].count,
+      ),
+      0,
+      'default ninety-day window excludes day ninety',
+    );
     await store.lite.revokeSource(source);
     assert.equal((await send(dailyPing())).status, 401);
     assert.equal((await send(dailyPing(), other)).status, 202);
     await assertPrivateStorage();
     return [
+      'feedback: strict shape/source binding, action/day/contributor dedupe, operator-only exact counts, daily hash erasure and 90-day retention',
       'lite HTTP/PostgreSQL: public sources, strict unknown/nested/array/catalog rejection, bounded streaming bodies, commit/dedupe/conflict',
       'lite exact daily/weekly operator marginals: all dimensions, first-active flags, 90-day raw retention with persistent rollups',
       'weekly fixed-domain noisy publication, immutable re-finalization; scoped publisher keys, revocation, static same-origin dashboard',
@@ -609,17 +749,47 @@ export async function qualifyLiteReceiver(
   store,
   pool,
   operatorKey,
+  clientAddressPolicy,
 ) {
-  const server = createServer(
+  const privateServer = createServer(
     getRequestListener(createProductBroker(store, operatorKey).fetch),
   );
+  const server = createServer(
+    getRequestListener(
+      createProductBroker(
+        store,
+        operatorKey,
+        clientAddressPolicy('127.0.0.1/32'),
+      ).fetch,
+    ),
+  );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => privateServer.listen(0, '127.0.0.1', resolve));
   try {
+    const privateBase = `http://127.0.0.1:${privateServer.address().port}`;
+    const proxyBase = `http://127.0.0.1:${server.address().port}`;
+    assert.equal(
+      (
+        await fetch(`${proxyBase}/v1/operator/storage`, {
+          headers: { authorization: `Bearer ${operatorKey}` },
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await fetch(`${privateBase}/v1/operator/storage`, {
+          headers: { authorization: `Bearer ${operatorKey}` },
+        })
+      ).status,
+      200,
+    );
     const liteChecks = await checkLiteReceiver(
       store,
       pool,
       `http://127.0.0.1:${server.address().port}`,
       operatorKey,
+      privateBase,
     );
     return [
       ...liteChecks,
@@ -632,7 +802,11 @@ export async function qualifyLiteReceiver(
     ];
   } finally {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    privateServer.closeAllConnections();
+    await Promise.all([
+      new Promise((resolve) => server.close(resolve)),
+      new Promise((resolve) => privateServer.close(resolve)),
+    ]);
   }
 }
 
@@ -641,9 +815,8 @@ async function main() {
     process.env.STATION_TELEMETRY_QUALIFICATION_DATABASE_URL;
   if (!connectionString)
     throw new Error('A qualification PostgreSQL connection is required');
-  const { createProductBroker, PgProductRepository } = await import(
-    './dist/index.mjs'
-  );
+  const { createProductBroker, PgProductRepository, clientAddressPolicy } =
+    await import('./dist/index.mjs');
   const database = `station_lite_qa_${randomUUID().replaceAll('-', '')}`;
   const admin = new Pool({ connectionString });
   const url = new URL(connectionString);
@@ -671,6 +844,7 @@ async function main() {
       store,
       pool,
       key,
+      clientAddressPolicy,
     );
     passed = true;
     console.log(

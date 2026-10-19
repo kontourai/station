@@ -56,6 +56,20 @@ commit, deduplication and namespace isolation belong to the receiver.
 The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
+`parseStationDailyPing` validates the declared Lite fields with the receiver's
+public registry/release catalogs, or with `semver` version admission using the
+same `mapRuntimeVersionToTelemetryVersion` validator as the sender. The broker's
+source configuration chooses the policy; publication still uses a fixed catalog.
+`custom` versions and `unknown` channel,
+distribution and layouts values are explicit sentinels; unknown object keys
+remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums
+and the local-only `skip` dismissal.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
+
 
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a

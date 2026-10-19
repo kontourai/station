@@ -4,8 +4,13 @@ import { createServer } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
 import { createProductBroker } from './app.js';
+import { clientAddressPolicy } from './client-address.js';
 import { PgProductRepository } from './store.js';
 
+const addresses = clientAddressPolicy(
+  process.env.STATION_TELEMETRY_BROKER_TRUSTED_PROXY,
+  process.env.STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER,
+);
 let databaseUrl = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL;
 const databaseUrlFile = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL_FILE;
 const operatorKeyFile = process.env.STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE;
@@ -77,7 +82,7 @@ pool.on('error', () =>
 );
 const store = new PgProductRepository(pool);
 await store.migrate();
-const app = createProductBroker(store, operatorKey);
+const app = createProductBroker(store, operatorKey, addresses);
 const server = createServer(getRequestListener(app.fetch));
 server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
 server.maxConnections = 64;

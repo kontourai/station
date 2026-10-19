@@ -1,0 +1,45 @@
+{
+  "revision": "d9fe2f951ad4ebe75e88ef321442fd6f0c1af2cf",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Round 2 scoped re-review: Checked the changed ProductTelemetryReceiver module paragraph against the Operations-to-Evidence reading route. Operator-only feedback adds no authority or context dependency; the existing map remains accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Round 2 scoped re-review: Checked the changed receiver paragraph and its context/module-map reading links. Separate feedback persistence changes no five-area responsibility or sequencing contract; no prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Round 2 scoped re-review: Checked entry-point architecture links and external telemetry wording against the receiver feedback delta. No installed sender or deployment claim was added; current links remain accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Round 2 scoped re-review: Reviewed Lite source/publisher binding, trusted proxy and infrastructure logging boundary, private operator feedback counts, daily erasure and retention against lite-store/store and real HTTP qualifier assertions. Feedback is explicitly excluded from publisher/public APIs. This is source/diagnostic evidence, not deployed tunnel proof.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/README.md","note":"Round 2 scoped re-review: Checked the product telemetry owner and module-map reading path after the receiver feedback addition. The receiver still owns durable ingestion; navigation claims remain accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Round 2 scoped re-review: Checked the receiver delta against this historical investigation guide and its module-map link. No finding disposition or investigated authority boundary changes; retained historical scope.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Round 2 scoped re-review: Traced feedback from Lite ingest through shared parser, source publisher lock, migration 7, publisher/action/day/hash dedupe, operator-only exact query, hash erasure and retention. Public/publisher paths still read frozen ping publications. The new paragraph states these source contracts and partial-period limits; focused boundary tests and three caught/restored mutations are diagnostic evidence, not deployment.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Round 2 scoped re-review: Reviewed its retained-facade and SQLite primitive dispositions against the additive receiver paragraph. A separate PostgreSQL feedback table does not migrate a listed ledger or alter those historical dispositions; no prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Round 2 scoped re-review: Checked the changed receiver module description against glossary control/telemetry plane and module-map references. Feedback remains operational observation with no canonical authority; definitions unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Round 2 scoped re-review: Reviewed the receiver introduction, exact operator windows, feedback source binding, dedupe, erasure/retention and public exclusion against shared parser/lite-store/store. Added the separate partial-day/week feedback window without changing ping sensitivity, published network-day counts or Full activation claims. No deployed receiver or installed Lite sender asserted.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Round 2 scoped re-review: Checked references to the module map against the receiver-only feedback delta. No agent identity, author attribution or supported surface is changed; existing inventory scope remains accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Round 2 scoped re-review: Reviewed feedback action union extraction into the canonical action constant: the two permitted actions and existing reason/publisher type are unchanged. Strict runtime parsing stays in shared. Contract ownership and authorization caveats remain accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Round 2 scoped re-review: Checked the changed receiver paragraph against the telemetry Settings route inventory. No UI route, tab key or deep link changes; no prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Round 2 scoped re-review: Reviewed the new strict shared feedback parser: exactly publisher/action/reason, fixed enums, bounded publisher identifier and no extra keys. Documented it and linked receiver-owned admission/storage; Full and Lite inventory revisions are unchanged.","inputs":["docs/reference/shared.md","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 2 scoped re-review: Reviewed shared feedback enum extraction/parser against generated event/daily catalogs and current branch service. No inventory field, notice revision or Full activation changes. Lite sender remains absent on this receiver branch; scratch sender evidence cannot upgrade that foundation claim. No prose change.","inputs":["docs/reference/usage-telemetry.md","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Round 2 scoped re-review: Checked concept/module-map links against separate operator-only feedback storage. Local-first, external delivery prerequisites and canonical work/identity concepts are unchanged; no prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Round 2 scoped re-review: Checked exporter claims against the added receiver module prose. The example still derives attributed excerpts from current module map and ledger; no schema or completeness claim changes.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"Round 2 scoped re-review: Reviewed fixed feedback parser/source binding, migration/reopen schema guards, transactional dedupe and capacity, daily key erasure/90-day retention, partial operator windows and public/publisher exclusion. Updated sender diagnostic from 400 refusal to expected durable 202 and operator proof. Focused tests passed; three mutations caught then restored. Initial real qualifier failures (schema migration checks, then 512 MiB tmpfs exhaustion) remain failures; final receiver/sender runs are separate execution evidence. No release/deployment claim.","inputs":["packages/telemetry-broker/README.md","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/qualify-sender.mjs","packages/telemetry-broker/src/__tests__/lite-weekly.test.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Round 2 scoped re-review: Checked its module-map routing and evidence requirements against receiver-only feedback addition. These normative instructions remain applicable and unchanged; no server sender implementation is claimed.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Round 2 scoped re-review: Checked its module-map reading and runtime-grounded claim instructions against the receiver feedback delta. No UI behavior changes; instructions remain accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}
