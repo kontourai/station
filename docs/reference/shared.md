@@ -154,8 +154,9 @@ source is implemented.
 `inputRequestFromMcpElicitation` maps a form-mode request into a form,
 refusing URL mode and anything outside the schema or over a bound.
 
-`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and is
-removed in 0.10.0. `readHarnessQuestionnaire`,
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
+remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+for new callers. `readHarnessQuestionnaire`,
 `validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
 `harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
 translating to and from a form; answers are validated only by
