@@ -3901,6 +3901,7 @@ export class OrchestrationService {
       id: string;
       name: string;
       originalId: string;
+      resolvedModel?: string;
     }>
   > {
     const adapter = this.options.adapterRegistry.get(provider);

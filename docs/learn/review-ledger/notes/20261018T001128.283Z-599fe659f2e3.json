@@ -1,0 +1,7 @@
+{
+  "revision": "d9708573e5eeef5c268393263d771de8bf3368da",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed Lite receiver operating limits against migration 4, daily HMAC admission and finalization: /48 contributors, secondary suppression, restart inflation, k-1 padding and first-read finalization. Compose topology and production activation are unchanged and not deployed.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts"]}
+  ]
+}

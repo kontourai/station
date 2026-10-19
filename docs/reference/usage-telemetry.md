@@ -46,7 +46,11 @@ explicit user choice wins except for DNT and the Full disclosure requirement.
 plugin publisher registration, or new feature-event producer in this change.
 The existing service sends only the acknowledged operator Full stream. It starts
 no timer, buffers no observations and sends no ingestion request without that
-admission and an endpoint. Source builds have an empty author endpoint. The
+admission and an endpoint. Source builds have an empty author endpoint. Official
+release producers can bake the public endpoint only through the
+[owner-gated build variable](../guides/release-rings.md#author-telemetry-in-official-builds);
+leaving it unset preserves the empty constant. This build wiring does not add
+an author sender. The
 [program decision](../decisions/telemetry-tiers.md) separates these contracts
 from later sending, UI, receiver, release and owner-gated deployment work.
 

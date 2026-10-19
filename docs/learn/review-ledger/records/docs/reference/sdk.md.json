@@ -670,7 +670,15 @@
 
     "packages/sdk/src/query-domains/sessionStructuralSharing.ts",
 
-    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx"
+    "packages/sdk/src/__tests__/session-structural-sharing.test.tsx",
+
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/contracts/src/attachment-staging.ts",
+
+    "src-server/routes/orchestration/attachment-staging.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

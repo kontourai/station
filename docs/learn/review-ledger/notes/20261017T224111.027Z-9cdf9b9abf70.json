@@ -1,0 +1,9 @@
+{
+  "revision": "b15625fc2155d8a4a4b064d980a078abf47414e0",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed the final qualifier delta: the 21-plugin rejection now uses only catalog-valid unique IDs, with a 20-plugin HTTP acceptance control, so array-size enforcement is isolated from membership and duplicate checks. Receiver behavior and documentation claims are unchanged.","inputs":["packages/telemetry-broker/README.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the qualifier delta linked from ProductTelemetryReceiver: catalog-valid 20/21 plugin boundary controls strengthen the existing strict rejection evidence. Production storage, publisher scope, public projection and the module description are unchanged.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

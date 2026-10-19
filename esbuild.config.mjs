@@ -6,6 +6,7 @@ import {
   supervisorBuildOptions,
 } from './packages/supervisor/build-options.mjs';
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
+import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 
@@ -48,7 +49,7 @@ const shared = {
     js: [
       "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
       `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
-      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(process.env.STATION_AUTHOR_TELEMETRY_ENDPOINT || '')};`,
+      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(authorTelemetryEndpoint(serverBuildIdentity?.channel))};`,
     ].join('\n'),
   },
 };

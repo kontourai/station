@@ -78,6 +78,10 @@ import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  assertDelegationFileSizes,
+  DelegationFileRefusal,
+} from '@kontourai/station-shared/delegation-files';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
@@ -122,6 +126,7 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
+import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -131,6 +136,7 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type { DelegationStagedFiles } from '../../services/orchestration/delegation-files.js';
 import type {
   DelegationResultCanceller,
   DelegationResultDelivery,
@@ -722,7 +728,61 @@ const agentDelegationContextSchema = z.object({
   denyApprovals: z.boolean().optional(),
 });
 
+function delegationAttachmentValidationRefusal(
+  issues: z.ZodIssue[],
+): { code: string; error: string } | undefined {
+  const issue = issues.find(
+    ({ path }) => path.includes('attachmentRefs') || path[0] === 'attachments',
+  );
+  if (!issue) return undefined;
+  const code =
+    issue.code === 'too_big' && issue.type === 'array'
+      ? 'delegation_files_count'
+      : issue.code === 'invalid_type' && issue.expected === 'never'
+        ? 'delegation_files_unsupported'
+        : 'delegation_files_ref_invalid';
+  const refusal = new DelegationFileRefusal(code);
+  return { code, error: errorMessage(refusal) };
+}
+
+function validateFiles<T>(schema: z.ZodSchema<T>) {
+  return validate(schema, { refusal: delegationAttachmentValidationRefusal });
+}
+
+const stagedAttachmentReferencesSchema = z
+  .array(
+    z.object({
+      stageId: z.string().min(1).max(128),
+      clientAttachmentId: z.string().min(1).max(128),
+      source: z.literal('current-composer'),
+      kind: z.enum(['image', 'file']),
+      name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
+      mimeType: z.enum([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/json',
+        'application/pdf',
+        'text/csv',
+        'text/markdown',
+        'text/plain',
+      ]),
+      size: z.number().int(),
+      digest: z
+        .string()
+        .max(71)
+        .regex(/^sha256-[0-9a-f]{64}$/),
+      expiresAt: z.string().max(40).datetime(),
+    }),
+  )
+  .max(CHAT_ATTACHMENT_MAX_COUNT)
+  .optional();
+
 export const delegateTaskSchema = z.object({
+  attachmentRefs: stagedAttachmentReferencesSchema,
+  // Inline bytes are not a delegation transport; never silently discard them.
+  attachments: z.never().optional(),
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
@@ -822,35 +882,7 @@ export const foregroundMessageObjectSchema = z.object({
       }
     })
     .optional(),
-  attachmentRefs: z
-    .array(
-      z.object({
-        stageId: z.string().min(1).max(128),
-        clientAttachmentId: z.string().min(1).max(128),
-        source: z.literal('current-composer'),
-        kind: z.enum(['image', 'file']),
-        name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
-        mimeType: z.enum([
-          'image/gif',
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-          'application/json',
-          'application/pdf',
-          'text/csv',
-          'text/markdown',
-          'text/plain',
-        ]),
-        size: z.number().int(),
-        digest: z
-          .string()
-          .max(71)
-          .regex(/^sha256-[0-9a-f]{64}$/),
-        expiresAt: z.string().max(40).datetime(),
-      }),
-    )
-    .max(CHAT_ATTACHMENT_MAX_COUNT)
-    .optional(),
+  attachmentRefs: stagedAttachmentReferencesSchema,
   clientTurnId: z.string().min(1).max(200).optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
@@ -1028,12 +1060,16 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
   .superRefine(requireApprovalPickBasis);
 
 const conversationContextBoundarySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
 });
 
 const delegationOptionsSchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   environmentId: z.string().min(1).max(512).optional(),
   projectSlug: z.string().min(1).max(512).optional(),
   projectPath: z.string().min(1).max(4_096).optional(),
@@ -1055,6 +1091,8 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
   // `delegatedInputAnswers`: deliver `message` only as the answer to this
   // exact open input request on the task's current Session.
@@ -1091,12 +1129,16 @@ function withCallerCanRespond(
 }
 
 const respondToDelegatedTaskBodySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   requestId: z.string().min(1).max(512),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   environmentId: z.string().min(1).max(512).optional(),
 });
 
 const interruptDelegatedTaskBodySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   environmentId: z.string().min(1).max(512).optional(),
   turnId: z.string().min(1).max(512).optional(),
 });
@@ -1113,6 +1155,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  stagedFiles?: DelegationStagedFiles;
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
@@ -2940,7 +2983,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/handoff',
-    validate(conversationHandoffSchema),
+    validateFiles(conversationHandoffSchema),
     async (c) => {
       if (!deps.handoffConversation) {
         return c.json(
@@ -3257,7 +3300,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/context-boundary',
-    validate(conversationContextBoundarySchema),
+    validateFiles(conversationContextBoundarySchema),
     async (c) => {
       if (!deps.reserveConversationContextBoundary)
         return c.json(
@@ -3333,7 +3376,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/chat/:conversationId/continue',
-    validate(continueForegroundMessageSchema),
+    validateFiles(continueForegroundMessageSchema),
     async (c) => {
       if (!deps.continueForegroundMessage) {
         return c.json(
@@ -3510,7 +3553,7 @@ export function createOrchestrationRoutes(
     },
   );
 
-  app.post('/delegations', validate(delegateTaskSchema), async (c) => {
+  app.post('/delegations', validateFiles(delegateTaskSchema), async (c) => {
     if (!deps.delegateTask) {
       return c.json(
         { success: false, error: 'Task delegation is unavailable' },
@@ -3565,6 +3608,31 @@ export function createOrchestrationRoutes(
       if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      const references = body.attachmentRefs;
+      if (
+        references?.length &&
+        (!principal ||
+          !deps.hydrateStagedAttachments ||
+          !deps.acceptStagedAttachments ||
+          !deps.releaseStagedAttachments ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind === 'project-portable' ||
+          body.target.workspace?.kind === 'project-portable-prepared' ||
+          body.attemptId ||
+          body.taskRoomRequest)
+      )
+        throw new DelegationFileRefusal('delegation_files_unsupported');
+      if (references?.length) assertDelegationFileSizes(references);
+      const stagedFiles: DelegationStagedFiles | undefined = references?.length
+        ? {
+            resolve: (binding) =>
+              deps.hydrateStagedAttachments!(principal!, references, binding),
+            accept: (binding) =>
+              deps.acceptStagedAttachments!(principal!, references, binding),
+            release: (binding) =>
+              deps.releaseStagedAttachments!(principal!, references, binding),
+          }
+        : undefined;
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
       // #484 controller/receiver split: this route NEVER mints the
       // receiver admission itself — minting here, before `delegateTask`
@@ -3653,6 +3721,7 @@ export function createOrchestrationRoutes(
       ) =>
         delegate({
           ...request,
+          ...(stagedFiles ? { stagedFiles } : {}),
           ...(contextSnapshot
             ? {
                 prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
@@ -3707,7 +3776,9 @@ export function createOrchestrationRoutes(
               }
             : {}),
           ...(deps.delegationAttemptClaimStore
-            ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+            ? {
+                delegationAttemptClaimStore: deps.delegationAttemptClaimStore,
+              }
             : {}),
           ...(portableIntent
             ? {
@@ -3812,6 +3883,24 @@ export function createOrchestrationRoutes(
       );
       return c.json({ success: true, data });
     } catch (error) {
+      if (
+        error instanceof DelegationFileRefusal ||
+        error instanceof AttachmentStageError
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              error instanceof AttachmentStageError
+                ? 'Attachment staging refused these delegation files.'
+                : errorMessage(error),
+            code: error.code,
+          },
+          error instanceof DelegationFileRefusal &&
+            error.code === 'delegation_files_outcome_unknown'
+            ? 409
+            : 400,
+        );
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
@@ -3924,7 +4013,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/options',
-    validate(delegationOptionsSchema),
+    validateFiles(delegationOptionsSchema),
     async (c) => {
       if (!deps.discoverDelegationOptions) {
         return c.json(
@@ -4146,7 +4235,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/continue',
-    validate(continueDelegatedTaskBodySchema),
+    validateFiles(continueDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.continueDelegatedTask) {
         return c.json(
@@ -4279,7 +4368,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/respond',
-    validate(respondToDelegatedTaskBodySchema),
+    validateFiles(respondToDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.respondToDelegatedTaskRequest) {
         return c.json(
@@ -4360,7 +4449,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/interrupt',
-    validate(interruptDelegatedTaskBodySchema),
+    validateFiles(interruptDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.interruptDelegatedTask) {
         return c.json(

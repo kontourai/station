@@ -28,6 +28,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
+import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -3263,6 +3264,47 @@ describe('Orchestration Routes', () => {
     expect(service.listProviders).toHaveBeenCalledWith(
       personalReadAuthority('bound-user'),
     );
+  });
+
+  test('GET /providers/:provider/models preserves resolvedModel through real catalog discovery', async () => {
+    class CatalogAdapter extends GateTestAdapter {
+      async listModelCatalog(): Promise<ProviderAdapterModelCatalog> {
+        return {
+          models: [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              originalId: 'sonnet',
+              resolvedModel: 'claude-sonnet-4-5',
+            },
+          ],
+        };
+      }
+    }
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new CatalogAdapter()),
+      eventBus,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+    });
+    const response = await app.request('/providers/claude/models');
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'sonnet',
+          name: 'Sonnet',
+          originalId: 'sonnet',
+          resolvedModel: 'claude-sonnet-4-5',
+        },
+      ],
+    });
   });
 
   test('GET /providers/:provider/models forwards cancellation to bounded discovery', async () => {

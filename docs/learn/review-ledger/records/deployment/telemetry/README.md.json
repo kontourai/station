@@ -38,7 +38,9 @@
 
     "src-server/telemetry.ts",
 
-    "packages/telemetry-broker/artifact-manifest.mjs"
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "deploy/push-gateway/src/channel-ledger.ts"
   ],
 
   "checks": [
