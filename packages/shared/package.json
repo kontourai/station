@@ -112,6 +112,7 @@
     "./release-manifest": "./src/release-manifest.mjs",
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
+    "./station-home-restore-marker": "./src/station-home-restore-marker.ts",
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",

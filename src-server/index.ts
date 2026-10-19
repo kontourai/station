@@ -11,6 +11,7 @@ import './telemetry.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
+import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -86,6 +87,11 @@ async function main() {
     process.env.STATION_PORT_MODE,
   );
   const projectHomeDir = resolveHomeDir();
+
+  // #3851: a rolled-back update handoff restores the home it left BEFORE the
+  // schema gate reads it (the target may have migrated it); a marker this
+  // release cannot account for refuses boot. No marker: nothing happens.
+  consumeHomeRestoreMarkerAtBoot(projectHomeDir);
 
   // The schema gate must own the first write to a Station home. In
   // particular, installing the durable log sink first creates logs/server in
