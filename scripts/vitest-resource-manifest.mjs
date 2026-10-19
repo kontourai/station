@@ -1658,13 +1658,13 @@ export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   ]);
 }
 
-const BRACE_UNSAFE = /[*?[\]{}(),!+@\\]/;
+const BRACE_UNSAFE = /[*?[\]{}(),!+@\\]|\.\./;
 
 /**
  * The same exact files as fewer patterns: the files of one directory become
  * one brace alternation of their literal names, `dir/{a.test.ts,b.test.ts}`,
  * which matches those files and nothing else. A name holding a glob
- * metacharacter stays a pattern of its own. Order is deterministic.
+ * metacharacter, or `..` (a range inside braces), stays a pattern of its own. Order is deterministic.
  */
 export function compactExactPaths(paths) {
   const byDirectory = new Map();
@@ -1693,38 +1693,27 @@ export function compactExactPaths(paths) {
 }
 
 /**
- * Windows caps a command line at 32,767 UTF-16 characters. The ordinary
- * group's Vitest command is the node path, the Vitest entry, its options and
- * one --exclude per pattern; these bound the two paths at Windows MAX_PATH
- * (260), longer than any real install, so the measure does not depend on the
- * host that runs it.
+ * Windows caps a command line at 32,767 UTF-16 characters. The check takes
+ * the Vitest arguments a runner builds (see buildVitestCommand) and adds a
+ * node path of Windows MAX_PATH (260), longer than any real install, plus a
+ * quote pair and a separating space per argument.
  */
 export const WINDOWS_COMMAND_LINE_LIMIT = 32_767;
 export const WORST_CASE_WINDOWS_PATH_LENGTH = 260;
 
-export function ordinaryVitestCommandLineLength(
-  excludes = ordinaryVitestExcludes(),
-) {
-  const arguments_ = [
+export function windowsCommandLineLength(vitestArguments) {
+  return [
     'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
-    'x'.repeat(WORST_CASE_WINDOWS_PATH_LENGTH),
-    'run',
-    '--maxWorkers=4',
-    '--shard=4/4',
-    ...excludes.map((pattern) => `--exclude=${pattern}`),
-  ];
-  // Each argument is quoted and separated by a space on Windows.
-  return arguments_.reduce((total, argument) => total + argument.length + 3, 0);
+    ...vitestArguments,
+  ].reduce((total, argument) => total + argument.length + 3, 0);
 }
 
-/** Throws when the ordinary command could exceed the Windows limit. */
-export function assertOrdinaryVitestCommandLineFits(
-  excludes = ordinaryVitestExcludes(),
-) {
-  const length = ordinaryVitestCommandLineLength(excludes);
+/** Throws when a Vitest command line could exceed the Windows limit. */
+export function assertWindowsCommandLineFits(vitestArguments) {
+  const length = windowsCommandLineLength(vitestArguments);
   if (length >= WINDOWS_COMMAND_LINE_LIMIT) {
     throw new Error(
-      `the ordinary Vitest command line could reach ${length} characters, over the Windows limit of ${WINDOWS_COMMAND_LINE_LIMIT}; compact ordinaryVitestExcludes`,
+      `the Vitest command line could reach ${length} characters, over the Windows limit of ${WINDOWS_COMMAND_LINE_LIMIT}; compact ordinaryVitestExcludes`,
     );
   }
   return length;
