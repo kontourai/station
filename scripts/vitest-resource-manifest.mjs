@@ -127,6 +127,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
+  'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
   // Real server esbuild children and executable workflow-policy negative controls.
   'scripts/__tests__/author-telemetry-build.test.ts',
   // Real `sandbox-exec` kernel probes (git, open, setuid) and one bounded live
@@ -880,6 +882,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
   'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
+  // Matrix CLI refusals and sends use real routes, SQLite and a fake adapter.
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry

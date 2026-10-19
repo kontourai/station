@@ -579,6 +579,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts':
+    'lists only the temporary CLI report directory created by makeTempDir to inspect generated matrix results',
   'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
