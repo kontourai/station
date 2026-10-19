@@ -52,6 +52,8 @@ COPY docs ./docs
 # build needs the repository's formatter config; biome.json's vcs.useIgnoreFile
 # makes Biome refuse to run without .gitignore beside it.
 COPY biome.json .gitignore ./
+# The server build copies third-party notices (Cedar) from here into the bundle.
+COPY packaging/licenses ./packaging/licenses
 # The dependencies stage copies only the two config files its install reads;
 # the server bundle imports more (config/release-manifest-keys.json in
 # archive-update.ts), so the build stage takes config/ wholesale, as the

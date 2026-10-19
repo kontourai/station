@@ -48,11 +48,15 @@ scripts/dogfood/
 
 # The node-pty prebuild channel (#1245): the dependencies stage COPYs this
 # directory so the lifecycle's consistency check can read its manifest. The
-# rest of packaging/ (installer and tap material) never enters the image.
+# server build copies third-party license material out of packaging/licenses/
+# (esbuild.config.mjs). The rest of packaging/ (installer and tap material)
+# never enters the image.
 !packaging/
 packaging/*
 !packaging/node-pty-prebuilds/
 !packaging/node-pty-prebuilds/**
+!packaging/licenses/
+!packaging/licenses/**
 
 !packages/
 !packages/**
