@@ -95,6 +95,20 @@ const BYPASSES: Record<string, Record<string, string>> = {
       'permissions = ["core:default", "updater:allow-check"]',
     ].join('\n'),
   },
+  'a JSON5 grant after a comment holding an apostrophe': {
+    'capabilities/x.json5': `{identifier:'extra', windows:['main'], permissions:[/* it's */ "core:default", 'process:allow-restart']}`,
+  },
+  'a JSON5 grant spelled with escapes': {
+    'capabilities/x.json5': String.raw`{identifier:'extra', windows:['main'], permissions:["\u0075pdater:default"]}`,
+  },
+  'a TOML grant spelled with escapes': {
+    'capabilities/x.toml': [
+      '# a comment with a " quote',
+      'identifier = "extra"',
+      'windows = ["main"]',
+      String.raw`permissions = ["\u0075pdater:default"]`,
+    ].join('\n'),
+  },
   'the retired desktop-updater manifest, even empty': {
     'capabilities/desktop-updater.json': JSON.stringify({
       identifier: 'desktop-updater',

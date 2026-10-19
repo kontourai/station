@@ -14,6 +14,7 @@ import {
   listTauriAclSources,
   NATIVE_GLOBAL_PATTERN,
   RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
+  stringLiteralsIn,
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
   TAURI_DESKTOP_CONFIGS,
@@ -123,17 +124,59 @@ describe('native-platform-boundary', () => {
     expect(
       findNativeOnlyPermissionGrants([
         ['src-desktop/capabilities/broken.json', '{ not json'],
+        ['src-desktop/capabilities/open.json5', '{ permissions: ["core:'],
+        ['src-desktop/capabilities/open.toml', 'permissions = """updater:'],
       ]),
-    ).toEqual(['src-desktop/capabilities/broken.json is not valid JSON']);
-    // Conservative: an identifier-shaped value is refused wherever it sits.
+    ).toEqual([
+      'src-desktop/capabilities/broken.json could not be read',
+      'src-desktop/capabilities/open.json5 could not be read',
+      'src-desktop/capabilities/open.toml could not be read',
+    ]);
+    // A Tauri config is read only where capabilities are inlined.
     expect(
       findNativeOnlyPermissionGrants([
         [
           'src-desktop/tauri.conf.json',
-          JSON.stringify({ plugins: { updater: { pubkey: 'process:x' } } }),
+          JSON.stringify({
+            productName: 'process: a description',
+            plugins: { updater: { pubkey: 'updater:not-a-grant' } },
+            app: { security: { capabilities: ['default'] } },
+          }),
         ],
       ]),
-    ).toEqual([expect.stringContaining('grants process:x')]);
+    ).toEqual([]);
+  });
+
+  test('reads JSON5 and TOML strings past comments and escapes (#3851)', () => {
+    expect(
+      stringLiteralsIn(
+        `{permissions:[/* it's */ "core:default", 'process:allow-restart'], // don't\n x: "\\u0075pdater:default", y: '\\x75pdater:a'}`,
+        'json5',
+      ),
+    ).toEqual([
+      'core:default',
+      'process:allow-restart',
+      'updater:default',
+      'updater:a',
+    ]);
+    expect(
+      stringLiteralsIn(
+        [
+          '# it\'s a comment with a " quote',
+          'a = "\\u0075pdater:default"',
+          'b = "\\U00000070rocess:allow-restart"',
+          "c = 'process:literal\\u0020'",
+          'd = """',
+          'updater:multi"""',
+        ].join('\n'),
+        'toml',
+      ),
+    ).toEqual([
+      'updater:default',
+      'process:allow-restart',
+      'process:literal\\u0020',
+      'updater:multi',
+    ]);
   });
 
   test('requires the exact least-privilege desktop CSP and Tauri CSP mutation', () => {

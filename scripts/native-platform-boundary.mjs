@@ -212,35 +212,141 @@ function collectStrings(value, out) {
   return out;
 }
 
-// Every quoted literal in a TOML or JSON5 file: basic and literal strings,
-// single- or triple-quoted. A conservative superset of the identifiers such
-// a file can declare, so no container shape hides one.
-const QUOTED_LITERAL =
-  /"""([\s\S]*?)"""|'''([\s\S]*?)'''|"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)'/g;
+const SIMPLE_ESCAPES = {
+  b: '\b',
+  t: '\t',
+  n: '\n',
+  f: '\f',
+  r: '\r',
+  v: '\v',
+  0: '\0',
+  e: '\u001b',
+  '"': '"',
+  "'": "'",
+  '\\': '\\',
+  '/': '/',
+};
+
+/**
+ * Every string value in a JSON5 or TOML document, decoded: comments
+ * (`//` and block comments in JSON5, `#` in TOML) are skipped, so a quote
+ * inside one cannot shift what counts as a string, and escapes
+ * (`\uXXXX`, `\UXXXXXXXX`, `\xHH`, ...) are decoded, so an escaped
+ * identifier is seen as the identifier it spells. There is no TOML or
+ * declared JSON5 parser among the dependencies; this lexer reads strings
+ * only, and refuses (returns null) on an unterminated string or comment.
+ */
+export function stringLiteralsIn(content, syntax) {
+  const strings = [];
+  let index = 0;
+  const hex = (length) => {
+    const digits = content.slice(index, index + length);
+    if (!/^[0-9a-fA-F]+$/.test(digits) || digits.length !== length) return null;
+    index += length;
+    return String.fromCodePoint(Number.parseInt(digits, 16));
+  };
+  const readString = (quote, triple, escapes) => {
+    let value = '';
+    if (triple && content[index] === '\n') index += 1;
+    else if (triple && content.startsWith('\r\n', index)) index += 2;
+    while (index < content.length) {
+      if (content.startsWith(triple ? quote.repeat(3) : quote, index)) {
+        index += triple ? 3 : 1;
+        return value;
+      }
+      const char = content[index];
+      if (!triple && char === '\n') return null;
+      if (escapes && char === '\\') {
+        const next = content[index + 1];
+        index += 2;
+        if (next === undefined) return null;
+        if (next === '\n' || next === '\r') {
+          // A line continuation: TOML also trims the following whitespace.
+          if (syntax === 'toml')
+            while (/\s/.test(content[index] ?? '')) index += 1;
+          continue;
+        }
+        if (next === 'u') {
+          const decoded = hex(4);
+          if (decoded === null) return null;
+          value += decoded;
+        } else if (next === 'U' && syntax === 'toml') {
+          const decoded = hex(8);
+          if (decoded === null) return null;
+          value += decoded;
+        } else if (next === 'x' && syntax === 'json5') {
+          const decoded = hex(2);
+          if (decoded === null) return null;
+          value += decoded;
+        } else value += SIMPLE_ESCAPES[next] ?? next;
+        continue;
+      }
+      value += char;
+      index += 1;
+    }
+    return null;
+  };
+  while (index < content.length) {
+    if (syntax === 'json5' && content.startsWith('//', index)) {
+      index = content.indexOf('\n', index);
+      if (index === -1) break;
+    } else if (syntax === 'json5' && content.startsWith('/*', index)) {
+      const end = content.indexOf('*/', index + 2);
+      if (end === -1) return null;
+      index = end + 2;
+    } else if (syntax === 'toml' && content[index] === '#') {
+      index = content.indexOf('\n', index);
+      if (index === -1) break;
+    } else if (content[index] === '"' || content[index] === "'") {
+      const quote = content[index];
+      const triple =
+        syntax === 'toml' && content.startsWith(quote.repeat(3), index);
+      index += triple ? 3 : 1;
+      // TOML literal strings ('...') take no escapes; JSON5 single-quoted
+      // strings do.
+      const value = readString(
+        quote,
+        triple,
+        !(syntax === 'toml' && quote === "'"),
+      );
+      if (value === null) return null;
+      strings.push(value);
+    } else index += 1;
+  }
+  return strings;
+}
+
+const TAURI_CONFIG_PATH = /(?:^|\/)(?:tauri.*\.conf\.json5?|Tauri.*\.toml)$/i;
 
 /**
  * The updater/process identifiers a file Tauri loads could grant or bundle.
- * JSON is parsed and walked whole (a capability, a list, a
- * `{ "capabilities": [...] }` file, inline `app.security.capabilities`, or a
- * permission set); other formats are scanned for every quoted literal.
- * Unparseable JSON is reported rather than skipped.
+ * A JSON capability or permission file is parsed and walked whole (a
+ * capability, a list, a `{ "capabilities": [...] }` file, or a permission
+ * set). A JSON Tauri config is read only at `app.security.capabilities`,
+ * where capabilities are inlined. JSON5 and TOML are read string by string.
+ * Anything unreadable is reported rather than skipped.
  */
 export function nativeOnlyIdentifiersIn(file, content) {
   let strings;
   if (file.endsWith('.json')) {
+    let parsed;
     try {
-      strings = collectStrings(JSON.parse(content), []);
+      parsed = JSON.parse(content);
     } catch {
       return { identifiers: [], unreadable: true };
     }
+    strings = collectStrings(
+      TAURI_CONFIG_PATH.test(file)
+        ? (parsed?.app?.security?.capabilities ?? [])
+        : parsed,
+      [],
+    );
   } else {
-    strings = [];
-    QUOTED_LITERAL.lastIndex = 0;
-    let match = QUOTED_LITERAL.exec(content);
-    while (match !== null) {
-      strings.push(match.slice(1).find((group) => group !== undefined) ?? '');
-      match = QUOTED_LITERAL.exec(content);
-    }
+    strings = stringLiteralsIn(
+      content,
+      file.endsWith('.toml') ? 'toml' : 'json5',
+    );
+    if (strings === null) return { identifiers: [], unreadable: true };
   }
   return {
     identifiers: [...new Set(strings.map((value) => value.trim()))].filter(
@@ -265,7 +371,7 @@ export function findNativeOnlyPermissionGrants(files) {
       );
     }
     const { identifiers, unreadable } = nativeOnlyIdentifiersIn(file, content);
-    if (unreadable) violations.push(`${file} is not valid JSON`);
+    if (unreadable) violations.push(`${file} could not be read`);
     for (const identifier of identifiers) {
       violations.push(
         `${file} grants ${identifier}; the webview holds no updater or process authority (#3851)`,
