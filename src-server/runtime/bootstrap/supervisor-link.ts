@@ -76,6 +76,14 @@ export interface ListenerLink {
     server: NetServer,
     address: ListenAddress,
   ): Promise<{ port: number }>;
+  /**
+   * Tells the link a connection left HTTP for another protocol (a WebSocket
+   * upgrade); its owner ends it, so a drain no longer waits for it. Only the
+   * upgrade's owner calls this: adding an 'upgrade' listener to a server
+   * makes Node hand every `Connection: Upgrade` request to it instead of the
+   * request handler.
+   */
+  upgraded(socket: Socket): void;
 }
 
 /** The parts of `process` the link uses; tests inject a fake. */
@@ -230,6 +238,7 @@ export const DIRECT_LISTENER_LINK: ListenerLink = Object.freeze({
     );
     return { port: boundPort(server, address.port) };
   },
+  upgraded() {},
 });
 
 export class SupervisorLink implements ListenerLink {
@@ -498,10 +507,6 @@ export class SupervisorLink implements ListenerLink {
       this.connections.add(socket);
       socket.once('close', () => this.connections.delete(socket));
     });
-    // An upgraded socket belongs to its WebSocket server, which ends it.
-    server.on('upgrade', (_req: IncomingMessage, socket: Socket) => {
-      this.connections.delete(socket);
-    });
     // First, so the header is set before any route writes its response.
     server.prependListener(
       'request',
@@ -512,6 +517,10 @@ export class SupervisorLink implements ListenerLink {
         res.once('close', () => this.responses.delete(res));
       },
     );
+  }
+
+  upgraded(socket: Socket): void {
+    this.connections.delete(socket);
   }
 
   /** Ends server-sent event streams cleanly; clients reconnect into the backlog. */

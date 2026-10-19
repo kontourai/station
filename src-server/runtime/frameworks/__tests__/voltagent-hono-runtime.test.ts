@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DIRECT_LISTENER_LINK,
   type ListenerLink,
+  type SupervisorChannelProcess,
+  SupervisorLink,
 } from '../../bootstrap/supervisor-link.js';
 import { stationHonoServer } from '../voltagent-hono-runtime.js';
 
@@ -35,6 +37,7 @@ function recordingLink() {
       );
       return DIRECT_LISTENER_LINK.listen(name, server, address);
     },
+    upgraded() {},
   };
   return { link, calls };
 }
@@ -129,5 +132,48 @@ describe('stationHonoServer', () => {
     expect(server.listening).toBe(false);
     await expect(provider.stop()).resolves.toBeUndefined();
     expect(provider.isRunning()).toBe(false);
+  });
+
+  it('answers a Connection: Upgrade request through the app when a supervisor link tracks it', async () => {
+    // A supervised link that has bound normally: it tracks the server for drains.
+    const channel = {
+      env: {},
+      connected: true,
+      send: () => true,
+      on: () => undefined,
+      exit: () => {},
+    } as unknown as SupervisorChannelProcess;
+    const supervised = new SupervisorLink({ process: channel, log: () => {} });
+    const provider = stationHonoServer(
+      config({
+        hostname: '127.0.0.1',
+        // The device toolchain proxy's guard (routes/device-toolchain.ts).
+        configureFullApp: ({ app }) => {
+          app.all('/hub/*', (c) =>
+            c.req.header('upgrade') !== undefined
+              ? c.json({ code: 'method-not-allowed' }, 405)
+              : c.text('ok'),
+          );
+        },
+      }),
+      () => supervised,
+    )(deps);
+    const { port } = await provider.start();
+    cleanups.push(() => provider.stop());
+    const reply = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(port, '127.0.0.1');
+      cleanups.push(() => socket.destroy());
+      let text = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => {
+        text += chunk;
+        if (text.includes('method-not-allowed')) resolve(text);
+      });
+      socket.on('error', reject);
+      socket.write(
+        'GET /hub/api HTTP/1.1\r\nHost: x\r\nConnection: Upgrade, HTTP2-Settings\r\nUpgrade: h2c\r\nHTTP2-Settings: AAMAAABkAARAAAAAAAIAAAAA\r\n\r\n',
+      );
+    });
+    expect(reply).toMatch(/^HTTP\/1\.1 405/);
   });
 });

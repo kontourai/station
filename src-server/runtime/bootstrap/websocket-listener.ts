@@ -7,6 +7,7 @@
  * port it owns, so clients see no difference.
  */
 import { createServer, type Server, STATUS_CODES } from 'node:http';
+import type { Socket } from 'node:net';
 import { type ServerOptions, WebSocketServer } from 'ws';
 import {
   closeStableListener,
@@ -49,10 +50,12 @@ export function startWebSocketListener(
     res.end(body);
   });
   const wss = new StableWebSocketServer({ ...options, server });
+  const link = listenerLink();
+  // An upgraded socket is this WebSocket server's to end; a drain stops
+  // waiting for it. This server already has ws's 'upgrade' listener.
+  server.on('upgrade', (_req, socket) => link.upgraded(socket as Socket));
   // A bind failure reaches the WebSocket server's 'error' event, which `ws`
   // forwards from the HTTP server exactly as it does for a port it owns.
-  void listenerLink()
-    .listen(name, server, address)
-    .catch(() => {});
+  void link.listen(name, server, address).catch(() => {});
   return wss;
 }

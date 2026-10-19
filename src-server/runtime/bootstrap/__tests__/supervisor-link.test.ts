@@ -427,7 +427,9 @@ describe('drain', () => {
         setTimeout(() => res.end('slow'), 700);
       }),
     );
+    // As startWebSocketListener does for the sockets ws upgrades.
     server.on('upgrade', (_req, socket) => {
+      link.upgraded(socket as net.Socket);
       socket.write('HTTP/1.1 101 Switching Protocols\r\n\r\n');
     });
     const { port } = await link.listen('terminal', server, {
@@ -476,6 +478,31 @@ describe('drain', () => {
     expect(settledAt).toBeGreaterThanOrEqual(slowAt);
     expect(Date.now() - drainedAt).toBeLessThan(5_000);
     expect(upgraded.destroyed).toBe(false);
+  });
+
+  it('answers a Connection: Upgrade request on a server with no upgrade handler', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel);
+    const { port } = await link.listen('api', okServer(), {
+      port: 0,
+      host: HOST,
+    });
+    // What `curl --http2` sends to a cleartext server.
+    const reply = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(port, HOST);
+      cleanups.push(() => socket.destroy());
+      let text = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => {
+        text += chunk;
+        if (text.includes('\r\n\r\n')) resolve(text);
+      });
+      socket.on('error', reject);
+      socket.write(
+        'GET / HTTP/1.1\r\nHost: x\r\nConnection: Upgrade, HTTP2-Settings\r\nUpgrade: h2c\r\nHTTP2-Settings: AAMAAABkAARAAAAAAAIAAAAA\r\n\r\n',
+      );
+    });
+    expect(reply).toMatch(/^HTTP\/1\.1 200/);
   });
 
   it('stops waiting at the deadline less its margin', async () => {
