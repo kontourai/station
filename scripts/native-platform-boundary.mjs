@@ -212,173 +212,28 @@ function collectStrings(value, out) {
   return out;
 }
 
-// The escapes each syntax defines; anything else in TOML is an error, so
-// the lexer refuses it rather than guessing what the loader would decode.
-const TOML_ESCAPES = {
-  b: '\b',
-  t: '\t',
-  n: '\n',
-  f: '\f',
-  r: '\r',
-  e: '\u001b',
-  '"': '"',
-  '\\': '\\',
-};
-const JSON5_ESCAPES = {
-  b: '\b',
-  t: '\t',
-  n: '\n',
-  f: '\f',
-  r: '\r',
-  v: '\v',
-  0: '\0',
-  '"': '"',
-  "'": "'",
-  '\\': '\\',
-};
-// JSON5 (ECMAScript) line terminators: comment ends and line continuations.
-const JSON5_LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+const TAURI_CONFIG_PATH = /(?:^|\/)tauri.*\.conf\.json$/i;
 
 /**
- * Every string value in a JSON5 or TOML document, decoded the way the
- * loader would: comments (`//` and block comments in JSON5, `#` in TOML)
- * are skipped, so a quote inside one cannot shift what counts as a string,
- * and escapes and line continuations are decoded, so an escaped identifier
- * is seen as the identifier it spells. TOML follows 1.1 (Tauri loads it
- * with toml_parser 1.1): `\xHH`, `\e`, and in multi-line basic strings a
- * backslash, optional spaces or tabs, then a newline. There is no TOML or
- * declared JSON5 parser among the dependencies; this lexer reads strings
- * only, and refuses (returns null) on an unterminated string or comment or
- * an escape the syntax does not define.
- */
-export function stringLiteralsIn(content, syntax) {
-  const strings = [];
-  let index = 0;
-  const hex = (length) => {
-    const digits = content.slice(index, index + length);
-    if (!/^[0-9a-fA-F]+$/.test(digits) || digits.length !== length) return null;
-    index += length;
-    return String.fromCodePoint(Number.parseInt(digits, 16));
-  };
-  // TOML: after a line-ending backslash, skip every space, tab and newline.
-  const skipTomlContinuation = () => {
-    while (/[ \t]/.test(content[index] ?? '')) index += 1;
-    if (content[index] === '\n') index += 1;
-    else if (content.startsWith('\r\n', index)) index += 2;
-    else return false;
-    while (/[ \t\r\n]/.test(content[index] ?? '')) index += 1;
-    return true;
-  };
-  const decodeEscape = (triple) => {
-    const next = content[index];
-    if (next === undefined) return null;
-    if (syntax === 'toml') {
-      if (triple && /[ \t\r\n]/.test(next))
-        return skipTomlContinuation() ? '' : null;
-      index += 1;
-      if (next === 'u') return hex(4);
-      if (next === 'U') return hex(8);
-      if (next === 'x') return hex(2);
-      return TOML_ESCAPES[next] ?? null;
-    }
-    if (JSON5_LINE_TERMINATOR.test(next)) {
-      index += next === '\r' && content[index + 1] === '\n' ? 2 : 1;
-      return '';
-    }
-    index += 1;
-    if (next === 'u') return hex(4);
-    if (next === 'x') return hex(2);
-    if (/[1-9]/.test(next)) return null;
-    // JSON5 decodes any other character after a backslash to itself.
-    return JSON5_ESCAPES[next] ?? next;
-  };
-  const readString = (quote, triple, escapes) => {
-    let value = '';
-    if (triple && content[index] === '\n') index += 1;
-    else if (triple && content.startsWith('\r\n', index)) index += 2;
-    while (index < content.length) {
-      if (content.startsWith(triple ? quote.repeat(3) : quote, index)) {
-        index += triple ? 3 : 1;
-        return value;
-      }
-      const char = content[index];
-      if (!triple && (char === '\n' || char === '\r')) return null;
-      if (escapes && char === '\\') {
-        index += 1;
-        const decoded = decodeEscape(triple);
-        if (decoded === null) return null;
-        value += decoded;
-        continue;
-      }
-      value += char;
-      index += 1;
-    }
-    return null;
-  };
-  const skipLineComment = (terminator) => {
-    while (index < content.length && !terminator.test(content[index]))
-      index += 1;
-  };
-  while (index < content.length) {
-    if (syntax === 'json5' && content.startsWith('//', index)) {
-      skipLineComment(JSON5_LINE_TERMINATOR);
-    } else if (syntax === 'json5' && content.startsWith('/*', index)) {
-      const end = content.indexOf('*/', index + 2);
-      if (end === -1) return null;
-      index = end + 2;
-    } else if (syntax === 'toml' && content[index] === '#') {
-      skipLineComment(/\n/);
-    } else if (content[index] === '"' || content[index] === "'") {
-      const quote = content[index];
-      const triple =
-        syntax === 'toml' && content.startsWith(quote.repeat(3), index);
-      index += triple ? 3 : 1;
-      // TOML literal strings ('...') take no escapes; JSON5 single-quoted
-      // strings do.
-      const value = readString(
-        quote,
-        triple,
-        !(syntax === 'toml' && quote === "'"),
-      );
-      if (value === null) return null;
-      strings.push(value);
-    } else index += 1;
-  }
-  return strings;
-}
-
-const TAURI_CONFIG_PATH = /(?:^|\/)(?:tauri.*\.conf\.json5?|Tauri.*\.toml)$/i;
-
-/**
- * The updater/process identifiers a file Tauri loads could grant or bundle.
- * A JSON capability or permission file is parsed and walked whole (a
+ * The updater/process identifiers a JSON file Tauri loads could grant or
+ * bundle. A capability or permission file is parsed and walked whole (a
  * capability, a list, a `{ "capabilities": [...] }` file, or a permission
- * set). A JSON Tauri config is read only at `app.security.capabilities`,
- * where capabilities are inlined. JSON5 and TOML are read string by string.
- * Anything unreadable is reported rather than skipped.
+ * set). A Tauri config is read only at `app.security.capabilities`, where
+ * capabilities are inlined. Unparseable JSON is reported, not skipped.
  */
 export function nativeOnlyIdentifiersIn(file, content) {
-  let strings;
-  if (file.endsWith('.json')) {
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return { identifiers: [], unreadable: true };
-    }
-    strings = collectStrings(
-      TAURI_CONFIG_PATH.test(file)
-        ? (parsed?.app?.security?.capabilities ?? [])
-        : parsed,
-      [],
-    );
-  } else {
-    strings = stringLiteralsIn(
-      content,
-      file.endsWith('.toml') ? 'toml' : 'json5',
-    );
-    if (strings === null) return { identifiers: [], unreadable: true };
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return { identifiers: [], unreadable: true };
   }
+  const strings = collectStrings(
+    TAURI_CONFIG_PATH.test(file)
+      ? (parsed?.app?.security?.capabilities ?? [])
+      : parsed,
+    [],
+  );
   return {
     identifiers: [...new Set(strings.map((value) => value.trim()))].filter(
       isNativeOnlyIdentifier,
@@ -401,8 +256,17 @@ export function findNativeOnlyPermissionGrants(files) {
         `${file} must not exist: desktop updates are native-owned (#3851)`,
       );
     }
+    // Tauri also loads TOML and JSON5. Station ships neither, and reading
+    // them reliably needs a real parser this repository does not have, so
+    // any other format is refused outright rather than lexed.
+    if (!file.endsWith('.json')) {
+      violations.push(
+        `${file} must be JSON: capabilities, permissions and Tauri configs must be JSON so the boundary gate can parse them (#3851)`,
+      );
+      continue;
+    }
     const { identifiers, unreadable } = nativeOnlyIdentifiersIn(file, content);
-    if (unreadable) violations.push(`${file} could not be read`);
+    if (unreadable) violations.push(`${file} is not valid JSON`);
     for (const identifier of identifiers) {
       violations.push(
         `${file} grants ${identifier}; the webview holds no updater or process authority (#3851)`,
@@ -427,8 +291,8 @@ const TAURI_CONFIG_FILE = /^(?:tauri.*\.conf\.json5?|Tauri.*\.toml)$/i;
  * under `capabilities/` (Tauri globs `capabilities/**\/*` and loads json,
  * json5 and toml), every app permission file under `permissions/`, and every
  * Tauri config, whose `app.security.capabilities` may inline capabilities.
- * Files of any extension under those directories are included, so a format
- * a later Tauri accepts is not silently skipped.
+ * Files of any extension are listed, so {@link findNativeOnlyPermissionGrants}
+ * can refuse every one that is not JSON.
  */
 export function listTauriAclSources(root = TAURI_DESKTOP_ROOT) {
   const configs = readdirSync(root, { withFileTypes: true })

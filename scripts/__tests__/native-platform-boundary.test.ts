@@ -14,7 +14,6 @@ import {
   listTauriAclSources,
   NATIVE_GLOBAL_PATTERN,
   RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
-  stringLiteralsIn,
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
   TAURI_DESKTOP_CONFIGS,
@@ -124,14 +123,20 @@ describe('native-platform-boundary', () => {
     expect(
       findNativeOnlyPermissionGrants([
         ['src-desktop/capabilities/broken.json', '{ not json'],
-        ['src-desktop/capabilities/open.json5', '{ permissions: ["core:'],
-        ['src-desktop/capabilities/open.toml', 'permissions = """updater:'],
+        ['src-desktop/capabilities/benign.toml', 'identifier = "x"'],
+        ['src-desktop/permissions/sets.json5', '{}'],
       ]),
     ).toEqual([
-      'src-desktop/capabilities/broken.json could not be read',
-      'src-desktop/capabilities/open.json5 could not be read',
-      'src-desktop/capabilities/open.toml could not be read',
+      'src-desktop/capabilities/broken.json is not valid JSON',
+      expect.stringContaining(
+        'src-desktop/capabilities/benign.toml must be JSON: capabilities, permissions and Tauri configs must be JSON so the boundary gate can parse them',
+      ),
+      expect.stringContaining(
+        'src-desktop/permissions/sets.json5 must be JSON',
+      ),
     ]);
+    // The real tree holds only JSON there.
+    expect(sources.every(([file]) => file.endsWith('.json'))).toBe(true);
     // A Tauri config is read only where capabilities are inlined.
     expect(
       findNativeOnlyPermissionGrants([
@@ -145,78 +150,6 @@ describe('native-platform-boundary', () => {
         ],
       ]),
     ).toEqual([]);
-  });
-
-  test('decodes TOML 1.1 escapes and continuations, refusing unknown escapes', () => {
-    expect(
-      stringLiteralsIn(
-        [
-          String.raw`a = "\x75pdater:default"`,
-          'b = """upd\\  \t',
-          '   ater:default"""',
-          'c = """proc\\\r\n  ess:allow-restart"""',
-        ].join('\n'),
-        'toml',
-      ),
-    ).toEqual(['updater:default', 'updater:default', 'process:allow-restart']);
-    // Unknown escapes, and a continuation outside a multi-line string, are
-    // refused rather than guessed.
-    for (const text of [
-      String.raw`a = "\qupdater:default"`,
-      String.raw`a = "\'"`,
-      'a = "upd\\\nater"',
-      'a = """upd\\ x"""',
-    ])
-      expect(stringLiteralsIn(text, 'toml')).toBeNull();
-  });
-
-  test('ends JSON5 comments and continuations at every line terminator', () => {
-    expect(
-      stringLiteralsIn(
-        '{ // a comment  a: "updater:one", // b  b: \'process:two\',' +
-          ' c: "upd\\\r\nater:three", d: "upd\\ ater:four", e: "\\qx" }',
-        'json5',
-      ),
-    ).toEqual([
-      'updater:one',
-      'process:two',
-      'updater:three',
-      'updater:four',
-      'qx',
-    ]);
-    expect(stringLiteralsIn('{ a: "\\1" }', 'json5')).toBeNull();
-  });
-
-  test('reads JSON5 and TOML strings past comments and escapes (#3851)', () => {
-    expect(
-      stringLiteralsIn(
-        `{permissions:[/* it's */ "core:default", 'process:allow-restart'], // don't\n x: "\\u0075pdater:default", y: '\\x75pdater:a'}`,
-        'json5',
-      ),
-    ).toEqual([
-      'core:default',
-      'process:allow-restart',
-      'updater:default',
-      'updater:a',
-    ]);
-    expect(
-      stringLiteralsIn(
-        [
-          '# it\'s a comment with a " quote',
-          'a = "\\u0075pdater:default"',
-          'b = "\\U00000070rocess:allow-restart"',
-          "c = 'process:literal\\u0020'",
-          'd = """',
-          'updater:multi"""',
-        ].join('\n'),
-        'toml',
-      ),
-    ).toEqual([
-      'updater:default',
-      'process:allow-restart',
-      'process:literal\\u0020',
-      'updater:multi',
-    ]);
   });
 
   test('requires the exact least-privilege desktop CSP and Tauri CSP mutation', () => {

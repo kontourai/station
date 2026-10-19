@@ -60,19 +60,6 @@ const BYPASSES: Record<string, Record<string, string>> = {
       capability('updater:allow-download-and-install'),
     ),
   },
-  'a TOML capability': {
-    'capabilities/x.toml': [
-      'identifier = "extra"',
-      'windows = ["main"]',
-      'permissions = [',
-      '  "updater:default",',
-      "  'process:allow-restart',",
-      ']',
-    ].join('\n'),
-  },
-  'a JSON5 capability': {
-    'capabilities/x.json5': `{ identifier: 'extra', windows: ['main'], permissions: ['updater:allow-check'] }`,
-  },
   'an object-form permission': {
     'capabilities/object.json': JSON.stringify(
       capability({ identifier: 'process:allow-restart' }),
@@ -88,47 +75,26 @@ const BYPASSES: Record<string, Record<string, string>> = {
     }),
   },
   'a custom permission set bundling updater': {
-    'permissions/everything.toml': [
-      '[[set]]',
-      'identifier = "everything"',
-      'description = "a bundle"',
-      'permissions = ["core:default", "updater:allow-check"]',
-    ].join('\n'),
+    'permissions/everything.json': JSON.stringify({
+      set: [
+        {
+          identifier: 'everything',
+          permissions: ['core:default', 'updater:allow-check'],
+        },
+      ],
+    }),
   },
-  'a JSON5 grant after a comment holding an apostrophe': {
-    'capabilities/x.json5': `{identifier:'extra', windows:['main'], permissions:[/* it's */ "core:default", 'process:allow-restart']}`,
+  'a benign TOML capability (any non-JSON file)': {
+    'capabilities/x.toml':
+      'identifier = "extra"\nwindows = ["main"]\npermissions = ["core:default"]\n',
   },
-  'a JSON5 grant spelled with escapes': {
-    'capabilities/x.json5': String.raw`{identifier:'extra', windows:['main'], permissions:["\u0075pdater:default"]}`,
+  'a benign JSON5 capability (any non-JSON file)': {
+    'capabilities/x.json5':
+      "{ identifier: 'extra', windows: ['main'], permissions: ['core:default'] }",
   },
-  'a TOML grant spelled with escapes': {
-    'capabilities/x.toml': [
-      '# a comment with a " quote',
-      'identifier = "extra"',
-      'windows = ["main"]',
-      String.raw`permissions = ["\u0075pdater:default"]`,
-    ].join('\n'),
-  },
-  'a TOML grant spelled with a \\x escape': {
-    'capabilities/x.toml': [
-      'identifier = "extra"',
-      'windows = ["main"]',
-      String.raw`permissions = ["\x75pdater:default"]`,
-    ].join('\n'),
-  },
-  'a TOML grant split by a line-ending backslash and trailing spaces': {
-    'capabilities/x.toml': [
-      'identifier = "extra"',
-      'windows = ["main"]',
-      'permissions = ["""upd\\   ',
-      '   ater:default"""]',
-    ].join('\n'),
-  },
-  'a TOML file with an escape TOML does not define': {
-    'capabilities/x.toml': [
-      'identifier = "extra"',
-      String.raw`permissions = ["\qupdater:default"]`,
-    ].join('\n'),
+  'a TOML permission file': {
+    'permissions/sets.toml':
+      '[[set]]\nidentifier = "x"\npermissions = ["core:default"]\n',
   },
   'the retired desktop-updater manifest, even empty': {
     'capabilities/desktop-updater.json': JSON.stringify({
@@ -149,7 +115,7 @@ describe('native platform boundary gate (#3851)', () => {
     const result = gate(desktopRoot(files));
     expect(result.output).toContain('FAIL: native platform boundary');
     expect(result.output).toMatch(
-      /grants (?:updater|process):|must not exist|could not be read/,
+      /grants (?:updater|process):|must not exist|must be JSON/,
     );
     expect(result.status).toBe(1);
   });

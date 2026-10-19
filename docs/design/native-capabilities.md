@@ -117,7 +117,11 @@ mobile storage behavior or a completed collaborator journey.
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
 operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. Application commands registered by the Rust host remain outside
+is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
+updater or process grant in every file under `capabilities/` and
+`permissions/` and in `app.security.capabilities` of every Tauri config, and
+refuses any file there that is not JSON, since the gate parses only JSON.
+Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
 URL from Rust. A separate `open_external_link` command admits user-clicked HTTPS
