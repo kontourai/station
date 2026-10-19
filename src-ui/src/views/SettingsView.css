@@ -1103,6 +1103,12 @@
     grid-row: 2;
     min-height: 44px;
   }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__control {
+    display: flex;
+    align-self: center;
+  }
   .settings__range-row {
     flex-wrap: wrap;
   }
