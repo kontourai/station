@@ -327,12 +327,16 @@ credentials or direct MCP transport to the App.
 Transcript app discovery is optional outside a connected workspace. In
 `main.tsx`, `PlatformSessionGate` wraps the app's `QueryClientProvider`;
 `LocalUiSessionGate` can render `UnpairedSampleWorkspace` and its real
-`MessageContent` before that query provider exists. Without either a connection
-context or a query client, `TranscriptAppTools` issues no catalog request and
-keeps ordinary rows and batching. It uses optional context reads and the same
-hook and element ancestry in both modes, preserving mounted row state when
-calls complete. With both providers, the existing catalog and hardened frame
-path remain authoritative. Provider-free rendering is not app qualification.
+`MessageContent` before that query provider exists. Without a transcript-app
+workspace context, `TranscriptAppTools` issues no catalog request and keeps
+ordinary rows and batching. `TranscriptAppWorkspaceProvider` binds the current
+API base and authority-scoped query client inside `AuthorityQueryProvider`.
+Lazy chat rows consume only that small optional context: they do not read the
+Connect barrel or acquire a connection while rendering. Catalog reads use the
+SDK client entry. The same hook and element ancestry in both modes preserves
+mounted row state when calls complete. In the connected workspace, the existing
+catalog and hardened frame path remain authoritative. Local rendering is not
+app qualification.
 
 [ToolCallDisplay](../../src-ui/src/components/chat/ToolCallDisplay.tsx) mounts
 [TranscriptMCPApp](../../src-ui/src/components/chat/TranscriptMCPApp.tsx) beside a

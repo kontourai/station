@@ -13,8 +13,9 @@ Completed MCP calls may mount the existing hardened web host alongside their
 transcript row only when the server's already-open or shipped in-process tool definition declares an
 App. A cheap successful-content-envelope and provider-identity filter precedes
 membership in a per-server UI-tool catalog, cached for five minutes. App discovery
-requires connection and query contexts; outside that workspace boundary it
-makes no lookup and keeps ordinary rows. The first-run sample deliberately
+uses an explicit workspace context, bound once beneath the app's connection
+and authority-scoped query providers; outside that workspace boundary it makes
+no lookup and keeps ordinary rows. Lazy rows do not import the Connect barrel. The first-run sample deliberately
 renders before the app query provider. Eligibility changes keep row ancestry
 stable rather than remounting the transcript. Metadata
 changes can wait for a stale mount/focus refetch; a reload refreshes membership. Unknown or

@@ -165,7 +165,6 @@ export {
   ConnectionsProvider,
   DEFAULT_CONNECTION_CREDENTIAL_KEY,
   useConnections,
-  useOptionalConnections,
 } from './react/ConnectionsContext';
 export type { PairingResult } from './react/DevicePairingPanel';
 export {

@@ -15,6 +15,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 import { TranscriptAppTools } from '../components/chat/TranscriptAppTools';
+import { TranscriptAppWorkspaceProvider } from '../contexts/TranscriptAppWorkspaceProvider';
 
 const call = {
   type: 'tool-invocation' as const,
@@ -95,11 +96,13 @@ describe('optional transcript app discovery', () => {
     const tree = (completed: boolean) => (
       <Connections>
         <QueryClientProvider client={client}>
-          <TranscriptAppTools
-            calls={[{ ...call, result: completed ? call.result : undefined }]}
-          >
-            {(tools) => <Row app={tools.has('demo/chart')} />}
-          </TranscriptAppTools>
+          <TranscriptAppWorkspaceProvider>
+            <TranscriptAppTools
+              calls={[{ ...call, result: completed ? call.result : undefined }]}
+            >
+              {(tools) => <Row app={tools.has('demo/chart')} />}
+            </TranscriptAppTools>
+          </TranscriptAppWorkspaceProvider>
         </QueryClientProvider>
       </Connections>
     );

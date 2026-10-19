@@ -8,6 +8,7 @@ import {
   render as renderTestingLibrary,
 } from '@testing-library/react';
 import type { PropsWithChildren, ReactNode } from 'react';
+import { TranscriptAppWorkspaceProvider } from '../contexts/TranscriptAppWorkspaceProvider';
 
 /** The app's remote-data prerequisites, isolated per test render. */
 function createQueryTestBoundary(CallerWrapper?: RenderOptions['wrapper']) {
@@ -26,7 +27,13 @@ function createQueryTestBoundary(CallerWrapper?: RenderOptions['wrapper']) {
     return (
       <ConnectionsProvider store={store} defaultUrl="http://localhost:3141">
         <QueryClientProvider client={client}>
-          {CallerWrapper ? <CallerWrapper>{children}</CallerWrapper> : children}
+          <TranscriptAppWorkspaceProvider>
+            {CallerWrapper ? (
+              <CallerWrapper>{children}</CallerWrapper>
+            ) : (
+              children
+            )}
+          </TranscriptAppWorkspaceProvider>
         </QueryClientProvider>
       </ConnectionsProvider>
     );

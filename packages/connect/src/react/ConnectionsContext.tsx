@@ -640,13 +640,8 @@ export function ConnectionsProvider({
   );
 }
 
-/** Optional features can remain local when no connection boundary is mounted. */
-export function useOptionalConnections(): ConnectionsContextType | undefined {
-  return useContext(ConnectionsContext);
-}
-
 export function useConnections(): ConnectionsContextType {
-  const ctx = useOptionalConnections();
+  const ctx = useContext(ConnectionsContext);
   if (!ctx) {
     throw new Error('useConnections must be used within a ConnectionsProvider');
   }
