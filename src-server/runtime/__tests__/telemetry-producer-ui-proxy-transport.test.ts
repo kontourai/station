@@ -292,6 +292,13 @@ describe('telemetry producers through the UI proxy (real sockets)', () => {
       host: `${own}:${h.uiPort}`,
     });
     expect(refused.status, refused.body).toBe(403);
+    // A client-chosen loopback Host does not make an off-loopback peer local:
+    // the proxy's attested peer address decides.
+    const spoofedHost = await h.viaProxy('/v1/agent-events', {
+      token: local,
+      host: `127.0.0.1:${h.uiPort}`,
+    });
+    expect(spoofedHost.status, spoofedHost.body).toBe(403);
     const admitted = await h.viaProxy('/v1/agent-events', {
       token: remote,
       host: `${own}:${h.uiPort}`,

@@ -14,6 +14,7 @@ import { K } from '../../../../src-shared/monitoring-keys.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -344,6 +345,20 @@ describe('telemetry producer management over the production composition', () => 
       [K.AT_SESSION_ID]: 'codex-session-123',
       [K.USER_ID]: getCachedUser().alias,
     });
+    // A producer row stored before identities were namespaced: it shares the
+    // raw session id with the row above. Insights must decide it by owner,
+    // not reuse the Station row's per-session decision.
+    h.emitRaw({
+      timestamp: new Date().toISOString(),
+      [K.TIMESTAMP_MS]: Date.now(),
+      [K.OP_NAME]: 'execute_tool',
+      [K.SPAN_KIND]: 'start',
+      [K.TOOL_NAME]: 'shell',
+      [K.AT_SESSION_ID]: 'codex-session-123',
+      [K.USER_ID]: getCachedUser().alias,
+      [K.TELEMETRY_PRODUCER]: 'e2e-codex',
+      [K.TELEMETRY_PRODUCER_OWNER]: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
     await h.flush();
 
     const events = async (credential: string) => {
@@ -361,9 +376,12 @@ describe('telemetry producer management over the production composition', () => 
     };
 
     const operatorRows = await events(h.operatorCredential);
-    expect(operatorRows).toHaveLength(1);
-    expect(operatorRows[0]?.[K.TELEMETRY_PRODUCER]).toBe('e2e-codex');
-    expect(await toolCalls(h.operatorCredential)).toBe(1);
+    expect(operatorRows).toHaveLength(2);
+    expect(operatorRows.map((row) => row[K.TELEMETRY_PRODUCER])).toEqual([
+      'e2e-codex',
+      'e2e-codex',
+    ]);
+    expect(await toolCalls(h.operatorCredential)).toBe(2);
 
     // Another paired person who may read monitoring, just not these rows.
     const other = h.pairManageDevice(
