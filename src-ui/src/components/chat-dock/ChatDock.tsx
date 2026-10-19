@@ -1616,7 +1616,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
   // The session context card: beside the transcript while the dock itself has
   // room for both, behind a header chip otherwise. A phone never shows it
-  // inline — its chip opens the same rows as a bottom sheet.
+  // inline: a row of its Chat actions sheet opens the rows as a bottom sheet.
   const sessionContextAvailable = Boolean(
     activeSession && !importedSessionId && !conversationOpenRecovery,
   );
