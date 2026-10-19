@@ -1959,7 +1959,9 @@ station insights events [--days=<n>] [--start=<epoch-ms|iso>] [--end=<...>] [--a
 `--producer=<name>` selects one external telemetry producer's activity. Without
 it, producer rows never count toward the rollup (they are summarized in
 `producerActivity`) and never match `--agent`, `--tool`, `--engine`,
-`--conversation` or `--tools`. An empty or invalid name is a 400.
+`--conversation` or `--tools`. An empty `--producer=` is a usage error before
+any request; a name outside the token-name grammar is refused by the route
+(400).
 
 `get` returns the rollup; `events` returns the rows behind it via
 `/monitoring/events`, which owns the per-user and tenant authorization those
