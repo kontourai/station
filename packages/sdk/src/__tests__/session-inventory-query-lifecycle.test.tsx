@@ -392,6 +392,59 @@ describe('session inventory query lifecycle', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    /**
+     * The success latch belongs to one key. Having loaded A says nothing about
+     * B: B's entry cached before this mount must never show, not while B's
+     * own read is in flight and not after it fails.
+     */
+    test("a success on one key never releases another key's pre-mount cache", async () => {
+      let releaseB: (() => void) | undefined;
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async (input) =>
+          String(input).includes(encodeURIComponent(other))
+            ? new Promise<Response>((resolve) => {
+                releaseB = () => resolve(respond(503, { success: false }));
+              })
+            : respond(200, { success: true, data: wholeSession() }),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const second = { kind: 'whole-session' as const, sessionId: other };
+      client.setQueryData(
+        sessionInventoryQueries.projection(second).queryKey,
+        projectionFor(other),
+      );
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client }, children);
+      const observer = renderHook(
+        ({ scope }) => useSessionInventoryQuery(scope),
+        {
+          wrapper,
+          initialProps: {
+            scope: { kind: 'whole-session', sessionId: SESSION } as {
+              kind: 'whole-session';
+              sessionId: string;
+            },
+          },
+        },
+      );
+      await waitFor(() => expect(observer.result.current.data).toBeTruthy());
+
+      observer.rerender({ scope: second });
+      await waitFor(() => expect(releaseB).toBeDefined());
+      expect(observer.result.current.data).toBeUndefined();
+
+      await act(async () => releaseB?.());
+      await waitFor(() => {
+        expect(observer.result.current.isFetching).toBe(false);
+        expect(observer.result.current.error).toBeTruthy();
+      });
+      expect(observer.result.current.data).toBeUndefined();
+    });
+
     test('a caller asking not to refetch on mount still reads before showing', async () => {
       const fetchMock = routedFetch();
       vi.stubGlobal('fetch', fetchMock);
