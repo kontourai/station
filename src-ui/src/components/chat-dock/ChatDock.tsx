@@ -16,7 +16,14 @@ import {
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -49,8 +56,10 @@ import {
   type ChatFocusTarget,
   openChatsStore,
 } from '../../contexts/open-chats-store';
+import { usePublishOpenerSelection } from '../../contexts/PaneRelationsContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
@@ -97,6 +106,10 @@ import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
 } from '../../lib/task-shaping';
+import {
+  chatOpenerSelection,
+  WORKSPACE_CHAT_OPENER,
+} from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -2273,6 +2286,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ?.workingDirectory ?? null)
     : null;
   const conversationId = activeSession?.conversationId ?? null;
+  // This conversation as a pane opener (docs/design/pane-relationships.md):
+  // its session is the selection its previews belong to, so a preview opened
+  // for one session hides while another is on screen and returns with it.
+  const openerOwner = useContext(UnsavedGuardOwnerContext);
+  usePublishOpenerSelection(
+    openerOwner ?? WORKSPACE_CHAT_OPENER,
+    chatOpenerSelection(activeOrchestrationSession?.threadId, conversationId),
+  );
+  const openerLabel = activeSession?.title || 'Chat';
   const markdownLinkContext = useMemo(
     () => ({
       projectSlug: conversationProjectSlug,
@@ -2286,6 +2308,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       sessionDirectory: sessionDisplayCwd,
       threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
+      openerLabel,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
           ? (path: string, lineRange?: { start: number; end: number }) =>
@@ -2301,6 +2324,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [
       codingLayoutSlug,
       conversationId,
+      openerLabel,
       conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,

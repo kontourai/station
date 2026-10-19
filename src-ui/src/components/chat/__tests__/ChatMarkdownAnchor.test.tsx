@@ -114,12 +114,17 @@ describe('a link in a chat message (#2049)', () => {
   test('a repo-relative path opens a preview for the conversation’s project', () => {
     const anchor = mount('src/app.ts#L4-L9');
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
-      projectId: 'alpha-id',
-      projectSlug: 'alpha',
-      path: 'src/app.ts',
-      lineRange: { start: 4, end: 9 },
-    });
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      model,
+      {
+        projectId: 'alpha-id',
+        projectSlug: 'alpha',
+        path: 'src/app.ts',
+        lineRange: { start: 4, end: 9 },
+      },
+      undefined,
+      undefined,
+    );
     expect(openPathInMain).not.toHaveBeenCalled();
   });
 
@@ -351,12 +356,17 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       branch: 'main',
     };
     expect(click(mount(url))).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
-      projectId: 'alpha-id',
-      projectSlug: 'alpha',
-      path: 'src/app.ts',
-      lineRange: { start: 4, end: 4 },
-    });
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      model,
+      {
+        projectId: 'alpha-id',
+        projectSlug: 'alpha',
+        path: 'src/app.ts',
+        lineRange: { start: 4, end: 4 },
+      },
+      undefined,
+      undefined,
+    );
   });
 
   test('opens on the forge when the checkout is another repository or unknown', () => {
@@ -402,12 +412,17 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       'https://github.com/kontourai/station/blob/feature/x/src/app.ts#L2',
     );
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
-      projectId: 'alpha-id',
-      projectSlug: 'alpha',
-      path: 'src/app.ts',
-      lineRange: { start: 2, end: 2 },
-    });
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      model,
+      {
+        projectId: 'alpha-id',
+        projectSlug: 'alpha',
+        path: 'src/app.ts',
+        lineRange: { start: 2, end: 2 },
+      },
+      undefined,
+      undefined,
+    );
     // The tooltip does not imply the local copy is the forge's revision.
     expect(anchor.getAttribute('title')).toMatch(
       /working copy of src\/app\.ts/,
@@ -475,12 +490,25 @@ describe('an explicit path link follows the session’s file scope', () => {
       threadId: 'thread-7',
     });
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
-      projectId: 'alpha-id',
-      projectSlug: 'alpha',
-      path: 'src/app.ts',
-      thread: 'thread-7',
-    });
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      model,
+      {
+        projectId: 'alpha-id',
+        projectSlug: 'alpha',
+        path: 'src/app.ts',
+        thread: 'thread-7',
+      },
+      undefined,
+      {
+        // A conversation with a session is the opener of what it opens.
+        relations: expect.anything(),
+        opener: {
+          occurrenceId: 'chat-workspace',
+          selection: 'thread:thread-7',
+          label: 'Chat',
+        },
+      },
+    );
   });
 
   test('when the session directory cannot be read it refuses visibly, never opening the checkout copy', () => {

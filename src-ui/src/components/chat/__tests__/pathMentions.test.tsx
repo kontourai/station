@@ -135,8 +135,9 @@ describe('path mentions in a rendered chat message', () => {
     renderInConversation('Bump the version in package.json:3.');
     const link = screen.getByRole('link', { name: /package\.json:3/ });
     fireEvent.click(link);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(
+      (openFilePreviewInRegion.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toEqual(
       expect.objectContaining({
         path: 'package.json',
         lineRange: { start: 3, end: 3 },
@@ -156,8 +157,9 @@ describe('path mentions in a rendered chat message', () => {
     existing.add('src/app.ts');
     renderInConversation('Changed /work/repo/src/app.ts:7.');
     fireEvent.click(screen.getByRole('link', { name: /app\.ts:7/ }));
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(
+      (openFilePreviewInRegion.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toEqual(
       expect.objectContaining({
         path: 'src/app.ts',
         lineRange: { start: 7, end: 7 },
@@ -213,8 +215,9 @@ describe('path mentions in a rendered chat message', () => {
     for (const [, , thread] of existenceAsks) expect(thread).toBe('thread-7');
     // An absolute path under the worktree is that worktree's file.
     fireEvent.click(screen.getByRole('link', { name: /app\.ts:9/ }));
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(
+      (openFilePreviewInRegion.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toEqual(
       expect.objectContaining({
         path: 'src/app.ts',
         lineRange: { start: 9, end: 9 },

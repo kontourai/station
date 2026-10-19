@@ -45,6 +45,7 @@ import {
   type RegionId,
   type RegionState,
   removeRegionPane,
+  replaceRegionPane,
   resolveRegionSurface,
   restorePhonePaneLayer,
   restoreSuspendedPanes,
@@ -191,6 +192,14 @@ export interface RegionModelValue {
     options?: OpenInRegionOptions,
   ): OpenInRegionOutcome;
   /**
+   * Replace a placed dock pane with an unplaced one IN ITS TAB SLOT, selected
+   * and shown (`replaceRegionPane`): a transient preview's reuse
+   * (docs/design/pane-relationships.md). Refused — the arrangement unchanged —
+   * when `previous` is in no dock region, `next` is already placed, or `next`
+   * may not occupy that region. Never a history entry.
+   */
+  replacePane(previous: string, next: string): OpenInRegionOutcome;
+  /**
    * Select a pane the region holds (#2046 2a): it becomes the region's
    * `occupant`, the pane `RegionPaneHost` shows. Places nothing and changes
    * no visibility; a surface the region does not hold is ignored.
@@ -277,11 +286,16 @@ export interface RegionModelValue {
  * the dock open it may add) ride Chat's `?dock`/`?maximize` URL params, so a
  * reload with a layer open would otherwise come back with Chat maximized and
  * no layer to undo it. The record names the layer's LIVE history entry id
- * (rewritten whenever the layer pushes a new entry); every ending of a layer
+ * (rewritten whenever the layer pushes a new entry) and the pane the layer
+ * shows (rewritten when another pane replaces it); every ending of a layer
  * removes it, and so does the provider unmounting with a layer open. A
  * record found at mount whose entry is exactly the entry being loaded
- * therefore means a reload with that layer open, and the load restores the
- * pre-layer dock state instead of the URL's.
+ * therefore means a reload with that layer open: the load seeds the
+ * pre-layer dock state and then reopens THAT pane over Chat on the same
+ * entry (docs/design/pane-relationships.md: reload restores the exact
+ * validated child), so Back still returns to the pre-layer state. A pane
+ * that no longer resolves, or a record an older build wrote without one,
+ * leaves the pre-layer state as before.
  */
 const PHONE_LAYER_PRE_STATE_KEY = 'station.phoneLayer.preLayerDock.v1';
 
@@ -294,9 +308,11 @@ interface PhoneLayerPreState {
 interface StoredPhoneLayerPreState extends PhoneLayerPreState {
   /** The `registerDialogHistory` id of the layer's live entry. */
   entry: string;
+  /** The pane the layer shows, for the reload's exact restore. */
+  surfaceId?: string;
 }
 
-function takePhoneLayerPreState(): PhoneLayerPreState | null {
+function takePhoneLayerPreState(): StoredPhoneLayerPreState | null {
   try {
     const raw = window.sessionStorage.getItem(PHONE_LAYER_PRE_STATE_KEY);
     if (raw === null) return null;
@@ -319,6 +335,10 @@ function takePhoneLayerPreState(): PhoneLayerPreState | null {
           visible: value.visible,
           maximized: value.maximized,
           dockMemory: value.dockMemory,
+          entry: marker,
+          ...(typeof value.surfaceId === 'string' && value.surfaceId.length > 0
+            ? { surfaceId: value.surfaceId }
+            : {}),
         }
       : null;
   } catch {
@@ -590,13 +610,34 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // The open layer's pre-layer dock state (gap G1), stored against each
   // entry the layer registers.
   const layerPreStateRef = useRef<PhoneLayerPreState | null>(null);
+  // The live entry's id, so a replaced pane can be re-recorded against it.
+  const layerEntryIdRef = useRef<string | null>(null);
+  // A reload with a layer open is still ON that layer's entry: the restored
+  // layer adopts it rather than pushing a second one.
+  const reloadLayerEntryRef = useRef<string | null>(
+    reloadedOverLayer?.surfaceId ? reloadedOverLayer.entry : null,
+  );
   const registerLayerEntry = useCallback(() => {
-    const entry = `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`;
-    layerHistoryRef.current = registerDialogHistory(entry, () =>
-      leavePhoneLayerByBackRef.current(),
+    const adopted = reloadLayerEntryRef.current;
+    reloadLayerEntryRef.current = null;
+    const entry =
+      adopted ??
+      `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`;
+    layerEntryIdRef.current = entry;
+    layerHistoryRef.current = registerDialogHistory(
+      entry,
+      () => leavePhoneLayerByBackRef.current(),
+      null,
+      { adoptLiveEntry: adopted !== null },
     );
     if (layerPreStateRef.current)
-      writePhoneLayerPreState({ ...layerPreStateRef.current, entry });
+      writePhoneLayerPreState({
+        ...layerPreStateRef.current,
+        entry,
+        ...(phoneLayerRef.current
+          ? { surfaceId: phoneLayerRef.current.surfaceId }
+          : {}),
+      });
   }, []);
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
@@ -622,7 +663,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (!layer) {
       layerBackDecisionRef.current = null;
       layerPreStateRef.current = null;
+      layerEntryIdRef.current = null;
       writePhoneLayerPreState(null);
+    } else if (layerPreStateRef.current && layerEntryIdRef.current) {
+      // Another pane replaced the layer's: a reload must restore that one.
+      writePhoneLayerPreState({
+        ...layerPreStateRef.current,
+        entry: layerEntryIdRef.current,
+        surfaceId: layer.surfaceId,
+      });
     }
     setPhoneLayerState(layer);
   }, []);
@@ -938,6 +987,22 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       };
     },
     [available, bottomOnly, commit, isMobile, setPhoneLayer],
+  );
+
+  const replacePane = useCallback(
+    (previous: string, next: string): OpenInRegionOutcome => {
+      if (!resolveRegionSurface(next))
+        return { ok: false, reason: 'no-surface' };
+      const current = regionsRef.current;
+      const held = occupiedRegion(current, previous);
+      if (held === undefined || !isDockRegion(held))
+        return { ok: false, reason: 'refused' };
+      const replaced = replaceRegionPane(current, held, previous, next);
+      if (replaced === current) return { ok: false, reason: 'refused' };
+      commit(replaced, held);
+      return { ok: true, region: held, surfaceId: next, existing: false };
+    },
+    [commit],
   );
 
   const showSurface = useCallback(
@@ -1371,12 +1436,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     }
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
 
-  // Gap G1: put navigation back in line with the pre-layer dock state the
-  // arrangement was seeded from. A mount is otherwise not a write; this one
-  // repairs params the layer left behind, once.
+  // A reload with a layer open (gap G1, `reloadedOverLayer`): the arrangement
+  // was seeded from the pre-layer dock state. When the layer's pane still
+  // resolves on this bottom-only device, that exact pane is reopened over Chat
+  // on the entry the reload landed on (`reloadLayerEntryRef`), so the reader
+  // comes back to the child they were reading with Back one press from the
+  // pre-layer state; navigation already carries the layer's own dock params,
+  // which the mirror keeps. Otherwise navigation is put back in line with the
+  // pre-layer state, once — a mount is otherwise not a write.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once for the state taken at mount.
   useEffect(() => {
     if (!reloadedOverLayer) return;
+    navigationStore.lastDockMaximized = reloadedOverLayer.dockMemory;
+    const surfaceId = reloadedOverLayer.surfaceId;
+    if (surfaceId && bottomOnly && resolveRegionSurface(surfaceId))
+      openSurfaceInRegion(surfaceId);
+    if (phoneLayerRef.current) return;
+    reloadLayerEntryRef.current = null;
     setDockState(reloadedOverLayer.visible, reloadedOverLayer.maximized);
     navigationStore.lastDockMaximized = reloadedOverLayer.dockMemory;
   }, []);
@@ -1494,6 +1570,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       openSurfaceInRegion,
+      replacePane,
       selectPane,
       removePane,
       moveRegionPanes,
@@ -1513,6 +1590,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       placeSurface,
       showSurface,
       openSurfaceInRegion,
+      replacePane,
       selectPane,
       removePane,
       moveRegionPanes,
@@ -1561,8 +1639,18 @@ export function SuspendRegionSurfaces({
   surfaces: readonly string[];
   children: ReactNode;
 }) {
+  // Nested suspensions add up: the Coding centre's Chat and a source-hidden
+  // preview are suspended together, and an inner owner must not un-suspend
+  // what an outer one took. The union keeps the outer list's identity when
+  // the inner adds nothing, so readers' memo inputs stay stable.
+  const outer = useContext(SuspendedRegionSurfacesContext);
+  const combined = useMemo(() => {
+    const added = surfaces.filter((surface) => !outer.includes(surface));
+    if (added.length === 0) return outer;
+    return outer.length === 0 ? surfaces : [...outer, ...added];
+  }, [outer, surfaces]);
   return (
-    <SuspendedRegionSurfacesContext.Provider value={surfaces}>
+    <SuspendedRegionSurfacesContext.Provider value={combined}>
       {children}
     </SuspendedRegionSurfacesContext.Provider>
   );

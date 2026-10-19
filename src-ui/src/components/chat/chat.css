@@ -1324,6 +1324,12 @@
     min-width: 44px;
     min-height: 44px;
   }
+
+  /* A related pane's Up and Keep controls (`RelatedPaneStrip`). */
+  .related-pane-strip__up.related-pane-strip__up,
+  .related-pane-strip .button.button {
+    min-height: 44px;
+  }
 }
 
 /* The draft keeps the height `ChatInputArea`'s resize effect gives it (capped

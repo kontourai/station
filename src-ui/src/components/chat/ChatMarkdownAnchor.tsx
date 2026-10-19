@@ -1,8 +1,18 @@
 import { isWorkspaceFilePreviewRelativePath } from '@kontourai/station-contracts/workspace-file-preview';
 import { usePullRequestContextQuery } from '@kontourai/station-sdk';
-import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+  useContext,
+} from 'react';
+import {
+  type PaneRelationsValue,
+  usePaneRelations,
+} from '../../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
 import {
   openFilePreviewInRegion,
   openPullRequestInRegion,
@@ -11,6 +21,11 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../../platform/openExternalLink';
+import {
+  chatOpenerSelection,
+  WORKSPACE_CHAT_OPENER,
+} from '../../regions/pane-opener';
+import type { PaneOpener } from '../../regions/pane-relations';
 import {
   chipFor,
   LinkHostBadge,
@@ -88,11 +103,31 @@ function fileScope(link: MarkdownLinkContextValue | null): {
   return { roots: [], resolvable: false };
 }
 
+/**
+ * The conversation as a pane opener: the occurrence that hosts it (the
+ * region pane's surface, else the Coding centre's Chat) at the session it
+ * shows. Null without a conversation to name.
+ */
+function conversationOpener(
+  link: MarkdownLinkContextValue | null,
+  owner: string | null,
+): PaneOpener | null {
+  const selection = chatOpenerSelection(link?.threadId, link?.conversationId);
+  if (!link || !selection) return null;
+  return {
+    occurrenceId: owner ?? WORKSPACE_CHAT_OPENER,
+    selection,
+    label: link.openerLabel ?? 'Chat',
+  };
+}
+
 function activate(
   event: MouseEvent<HTMLAnchorElement>,
   target: MarkdownLinkTarget | null,
   link: MarkdownLinkContextValue | null,
   model: ReturnType<typeof useRegionModelOptional>,
+  relations: PaneRelationsValue,
+  opener: PaneOpener | null,
 ) {
   if (
     event.defaultPrevented ||
@@ -165,13 +200,20 @@ function activate(
   if (dockCanHold) {
     event.preventDefault();
     const thread = scope.thread;
-    const outcome = openFilePreviewInRegion(model, {
-      projectId: link.projectId,
-      projectSlug: link.projectSlug,
-      path: target.path,
-      ...(target.lineRange ? { lineRange: target.lineRange } : {}),
-      ...(thread ? { thread } : {}),
-    });
+    // Related to the conversation: one reusable preview per session, which
+    // hides while another session is on screen (pane-relationships.md).
+    const outcome = openFilePreviewInRegion(
+      model,
+      {
+        projectId: link.projectId,
+        projectSlug: link.projectSlug,
+        path: target.path,
+        ...(target.lineRange ? { lineRange: target.lineRange } : {}),
+        ...(thread ? { thread } : {}),
+      },
+      undefined,
+      opener ? { relations, opener } : undefined,
+    );
     if (outcome.ok) return;
     // The model refused (a device fold, a region rule). The preview still
     // has the route it had before #2049, if this session has a layout — but
@@ -284,6 +326,8 @@ function LinkAnchor({
   target: MarkdownLinkTarget | null;
   clickTarget: MarkdownLinkTarget | null;
 }) {
+  const relations = usePaneRelations();
+  const owner = useContext(UnsavedGuardOwnerContext);
   // Raw: the text IS the href — an autolinked URL, or a path mention (whose
   // href gained a `./` so it would not parse as a scheme).
   const text = textOf(children).trim();
@@ -300,7 +344,14 @@ function LinkAnchor({
   const title = realHost && url ? url : undefined;
   const hostBadge = realHost ? <LinkHostBadge host={realHost} /> : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
-    activate(event, clickTarget, link, model);
+    activate(
+      event,
+      clickTarget,
+      link,
+      model,
+      relations,
+      conversationOpener(link, owner),
+    );
   // A web URL the handler lets through (no dock for a pull request, an
   // external site, a forge file) must not replace the running Station tab;
   // #2049 specified "a new tab on web". Paths never leave, so they get none.

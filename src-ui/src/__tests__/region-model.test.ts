@@ -15,6 +15,7 @@ import {
   REGION_IDS,
   REGION_SURFACE_REGISTRY,
   removeRegionPane,
+  replaceRegionPane,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -265,6 +266,31 @@ describe('region model', () => {
     });
   });
 
+  test('replaceRegionPane swaps one tab in place, selected and shown', () => {
+    const A = 'file-preview:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const B = 'file-preview:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    let arrangement = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'right',
+    );
+    arrangement = placeSurface(arrangement, A, 'right');
+    arrangement = selectRegionPane(arrangement, 'right', 'activity');
+    arrangement = updateRegion(arrangement, 'right', { visible: false });
+
+    const replaced = replaceRegionPane(arrangement, 'right', A, B);
+    expect(replaced.right).toMatchObject({
+      panes: ['activity', B],
+      occupant: B,
+      visible: true,
+    });
+    // Refusals return the input: the previous pane is not there, the next one
+    // is already placed, or it may not occupy the region.
+    expect(replaceRegionPane(replaced, 'right', A, B)).toBe(replaced);
+    expect(replaceRegionPane(replaced, 'right', B, 'activity')).toBe(replaced);
+    expect(replaceRegionPane(replaced, 'right', B, 'home')).toBe(replaced);
+  });
+
   test('Files lands Related by default, and an explicit or saved Left placement still holds', () => {
     const shown = revealSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
@@ -326,16 +352,36 @@ describe('region model', () => {
   });
 
   test('revealSurface uses the first free region when the preferred region is occupied', () => {
-    const occupiedPreferred = placeSurface(
+    const occupiedPreferred = removeRegionPane(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'fixture', 'right'),
+      'bottom',
+      'chat',
+    );
+
+    const shown = revealSurface(occupiedPreferred, 'activity', 'right');
+
+    expect(shown.region).toBe('bottom');
+    expect(shown.arrangement.bottom.occupant).toBe('activity');
+  });
+
+  /**
+   * Left is an advanced placement: with Related and Tools both taken a
+   * surface joins its preferred region as a tab rather than opening the
+   * unused Left edge. Restoring `left` to `firstFreeDockRegion`'s fallback
+   * reds this.
+   */
+  test('revealSurface never falls back into an unused Left', () => {
+    const bothTaken = placeSurface(
       DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'fixture',
       'right',
     );
 
-    const shown = revealSurface(occupiedPreferred, 'activity', 'right');
+    const shown = revealSurface(bothTaken, 'activity', 'right');
 
-    expect(shown.region).toBe('left');
-    expect(shown.arrangement.left.occupant).toBe('activity');
+    expect(shown.region).toBe('right');
+    expect(shown.arrangement.right.panes).toEqual(['fixture', 'activity']);
+    expect(shown.arrangement.left.panes).toEqual([]);
   });
 
   test('revealSurface puts Activity in bottom when Chat occupies right', () => {

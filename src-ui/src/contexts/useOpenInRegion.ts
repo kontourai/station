@@ -16,8 +16,12 @@ import {
   type WorkspacePullRequestPaneKey,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import { useCallback } from 'react';
+import type { PaneOpener, PaneRelationTarget } from '../regions/pane-relations';
 import { REGION_IDS, type RegionArrangement } from '../regions/region-model';
-import { regionSurfaceOfPane } from '../regions/region-surface-panes';
+import {
+  forgetRegionPaneState,
+  regionSurfaceOfPane,
+} from '../regions/region-surface-panes';
 import { createBrowserPreviewPaneInstance } from '../workspace-panes/browserPreviewPaneInstance';
 import {
   createBrowserPreviewPaneStatePreparation,
@@ -30,9 +34,14 @@ import {
   writeFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneStateStorage';
 import {
+  type PaneRelationsValue,
+  usePaneRelations,
+} from './PaneRelationsContext';
+import {
   type OpenInRegionOptions,
   type OpenInRegionOutcome,
   type OpenInRegionRefusal,
+  type RegionModelValue,
   useRegionModel,
   useRegionModelOptional,
 } from './RegionModelContext';
@@ -79,10 +88,32 @@ export interface OpenSurfaceInRegionModel {
  * The model half the file-preview opener needs on top of that: the
  * arrangement, so a second click on a file already previewed somewhere
  * focuses that tab rather than minting a second nonce for the same path.
+ * A related open (`RelatedPaneOpen`) also reuses a transient preview in its
+ * tab slot (`replacePane`) and, on a phone, replaces the layer's pane
+ * (`phoneLayer`).
  */
 export interface OpenPaneInRegionModel extends OpenSurfaceInRegionModel {
   regions: RegionArrangement;
+  replacePane?: RegionModelValue['replacePane'];
+  phoneLayer?: RegionModelValue['phoneLayer'];
 }
+
+/**
+ * Who is opening a related pane, and the relations it is recorded in
+ * (docs/design/pane-relationships.md). Inactive relations (no verified
+ * Station) leave the opener's pre-relationship behaviour in place.
+ */
+export interface RelatedPaneOpen {
+  relations: PaneRelationsValue;
+  opener: PaneOpener;
+}
+
+/**
+ * What a related open did: `opened` a new occurrence, `focused` the exact
+ * target already open (a kept occurrence, or this opener's own preview of
+ * it), or `replaced` what this opener's one transient preview showed.
+ */
+export type RelatedOpenDisposition = 'opened' | 'focused' | 'replaced';
 
 /** Every pane id any region holds, in region order. */
 function placedPaneIds(regions: RegionArrangement): string[] {
@@ -186,10 +217,20 @@ export function openFilePreviewInRegion(
   model: OpenPaneInRegionModel,
   request: OpenFilePreviewRequest,
   options?: OpenInRegionOptions,
-): OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal } {
+  related?: RelatedPaneOpen,
+):
+  | (OpenInRegionOutcome & { disposition?: RelatedOpenDisposition })
+  | { ok: false; reason: OpenPaneRefusal } {
   const { projectId, projectSlug, path, lineRange, thread } = request;
   if (projectId === null || projectSlug === null)
     return { ok: false, reason: 'unsupplied' };
+  if (related && related.relations.stationId !== null)
+    return openRelatedFilePreview(
+      model,
+      { ...request, projectId, projectSlug },
+      related,
+      options,
+    );
   const state: WorkspaceFilePreviewPaneState = {
     version: '1.0',
     projectSlug,
@@ -229,21 +270,7 @@ export function openFilePreviewInRegion(
     // forces a re-render and the new range shows on the pane's next one.
     // Closing that needs the preview's stored state to be an observable
     // store rather than a localStorage read at render time.
-    const previous = readFilePreviewPaneState(storage, held);
-    const heldRange = previous?.lineRange;
-    const rangeChanged =
-      lineRange !== undefined &&
-      (heldRange?.start !== lineRange.start ||
-        heldRange?.end !== lineRange.end);
-    if (rangeChanged && previous)
-      writeFilePreviewPaneState(storage, held, { ...previous, lineRange });
-    const outcome = model.openSurfaceInRegion(held, {
-      ...options,
-      focusExisting: true,
-    });
-    if (!outcome.ok && rangeChanged && previous)
-      writeFilePreviewPaneState(storage, held, previous);
-    return outcome;
+    return revealFilePreview(model, held, lineRange, options);
   }
   const instance = createFilePreviewPaneInstance(state, projectId);
   if (!instance) return { ok: false, reason: 'no-surface' };
@@ -256,6 +283,159 @@ export function openFilePreviewInRegion(
   const outcome = openInRegion(model, instance, options);
   if (!outcome.ok) preparation.rollback();
   return outcome;
+}
+
+/**
+ * Reveal a placed preview, carrying a newly requested line range onto it —
+ * the reveal half `openFilePreviewInRegion` documents above, shared with the
+ * related path. A refused reveal restores the stored range.
+ */
+function revealFilePreview(
+  model: OpenSurfaceInRegionModel,
+  held: string,
+  lineRange: WorkspaceFilePreviewLineRange | undefined,
+  options?: OpenInRegionOptions,
+): OpenInRegionOutcome {
+  const storage = window.localStorage;
+  const previous = readFilePreviewPaneState(storage, held);
+  const heldRange = previous?.lineRange;
+  const rangeChanged =
+    lineRange !== undefined &&
+    (heldRange?.start !== lineRange.start || heldRange?.end !== lineRange.end);
+  if (rangeChanged && previous)
+    writeFilePreviewPaneState(storage, held, { ...previous, lineRange });
+  const outcome = model.openSurfaceInRegion(held, {
+    ...options,
+    focusExisting: true,
+  });
+  if (!outcome.ok && rangeChanged && previous)
+    writeFilePreviewPaneState(storage, held, previous);
+  return outcome;
+}
+
+function sameFileTarget(
+  a: PaneRelationTarget,
+  b: Extract<PaneRelationTarget, { kind: 'file' }>,
+): boolean {
+  return (
+    a.kind === 'file' &&
+    a.projectId === b.projectId &&
+    a.projectSlug === b.projectSlug &&
+    a.path === b.path &&
+    a.thread === b.thread
+  );
+}
+
+/**
+ * The related open (docs/design/pane-relationships.md), in order:
+ *
+ * 1. A KEPT occurrence of the exact target on this Station is focused; the
+ *    opener's transient preview is left as it is.
+ * 2. This opener selection's own transient preview of the same target is
+ *    focused (with the new line range).
+ * 3. A transient preview holding unsaved work is protected — it becomes a
+ *    kept tab — and a new preview opens beside it.
+ * 4. Otherwise the transient preview is REPLACED in its tab slot (on a phone,
+ *    the layer replaces its pane and keeps its one Back entry), or a new
+ *    preview opens when the opener has none.
+ *
+ * Previews of other Stations and unrelated (pre-relationship) previews are
+ * never matched: target identity includes the Station.
+ */
+function openRelatedFilePreview(
+  model: OpenPaneInRegionModel,
+  request: OpenFilePreviewRequest & { projectId: string; projectSlug: string },
+  { relations, opener }: RelatedPaneOpen,
+  options?: OpenInRegionOptions,
+):
+  | (OpenInRegionOutcome & { disposition?: RelatedOpenDisposition })
+  | { ok: false; reason: OpenPaneRefusal } {
+  const { projectId, projectSlug, path, lineRange, thread } = request;
+  const target = {
+    kind: 'file' as const,
+    projectId,
+    projectSlug,
+    path,
+    thread: thread ?? null,
+  };
+  const kept = relations.keptFor(target);
+  if (kept) {
+    const outcome = revealFilePreview(
+      model,
+      kept.instanceId,
+      lineRange,
+      options,
+    );
+    return outcome.ok ? { ...outcome, disposition: 'focused' } : outcome;
+  }
+  let transient = relations.transientFor(opener);
+  if (transient && sameFileTarget(transient.target, target)) {
+    const outcome = revealFilePreview(
+      model,
+      transient.instanceId,
+      lineRange,
+      options,
+    );
+    return outcome.ok ? { ...outcome, disposition: 'focused' } : outcome;
+  }
+  if (transient && relations.isProtected(transient.instanceId)) {
+    // Beginning an edit protects a preview: it stops being the reusable one.
+    relations.keep(transient.instanceId);
+    transient = undefined;
+  }
+  const state: WorkspaceFilePreviewPaneState = {
+    version: '1.0',
+    projectSlug,
+    path,
+    ...(lineRange ? { lineRange } : {}),
+    wrap: true,
+    ...(thread ? { thread } : {}),
+  };
+  const instance = createFilePreviewPaneInstance(state, projectId);
+  if (!instance) return { ok: false, reason: 'no-surface' };
+  const nextId = String(instance.instanceId);
+  const preparation = createFilePreviewPaneStatePreparation(
+    window.localStorage,
+    String(instance.stateKey),
+    state,
+  );
+  if (!preparation.prepare()) return { ok: false, reason: 'not-stored' };
+  const replacing = transient?.instanceId;
+  // On a phone the layer owns the replacement: it removes the tab it minted
+  // and keeps its one Back entry. Elsewhere the new preview takes the old
+  // one's tab slot.
+  const inPlace =
+    replacing !== undefined &&
+    model.replacePane !== undefined &&
+    model.phoneLayer?.surfaceId !== replacing;
+  // A destination opens in Related, beside its source; a phone, which has no
+  // side region, turns that into the layer over Chat (`openSurfaceInRegion`).
+  const outcome =
+    inPlace && model.replacePane
+      ? model.replacePane(replacing, nextId)
+      : openInRegion(model, instance, { region: 'right', ...options });
+  if (!outcome.ok) {
+    preparation.rollback();
+    return outcome;
+  }
+  relations.record({
+    instanceId: nextId,
+    stateKey: String(instance.stateKey),
+    opener,
+    target,
+  });
+  if (replacing !== undefined) {
+    relations.forget(replacing);
+    // An in-place replacement removed the old occurrence by construction, so
+    // its stored state has no reader left. A phone layer's replaced pane may
+    // still be a tab it did not mint; its state is left to the capacity
+    // reclaim, which never removes a referenced record.
+    if (inPlace) forgetRegionPaneState(replacing);
+  }
+  return {
+    ...outcome,
+    disposition: replacing === undefined ? 'opened' : 'replaced',
+  };
 }
 
 /** What a Browser pane is opened for: one server-owned session of one Project. */
@@ -362,14 +542,21 @@ export function useOpenInRegion(): (
  * No `region` is passed: the preview takes the file-preview surface's own
  * placement rule (its default dock region, or the first free one), the same
  * rule a chat link's preview takes. A pane does not choose a region.
+ *
+ * With an `opener` the open is RELATED (docs/design/pane-relationships.md):
+ * the opener's one transient preview is reused and an exact kept target is
+ * focused instead of duplicated.
  */
-export function useOpenFilePreviewInRegion():
+export function useOpenFilePreviewInRegion(
+  opener?: PaneOpener | null,
+):
   | ((
       request: OpenFilePreviewRequest,
       options?: OpenInRegionOptions,
     ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal })
   | null {
   const model = useRegionModelOptional();
+  const relations = usePaneRelations();
   const open = useCallback(
     (request: OpenFilePreviewRequest, options?: OpenInRegionOptions) =>
       // Non-null by the guard below: the callback is created unconditionally
@@ -378,8 +565,9 @@ export function useOpenFilePreviewInRegion():
         model as NonNullable<typeof model>,
         request,
         options,
+        opener ? { relations, opener } : undefined,
       ),
-    [model],
+    [model, opener, relations],
   );
   return model ? open : null;
 }

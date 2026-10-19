@@ -145,7 +145,7 @@ export function surfaceMayOccupy(
  * `preferred` one when that is empty, else the first empty region in the
  * fallback order.
  *
- * The fallback tries `right` BEFORE `bottom` (#2156). Only an EMPTY region
+ * The fallback tries `right` BEFORE `bottom` (#2156), and never `left`. Only an EMPTY region
  * is ever returned, so under either order nothing lands beside a pane that
  * is already there; what the order decides is which empty edge a surface
  * takes when its own default is taken. Bottom is Chat's by default, and an
@@ -164,7 +164,11 @@ export function firstFreeDockRegion(
   preferred: DockRegionId,
 ): DockRegionId | undefined {
   if (regionIsEmpty(arrangement[preferred])) return preferred;
-  return (['right', 'bottom', 'left'] as const).find((id) =>
+  // Left is an advanced placement (docs/design/pane-relationships.md): a
+  // surface lands there only when the user put it there or remembers it
+  // there (`preferred`), never as an automatic fallback. With Related and
+  // Tools both taken, the caller's `preferred` region gains a tab instead.
+  return (['right', 'bottom'] as const).find((id) =>
     regionIsEmpty(arrangement[id]),
   );
 }
@@ -430,6 +434,35 @@ export function removeRegionPane(
   surfaceId: string,
 ): RegionArrangement {
   return withoutRegionPane(arrangement, regionId, surfaceId, 'keep');
+}
+
+/**
+ * Replace one pane of a dock region with another IN PLACE: `next` takes
+ * `previous`'s tab slot and is selected, and the region is shown. The reuse a
+ * transient preview needs (docs/design/pane-relationships.md): opening a
+ * sibling from the same source swaps what the one preview tab shows rather
+ * than appending a tab. Returned unchanged when `previous` is not in the
+ * region, `next` is already placed anywhere, or `next` may not occupy it. A
+ * replacement is not a relocation, so the region keeps its maximize.
+ */
+export function replaceRegionPane(
+  arrangement: RegionArrangement,
+  regionId: DockRegionId,
+  previous: string,
+  next: string,
+): RegionArrangement {
+  const region = arrangement[regionId];
+  if (
+    !region.panes.includes(previous) ||
+    occupiedRegion(arrangement, next) !== undefined ||
+    !surfaceMayOccupy(next, regionId)
+  )
+    return arrangement;
+  return updateRegion(arrangement, regionId, {
+    panes: region.panes.map((pane) => (pane === previous ? next : pane)),
+    occupant: next,
+    visible: true,
+  });
 }
 
 /**

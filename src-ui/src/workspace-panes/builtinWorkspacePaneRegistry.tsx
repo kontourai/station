@@ -65,6 +65,7 @@ import {
   type ReactNode,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useState,
@@ -93,6 +94,8 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
+import { usePaneRelations } from '../contexts/PaneRelationsContext';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import {
   useOpenFilePreviewInRegion,
   useOpenPullRequestInRegion,
@@ -116,6 +119,11 @@ import {
 } from './filePreviewPaneStateStorage';
 import type { OpenFilePreviewIntent } from './openFilePreviewIntent';
 import { ProjectTaskRoomConversation } from './ProjectTaskRoomConversation';
+import {
+  isWrongStationRelation,
+  RelatedPaneStrip,
+  RelatedPaneWrongStation,
+} from './RelatedPaneStrip';
 import { TaskRoomEditorPane } from './TaskRoomEditorPane';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
@@ -358,7 +366,18 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
   // selected the row and opened nothing. The region opener places the
   // preview as a sibling tab instead. Null in a layout mount, where the
   // host route below is still the one that works.
-  const openPreviewInRegion = useOpenFilePreviewInRegion();
+  // A related open: the Files pane owns one reusable preview, the way a
+  // file tree's single click previews and does not pile up tabs.
+  const filesOwner = useContext(UnsavedGuardOwnerContext);
+  const filesOpener = useMemo(
+    () => ({
+      occurrenceId: filesOwner ?? 'coding:file-browser',
+      selection: 'files',
+      label: 'Files',
+    }),
+    [filesOwner],
+  );
+  const openPreviewInRegion = useOpenFilePreviewInRegion(filesOpener);
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const workingDir = codingWorkingDirectory(
@@ -710,6 +729,8 @@ function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+  const relations = usePaneRelations();
+  const relation = relations.relationOf(String(instance.instanceId));
   const identity = useResolvedPaneIdentity(instance, false);
   const stateKey = instance.stateKey;
   // SUBSCRIBED, not read at render time (#2085). The read was never stale —
@@ -725,6 +746,10 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
     [stateKey],
   );
   const state = useSyncExternalStore(subscribeFilePreviewPaneState, readState);
+  // A preview opened on another Station names that Station's file; it is
+  // never read against this one.
+  if (relation && isWrongStationRelation(relation, relations.stationId))
+    return <RelatedPaneWrongStation label={relation.opener.label} />;
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (
@@ -738,17 +763,20 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       />
     );
   return (
-    <Suspense
-      fallback={
-        <SkeletonBlock count={3} label="Loading bounded file preview" />
-      }
-    >
-      <LazyFilePreviewPane
-        projectSlug={identity.project.slug}
-        stateKey={instance.stateKey}
-        state={state}
-      />
-    </Suspense>
+    <div className="related-pane">
+      <RelatedPaneStrip instanceId={String(instance.instanceId)} />
+      <Suspense
+        fallback={
+          <SkeletonBlock count={3} label="Loading bounded file preview" />
+        }
+      >
+        <LazyFilePreviewPane
+          projectSlug={identity.project.slug}
+          stateKey={instance.stateKey}
+          state={state}
+        />
+      </Suspense>
+    </div>
   );
 }
 

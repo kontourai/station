@@ -52,6 +52,7 @@ import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
+import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
 import { RegionModelProvider } from './contexts/RegionModelContext';
@@ -321,8 +322,10 @@ function renderApp(): void {
                                                     }
                                                   >
                                                     <RegionModelProvider>
-                                                      <BrandingThemeBridge />
-                                                      <App />
+                                                      <PaneRelationsProvider>
+                                                        <BrandingThemeBridge />
+                                                        <App />
+                                                      </PaneRelationsProvider>
                                                     </RegionModelProvider>
                                                     <NotificationContainer />
                                                   </LocaleProvider>

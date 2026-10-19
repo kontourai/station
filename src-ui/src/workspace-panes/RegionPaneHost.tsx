@@ -20,9 +20,11 @@ import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
+import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { WORKSPACE_CHAT_OPENER } from '../regions/pane-opener';
 import { reportRegionClearance } from '../regions/region-clearance';
 import {
   type DockRegionId,
@@ -512,6 +514,19 @@ export function RegionPaneHost({
   chatPaneFailureContext?: () => WorkspacePaneFailureContext | undefined;
 }) {
   const model = useRegionModelOptional();
+  const relations = usePaneRelations();
+  // The layer's way back names the conversation its pane was opened from:
+  // that is where the layer returns (it opens over Chat).
+  const layerRelation = model?.phoneLayer
+    ? relations.relationOf(model.phoneLayer.surfaceId)
+    : undefined;
+  const layerBackLabel =
+    layerRelation &&
+    layerRelation.stationId === relations.stationId &&
+    (layerRelation.opener.occurrenceId === 'chat' ||
+      layerRelation.opener.occurrenceId === WORKSPACE_CHAT_OPENER)
+      ? layerRelation.opener.label
+      : 'Chat';
   const region = regionId && model ? model.regions[regionId] : undefined;
   const regionPanes = region?.panes;
   // The panes with a built-in pane entry, in the region's tab order; an id
@@ -779,6 +794,7 @@ export function RegionPaneHost({
                 ? model.closePhoneLayer
                 : undefined
             }
+            backLabel={layerBackLabel}
           />
           {chooserAnchor && chooserRegion ? (
             <RegionEmptyChooser
