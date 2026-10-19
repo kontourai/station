@@ -129,10 +129,17 @@ property, not a guarantee of every browser's SSE/toast experience.
 ### Focus, preferences, and escalation
 
 Focus applies within the same principal; unbound owner-device identities are
-grouped, while tailnet-bound people remain distinct. A focused document must
+grouped, while tailnet-bound people remain distinct. A device whose credential
+was minted with home-possession (the desktop app's local grant, the local
+browser UI's bootstrap) reads as the operator for both its focus reports and
+delivery, so its focus quiets the operator's other surfaces. Nothing yet ties a
+tailnet identity to the operator, so the owner's own tailnet-bound phone stays
+a separate person here. A focused document must
 also have its own live event stream. Another tab's stream cannot vouch for it.
 Stream leases expire after 90 seconds without successful keepalive writes; focus
-reports have a 120-second lease. There are caps of 32 documents per device,
+reports have a 120-second lease. The client renews a focused report every 60
+seconds while there was input in the last two minutes or the document shows a
+chat whose turn is running. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 
@@ -144,6 +151,11 @@ minimum urgency, silent interrupt, current focus, read/dismiss state or expiry
 can still suppress it. Restart loses timers, and eviction beyond the router's
 500 tracked records cancels the oldest pending escalation. Channel `retry`
 outcomes currently have no general retry scheduler consuming them.
+
+Turn-completion records carry an envelope (system source, the session's
+readers, a session target). A client marks one read while its chat is on screen
+in a focused window, or when it is opened, which cancels a pending escalation
+and retracts alerts already sent for it.
 
 The focus check also has a transport limit: successful writes do not prove a
 half-open socket is being read. A closed tab stops reporting focus, bounding its

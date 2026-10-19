@@ -419,7 +419,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   the session read model once per reading principal: each phone reads with
   the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
-  device itself), so a card never holds a session that credential may not
+  operator for a credential minted with home-possession, else the device
+  itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below
   that gets one final empty card and then nothing. A scope change requests
