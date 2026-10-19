@@ -161,9 +161,6 @@ importers:
       '@kontourai/station-shared':
         specifier: ^0.10.0
         version: link:packages/shared
-      '@kontourai/station-supervisor':
-        specifier: ^0.1.0
-        version: link:packages/supervisor
       '@kontourai/surface':
         specifier: 6.1.0
         version: 6.1.0(supports-color@7.2.0)
@@ -390,6 +387,9 @@ importers:
       '@kontourai/console':
         specifier: ^2.8.0
         version: 2.8.0(supports-color@7.2.0)
+      '@kontourai/station-supervisor':
+        specifier: ^0.1.0
+        version: link:packages/supervisor
       '@noble/curves':
         specifier: 2.4.0
         version: 2.4.0

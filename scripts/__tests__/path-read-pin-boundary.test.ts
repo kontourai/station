@@ -109,6 +109,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
+  // Reads the supervisor control token from its isolated temp home; its built
+  // bundles are children, not imports. The supervisor-link and protocol
+  // imports select it for changes.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
   // Reads the receipt its child Playwright run writes into a temp root
   // (#577), never repository source. Its imports select it for changes.
   'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
