@@ -1,0 +1,7 @@
+{
+  "revision": "3f87100e1c94fa38bde5fe753ad2fd4e458137dc",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed Turn navigation after the second review round: the preview carries data-escape-owner while shown so shouldIgnoreShortcut defers app Escape shortcuts (pinned under the real KeyboardShortcutsProvider with app.escapeUp registered, focus on body); only Previous/Next announce, clear-then-set across one frame, cleared on activeSession.id or hasOlderMessages change (ChatMessageList stepToTurn and its effect). Each fault-injected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
