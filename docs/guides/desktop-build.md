@@ -34,7 +34,8 @@ Updating has three separate steps:
    installed service or another server keeps running.
 
    A downloaded update survives quitting. Shortly after the next start (off
-   the window's startup path; the state reads idle meanwhile) the app offers
+   the window's startup path; the state reads checking meanwhile, and a Check
+   pressed then is refused) the app offers
    it again if the release is still newer than the app and the package passes
    the updater's signature check. That check requires the signature to name
    the package's version. macOS updater archives are signed that way only
