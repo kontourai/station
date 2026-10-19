@@ -130,8 +130,15 @@ async function runProducersCommand(parsed: ParsedCoreArgs): Promise<void> {
         }),
       },
     )) as { producer: ProducerView; token: string };
-    if (descriptor !== undefined)
-      writeFileSync(descriptor, `${data.token}\n`, { encoding: 'utf8' });
+    if (descriptor !== undefined) {
+      try {
+        writeFileSync(descriptor, `${data.token}\n`, { encoding: 'utf8' });
+      } catch (error) {
+        throw new Error(
+          `Telemetry producer ${data.producer.name} was created, but its token could not be written to ${tokenFile} (${(error as NodeJS.ErrnoException).code ?? 'error'}). Revoke it with \`station telemetry producers revoke ${data.producer.name}\` and create it again.`,
+        );
+      }
+    }
   } catch (error) {
     if (descriptor !== undefined) {
       closeSync(descriptor);

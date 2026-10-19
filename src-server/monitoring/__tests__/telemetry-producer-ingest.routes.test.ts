@@ -543,6 +543,24 @@ describe('telemetry producer admission edges (review round 1)', () => {
     ).toBe(200);
   });
 
+  test('a refused known token does not reset the failure budget for guessers', async () => {
+    const h = harness();
+    const expired = await h.create('old', { expiresInDays: 1 });
+    h.advance(DAY_MS + 1);
+    const guess = (index: number) =>
+      h.send('/v1/agent-events', {
+        token: `sti_${String(index).padStart(43, 'g')}`,
+        body: agentEvent(),
+      });
+    for (let index = 0; index < 10; index += 1)
+      expect((await guess(index)).status).toBe(401);
+    expect(
+      (await h.send('/v1/agent-events', { token: expired, body: agentEvent() }))
+        .status,
+    ).toBe(403);
+    expect((await guess(10)).status).toBe(429);
+  });
+
   test('a token in the query string is refused even with a valid bearer', async () => {
     const h = harness();
     const token = await h.create('flow-agents');

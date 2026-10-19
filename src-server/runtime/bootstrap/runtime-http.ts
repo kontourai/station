@@ -606,10 +606,10 @@ async function admitTelemetryProducerRequest(call: {
     limiter.recordFailure(limiterKey);
     return refused(401, 'authentication_required', 'credential_invalid');
   }
-  // A recognized token is not a guess. Refusing it for expiry or position
-  // must not lock out the other producers on this address, so it clears the
-  // budget like a recognized-but-refused paired credential does.
-  limiter.clear(limiterKey);
+  // A recognized token is not a guess: refusing it for expiry or position
+  // records no failure, so it cannot lock out the other producers on this
+  // address. Only an admitted token clears the budget; an expired token is
+  // kept until revoked, and must not be a standing reset for guessers.
   if (producers.isExpired(producer))
     return refused(
       403,
@@ -625,6 +625,7 @@ async function admitTelemetryProducerRequest(call: {
       'telemetry_producer_remote_not_allowed',
       'telemetry_producer_remote_not_allowed',
     );
+  limiter.clear(limiterKey);
   bindAdmittedTelemetryProducer(c, producer.name);
   // The existing mutation budget keys on this principal, so a producer's
   // event rate is bounded like any other credential's.
