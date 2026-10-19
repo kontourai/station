@@ -52,6 +52,8 @@ Configure these environment variables for the built entrypoint:
 | `STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE` | Owned Unix regular file, private permissions, containing one `sto_` credential |
 | `STATION_TELEMETRY_BROKER_HOST` | Listen address, default `127.0.0.1` |
 | `STATION_TELEMETRY_BROKER_PORT` | Nonprivileged port, default `43891` |
+| `STATION_TELEMETRY_BROKER_TRUSTED_PROXY` | Optional comma-separated IPv4/IPv6 CIDRs (at most 128); unset trusts no proxy. Empty entries, bare IPs, zone IDs and invalid masks refuse startup |
+| `STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER` | Only `cf-connecting-ip` is allowed (also the default); any other value refuses startup, even without trusted CIDRs |
 
 Run `node packages/telemetry-broker/dist/main.mjs`. The bundled artifact includes
 its JavaScript dependencies. The Unix secret-file profile rejects symlinks,
@@ -83,6 +85,7 @@ described under [Lite observations](#lite-observations).
 | Route | Credential and outcome |
 | --- | --- |
 | `GET /health/live` | Public process liveness and inventory revision; does not prove storage readiness |
+| `GET /v1/operator/diagnostics` | Operator Bearer key; process-lifetime `invalidClientIpHeaders` counter, no request values |
 | `GET /v1/operator/storage` | Operator Bearer key; checks durability, migration, logged tables, columns, defaults, keys, constraints and index |
 | `POST /v1/operator/sources` | Operator Bearer key; JSON `{id, label, credentialHash}` provisions a UUID source and a lowercase SHA-256 key digest |
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
@@ -119,7 +122,8 @@ while holding DDL locks through the operation.
 Authenticated routes, anonymous lite ingest, and public page reads have separate
 8-active-request budgets and token buckets of 60 requests, restoring one per second.
 Public aggregate cache misses have their own budget; successful fills are reused
-for the rest of the UTC day, including concurrent reads, without storage work. Rate exhaustion returns 429
+for at most 60 seconds, reset at UTC midnight, including concurrent reads without
+storage work. Rate exhaustion returns 429
 with `Retry-After`; concurrency exhaustion returns 503. Process liveness remains
 available. Bodies are capped at 128 KiB. The standalone server permits 64
 connections and sets 5-second socket/request/header timeouts.
@@ -169,23 +173,88 @@ command. It also checks that a probe inserts no source, observation or commit,
 and that foreign and revoked keys cannot probe. Successful runs remove only their owned database; failed runs retain
 it and report its name for diagnosis.
 
-The runner does not certify Station execution, persistent deployment, backup
+The runner includes built-entrypoint trusted-proxy startup refusals and scans
+all database rows plus captured logs for a trusted `CF-Connecting-IP` sentinel.
+It does not certify Station execution, persistent deployment, backup
 restore or native shells. Those remain separate from focused HTTP tests and
 live-store qualification.
 
+### Built Station sender diagnostic
+
+`node packages/telemetry-broker/qualify-sender.mjs` is a separate macOS diagnostic
+against tmpfs PostgreSQL 16, not part of receiver-only qualification. Set
+`STATION_TELEMETRY_QUALIFICATION_DATABASE_URL`, build the receiver from a clean
+commit, and preserve that `dist` directory before testing a scratch sender merge.
+`STATION_TELEMETRY_RECEIVER_DIST` can select that frozen directory;
+`STATION_TELEMETRY_SENDER_SERVER` selects the built Station server (default
+`dist-server/command-station.js`). Missing prerequisites fail.
+
+If #3791 is not on main, use an uncommitted `git merge --no-commit --no-ff
+origin/feat/telemetry-lite-ping` in the isolated lane; resolve documentation
+conflicts for the diagnostic only. Temporarily replace the root package version
+with a non-SemVer fixture such as `receiver-interop-custom`, run
+`npm run build:server`, restore that version, then abort the scratch merge.
+Do not commit the merge or claim its dirty metadata fixture as release evidence.
+The sender build needs the managed dependencies already installed in that lane.
+
+The runner boots a real built Station twice in an isolated home and instance.
+It stops the first process before moving its generated accumulator to yesterday
+and marking that prior build's channel unavailable (`unknown`). The next real
+sender serializes it; invalid build version maps to `custom`, while distribution
+and layouts retain `unknown`. A loopback relay captures exact request/response
+bodies and supplies a trusted CF header. The receiver is a real built Unix
+entrypoint with its own database. The runner checks 202 acceptance for both daily pings and tier-lowered/privacy
+feedback, operator feedback counts, finalized ping marginals and contributor-hash
+erasure.
+
+Station runs under `sandbox-exec` with outbound networking limited to loopback.
+Because macOS refuses setuid `/bin/ps` there, the fixture uses a private,
+unprivileged ad-hoc-signed copy for the real process-birth lock probe. The runner
+retains owned failed homes/databases for diagnosis and removes successful ones.
+The outer tmpfs PostgreSQL container remains the caller's cleanup responsibility.
+This establishes built sender/receiver interoperability for daily pings and feedback;
+Cloudflare, container images, persistent deployment and native shells remain
+separate acceptance work.
+
 ## Lite observations
 
-`POST /v1/lite/:source` accepts exactly one `StationDailyPing` from
+`POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
 `parseStationDailyPing`. It requires no installation credential. Unknown fields,
-unknown nested fields, excessive or duplicate array entries, unknown catalog
-IDs/versions, invalid enum/count values, and a channel different from the
+unknown nested fields, excessive or duplicate array entries, unlisted registry
+IDs or catalog-policy versions, invalid enum/count values, and a channel different from the
 source's configured channel are refused with 400. Bodies, including streaming
 bodies, are capped at 16 KiB. Responses never echo a rejected value. A committed
-202 response is `{ "inserted": 1 }`, or `{ "inserted": 0 }` for a retained
+202 response is always `{ "accepted": true }`, including a retained
 source/event UUID replay with identical content. A changed payload under the
 same UUID returns 409. Object order, array-set order and UUID letter case do
 not create separate retries. Dedupe ends when raw rows expire.
+
+Feedback uses the shared `TelemetryFeedback` contract and strict
+`parseTelemetryFeedback` parser. Its only fields are `publisher`, `action`
+(`tier-lowered` or `plugin-uninstalled`) and a fixed reason enum (`privacy`,
+`too-much-data`, `performance`, `not-useful`, `unexpected`, `other`).
+`skip` dismisses the sender's reason prompt locally and is rejected on the wire.
+There is no free text, installation/event ID or sender timestamp. The publisher
+must equal the URL source's configured publisher. Daily pings retain their
+existing channel/catalog validation; every other shape returns 400.
+
+Migration 7 adds permanent `lite_feedback` rows containing source, publisher,
+action, reason, receiver UTC day and a daily contributor-key hash used only for
+dedupe. The first feedback per publisher/action/day/key wins, even across source
+aliases or changed reasons. Both new rows and committed retries return the
+same 202 `{ "accepted": true }` body, without disclosing dedupe state. Feedback uses the same body/admission limits,
+trusted-proxy client key, transaction durability and shared Lite row/storage
+ceiling as daily pings. `lite_capacity.pings` now counts both retained Lite row
+types. The existing closed-day erasure pass clears feedback hashes in bounded
+batches even if ping-hash erasure fails. Retention keeps exactly the configured
+number of UTC days including today (default 90: today and the prior 89 days). No IP or User-Agent is persisted.
+Daily salts and receiver restarts limit contributor identity; these counts do
+not measure unique people or installations.
+
+Feedback is available only in the operator views described below. It is excluded
+from public aggregates, the public dashboard and third-party publisher APIs in
+this PR; no feedback publication/noise mechanism is defined here.
 
 The operator provisions a **public per-publisher/per-channel identifier**, not
 a secret embedded in a binary. Example operator-authenticated request body for
@@ -197,18 +266,33 @@ a secret embedded in a binary. Example operator-authenticated request body for
   "publisher": "kontour",
   "channel": "stable",
   "registryIds": [],
-  "releaseVersions": ["1.2.3"]
+  "releaseVersions": ["1.2.3"],
+  "versionPolicy": "semver"
 }
 ```
 
-The five fields are required. `publisher` uses the foundation's
+The original five fields are required; `versionPolicy` is optional and defaults
+to `catalog`. Migration 8 preserves this default for existing sources.
+`catalog` accepts only listed `releaseVersions` plus `custom`. `semver` accepts
+any valid SemVer up to 64 characters plus `custom`, using the sender's shared
+validator, including prerelease/build metadata. Use it for official senders whose
+versions are not pre-provisioned. Invalid SemVer still returns 400.
+The operator exact view retains every admitted version. Public and publisher
+publications use only the independently configured `releaseVersions` for a
+`semver` source; they never derive support from observed versions or add a
+`custom` version cell for that source. An empty SemVer catalog omits the version
+dimension unless another source for the same publisher configures it.
+ `publisher` uses the foundation's
 `TelemetryPublisherId`: `kontour`, `operator` or `publisher:<public publisher id>`.
 Publisher IDs are bounded to 128 characters and retain scoped IDs such as
 `publisher:@scope/plugin`. Source IDs are bounded public slugs. The catalogs each
 hold at most 1,000 entries. The operator must verify these are **public registry
 IDs and public release versions**, rather than accepting arbitrary client
-strings. Empty catalogs admit only contract sentinels (`custom` version,
-`none`/`custom` distribution, no public plugins). To change a catalog, provision
+strings. Under the default `catalog` policy, empty catalogs admit only contract
+sentinels (`custom` version,
+`none`/`custom`/`unknown` distribution, no public plugins). Sources may select
+channel `unknown` for a sender without channel metadata; channel equality still
+applies. `layouts_customized` also admits `unknown`, never a guessed boolean. To change a catalog, provision
 a new source and revoke the old one with
 `DELETE /v1/operator/lite/sources/:source`; existing IDs cannot be repurposed.
 Only enabled sources ingest. The trusted mapping, never the request body,
@@ -229,16 +313,37 @@ recently used entry is evicted at capacity, so new clients remain admissible;
 eviction can reset an old client's attempt budget, but never changes its daily
 contributor hash. Keys use HMAC-SHA256 with a random process-only salt, replaced
 on the next UTC-day request. The salt is never stored. Raw IPs and user agents
-never enter SQL, logs, errors, marginals or receipts. Forwarded-IP headers are
-ignored. Behind a proxy all clients share one key; NAT also merges contributors.
+never enter SQL, logs, errors, marginals or receipts. By default forwarded-IP
+headers are ignored: without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, **all
+clients behind cloudflared share the connector's key**. NAT also merges contributors.
+
+For a Cloudflare Tunnel, trust only the connector's socket CIDR (ideally a /32
+or /128), and keep direct access to the receiver private. Startup rejects /0,
+IPv4 ranges wider than /24, IPv6 ranges wider than /64, host bits set in a
+network, and surrounding whitespace (including after a comma).
+From any trusted-proxy socket, the receiver itself returns 404 except for
+`POST /v1/lite/:source`, `GET /v1/public/aggregates`, `GET /public/*` and
+`GET /health/live`. This applies even with valid credentials or no client-IP
+header. Operator, publisher and Full routes remain accessible only through
+non-proxy peers such as loopback or the private tailnet. A trusted peer's
+`CF-Connecting-IP` must contain exactly one IPv4 or IPv6 address. Lists, ports,
+brackets, zone IDs and garbage fall back to the socket peer and increment the
+operator diagnostic counter. A missing header also uses the peer. Untrusted
+peers cannot select keys with any header and do not increment that counter.
+IPv4-mapped IPv6 peers match IPv4 trusted CIDRs. The selected transient address
+feeds both existing HMAC groupings; no raw address is retained or echoed.
+`X-Forwarded-For` is always ignored. See the [single-host tunnel
+recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel).
 
 Run one receiver process. Restart changes the salt and can count the same
 network again that day, inflating distinct contributor counts; multiple
 processes have independent salts and limits. This is not a unique-person count
 or a Sybil defense. Network grouping provides no authenticity; published support
-is fixed and has no contributor threshold to pad. A proxy-aware deployment needs a separately reviewed trusted
-ingress boundary, with access logging disabled/sanitized there. This package
-does not qualify infrastructure logging. OHTTP and DAP/Prio remain deferred.
+is fixed and has no contributor threshold to pad. The trusted connector must
+supply Cloudflare's header faithfully; do not trust an entire container/host
+network or permit other workloads to impersonate it. Disable or sanitize
+infrastructure access/error logging. This package does not qualify Cloudflare,
+connector or host logging. OHTTP and DAP/Prio remain deferred.
 
 ### Storage and activity estimates
 
@@ -306,6 +411,15 @@ all publishers and all dimensions from finalized `lite_marginals`, with exact
 integer strings for `pings` and `contributors`. They refuse more than 10,000
 rows with 422 rather than truncate. No exact route is linked from the dashboard.
 
+Both operator responses additionally include `feedback` rows with `period`,
+`publisher`, `action`, `reason` and exact integer-string `count`. Feedback covers
+the configured retained UTC-day window (default 90 days: today plus the prior
+89 days), including the current partial day/week;
+`feedbackWindow` names this separate window. Weekly counts sum the deduplicated
+daily rows. Feedback remains queryable after daily contributor hashes are erased,
+and disappears when retention deletes its rows. The same 10,000-row refusal
+applies independently to feedback.
+
 Daily `contributors` counts distinct daily IPv4/IPv6-/48 network hashes per
 value, not people or installations. Weekly `contributors` is the **sum of daily
 distinct contributors (contributor-days)**. Daily salts deliberately prevent
@@ -326,7 +440,9 @@ customization fields remain available only to the exact operator view.
 
 The public domain is fixed independently of traffic: every enum value, both
 boolean values, empty-set `none`, operator-configured `releaseVersions` and
-`registryIds`, plus `custom` for version/distribution and `none` for distribution.
+`registryIds`, plus `custom` for catalog-policy version/distribution and `none`
+for distribution. SemVer-policy versions contribute only their configured
+catalog entries; an empty catalog contributes no public version cells.
 All values always receive noise, including true zero. **There is no true-count
 k pre-filter.** Nine attacker networks plus a victim cannot change the release
 shape. Each publisher gets its own configured catalogs; no other publisher's

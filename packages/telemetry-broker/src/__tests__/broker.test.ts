@@ -6,8 +6,10 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
 import { BrokerError } from '../broker-error.js';
+import { clientAddressPolicy } from '../client-address.js';
 import { LiteRepository } from '../lite-store.js';
 import type { ProductRepository } from '../store.js';
+import { socketBindings } from './lite-fixture.js';
 
 const operatorKey = `sto_${'a'.repeat(43)}`;
 const sourceKey = `stp_${'b'.repeat(43)}`;
@@ -487,4 +489,68 @@ test('wording-only acknowledgement revision does not alter broker wire admission
     ).status,
   ).toBe(400);
   expect(store.ingest).toHaveBeenCalledTimes(1);
+});
+
+test('trusted tunnel peers receive 404 for private routes even with valid credentials; direct peers retain access', async () => {
+  store.receipt.mockResolvedValue(commit);
+  const app = createProductBroker(
+    store,
+    operatorKey,
+    clientAddressPolicy('192.0.2.2/32'),
+  );
+  const routes: [string, RequestInit, number][] = [
+    [
+      '/v1/operator/storage',
+      { headers: { authorization: `Bearer ${operatorKey}` } },
+      200,
+    ],
+    [
+      '/v1/operator/diagnostics',
+      { headers: { authorization: `Bearer ${operatorKey}` } },
+      200,
+    ],
+    ['/v1/product/events', post(batch()), 202],
+    [
+      '/v1/product/probes',
+      post({
+        protocol: 'station-product-probe/v1',
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+      }),
+      200,
+    ],
+    [
+      '/v1/product/receipts/11111111-2222-4333-8444-555555555555',
+      { headers: { 'x-api-key': sourceKey } },
+      200,
+    ],
+  ];
+  for (const [path, init, directStatus] of routes) {
+    expect(
+      (await app.request(path, init, socketBindings('192.0.2.2'))).status,
+      path,
+    ).toBe(404);
+    expect(
+      (await app.request(path, init, socketBindings('100.64.0.1'))).status,
+      path,
+    ).toBe(directStatus);
+  }
+  for (const path of ['/health/live', '/v1/public/aggregates', '/public/'])
+    expect(
+      (await app.request(path, { method: 'POST' }, socketBindings('192.0.2.2')))
+        .status,
+    ).toBe(404);
+  expect(
+    (await app.request('/health/live', undefined, socketBindings('192.0.2.2')))
+      .status,
+  ).toBe(200);
+  // Hono normally routes HEAD through GET. The tunnel boundary permits GET only.
+  expect(
+    (
+      await app.request(
+        '/health/live',
+        { method: 'HEAD' },
+        socketBindings('192.0.2.2'),
+      )
+    ).status,
+  ).toBe(404);
 });

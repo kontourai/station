@@ -31,6 +31,7 @@ import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
@@ -55,6 +56,8 @@ import {
 } from '@kontourai/station-contracts/session-work-item';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
+import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
   exactProcessIdentity,
   probeExactProcessIdentity,
@@ -206,6 +209,7 @@ import {
   type DelegationResultStore,
   migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
+import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
   createNativeInvocationRuns,
   type NativeInvocationRunReader,
@@ -1606,6 +1610,20 @@ function snapshotEvent(
   const payload = event.payload as unknown as Record<string, unknown>;
   let outputCut = false;
   let snapshotPayload = payload;
+  // Only Station-stamped definition metadata can retain a bounded App envelope.
+  // Server result metadata cannot expand ordinary history windows.
+  const result = payload.output;
+  if (
+    event.method === 'tool.completed' &&
+    payload.status === 'success' &&
+    !payload.error &&
+    typeof payload.toolName === 'string' &&
+    parseMcpToolRef(payload.toolName) &&
+    typeof payload.mcpAppResourceUri === 'string' &&
+    isSuccessfulMcpResult(result) &&
+    Buffer.byteLength(JSON.stringify(payload)) <= maxBytes
+  )
+    return event;
   if (event.method === 'tool.completed') {
     // archive#3427: an empty-string error is a tool that failed with no
     // message — a fact about the run, not the absence of one — so it is
@@ -1669,8 +1687,18 @@ function snapshotEvent(
               : JSON.stringify(payload.output),
           );
     outputCut = Boolean(error?.cut) || Boolean(output?.cut);
+    // Page references are bounded display metadata, like attachment refs.
+    // Keep them outside the ordinary 84-character tool-output excerpt.
+    const pageReference =
+      typeof payload.toolName === 'string' &&
+      /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
+        payload.toolName,
+      )
+        ? htmlReplyReference(payload.output)
+        : undefined;
     snapshotPayload = {
       ...payload,
+      ...(pageReference ? { htmlReply: pageReference } : {}),
       ...(error ? { error: error.text } : {}),
       ...(output ? { output: output.text } : {}),
     };
@@ -1954,6 +1982,7 @@ export interface TurnActivitySeed {
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
+  private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
   /** Persisted with this store so issued cursors survive a Station restart. */
   private readonly declaredOutputCursorKey: Buffer;
@@ -2015,6 +2044,14 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
+
+  /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
+  setMcpAppResourceResolver(
+    resolve: (toolRef: string) => string | undefined,
+  ): void {
+    this.mcpAppResourceResolver = resolve;
+  }
 
   constructor(
     dbPath: string,
@@ -2282,6 +2319,7 @@ export class EventStore {
       this.nativeInvocationRuns = this.composeNativeInvocationRuns();
       this.initializeNativeInvocationRuns();
       this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
+      this.htmlReplyPages();
       this.voiceTurnRuns = this.composeVoiceTurnRuns();
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
@@ -3391,6 +3429,29 @@ export class EventStore {
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
+    // Never accept a provider/import's claim to these Station-owned fields.
+    if (projectedEvent.method === 'tool.completed') {
+      delete projectedEvent.htmlReply;
+      delete projectedEvent.mcpAppResourceUri;
+      const replay = this.db
+        .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
+        .get(projectedEvent.eventId) as { payload: string } | undefined;
+      const storedStamp = replay
+        ? JSON.parse(replay.payload).mcpAppResourceUri
+        : undefined;
+      if (replay && typeof storedStamp === 'string')
+        projectedEvent.mcpAppResourceUri = storedStamp;
+      if (
+        !replay &&
+        projectedEvent.status === 'success' &&
+        !projectedEvent.error &&
+        !projectedEvent.outputReceipt?.truncated &&
+        isSuccessfulMcpResult(projectedEvent.output)
+      ) {
+        const uri = this.mcpAppResourceResolver?.(projectedEvent.toolName);
+        if (uri) projectedEvent.mcpAppResourceUri = uri;
+      }
+    }
     this.assertOwnershipImmutable(projectedEvent);
     let persisted: PersistedIngressForm;
     try {
@@ -10945,6 +11006,15 @@ export class EventStore {
     });
   }
 
+  htmlReplyPages() {
+    if (!this.htmlReplyPageStore)
+      this.htmlReplyPageStore = createHtmlReplyPages(
+        this.db,
+        (sessionId) => this.readSessionByThread(sessionId) !== undefined,
+      );
+    return this.htmlReplyPageStore;
+  }
+
   /** Deliberate composition seam; SQLite coordination remains private. */
   createSkillExperienceSnapshots(): SkillExperienceSnapshots {
     if (!this.skillExperienceSnapshots)
@@ -12726,6 +12796,7 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.htmlReplyPages().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db

@@ -1,0 +1,9 @@
+{
+  "revision": "d52540ef4a957d9fbca17942570fc9549388b6b9",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Re-reviewed final raw-output selection through production projectRuntimeEventsToMessages and conversationPartToContentParts into MessageContent and AppBridge. The mapper now preserves truncation evidence; truncated results cannot mount. Registered the transcript, identity reader, mapper and bounded EventStore evidence owners. Focused seam tests passed; fault injection removed frame mounting and produced output_limit after saved-result preservation was reverted. Real provider and interaction capabilities remain unqualified.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx","src-ui/src/components/chat/TranscriptMCPApp.tsx","src-ui/src/components/chat/mcp-app-tool-ref.ts","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/__tests__/event-store-mcp-app-results.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-reviewed final ToolCallDisplay delta selecting raw output for a sandboxed transcript app while preserving the diagnostic result string for tool details. No approval controls, grant identities, request settlement or denial status change; app actions remain unavailable.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

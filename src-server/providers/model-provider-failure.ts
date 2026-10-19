@@ -1,3 +1,4 @@
+import type { ProviderFailureKind } from '@kontourai/station-contracts/provider-failure';
 import { APICallError, RetryError } from 'ai';
 import { outwardTransportError } from '../utils/outward-error.js';
 
@@ -42,13 +43,43 @@ export function modelProviderErrorStatus(error: unknown): number | undefined {
     : undefined;
 }
 
+/** Only a qualified upstream HTTP 429 and its bounded structured body can prove quota exhaustion. */
+export function modelProviderFailureKind(error: unknown): ProviderFailureKind {
+  const providerError = findModelProviderError(error);
+  const status = modelProviderErrorStatus(providerError);
+  if (status === 401 || status === 403) return 'auth';
+  if (status !== 429) return 'provider_error';
+  const body = providerError?.responseBody;
+  if (typeof body === 'string' && body.length <= 64 * 1024) {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+        const detail = parsed.error;
+        if (
+          detail &&
+          typeof detail === 'object' &&
+          (('code' in detail && detail.code === 'insufficient_quota') ||
+            ('type' in detail && detail.type === 'insufficient_quota'))
+        )
+          return 'quota_exhausted';
+      }
+    } catch {
+      /* An unparseable body supplies no quota fact. */
+    }
+  }
+  return 'rate_limited';
+}
+
 /**
  * Wording avoids the words `classifyAgentRunFailure`
  * (orchestration-session-state.ts) reads from a `runtime.error` message —
  * "timeout", "offline", "recover", "cancel" — so the sentence cannot change
  * how a delegated run's failure is classified or whether it is retried.
  */
-export function modelProviderFailureMessage(httpStatus: number): string {
+export function modelProviderFailureMessage(
+  httpStatus: number,
+  kind?: ProviderFailureKind,
+): string {
   const suffix = `(HTTP ${httpStatus}).`;
   if (httpStatus === 401 || httpStatus === 403) {
     return `The model provider rejected the credentials ${suffix}`;
@@ -60,7 +91,9 @@ export function modelProviderFailureMessage(httpStatus: number): string {
     return `The model provider timed out ${suffix}`;
   }
   if (httpStatus === 429) {
-    return `The model provider rate-limited the request ${suffix}`;
+    return kind === 'quota_exhausted'
+      ? `The model provider exhausted the account quota ${suffix}`
+      : `The model provider rate-limited the request ${suffix}`;
   }
   if (httpStatus >= 500) {
     return `The model provider returned an error ${suffix}`;
@@ -170,7 +203,10 @@ export function outwardModelProviderError(
   const status = modelProviderErrorStatus(providerError);
   if (status !== undefined) {
     return {
-      text: modelProviderFailureMessage(status),
+      text: modelProviderFailureMessage(
+        status,
+        modelProviderFailureKind(providerError),
+      ),
       credentialsInferred: false,
     };
   }

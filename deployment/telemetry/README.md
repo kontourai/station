@@ -70,7 +70,8 @@ their own evidence; a live health response is not storage readiness.
 
 That source-key provisioning applies to the **opt-in full event stream**.
 The [lite receiver](../../packages/telemetry-broker/README.md#lite-observations)
-instead accepts strict `station_daily` observations through a public source ID
+instead accepts strict `station_daily` and fixed-enum `TelemetryFeedback` bodies
+through a public source ID
 mapped by the operator to one publisher/channel. It never needs an installation
 secret. Publisher read keys are separate `stq_` credentials provisioned through
 the operator boundary. Do not route lite traffic through the authenticated
@@ -80,7 +81,12 @@ The broker's **owner analytics are exact** at `/v1/operator/lite/daily` and
 `/weekly`, authenticated with the private operator `sto_` key. Keep these routes
 private at ingress. Daily counts include exact distinct IPv4/IPv6-/48
 contributors; weekly counts sum contributor-days, because daily salts prevent
-cross-day deduplication. Publisher `stq_` keys cannot read exact analytics.
+cross-day deduplication. Publisher `stq_` keys cannot read exact analytics. Feedback
+counts are grouped by publisher/action/reason and receiver UTC day or week over
+the configured UTC-day window (default 90: today and the prior 89 days),
+including partial current periods. Daily contributor
+hashes serve only dedupe and are erased after the day closes. Feedback is never
+included in public or third-party publisher aggregates in this PR.
 
 `/public/` and `/v1/public/aggregates` expose Kontour's **weekly noisy estimates**.
 Publisher keys receive only their own publisher's weekly publication. The ten
@@ -109,7 +115,8 @@ The private Compose profile does not publish these endpoints on the Internet.
 A public deployment must independently qualify TLS, ingress access/error logging
 without client IP/user-agent retention, proxy/NAT rate limits, database capacity,
 restart and backup/restore. IPv4 or IPv6 /64s select daily rate-limit keys;
-IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored.
+IPv4 or IPv6 /48s select daily contributor HMACs. Forwarded headers are ignored
+unless the connector socket CIDR is explicitly trusted as described below.
 Run one receiver process; restarts change the salt and inflate same-day distinct
 counts. A failed publisher/day dimension retains only that publisher/day's
 associations while completed publishers' erasure progresses. Public reads never
@@ -173,6 +180,110 @@ collector base URL with the separate OTel key. Use the saved instance destinatio
 and exact SecretBinding grants where available, or the documented independent
 environment settings. Product disclosure remains necessary. A connection check
 is not an emitted event, persisted metric, trace query or personal enrollment.
+
+## Single-host Cloudflare Tunnel
+
+The separate [`compose.tunnel.yaml`](compose.tunnel.yaml) recipe runs only
+receiver, PostgreSQL 16 and cloudflared. It reuses the receiver/database service
+settings above, including persistent PostgreSQL storage and the numeric-loopback
+operator port 44481. It is a deployment template, not evidence of a live tunnel,
+backup/restore acceptance or production logging configuration.
+
+Provision a dedicated locally managed tunnel and hostname using
+[Cloudflare's configuration-file workflow](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/).
+Select a reviewed `cloudflare/cloudflared@sha256:<digest>` as
+`TELEMETRY_CLOUDFLARED_IMAGE` in the same private environment file. Add the
+existing tunnel's credentials as `tunnel-credentials.json`, readable only by
+container UID 65532 (0400). Do not use a tunnel token in command arguments.
+Copy/edit [`cloudflared.example.yaml`](cloudflared.example.yaml), replace its
+placeholder UUID and hostname, and update the Compose config bind to that
+private edited file. The example is inert until deliberately provisioned.
+
+Cloudflared has an outbound edge network and a dedicated internal connector
+network. Only cloudflared and the receiver join the latter. Its static connector
+address `172.30.242.2/32` is the sole trusted proxy; the receiver also remains on
+the private database network. Check that `172.30.242.0/29` is free on the host;
+if changing it, update both static addresses, subnet, dynamic `ip_range` and
+trusted CIDR together. The `172.30.242.4/30` dynamic pool excludes static .2/.3.
+Never trust the edge ranges or the whole Docker subnet: the trust decision is
+about the receiver's immediate socket peer. Keep one receiver process.
+
+The ingress rules allow only `/v1/lite/<source>` (one bounded public slug),
+`/v1/public/aggregates`, the current `/public/*` assets (`/public/` and
+`/public/dashboard.js`), and `/health/live` on the chosen hostname.
+Everything else terminates at `http_status:404`, including `/v1/operator/*`,
+`/v1/publishers/*` and all Full-tier product routes. No receiver or database port
+is published on a non-loopback host address. Provision sources and inspect
+`/v1/operator/lite/daily` locally through 44481 or an owned SSH forward with the
+operator credential. The receiver independently enforces the same route boundary
+for trusted-proxy socket peers, including valid operator/publisher/Full
+credentials; only the listed POST/GET methods pass. Non-proxy peers retain
+private-route access. Trust configuration refuses broad ranges (/0, IPv4 wider
+than /24, IPv6 wider than /64), non-canonical host bits and whitespace at startup.
+A source with channel `unknown` admits a sender without channel metadata.
+Provision official sources with `"versionPolicy": "semver"` to accept real
+build versions without pre-populating `releaseVersions`; the default `catalog`
+policy accepts only listed versions plus `custom`. Both policies accept `custom`.
+Under `semver`, public/publisher version cells still come only from the fixed
+`releaseVersions` catalog; empty means no version dimension from that source.
+The operator exact view shows all admitted versions. Distribution/layout unknown
+values retain their existing contract.
+
+Validate the rendered stack and ingress without starting the tunnel (commands
+that follow `run --rm` execute only the local config/rule parser):
+
+```sh
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml config
+
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml run --rm --no-deps cloudflared \
+  tunnel --config /etc/cloudflared/config.yaml ingress validate
+
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.tunnel.yaml run --rm --no-deps cloudflared \
+  tunnel --config /etc/cloudflared/config.yaml ingress rule https://telemetry.example.com/v1/operator/storage
+```
+
+The last command must choose the final 404 rule. Repeat with a publisher route
+and a Full-tier route; allowed paths must choose their explicit rules. After
+separate host, logging and backup acceptance, the operator can build/start only
+this Compose project using the same `build receiver` and `up -d` commands above
+with `compose.tunnel.yaml`. These instructions authorize no deployment.
+
+The receiver trusts only `CF-Connecting-IP`, as documented in
+[Cloudflare's header reference](https://developers.cloudflare.com/fundamentals/reference/http-headers/).
+Disable Pseudo IPv4's overwrite mode and review Worker/subrequest behavior for
+this hostname so the selected header represents the intended visitor address.
+Without `STATION_TELEMETRY_BROKER_TRUSTED_PROXY`, all tunneled clients share the
+connector key for both admission and contributors. With it, an invalid single-IP
+header falls back to that same peer key and increments the private
+`/v1/operator/diagnostics` counter; no header value is logged or stored.
+
+Before public exposure, add a Cloudflare WAF rate-limit rule matching:
+
+```text
+http.host eq "telemetry.example.com" and starts_with(http.request.uri.path, "/v1/lite/")
+```
+
+Replace the hostname with the provisioned tunnel hostname. A starting policy is
+60 requests per 60 seconds per source IP (`ip.src`, with Cloudflare's data-center
+characteristic), blocking for 60 seconds. Count every matching request, including
+rejected bodies; do not key by the public source slug. Choose supported periods
+and mitigation duration for the account's plan and tune with shared-NAT traffic
+in mind. See [Cloudflare's rate-limit parameters](https://developers.cloudflare.com/waf/rate-limiting-rules/parameters/).
+This per-client edge rule reduces starvation of the receiver's global
+`liteAdmission` budget by one client. The daily per-network receiver limit
+remains in force; distributed traffic and IPv6 rotation still need capacity
+monitoring. Validate the actual rule before exposure; this recipe does not
+provision or qualify it.
+
+Cloudflared uses error-level diagnostics and Docker's `none` logging driver in
+this template; do not enable debug/request logs or log streaming. Independently
+review Cloudflare edge analytics, Logpush, security/error events, host logging
+and retention. The receiver's no-IP guarantee does not assert that Cloudflare
+never processes or retains an IP. No production calls were made to qualify
+this source recipe.
 
 ## Diagnostic semantics and retention
 
