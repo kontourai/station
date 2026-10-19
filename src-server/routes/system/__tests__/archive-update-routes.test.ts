@@ -1727,14 +1727,26 @@ describe('the coordinator after review (#3851 F2-F8, F12)', () => {
   test('F4: saving another setting re-runs nothing; changing the policy does', async () => {
     const install = makeInstall();
     const { coordinator, request, setPolicy } = coordinatorFor(install, {
-      policy: 'never',
+      policy: 'immediately',
     });
-    await coordinator.check('boot');
+    coordinator.start();
+    // A client's check fills the cache without running the policy, so a
+    // policy run would download now: only a policy change may run it.
+    const app = createApp(install, {
+      extraDeps: { serverUpdate: coordinator },
+    });
+    expect((await app.request('/core-update')).status).toBe(200);
+    await vi.waitFor(async () =>
+      expect((await coordinator.state()).availability).not.toBeNull(),
+    );
     await coordinator.settingsChanged();
     expect(request()).toBeNull();
+    setPolicy('never');
+    await coordinator.settingsChanged();
     setPolicy('immediately');
     await coordinator.settingsChanged();
     expect(request()).toMatchObject({ mode: 'stage' });
+    coordinator.stop();
   });
 
   test('F5: any runtime event re-evaluates apply-when-idle, a runtime error included', async () => {

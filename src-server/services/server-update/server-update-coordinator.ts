@@ -433,6 +433,11 @@ export class ServerUpdateCoordinator {
     this.unsubscribe =
       this.deps.subscribe?.((message) => this.onBusEvent(message)) ?? null;
     this.followProgress();
+    // The baseline a settings save is compared with: the policy as it stood
+    // at start, so only a change of it counts.
+    void this.policy().then((policy) => {
+      this.lastPolicy ??= policy;
+    });
     return () => this.stop();
   }
 
@@ -656,6 +661,11 @@ export class ServerUpdateCoordinator {
   async settingsChanged(): Promise<void> {
     if (!this.archive() || this.stopped) return;
     const policy = await this.policy();
+    if (this.lastPolicy === null) {
+      // No baseline yet: this read becomes it, and is not a change.
+      this.lastPolicy = policy;
+      return;
+    }
     if (policy === this.lastPolicy) return;
     if (this.cached) await this.applyDownloadPolicy();
     else this.lastPolicy = policy;
