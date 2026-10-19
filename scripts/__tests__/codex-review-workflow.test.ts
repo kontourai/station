@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
+import { WINDOWS_PR_EVIDENCE_UPLOAD_ACTION as UPLOAD_ARTIFACT } from '../actionlint-gate.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const workflowPath = resolve(root, '.github/workflows/codex-pr-review.yml');
@@ -28,8 +29,6 @@ const REVIEW_PINS = [
 const FLOW_AGENTS_REVIEW_PIN = REVIEW_PINS[0];
 const FLOW_AGENTS_REVIEW = `${FLOW_AGENTS_REVIEW_ACTION}@${FLOW_AGENTS_REVIEW_PIN}`;
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const UPLOAD_ARTIFACT =
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
 const expression = (value: string) => `\${{ ${value} }}`;
 
 describe('standalone Codex PR review workflow', () => {
@@ -120,6 +119,7 @@ describe('standalone Codex PR review workflow', () => {
     const upload = document.jobs.review.steps.find(
       (step: Record<string, any>) => step.uses === UPLOAD_ARTIFACT,
     );
+    expect(upload).toBeDefined();
     expect(upload.with).toMatchObject({
       path: expression("steps.review.outputs['result-file']"),
       'if-no-files-found': 'error',

@@ -432,6 +432,69 @@ describe('Codex native attached-session adoption', () => {
     expect(process.killed).toBe(true);
   });
 
+  test('#2494 D1: a workspace fork Station sends no mode to asks for workspace-write only, and records the child confined', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => process,
+      resolveSourceHome: () => '/source-home',
+    });
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        confinement: 'workspace',
+        confinementPlan: {
+          requiredLevel: 'host',
+          policyBasis: 'workspace-floor',
+          mechanism: 'codex-sandbox',
+          level: 'os-profile',
+          workspaceAccess: 'mounted',
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(),
+        onProviderChildCreated: vi.fn(),
+      },
+    );
+    await initialize(process);
+    const fork = await waitForCall(process, 'thread/fork');
+    expect(fork.params.sandbox).toBe('workspace-write');
+    expect(fork.params).not.toHaveProperty('approvalPolicy');
+    // The operator's Codex config runs approvals at never; the sandbox
+    // Station asked for is applied.
+    respond(
+      process,
+      fork,
+      forkResult(
+        {},
+        {
+          approvalPolicy: 'never',
+          sandbox: {
+            type: 'workspaceWrite',
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+        },
+      ),
+    );
+    await expect(adoption).resolves.toMatchObject({ threadId: TARGET_ID });
+    let started: any;
+    for (let index = 0; index < 4 && !started; index += 1) {
+      const event = await nextEvent(events);
+      if (event.method === 'session.started') started = event;
+    }
+    expect(started?.metadata?.stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'codex-sandbox',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+    });
+    await adapter.stopAll();
+  });
+
   test('records a proven child before rejecting a response that lacks the completed cutoff', async () => {
     const process = new FakeCodexProcess();
     const created = vi.fn();

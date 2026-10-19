@@ -246,7 +246,13 @@
 
     "src-server/services/orchestration/session-agent-start-policy.ts",
 
-    "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    "src-ui/src/views/project-page/MemberProjectPage.tsx",
+
+    "src-server/services/approvals/approval-guardian.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "src-server/runtime/frameworks/strands-adapter.ts"
   ],
 
   "checks": [

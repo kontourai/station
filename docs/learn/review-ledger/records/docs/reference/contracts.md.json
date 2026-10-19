@@ -204,7 +204,13 @@
 
     "packages/contracts/src/workspace-isolation.ts",
 
-    "src-server/services/projects/worktree-provisioning-service.ts"
+    "src-server/services/projects/worktree-provisioning-service.ts",
+
+    "packages/contracts/src/execution-confinement.ts",
+
+    "packages/contracts/src/attachment-staging.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

@@ -620,6 +620,8 @@ export interface ToolOutputReceipt {
 
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   method: 'tool.completed';
+  /** Station stamps this from an already-open tool definition, never from result metadata. */
+  mcpAppResourceUri?: string;
   itemId: string;
   toolCallId: string;
   toolName: string;

@@ -135,7 +135,7 @@ export type SurfaceAnswerContributionRow =
     reviewedSource: {
       /** Fieldwork's published opaque reviewed-source identity. */
       exactRef: `fieldwork-reviewed-source:v1:${string}`;
-      review: 'accepted' | 'not-accepted' | 'not-captured';
+      review: 'accepted' | 'not-accepted' | 'not-captured' | 'not-chosen';
       currentness: 'current' | 'drifted' | 'unknown';
       checkedAt: string;
       assessmentRevision: number;
@@ -148,6 +148,7 @@ export type SurfaceAnswerContributionRow =
   };
 export const REVIEWED_SOURCE_CONTRIBUTION_GAP_CODES = [
   'reviewed-source-review-not-accepted',
+  'reviewed-source-review-not-chosen',
   'reviewed-source-review-not-captured',
   'reviewed-source-currentness-unknown',
   'reviewed-source-drifted',
@@ -651,7 +652,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
         Object.keys(value.reviewedSource).length === 5 &&
         string(value.reviewedSource.exactRef, 512) &&
         REVIEWED_SOURCE_EXACT_REF.test(value.reviewedSource.exactRef) &&
-        ['accepted', 'not-accepted', 'not-captured'].includes(
+        ['accepted', 'not-accepted', 'not-captured', 'not-chosen'].includes(
           value.reviewedSource.review as string,
         ) &&
         ['current', 'drifted', 'unknown'].includes(

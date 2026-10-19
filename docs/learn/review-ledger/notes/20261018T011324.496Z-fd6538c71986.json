@@ -1,0 +1,9 @@
+{
+  "revision": "921acb34099eff7aace8314e4517fb22a6ea5121",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"src-server/__test-utils__/temp-dirs.ts delta adds only an optional base directory to trackTempDirs; the default (os.tmpdir()) and cleanup behaviour are unchanged, covered by temp-dirs.test.ts. Searched this document: it makes no claim about temp-dir helpers or their base directory. No prose change.","inputs":["docs/reference/skill-experiences.md","src-server/__test-utils__/temp-dirs.ts"]},
+
+    {"path":"examples/visual-skill-experience/README.md","note":"src-server/__test-utils__/temp-dirs.ts delta adds only an optional base directory to trackTempDirs; the default (os.tmpdir()) and cleanup behaviour are unchanged, covered by temp-dirs.test.ts. Searched this document: it makes no claim about temp-dir helpers or their base directory. No prose change.","inputs":["examples/visual-skill-experience/README.md","src-server/__test-utils__/temp-dirs.ts"]}
+  ]
+}

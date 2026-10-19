@@ -631,6 +631,19 @@ the default child policy described below; this is not an editable Agent setting.
 
 ## Delegation rules
 
+Keep long exact values (commit SHAs, ids and hashes) in files the worker can
+read, or in the corresponding structured fields. A model can mistype an opaque
+string when retyping prompt prose. When the value must appear in a prompt or
+result, copy it from the file or command output such as `git rev-parse HEAD`,
+and echo it back for the caller to compare.
+
+For a new task on the current Station, the CLI offers repeatable
+`station delegate --attach=<path>`; `--file` supplies prompt text only.
+See [the delegate reference](../reference/cli.md#delegate) for workspace
+placement, limits and unsupported targets. An agent using `delegate_task`
+needs an independently authorized way to make the file available to the worker;
+this example's management tools do not grant filesystem access.
+
 Station records a child's lineage and derives its depth and tool policy at
 delegation. Policy delivery also depends on the selected engine: the
 Station-engine example below uses Station's pre-tool checks. For other engines,

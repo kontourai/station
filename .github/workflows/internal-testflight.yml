@@ -25,7 +25,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: >-
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-stable.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"stable",environment:"native-release",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-internal-ios-admission-stable-${{ github.run_id }}
           path: admission-stable.json
@@ -43,7 +43,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: >-
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-beta.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"beta",environment:"ios-beta",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-internal-ios-admission-beta-${{ github.run_id }}
           path: admission-beta.json
@@ -61,7 +61,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
         run: >-
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-nightly.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"nightly",environment:"ios-nightly",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-internal-ios-admission-nightly-${{ github.run_id }}
           path: admission-nightly.json
@@ -105,10 +105,10 @@ jobs:
           test "$remote_sha" = "$source_sha"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - name: Prove every channel environment and authority-tag protection before delivery
@@ -243,7 +243,7 @@ jobs:
           { echo "stable_tag=$stable_tag"; echo "beta_tag=$beta_tag"; echo "nightly_tag=$nightly_tag"; echo "nightly_build=$nightly_build"; } >> "$GITHUB_OUTPUT"
       - name: Retain bounded authority receipts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-internal-ios-authority-${{ github.run_id }}
           path: |

@@ -1,4 +1,5 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type { ExecutionConfinementRecord } from './execution-confinement.js';
 import type {
   ExecutionPreparationReceipt,
   ExecutionPreparationRequirement,
@@ -200,4 +201,14 @@ export interface ExecutionResolutionReceipt {
   workspace?: ResolvedWorkspaceTarget;
   /** Present only for a `project-portable-prepared` intent that matched. */
   preparation?: ExecutionPreparationReceipt;
+  /**
+   * #2494: the started session's confinement, read back from its latest
+   * `session.started` record after the start. Never present at resolution
+   * time: the posture comes from the started engine's report, which does
+   * not exist yet when the binding is resolved. Absent on the foreground
+   * chat handle (which does not attach it yet), on a delegation whose start
+   * record was not stored or readable when the handle returned, and for a
+   * start that recorded none.
+   */
+  confinement?: ExecutionConfinementRecord;
 }

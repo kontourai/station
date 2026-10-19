@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
@@ -2458,6 +2459,11 @@ describe('ClaudeAdapter', () => {
       await adapter.startSession({
         provider: 'claude',
         threadId,
+        // #2494: full access unconfined is the operator's (`host`) start;
+        // an absent confinement is `workspace` and runs it as Auto.
+        ...(options.modelOptions?.approvalMode === 'never'
+          ? { confinement: 'host' as const }
+          : {}),
         ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
         ...(options.agent ? { agent: options.agent } : {}),
         ...(options.metadata ? { metadata: options.metadata } : {}),
@@ -7420,6 +7426,100 @@ describe('ClaudeAdapter', () => {
     expect(options).not.toHaveProperty('permissionMode');
   });
 
+  test.each(['probe', 'ordinary', 'mismatched server'] as const)(
+    'records generated probe ids only for the matching delivery Agent (%s)',
+    async (kind) => {
+      const suffix = 'a'.repeat(32);
+      let serverId = `probe${suffix}`;
+      let slug = kind === 'ordinary' ? 'ordinary-agent' : `delivery-${suffix}`;
+      if (kind === 'probe') {
+        let createdServerId = '';
+        // Exercise the actual id generator without creating a skill package.
+        // Setup stays local, and the SDK stream below is mocked.
+        const prepared = await deliveryScenarios[0].prepare({
+          engine: 'codex',
+          connectionId: 'probe-engine',
+          cwd: '/tmp',
+          model: 'probe-model',
+          delivery: {},
+          deferCleanup: () => {},
+          setupApi: async (path, body) => {
+            if (path === '/integrations' && body && typeof body === 'object') {
+              const id = Reflect.get(body, 'id');
+              if (typeof id !== 'string')
+                throw new Error('Missing authored integration id');
+              createdServerId = id;
+              return { data: {} };
+            }
+            if (path === '/integrations')
+              return {
+                data: [
+                  {
+                    id: createdServerId,
+                    tools: [{ toolName: 'ping' }, { toolName: 'blocked' }],
+                  },
+                ],
+              };
+            if (path === `/integrations/${createdServerId}/reconnect`)
+              return { data: { probe: { ok: true } } };
+            if (
+              [
+                `/integrations/${createdServerId}/tools/apply`,
+                `/integrations/${createdServerId}/enabled`,
+                '/agents',
+              ].includes(path)
+            )
+              return { data: {} };
+            throw new Error(`Unexpected preparation route: ${path}`);
+          },
+        });
+        if (!prepared.state)
+          throw new Error('Probe preparation did not produce its ids');
+        serverId = prepared.state.serverId;
+        slug = prepared.state.skillId;
+      }
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'claude-session',
+            cwd: '/tmp',
+            model: 'claude-sonnet-4-6',
+            permissionMode: 'auto',
+            uuid: 'probe-init',
+            tools: [`mcp__${serverId}__ping`, 'mcp__private__secret'],
+          },
+        ]),
+      );
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: `probe-inventory-${kind}`,
+        agent: {
+          slug,
+          toolServers: [
+            {
+              id: kind === 'mismatched server' ? 'another-server' : serverId,
+              command: 'node',
+              args: ['fixture.mjs'],
+            },
+          ],
+        },
+      });
+      await iterator.next();
+      await iterator.next();
+      const init = (await iterator.next()).value;
+      if (kind === 'probe')
+        expect(init?.metadata?.engineToolNames).toEqual([
+          `mcp__${serverId}__ping`,
+        ]);
+      else expect(init?.metadata).not.toHaveProperty('engineToolNames');
+      expect(JSON.stringify(init)).not.toContain('mcp__private__secret');
+    },
+  );
+
   test('init permissionMode auto is reported as the applied approval mode (station#1950)', async () => {
     mockQuery.mockReturnValue(
       createMockQuery([
@@ -7474,6 +7574,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-never-start',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 
@@ -7737,6 +7839,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-escalate-allowed',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 

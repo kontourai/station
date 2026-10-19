@@ -45,7 +45,11 @@ The [composition module](../../src-server/services/plugins/plugin-composition.ts
 reserves core identity/authorization/evidence authorities, but its standalone
 factory is not proof of a production composition path. Preserve the existing
 engine confinement owner and scoped execution contracts rather than replacing
-them with a new framework.
+them with a new framework. Hosted `microvm` confinement is the top level of the same
+[confinement provider contract](approval-posture-server-ordered.md#410-confinement-providers-2494)
+(#2494). A microVM has no filesystem sharing, so it would be a `copied`
+provider, which resolution never pairs with a `shared` live checkout. No
+`container` or `microvm` provider exists yet.
 
 ## Proposed placement policy
 

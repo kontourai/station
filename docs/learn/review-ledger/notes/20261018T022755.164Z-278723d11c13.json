@@ -1,0 +1,7 @@
+{
+  "revision": "82088da7469500834f34064fbe30e02079fe8ce6",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Fix round: testing.md changed only inside the 'Choosing the compiler' subsection (table wording, version-parity sentence). No heading renamed or removed; this file's testing.md links and claims are unaffected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

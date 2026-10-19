@@ -23,7 +23,10 @@ interface MCPUIResolverService {
   // Server-scoped catalog read over Station's raw MCP connection, so tools
   // retain `originalName`, `_meta`, and `ui.resourceUri`. Preferred when
   // present.
-  getMCPUIToolCatalog?: (serverId: string) => Promise<MCPUIToolCatalogResult>;
+  getMCPUIToolCatalog?: (
+    serverId: string,
+    openOnly?: boolean,
+  ) => Promise<MCPUIToolCatalogResult>;
 }
 
 interface ParsedMCPToolRef {
@@ -33,6 +36,8 @@ interface ParsedMCPToolRef {
 
 /** Host-policy hooks layered onto resolution (S2 render permission). */
 export interface MCPToolUIResolveOptions {
+  /** History never opens a server or falls back to another catalog. */
+  openOnly?: boolean;
   /**
    * True when the server's UI render has been explicitly revoked by the
    * operator. The MCP Apps spec (SEP-1865) defines the *protocol* for
@@ -70,7 +75,7 @@ export async function resolveMCPToolUIRef(
   }
 
   const connection = service.getConnectionStatus?.(agentSlug, parsed.serverId);
-  if (connection && !connection.connected) {
+  if (!options.openOnly && connection && !connection.connected) {
     return recordResolution({
       status: 'missing_server',
       ref,
@@ -100,7 +105,12 @@ export async function resolveMCPToolUIRef(
     }
   }
 
-  const tools = await getToolCatalog(service, agentSlug, parsed.serverId);
+  const tools = await getToolCatalog(
+    service,
+    agentSlug,
+    parsed.serverId,
+    options.openOnly,
+  );
   const tool = tools.find((candidate) => matchesToolRef(candidate, parsed));
   if (!tool) {
     return recordResolution({
@@ -134,14 +144,16 @@ async function getToolCatalog(
   service: MCPUIResolverService,
   agentSlug: string,
   serverId: string,
+  openOnly = false,
 ): Promise<unknown[]> {
   // Prefer Station's raw server catalog: it preserves the raw name + `_meta.ui`
   // needed for live resolution. An available result is authoritative even
   // when empty; compatibility catalogs are only valid when the server-scoped
   // authority is unavailable.
   if (service.getMCPUIToolCatalog) {
-    const catalog = await service.getMCPUIToolCatalog(serverId);
+    const catalog = await service.getMCPUIToolCatalog(serverId, openOnly);
     if (catalog.available) return catalog.tools;
+    if (openOnly) return [];
   }
   if (service.getMCPToolCatalog) return service.getMCPToolCatalog();
   if (service.listTools) return service.listTools();

@@ -1,0 +1,7 @@
+{
+  "revision": "9ad7b3737043f12a247bbda8b705ece3c4c3be56",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed matrix CLI confirmation, shared credential transport, exact turn-provenance joins, isolated-engine connection resolution, alias and output verdicts, scenario registration, declare_output producer, public stopSession/resumable lifecycle, dated report renderer and stub child-process tests. Runtime proof is loopback API only; real providers, browser rendering and OS process exit remain unverified. Catalog removal deferred with ownership and recovery requirements.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/station-agent-smoke.mjs","scripts/station-engine-matrix.mjs","scripts/lib/agent-smoke-client.mjs","scripts/lib/engine-matrix.mjs","scripts/__tests__/station-engine-matrix.test.ts"]}
+  ]
+}

@@ -6,17 +6,53 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
 
-Product observations use the disclosed v1 envelope: stable retry IDs, producer
+Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
-event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+event. Full product telemetry is pseudonymous: its installation hash rotates
+monthly and is never linked to an account by Station. Lite is identifier-free
+by contract, but has no sender in this foundation. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
 and deduplicates retained source/event UUIDs. Its operator queries describe received
 observations with unknown delivery coverage; these observations are separate from
 canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not
@@ -283,8 +319,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less

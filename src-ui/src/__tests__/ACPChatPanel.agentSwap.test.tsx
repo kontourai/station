@@ -104,6 +104,7 @@ describe('ACPChatPanel transcript identity across an agent swap', () => {
   test('a mounted hidden panel ignores other chats but observes its own messages and removal', () => {
     activeChatsStore.initChat('other-tab', {
       agentSlug: 'codex',
+      agentName: 'Codex',
       title: 'Other tab',
     });
     render(

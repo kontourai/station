@@ -946,6 +946,275 @@ describe('Config Routes', () => {
 // (the on-load purge in `loadAppConfigFile`, the null-clearing merge in
 // `mergeAppConfigUpdate`) — a mock loader can't exercise either.
 describe('Config Routes (real ConfigLoader + filesystem)', () => {
+  test('a kontour-only PUT preserves stored operator Off', async () => {
+    const home = makeTempDir('station-tier-publisher-merge-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const app = withOperatorPrincipal(createConfigRoutes(loader, mockLogger));
+    try {
+      await loader.loadAppConfig();
+      await loader.updateAppConfig({
+        telemetryTier: { kontour: 'lite', operator: 'off' },
+      });
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { kontour: 'off' } }),
+      });
+      expect(response.status).toBe(200);
+      expect(
+        JSON.parse(readFileSync(join(home, 'config', 'app.json'), 'utf8'))
+          .telemetryTier,
+      ).toEqual({
+        kontour: 'off',
+        operator: 'off',
+      });
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
+      });
+    } finally {
+      loader.dispose();
+    }
+  });
+
+  test.each([
+    { foo: 'full' },
+    'full',
+    null,
+    ['full'],
+    { operator: 'invalid' },
+    { kontour: 'lite', foo: 'full' },
+  ])(
+    'malformed telemetryTier %j is rejected without persisting or exposing internals',
+    async (telemetryTier) => {
+      const home = makeTempDir('station-tier-validation-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      const app = new Hono();
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      try {
+        await loader.loadAppConfig();
+        const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        const response = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier }),
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          success: false,
+          error:
+            'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+        });
+        expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+          before,
+        );
+      } finally {
+        loader.dispose();
+      }
+    },
+  );
+
+  test.each(['agent', 'standard', 'manager'] as const)(
+    'tier-only raises require consent authority (%s)',
+    async (principal) => {
+      const home = makeTempDir('station-tier-only-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      await loader.loadAppConfig();
+      await loader.updateAppConfig({
+        telemetryTier: { kontour: 'off', operator: 'off' },
+      });
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(
+          c.req.raw,
+          principal === 'agent'
+            ? {
+                kind: 'internal',
+                credential: 'internal-test',
+                authority: 'operator-credential',
+                source: 'bearer',
+              }
+            : {
+                kind: 'credential',
+                credential: 'paired-test',
+                authority: undefined,
+                deviceId: 'paired-test',
+                deviceKind: 'device',
+                source: 'bearer',
+              },
+        );
+        setGrantedPairingScope(
+          c as never,
+          principal === 'standard'
+            ? 'orchestration:read orchestration:operate'
+            : 'orchestration:read orchestration:operate access:manage',
+        );
+        await next();
+      });
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      try {
+        for (const payload of [
+          { telemetryTier: { operator: 'full' } },
+          { telemetryEnabled: true },
+        ]) {
+          const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+          const response = await app.request('/app', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          expect(response.status).toBe(principal === 'manager' ? 200 : 403);
+          if (principal !== 'manager')
+            expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+              before,
+            );
+          else {
+            const persisted = JSON.parse(
+              readFileSync(join(home, 'config', 'app.json'), 'utf8'),
+            );
+            expect(persisted.telemetryTier.operator).toBe('full');
+            expect(persisted).not.toHaveProperty('telemetryEnabled');
+          }
+        }
+      } finally {
+        loader.dispose();
+      }
+    },
+  );
+
+  test.each([
+    { tier: 'off', legacy: undefined, dnt: '', status: 403 },
+    { tier: 'off', legacy: undefined, dnt: '1', status: 403 },
+    { tier: '', legacy: 'false', dnt: '', status: 403 },
+    { tier: 'lite', legacy: undefined, dnt: '1', status: 200 },
+  ])(
+    'tier-only raises respect the environment default ($tier/$legacy) independently of DNT=$dnt',
+    async ({ tier, legacy, dnt, status }) => {
+      vi.stubEnv('STATION_TELEMETRY_TIER', tier);
+      vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', legacy);
+      vi.stubEnv('DO_NOT_TRACK', dnt);
+      const home = makeTempDir('station-tier-default-authority-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'credential',
+          credential: 'standard-device',
+          authority: undefined,
+          deviceId: 'standard-device',
+          deviceKind: 'device',
+          source: 'bearer',
+        });
+        setGrantedPairingScope(
+          c as never,
+          'orchestration:read orchestration:operate',
+        );
+        await next();
+      });
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      const put = (value: string) =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetryTier: { operator: value } }),
+        });
+      try {
+        await loader.loadAppConfig();
+        const before = readFileSync(join(home, 'config', 'app.json'), 'utf8');
+        expect((await put('lite')).status).toBe(status);
+        if (status === 403)
+          expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+            before,
+          );
+        expect((await put('off')).status).toBe(200);
+        expect((await loader.loadAppConfig()).telemetryTier?.operator).toBe(
+          'off',
+        );
+      } finally {
+        loader.dispose();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  test.each(['lite', 'off'] as const)(
+    'a standard paired device can lower Full to %s but cannot raise it again',
+    async (tier) => {
+      const home = makeTempDir('station-tier-withdrawal-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      await loader.loadAppConfig();
+      await loader.updateAppConfig({
+        telemetryTier: { operator: 'full', kontour: 'off' },
+      });
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          kind: 'credential',
+          credential: 'standard-device',
+          authority: undefined,
+          deviceId: 'standard-device',
+          deviceKind: 'device',
+          source: 'bearer',
+        });
+        setGrantedPairingScope(
+          c as never,
+          'orchestration:read orchestration:operate',
+        );
+        await next();
+      });
+      app.route('/', createConfigRoutes(loader, mockLogger));
+      const put = (payload: unknown) =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      try {
+        expect((await put({ telemetryTier: { operator: tier } })).status).toBe(
+          200,
+        );
+        expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+          operator: tier,
+          kontour: 'off',
+        });
+        expect(
+          (await put({ telemetryTier: { operator: 'full' } })).status,
+        ).toBe(403);
+        expect((await put({ telemetryEnabled: true })).status).toBe(403);
+        expect((await put({ telemetryEnabled: false })).status).toBe(200);
+        const restarted = new ConfigLoader({
+          projectHomeDir: home,
+          watchFiles: false,
+        });
+        try {
+          expect((await restarted.loadAppConfig()).telemetryTier).toEqual({
+            operator: 'off',
+            kontour: 'off',
+          });
+        } finally {
+          restarted.dispose();
+        }
+      } finally {
+        loader.dispose();
+      }
+    },
+  );
+
   test('the internal Station principal cannot change telemetry destinations even with manage scope', async () => {
     const loader = createMockConfigLoader();
     const app = new Hono();
@@ -1064,6 +1333,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          telemetryTier: { operator: 'off' },
           productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
           productTelemetryKeyRef: 'product-source',
           region: 'eu-west-1',

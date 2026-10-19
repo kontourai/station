@@ -51,6 +51,38 @@ New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
 
+## MCP app previews in chat
+
+In Station's web client, a completed MCP call can show its declared app directly
+below the tool row. No layout pin is needed. The integration must still be
+connected and permit rendering, and its current tool definition must declare a
+UI resource. Station's own inventory and Basis Apps use shipped resources and
+can mount when Codex owns the default Agent without a Station-engine connection.
+Inventory App data publication is currently unavailable; frame mounting does not
+change that limitation.
+The result itself needs only the standard MCP content envelope. Reloading and
+opening the saved conversation mounts its retained preview again; Station does
+not call the tool or start a disconnected third-party server to display it.
+
+App membership is cached for five minutes. New declarations may wait for a
+stale query to refetch on mount or focus; reload to refresh the catalog. Read-only
+paired devices may discover and view previews.
+
+The Codex adapter preserves complete MCP results with canonical server/tool
+identity. Claude-provider MCP calls cannot mount: their output is summarized to
+text and their flattened names lack unambiguous server identity. ACP and managed
+engines have not been qualified. Ordinary calls keep their rows and batching.
+Sample and offline views outside the connected workspace keep ordinary rows
+without app lookup. Unknown or disconnected integrations add no app card. Result UI metadata alone
+cannot mount an app or authorize a resource read.
+
+The preview follows your theme and labels interactions as unavailable. App tool
+calls, resource reads, messages and links are refused in transcript previews.
+Fullscreen and model-context notes are not supported there yet. Native shells
+continue to refuse scripted MCP frames; use the web client for these previews.
+See the [host design](https://github.com/kontourai/station/blob/main/docs/design/mcp-ui-host.md#transcript-previews) for the
+capability boundary and remaining work.
+
 ## Connect your phone
 
 Your computer runs Station and the agents. Your phone connects to it to read
@@ -461,6 +493,12 @@ lower right. The three-dot menu holds chat actions; connection health remains
 in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
+
+In **Chats and tasks**, delegated work folds under its recorded parent.
+Expand the subtask count to read the children; children that need you stay
+visible. Task-owned chats appear under their Task as sessions. **Show work**
+filters by project or Station and stays selected on this device. If work needs
+you outside the filter, choose **Show all** from the notice.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even

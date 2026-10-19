@@ -3814,8 +3814,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual(['Running · 3']);
-      expect(sectionHeadings(container)).toEqual(['Running · 3']);
+      expect(headings).toEqual(['Running · 2']);
+      expect(sectionHeadings(container)).toEqual(['Running · 2']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {

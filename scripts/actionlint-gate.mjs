@@ -48,6 +48,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
+import { authorTelemetryWorkflowFindings } from './check-author-telemetry-workflows.mjs';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -436,15 +437,15 @@ const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
 export const CHECKOUT_ACTION =
   'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 export const SETUP_NODE_ACTION =
-  'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
+  'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
+  'github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
+  'github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+  'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9';
 const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
 const WINDOWS_PR_JOB = 'windows-pr-portable';
 const WINDOWS_PR_EVIDENCE_UPLOAD_NAME =
@@ -467,7 +468,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024';
+  'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -675,7 +676,7 @@ const MISSING_CALLEE_MESSAGE =
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a lockfile-verification log on every run,
- *   independently of its `cache` input, with no opt-out (reviewed dist at fbda4c85: the
+ *   independently of its `cache` input, with no opt-out (reviewed source/dist at a0881977: the
  *   post step calls the save unconditionally). That save is NOT safe on its
  *   own merits: the key is the hash of the checked-out (candidate) lockfile,
  *   the pre-upload check only confirms earlier records survived (appended
@@ -701,7 +702,7 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   // trusted-base topology separately owns its credential admission.
   'actions/create-github-app-token': (step) =>
     step.uses ===
-    'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1'
+    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
       ? []
       : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
@@ -795,7 +796,7 @@ const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
   name: 'Upload the archive and its descriptor',
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
-  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  uses: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
   with: {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     name: 'station-server-${{ matrix.target }}',
@@ -1681,7 +1682,7 @@ function isExactDeliveryPlanner(job) {
     createHash('sha256')
       .update(JSON.stringify(orderedPolicy(job)))
       .digest('hex') ===
-      'efa2060d84816e992561847620bdedf194161da42421ed2054be0ae336e41be2'
+      'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
   );
 }
 
@@ -2652,7 +2653,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(orderedPolicy(deliveryJobs)))
       .digest('hex') !==
-    '9fece1308abc7868f6dc46d1ac46d0c871e80b417b6878036b01bf4b71fef371'
+    'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
   )
     findings.push({
       file,
@@ -2758,7 +2759,7 @@ function primaryCiRouterFindings(file, document) {
         },
       },
       {
-        uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        uses: SETUP_NODE_ACTION,
         with: {
           'node-version-file': '.nvmrc',
           'package-manager-cache': false,
@@ -2973,7 +2974,7 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
+  '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
@@ -2990,7 +2991,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(orderedPolicy(document)))
       .digest('hex');
     return digest ===
-      '99c330b45152a22b47092698f8be1d3007d99b616639b3b4c617bbbb9ad25a05'
+      '6bcfb0af788025369a0f9d1a90fc61dae2826dd06cb1d56bf2bc933d9bec044b'
       ? []
       : [
           {
@@ -3006,7 +3007,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(orderedPolicy(document)))
       .digest('hex');
     return digest ===
-      'e3062e32ad8eebbdf80683adfee10b5dec87396a41a42a83bdb781705d6cd973'
+      'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
       ? []
       : [
           {
@@ -3567,6 +3568,15 @@ function main() {
         `    ${finding.file} job '${finding.jobId}': ${finding.message}`,
       );
     }
+    return 1;
+  }
+
+  const telemetryFindings = authorTelemetryWorkflowFindings(
+    readWorkflowDocuments(),
+  );
+  if (telemetryFindings.length > 0) {
+    for (const finding of telemetryFindings)
+      console.error(`[actionlint] ${finding}`);
     return 1;
   }
 

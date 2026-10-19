@@ -1,0 +1,7 @@
+{
+  "revision": "92853666936fc23a15d2b358749e7a3e1c345972",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Fix round 1: reviewed concrete catalog resolution and unresolved Claude aliases, vendor/snapshot normalization, model allowlist and preflight/runtime send budgets, stable additionalScenarios with optional planning metadata, API loaded/unloaded/resumed recycle observations, exact output-event text inspection, new session error correlation, credential refusal/redaction and the expanded loopback child-process negative cases. Focused smoke/matrix tests pass 71/71; real providers and rendered browsers remain unverified. Connection attribution is explicitly inferred from engine kind under isolation.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/station-engine-matrix.test.ts","scripts/lib/engine-matrix.mjs","scripts/station-engine-matrix.mjs"]}
+  ]
+}

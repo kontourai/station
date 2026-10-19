@@ -564,7 +564,7 @@ function bucketOf(row: HomeWorkItem): string {
     terminalSince: new Map(),
   });
   return Object.entries(partition)
-    .filter(([, rows]) => (rows as HomeWorkItem[]).includes(row))
+    .filter(([, rows]) => Array.isArray(rows) && rows.includes(row))
     .map(([name]) => name)
     .join(',');
 }

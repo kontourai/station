@@ -12,6 +12,7 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 For runtime helpers, use explicit subpaths:
 
 - `@kontourai/station-shared/parsers`
+- `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
@@ -19,6 +20,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 - `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
+- `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
@@ -27,10 +29,25 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Recorded MCP app results
+
+`@kontourai/station-shared/mcp-app-result` exports
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
+See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
-fingerprints the canonical event/envelope inventory and provides
+exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
+inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
+the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
+and probe compatibility unchanged. It provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid
 timestamps, unclassified properties and invalid build provenance. It accepts
@@ -149,8 +166,9 @@ source is implemented.
 `inputRequestFromMcpElicitation` maps a form-mode request into a form,
 refusing URL mode and anything outside the schema or over a bound.
 
-`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and is
-removed in 0.10.0. `readHarnessQuestionnaire`,
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
+remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+for new callers. `readHarnessQuestionnaire`,
 `validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
 `harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
 translating to and from a form; answers are validated only by

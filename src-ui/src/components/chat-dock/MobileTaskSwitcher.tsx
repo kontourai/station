@@ -12,6 +12,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import {
@@ -31,6 +32,7 @@ import {
   type InboxGroupListProps,
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
+import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
 import {
   clearSnooze,
   groupMobileActivity,
@@ -161,10 +163,11 @@ export function MobileTaskSwitcher({
   }, [now, open]);
 
   // Status churn must not move rows between groups (see useHeldLifecycles).
-  const heldTasks = useHeldLifecycles(collectionTasks);
+  const scope = useInboxScope(collectionTasks, now, workFacts);
+  const heldTasks = useHeldLifecycles(scope.items);
   const groups = useMemo(
-    () => groupMobileActivity(heldTasks, now ?? Date.now(), snoozed),
-    [heldTasks, now, snoozed],
+    () => groupMobileActivity(heldTasks, now ?? Date.now(), snoozed, workFacts),
+    [heldTasks, now, snoozed, workFacts],
   );
   const visibleGroups = useMemo(
     () => groups.filter((group) => group.items.length > 0),
@@ -254,6 +257,7 @@ export function MobileTaskSwitcher({
             onClose={closeAndRestoreFocus}
           />
         </header>
+        <InboxScopeFilter scope={scope} />
         <div className="mobile-task-switcher__list">
           {loadError && visibleGroups.length === 0 ? (
             <ErrorState
@@ -278,8 +282,16 @@ export function MobileTaskSwitcher({
           ) : visibleGroups.length === 0 ? (
             <Empty
               variant="compact"
-              label="No chats yet."
-              description="Start a chat to explore an idea or work with an agent."
+              label={
+                scope.value === 'all'
+                  ? 'No chats yet.'
+                  : 'No work in this filter.'
+              }
+              description={
+                scope.value === 'all'
+                  ? 'Start a chat to explore an idea or work with an agent.'
+                  : 'Choose All work to see other projects and Stations.'
+              }
             />
           ) : null}
           {loadError && visibleGroups.length > 0 && (
@@ -313,6 +325,13 @@ export function MobileTaskSwitcher({
               // station#3687: acknowledge only after the click did something,
               // and say so when it could not (same contract as the desktop
               // panel — see ChatDockInboxPanel's onActivate).
+              if (task.kind === 'task') {
+                navigationStore.navigate(
+                  `/tasks/${encodeURIComponent(task.id)}`,
+                );
+                closeAndRestoreFocus();
+                return;
+              }
               void openWorkItem(task, {
                 onFocusChat,
                 onOpenConversation,

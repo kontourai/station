@@ -1,0 +1,7 @@
+{
+  "revision": "5edd2d7c7a90befd6187aa86fb4c19bade9c5d9c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2494 slice 2 fix round: Seatbelt now also denies writes to git redirects (a linked worktree's commondir/gitdir/config/hooks, a commondir and objects/info/alternates, and for a .git inside the workspace its worktrees, modules and the .git directory itself); the confined Claude home moved to <home>/confined-homes (a twin per app home, never one an unconfined spawn uses); the confined engine gets an allowlisted environment (no ambient GH_TOKEN, NPM_TOKEN, cloud keys or SSH agent; operator-configured connection env passes); turns are refused until a confined start is observed; a workspace start at never without a Seatbelt plan is applied as Auto; stale confined-session temp dirs whose owner process is gone are reaped at boot. Its settings-cascade sentence already says a Seatbelt-confined session reads its user tier and trust from a Station-owned configuration directory; that stays true with the directory now under confined-homes. Checked against claude-seatbelt.ts confinedClaudeConfigDir. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

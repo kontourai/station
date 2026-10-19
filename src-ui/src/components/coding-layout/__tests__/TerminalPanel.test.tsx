@@ -257,6 +257,50 @@ test('retains terminal output after a lost connection and reconnects its identit
   ).toBe(false);
 });
 
+test('ignores data and exit events for any session other than its own', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  const deliver = (message: Record<string, unknown>) =>
+    act(() =>
+      socket.onmessage?.({ data: JSON.stringify(message) } as MessageEvent),
+    );
+
+  deliver({
+    type: 'data',
+    sessionId: 'project-b:terminal-two',
+    data: 'foreign-shell-output',
+  });
+  deliver({
+    type: 'exited',
+    sessionId: 'project-b:terminal-two',
+    exitCode: 0,
+    signal: null,
+  });
+
+  expect(terminal.write).not.toHaveBeenCalledWith('foreign-shell-output');
+  expect(terminal.write).not.toHaveBeenCalledWith(
+    expect.stringContaining('[terminal exited]'),
+  );
+  expect(screen.queryByText('The shell has exited.')).toBeNull();
+
+  // Positive control: the panel's own session still reaches the terminal.
+  deliver({
+    type: 'data',
+    sessionId: 'project-a:terminal-one',
+    data: 'own-shell-output',
+  });
+  expect(terminal.write).toHaveBeenCalledWith('own-shell-output');
+  deliver({
+    type: 'exited',
+    sessionId: 'project-a:terminal-one',
+    exitCode: 0,
+    signal: null,
+  });
+  expect(terminal.write).toHaveBeenCalledWith(
+    expect.stringContaining('[terminal exited]'),
+  );
+});
+
 test('does not query a terminal port or open a raw socket when route policy blocks egress', async () => {
   assertRawEgress.mockImplementationOnce(() => {
     throw new Error(

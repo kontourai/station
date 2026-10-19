@@ -124,10 +124,9 @@ function DeviceHostsList({
   return (
     <div className="device-hosts">
       <p className="device-hosts__intro">
-        Run simulators and emulators on another Mac or Linux machine. Station
-        signs in with your own ssh agent and config and never stores a key.
-        Confirm a new host&rsquo;s key once from a terminal (
-        <code>ssh user@host</code>) before adding it here.
+        Run simulators on another Mac or Linux machine using your SSH agent and
+        config. Station never stores a key. First confirm the host key in a
+        terminal: <code>ssh user@host</code>.
       </p>
       {hosts.isLoading ? <Skeleton variant="line" /> : null}
       {hosts.isError ? (
@@ -146,7 +145,7 @@ function DeviceHostsList({
         <Empty
           variant="compact"
           label="Add a machine to get started"
-          description="Add a machine to run its simulators and emulators from the Device pane."
+          description="Its simulators and emulators appear in the Device pane."
         />
       ) : null}
       {hosts.data && hosts.data.length > 0 ? (

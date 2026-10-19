@@ -487,3 +487,23 @@
   -webkit-box-orient: vertical;
   white-space: normal;
 }
+
+.inbox-row-family {
+  min-width: 0;
+}
+.inbox-row-family > .disclosure-toggle {
+  min-height: 44px;
+  padding-inline: var(--k-space-3);
+  color: var(--k-text-muted);
+}
+.inbox-row-family__children {
+  margin-inline-start: var(--k-space-3);
+  padding-inline-start: var(--k-space-2);
+  border-inline-start: 1px solid var(--k-line);
+}
+
+.inbox-row-family__summary {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+}

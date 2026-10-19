@@ -31,6 +31,7 @@ import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import type {
   ConversationHandoffProjection,
   OrchestrationCommandReceipt,
@@ -38,7 +39,6 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
-  DELEGATION_PROVENANCE_METADATA_KEY,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -56,6 +56,7 @@ import {
 } from '@kontourai/station-contracts/session-work-item';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
   exactProcessIdentity,
   probeExactProcessIdentity,
@@ -105,6 +106,7 @@ import {
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
+import { migrateSessionParentMentions } from '../../domain/migrations/016-session-parent-mentions.js';
 import { ensurePreparedTurnIntents } from '../../domain/migrations/017-prepared-turn-intents.js';
 import { ensureInvocationTerminalRetirement } from '../../domain/migrations/018-invocation-terminal-retirement.js';
 import {
@@ -1629,6 +1631,20 @@ function snapshotEvent(
   const payload = event.payload as unknown as Record<string, unknown>;
   let outputCut = false;
   let snapshotPayload = payload;
+  // Only Station-stamped definition metadata can retain a bounded App envelope.
+  // Server result metadata cannot expand ordinary history windows.
+  const result = payload.output;
+  if (
+    event.method === 'tool.completed' &&
+    payload.status === 'success' &&
+    !payload.error &&
+    typeof payload.toolName === 'string' &&
+    parseMcpToolRef(payload.toolName) &&
+    typeof payload.mcpAppResourceUri === 'string' &&
+    isSuccessfulMcpResult(result) &&
+    Buffer.byteLength(JSON.stringify(payload)) <= maxBytes
+  )
+    return event;
   if (event.method === 'tool.completed') {
     // archive#3427: an empty-string error is a tool that failed with no
     // message — a fact about the run, not the absence of one — so it is
@@ -2038,6 +2054,14 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
+
+  /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
+  setMcpAppResourceResolver(
+    resolve: (toolRef: string) => string | undefined,
+  ): void {
+    this.mcpAppResourceResolver = resolve;
+  }
 
   constructor(
     dbPath: string,
@@ -2273,6 +2297,7 @@ export class EventStore {
       ensureOrchestrationRecoverySettlementColumns(this.db);
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
+      migrateSessionParentMentions(this.db);
       ensurePositiveTurnStartIndex(this.db);
       this.db
         .prepare(
@@ -3416,6 +3441,28 @@ export class EventStore {
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
+    // Never accept a provider/import's claim to this Station-owned field.
+    if (projectedEvent.method === 'tool.completed') {
+      delete projectedEvent.mcpAppResourceUri;
+      const replay = this.db
+        .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
+        .get(projectedEvent.eventId) as { payload: string } | undefined;
+      const storedStamp = replay
+        ? JSON.parse(replay.payload).mcpAppResourceUri
+        : undefined;
+      if (replay && typeof storedStamp === 'string')
+        projectedEvent.mcpAppResourceUri = storedStamp;
+      if (
+        !replay &&
+        projectedEvent.status === 'success' &&
+        !projectedEvent.error &&
+        !projectedEvent.outputReceipt?.truncated &&
+        isSuccessfulMcpResult(projectedEvent.output)
+      ) {
+        const uri = this.mcpAppResourceResolver?.(projectedEvent.toolName);
+        if (uri) projectedEvent.mcpAppResourceUri = uri;
+      }
+    }
     this.assertOwnershipImmutable(projectedEvent);
     let persisted: PersistedIngressForm;
     try {
@@ -5400,9 +5447,10 @@ export class EventStore {
    * session or its own runtime attested it. The stamp is a reserved key a
    * caller can never set, so a request's bare claim never reads as derived.
    *
-   * Every session.started/session.configured row is examined once for the
-   * whole batch of parents (one level of a tree read), through the method
-   * index; there is no index on the JSON fields. Reads one candidate past
+   * Per-source-event mentions are indexed at append and backfilled on open.
+   * Aggregate only events matching this chunk, preserving the scan's context
+   * precedence, MAX selection and first matching sequence. This is naming
+   * evidence, never cascade authority. Reads one candidate past
    * `limit` per chunk of parents and reports `truncated` when a chunk has
    * more than `limit`, so the caller can refuse rather than read a cut list.
    */
@@ -5428,26 +5476,20 @@ export class EventStore {
       const list = chunk.map(() => '?').join(', ');
       const rows = this.db
         .prepare(
-          `SELECT e.thread_id AS thread_id,
-                  MAX(COALESCE(
-                    json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
-                    json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
-                  MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+          `SELECT child_session_id AS thread_id,
+                  MAX(COALESCE(context_parent, legacy_parent)) AS verified_parent,
+                  MAX(task_parent) AS claimed_parent,
                   MAX(CASE
-                    WHEN e.method = 'session.started'
-                     AND json_extract(e.payload, '$.metadata.${DELEGATION_PROVENANCE_METADATA_KEY}') IN ('caller-derived', 'runtime-attested')
-                    THEN COALESCE(
-                      json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
-                      json_extract(e.payload, '$.metadata.parentConversationId'))
+                    WHEN source_method = 'session.started'
+                     AND start_provenance IN ('caller-derived', 'runtime-attested')
+                    THEN COALESCE(context_parent, legacy_parent)
                   END) AS derived_parent,
-                  MIN(e.global_sequence) AS first_sequence
-             FROM orchestration_events e
-            WHERE e.method IN ('session.started', 'session.configured')
-              AND json_valid(e.payload)
-              AND (json_extract(e.payload, '$.metadata.delegation.parentConversationId') IN (${list})
-                OR json_extract(e.payload, '$.metadata.parentConversationId') IN (${list})
-                OR json_extract(e.payload, '$.metadata.parentTaskId') IN (${list}))
-            GROUP BY e.thread_id
+                  MIN(global_sequence) AS first_sequence
+             FROM orchestration_session_parent_mentions
+            WHERE context_parent IN (${list})
+               OR legacy_parent IN (${list})
+               OR task_parent IN (${list})
+            GROUP BY child_session_id
             ORDER BY first_sequence ASC
             LIMIT ?`,
         )

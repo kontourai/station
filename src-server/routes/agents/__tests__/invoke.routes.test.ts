@@ -4,9 +4,12 @@ import {
   tenantExecutionContextFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import { Agent } from '@voltagent/core';
+import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -23,10 +26,6 @@ vi.mock('../../../utils/auth-errors.js', () => ({
 
 vi.mock('../../system/auth.js', () => ({
   getCachedUser: () => ({ alias: 'authenticated-user' }),
-}));
-
-vi.mock('ai', () => ({
-  jsonSchema: (s: unknown) => s,
 }));
 
 const { createInvokeRoutes } = await import('../invoke.js');
@@ -1440,5 +1439,103 @@ describe('Invoke Routes', () => {
 
     expect((await pending).status).toBe(200);
     expect(commitActive).toBe(false);
+  });
+});
+
+test('global structured invoke reaches the real VoltAgent model through its framework wrapper', async () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => ({
+      content: [
+        {
+          type: 'text',
+          text:
+            options.responseFormat?.type === 'json'
+              ? '{"result":"structured"}'
+              : 'Primary answer.',
+        },
+      ],
+      finishReason: { unified: 'stop', raw: 'stop' },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    }),
+  });
+  const framework = new VoltAgentFramework();
+  vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+  const runtime = createMockCtx({ framework });
+  const nativeObject = vi.spyOn(Agent.prototype, 'generateObject');
+  const response = await createInvokeRoutes(runtime as any).request('/invoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: 'Hello',
+      schema: {
+        type: 'object',
+        properties: { result: { type: 'string' } },
+        required: ['result'],
+      },
+    }),
+  });
+  const nativeOptions = nativeObject.mock.calls.at(-1)?.[2];
+  nativeObject.mockRestore();
+  expect(response.status).toBe(200);
+  expect(await json(response)).toMatchObject({
+    success: true,
+    response: { result: 'structured' },
+  });
+  expect(model.doGenerateCalls).toHaveLength(2);
+  expect(model.doGenerateCalls[1]?.responseFormat).toMatchObject({
+    type: 'json',
+  });
+  expect(nativeOptions).toMatchObject({
+    userId: 'service:invoke-user',
+    conversationId: expect.stringMatching(/^invoke-/),
+  });
+});
+
+test('registered structured invoke retains the real raw VoltAgent three-argument API', async () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [{ type: 'text', text: '{"result":"registered"}' }],
+      finishReason: { unified: 'stop', raw: 'stop' },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    }),
+  });
+  const wrapper = await new VoltAgentFramework().createTempAgent({
+    name: 'registered',
+    instructions: 'Return JSON.',
+    model,
+    tools: [],
+  });
+  const runtime = createMockCtx();
+  runtime.activeAgents.set('default', Reflect.get(wrapper, 'raw'));
+  const response = await createInvokeRoutes(runtime as any).request(
+    '/agents/station/invoke/stream',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Hello',
+        schema: {
+          type: 'object',
+          properties: { result: { type: 'string' } },
+          required: ['result'],
+        },
+      }),
+    },
+  );
+  expect(response.status).toBe(200);
+  expect(await json(response)).toMatchObject({
+    success: true,
+    response: { result: 'registered' },
+  });
+  expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+    type: 'json',
   });
 });

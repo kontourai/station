@@ -158,6 +158,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatDockWidth',
         'diffStyle',
         'diffWrap',
+        'inboxScope',
         'inboxOpen',
         'inboxSections',
         'projectSidebarCollapsed',
