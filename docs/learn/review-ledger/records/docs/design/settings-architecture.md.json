@@ -86,7 +86,9 @@
 
     "src-ui/src/app-shell/codingWorkspaceDocument.ts",
 
-    "packages/contracts/src/workspace-coding-evidence-composition.ts"
+    "packages/contracts/src/workspace-coding-evidence-composition.ts",
+
+    "src-ui/src/views/settings/SettingRowStatus.tsx"
   ],
 
   "checks": [
