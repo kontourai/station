@@ -143,7 +143,7 @@ const EVENT_STREAM_HEADER = /\r\ncontent-type:\s*text\/event-stream/i;
  * so this reads the header block Node already sent (`_header`).
  */
 function isEventStream(res: ServerResponse): boolean {
-  const header = (res as unknown as { _header?: unknown })._header;
+  const header: unknown = Reflect.get(res, '_header');
   return typeof header === 'string' && EVENT_STREAM_HEADER.test(header);
 }
 
@@ -382,7 +382,7 @@ export class SupervisorLink implements ListenerLink {
     const port = boundPort(server, address.port);
     // The raw wrap, never the server: a sent net.Server becomes a listening
     // server in the supervisor that accepts connections it never answers.
-    const raw = (server as unknown as { _handle?: unknown })._handle;
+    const raw: unknown = Reflect.get(server, '_handle');
     this.send({ type: 'listener.bound', name, port }, raw);
     return { port };
   }

@@ -24,7 +24,6 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -40,6 +39,7 @@ import { promisify } from 'node:util';
 import {
   ensureStationHomeSchemaSync,
   readStationHomeSchemaVersion,
+  STATION_HOME_SCHEMA_VERSION,
   stationHomeSchemaNeedsReset,
 } from '@kontourai/station-shared/station-home-schema';
 import {
@@ -53,6 +53,7 @@ import {
   type ControlConnection,
   connectControl,
 } from '../../../__test-utils__/supervisor-control.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -73,7 +74,11 @@ const REQUEST_TIMEOUT_MS = scaleLivenessMs(90_000);
 const OUTPUT_LIMIT = 256 * 1024;
 
 const execFileAsync = promisify(execFile);
-const homes: string[] = [];
+// Created before the hooks that stop children, so its after-hook runs last:
+// the directories outlive the processes using them.
+const makeShortTempDir = trackTempDirs({
+  base: process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+});
 const children = new Set<ChildProcess>();
 
 /** The parent's own Station settings must not leak into these children. */
@@ -97,10 +102,8 @@ function isolatedEnv(home: string, extra: NodeJS.ProcessEnv = {}) {
 }
 
 function makeHomeRoot(): string {
-  // Short, so the control socket path fits inside the home on macOS.
-  const root = mkdtempSync(join(tmpdir(), 'svj-'));
-  homes.push(root);
-  return root;
+  // Short, so the control socket path is as short as it can be on macOS.
+  return makeShortTempDir('svj-');
 }
 
 function exitOf(child: ChildProcess): Promise<number | null> {
@@ -181,9 +184,6 @@ afterEach(async () => {
 
 afterAll(() => {
   rmSync(buildDir, { recursive: true, force: true });
-  for (const root of homes.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 describe('a parked core generation', () => {
@@ -205,6 +205,10 @@ describe('a parked core generation', () => {
         windowsHide: true,
       }).pid;
       const staleRecord = join(registry, 'engine-journey.json');
+      // The engine registry is trusted only at mode 0700, which Windows
+      // cannot report (every directory reads 0o666), so the orphan sweep
+      // never reads it there: a pre-existing gap. Watch it on POSIX only.
+      const watchRegistry = process.platform !== 'win32';
       // Owner gone and no engine birth recorded: the sweep drops the record
       // without signalling anything.
       writeFileSync(
@@ -256,7 +260,7 @@ describe('a parked core generation', () => {
         'temp-root',
       ]);
       expect(existsSync(staleTemp)).toBe(true);
-      expect(existsSync(staleRecord)).toBe(true);
+      if (watchRegistry) expect(existsSync(staleRecord)).toBe(true);
 
       // Positive control: the same observation sees the home once promoted.
       core.send({ type: 'promote', listeners: [] });
@@ -273,7 +277,9 @@ describe('a parked core generation', () => {
         'the boot sweeps after promote',
         BOOT_TIMEOUT_MS,
         () =>
-          !existsSync(staleTemp) && !existsSync(staleRecord) ? true : undefined,
+          !existsSync(staleTemp) && (!watchRegistry || !existsSync(staleRecord))
+            ? true
+            : undefined,
         output,
       );
 
@@ -658,7 +664,6 @@ const SERVING_TIMEOUT_MS = scaleLivenessMs(30_000);
 /** Longer than the supervisor's 5-second lock and socket self-check. */
 const SELF_CHECK_WAIT_MS = 6_500;
 
-const sourceRoots: string[] = [];
 const sourceChildren: ChildProcess[] = [];
 
 afterEach(async () => {
@@ -677,9 +682,6 @@ afterEach(async () => {
         }),
     ),
   );
-  for (const root of sourceRoots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 async function freeLoopbackPort(): Promise<number> {
@@ -757,9 +759,7 @@ async function startSourceSupervisor(home: string) {
 
 function makeSourceRoot(): string {
   // Short, so the control socket path fits beside the home on macOS.
-  const root = mkdtempSync(join(tmpdir(), 'svh-'));
-  sourceRoots.push(root);
-  return root;
+  return makeShortTempDir('svh-');
 }
 
 describe('the supervisor beside a Station home', () => {
@@ -771,7 +771,11 @@ describe('the supervisor beside a Station home', () => {
       expect(existsSync(home)).toBe(false);
       expect(stationHomeSchemaNeedsReset(home)).toBe(false);
       ensureStationHomeSchemaSync(home);
-      expect(readStationHomeSchemaVersion(home)).toBe(2);
+      // Pinned beside the derivation it guards.
+      expect(STATION_HOME_SCHEMA_VERSION).toBe(2);
+      expect(readStationHomeSchemaVersion(home)).toBe(
+        STATION_HOME_SCHEMA_VERSION,
+      );
       expect((await supervisor.status()).state).toBe('serving');
     },
     SERVING_TIMEOUT_MS * 2,
@@ -793,15 +797,17 @@ describe('the supervisor beside a Station home', () => {
 
       // A real migration through the gate: copy aside, migrate, replace.
       ensureStationHomeSchemaSync(home, {
-        targetVersion: 3,
+        targetVersion: STATION_HOME_SCHEMA_VERSION + 1,
         migrations: [
           {
-            fromVersion: 2,
+            fromVersion: STATION_HOME_SCHEMA_VERSION,
             migrate: (staged) => writeFileSync(join(staged, 'migrated'), '1'),
           },
         ],
       });
-      expect(readStationHomeSchemaVersion(home)).toBe(3);
+      expect(readStationHomeSchemaVersion(home)).toBe(
+        STATION_HOME_SCHEMA_VERSION + 1,
+      );
       expect(existsSync(join(home, 'migrated'))).toBe(true);
       expect(existsSync(join(home, 'data.json'))).toBe(true);
 
