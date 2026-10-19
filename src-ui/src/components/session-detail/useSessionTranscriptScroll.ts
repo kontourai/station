@@ -179,8 +179,33 @@ export function useSessionTranscriptScroll({
       for (const child of scroll.children) observer?.observe(child);
     };
     observeContent();
-    const children = new MutationObserver(observeContent);
-    children.observe(scroll, { childList: true });
+    const children = new MutationObserver((records) => {
+      if (
+        records.some(
+          (record) => record.type === 'childList' && record.target === scroll,
+        )
+      ) {
+        observeContent();
+      }
+      // DOM growth can be read by another task before ResizeObserver runs.
+      if (readyRef.current && follow.current) {
+        const top = scroll.scrollTop;
+        // Let onScroll classify a pending upward move before pinning.
+        if (
+          top >= lastSeenTop.current - 1 ||
+          scroll.scrollHeight - top - scroll.clientHeight <= 2
+        ) {
+          pinToLatest();
+        }
+      }
+    });
+    children.observe(scroll, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden', 'open'],
+    });
     return () => {
       scroll.removeEventListener('scroll', onScroll, true);
       scroll.removeEventListener('wheel', onWheel);

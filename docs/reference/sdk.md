@@ -4365,8 +4365,8 @@ continue to govern resolution.
 `respondToRequest` from `@kontourai/station-sdk/client` accepts form
 `content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
 `expectedRequestEventId`, for a harness question or a tool server's form.
-The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
-0.10.0.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and remains
+accepted in 0.10.0 for compatibility. New callers should send `content`.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
@@ -4636,3 +4636,19 @@ A retryable failed turn may already have spent resources. Inspect its outcome
 and request another attempt explicitly; this field does not authorize replay.
 See [engine-neutral failures](contracts.md#engine-neutral-failures) for kinds,
 code mappings, phase semantics and legacy `retriable` compatibility.
+
+### Pull request guide client
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestGuide` and
+`writePullRequestGuide`. Both accept `(apiBase, target, options?)` using the
+same `PullRequestReviewTarget` and request authority as the review client.
+They return `{ enabled: false }` or `{ enabled: true, guide, run,
+currentHeadSha, excerptContents }`. Writing starts asynchronous generation;
+read again to observe completion. Obsolete guides retain their original SHA
+and prose, with excerpts and line notes removed. See the
+[pull request guide](../user/pull-request-guides.md) for settings and limits.
+
+`getPullRequestGuideStatus(apiBase, target, options?)` returns only the enabled
+state and process-local run status without a forge snapshot.
+`writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
+or false reuses a completed guide for the current head.

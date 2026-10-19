@@ -2,6 +2,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { tsImport } from 'tsx/esm/api';
 import {
   headers,
   optionValue,
@@ -51,7 +52,7 @@ export async function main() {
       );
     const modulePath = optionValue('scenario-module');
     const extension = modulePath
-      ? await import(pathToFileURL(resolve(modulePath)).href)
+      ? await tsImport(pathToFileURL(resolve(modulePath)).href, import.meta.url)
       : {};
     const api = async (path, body, method = body ? 'POST' : 'GET') => {
       const response = await fetch(`${origin}${path}`, {

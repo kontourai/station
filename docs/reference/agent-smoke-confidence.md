@@ -222,8 +222,8 @@ trusted local ES module. It may export either or both:
 - `scenarios: [{ id, async run(ctx) { /* probe */ } }]`: append unique scenario
   IDs after the built-ins. The existing `additionalScenarios` interface remains
   valid. An optional positive integer `maxTurns` per scenario declares its
-  per-model planning bound. Without declarations, the plan reserves the
-  remaining run ceiling for extensions (at least one send per scenario/model);
+  planning bound per model (or once per engine with `scope: 'engine'`). Without declarations, the plan reserves the
+  remaining run ceiling for extensions (at least one send per scenario instance);
   its printed count is an upper bound. `ctx.api` is the billable channel:
   POST, PUT, PATCH and DELETE requests reserve budget, including unknown routes.
   Only POST `stopSession`, `interruptTurn`, `inspectSteerInput`,
@@ -237,12 +237,24 @@ trusted local ES module. It may export either or both:
   `nonce`, `artifactName`, `artifactContent`,
   `api(path, optionalBody, optionalMethod)`,
   `setupApi(path, optionalBody, optionalMethod)`, `command(command)`,
-  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent)` and
+  `send(prompt, requestedModel, exactExpectedText, optionalArtifactPath, optionalArtifactContent, optionalEvaluator)` and
   `recall(model)`. `send` returns the checked turn, including `turnId`, for
   subsequent API observations. Throw on a failed additional assertion; return a
   reason string for an unverified prerequisite. A scenario with no checked turns
-  cannot pass. #3824 can add nonce-based skill/MCP/tool-policy probes at this
-  registration seam without another runner. Added scenarios may send additional
+  cannot pass. An engine-scoped scenario uses `scope: 'engine'` and gets a fresh
+  session on the first selected model, once per invocation. Its optional
+  `prepare(ctx)` runs before session startup and can return `{ metadata, state }`
+  or `{ skipReason }`. A returned `metadata.agentSlug` selects that Agent in the
+  public chat target after checking its availability and engine binding. Register each cleanup with
+  `ctx.deferCleanup(label, asyncCleanup)` before attempting its mutation;
+  obligations run in reverse order after the final session stop, including on
+  setup, startup or turn failure and skip. Each cleanup failure adds a failed
+  row while the remaining obligations are still attempted. Engine-scoped setup
+  also exposes `engine`, `connectionId`, `cwd`, `model` and a `delivery` evidence
+  map. The evaluator receives the exact turn's assistant text, complete stored
+  output names, events, and identity checks. It returns additional named verdicts;
+  it cannot overwrite the built-in checks. Passing `null` as the expected text
+  delegates response judgment to those checks and requires an evaluator. Artifact content may be an expected string or a verifier function over the inspected text. The evaluator also receives `sessionEvents` for engine-reported configuration receipts. Added scenarios may send additional
   billable turns; review extension code before confirming.
 
 Both API channels validate a Station-relative path and a string HTTP method
@@ -356,3 +368,209 @@ advertised model is unsupported. A follow-up needs an engine/catalog owner,
 a durable failure taxonomy, invalidation/recovery rules and picker tests before
 using failed sends to suppress advertised models. This runner only records
 findings and leaves the catalog unchanged.
+
+### Opt-in engine delivery probes (#3824)
+
+
+Use the bundled scenario module with the same confirmation and isolated Station
+requirements above:
+
+```sh
+station environment credential show | npm run dogfood:agent-smoke -- \
+  --matrix --confirm-billable-engine-matrix \
+  --origin=http://127.0.0.1:43000 --credential-file=- \
+  --connection=example-engine --cwd=/path/on/server/disposable-matrix-workspace \
+  --scenario-module=./scripts/engine-delivery-probes.ts \
+  --model=example-model-a --max-turns=6
+```
+
+This appends one delivery session per engine/connection invocation, using the
+first selected model. It declares `maxTurns: 2`, reserving two additional sends
+once per engine, rather than per model. The printed plan names the delivery
+scenario, its scope, instance count and turn bound; the preflight refusal and
+hard send ceiling include those turns. It adds at most two sends: a skill turn
+where the
+capability matrix declares skill delivery, then an MCP follow-up. The existing
+model scenarios still run per model. The CLI loads trusted TypeScript extensions
+through the installed `tsx` loader. No live model execution is part of the
+fixture tests or a default smoke run.
+
+All probe resource preparation, reads and cleanup use `ctx.setupApi`; no setup
+operation reserves billable budget. The native one-model fixture run plans four
+built-in sends plus two delivery sends, with
+`reservedBillableRequests === sentTurns === 6`. Sending the reconnect operation
+through `ctx.api` instead consumes a reservation and leaves only five sends.
+The runner's existing session stop remains a non-billable `ctx.command` control;
+commands are intentionally outside the setup allowlist.
+
+The probe creates a unique integration through `/integrations`, handshakes it
+through `/integrations/:id/reconnect`, and checks Station's discovered tool list
+before applying a disable through `/integrations/:id/tools/apply`. The bundled
+local stdio MCP server exposes harmless `ping` and `blocked` actions. The table
+in `scripts/engine-delivery-probes.ts` names `blocked` for Station, Claude and
+Codex; the deterministic test reads the fixture's actual MCP `tools/list`, and
+runtime preflight repeats the existence check against Station's integration
+inventory. MCP use requires a successful `tool.completed` matched to the current
+turn's server-qualified `ping` start by call ID; observable output must contain
+`DELIVERY_PING_OK`. A blocked action is a breach only with a matched successful
+completion or its `DISABLED_TOOL_WAS_CALLED` output. A rejected/hallucinated
+attempt is not a breach. Positive selection proof requires an engine-reported
+tool list containing this server's `ping` and omitting `blocked`; without it,
+non-use remains unverified. Claude's init `tools` shape comes from line 1 of the
+[CLI capture](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl);
+the mapper retains only the current probe server's names as
+`session.configured.metadata.engineToolNames`. This diagnostic projection is
+opted in only by a resolved `delivery-<32 hex UUID>` Agent with the matching
+`probe<UUID>` MCP server. Ordinary sessions retain neither tool names nor an
+inventory flag. The list is capped at 32 names, 128 UTF-8 bytes per name and
+2,048 bytes of JSON; skipped entries set `engineToolNamesTruncated: true`.
+A truncated inventory cannot prove absence, so its policy cell is unverified
+(a recorded successful blocked call still fails). Other engines without this
+receipt remain unverified. Unknown IDs fail before
+sending. This tests MCP selection, not a native-tool disable or the entire
+pre-tool approval chain. ACP has no MCP per-tool selection channel, and its
+policy probe is unsupported; it receives an unrestricted fixture for the MCP
+use check. Muse and unknown engines without server delivery are skipped.
+
+The temporary Agent binds the selected connection, integration, Station Control
+and supported skill through Station's APIs. The nonce appears only in the skill
+package's `probe.mjs`, never its `SKILL.md` or a prompt. The script generates a
+fresh runtime input and writes `{ input, proof }`, where
+`proof = HMAC-SHA256(nonce, input)`. The receipt must appear in the answer and
+its contents must verify through the existing identity-bound artifact inspection
+API. Echoing the embedded nonce or declaring a known filename is insufficient.
+The script cell additionally requires passing skill delivery. This proves a
+computed execution receipt, not OS attestation of a particular executable: an
+agent running equivalent HMAC code can reproduce the receipt protocol.
+The skill API currently creates `SKILL.md` but cannot upload bundled resources,
+so this diagnostic adds the script directly to the API-created package after
+checking its path and body locally. Run it on the same host/filesystem as Station;
+a remote-only client cannot perform this step.
+
+The script lives in the API-returned skill package's scripts subdirectory as
+`probe.mjs`. Claude may materialize it under
+`<cwd>/.claude/skills/<skill-id>/scripts/probe.mjs`. Finding this file is not skill
+invocation. The skill verdict additionally requires the exact turn's recorded
+`Skill` tool call with `arguments.skill` equal to the probe's unique name and a
+matching successful `tool.completed` event and the verified execution receipt. A `Read` of that script without
+`Skill` fails. Missing invocation records or a missing engine-specific shape
+remain unverified, with their reason. A failed invocation cannot pass merely
+because the script was read separately.
+
+The per-engine table is intentionally small:
+
+| Engine | Adopted invocation shape | Fixture basis / limit |
+| --- | --- | --- |
+| Claude | SDK assistant `tool_use` named `Skill`, `input.skill`; mapped to `tool.started` with the same name/input, then a successful completion for that call ID | [Skill capture](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl), lines 2–4; [Read-only counterexample](../../src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl), lines 2–3; [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts) |
+| Station (`station-agent`) | None adopted; unverified | No captured invocation shape in this provider corpus. `activate_skill` exists in [SkillService](../../src-server/services/agents/skill-service.ts); that declaration is not an invocation receipt. |
+| Codex | None adopted; unverified | [Recorded collaboration stream](../../src-server/providers/__tests__/fixtures/codex-0.155.1-collab-v1-spawn-wait-completed.jsonl) supplies no adopted skill form; [mapper](../../src-server/providers/adapters/codex-adapter-events.ts). Skills are currently declared unsupported. |
+| ACP | None adopted; unverified | No raw skill-invocation capture; [mapper](../../src-server/providers/adapters/acp-adapter-events.ts). Do not guess from a CLI-specific tool title. Skills are currently declared unsupported. |
+| Muse | None adopted; unverified | [Recorded Bash stream](../../src-server/providers/__tests__/fixtures/muse-1.3-bash-tool-turn.jsonl) supplies no adopted skill form; [adapter](../../src-server/providers/adapters/muse-adapter.ts). Skills are currently declared unsupported. |
+
+The new Claude fixtures are real **CLI tool-execution** captures, driven by
+loopback fixture inference rather than a real model. Claude Code 2.1.296 / Agent
+SDK 0.3.300 advertises the input schema; the local provider requests the call,
+the CLI loads the skill or reads the file, and both captures end successfully.
+They prove the emitted protocol shape and mapper behavior, not live-model
+adherence or behavior on every CLI version. The [capture metadata](../../src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json)
+records provenance and redactions. Usage/cost fields are CLI estimates over
+fixture token counts, not provider billing evidence. The manual, non-billable
+[capture helper](../../scripts/fixtures/capture-skill-delivery.mjs) uses only a
+loopback endpoint, fixture credentials and an isolated CLI config:
+
+```sh
+node scripts/fixtures/capture-skill-delivery.mjs skill /absolute/path/to/claude
+node scripts/fixtures/capture-skill-delivery.mjs read /absolute/path/to/claude
+```
+
+Those commands write raw local artifacts under `.kontourai/skill-captures/`;
+inspect and scrub them before committing. Normal tests replay checked-in
+captures through the real mapper; they do not start the CLI or call a model.
+
+The MCP verdict uses exact, server-qualified tool starts and matched successful completions,
+never assistant prose. Missing identity provenance cannot verify a delivery
+cell. A declared delivery without a passing probe renders **unverified** in a
+separate delivery table. The overall scenario still requires the existing UI
+output observer and a passing skill-delivery check where claimed for a pass.
+A passing stored-output delivery probe does not establish rendering. The separate
+`nativeToolPolicy` delivery cell preserves
+the capability matrix's declaration but always renders **unverified**, including
+when MCP selection passes. This probe observes neither native tool disables
+nor the pre-tool blocking/grant chain. External adapters also lack a native
+per-tool-disable enforcement path or complete native inventory.
+
+For an optional third-party Streamable HTTP fixture, set
+`STATION_DELIVERY_PROBE_MCP_ENDPOINT` to an endpoint implementing the same
+`ping`/`blocked` contract. Station probes it before enabling it or sending a
+delivery turn. An unreachable dependency skips the delivery row with its reason;
+a reachable endpoint missing a required action fails the inventory guard.
+ACP authored MCP passthrough is stdio-only, so this override skips ACP.
+
+Cleanup stops the probe session, deletes the temporary Agent and skill through
+Station's APIs, and deletes the integration (including its disable policy).
+Obligations are registered before creation so a lost acknowledgement still
+triggers a cleanup attempt. Every failed cleanup is reported as a failed row,
+including alongside a skipped dependency. SIGINT/SIGTERM trigger all registered
+compensations once, concurrently so a stalled session stop cannot prevent the
+three DELETEs. A five-second deadline exits 130/143 and prints unconfirmed and
+all run-owned IDs for recovery. SIGKILL, host/process crashes, or a server-side
+create that commits after an interrupted request's cleanup are outside that
+confirmation; inspect the printed IDs before discarding the instance. Session receipts and declared workspace
+outputs remain for inspection; remove the disposable instance/workspace after
+review. Live provider loading, native-tool policy enforcement, and actual rendered
+outputs are **NOT_VERIFIED** by the deterministic fixture suite.
+
+### Delivery API route audit
+
+The mounted route owners are `runtime-routes.ts:3135` (`/agents`), `:3167`
+(`/api/skills`) and `:3828` (`/integrations`). Setup requires an operator
+credential with authority to author command-backed integrations; the integration
+management middleware and command-choice gate are not bypassed by a probe.
+`validate()` parses JSON and applies the named schema
+(`src-server/routes/schemas/schema-validation.ts:67`). GET/DELETE leaves use
+`param()` (`:114`) plus the named service's ownership/existence checks; they have
+no body schema. The probe sends no PUT requests.
+
+| Probe request | Real route owner | Validation / submitted body |
+| --- | --- | --- |
+| `POST /integrations` | `src-server/routes/agents/tools.ts:422` | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts:212`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
+| `POST /integrations/:id/reconnect` | `src-server/routes/agents/tools.ts:894` | No body schema; `{}` is ignored. `probeIntegration` performs the real handshake and persists inventory. |
+| `GET /integrations` | `src-server/routes/agents/tools.ts:342` | No body; discovered original tool names are projected by the real route. |
+| `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:291`; `{ disabledTools: ['blocked'] }`. |
+| `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:290`; `{ enabled: true }`. |
+| `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description; omitted `global` uses the local package scope. |
+| `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
+| `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts:92`, managed prompt guard `:132`); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |
+| `DELETE /agents/:slug` | `src-server/routes/agents/agents.ts:557` | Required slug; service refuses reserved identities or referenced Agents. |
+| `DELETE /api/skills/:name` | `src-server/routes/agents/skills.ts:324` | Required name; service requires a writable, owned package. |
+| `DELETE /integrations/:id` | `src-server/routes/agents/tools.ts:869` | Required ID; built-ins and contributed definitions cannot be deleted. Removing the integration also removes its stored disable policy. |
+
+The [real-route lifecycle suite](../../scripts/__tests__/engine-delivery-routes.test.ts)
+mounts these actual Hono route factories with real ConfigLoader, SkillService,
+MCPService, AgentService and file persistence in a temporary home. It runs the
+actual scenario setup and registered cleanup, including lost acknowledgement
+after Agent persistence, probes the local MCP process, checks persisted skill /
+policy / Agent state, then checks that all three DELETEs removed their resources.
+Only authenticated-principal binding and runtime Agent activation are test
+composition; no LLM adapter starts. The verdict suite's setup stubs now use the
+real mutation schemas and exact route/method patterns instead of accepting any
+`/integrations/*` operation.
+
+The [full matrix integration harness](../../src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts)
+now also mounts these CRUD routes and the real enriched-Agent catalog/detail
+routes (via `AgentService`) and runs the entire bundled delivery scenario
+against real foreground routes, OrchestrationService, EventBus and SQLite. A fake
+Station adapter loads the API-created Agent from the real store, executes the
+bundled script, declares its actual file through the native output owner, and
+calls `ping` on the configured local MCP server. The result retains Station's
+unverified skill cell because no captured Station invocation shape is adopted;
+execution and MCP-use checks pass; script and selection cells remain unverified without native skill/tool-list receipts. The test asserts fourteen counted sends,
+three successful DELETEs and no retained resources. The one-model case pins six sends/reservations; deliberately routing one setup POST through the billable channel leaves only five sends. A CLI child interrupted mid-probe confirms three successful DELETEs before exit 130. It found and fixed an invalid
+empty managed-Agent prompt that schema-only stubs had accepted. It does not
+exercise external adapters' passthrough or prove native policy enforcement.
+
+| Turn request | Real route owner | Validation / submitted body |
+| --- | --- | --- |
+| `POST /api/orchestration/chat` | `src-server/routes/orchestration/orchestration.ts:2916` | `foregroundMessageSchema` (`:981`, derived from `foregroundMessageObjectSchema`, `:802`); conversation ID, selected temporary Agent in `target`, expected engine, directory workspace, `model.override`, message and client turn ID. |
+| `POST /api/orchestration/chat/:conversationId/continue` | `orchestration.ts:3310` | `continueForegroundMessageSchema` (`:997`); message, `model.override` and client turn ID. |
+| `POST /api/orchestration/commands` | `orchestration.ts:5650` | `orchestrationCommandSchema` (`:571`); cleanup uses only `{ type: 'stopSession', threadId }`, never start/send commands. |

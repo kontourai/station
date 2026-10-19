@@ -251,6 +251,32 @@ An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, and its card
 says so.
 
+### When the server is older than the app
+
+A desktop or mobile app whose version a release pipeline stamped
+(`STATION_BUILD_VERSION`) compares that version with the one a prebuilt
+archive server reports on the same route, in Station's release order
+([`release-version-order.ts`](../../packages/shared/src/release-version-order.ts)).
+A native Nightly's `X.Y.Z-nightly.<day>[.<build>]` is first written as the
+portable `X.Y.Z-nightly.<day × 100 + build>` that names the same nightly
+allocation; #2962 is meant to replace that bridge with one identity. An iOS
+build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
+stamped with the cohort's full Nightly version, or a Beta's full release
+version, instead. A bare `X.Y.Z` client never counts as newer than a
+prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
+against a `0.1.12-preview.N` server, which tracks another ring and cannot
+update itself to the stable release. When the server is older, a dismissible
+banner says the server is older and names both versions in one readable form,
+a Nightly by its build date
+([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)).
+If the service's launcher runs the server and its verified manifest names a
+newer release, the banner offers **Update server to …**. That queues the same
+service update Settings applies and follows its progress through the restart.
+Any other server gets the way to update it on its host instead. The banner
+never appears for a dev or locally built app, equal versions, a server that
+reports no version (source checkouts and desktop bundles), the server's own
+web UI, or a built-in server.
+
 ### Advanced source installer boundary
 
 The checkout-backed bundle installer survives behind the **Source installation

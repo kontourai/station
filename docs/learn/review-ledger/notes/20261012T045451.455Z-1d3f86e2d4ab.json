@@ -1,0 +1,7 @@
+{
+  "revision": "e08845eb397f4cdd67fe539947119a2d5de698e0",
+
+  "notes": [
+    {"path":"docs/guides/store-entry.md","note":"The workflow change adds an optional testflight-delivery input web_build_version (fed from nightly-native-stage's cohort desktop Nightly version and release.yml's preflight version) that only sets STATION_BUILD_VERSION, which only vite.config.ts reads for the web bundle's build identity; nothing this document states about rings, releasing, store entries, listings, icons or the CLI changes.","inputs":["docs/guides/store-entry.md",".github/workflows/nightly-native-stage.yml",".github/workflows/release.yml",".github/workflows/testflight-delivery.yml"]}
+  ]
+}

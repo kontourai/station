@@ -13,4 +13,5 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control local device live surfaces through the shared lease |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
+| [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |

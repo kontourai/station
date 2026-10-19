@@ -681,6 +681,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
   promptQueue: AsyncUserMessageQueue;
@@ -2033,8 +2034,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
 
+    const probeSuffix = /^delivery-([a-f0-9]{32})$/.exec(
+      input.agent?.slug ?? '',
+    )?.[1];
+    const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      deliveryProbeServerId:
+        probeServer &&
+        input.agent?.toolServers?.some((server) => server.id === probeServer)
+          ? probeServer
+          : undefined,
       attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
       requireNativeResumeIdentity:
         input.requireNativeResumeIdentity ||

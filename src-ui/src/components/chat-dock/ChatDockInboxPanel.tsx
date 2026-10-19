@@ -3,6 +3,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
@@ -20,6 +21,7 @@ import {
   type InboxGroupListProps,
   moveFocusBeforeRemovingInboxRow,
 } from './ChatDockInboxRows';
+import { InboxScopeFilter, useInboxScope } from './InboxScopeFilter';
 import {
   clearSnooze,
   snoozeKeyFor,
@@ -147,7 +149,8 @@ function ChatDockInboxPanelImpl({
   );
   // The live groups (held lifecycles, live snoozes): the same hook the
   // inbox toggle's Needs-you count reads, so the two cannot disagree.
-  const groups = useInboxGroups(items, now);
+  const scope = useInboxScope(items, now, workFacts);
+  const groups = useInboxGroups(scope.items, now, workFacts);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -162,8 +165,18 @@ function ChatDockInboxPanelImpl({
       aria-label="Inbox chats"
       tabIndex={-1}
     >
+      <InboxScopeFilter scope={scope} />
       <div className="chat-dock-inbox__scroll">
-        {!hasAnyItems && <Empty variant="compact" label="Nothing here yet." />}
+        {!hasAnyItems && (
+          <Empty
+            variant="compact"
+            label={
+              scope.value === 'all'
+                ? 'Nothing here yet.'
+                : 'No work in this filter.'
+            }
+          />
+        )}
         {hasAnyItems && (
           <InboxGroupList
             groups={groups}
@@ -183,6 +196,12 @@ function ChatDockInboxPanelImpl({
               // something. Acknowledging first moved a row the user could
               // not open out of "Just finished" — a failed open quietly
               // buried its own evidence.
+              if (item.kind === 'task') {
+                navigationStore.navigate(
+                  `/tasks/${encodeURIComponent(item.id)}`,
+                );
+                return;
+              }
               void openWorkItem(item, {
                 onFocusChat,
                 onOpenConversation,

@@ -1,0 +1,13 @@
+{
+  "revision": "1eec41a4abf3887736556ed2420bdb7a493c7b29",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Delta review of responsive-action-surfaces.txt: added the Guide row as an explicit exception carrying deferred full-mobile/native/touch-target qualification, while recording real 415px pane geometry and navigation evidence. No shared style, token, dialog, responsive contract, or policy ceiling changed. Existing general UI/backend guidance remains accurate; this is not a full-page or physical-device requalification.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Delta review of responsive-action-surfaces.txt: added the Guide row as an explicit exception carrying deferred full-mobile/native/touch-target qualification, while recording real 415px pane geometry and navigation evidence. No shared style, token, dialog, responsive contract, or policy ceiling changed. Existing general UI/backend guidance remains accurate; this is not a full-page or physical-device requalification.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Delta review of responsive-action-surfaces.txt: added the Guide row as an explicit exception carrying deferred full-mobile/native/touch-target qualification, while recording real 415px pane geometry and navigation evidence. No shared style, token, dialog, responsive contract, or policy ceiling changed. Existing general UI/backend guidance remains accurate; this is not a full-page or physical-device requalification.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Delta review of responsive-action-surfaces.txt: added the Guide row as an explicit exception carrying deferred full-mobile/native/touch-target qualification, while recording real 415px pane geometry and navigation evidence. No shared style, token, dialog, responsive contract, or policy ceiling changed. Existing general UI/backend guidance remains accurate; this is not a full-page or physical-device requalification.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

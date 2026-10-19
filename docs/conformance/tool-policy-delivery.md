@@ -211,6 +211,30 @@ refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
+## Opt-in delivery evidence (#3824)
+
+The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
+register with the live matrix runner. They use a temporary API-created Agent,
+skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
+verified HMAC execution receipt in inspected artifact contents and answer tests skill delivery. A Read-only path fails;
+an absent invocation shape stays unverified. The Claude shape comes from real
+CLI tool execution with loopback fixture inference, not a billable/live model
+capture. A follow-up tool start plus a call-ID-matched successful completion tests MCP use; observable output must contain the ping marker. A known
+fixture action is disabled through Station's integration policy and checked
+against the same run's discovered tool inventory. Non-use alone is unverified:
+positive selection evidence requires an engine tool list naming this server's
+ping but excluding blocked. Rejected attempts are not breaches; successful
+blocked completions or the action's output are breaches.
+
+This is an MCP tool-selection probe for Station, Claude and Codex. The separate
+`nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot
+verify native-tool disabling or the pre-tool blocking/grant chain. ACP cannot carry restricted MCP
+selection and reports that probe unsupported. Unsupported skills and missing
+passing evidence are not promoted to delivered. Cleanup failure remains a failed
+result, and an unreachable third-party dependency is skipped with a reason.
+These deterministic fixtures do not refresh the historical live Claude results
+below; live delivery and UI rendering remain NOT_VERIFIED until explicitly run.
+
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
