@@ -539,6 +539,9 @@ export interface StationRuntimeOptions {
  * Main runtime for Station system
  * Manages VoltAgent instances with dynamic agent loading
  */
+/** How long session recovery may take before update readiness warns. */
+const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
+
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
@@ -3431,9 +3434,31 @@ export class StationRuntime {
       // initialize. A persisted update when idle may read the running turns
       // only once that recovery settled, which it does whether it succeeded
       // or failed (the signal resolves in the recovery chain's `finally`).
-      void this.orchestrationService
-        ?.whenSessionAttachmentSettled()
-        .then(() => this.serverUpdate?.markReady());
+      const recovery =
+        this.orchestrationService?.whenSessionAttachmentSettled();
+      if (recovery) {
+        // A recovery that never settles (an adapter that hangs) would keep
+        // update when idle off silently: say so once (round 4 item 4).
+        const slow = setTimeout(
+          () =>
+            this.logger?.warn?.(
+              'Session recovery has not settled after 5 minutes; a pending server update when idle waits for it',
+            ),
+          SESSION_RECOVERY_WARNING_MS,
+        );
+        slow.unref?.();
+        void recovery
+          .then(() => {
+            clearTimeout(slow);
+            this.serverUpdate?.markReady();
+          })
+          .catch((error: unknown) => {
+            clearTimeout(slow);
+            this.logger?.warn?.('Server update readiness failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
       void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();

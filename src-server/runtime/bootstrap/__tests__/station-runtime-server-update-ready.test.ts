@@ -53,4 +53,34 @@ describe('StationRuntime initialize and the server update coordinator', () => {
     await flush();
     expect(runtime.serverUpdate.markReady).not.toHaveBeenCalled();
   });
+
+  test('warns once when session recovery has not settled after 5 minutes (round 4 item 4)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime } = runtimeDouble(async () => {});
+      await runtime.initialize();
+      await vi.advanceTimersByTimeAsync(5 * 60_000 - 1);
+      expect(runtime.logger.warn).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+      expect(runtime.logger.warn.mock.calls[0][0]).toMatch(/has not settled/);
+      expect(runtime.serverUpdate.markReady).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a markReady that throws is logged, not an unhandled rejection', async () => {
+    const { runtime, settle } = runtimeDouble(async () => {});
+    runtime.serverUpdate.markReady = vi.fn(() => {
+      throw new Error('boom');
+    });
+    await runtime.initialize();
+    settle();
+    await flush();
+    expect(runtime.logger.warn).toHaveBeenCalledWith(
+      'Server update readiness failed',
+      { error: 'boom' },
+    );
+  });
 });
