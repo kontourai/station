@@ -205,6 +205,61 @@ describe('direct Basis response revocation fence', () => {
     expect(await response.text()).not.toContain('fieldwork');
   });
 
+  // FLIP WHEN SURFACE ACCEPTS OPAQUE CONTRIBUTION-REF IDS (see the
+  // durable colon-id case in tasks.routes.test.ts): until then the composed
+  // fallback path must refuse, not publish Surface's owner-blaming fallback.
+  test('refuses a chat-dock colon session id Surface cannot represent instead of publishing a fallback', async () => {
+    const threadId = 'station:1792425046978';
+    const app = createOrchestrationRoutes(
+      {
+        sessionQueries: {
+          readAnswerBasis: async () => ({
+            status: 'found' as const,
+            sessionId: threadId,
+            turnId: 'turn-a',
+            observedAt: '2026-10-19T00:00:00.000Z',
+            binding: {
+              version: 'station-answer-binding/v1' as const,
+              sessionId: threadId,
+              turnId: 'turn-a',
+              answer: {
+                authority: '@kontourai/thread' as const,
+                schemaVersion: '1.2.0' as const,
+                kind: 'assistant-message' as const,
+                standing: 'observed' as const,
+                threadId,
+                messageId: 'message-a',
+              },
+            },
+            inputs: [
+              {
+                eventId: '9c2e4a6b-8d0f-4a1c-b3e5-7f9a1c3e5b7d',
+                kind: 'initial' as const,
+                prompt: 'initial prompt',
+                attachments: [],
+              },
+            ],
+            results: [],
+          }),
+        },
+        canUserReadSession: () => true,
+      } as any,
+      {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        isRequestPrincipalCurrent: () => true,
+      },
+    );
+    const response = await app.request(
+      `/sessions/${encodeURIComponent(threadId)}/turns/turn-a/basis`,
+    );
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe(
+      JSON.stringify({ success: false, error: 'Basis unavailable' }),
+    );
+  });
+
   test.each(['unavailable', 'corrupt'] as const)(
     'maps a %s durable answer projection to 503 without exposing its fields',
     async (status) => {

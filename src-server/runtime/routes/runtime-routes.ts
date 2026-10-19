@@ -604,6 +604,7 @@ import { resolveProjectWorkspacePath } from '../../services/projects/project-wor
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
 import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
+import type { StationBasisCompositionInvariantError } from '../../services/projects/task-basis-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -2534,8 +2535,18 @@ export function configureRuntimeRoutes(
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
+  // Surface rejected input Station itself built: an internal invariant, not an
+  // owner gap. Logged once per read so it cannot hide behind a fallback gap.
+  const reportBasisCompositionInvariant = (
+    error: StationBasisCompositionInvariantError,
+  ) =>
+    context.logger.error('Station Basis composition invariant failed', {
+      surfaceGapCode: error.surfaceGap.code,
+      surfaceGapMessage: error.surfaceGap.message,
+    });
   const exactAnswerBasis = createExactAnswerBasisModule({
     hosted: isHostedTenantExecutionRequired,
+    reportCompositionInvariant: reportBasisCompositionInvariant,
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     readAnswer: async (sessionId, turnId, authority) =>
@@ -3281,6 +3292,7 @@ export function configureRuntimeRoutes(
             ? { current: () => isRequestPrincipalCurrent(request) }
             : {}),
         }),
+      reportCompositionInvariant: reportBasisCompositionInvariant,
     });
   const taskBasisAppRead = createTaskBasisAppReadModule({
     read: async ({ taskId, authority, request }) => {
