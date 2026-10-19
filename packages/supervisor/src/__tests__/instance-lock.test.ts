@@ -121,7 +121,10 @@ function exitWithin(
   ]);
 }
 
-const REFUSAL = /another supervisor \(pid \d+\) holds instance test/;
+// "pid unknown" is a starter that read the winner's lock while it was still
+// being written: a live-pending lock, refused like any live one.
+const REFUSAL =
+  /another supervisor \(pid (?:\d+|unknown)\) holds instance test/;
 
 describe('instance lock (real processes)', () => {
   it('refuses a second supervisor for the same instance even with its own --control socket', async () => {

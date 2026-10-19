@@ -72,6 +72,7 @@ const BUILD_TIMEOUT_MS = scaleLivenessMs(120_000);
 const BOOT_TIMEOUT_MS = scaleLivenessMs(120_000);
 const REQUEST_TIMEOUT_MS = scaleLivenessMs(90_000);
 const OUTPUT_LIMIT = 256 * 1024;
+const STABLE_AFTER_MS = 2_000;
 
 const execFileAsync = promisify(execFile);
 // Created before the hooks that stop children, so its after-hook runs last:
@@ -489,7 +490,19 @@ describe('a supervised core handoff', () => {
       const home = join(root, 'home');
       const supervisor = spawn(
         process.execPath,
-        [SUPERVISOR, '--entry', CORE, '--home', home, '--instance', INSTANCE],
+        [
+          SUPERVISOR,
+          '--entry',
+          CORE,
+          '--home',
+          home,
+          '--instance',
+          INSTANCE,
+          // A generation is stable after this; only a stable generation's
+          // clean drained exit restarts without a failure strike.
+          '--restart-stable-ms',
+          String(STABLE_AFTER_MS),
+        ],
         {
           env: isolatedEnv(home),
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -607,6 +620,10 @@ describe('a supervised core handoff', () => {
         // for a handoff, so no client is reset, and the supervisor restarts
         // it without counting a failure.
         const pid2 = second.active?.pid as number;
+        // Let generation 2 become stable, as a long-running core would be.
+        await new Promise((resolveDelay) =>
+          setTimeout(resolveDelay, STABLE_AFTER_MS + 500),
+        );
         const signalled = startPoller(port);
         await waitFor(
           'the poller to be served before SIGTERM',
