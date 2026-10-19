@@ -2797,8 +2797,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? undefined
                         : gitStatus
                     }
+                    // The card's Workspace row names this chat's project, so
+                    // the header's "This chat: <project>" stands down too.
                     sessionProjectMismatchLabel={
-                      visibleSessionProjectMismatchLabel
+                      sessionContextCardVisible
+                        ? null
+                        : visibleSessionProjectMismatchLabel
                     }
                     projects={projects}
                     onSelectProject={handleSelectProject}

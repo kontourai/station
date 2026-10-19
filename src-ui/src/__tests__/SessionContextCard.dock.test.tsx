@@ -423,6 +423,10 @@ const card = () =>
   document.querySelector<HTMLElement>('aside.session-context-card');
 const branchBadge = () => document.querySelector('.git-badge');
 const moreBadge = () => document.querySelector('.chat-dock__more-badge');
+// The header's "This chat: <project>" lead-in, shown when the chat's own
+// project differs from the dock's bound one (the fixture binds none).
+const mismatchLabel = () =>
+  document.querySelector('.chat-dock__project-session-name');
 const chip = () => screen.queryByRole('button', { name: /^This chat/ });
 
 describe('session context card visibility follows the dock body width', () => {
@@ -432,6 +436,7 @@ describe('session context card visibility follows the dock body width', () => {
     await waitFor(() => expect(card()).not.toBeNull());
     expect(branchBadge()).toBeNull();
     expect(moreBadge()).toBeNull();
+    expect(mismatchLabel()).toBeNull();
     expect(chip()).toBeNull();
     const aside = card()!;
     expect(aside.textContent).toContain('feature/parser');
@@ -449,6 +454,7 @@ describe('session context card visibility follows the dock body width', () => {
     expect(card()).toBeNull();
     expect(branchBadge()?.textContent).toContain('feature/parser');
     expect(moreBadge()?.textContent).toBe('2');
+    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test('the threshold is the transcript floor plus the card column', async () => {
