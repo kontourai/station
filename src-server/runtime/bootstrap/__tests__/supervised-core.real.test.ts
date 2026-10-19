@@ -479,6 +479,14 @@ describe('a supervised core handoff', () => {
           ['handoff.result'],
         );
         poller.markHandedOff();
+        if ((handoff as { outcome?: string }).outcome !== 'committed') {
+          await poller.stop();
+        }
+        expect(handoff, output()).toMatchObject({
+          type: 'handoff.result',
+          outcome: 'committed',
+          generation: 2,
+        });
         await waitFor(
           'requests served after the handoff',
           BOOT_TIMEOUT_MS,
@@ -486,11 +494,6 @@ describe('a supervised core handoff', () => {
           output,
         );
         const stats = await poller.stop();
-        expect(handoff, output()).toMatchObject({
-          type: 'handoff.result',
-          outcome: 'committed',
-          generation: 2,
-        });
         expect(stats.errors, output()).toEqual({});
         expect(Object.keys(stats.statuses)).toEqual(['200']);
 
