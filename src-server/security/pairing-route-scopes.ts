@@ -959,6 +959,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/integrations/:serverId/ui-tools:read',
+    method: 'GET',
+    prefix: '/integrations/:serverId/ui-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/integrations/:id/icon:read',
     method: 'GET',
     prefix: '/integrations/:id/icon',

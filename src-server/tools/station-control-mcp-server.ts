@@ -119,6 +119,16 @@ function stationControlToolMetadata(name: string) {
  * It keeps the domain modules independent of transport while registering
  * native v2 tools with object schemas.
  */
+interface StationControlAppCatalog {
+  tools: {
+    name: string;
+    originalName: string;
+    serverId: 'station-control';
+    _meta: Record<string, unknown>;
+  }[];
+  resources: Parameters<StationControlToolRegistry['resource']>[2][];
+}
+
 export class StationControlToolRegistry {
   constructor(
     private readonly server: McpServer,
@@ -128,6 +138,7 @@ export class StationControlToolRegistry {
       shape?: z.ZodRawShape,
     ) => void,
     private readonly allowedTools?: readonly string[],
+    private readonly apps?: StationControlAppCatalog,
   ) {}
 
   tool<Shape extends z.ZodRawShape>(
@@ -186,6 +197,12 @@ export class StationControlToolRegistry {
     // official metadata normalization rather than reimplementing it.
     if (this.allowedTools && !this.allowedTools.includes(name)) return;
     this.catalog?.(name, description);
+    this.apps?.tools.push({
+      name,
+      originalName: name,
+      serverId: 'station-control',
+      _meta: config._meta,
+    });
     const callback = withToolSideRefusal(name, unguardedCallback);
     const metadata = stationControlToolMetadata(name);
     return registerAppTool(
@@ -218,6 +235,7 @@ export class StationControlToolRegistry {
       };
     },
   ) {
+    this.apps?.resources.push(resource);
     return registerAppResource(
       this.server as unknown as Parameters<typeof registerAppResource>[0],
       name,
@@ -300,4 +318,23 @@ export function stationControlToolCatalog() {
     });
   });
   return tools;
+}
+
+let appCatalog: StationControlAppCatalog | undefined;
+
+/** Static shipped definitions and resource bytes, independent of engine connections. */
+export function stationControlAppCatalog(): StationControlAppCatalog {
+  if (!appCatalog) {
+    const catalog: StationControlAppCatalog = { tools: [], resources: [] };
+    const registry = new StationControlToolRegistry(
+      new McpServer({ name: 'station-control', version: '2.0.0' }),
+      undefined,
+      undefined,
+      catalog,
+    );
+    registerBasisTools(registry);
+    registerSessionInventoryTools(registry);
+    appCatalog = catalog;
+  }
+  return appCatalog;
 }

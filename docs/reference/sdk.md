@@ -3595,6 +3595,12 @@ filtering is not complete CSP source-expression validation or a guarantee of
 effective browser network containment. An ordinary SDK tool call does not
 establish that rendering qualification.
 
+`getJson` is available from `@kontourai/station-sdk/client` as well as the root
+entry. The client entry preserves the same credential, request-authority,
+timeout and response-bound behavior without importing SDK React components.
+Transcript app catalogs use this entry; rendering a local chat row does not
+create a connection or start catalog discovery.
+
 ## Utilities
 
 ### `ListenerManager`

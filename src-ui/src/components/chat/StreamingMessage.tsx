@@ -26,8 +26,9 @@ import {
   ToolCallBatchBoundary,
   usePreloadToolCallBatch,
 } from './ToolCallBatchBoundary';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import { TurnActivityProgress } from './TurnActivityProgress';
-import { splitToolCallRuns } from './tool-call-runs';
+import { isToolCallPart, splitToolCallRuns } from './tool-call-runs';
 import { useTranscriptChildBlocks } from './transcript-child-work';
 import { UIBlockRenderer } from './UIBlockRenderer';
 import { uiBlockIdentity } from './ui-block-identity';
@@ -108,7 +109,7 @@ export function deriveActivityLabel(
 /**
  * Renders a streaming assistant message with loading indicator.
  */
-export function StreamingMessageView({
+function StreamingMessageWithApps({
   sessionId,
   agentIcon,
   agentIconStyle,
@@ -129,11 +130,13 @@ export function StreamingMessageView({
   streamingText,
   contentParts,
   contentRevision,
+  appTools,
 }: StreamingMessageProps & {
   streamingText: string;
   hasContent: boolean;
   contentParts: ChatContentPart[];
   contentRevision: number;
+  appTools: ReadonlySet<string>;
 }) {
   const isMobile = useIsMobile();
   // The status-labelled wait's clock: this row's mount, exactly as before
@@ -179,8 +182,9 @@ export function StreamingMessageView({
         streamingText
           ? [...contentParts, { type: 'text', content: streamingText }]
           : contentParts,
+        appTools,
       ),
-    [contentParts, streamingText],
+    [contentParts, streamingText, appTools],
   );
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
@@ -253,6 +257,7 @@ export function StreamingMessageView({
           }
 
           const { index: i, part } = block;
+          if (isToolCallPart(part)) return renderToolCall?.(part, i) ?? null;
           if (
             part.type === 'reasoning' &&
             part.content &&
@@ -345,6 +350,18 @@ export function StreamingMessageView({
         )}
       </div>
     </div>
+  );
+}
+
+export function StreamingMessageView(
+  props: Omit<Parameters<typeof StreamingMessageWithApps>[0], 'appTools'>,
+) {
+  return (
+    <TranscriptAppTools calls={props.contentParts}>
+      {(appTools) => (
+        <StreamingMessageWithApps {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
   );
 }
 

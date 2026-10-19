@@ -29,6 +29,16 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Recorded MCP app results
+
+`@kontourai/station-shared/mcp-app-result` exports
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
+See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
