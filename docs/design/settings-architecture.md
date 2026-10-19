@@ -82,6 +82,7 @@ details**. Settings does not request the host-status report until one of those
 disclosures is opened. Setting source information opens in a responsive dialog
 rather than
 a viewport-dependent popover. It no longer occupies a separate mobile row.
+Closing it leaves the Settings location unchanged and returns focus to its trigger.
 
 The [launch triage](settings-launch-triage.md) records the complete Settings
 inventory, value questions, and remaining qualification work. It is not a claim

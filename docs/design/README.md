@@ -87,6 +87,7 @@ category.
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
+- [settings-launch-triage.md](settings-launch-triage.md) — Settings launch triage
 - [shared-task-channels.md](shared-task-channels.md) — Shared Task channels
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards

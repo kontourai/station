@@ -2842,7 +2842,7 @@ describe('settings catalog completeness', () => {
       expect(updateProjectAsync).not.toHaveBeenCalled();
     });
 
-    test('an unsaved override makes the row’s own popover say so', async () => {
+    test('an unsaved override makes the row’s source explanation say so', async () => {
       // The whole path, once: SettingsView derives the pending map,
       // StationConfigSection routes it per key, registry-row hands it to the
       // status strip, and the lazily-loaded layer list withholds its "in
@@ -2857,6 +2857,9 @@ describe('settings catalog completeness', () => {
         defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
       };
       await renderSettings();
+      await waitFor(() =>
+        expect(document.activeElement?.id).toBe('section-overview'),
+      );
 
       selectAtlas();
       const workspace = screen.getByLabelText(
@@ -2870,21 +2873,20 @@ describe('settings catalog completeness', () => {
       );
 
       const closeSources = async () => {
-        const traversed = new Promise<Event>((resolve) =>
-          window.addEventListener('popstate', resolve, { once: true }),
-        );
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Close setting sources' }),
-        );
-        await traversed;
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
       };
+      const historyLength = window.history.length;
       // Saved state first: the project layer is claimed as in effect.
+      trigger.focus();
       fireEvent.click(trigger);
       expect(await screen.findByText('in effect')).toBeTruthy();
+      expect(window.history.length).toBe(historyLength);
       await closeSources();
 
       fireEvent.change(workspace, { target: { value: 'shared' } });
+      trigger.focus();
       fireEvent.click(trigger);
       expect(
         await screen.findByText(

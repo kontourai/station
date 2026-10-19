@@ -215,46 +215,8 @@
 }
 
 /* ── Host runtime (de-emphasized host diagnostics) ── */
-.host-runtime__alert {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--error-border);
-  border-left: 3px solid var(--error-text);
-  border-radius: 0.5rem;
-  font-size: var(--k-text-sm);
-}
-.host-runtime__alert-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.4rem;
-}
 .host-runtime__disclosure {
   font-size: var(--k-text-sm);
-}
-.host-runtime__summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.4rem 0;
-  list-style: revert;
-  user-select: none;
-}
-.host-runtime__summary-status {
-  font-size: var(--k-text-sm);
-  line-height: 1;
-  flex-shrink: 0;
-}
-.host-runtime__summary-status--ok {
-  color: var(--success-text);
-}
-.host-runtime__summary-status--warn {
-  color: var(--warning-text);
-}
-.host-runtime__summary-label {
-  font-weight: 600;
-  color: var(--text-primary);
 }
 .host-runtime__panel {
   margin-top: 0.5rem;

@@ -160,6 +160,7 @@ export function SettingRowStatus({
           closeLabel="Close setting sources"
           onClose={() => setShowInheritance(false)}
           size="sm"
+          historyMode="none"
           returnFocusTarget={inheritanceTrigger.current}
         >
           <LazyBoundary

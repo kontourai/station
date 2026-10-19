@@ -20,7 +20,11 @@
 
     "packages/contracts/src/device-settings.ts",
 
-    "packages/contracts/src/settings-registry.ts"
+    "packages/contracts/src/settings-registry.ts",
+
+    "src-ui/src/app-shell/codingWorkspaceDocument.ts",
+
+    "src-ui/src/views/settings/SystemSection.tsx"
   ],
 
   "checks": [

@@ -102,7 +102,7 @@ test('retains runtime-only filtering of implicit Bedrock prerequisites', async (
       {
         id: 'codex',
         name: 'Codex',
-        description: 'Agent app',
+        description: 'Engine',
         status: 'installed',
         category: 'optional',
       },
