@@ -109,6 +109,27 @@ const BYPASSES: Record<string, Record<string, string>> = {
       String.raw`permissions = ["\u0075pdater:default"]`,
     ].join('\n'),
   },
+  'a TOML grant spelled with a \\x escape': {
+    'capabilities/x.toml': [
+      'identifier = "extra"',
+      'windows = ["main"]',
+      String.raw`permissions = ["\x75pdater:default"]`,
+    ].join('\n'),
+  },
+  'a TOML grant split by a line-ending backslash and trailing spaces': {
+    'capabilities/x.toml': [
+      'identifier = "extra"',
+      'windows = ["main"]',
+      'permissions = ["""upd\\   ',
+      '   ater:default"""]',
+    ].join('\n'),
+  },
+  'a TOML file with an escape TOML does not define': {
+    'capabilities/x.toml': [
+      'identifier = "extra"',
+      String.raw`permissions = ["\qupdater:default"]`,
+    ].join('\n'),
+  },
   'the retired desktop-updater manifest, even empty': {
     'capabilities/desktop-updater.json': JSON.stringify({
       identifier: 'desktop-updater',
@@ -127,7 +148,9 @@ describe('native platform boundary gate (#3851)', () => {
   test.each(Object.entries(BYPASSES))('refuses %s', (_name, files) => {
     const result = gate(desktopRoot(files));
     expect(result.output).toContain('FAIL: native platform boundary');
-    expect(result.output).toMatch(/grants (?:updater|process):|must not exist/);
+    expect(result.output).toMatch(
+      /grants (?:updater|process):|must not exist|could not be read/,
+    );
     expect(result.status).toBe(1);
   });
 });

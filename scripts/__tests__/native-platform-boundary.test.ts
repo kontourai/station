@@ -147,6 +147,46 @@ describe('native-platform-boundary', () => {
     ).toEqual([]);
   });
 
+  test('decodes TOML 1.1 escapes and continuations, refusing unknown escapes', () => {
+    expect(
+      stringLiteralsIn(
+        [
+          String.raw`a = "\x75pdater:default"`,
+          'b = """upd\\  \t',
+          '   ater:default"""',
+          'c = """proc\\\r\n  ess:allow-restart"""',
+        ].join('\n'),
+        'toml',
+      ),
+    ).toEqual(['updater:default', 'updater:default', 'process:allow-restart']);
+    // Unknown escapes, and a continuation outside a multi-line string, are
+    // refused rather than guessed.
+    for (const text of [
+      String.raw`a = "\qupdater:default"`,
+      String.raw`a = "\'"`,
+      'a = "upd\\\nater"',
+      'a = """upd\\ x"""',
+    ])
+      expect(stringLiteralsIn(text, 'toml')).toBeNull();
+  });
+
+  test('ends JSON5 comments and continuations at every line terminator', () => {
+    expect(
+      stringLiteralsIn(
+        '{ // a comment  a: "updater:one", // b  b: \'process:two\',' +
+          ' c: "upd\\\r\nater:three", d: "upd\\ ater:four", e: "\\qx" }',
+        'json5',
+      ),
+    ).toEqual([
+      'updater:one',
+      'process:two',
+      'updater:three',
+      'updater:four',
+      'qx',
+    ]);
+    expect(stringLiteralsIn('{ a: "\\1" }', 'json5')).toBeNull();
+  });
+
   test('reads JSON5 and TOML strings past comments and escapes (#3851)', () => {
     expect(
       stringLiteralsIn(

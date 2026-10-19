@@ -84,6 +84,9 @@ function assertSignatureBindsVersion(platform, signature, version) {
     fail(
       `platform ${JSON.stringify(platform)} signature names no version; sign the updater archive with \`tauri signer sign --app-version ${version}\``,
     );
+  // A literal comparison after dropping a leading v. The plugin compares
+  // semver, so this is stricter: it can refuse a spelling the plugin would
+  // accept (e.g. build metadata), never accept one it would refuse.
   if (signed.replace(/^v/, '') !== version.replace(/^v/, ''))
     fail(
       `platform ${JSON.stringify(platform)} signature is bound to version ${JSON.stringify(signed)}, not the manifest version ${JSON.stringify(version)}`,

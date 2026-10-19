@@ -212,7 +212,19 @@ function collectStrings(value, out) {
   return out;
 }
 
-const SIMPLE_ESCAPES = {
+// The escapes each syntax defines; anything else in TOML is an error, so
+// the lexer refuses it rather than guessing what the loader would decode.
+const TOML_ESCAPES = {
+  b: '\b',
+  t: '\t',
+  n: '\n',
+  f: '\f',
+  r: '\r',
+  e: '\u001b',
+  '"': '"',
+  '\\': '\\',
+};
+const JSON5_ESCAPES = {
   b: '\b',
   t: '\t',
   n: '\n',
@@ -220,21 +232,24 @@ const SIMPLE_ESCAPES = {
   r: '\r',
   v: '\v',
   0: '\0',
-  e: '\u001b',
   '"': '"',
   "'": "'",
   '\\': '\\',
-  '/': '/',
 };
+// JSON5 (ECMAScript) line terminators: comment ends and line continuations.
+const JSON5_LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
 
 /**
- * Every string value in a JSON5 or TOML document, decoded: comments
- * (`//` and block comments in JSON5, `#` in TOML) are skipped, so a quote
- * inside one cannot shift what counts as a string, and escapes
- * (`\uXXXX`, `\UXXXXXXXX`, `\xHH`, ...) are decoded, so an escaped
- * identifier is seen as the identifier it spells. There is no TOML or
+ * Every string value in a JSON5 or TOML document, decoded the way the
+ * loader would: comments (`//` and block comments in JSON5, `#` in TOML)
+ * are skipped, so a quote inside one cannot shift what counts as a string,
+ * and escapes and line continuations are decoded, so an escaped identifier
+ * is seen as the identifier it spells. TOML follows 1.1 (Tauri loads it
+ * with toml_parser 1.1): `\xHH`, `\e`, and in multi-line basic strings a
+ * backslash, optional spaces or tabs, then a newline. There is no TOML or
  * declared JSON5 parser among the dependencies; this lexer reads strings
- * only, and refuses (returns null) on an unterminated string or comment.
+ * only, and refuses (returns null) on an unterminated string or comment or
+ * an escape the syntax does not define.
  */
 export function stringLiteralsIn(content, syntax) {
   const strings = [];
@@ -244,6 +259,38 @@ export function stringLiteralsIn(content, syntax) {
     if (!/^[0-9a-fA-F]+$/.test(digits) || digits.length !== length) return null;
     index += length;
     return String.fromCodePoint(Number.parseInt(digits, 16));
+  };
+  // TOML: after a line-ending backslash, skip every space, tab and newline.
+  const skipTomlContinuation = () => {
+    while (/[ \t]/.test(content[index] ?? '')) index += 1;
+    if (content[index] === '\n') index += 1;
+    else if (content.startsWith('\r\n', index)) index += 2;
+    else return false;
+    while (/[ \t\r\n]/.test(content[index] ?? '')) index += 1;
+    return true;
+  };
+  const escape = (triple) => {
+    const next = content[index];
+    if (next === undefined) return null;
+    if (syntax === 'toml') {
+      if (triple && /[ \t\r\n]/.test(next))
+        return skipTomlContinuation() ? '' : null;
+      index += 1;
+      if (next === 'u') return hex(4);
+      if (next === 'U') return hex(8);
+      if (next === 'x') return hex(2);
+      return TOML_ESCAPES[next] ?? null;
+    }
+    if (JSON5_LINE_TERMINATOR.test(next)) {
+      index += next === '\r' && content[index + 1] === '\n' ? 2 : 1;
+      return '';
+    }
+    index += 1;
+    if (next === 'u') return hex(4);
+    if (next === 'x') return hex(2);
+    if (/[1-9]/.test(next)) return null;
+    // JSON5 decodes any other character after a backslash to itself.
+    return JSON5_ESCAPES[next] ?? next;
   };
   const readString = (quote, triple, escapes) => {
     let value = '';
@@ -255,30 +302,12 @@ export function stringLiteralsIn(content, syntax) {
         return value;
       }
       const char = content[index];
-      if (!triple && char === '\n') return null;
+      if (!triple && (char === '\n' || char === '\r')) return null;
       if (escapes && char === '\\') {
-        const next = content[index + 1];
-        index += 2;
-        if (next === undefined) return null;
-        if (next === '\n' || next === '\r') {
-          // A line continuation: TOML also trims the following whitespace.
-          if (syntax === 'toml')
-            while (/\s/.test(content[index] ?? '')) index += 1;
-          continue;
-        }
-        if (next === 'u') {
-          const decoded = hex(4);
-          if (decoded === null) return null;
-          value += decoded;
-        } else if (next === 'U' && syntax === 'toml') {
-          const decoded = hex(8);
-          if (decoded === null) return null;
-          value += decoded;
-        } else if (next === 'x' && syntax === 'json5') {
-          const decoded = hex(2);
-          if (decoded === null) return null;
-          value += decoded;
-        } else value += SIMPLE_ESCAPES[next] ?? next;
+        index += 1;
+        const decoded = escape(triple);
+        if (decoded === null) return null;
+        value += decoded;
         continue;
       }
       value += char;
@@ -286,17 +315,19 @@ export function stringLiteralsIn(content, syntax) {
     }
     return null;
   };
+  const skipLineComment = (terminator) => {
+    while (index < content.length && !terminator.test(content[index]))
+      index += 1;
+  };
   while (index < content.length) {
     if (syntax === 'json5' && content.startsWith('//', index)) {
-      index = content.indexOf('\n', index);
-      if (index === -1) break;
+      skipLineComment(JSON5_LINE_TERMINATOR);
     } else if (syntax === 'json5' && content.startsWith('/*', index)) {
       const end = content.indexOf('*/', index + 2);
       if (end === -1) return null;
       index = end + 2;
     } else if (syntax === 'toml' && content[index] === '#') {
-      index = content.indexOf('\n', index);
-      if (index === -1) break;
+      skipLineComment(/\n/);
     } else if (content[index] === '"' || content[index] === "'") {
       const quote = content[index];
       const triple =
