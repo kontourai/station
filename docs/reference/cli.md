@@ -2099,9 +2099,11 @@ launcher that is killed at any point finishes the same update when it starts
 again. A restore that fails is retried up to three times (each failure
 restarts the unit); after that the update needs an operator: the launcher
 keeps the backup, starts no Station, and logs the error. Fix its cause, then
-run `station service stop --instance=<name>` and
-`station service start --instance=<name>`: each start tries the restore once
-more. That includes any restart of the launcher, a reboot among them: every
+run `station service stop --instance=<name> --base="<home>"` and
+`station service start --instance=<name> --base="<home>"`: each start tries
+the restore once more. (The launcher's log line names `--base` only for a
+service installed or reinstalled since #3851, because the launcher file is
+fixed at `station service install`.) That includes any restart of the launcher, a reboot among them: every
 launcher start in this state runs one restore attempt on its own.
 
 On Windows the launcher supervises itself, because Task Scheduler does
@@ -2238,16 +2240,19 @@ manager restarting the server never runs a restore beside yours. The
 refusal is logged in `logs/server` and on the console, and it lists the way
 back:
 
-1. `station service stop --instance=<name>`, so nothing starts the server
-   while you work.
+1. `station service stop --instance=<name> --base="<home>"`, so nothing
+   starts the server while you work (`--base` finds a service installed with
+   `--home` or `--base`).
 2. Restore with the from-release's own CLI, the one command that reads this
    backup format: `"<from-release root>/bin/station" service update-home
    restore --backup-dir="<backup>" --base="<home>"`. That is
    `bin\station.cmd` on Windows, and `station` at the root of a source
-   checkout, whose version is its commit. Skip this when the home already
-   belongs to the release being started.
+   checkout, whose version is its commit. A checkout has only that bash
+   script, so on Windows it runs through Git Bash
+   (`bash "<root>/station" …`). Skip this when the home already belongs to
+   the release being started.
 3. Remove `update-restore.json` (`rm`, or `del` on Windows).
-4. `station service start --instance=<name>`.
+4. `station service start --instance=<name> --base="<home>"`.
 
 `service update-home` is otherwise an internal launcher command; this is the
 case it is documented for.
