@@ -19,6 +19,7 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { TelemetryTier } from '@kontourai/station-contracts/product-telemetry';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -46,6 +47,7 @@ import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -432,6 +434,25 @@ export function createConfigRoutes(
 
   // Update app config
   app.put('/app', validate(appConfigUpdateSchema), async (c) => {
+    let telemetryChanges:
+      | Partial<
+          Record<
+            'kontour' | 'operator',
+            { before: TelemetryTier; after: TelemetryTier }
+          >
+        >
+      | undefined;
+    const logRefusal = (reason: string) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+      logger.warn('App config update refused', {
+        reason,
+        principalKind: principal?.kind ?? 'unknown',
+        deviceKind: principal?.deviceKind ?? 'none',
+        ...(reason === 'telemetry_choice_not_granted' && telemetryChanges
+          ? { telemetryChanges }
+          : {}),
+      });
+    };
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
@@ -484,7 +505,8 @@ export function createConfigRoutes(
           // the folder and command rule otherwise leaves to its own policy;
           // the terminal shell is the one setting it may not change, as it
           // may not raise the default approval mode to full access.
-          if (requestMayBeAnAgent(c.req.raw))
+          if (requestMayBeAnAgent(c.req.raw)) {
+            logRefusal('scope_agent_command_not_granted');
             return c.json(
               {
                 success: false,
@@ -494,8 +516,12 @@ export function createConfigRoutes(
               },
               403,
             );
+          }
           const commandRefused = refuseUngrantedCommandChoice(c);
-          if (commandRefused) return commandRefused;
+          if (commandRefused) {
+            logRefusal('scope_command_not_granted');
+            return commandRefused;
+          }
         }
       }
 
@@ -550,7 +576,8 @@ export function createConfigRoutes(
           'otelTelemetryKeyRef',
         ].some((key) => Object.hasOwn(body as object, key))
       ) {
-        if (requestMayBeAnAgent(c.req.raw))
+        if (requestMayBeAnAgent(c.req.raw)) {
+          logRefusal('scope_agent_telemetry_destination_not_granted');
           return c.json(
             {
               success: false,
@@ -559,11 +586,13 @@ export function createConfigRoutes(
             },
             403,
           );
+        }
         if (
           !isOperatorInPersonNotAgent(c.req.raw) &&
           (presentedScope === undefined ||
             !pairingScopeIncludes(presentedScope, 'access:manage'))
-        )
+        ) {
+          logRefusal('scope_telemetry_destination_not_granted');
           return c.json(
             {
               success: false,
@@ -572,6 +601,7 @@ export function createConfigRoutes(
             },
             403,
           );
+        }
         for (const name of [
           'productTelemetryEndpoint',
           'otelTelemetryEndpoint',
@@ -622,6 +652,7 @@ export function createConfigRoutes(
         pairingScopeIncludes(presentedScope, PAIRING_SCOPE_INFERENCE_INVOKE)
       ) {
         configOps.add(1, { op: 'update_app_fleet_contribution_denied' });
+        logRefusal('scope_inference_contribution_not_granted');
         return c.json(
           {
             success: false,
@@ -747,8 +778,6 @@ export function createConfigRoutes(
         beginMutation();
         const updated = await configLoader.mutateAppConfig((current) => {
           if (writesTelemetryChoice) {
-            if (requestMayBeAnAgent(c.req.raw))
-              throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             const next = mergeAppConfigUpdate(current, accepted);
             const rank = { off: 0, lite: 1, full: 2 } as const;
             // DNT blocks sending without changing the underlying choice/default.
@@ -760,15 +789,23 @@ export function createConfigRoutes(
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
             ]);
+            telemetryChanges = {};
             for (const publisher of publishers) {
               const key = publisher as keyof NonNullable<
                 AppConfig['telemetryTier']
               >;
               const before = current.telemetryTier?.[key] ?? defaults[key].tier;
               const after = next.telemetryTier?.[key] ?? defaults[key].tier;
-              if (rank[after] > rank[before] && !mayRaiseTelemetry)
-                throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+              telemetryChanges[key] = { before, after };
             }
+            if (
+              requestMayBeAnAgent(c.req.raw) ||
+              (Object.values(telemetryChanges).some(
+                ({ before, after }) => rank[after] > rank[before],
+              ) &&
+                !mayRaiseTelemetry)
+            )
+              throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             if (
               next.telemetryTier?.kontour === 'full' &&
               current.telemetryTier?.kontour !== 'full'
@@ -853,7 +890,8 @@ export function createConfigRoutes(
       if (
         error instanceof Error &&
         error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
-      )
+      ) {
+        logRefusal('telemetry_choice_not_granted');
         return c.json(
           {
             success: false,
@@ -862,17 +900,20 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
       if (
         error instanceof Error &&
         error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED
       ) {
         configOps.add(1, { op: 'update_app_full_access_default_refused' });
+        logRefusal('full_access_default_not_granted');
         return fullAccessRefusal(c);
       }
       if (
         error instanceof Error &&
         error.message === 'PROJECT_CONTRIBUTION_OPERATOR_REQUIRED'
-      )
+      ) {
+        logRefusal('project_contribution_operator_required');
         return c.json(
           {
             success: false,
@@ -881,6 +922,7 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

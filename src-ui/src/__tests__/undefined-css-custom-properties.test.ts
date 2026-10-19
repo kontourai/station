@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { HTML_REPLY_THEME_KEYS } from '@kontourai/station-contracts/html-reply';
 import { describe, expect, test } from 'vitest';
 
 /**
@@ -223,6 +224,20 @@ function collectDefinitions(): Set<string> {
   return defined;
 }
 
+/** The page bridge injects these contract tokens, not Station's app stylesheet.
+ * Keep this source-scoped: SDK styles using the same names still need fallbacks.
+ */
+const HTML_REPLY_INJECTED_PROPERTIES = new Set(
+  HTML_REPLY_THEME_KEYS.map((key) => `--${key}`),
+);
+function definitionsAt(site: string, global: Set<string>): Set<string> {
+  return site
+    .replaceAll('\\', '/')
+    .startsWith('packages/shared/src/html-reply-document.ts:')
+    ? new Set([...global, ...HTML_REPLY_INJECTED_PROPERTIES])
+    : global;
+}
+
 interface Reference {
   name: string;
   site: string;
@@ -434,6 +449,26 @@ describe('custom properties that no var() reference can resolve', () => {
     }
   });
 
+  test('injected page properties resolve only at their declared source and reject typos', () => {
+    const empty = new Set<string>();
+    const page = definitionsAt(
+      'packages/shared/src/html-reply-document.ts:16',
+      empty,
+    );
+    expect(resolves({ name: '--background', fallback: null }, page)).toBe(true);
+    expect(resolves({ name: '--foreground', fallback: null }, page)).toBe(true);
+    expect(resolves({ name: '--foregound', fallback: null }, page)).toBe(false);
+    expect(
+      resolves(
+        { name: '--background', fallback: null },
+        definitionsAt(
+          'packages/sdk/src/components/KnowledgeRecall.css:1',
+          empty,
+        ),
+      ),
+    ).toBe(false);
+  });
+
   test('the parser reads a nested fallback rather than trusting the comma', () => {
     // The inert-test hazard for this file is a parser that stops at the first
     // `)`: `var(--a, var(--b))` would then look fallback-less, or — worse, in
@@ -458,7 +493,10 @@ describe('custom properties that no var() reference can resolve', () => {
   test('no new unresolvable custom-property reference has appeared', () => {
     const undefinedNames = new Map<string, string[]>();
     for (const reference of references) {
-      if (resolves(reference.expression, defined)) continue;
+      if (
+        resolves(reference.expression, definitionsAt(reference.site, defined))
+      )
+        continue;
       const sites = undefinedNames.get(reference.name) ?? [];
       sites.push(reference.site);
       undefinedNames.set(reference.name, sites);
@@ -481,11 +519,12 @@ describe('custom properties that no var() reference can resolve', () => {
   test('no new reference leans on a literal fallback instead of a real token (station#3050)', () => {
     const leaning = new Map<string, string[]>();
     for (const reference of references) {
-      if (defined.has(reference.name)) continue;
+      const siteDefinitions = definitionsAt(reference.site, defined);
+      if (siteDefinitions.has(reference.name)) continue;
       // Only the ones that DO paint. The ones that do not are the assertion
       // above's business, and double-reporting them would make a single defect
       // fail two tests with two different remedies.
-      if (!resolves(reference.expression, defined)) continue;
+      if (!resolves(reference.expression, siteDefinitions)) continue;
       if (
         reference.expression.fallback === null ||
         !isColourLiteral(reference.expression.fallback)

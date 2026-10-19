@@ -233,18 +233,21 @@ export class BrowserHostPolicyError extends Error {
       | 'url-not-allowed'
       | 'profile-mismatch'
       | 'foreign-session'
-      | 'param-not-allowed',
+      | 'param-not-allowed'
+      | 'webrtc-policy-unverified',
   ) {
     super(
-      code === 'url-not-allowed'
-        ? `${method} was refused: the URL is outside the Browser pane's scope.`
-        : code === 'profile-mismatch'
-          ? 'This browser host already runs a different profile directory.'
-          : code === 'foreign-session'
-            ? `${method} was refused: only page sessions this host opened are reachable.`
-            : code === 'param-not-allowed'
-              ? `${method} was refused: a parameter it carries is reserved to the browser host.`
-              : `${method} is reserved to the browser host.`,
+      code === 'webrtc-policy-unverified'
+        ? 'HTML preview could not verify a restrictive effective WebRTC policy; the browser is unsupported or enterprise policy overrides its profile.'
+        : code === 'url-not-allowed'
+          ? `${method} was refused: the URL is outside the Browser pane's scope.`
+          : code === 'profile-mismatch'
+            ? 'This browser host already runs a different profile directory.'
+            : code === 'foreign-session'
+              ? `${method} was refused: only page sessions this host opened are reachable.`
+              : code === 'param-not-allowed'
+                ? `${method} was refused: a parameter it carries is reserved to the browser host.`
+                : `${method} is reserved to the browser host.`,
     );
     this.name = 'BrowserHostPolicyError';
   }
@@ -265,6 +268,12 @@ export type ChromiumLauncher = (request: {
 }) => ChromiumLaunch;
 
 export interface ChromiumServerHostOptions {
+  /** Trusted disposable renderers only; bounds V8 heap, not total process RSS. */
+  jsHeapLimitMb?: 128;
+  /** Disposable previews: refuse browser-side DNS resolution, including ICE. */
+  denyHostResolution?: boolean;
+  /** Refuse startup unless Chromium reports the restrictive effective policy. */
+  requireRestrictedWebRtc?: boolean;
   executablePath: string;
   /**
    * The profile's egress policy (Station listeners plus the actor's reach,
@@ -669,10 +678,18 @@ export class ChromiumServerHost implements BrowserHost {
     try {
       launch = this.launcher({
         executablePath: this.options.executablePath,
-        args: buildChromiumArgs({
-          profileDir,
-          proxyServer: proxy.proxyServerArg,
-        }),
+        args: [
+          ...buildChromiumArgs({
+            profileDir,
+            proxyServer: proxy.proxyServerArg,
+          }),
+          ...(this.options.denyHostResolution
+            ? ['--host-resolver-rules=MAP * ~NOTFOUND']
+            : []),
+          ...(this.options.jsHeapLimitMb
+            ? ['--js-flags=--max-old-space-size=128']
+            : []),
+        ],
       });
     } catch (error) {
       await proxy.close();
@@ -705,6 +722,8 @@ export class ChromiumServerHost implements BrowserHost {
         'Chromium launch',
       );
       await this.installBrowserEnforcement(running);
+      if (this.options.requireRestrictedWebRtc)
+        await this.verifyWebRtcPolicy(running);
       return running;
     } catch (error) {
       for (const off of running.unsubscribe) off();
@@ -715,6 +734,89 @@ export class ChromiumServerHost implements BrowserHost {
       );
       throw error;
     }
+  }
+
+  private async verifyWebRtcPolicy(running: Running): Promise<void> {
+    const transport = running.launch.transport;
+    let targetId: string | undefined;
+    let off: (() => void) | undefined;
+    let verified = false;
+    try {
+      const check = async () => {
+        running.creating++;
+        try {
+          ({ targetId } = await transport.send<{ targetId: string }>(
+            'Target.createTarget',
+            { url: ABOUT_BLANK },
+          ));
+          running.created.add(targetId);
+        } finally {
+          running.creating--;
+        }
+        const { sessionId } = await transport.send<{ sessionId: string }>(
+          'Target.attachToTarget',
+          { targetId, flatten: true },
+        );
+        await transport.send('Page.enable', {}, sessionId);
+        const loaded = new Promise<void>((resolve) => {
+          off = transport.on('Page.loadEventFired', (_params, session) => {
+            if (session === sessionId) resolve();
+          });
+        });
+        await transport.send(
+          'Page.navigate',
+          { url: 'chrome://prefs-internals/' },
+          sessionId,
+        );
+        await loaded;
+        const result = await transport.send<{
+          result: { value?: { policy?: unknown; urlOverrides?: unknown } };
+        }>(
+          'Runtime.evaluate',
+          {
+            // This internal page reports resolved values, including managed policy.
+            // Return only the network-policy fields, never the full preference dump.
+            expression: `(()=>{try{const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
+            returnByValue: true,
+          },
+          sessionId,
+        );
+        return (
+          result.result.value?.policy === 'disable_non_proxied_udp' &&
+          result.result.value.urlOverrides === false
+        );
+      };
+      verified = await withTimeout(
+        check(),
+        3000,
+        'Preview effective WebRTC policy',
+      );
+    } catch {
+      verified = false;
+    } finally {
+      off?.();
+      if (targetId) {
+        try {
+          await withTimeout(
+            transport.send('Target.closeTarget', { targetId }),
+            1000,
+            'Preview policy target cleanup',
+          );
+        } catch {
+          verified = false;
+        } finally {
+          running.created.delete(targetId);
+          const timer = running.pendingUntracked.get(targetId);
+          if (timer) clearTimeout(timer);
+          running.pendingUntracked.delete(targetId);
+        }
+      }
+    }
+    if (!verified)
+      throw new BrowserHostPolicyError(
+        'preview startup',
+        'webrtc-policy-unverified',
+      );
   }
 
   private async installBrowserEnforcement(running: Running): Promise<void> {

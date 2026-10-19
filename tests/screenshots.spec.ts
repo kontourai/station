@@ -1743,7 +1743,7 @@ function telemetryConsentScreens(): Screen[] {
             const body = await response.json();
             body.data.acknowledged = !dialogVisible;
             body.data.telemetryEnabled = false;
-            body.data.endpointConfigured = pending;
+            body.data.endpointConfigured = pending || mode === 'dialog-dnt';
             body.data.publishers = {
               kontour: {
                 tier: 'off',

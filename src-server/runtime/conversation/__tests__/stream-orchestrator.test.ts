@@ -210,6 +210,7 @@ describe('writeSSEError', () => {
       type: 'error',
       errorText: 'The response stream failed.',
       statusCode: 429,
+      failureKind: 'rate_limited',
     });
     expect(writes[0]).not.toContain('sk-live-SECRET');
     expect(writes[0]).not.toContain('provider.example.test');

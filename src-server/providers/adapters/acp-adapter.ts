@@ -1,3 +1,5 @@
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -82,7 +84,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   AttachmentInputUnsupportedError,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
   type ProviderSession,
@@ -1656,10 +1658,11 @@ export class AcpAdapter implements ProviderAdapterShape {
             threadId: input.threadId,
             createdAt: new Date().toISOString(),
             method: 'runtime.error',
+            ...providerFailure(error.kind, error.failurePhase),
             severity: 'error',
             code: error.code,
             message: error.message,
-          });
+          } satisfies ProviderRuntimeErrorEvent);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -1732,6 +1735,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     ) {
       throw new SendTurnRefusedError(
         "The agent's session ended before it was ready. Nothing was sent.",
+        'session_gone',
       );
     }
     if (record.startFailure !== undefined) {
@@ -1751,6 +1755,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (this.sessions.get(threadId) !== record) {
       throw new SendTurnRefusedError(
         "The agent's session ended before it was ready. Nothing was sent.",
+        'session_gone',
       );
     }
   }
@@ -1774,6 +1779,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (record.activeTurnId) {
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
+        'busy',
       );
     }
     const turnId = crypto.randomUUID();
@@ -1785,7 +1791,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       decodedAttachments = decodeChatAttachments(input.attachments);
     } catch (error) {
-      throw new SendTurnRefusedError(errorMessage(error));
+      throw new SendTurnRefusedError(errorMessage(error), 'input_unsupported');
     }
     // Both attachment refusals carry a structured code: the same send is
     // refused again on retry, so the client must not present it as a
@@ -2656,10 +2662,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('indeterminate'),
           severity: 'error',
           message:
             'The engine process could not be terminated during credential-refusal recovery.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw destroyError;
       }
       if (this.sessions.get(threadId) !== record) return;
@@ -2704,10 +2711,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('provider_error'),
           severity: 'error',
           message:
             'The engine session could not be re-established after its credential request was refused.',
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw error;
       }
     } finally {
@@ -2890,11 +2898,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             createdAt: new Date().toISOString(),
             turnId,
             method: 'runtime.error',
+            ...providerFailure('quota_exhausted'),
             severity: 'error',
             code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
             message: PROVIDER_PLAN_QUOTA_MESSAGE,
             details: providerQuotaEventDetails(quota),
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = errorMessage(error);
           this.publish({
@@ -2904,11 +2913,12 @@ export class AcpAdapter implements ProviderAdapterShape {
             createdAt: new Date().toISOString(),
             turnId,
             method: 'runtime.error',
+            ...providerFailure('provider_error'),
             severity: 'error',
             message: coReportedCause
               ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
               : baseMessage,
-          });
+          } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';
         record.session.updatedAt = new Date().toISOString();

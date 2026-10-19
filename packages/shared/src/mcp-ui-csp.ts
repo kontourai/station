@@ -35,12 +35,11 @@ export function safeCspDomains(
 /**
  * Builds the base policy and appends protocol-filtered declarations. Connect
  * sources also accept wss. With no declarations, network connections are
- * blocked; inline scripts/styles and data images/fonts remain available.
+ * CSP-blocked; this does not block WebRTC ICE. Inline scripts/styles and data images/fonts remain available.
  */
 export function buildMcpUiCsp(csp?: MCPToolUICsp): string {
   const connect = safeCspDomains(csp?.connectDomains, ['https:', 'wss:']);
   const resource = safeCspDomains(csp?.resourceDomains);
-  const frame = safeCspDomains(csp?.frameDomains);
   const base = safeCspDomains(csp?.baseUriDomains);
   const src = (sources: string[]) =>
     sources.length ? sources.join(' ') : "'none'";
@@ -53,8 +52,15 @@ export function buildMcpUiCsp(csp?: MCPToolUICsp): string {
     withResource('img-src data:'),
     'font-src data:',
     `connect-src ${src(connect)}`,
-    `frame-src ${src(frame)}`,
+    "frame-src 'none'",
     `base-uri ${src(base)}`,
     "form-action 'none'",
   ].join('; ');
 }
+
+/**
+ * Defense in depth before authored bytes. CSP does not govern WebRTC ICE.
+ * Nested srcdoc inherits CSP but obtains fresh constructors, so this is not a
+ * network isolation guarantee. See docs/decisions/html-replies.md.
+ */
+export const MCP_UI_NETWORK_BOOTSTRAP_TAG = `<script>(()=>{'use strict';for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','mozRTCPeerConnection','RTCIceGatherer','RTCIceTransport'])Object.defineProperty(globalThis,name,{value:undefined,writable:false,configurable:false});})();</script>`;

@@ -1293,8 +1293,7 @@ describe('OrchestrationService', () => {
 
       rejectReady(
         new SendTurnRefusedError(
-          "The agent's session ended before it was ready. Nothing was sent.",
-        ),
+          "The agent's session ended before it was ready. Nothing was sent.", 'session_gone'),
       );
       expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
       expect(bedrock.sendTurn).not.toHaveBeenCalled();
@@ -15674,8 +15673,7 @@ describe('OrchestrationService', () => {
     claude.sendTurn.mockClear();
     claude.sendTurn.mockRejectedValueOnce(
       new SendTurnRefusedError(
-        'This engine did not advertise image attachment support.',
-      ),
+        'This engine did not advertise image attachment support.', 'input_unsupported'),
     );
 
     const failure = await service
@@ -15873,8 +15871,7 @@ describe('OrchestrationService', () => {
 
     rejectReady(
       new SendTurnRefusedError(
-        "The agent's session ended before it was ready. Nothing was sent.",
-      ),
+        "The agent's session ended before it was ready. Nothing was sent.", 'session_gone'),
     );
     expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
     expect(claude.sendTurn).not.toHaveBeenCalled();
@@ -16069,8 +16066,7 @@ describe('OrchestrationService', () => {
     claude.sendTurn.mockClear();
     claude.sendTurn.mockRejectedValueOnce(
       new SendTurnRefusedError(
-        'This engine did not advertise image attachment support.',
-      ),
+        'This engine did not advertise image attachment support.', 'input_unsupported'),
     );
     await expect(
       service.dispatch({
