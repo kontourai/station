@@ -469,9 +469,15 @@ function launcherUpdateProgress(
  * order the protocol moves through them: a queued request, then a claimed
  * one being staged, then the launcher's transaction. When nothing is under
  * way, the newer of the two recorded outcomes answers.
+ *
+ * `includeStaged: false` answers for a reader older than #3851, whose
+ * parser turns a state it does not know into `unavailable` ("cannot be
+ * read"): a `staged` result is skipped, and the launcher's record (or
+ * `idle`) answers as it would have before the stage.
  */
 export function readServiceUpdateProgress(
   installRoot: string,
+  options: { includeStaged?: boolean } = {},
 ): ServiceUpdateProgress {
   const paths = serviceUpdatePaths(installRoot);
   for (const [path, state] of [
@@ -510,7 +516,8 @@ export function readServiceUpdateProgress(
   // since, or the one the service now runs, is no longer staged.
   if (
     result?.state === 'staged' &&
-    (!serviceVersionIsStaged(installRoot, result.version) ||
+    (options.includeStaged === false ||
+      !serviceVersionIsStaged(installRoot, result.version) ||
       (stateFile.kind === 'ok' &&
         record(stateFile.value)?.activeVersion === result.version))
   )

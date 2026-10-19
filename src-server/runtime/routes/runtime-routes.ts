@@ -168,7 +168,9 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import {
+  CLIENT_ORIGIN_HEADER,
   type ClientOrigin,
+  parseClientReportedOrigin,
   UNKNOWN_CLIENT_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -406,6 +408,7 @@ import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native
 import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
+import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { launchesCommand } from '../../routes/working-directory-authority.js';
@@ -625,6 +628,7 @@ import type {
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
 } from '../../services/secrets/secret-binding-administration.js';
+import { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import { createConversationIntentSummaryEvidenceCatalog } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { ExistingAgentSetupImportModule } from '../../services/setup/existing-agent-setup-import.js';
 import {
@@ -990,6 +994,8 @@ export interface ConfigureRuntimeRoutesContext {
 }
 
 interface ConfigureRuntimeRoutesResult {
+  /** #3851: the runtime stops it (and its timers) on shutdown. */
+  serverUpdate: ServerUpdateCoordinator;
   schedulerService: SchedulerService;
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
@@ -2769,9 +2775,75 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // #3851: the server's own update lifecycle, one per runtime. It checks
+  // once after boot and when a newer client connects (below), never on a
+  // schedule; see the coordinator's header.
+  const runningTurnSessions = async (
+    authority: Parameters<OrchestrationService['listSessionReadModel']>[0],
+  ) =>
+    (await context.orchestrationService.listSessionReadModel(authority)).filter(
+      (session) => session.hasActiveTurn === true,
+    );
+  const serverUpdate = new ServerUpdateCoordinator({
+    provenance: resolveThisServerProvenance,
+    readDownloadPolicy: async () =>
+      (await context.configLoader.loadAppConfig()).serverUpdateDownloadPolicy,
+    listRunningTurns: async () =>
+      (await runningTurnSessions(INTERNAL_SESSION_READ_SCOPE)).map(
+        (session) => ({ sessionId: session.threadId }),
+      ),
+    subscribe: (listener) => context.eventBus.subscribe(listener),
+    publish: (state) =>
+      context.eventBus.emit(
+        SERVER_EVENTS.SERVER_UPDATE_CHANGED,
+        state as unknown as Record<string, unknown>,
+      ),
+    logger: context.logger,
+  });
+  // The policy is a setting: a saved change re-evaluates it at once.
+  context.eventBus.subscribe((message) => {
+    if (message.event === SERVER_EVENTS.CONFIG_CHANGED)
+      void serverUpdate.policyChanged();
+  });
   context.app.route(
     '/api/system',
-    createSystemRoutes(createRuntimeSystemRouteDeps(context), context.logger),
+    createSystemRoutes(
+      {
+        ...createRuntimeSystemRouteDeps(context),
+        serverUpdate,
+        listRunningTurnsFor: async (c) => {
+          const running = await runningTurnSessions(
+            INTERNAL_SESSION_READ_SCOPE,
+          );
+          if (running.length === 0) return { turns: [], hiddenCount: 0 };
+          // What the caller may read of them, by its own read authority; a
+          // caller with none reads none of their titles.
+          let readable = new Set<string>();
+          try {
+            const mine =
+              await context.orchestrationService.listSessionReadModel(
+                conversationReadAuthorityForContext(c),
+                { threadIds: running.map((session) => session.threadId) },
+              );
+            readable = new Set(mine.map((session) => session.threadId));
+          } catch {
+            readable = new Set();
+          }
+          const turns = running
+            .filter((session) => readable.has(session.threadId))
+            .map((session) => ({
+              sessionId: session.threadId,
+              conversationId: session.conversationId ?? null,
+              title: session.displayTitle ?? null,
+              engine: session.provider,
+              startedAt:
+                session.conversationActivity?.openTurn?.startedAt ?? null,
+            }));
+          return { turns, hiddenCount: running.length - turns.length };
+        },
+      },
+      context.logger,
+    ),
   );
   context.app.route(
     '/api/analytics',
@@ -7254,7 +7326,16 @@ export function configureRuntimeRoutes(
           context.orchestrationService.canUserReadSession(sessionId, authority)
         );
       },
-      connectClientSession: (request) => clientStreamPresence.connect(request),
+      connectClientSession: (request) => {
+        // #3851: a client newer than this server means a newer Station
+        // exists; its build travels on the stream it opens.
+        serverUpdate.noteClientBuild(
+          parseClientReportedOrigin(
+            request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
+          ).build,
+        );
+        return clientStreamPresence.connect(request);
+      },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         return (
@@ -7478,7 +7559,9 @@ export function configureRuntimeRoutes(
         }),
       );
 
+  serverUpdate.start();
   return {
+    serverUpdate,
     schedulerService,
     notificationService,
     attentionProjection,

@@ -37,6 +37,7 @@ import { errorMessage } from '../schemas/schemas.js';
 import {
   type ArchiveUpdateOptions,
   applyArchiveUpdate,
+  applyStagedServerUpdate,
   archiveApplyMethod,
   archiveUpdateStatus,
 } from './archive-update.js';
@@ -61,6 +62,8 @@ import {
 import type { SystemStatusDeps } from './system-route-types.js';
 
 const execFileAsync = promisify(execFileCb);
+/** The launcher's VERSION_PATTERN: an exact version a request may name. */
+const EXACT_VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
 const DEFAULT_INSTANCE_ID = 'default';
 
 /**
@@ -602,6 +605,15 @@ export interface SystemUpdateRouteOptions extends ArchiveUpdateOptions {
   moduleDir?: string;
 }
 
+/**
+ * This server's install provenance, from this module's own location (the
+ * install the running bundle belongs to): what `createSystemUpdateRoutes`
+ * resolves by default, for the runtime's update coordinator (#3851).
+ */
+export function resolveThisServerProvenance(): InstallProvenance {
+  return resolveInstallProvenance(dirname(fileURLToPath(import.meta.url)));
+}
+
 export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
@@ -798,7 +810,14 @@ export function createSystemUpdateRoutes(
     }
 
     if (provenance.installKind === 'archive') {
-      const status = await archiveUpdateStatus(provenance, options);
+      const status = await archiveUpdateStatus(provenance, {
+        ...options,
+        includeStaged: c.req.query('staged') === '1',
+      });
+      // A client's fresh check is this server's check too (#3851): it
+      // refreshes the cache and lets the download policy act on it.
+      if (status.applyMethod === 'service-update')
+        void deps.serverUpdate?.recordCheck(status);
       if (status.technicalDetail) {
         logger.warn('Core update check: release manifest check failed', {
           releaseCheck: status.releaseCheck,
@@ -994,7 +1013,85 @@ export function createSystemUpdateRoutes(
     ) {
       return c.json({ state: 'unavailable' });
     }
-    return c.json(readServiceUpdateProgress(provenance.installRoot));
+    // `staged` only for a client that says it knows it (#3851): an older
+    // client's parser would read it as unreadable progress.
+    return c.json(
+      readServiceUpdateProgress(provenance.installRoot, {
+        includeStaged: c.req.query('staged') === '1',
+      }),
+    );
+  });
+
+  /**
+   * The server's own update state (#3851): what the coordinator checked,
+   * staged and intends. The same body is pushed as `server-update:changed`.
+   */
+  app.get('/core-update/state', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json({
+        supported: false,
+        currentVersion: null,
+        availability: null,
+        progress: { state: 'unavailable' },
+        downloadPolicy: 'after-24h',
+        autoDownloadAt: null,
+        applyWhenIdle: null,
+      });
+    return c.json(await deps.serverUpdate.state());
+  });
+
+  /**
+   * The agent turns a restart would interrupt right now (#3851), for a
+   * confirmation to name. Only sessions the caller may read are listed.
+   */
+  app.get('/core-update/running-turns', async (c) => {
+    if (!deps.listRunningTurnsFor) return c.json({ turns: [], hiddenCount: 0 });
+    try {
+      return c.json(await deps.listRunningTurnsFor(c));
+    } catch (error) {
+      logger.warn('Core update: could not list running turns', {
+        error: errorMessage(error),
+      });
+      return c.json(
+        { success: false, error: 'Could not list the running turns.' },
+        500,
+      );
+    }
+  });
+
+  /** Apply the staged version once no agent turn runs (#3851). */
+  app.put('/core-update/apply-when-idle', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json(
+        { success: false, error: 'This server cannot update itself.' },
+        409,
+      );
+    const body = (await c.req.json().catch(() => null)) as {
+      version?: unknown;
+    } | null;
+    const version = body?.version;
+    if (typeof version !== 'string' || !EXACT_VERSION.test(version))
+      return c.json(
+        { success: false, error: 'version must be an exact Station version' },
+        400,
+      );
+    const result = await deps.serverUpdate.setApplyWhenIdle(version);
+    if (!result.ok)
+      return c.json({ success: false, error: result.error }, result.status);
+    logger.info('Core update: apply when idle requested', { version });
+    return c.json({ success: true, state: result.state });
+  });
+
+  app.delete('/core-update/apply-when-idle', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json(
+        { success: false, error: 'This server cannot update itself.' },
+        409,
+      );
+    const result = await deps.serverUpdate.cancelApplyWhenIdle();
+    if (!result.ok)
+      return c.json({ success: false, error: result.error }, result.status);
+    return c.json({ success: true, state: result.state });
   });
 
   app.post('/core-update', async (c) => {
@@ -1018,21 +1115,80 @@ export function createSystemUpdateRoutes(
       return applyDesktopSelfUpdate(c, eligibility);
     }
     if (provenance.installKind === 'archive') {
-      const result = await applyArchiveUpdate(provenance, options);
+      // #3851: `{ action: 'stage' }` downloads only; `{ action: 'apply',
+      // version }` restarts into a staged version. No body (every client
+      // before #3851) is the one-click update that does both.
+      const body = (await c.req.json().catch(() => null)) as {
+        action?: unknown;
+        version?: unknown;
+      } | null;
+      const action = body?.action ?? 'update';
+      if (action !== 'stage' && action !== 'apply' && action !== 'update')
+        return c.json(
+          {
+            success: false,
+            error: 'action must be "stage", "apply" or "update"',
+          },
+          400,
+        );
+      const version = body?.version;
+      if (
+        version !== undefined &&
+        (typeof version !== 'string' || !EXACT_VERSION.test(version))
+      )
+        return c.json(
+          { success: false, error: 'version must be an exact Station version' },
+          400,
+        );
+      if (action === 'apply' && version === undefined)
+        return c.json(
+          {
+            success: false,
+            error: 'an apply names the downloaded version it restarts into',
+          },
+          400,
+        );
+      // The coordinator follows and pushes progress for what it requests;
+      // without one (tests, the capabilities probe) the request is the same.
+      const result =
+        deps.serverUpdate && action === 'stage'
+          ? await deps.serverUpdate.stage()
+          : deps.serverUpdate && action === 'apply'
+            ? await deps.serverUpdate.apply(version as string)
+            : action === 'apply'
+              ? await applyStagedServerUpdate(
+                  provenance,
+                  options,
+                  version as string,
+                )
+              : await applyArchiveUpdate(provenance, options, {
+                  intent: action,
+                });
       if (!result.ok) {
         return c.json({ success: false, error: result.error }, result.status);
       }
+      const requestId = result.requestId;
+      if (!requestId)
+        return c.json(
+          { success: false, error: 'The update request was not recorded.' },
+          500,
+        );
       systemOps.add(1, { op: 'apply_service_update' });
       logger.info('Service update requested', {
-        requestId: result.requestId,
+        requestId,
+        intent: action,
         version: provenance.version,
       });
       return c.json(
         {
           success: true,
-          serviceUpdate: { requestId: result.requestId },
+          serviceUpdate: { requestId, intent: action },
           message:
-            'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
+            action === 'stage'
+              ? 'Download requested. The Station service downloads and verifies the release; the server keeps running until you restart it into the update.'
+              : action === 'apply'
+                ? 'Restart requested. The Station service trials the downloaded release and keeps the current version if the trial fails.'
+                : 'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
         },
         202,
       );

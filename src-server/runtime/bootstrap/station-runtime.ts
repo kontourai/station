@@ -415,6 +415,7 @@ import {
   createRuntimeSearch,
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
+import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -735,6 +736,8 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  /** #3851: the server's own update lifecycle. */
+  private serverUpdate?: ServerUpdateCoordinator;
   private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
@@ -4313,6 +4316,7 @@ export class StationRuntime {
       deviceHosts,
       agentActivityPublisher,
       notificationDeliveryRouter,
+      serverUpdate,
     } = configureRuntimeRoutes({
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
@@ -4440,6 +4444,7 @@ export class StationRuntime {
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
+    this.serverUpdate = serverUpdate;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -5008,6 +5013,8 @@ export class StationRuntime {
       this.agentActivityPublisher = undefined;
       this.notificationDeliveryRouter?.stop();
       this.notificationDeliveryRouter = undefined;
+      this.serverUpdate?.stop();
+      this.serverUpdate = undefined;
     } catch (error) {
       failures.push(error);
     }

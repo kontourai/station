@@ -30,6 +30,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { createSystemUpdateRoutes } = await import('../system-update-routes.js');
+const { ServerUpdateCoordinator, SERVER_UPDATE_DOWNLOAD_DELAY_MS } =
+  await import('../../../services/server-update/server-update-coordinator.js');
+const { resolveInstallProvenance } = await import('../install-provenance.js');
 
 const makeTempDir = trackTempDirs();
 
@@ -210,6 +213,7 @@ function createApp(
     pinnedKeys?: unknown;
     platform?: string;
     arch?: string;
+    extraDeps?: Record<string, unknown>;
   } = {},
 ) {
   const logger = {
@@ -218,7 +222,11 @@ function createApp(
     warn: vi.fn(),
     error: vi.fn(),
   };
-  const deps = { getAppConfig: () => ({}), eventBus: { emit: vi.fn() } };
+  const deps = {
+    getAppConfig: () => ({}),
+    eventBus: { emit: vi.fn() },
+    ...options.extraDeps,
+  };
   return createSystemUpdateRoutes(deps as never, logger, undefined, {
     moduleDir: install.moduleDir,
     env: options.env ?? launcherEnv(install),
@@ -524,13 +532,14 @@ describe('POST /core-update on a launcher-run archive', () => {
       expect(statSync(paths.request).mode & 0o777).toBe(0o600);
     }
 
+    // `intent` is additive (#3851): a request without a mode is an update.
     expect(
       await json(await app.request('/core-update/service-update')),
-    ).toEqual({ state: 'queued', requestId });
+    ).toEqual({ state: 'queued', requestId, intent: 'update' });
     // The GET reports it too, so a client never offers a second apply.
     expect(
       (await json(await app.request('/core-update'))).serviceUpdate,
-    ).toEqual({ state: 'queued', requestId });
+    ).toEqual({ state: 'queued', requestId, intent: 'update' });
 
     const again = await app.request('/core-update', { method: 'POST' });
     expect(again.status).toBe(409);
@@ -791,7 +800,7 @@ describe('GET /core-update/service-update', () => {
     );
     expect(
       await json(await app.request('/core-update/service-update')),
-    ).toEqual({ state: 'staging', requestId: REQUEST_ID });
+    ).toEqual({ state: 'staging', requestId: REQUEST_ID, intent: 'update' });
 
     rmSync(paths.processing);
     writeState(install, {
@@ -945,5 +954,600 @@ describe('GET /core-update/service-update', () => {
         ),
       ),
     ).toEqual({ state: 'unavailable' });
+  });
+});
+
+/** `install`'s version directory for `version`, complete as install.sh seals it. */
+function stageOnDisk(install: Install, version: string, requestId: string) {
+  const dir = join(install.installRoot, 'versions', version);
+  mkdirSync(join(dir, 'bin'), { recursive: true });
+  writeFileSync(join(dir, 'bin', 'station.mjs'), '');
+  writeFileSync(join(dir, '.station-install-complete'), `${'a'.repeat(64)}\n`);
+  const paths = serviceUpdatePaths(install.installRoot);
+  mkdirSync(paths.runtime, { recursive: true });
+  writeFileSync(
+    paths.result,
+    JSON.stringify({
+      requestId,
+      status: 'staged',
+      version,
+      at: '2026-10-19T09:00:00.000Z',
+    }),
+  );
+}
+
+const STAGE_REQUEST = '6ba7b810-9dad-41d1-80b4-00c04fd430c8';
+
+describe('stage and apply as separate requests (#3851)', () => {
+  test('a stage request writes a stage request for the verified version; nothing restarts', async () => {
+    const install = makeInstall();
+    const app = createApp(install);
+    const res = await app.request('/core-update', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'stage' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.status).toBe(202);
+    const body = await json(res);
+    expect(body.serviceUpdate).toEqual({
+      requestId: expect.any(String),
+      intent: 'stage',
+    });
+    const request = parseServiceUpdateRequest(
+      readFileSync(serviceUpdatePaths(install.installRoot).request, 'utf8'),
+    );
+    expect(request).toMatchObject({ mode: 'stage', targetVersion: NEWER });
+    expect(
+      await json(await app.request('/core-update/service-update?staged=1')),
+    ).toEqual({
+      state: 'queued',
+      requestId: body.serviceUpdate.requestId,
+      intent: 'stage',
+    });
+  });
+
+  test('an apply is refused, writing nothing, until a stage left that version staged', async () => {
+    const install = makeInstall();
+    const app = createApp(install);
+    const post = (body: unknown) =>
+      app.request('/core-update', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      });
+    const paths = serviceUpdatePaths(install.installRoot);
+    const notStaged = await post({ action: 'apply', version: NEWER });
+    expect(notStaged.status).toBe(409);
+    expect((await json(notStaged)).error).toMatch(/download the update first/);
+    expect(existsSync(paths.request)).toBe(false);
+
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const otherVersion = await post({
+      action: 'apply',
+      version: '0.8.0-preview.3',
+    });
+    expect(otherVersion.status).toBe(409);
+    expect((await json(otherVersion)).error).toMatch(
+      /downloaded update is 0\.8\.0-preview\.2/,
+    );
+    expect(existsSync(paths.request)).toBe(false);
+
+    const applied = await post({ action: 'apply', version: NEWER });
+    expect(applied.status).toBe(202);
+    expect(
+      parseServiceUpdateRequest(readFileSync(paths.request, 'utf8')),
+    ).toMatchObject({ mode: 'apply', targetVersion: NEWER });
+  });
+
+  test('refuses an unknown action, an apply that names no version, and a malformed version', async () => {
+    const install = makeInstall();
+    const app = createApp(install);
+    for (const body of [
+      { action: 'restart' },
+      { action: 'apply' },
+      { action: 'apply', version: '../x' },
+    ]) {
+      const res = await app.request('/core-update', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+  });
+
+  test('staged is reported only to a client that asks for it; an older client reads what it did before', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const app = createApp(install);
+    expect(
+      await json(await app.request('/core-update/service-update')),
+    ).toEqual({ state: 'idle' });
+    expect(
+      await json(await app.request('/core-update/service-update?staged=1')),
+    ).toEqual({
+      state: 'staged',
+      requestId: STAGE_REQUEST,
+      version: NEWER,
+      stagedAt: '2026-10-19T09:00:00.000Z',
+    });
+    const legacy = await json(await app.request('/core-update'));
+    expect(legacy).toMatchObject({
+      stagedUpdates: true,
+      serviceUpdate: { state: 'idle' },
+    });
+    expect(
+      (await json(await app.request('/core-update?staged=1'))).serviceUpdate,
+    ).toMatchObject({ state: 'staged', version: NEWER });
+  });
+
+  test('a one-click update (no body) of a staged version still requests the combined update', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const res = await createApp(install).request('/core-update', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(202);
+    const request = parseServiceUpdateRequest(
+      readFileSync(serviceUpdatePaths(install.installRoot).request, 'utf8'),
+    );
+    expect(request).not.toHaveProperty('mode');
+  });
+});
+
+/** Timers the test fires by hand, recording when each was due. */
+function manualTimers(clock: { now: number }) {
+  const pending: Array<{ due: number; callback: () => void; live: boolean }> =
+    [];
+  return {
+    setTimer: (callback: () => void, ms: number) => {
+      const timer = { due: clock.now + ms, callback, live: true };
+      pending.push(timer);
+      return {
+        cancel: () => {
+          timer.live = false;
+        },
+      };
+    },
+    live: () => pending.filter((timer) => timer.live),
+    /** Fires every live timer due by now. */
+    async fireDue() {
+      for (const timer of pending.filter(
+        (entry) => entry.live && entry.due <= clock.now,
+      )) {
+        timer.live = false;
+        timer.callback();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
+  };
+}
+
+function coordinatorFor(
+  install: Install,
+  options: {
+    policy?: string;
+    running?: () => Array<{ sessionId: string }>;
+    clock?: { now: number };
+  } = {},
+) {
+  const clock = options.clock ?? { now: Date.parse('2026-10-19T10:00:00Z') };
+  const timers = manualTimers(clock);
+  const published: Array<Record<string, unknown>> = [];
+  let busListener:
+    | ((message: { event: string; data?: Record<string, unknown> }) => void)
+    | undefined;
+  let policy = options.policy;
+  const coordinator = new ServerUpdateCoordinator({
+    provenance: () => resolveInstallProvenance(install.moduleDir),
+    options: {
+      env: launcherEnv(install),
+      fetchFn: fetchFn as unknown as typeof fetch,
+      pinnedKeys: TEST_KEYS,
+      platform: 'linux',
+      arch: 'x64',
+    },
+    readDownloadPolicy: async () => policy,
+    listRunningTurns: async () => options.running?.() ?? [],
+    subscribe: (listener) => {
+      busListener = listener;
+      return () => {
+        busListener = undefined;
+      };
+    },
+    publish: (state) => published.push(state as never),
+    logger: { info: vi.fn(), warn: vi.fn() },
+    now: () => clock.now,
+    setTimer: timers.setTimer,
+    bootCheckDelayMs: 60_000,
+    idleDebounceMs: 2_000,
+  });
+  return {
+    coordinator,
+    clock,
+    timers,
+    published,
+    setPolicy: (next: string) => {
+      policy = next;
+    },
+    turnEnded: () =>
+      busListener?.({
+        event: 'orchestration:event',
+        data: { event: { method: 'turn.completed' } },
+      }),
+    request: () => {
+      const path = serviceUpdatePaths(install.installRoot).request;
+      return existsSync(path)
+        ? parseServiceUpdateRequest(readFileSync(path, 'utf8'))
+        : null;
+    },
+  };
+}
+
+describe('the server update coordinator (#3851)', () => {
+  test('checks once after the boot delay, not before, and a repeated trigger within the TTL does not refetch', async () => {
+    const install = makeInstall();
+    const { coordinator, clock, timers, published } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    coordinator.start();
+    await timers.fireDue();
+    expect(fetchFn).not.toHaveBeenCalled();
+    clock.now += 60_000;
+    await timers.fireDue();
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(published.at(-1)).toMatchObject({
+        supported: true,
+        currentVersion: RUNNING,
+        availability: {
+          latestVersion: NEWER,
+          updateAvailable: true,
+          releaseCheck: 'verified',
+        },
+        downloadPolicy: 'never',
+        autoDownloadAt: null,
+      }),
+    );
+    await coordinator.check('again');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    await coordinator.check('forced', { force: true });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    coordinator.stop();
+  });
+
+  test('a client newer than the server triggers a check; an equal or older one does not', async () => {
+    const install = makeInstall();
+    const { coordinator } = coordinatorFor(install, { policy: 'never' });
+    coordinator.noteClientBuild(`${RUNNING}+abcdef0`);
+    coordinator.noteClientBuild('0.7.9');
+    coordinator.noteClientBuild(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchFn).not.toHaveBeenCalled();
+    coordinator.noteClientBuild('0.8.1+abcdef0');
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+  });
+
+  test('policy immediately stages the available version as soon as a check finds it', async () => {
+    const install = makeInstall();
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER });
+  });
+
+  test('policy never downloads nothing by itself', async () => {
+    const install = makeInstall();
+    const { coordinator, request, timers } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    await coordinator.check('boot');
+    expect(request()).toBeNull();
+    expect(timers.live()).toHaveLength(0);
+  });
+
+  test('after-24h (the default) waits 24 hours from the first check that saw the version, across a restart', async () => {
+    const install = makeInstall();
+    const first = coordinatorFor(install);
+    await first.coordinator.check('boot');
+    expect(first.request()).toBeNull();
+    const state = await first.coordinator.state();
+    expect(state.downloadPolicy).toBe('after-24h');
+    const seen = Date.parse(state.availability?.availableSince ?? '');
+    expect(seen).toBe(first.clock.now);
+    expect(state.autoDownloadAt).toBe(
+      new Date(seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS).toISOString(),
+    );
+    // One timer, for that moment.
+    expect(first.timers.live().map((timer) => timer.due)).toEqual([
+      seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
+    ]);
+    first.coordinator.stop();
+
+    // The server restarted 23 hours later: still not due, and the clock
+    // still counts from the first sighting.
+    const clock = { now: seen + 23 * 60 * 60_000 };
+    const second = coordinatorFor(install, { clock });
+    await second.coordinator.check('boot');
+    expect(second.request()).toBeNull();
+    expect(second.timers.live().map((timer) => timer.due)).toEqual([
+      seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
+    ]);
+    clock.now = seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS;
+    await second.timers.fireDue();
+    await vi.waitFor(() =>
+      expect(second.request()).toMatchObject({
+        mode: 'stage',
+        targetVersion: NEWER,
+      }),
+    );
+  });
+
+  test('changing the policy re-evaluates the last check at once', async () => {
+    const install = makeInstall();
+    const { coordinator, request, setPolicy } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    await coordinator.check('boot');
+    expect(request()).toBeNull();
+    setPolicy('immediately');
+    await coordinator.policyChanged();
+    expect(request()).toMatchObject({ mode: 'stage' });
+  });
+
+  test('a staged version is not downloaded again', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    expect(request()).toBeNull();
+    expect((await coordinator.state()).progress).toMatchObject({
+      state: 'staged',
+      version: NEWER,
+    });
+  });
+
+  test('apply-when-idle waits while a turn runs and applies once the last one ends', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    let running = [{ sessionId: 's-1' }];
+    const { coordinator, timers, clock, turnEnded, request } = coordinatorFor(
+      install,
+      { policy: 'never', running: () => running },
+    );
+    coordinator.start();
+    const set = await coordinator.setApplyWhenIdle(NEWER);
+    expect(set).toMatchObject({
+      ok: true,
+      state: { applyWhenIdle: { version: NEWER } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(request()).toBeNull();
+
+    // A turn ends while another still runs: nothing.
+    turnEnded();
+    clock.now += 2_000;
+    await timers.fireDue();
+    expect(request()).toBeNull();
+
+    running = [];
+    turnEnded();
+    clock.now += 2_000;
+    await timers.fireDue();
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'apply', targetVersion: NEWER }),
+    );
+    expect((await coordinator.state()).applyWhenIdle).toBeNull();
+    coordinator.stop();
+  });
+
+  test('apply-when-idle with nothing running applies at once; a cancelled intent never applies', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    let running = [{ sessionId: 's-1' }];
+    const { coordinator, timers, clock, turnEnded, request } = coordinatorFor(
+      install,
+      { policy: 'never', running: () => running },
+    );
+    coordinator.start();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await coordinator.cancelApplyWhenIdle();
+    running = [];
+    turnEnded();
+    clock.now += 2_000;
+    await timers.fireDue();
+    expect(request()).toBeNull();
+    expect((await coordinator.state()).applyWhenIdle).toBeNull();
+
+    await coordinator.setApplyWhenIdle(NEWER);
+    await vi.waitFor(() =>
+      expect(request()).toMatchObject({ mode: 'apply', targetVersion: NEWER }),
+    );
+    coordinator.stop();
+  });
+
+  test('apply-when-idle needs the staged version it names', async () => {
+    const install = makeInstall();
+    const { coordinator } = coordinatorFor(install);
+    expect(await coordinator.setApplyWhenIdle(NEWER)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    expect(await coordinator.setApplyWhenIdle('0.8.0-preview.3')).toMatchObject(
+      { ok: false, status: 409 },
+    );
+  });
+
+  test('pushes each change of a stage’s progress while it is queued or staging, then stops reading', async () => {
+    const install = makeInstall();
+    const { coordinator, timers, clock, published } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    coordinator.start();
+    const stage = await coordinator.stage();
+    expect(stage.ok).toBe(true);
+    const requestId = (stage.ok && stage.requestId) || '';
+    expect(published.at(-1)).toMatchObject({
+      progress: { state: 'queued', intent: 'stage' },
+    });
+    // The child claims it and reports bytes.
+    const paths = serviceUpdatePaths(install.installRoot);
+    const { renameSync } = await import('node:fs');
+    renameSync(paths.request, paths.processing);
+    writeFileSync(
+      paths.stageProgress,
+      JSON.stringify({
+        requestId,
+        phase: 'downloading',
+        downloadedBytes: 10,
+        totalBytes: 100,
+        at: 'x',
+      }),
+    );
+    clock.now += 1_000;
+    await timers.fireDue();
+    await vi.waitFor(() =>
+      expect(published.at(-1)).toMatchObject({
+        progress: {
+          state: 'staging',
+          stagePhase: 'downloading',
+          downloadedBytes: 10,
+          totalBytes: 100,
+        },
+      }),
+    );
+    const count = published.length;
+    clock.now += 1_000;
+    await timers.fireDue();
+    // Unchanged: nothing pushed.
+    expect(published).toHaveLength(count);
+
+    // Staged: pushed, and the follow ends.
+    rmSync(paths.processing);
+    rmSync(paths.stageProgress);
+    stageOnDisk(install, NEWER, requestId);
+    clock.now += 1_000;
+    await timers.fireDue();
+    await vi.waitFor(() =>
+      expect(published.at(-1)).toMatchObject({
+        progress: { state: 'staged', version: NEWER },
+      }),
+    );
+    expect(timers.live()).toHaveLength(1); // only the boot check is left
+    coordinator.stop();
+  });
+
+  test('after the update commits, the new server drops the intent for the version it now runs', async () => {
+    const install = makeInstall();
+    const runtime = serviceUpdatePaths(install.installRoot).runtime;
+    mkdirSync(runtime, { recursive: true });
+    writeFileSync(
+      join(runtime, 'server-update.json'),
+      JSON.stringify({
+        applyWhenIdle: {
+          version: RUNNING,
+          requestedAt: '2026-10-18T00:00:00Z',
+        },
+        availableSince: { version: RUNNING, at: '2026-10-18T00:00:00Z' },
+      }),
+    );
+    const { coordinator } = coordinatorFor(install, { policy: 'never' });
+    coordinator.start();
+    expect(existsSync(join(runtime, 'server-update.json'))).toBe(false);
+    coordinator.stop();
+  });
+
+  test('an install the launcher does not run is unsupported and does nothing', async () => {
+    const install = makeInstall();
+    const coordinator = new ServerUpdateCoordinator({
+      provenance: () => resolveInstallProvenance(install.moduleDir),
+      options: { env: {} },
+      readDownloadPolicy: async () => 'immediately',
+      listRunningTurns: async () => [],
+      publish: vi.fn(),
+      logger: { info: vi.fn(), warn: vi.fn() },
+    });
+    expect(coordinator.supported()).toBe(false);
+    coordinator.start();
+    expect(await coordinator.check('boot')).toBeNull();
+    expect((await coordinator.state()).supported).toBe(false);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('the update state, apply-when-idle and running-turns routes (#3851)', () => {
+  test('serve the coordinator’s state, set and cancel the intent, and list running turns', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator } = coordinatorFor(install, {
+      policy: 'never',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    const listRunningTurnsFor = vi.fn(async () => ({
+      turns: [
+        {
+          sessionId: 's-1',
+          conversationId: 'c-1',
+          title: 'Fix the build',
+          engine: 'codex',
+          startedAt: null,
+        },
+      ],
+      hiddenCount: 1,
+    }));
+    const app = createApp(install, {
+      extraDeps: { serverUpdate: coordinator, listRunningTurnsFor },
+    });
+    expect(await json(await app.request('/core-update/state'))).toMatchObject({
+      supported: true,
+      progress: { state: 'staged', version: NEWER },
+      applyWhenIdle: null,
+    });
+    const bad = await app.request('/core-update/apply-when-idle', {
+      method: 'PUT',
+      body: JSON.stringify({ version: 'not a version' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(bad.status).toBe(400);
+    const set = await app.request('/core-update/apply-when-idle', {
+      method: 'PUT',
+      body: JSON.stringify({ version: NEWER }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(set.status).toBe(200);
+    expect((await json(set)).state.applyWhenIdle).toMatchObject({
+      version: NEWER,
+    });
+    const cancelled = await app.request('/core-update/apply-when-idle', {
+      method: 'DELETE',
+    });
+    expect((await json(cancelled)).state.applyWhenIdle).toBeNull();
+    expect(await json(await app.request('/core-update/running-turns'))).toEqual(
+      {
+        turns: [expect.objectContaining({ title: 'Fix the build' })],
+        hiddenCount: 1,
+      },
+    );
+  });
+
+  test('without a coordinator the state reads unsupported and the intent is refused', async () => {
+    const install = makeInstall();
+    const app = createApp(install);
+    expect(await json(await app.request('/core-update/state'))).toMatchObject({
+      supported: false,
+    });
+    const set = await app.request('/core-update/apply-when-idle', {
+      method: 'PUT',
+      body: JSON.stringify({ version: NEWER }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(set.status).toBe(409);
   });
 });

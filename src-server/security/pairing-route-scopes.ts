@@ -3648,7 +3648,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // files: no other Station's or Environment's data, nothing written. The
     // /api/system read tier, like the restart-status leaf above.
     { method: 'GET', path: '/api/system/core-update/service-update' },
+    // #3851: the server's own update state (the same install facts the
+    // service-update leaf reads, plus its last release check and intent),
+    // and the running turns a restart would interrupt, listed only as far
+    // as the caller may read those sessions.
+    { method: 'GET', path: '/api/system/core-update/state' },
+    { method: 'GET', path: '/api/system/core-update/running-turns' },
     { method: 'POST', path: '/api/system/core-update' },
+    // #3851: set or cancel applying the downloaded update once no turn runs;
+    // the same authority as applying it now (the POST above).
+    { method: 'PUT', path: '/api/system/core-update/apply-when-idle' },
+    { method: 'DELETE', path: '/api/system/core-update/apply-when-idle' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
     { method: 'GET', path: '/api/system/instance' },

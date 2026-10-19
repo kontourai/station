@@ -1,0 +1,761 @@
+/**
+ * The server's own update lifecycle for a launcher-run archive service
+ * (#3851 slice 4): when it checks for a release, when it downloads one by
+ * itself, when it applies one because nothing is running, and what it tells
+ * every client about all of that.
+ *
+ * Nothing here runs on a schedule (owner preference: no standing product
+ * loops). Every action follows an event:
+ * - a check: once, shortly after boot; when a client newer than this server
+ *   connects; when a client checks (`recordCheck`). A cached result younger
+ *   than `checkTtlMs` answers a repeated trigger without refetching.
+ * - an automatic download: evaluated after each check against the download
+ *   policy. When the policy's delay has not passed yet, ONE timer is armed
+ *   for the moment it does, and it runs one more check; a later check
+ *   replaces it. That is a deadline for a known event, not a poll.
+ * - apply-when-idle: evaluated when the intent is set and whenever a turn
+ *   ends (the event bus's canonical runtime events).
+ * - progress: while a request this server can see is queued or staging, the
+ *   runtime files the service child writes are read once a second and every
+ *   change is pushed; it stops as soon as the request leaves those states.
+ *
+ * Downloading never restarts the server. Only `apply` (a person's Restart)
+ * or the apply-when-idle intent a person set does.
+ */
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY,
+  SERVER_UPDATE_DOWNLOAD_POLICIES,
+  type ServerUpdateDownloadPolicy,
+  type ServerUpdateState,
+  type ServiceUpdateProgress,
+} from '@kontourai/station-contracts/system-status';
+import {
+  clientVersionInHostOrder,
+  compareStationReleaseVersions,
+} from '@kontourai/station-shared/release-version-order';
+import {
+  readServiceUpdateProgress,
+  serviceUpdatePaths,
+  writeJsonAtomically,
+} from '@kontourai/station-shared/service-launcher-protocol';
+import {
+  type ArchiveApplyResult,
+  type ArchiveUpdateOptions,
+  type ArchiveUpdateStatus,
+  applyArchiveUpdate,
+  applyStagedServerUpdate,
+  archiveApplyMethod,
+  archiveUpdateStatus,
+} from '../../routes/system/archive-update.js';
+import type { InstallProvenance } from '../../routes/system/install-provenance.js';
+
+type ArchiveProvenance = Extract<InstallProvenance, { installKind: 'archive' }>;
+
+/** A cached check answers repeated triggers for this long. */
+export const SERVER_UPDATE_CHECK_TTL_MS = 30 * 60_000;
+/** The boot check waits this long, so it never competes with startup. */
+export const SERVER_UPDATE_BOOT_CHECK_DELAY_MS = 60_000;
+/** `after-24h`'s delay, from the first check that saw the version. */
+export const SERVER_UPDATE_DOWNLOAD_DELAY_MS = 24 * 60 * 60_000;
+const PROGRESS_POLL_MS = 1_000;
+/** Turns end in bursts (a turn and its children); one evaluation per burst. */
+const IDLE_DEBOUNCE_MS = 2_000;
+
+/** One running turn as the idle check needs it: only whether any exist. */
+export interface RunningTurnSummary {
+  sessionId: string;
+}
+
+export interface ServerUpdateCoordinatorDeps {
+  /** This server's install provenance. */
+  provenance: () => InstallProvenance;
+  options?: ArchiveUpdateOptions;
+  /** The stored policy; undefined when the setting is absent. */
+  readDownloadPolicy: () => Promise<unknown>;
+  /** Every running turn on this server, whoever owns it. */
+  listRunningTurns: () => Promise<readonly RunningTurnSummary[]>;
+  /** The server event bus; the coordinator listens for turns ending. */
+  subscribe?: (
+    listener: (message: {
+      event: string;
+      data?: Record<string, unknown>;
+    }) => void,
+  ) => () => void;
+  /** Pushes the state to every client. */
+  publish: (state: ServerUpdateState) => void;
+  logger: {
+    info: (message: string, meta?: Record<string, unknown>) => void;
+    warn: (message: string, meta?: Record<string, unknown>) => void;
+  };
+  now?: () => number;
+  setTimer?: (callback: () => void, ms: number) => { cancel: () => void };
+  checkTtlMs?: number;
+  bootCheckDelayMs?: number;
+  progressPollMs?: number;
+  idleDebounceMs?: number;
+}
+
+interface PersistedIntent {
+  availableSince?: { version: string; at: string };
+  applyWhenIdle?: { version: string; requestedAt: string };
+}
+
+interface CachedCheck {
+  at: number;
+  status: ArchiveUpdateStatus;
+}
+
+export type ServerUpdateActionResult =
+  | { ok: true; state: ServerUpdateState; requestId?: string }
+  | { ok: false; status: 409 | 500; error: string };
+
+const TURN_END_METHODS = new Set([
+  'turn.completed',
+  'turn.aborted',
+  'session.exited',
+]);
+
+const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
+
+function defaultTimer(callback: () => void, ms: number) {
+  const timer = setTimeout(callback, ms);
+  timer.unref?.();
+  return { cancel: () => clearTimeout(timer) };
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function readIntentFile(path: string): PersistedIntent {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return {};
+  }
+  if (!value || typeof value !== 'object') return {};
+  const raw = value as Record<string, Record<string, unknown> | undefined>;
+  const intent: PersistedIntent = {};
+  const since = raw.availableSince;
+  if (
+    since &&
+    typeof since.version === 'string' &&
+    VERSION.test(since.version) &&
+    isTimestamp(since.at)
+  )
+    intent.availableSince = { version: since.version, at: since.at };
+  const idle = raw.applyWhenIdle;
+  if (
+    idle &&
+    typeof idle.version === 'string' &&
+    VERSION.test(idle.version) &&
+    isTimestamp(idle.requestedAt)
+  )
+    intent.applyWhenIdle = {
+      version: idle.version,
+      requestedAt: idle.requestedAt,
+    };
+  return intent;
+}
+
+/**
+ * `X.Y.Z[-ring.N]` out of a client's reported build (`<version>+<commit>`),
+ * in the host's version order; null when it is not a release version.
+ */
+export function clientReleaseVersion(build: string | null): string | null {
+  if (!build) return null;
+  const version = build.split('+', 1)[0] ?? '';
+  return clientVersionInHostOrder(version);
+}
+
+export function normalizeDownloadPolicy(
+  value: unknown,
+): ServerUpdateDownloadPolicy {
+  return SERVER_UPDATE_DOWNLOAD_POLICIES.includes(
+    value as ServerUpdateDownloadPolicy,
+  )
+    ? (value as ServerUpdateDownloadPolicy)
+    : DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY;
+}
+
+export class ServerUpdateCoordinator {
+  private readonly now: () => number;
+  private readonly setTimer: NonNullable<
+    ServerUpdateCoordinatorDeps['setTimer']
+  >;
+  private cached: CachedCheck | null = null;
+  private inFlightCheck: Promise<ArchiveUpdateStatus | null> | null = null;
+  private downloadDue: { at: number; cancel: () => void } | null = null;
+  private bootCheck: { cancel: () => void } | null = null;
+  private progressFollow: { cancel: () => void } | null = null;
+  private lastPublishedProgress = '';
+  private idleTimer: { cancel: () => void } | null = null;
+  private evaluatingIdle = false;
+  private unsubscribe: (() => void) | null = null;
+  private stopped = false;
+
+  constructor(private readonly deps: ServerUpdateCoordinatorDeps) {
+    this.now = deps.now ?? Date.now;
+    this.setTimer = deps.setTimer ?? defaultTimer;
+  }
+
+  // --- what this server is ------------------------------------------------
+
+  /** The launcher-run archive this server is, or null when it is not one. */
+  private archive(): (ArchiveProvenance & { installRoot: string }) | null {
+    const provenance = this.deps.provenance();
+    if (provenance.installKind !== 'archive' || !provenance.installRoot)
+      return null;
+    if (
+      archiveApplyMethod(provenance, this.deps.options?.env) !==
+      'service-update'
+    )
+      return null;
+    return provenance as ArchiveProvenance & { installRoot: string };
+  }
+
+  supported(): boolean {
+    return this.archive() !== null;
+  }
+
+  private intentPath(installRoot: string): string {
+    return join(serviceUpdatePaths(installRoot).runtime, 'server-update.json');
+  }
+
+  private readIntent(installRoot: string): PersistedIntent {
+    return readIntentFile(this.intentPath(installRoot));
+  }
+
+  private writeIntent(installRoot: string, intent: PersistedIntent): void {
+    const path = this.intentPath(installRoot);
+    if (!intent.availableSince && !intent.applyWhenIdle) {
+      rmSync(path, { force: true });
+      return;
+    }
+    mkdirSync(serviceUpdatePaths(installRoot).runtime, {
+      recursive: true,
+      mode: 0o700,
+    });
+    writeJsonAtomically(path, intent);
+  }
+
+  private async policy(): Promise<ServerUpdateDownloadPolicy> {
+    try {
+      return normalizeDownloadPolicy(await this.deps.readDownloadPolicy());
+    } catch {
+      return DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY;
+    }
+  }
+
+  // --- the state every client sees ----------------------------------------
+
+  async state(): Promise<ServerUpdateState> {
+    const policy = await this.policy();
+    const archive = this.archive();
+    if (!archive)
+      return {
+        supported: false,
+        currentVersion: null,
+        availability: null,
+        progress: { state: 'unavailable' },
+        downloadPolicy: policy,
+        autoDownloadAt: null,
+        applyWhenIdle: null,
+      };
+    const intent = this.readIntent(archive.installRoot);
+    const progress = readServiceUpdateProgress(archive.installRoot);
+    const status = this.cached?.status ?? null;
+    const latest = status?.latestVersion ?? null;
+    const availableSince =
+      status?.updateAvailable && intent.availableSince?.version === latest
+        ? intent.availableSince.at
+        : null;
+    return {
+      supported: true,
+      currentVersion: archive.version,
+      availability: status
+        ? {
+            checkedAt: new Date(this.cached?.at ?? this.now()).toISOString(),
+            releaseCheck: status.releaseCheck,
+            latestVersion: latest,
+            updateAvailable: status.updateAvailable,
+            availableSince,
+          }
+        : null,
+      progress,
+      downloadPolicy: policy,
+      autoDownloadAt: this.autoDownloadAt(
+        policy,
+        status,
+        availableSince,
+        progress,
+      ),
+      applyWhenIdle: intent.applyWhenIdle ?? null,
+    };
+  }
+
+  /** When the policy downloads the available version; null when it will not. */
+  private autoDownloadAt(
+    policy: ServerUpdateDownloadPolicy,
+    status: ArchiveUpdateStatus | null,
+    availableSince: string | null,
+    progress: ServiceUpdateProgress,
+  ): string | null {
+    if (
+      policy === 'never' ||
+      !availableSince ||
+      !this.downloadable(status, progress)
+    )
+      return null;
+    if (policy === 'immediately') return availableSince;
+    return new Date(
+      Date.parse(availableSince) + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
+    ).toISOString();
+  }
+
+  /** A verified newer release this server could stage now. */
+  private downloadable(
+    status: ArchiveUpdateStatus | null,
+    progress: ServiceUpdateProgress,
+  ): status is ArchiveUpdateStatus & { latestVersion: string } {
+    if (
+      status?.releaseCheck !== 'verified' ||
+      !status.updateAvailable ||
+      !status.latestVersion ||
+      status.selfUpdateUnavailableReason
+    )
+      return false;
+    if (
+      progress.state === 'queued' ||
+      progress.state === 'staging' ||
+      progress.state === 'updating' ||
+      progress.state === 'needs-operator'
+    )
+      return false;
+    return !(
+      progress.state === 'staged' && progress.version === status.latestVersion
+    );
+  }
+
+  async publish(): Promise<void> {
+    if (this.stopped) return;
+    try {
+      const state = await this.state();
+      this.lastPublishedProgress = JSON.stringify(state.progress);
+      this.deps.publish(state);
+    } catch (error) {
+      this.deps.logger.warn('Server update: could not publish its state', {
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  // --- lifecycle ----------------------------------------------------------
+
+  /** Arms the boot check and the turn listener; returns the disposer. */
+  start(): () => void {
+    const archive = this.archive();
+    if (!archive) return () => undefined;
+    this.dropStaleIntent(archive);
+    this.bootCheck = this.setTimer(() => {
+      this.bootCheck = null;
+      void this.check('boot');
+    }, this.deps.bootCheckDelayMs ?? SERVER_UPDATE_BOOT_CHECK_DELAY_MS);
+    this.unsubscribe =
+      this.deps.subscribe?.((message) => this.onBusEvent(message)) ?? null;
+    this.followProgress();
+    if (this.readIntent(archive.installRoot).applyWhenIdle)
+      void this.evaluateIdle();
+    return () => this.stop();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.bootCheck?.cancel();
+    this.downloadDue?.cancel();
+    this.progressFollow?.cancel();
+    this.idleTimer?.cancel();
+    this.unsubscribe?.();
+    this.bootCheck = null;
+    this.downloadDue = null;
+    this.progressFollow = null;
+    this.idleTimer = null;
+    this.unsubscribe = null;
+  }
+
+  /**
+   * After an update commits, the new server finds the old one's records: an
+   * intent to apply the version it now runs (or an older one), or an
+   * availability record for a version that is no longer newer.
+   */
+  private dropStaleIntent(
+    archive: ArchiveProvenance & { installRoot: string },
+  ) {
+    const intent = this.readIntent(archive.installRoot);
+    const stale = (version: string | undefined) =>
+      version !== undefined &&
+      compareStationReleaseVersions(version, archive.version) !== 1;
+    if (
+      !stale(intent.applyWhenIdle?.version) &&
+      !stale(intent.availableSince?.version)
+    )
+      return;
+    const next: PersistedIntent = {
+      ...(stale(intent.availableSince?.version)
+        ? {}
+        : { availableSince: intent.availableSince }),
+      ...(stale(intent.applyWhenIdle?.version)
+        ? {}
+        : { applyWhenIdle: intent.applyWhenIdle }),
+    };
+    this.tryWriteIntent(archive.installRoot, next);
+  }
+
+  private tryWriteIntent(
+    installRoot: string,
+    intent: PersistedIntent,
+  ): boolean {
+    try {
+      this.writeIntent(installRoot, intent);
+      return true;
+    } catch (error) {
+      this.deps.logger.warn('Server update: could not record its intent', {
+        error: (error as Error).message,
+      });
+      return false;
+    }
+  }
+
+  // --- checking -----------------------------------------------------------
+
+  /**
+   * A client reported its build on connecting. A release newer than this
+   * server means a newer Station exists: check (the TTL absorbs repeats).
+   */
+  noteClientBuild(build: string | null): void {
+    const archive = this.archive();
+    if (!archive) return;
+    const client = clientReleaseVersion(build);
+    if (!client) return;
+    if (compareStationReleaseVersions(client, archive.version) !== 1) return;
+    void this.check('newer-client');
+  }
+
+  /**
+   * Checks for a newer release, unless a check younger than the TTL already
+   * answered (`force` skips that). Concurrent triggers share one fetch.
+   */
+  async check(
+    trigger: string,
+    options: { force?: boolean } = {},
+  ): Promise<ArchiveUpdateStatus | null> {
+    const archive = this.archive();
+    if (!archive || this.stopped) return null;
+    const ttl = this.deps.checkTtlMs ?? SERVER_UPDATE_CHECK_TTL_MS;
+    if (!options.force && this.cached && this.now() - this.cached.at < ttl)
+      return this.cached.status;
+    if (this.inFlightCheck) return this.inFlightCheck;
+    this.inFlightCheck = (async () => {
+      try {
+        const status = await archiveUpdateStatus(archive, this.deps.options);
+        this.deps.logger.info('Server update check', {
+          trigger,
+          releaseCheck: status.releaseCheck,
+          latestVersion: status.latestVersion ?? null,
+          updateAvailable: status.updateAvailable,
+        });
+        await this.recordCheck(status);
+        return status;
+      } catch (error) {
+        this.deps.logger.warn('Server update check failed', {
+          trigger,
+          error: (error as Error).message,
+        });
+        return null;
+      } finally {
+        this.inFlightCheck = null;
+      }
+    })();
+    return this.inFlightCheck;
+  }
+
+  /**
+   * Records a check's result (this coordinator's own, or a client's fresh
+   * `GET /core-update`), then lets the download policy act on it.
+   */
+  async recordCheck(status: ArchiveUpdateStatus): Promise<void> {
+    const archive = this.archive();
+    if (!archive || this.stopped) return;
+    this.cached = { at: this.now(), status };
+    const intent = this.readIntent(archive.installRoot);
+    // Only a verified answer changes the record: an unreachable manifest says
+    // nothing about whether the version stopped being available.
+    if (status.releaseCheck === 'verified') {
+      const latest = status.updateAvailable ? status.latestVersion : undefined;
+      if (latest && intent.availableSince?.version !== latest)
+        this.tryWriteIntent(archive.installRoot, {
+          ...intent,
+          availableSince: {
+            version: latest,
+            at: new Date(this.now()).toISOString(),
+          },
+        });
+      else if (!latest && intent.availableSince)
+        this.tryWriteIntent(archive.installRoot, {
+          ...(intent.applyWhenIdle
+            ? { applyWhenIdle: intent.applyWhenIdle }
+            : {}),
+        });
+    }
+    await this.applyDownloadPolicy();
+    await this.publish();
+  }
+
+  /** Stages the available version when the policy's delay has passed. */
+  private async applyDownloadPolicy(): Promise<void> {
+    this.downloadDue?.cancel();
+    this.downloadDue = null;
+    const archive = this.archive();
+    if (!archive) return;
+    const state = await this.state();
+    if (!state.autoDownloadAt || state.downloadPolicy === 'never') return;
+    const due = Date.parse(state.autoDownloadAt);
+    const wait = due - this.now();
+    if (wait > 0) {
+      const timer = this.setTimer(() => {
+        this.downloadDue = null;
+        void this.check('download-due', { force: true });
+      }, wait);
+      this.downloadDue = { at: due, ...timer };
+      return;
+    }
+    const result = await this.request('stage');
+    if (result.ok)
+      this.deps.logger.info('Server update: downloading by policy', {
+        policy: state.downloadPolicy,
+        version: state.availability?.latestVersion ?? null,
+      });
+    else
+      this.deps.logger.warn('Server update: the policy download was refused', {
+        error: result.error,
+      });
+  }
+
+  /** The policy setting changed: re-evaluate against the last check. */
+  async policyChanged(): Promise<void> {
+    if (!this.archive() || this.stopped) return;
+    await this.applyDownloadPolicy();
+    await this.publish();
+  }
+
+  // --- requests -----------------------------------------------------------
+
+  private async request(
+    intent: 'stage' | 'apply' | 'update',
+    version?: string,
+  ): Promise<ArchiveApplyResult> {
+    const archive = this.archive();
+    if (!archive)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          'This Station server is not run by the Station service’s launcher, so it cannot update itself.',
+      };
+    const result =
+      intent === 'apply'
+        ? await applyStagedServerUpdate(archive, this.deps.options, version)
+        : await applyArchiveUpdate(archive, this.deps.options, { intent });
+    if (result.ok) this.followProgress();
+    return result;
+  }
+
+  /** Download and verify the newest release; nothing restarts. */
+  async stage(): Promise<ServerUpdateActionResult> {
+    const result = await this.request('stage');
+    if (!result.ok) return result;
+    await this.publish();
+    return { ok: true, state: await this.state(), requestId: result.requestId };
+  }
+
+  /** Restart into the staged `version`, interrupting whatever runs. */
+  async apply(version?: string): Promise<ServerUpdateActionResult> {
+    const result = await this.request('apply', version);
+    if (!result.ok) return result;
+    const archive = this.archive();
+    if (archive) {
+      const intent = this.readIntent(archive.installRoot);
+      if (intent.applyWhenIdle) {
+        const { applyWhenIdle: _applied, ...rest } = intent;
+        this.tryWriteIntent(archive.installRoot, rest);
+      }
+    }
+    await this.publish();
+    return { ok: true, state: await this.state(), requestId: result.requestId };
+  }
+
+  /** Apply the staged `version` once no agent turn is running. */
+  async setApplyWhenIdle(version: string): Promise<ServerUpdateActionResult> {
+    const archive = this.archive();
+    if (!archive)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          'This Station server is not run by the Station service’s launcher, so it cannot update itself.',
+      };
+    const progress = readServiceUpdateProgress(archive.installRoot);
+    if (progress.state !== 'staged' || progress.version !== version)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          progress.state === 'staged'
+            ? `The downloaded update is ${progress.version}, not ${version}; check for updates again.`
+            : 'No downloaded update is ready to apply; download the update first.',
+      };
+    const intent = this.readIntent(archive.installRoot);
+    if (
+      !this.tryWriteIntent(archive.installRoot, {
+        ...intent,
+        applyWhenIdle: {
+          version,
+          requestedAt: new Date(this.now()).toISOString(),
+        },
+      })
+    )
+      return {
+        ok: false,
+        status: 500,
+        error: 'Station could not record the request to update when idle.',
+      };
+    await this.publish();
+    void this.evaluateIdle();
+    return { ok: true, state: await this.state() };
+  }
+
+  async cancelApplyWhenIdle(): Promise<ServerUpdateActionResult> {
+    const archive = this.archive();
+    if (archive) {
+      const intent = this.readIntent(archive.installRoot);
+      if (intent.applyWhenIdle) {
+        const { applyWhenIdle: _cancelled, ...rest } = intent;
+        if (!this.tryWriteIntent(archive.installRoot, rest))
+          return {
+            ok: false,
+            status: 500,
+            error: 'Station could not cancel the request to update when idle.',
+          };
+      }
+    }
+    await this.publish();
+    return { ok: true, state: await this.state() };
+  }
+
+  // --- apply when idle ----------------------------------------------------
+
+  private onBusEvent(message: {
+    event: string;
+    data?: Record<string, unknown>;
+  }): void {
+    if (message.event !== 'orchestration:event') return;
+    const method = (message.data?.event as { method?: unknown } | undefined)
+      ?.method;
+    if (typeof method !== 'string' || !TURN_END_METHODS.has(method)) return;
+    const archive = this.archive();
+    if (!archive || !this.readIntent(archive.installRoot).applyWhenIdle) return;
+    this.idleTimer?.cancel();
+    this.idleTimer = this.setTimer(() => {
+      this.idleTimer = null;
+      void this.evaluateIdle();
+    }, this.deps.idleDebounceMs ?? IDLE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Applies the intended version when no turn runs. An intent whose version
+   * is no longer the staged one is dropped: it promised that version only.
+   */
+  async evaluateIdle(): Promise<void> {
+    if (this.evaluatingIdle || this.stopped) return;
+    const archive = this.archive();
+    if (!archive) return;
+    this.evaluatingIdle = true;
+    try {
+      const intent = this.readIntent(archive.installRoot).applyWhenIdle;
+      if (!intent) return;
+      const progress = readServiceUpdateProgress(archive.installRoot);
+      if (progress.state !== 'staged' || progress.version !== intent.version) {
+        // In flight (an apply already queued): leave it. Anything else: the
+        // staged version the intent named is gone.
+        if (
+          progress.state !== 'queued' &&
+          progress.state !== 'staging' &&
+          progress.state !== 'updating'
+        ) {
+          const { applyWhenIdle: _dropped, ...rest } = this.readIntent(
+            archive.installRoot,
+          );
+          this.tryWriteIntent(archive.installRoot, rest);
+          await this.publish();
+        }
+        return;
+      }
+      let running: readonly RunningTurnSummary[];
+      try {
+        running = await this.deps.listRunningTurns();
+      } catch (error) {
+        // Not knowing is not idle.
+        this.deps.logger.warn('Server update: could not list running turns', {
+          error: (error as Error).message,
+        });
+        return;
+      }
+      if (running.length > 0) return;
+      this.deps.logger.info('Server update: applying when idle', {
+        version: intent.version,
+      });
+      const result = await this.apply(intent.version);
+      if (!result.ok)
+        this.deps.logger.warn('Server update: the idle apply was refused', {
+          error: result.error,
+        });
+    } finally {
+      this.evaluatingIdle = false;
+    }
+  }
+
+  // --- progress -----------------------------------------------------------
+
+  /**
+   * Pushes each change of a queued or staging request's progress, reading
+   * the runtime files once a second only while one is in those states.
+   */
+  private followProgress(): void {
+    if (this.progressFollow || this.stopped) return;
+    const archive = this.archive();
+    if (!archive) return;
+    const tick = () => {
+      this.progressFollow = null;
+      if (this.stopped) return;
+      const progress = readServiceUpdateProgress(archive.installRoot);
+      const serialized = JSON.stringify(progress);
+      const changed = serialized !== this.lastPublishedProgress;
+      const following =
+        progress.state === 'queued' || progress.state === 'staging';
+      if (following)
+        this.progressFollow = this.setTimer(
+          tick,
+          this.deps.progressPollMs ?? PROGRESS_POLL_MS,
+        );
+      if (!changed) return;
+      void this.publish().then(() => {
+        // A stage that just finished may be what an idle intent waits for.
+        if (progress.state === 'staged') void this.evaluateIdle();
+      });
+    };
+    tick();
+  }
+}
