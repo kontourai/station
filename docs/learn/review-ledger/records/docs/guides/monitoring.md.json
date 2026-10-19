@@ -152,6 +152,12 @@
 
     "pnpm-lock.yaml#/snapshots",
 
+    "packages/telemetry-broker/src/noisy-count.ts",
+
+    "packages/telemetry-broker/src/lite-store.ts",
+
+    "packages/telemetry-broker/qualify-resilience.mjs",
+
     "src-server/domain/migrations/016-session-parent-mentions.ts"
   ],
 

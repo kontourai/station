@@ -77,7 +77,6 @@ pool.on('error', () =>
 );
 const store = new PgProductRepository(pool);
 await store.migrate();
-await store.retain();
 const app = createProductBroker(store, operatorKey);
 const server = createServer(getRequestListener(app.fetch));
 server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
@@ -85,19 +84,41 @@ server.maxConnections = 64;
 server.setTimeout(5000);
 server.requestTimeout = 5000;
 server.headersTimeout = 5000;
-const retention = setInterval(() => {
+const credentialRefresh = setInterval(() => {
+  void store
+    .refreshCredentials()
+    .catch(() =>
+      process.stderr.write('Telemetry credential refresh did not complete\n'),
+    );
+}, 30_000);
+credentialRefresh.unref();
+const finalizeClosedDays = () => {
+  void store.lite
+    .finalize()
+    .catch(() =>
+      process.stderr.write('Telemetry finalization did not complete\n'),
+    );
+};
+const finalization = setInterval(finalizeClosedDays, 3600000);
+finalization.unref();
+finalizeClosedDays();
+const retainExpiredRows = () => {
   void store
     .retain()
     .catch(() =>
       process.stderr.write('Telemetry retention did not complete\n'),
     );
-}, 3600000);
+};
+const retention = setInterval(retainExpiredRows, 3600000);
 retention.unref();
+retainExpiredRows();
 let stopping = false;
 const stop = () => {
   if (stopping) return;
   stopping = true;
   clearInterval(retention);
+  clearInterval(finalization);
+  clearInterval(credentialRefresh);
   const deadline = setTimeout(() => {
     server.closeAllConnections();
     process.exitCode = 1;

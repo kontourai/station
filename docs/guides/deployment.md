@@ -184,6 +184,17 @@ store and distinct source/operator keys. They are not accepted by the Collector
 and do not become canonical personal usage receipts. The
 [configuration reference](../reference/config.md#telemetry-destinations)
 describes saved addresses, exact instance key grants and restart activation.
+The receiver's owner analytics (`/v1/operator/lite/daily` and `/weekly`) require
+its private operator `sto_` key and return exact marginals. Keep these routes
+private at the proxy too. The public dashboard and publisher `stq_` keys expose
+only frozen weekly noisy estimates over a fixed public domain, with cursor
+pagination. Configure public release versions/registry IDs independently of
+observed traffic. Schema 6 must be migrated before serving; older binaries
+refuse it. Back up the entire database including `lite_noise_key`,
+`lite_publications`, and `lite_published`. Never clear publication markers,
+regenerate already released weeks, or restore their cells independently. Review
+the [privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates)
+and qualify proxy access-log erasure separately.
 No product or collector destination is enabled by default. The optional stack
 still needs its own pinned-release, outage/restart, retention and backup/restore
 qualification; a successful connection probe is not that acceptance.
