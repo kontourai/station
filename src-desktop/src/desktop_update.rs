@@ -438,7 +438,14 @@ impl<H: Clone> Controller<H> {
 
     pub fn state(&self) -> DesktopUpdateState {
         DesktopUpdateState {
-            phase: self.phase.clone(),
+            // A startup restore is reported as `checking`: it is the app
+            // finding out what update it has, and a Check pressed meanwhile
+            // is refused, as during any check.
+            phase: if self.restoring {
+                UpdatePhase::Checking
+            } else {
+                self.phase.clone()
+            },
             error: self.error.clone(),
             policy: self.persisted.policy,
             current_version: self.current_version.clone(),
@@ -636,10 +643,9 @@ impl<H: Clone> Controller<H> {
         }
     }
 
-    /// Adopts a package cached by an earlier run as `ready`. Only from
-    /// `idle`, i.e. at startup before any check.
     /// Starts restoring a cached package; only from `idle` with no check in
-    /// flight.
+    /// flight. While restoring, the state reads `checking` and checks are
+    /// refused.
     pub fn begin_restore(&mut self) -> bool {
         if self.phase != UpdatePhase::Idle || self.restoring {
             return false;
@@ -648,10 +654,13 @@ impl<H: Clone> Controller<H> {
         true
     }
 
+    /// Ends a restore that adopted nothing (also run if the restore panics).
     pub fn end_restore(&mut self) {
         self.restoring = false;
     }
 
+    /// Adopts a package cached by an earlier run as `ready`, ending the
+    /// restore. Only from `idle`, i.e. at startup before any check.
     pub fn restore_ready(&mut self, handle: H, version: String) -> bool {
         self.restoring = false;
         if self.phase != UpdatePhase::Idle {
@@ -941,6 +950,9 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
             );
             return false;
         }
+        // Ends the restore however this returns, including by a panic in
+        // `restore`; a no-op once `restore_ready` has ended it.
+        let _restoring = RestoreGuard(self);
         let restored = self
             .packages
             .load(&record.version)
@@ -964,6 +976,14 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
         self.update(Controller::end_restore);
         self.packages.clear();
         false
+    }
+}
+
+struct RestoreGuard<'a, H: UpdateHandle>(&'a DesktopUpdater<H>);
+
+impl<H: UpdateHandle> Drop for RestoreGuard<'_, H> {
+    fn drop(&mut self) {
+        self.0.update(Controller::end_restore);
     }
 }
 
@@ -2145,10 +2165,15 @@ mod tests {
                 check_ran.fetch_add(1, Ordering::SeqCst);
                 Ok(offer("0.1.12"))
             }));
-            assert_eq!(state.phase, UpdatePhase::Idle);
+            // Reported as checking, so the refused click is not silent.
+            assert_eq!(state.phase, UpdatePhase::Checking);
             Ok(Some(FakeHandle("0.1.12")))
         });
         assert!(restored);
+        assert!(next
+            .emitted()
+            .iter()
+            .any(|state| state.phase == UpdatePhase::Checking));
         assert_eq!(check_ran.load(Ordering::SeqCst), 0);
         assert_eq!(
             next.updater.snapshot().phase,
@@ -2164,6 +2189,21 @@ mod tests {
             failed.check(Ok(None)).phase,
             UpdatePhase::UpToDate { .. }
         ));
+    }
+
+    #[test]
+    fn a_panicking_restore_does_not_refuse_checks_for_the_rest_of_the_run() {
+        let first = Harness::new(true, None);
+        ready_with_package(&first, vec![2]);
+        let next = Harness::with_cache(true, None, first.cache.clone());
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            next.updater
+                .restore_cached(|_, _| panic!("the verifier panicked"))
+        }));
+        assert!(panicked.is_err());
+        assert_eq!(next.updater.snapshot().phase, UpdatePhase::Idle);
+        let state = next.check(Ok(None));
+        assert!(matches!(state.phase, UpdatePhase::UpToDate { .. }));
     }
 
     #[test]
