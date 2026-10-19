@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, encode, hash } from '../encoding.js';
-import { DEFAULT_MODEL_POLICY, type BodyRef } from '../index.js';
+import { type BodyRef, DEFAULT_MODEL_POLICY } from '../index.js';
 import { openSqliteModelStorage, openSqliteRuntimeBodies } from '../sqlite.js';
 import { fixture, key, operation } from './fixture.js';
 
