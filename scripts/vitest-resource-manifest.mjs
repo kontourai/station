@@ -127,6 +127,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real temporary Git repositories; isolated home per case.
+  'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
+  'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-declare-pull-request.test.ts',
   // Creates real FIFOs with bounded mkfifo to check prompt CLI attachment refusal.
   'src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts',
   // Real server esbuild children and executable workflow-policy negative controls.

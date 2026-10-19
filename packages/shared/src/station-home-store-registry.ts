@@ -92,6 +92,7 @@ export const STATION_HOME_ROOTS: Readonly<
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
+  'pull-request-guides': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',

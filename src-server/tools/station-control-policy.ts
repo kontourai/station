@@ -863,6 +863,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── declared outputs ───────────────────────────────────────────────────
+  read_pull_request_guide: {
+    ...OPERATOR_READ,
+    routes: [get('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide')],
+  },
+  write_pull_request_guides: {
+    ...OPERATOR_MUTATION,
+    routes: [
+      post('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide'),
+    ],
+  },
   // #3161: records a pull request on the caller's OWN session and the turn it
   // is running, in the event store at that turn's completion. The route reads
   // the session from the verified caller, never the body, and holds it to the

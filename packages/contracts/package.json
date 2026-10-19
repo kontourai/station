@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
     "./tool-library": "./src/tool-library.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
     "./telemetry-delivery": "./src/telemetry-delivery.ts",
