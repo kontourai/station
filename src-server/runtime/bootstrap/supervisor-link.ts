@@ -124,10 +124,15 @@ export interface DrainRequest {
   connectionsSettled: Promise<{ lingering: number }>;
 }
 
-/** The drain's bound on waiting for connections: the deadline less a margin. */
+/**
+ * The drain's bound on waiting for connections: the deadline less a margin,
+ * never less than the idle grace, and never more than the deadline itself.
+ * A deadline of zero or less (or not a number) is zero: shut down now.
+ */
 export function drainWaitBoundMs(deadlineMs: number, graceMs: number): number {
+  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) return 0;
   const margin = Math.min(DRAIN_DEADLINE_MARGIN_MS, deadlineMs / 5);
-  return Math.max(graceMs, deadlineMs - margin);
+  return Math.min(deadlineMs, Math.max(graceMs, deadlineMs - margin));
 }
 
 const EVENT_STREAM_HEADER = /\r\ncontent-type:\s*text\/event-stream/i;
@@ -562,9 +567,7 @@ export class SupervisorLink implements ListenerLink {
         return;
       case 'drain':
         this.startDrain(
-          typeof message.deadlineMs === 'number' && message.deadlineMs > 0
-            ? message.deadlineMs
-            : DRAIN_DEADLINE_MARGIN_MS,
+          typeof message.deadlineMs === 'number' ? message.deadlineMs : 0,
           'supervisor',
         );
         return;
@@ -666,7 +669,8 @@ export class SupervisorLink implements ListenerLink {
       // connections close after their response. Wait the grace before closing
       // idle ones, then keep closing connections as they go idle until none
       // is left or the bound passes.
-      await sleep(this.drainIdleGraceMs);
+      // A deadline shorter than the grace shortens the grace too.
+      await sleep(Math.min(this.drainIdleGraceMs, bound));
       for (;;) {
         this.endEventStreams();
         this.closeIdleConnections();

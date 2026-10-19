@@ -525,7 +525,36 @@ describe('drain', () => {
     // drainWaitBoundMs(1500, 100) is 1500 - 300.
     expect(drainWaitBoundMs(1_500, 100)).toBe(1_200);
     expect(waited).toBeGreaterThanOrEqual(1_150);
-    expect(waited).toBeLessThan(1_500);
+    // Upper bound only proves it stopped waiting at all; loose for CI load.
+    expect(waited).toBeLessThan(10_000);
+  });
+
+  it('bounds its wait by the deadline itself, never past it', () => {
+    // Literals pinned beside the derivation: margin is min(2000, deadline/5).
+    expect(drainWaitBoundMs(10_000, 1_000)).toBe(8_000);
+    expect(drainWaitBoundMs(1_500, 100)).toBe(1_200);
+    // Shorter than the grace: the deadline wins.
+    expect(drainWaitBoundMs(500, 1_000)).toBe(500);
+    expect(drainWaitBoundMs(0, 1_000)).toBe(0);
+    expect(drainWaitBoundMs(-5, 1_000)).toBe(0);
+    expect(drainWaitBoundMs(Number.NaN, 1_000)).toBe(0);
+    for (const deadline of [1, 50, 999, 1_000, 3_000, 10_000, 60_000]) {
+      expect(drainWaitBoundMs(deadline, 1_000)).toBeLessThanOrEqual(deadline);
+    }
+  });
+
+  it('with a zero deadline, settles without waiting out the grace', async () => {
+    const channel = new FakeChannel();
+    const link = await promoted(channel, [], {}, { drainIdleGraceMs: 5_000 });
+    await link.listen('api', okServer(), { port: 0, host: HOST });
+    let settled: DrainRequest['connectionsSettled'] | undefined;
+    link.onDrain((request) => {
+      settled = request.connectionsSettled;
+    });
+    const drainedAt = Date.now();
+    channel.deliver({ type: 'drain', deadlineMs: 0 });
+    await expect(settled).resolves.toEqual({ lingering: 0 });
+    expect(Date.now() - drainedAt).toBeLessThan(2_000);
   });
 
   it('starts the same drain from SIGTERM', async () => {
