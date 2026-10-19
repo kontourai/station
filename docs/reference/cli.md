@@ -736,7 +736,10 @@ With `--token-file=<path>` it writes the token to a new file with mode `0600`
 instead and does not print it; an existing path is refused before any token is
 made. A token works only from this machine unless created with
 `--allow-remote`, and has no expiry unless `--expires-in-days=<n>` is given.
-Flags take the `--flag=value` form. `--json` prints the result object.
+Value flags take the `--flag=value` form; the switches `--allow-remote` and
+`--json` take no value (`--allow-remote=true` is a usage error). `--json`
+prints the result object. If the create reply is lost after Station may have
+made the producer, the command says so and names the `revoke` to run.
 To rotate a token, create a new one, point the producer at it, then revoke the
 old one. See [Telemetry ingest](api.md#telemetry-ingest).
 
