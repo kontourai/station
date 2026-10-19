@@ -261,6 +261,46 @@ describe('session inventory query lifecycle', () => {
   );
 
   /**
+   * The reviewer's probe: with a frozen clock this mount's own success lands
+   * at the same `dataUpdatedAt` as the entry cached before it. A later failed
+   * refresh must still keep what THIS mount loaded on screen.
+   */
+  test('a frozen clock does not hide data this mount loaded when a refresh then fails', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_792_426_448_641);
+    try {
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockImplementationOnce(async () =>
+          respond(200, { success: true, data: wholeSession() }),
+        )
+        .mockImplementation(async () => respond(503, { success: false }));
+      vi.stubGlobal('fetch', fetchMock);
+      const scope = { kind: 'whole-session' as const, sessionId: SESSION };
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      client.setQueryData(
+        sessionInventoryQueries.projection(scope).queryKey,
+        wholeSession(),
+      );
+      const { observer } = mount(scope, client);
+      await waitFor(() => expect(observer.result.current.data).toBeTruthy());
+
+      await act(async () => {
+        await client.invalidateQueries({ queryKey: ['session-inventory'] });
+      });
+      await waitFor(() => {
+        expect(observer.result.current.isFetching).toBe(false);
+        expect(observer.result.current.error).toBeTruthy();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(observer.result.current.data).toBeTruthy();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  /**
    * Lost authority on ANY read of a scope revokes everything held for that
    * scope, not only the read that was refused: a denied page must clear the
    * projection another observer already shows, and a denied projection must

@@ -142,27 +142,26 @@ function useProtected<T>(
     },
   );
   // Nothing cached before this mount is shown until a read made during this
-  // mount SUCCEEDS. `isFetchedAfterMount` is not enough: it is also true after
-  // a failed read, which would release data an earlier mount was authorized to
-  // see. So the data's own update time is compared with the one this mount
-  // (for this key) first observed. After a success, a background refetch keeps
-  // what is on screen: lost authority tombstones it (`null`, above), and a
-  // merely failed refresh leaves it beside `error`, for the surface to mark as
-  // not refreshed.
+  // mount SUCCEEDS. `isFetchedAfterMount` alone is not enough: it is also true
+  // after a failed read, which would release data an earlier mount was
+  // authorized to see. So the first render that observes a success after
+  // mount (for this key) latches it, and only a latched key releases data.
+  // The latch is by observation, not by time: a success that lands at the same
+  // `dataUpdatedAt` as the entry cached before the mount (a frozen or coarse
+  // clock) still counts. After it, a background refetch keeps what is on
+  // screen: lost authority tombstones it (`null`, above), and a merely failed
+  // refresh leaves it beside `error`, for the surface to mark as not refreshed.
   const queryHash = JSON.stringify(queryKey);
-  const mountedWith = useRef<{
-    queryHash: string;
-    dataUpdatedAt: number;
-  } | null>(null);
-  if (mountedWith.current?.queryHash !== queryHash)
-    mountedWith.current = { queryHash, dataUpdatedAt: query.dataUpdatedAt };
-  // The second clause is the answer-basis rule; it also covers a success that
-  // lands in the same millisecond as the data this mount first observed.
-  const succeededSinceMount =
-    query.dataUpdatedAt > mountedWith.current.dataUpdatedAt ||
-    (query.status === 'success' && !query.isFetching);
+  const succeededFor = useRef<string | null>(null);
+  if (
+    succeededFor.current !== queryHash &&
+    query.isFetchedAfterMount &&
+    query.status === 'success' &&
+    query.data != null
+  )
+    succeededFor.current = queryHash;
   const data =
-    query.isFetchedAfterMount && succeededSinceMount && query.data != null
+    succeededFor.current === queryHash && query.data != null
       ? query.data
       : undefined;
   return {
