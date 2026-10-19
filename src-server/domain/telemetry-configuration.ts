@@ -1,37 +1,129 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
-  APP_SETTINGS_REGISTRY,
-  type SettingDefinition,
-} from '@kontourai/station-contracts/settings-registry';
+  resolveTelemetryTier,
+  TELEMETRY_TIERS,
+  type TelemetryPublisherStatus,
+  type TelemetryTier,
+} from '@kontourai/station-contracts/product-telemetry';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   resolveEnvironmentValue,
   resolveSettingEnvironment,
 } from './settings-environment.js';
+import { STATION_AUTHOR_TELEMETRY_ENDPOINT } from './telemetry-build-constants.js';
 
+export interface ResolvedTelemetryConfiguration {
+  publishers: Record<
+    'kontour' | 'operator',
+    TelemetryPublisherStatus & {
+      source: 'config' | 'env' | 'default';
+    }
+  >;
+  authorEndpoint: string | undefined;
+  source: 'config' | 'env' | 'default';
+  notices: ReturnType<typeof resolveSettingEnvironment>['notices'];
+}
+
+export function resolveTelemetryConfiguration(
+  config: AppConfig,
+  environment: NodeJS.ProcessEnv,
+  disclosures: Partial<Record<'kontour' | 'operator', boolean>> = {},
+  policies: Partial<
+    Record<
+      'kontour' | 'operator',
+      { distributionDefault?: TelemetryTier; operatorPolicy?: TelemetryTier }
+    >
+  > = {},
+): ResolvedTelemetryConfiguration {
+  const tierEnvironment = resolveEnvironmentValue<TelemetryTier>(
+    'STATION_TELEMETRY_TIER',
+    [],
+    environment,
+    (raw) => TELEMETRY_TIERS.find((tier) => tier === raw),
+  );
+  const legacyDefinition = APP_SETTINGS_REGISTRY.find(
+    (setting) => setting.key === 'telemetryEnabled',
+  )!;
+  const legacyEnvironment = resolveSettingEnvironment(
+    legacyDefinition,
+    environment,
+  );
+  const resolvePublisher = (
+    publisher: 'kontour' | 'operator',
+  ): ResolvedTelemetryConfiguration['publishers']['operator'] => {
+    const acknowledged = disclosures[publisher] === true;
+    const userChoice =
+      config.telemetryTier?.[publisher] ??
+      (config.telemetryTier === undefined &&
+      config.telemetryEnabled !== undefined
+        ? config.telemetryEnabled === false
+          ? 'off'
+          : publisher === 'operator' && acknowledged
+            ? 'full'
+            : 'lite'
+        : undefined);
+    const environmentTier =
+      tierEnvironment.value ??
+      (legacyEnvironment.value === false
+        ? 'off'
+        : legacyEnvironment.value === true
+          ? 'lite'
+          : undefined);
+    const resolved = resolveTelemetryTier({
+      ...policies[publisher],
+      distributionDefault:
+        environmentTier === 'off'
+          ? 'off'
+          : policies[publisher]?.distributionDefault,
+      userChoice,
+      doNotTrack: environment.DO_NOT_TRACK,
+      hasFullDisclosure: acknowledged,
+    });
+    const source =
+      userChoice !== undefined
+        ? 'config'
+        : environmentTier !== undefined
+          ? 'env'
+          : 'default';
+    return {
+      ...resolved,
+      ...(source === 'env' &&
+      (resolved.reason === 'default' || resolved.reason === 'policy')
+        ? { reason: 'environment' as const }
+        : {}),
+      source,
+      ...(userChoice !== undefined ? { userChoice } : {}),
+    };
+  };
+  const publishers = {
+    kontour: resolvePublisher('kontour'),
+    operator: resolvePublisher('operator'),
+  };
+  return {
+    publishers,
+    authorEndpoint: STATION_AUTHOR_TELEMETRY_ENDPOINT || undefined,
+    // Compatibility projection for clients of the former operator-only resolver.
+    source: publishers.operator.source,
+    notices: [...tierEnvironment.notices, ...legacyEnvironment.notices],
+  };
+}
+
+/** Compatibility projection for the existing acknowledged operator event stream. */
 export function resolveProductTelemetryEnabled(
   config: AppConfig,
   environment: NodeJS.ProcessEnv,
+  hasFullDisclosure = false,
 ): {
   enabled: boolean;
-  source: 'config' | 'env' | 'default';
-  notices: ReturnType<typeof resolveSettingEnvironment>['notices'];
+  source: ResolvedTelemetryConfiguration['source'];
+  notices: ResolvedTelemetryConfiguration['notices'];
 } {
-  if (config.telemetryEnabled !== undefined)
-    return {
-      enabled: config.telemetryEnabled,
-      source: 'config' as const,
-      notices: [],
-    };
-  const definition: SettingDefinition = APP_SETTINGS_REGISTRY.find(
-    (setting) => setting.key === 'telemetryEnabled',
-  )!;
-  const resolved = resolveSettingEnvironment(definition, environment);
+  const resolved = resolveTelemetryConfiguration(config, environment, {
+    operator: hasFullDisclosure,
+  });
   return {
-    enabled:
-      resolved.value === undefined
-        ? definition.defaultValue === true
-        : resolved.value === true,
-    source: resolved.envVar ? ('env' as const) : ('default' as const),
+    enabled: resolved.publishers.operator.tier === 'full',
+    source: resolved.source,
     notices: resolved.notices,
   };
 }

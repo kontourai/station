@@ -9,6 +9,7 @@ import {
   sessionAttentionKind,
 } from '../../utils/session-state';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import type { HomeWorkItem } from './home-view-model';
 
 /**
@@ -22,9 +23,9 @@ import type { HomeWorkItem } from './home-view-model';
  * `gitLocation`: a host that holds the session and chat records derives them
  * with `buildWorkFacts` and hands them to the row.
  *
- * They only ever REFINE the words inside the lane the item's own
- * `lifecycleLabel` already decided (see `workStatus`): each fact is read
- * only under the label it explains, so a fact can never contradict the lane.
+ * Status facts refine the item's own ladder. Recorded parent links affect
+ * presentation only: a run sits in its most urgent member's lane, while
+ * each member retains its own status and controls.
  */
 
 /**
@@ -62,6 +63,9 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  /** Recorded run root, resolved against this presentation's row identities. */
+  runRootId?: string;
+  station?: { id: string; label: string };
   attention?: WorkAttentionKind;
   activity?: WorkActivity;
 }
@@ -194,6 +198,17 @@ export function buildWorkFacts({
           : undefined;
     const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
     const entry: WorkFacts = {};
+    if (
+      session?.delegation?.environmentKind === 'peer' &&
+      session.delegation.environmentId
+    ) {
+      entry.station = {
+        id: session.delegation.environmentId,
+        label:
+          session.delegation.environmentName ??
+          session.delegation.environmentId,
+      };
+    }
     if (item.lifecycleLabel === 'Needs attention') {
       const attention = moreUrgentAttention(
         moreUrgentAttention(
@@ -225,6 +240,45 @@ export function buildWorkFacts({
       if (activity) entry.activity = activity;
     }
     if (Object.keys(entry).length > 0) facts.set(item.id, entry);
+  }
+  const itemByThread = new Map<string, HomeWorkItem>();
+  for (const item of items) {
+    if (item.kind === 'remote-session') continue;
+    for (const threadId of item.orchestrationThreadIds ??
+      (item.orchestrationThreadId ? [item.orchestrationThreadId] : [])) {
+      itemByThread.set(threadId, item);
+    }
+  }
+  for (const presentation of groupDelegatedSessionRuns(sessions)) {
+    if (presentation.kind !== 'run') continue;
+    const root = itemByThread.get(presentation.run.parent.threadId);
+    if (!root) continue;
+    for (const member of presentation.run.members.slice(1)) {
+      const child = itemByThread.get(member.threadId);
+      if (!child || child.id === root.id) continue;
+      facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
+    }
+  }
+  for (const item of items) {
+    if (
+      item.kind === 'task' ||
+      item.kind === 'remote-session' ||
+      facts.get(item.id)?.runRootId
+    )
+      continue;
+    const owners = items.filter(
+      (candidate) =>
+        candidate.kind === 'task' &&
+        candidate.taskSessionId &&
+        [
+          item.id,
+          item.chatSessionId,
+          item.orchestrationThreadId,
+          ...(item.orchestrationThreadIds ?? []),
+        ].includes(candidate.taskSessionId),
+    );
+    if (owners.length === 1)
+      facts.set(item.id, { ...facts.get(item.id), runRootId: owners[0].id });
   }
   return facts;
 }

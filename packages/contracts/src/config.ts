@@ -2,6 +2,7 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
 import type { RegistryTrustConfiguration } from './registry-trust.js';
 import type { AgentConnectionSettings } from './tool.js';
@@ -16,6 +17,9 @@ export interface ApprovalGuardianConfig {
 }
 
 export interface AppConfig {
+  reviewGuidesEnabled?: boolean;
+  reviewGuideModel?: string;
+  reviewGuideInstructions?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
@@ -66,6 +70,9 @@ export interface AppConfig {
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
+  /** Per-publisher explicit choices; absent publishers default to Lite. */
+  telemetryTier?: Pick<TelemetryTierChoices, 'kontour' | 'operator'>;
+  /** @deprecated Compatibility input, migrated when app.json is loaded. */
   telemetryEnabled?: boolean;
   /** Saved full product POST destination; takes precedence over environment fallback. */
   productTelemetryEndpoint?: string;

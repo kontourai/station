@@ -123,6 +123,15 @@ cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
 last event they applied for the same server authority.
 
+The session collections observed by `useOrchestrationSessionsQuery` and personal
+boards retain row identity by thread ID when only `answerability.observedAt` and
+`childWork.children.observedAt` change. A reused row keeps an earlier genuine
+observation time for the same verdict and observer. Changes to the verdict,
+observer or any work facts replace the row and expose the new observation.
+This client cache policy leaves server read-time observations unchanged and does
+not replace dispatch authorization. Fetching session summaries directly still
+returns the latest server timestamps.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
@@ -332,6 +341,27 @@ working directory, and
 children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
 access.
+
+### Coding tree and text preview bounds
+
+`GET /api/coding/files` accepts integer `depth` from 0 to 10 and
+`maxEntries` from 1 to 5000; defaults are 3 and 500. Invalid values receive
+400 rather than being clamped. Listings exclude symlinks and preserve workspace
+containment while traversing asynchronously.
+
+`fetchCodingFileContent` and `useCodingFileContentQuery` use
+`GET /api/coding/files/content`. Text previews are limited to 2 MiB; larger
+files receive 413 with code `file-too-large` and an instruction to open the file
+in an editor. Binary detection samples the first 8 KiB before reading the rest.
+The SDK throws the server's error message for a refused preview. Missing files
+retain status 500 with code `not-found` and a workspace-relative message.
+Non-regular files are refused before opening and checked again on the opened
+handle. Platforms that provide nonblocking and no-follow open flags also refuse
+FIFO or symlink replacements at that boundary. Buffers grow with observed file
+contents; a file that grows beyond the limit is rejected rather than truncated.
+These legacy coding endpoints are separate from the built-in Workspace File Preview API.
+See the [reader](../../src-server/services/projects/file-tree-service.ts) and
+[route](../../src-server/routes/projects/coding.ts).
 
 ### Conversation input-origin support
 
@@ -1094,6 +1124,29 @@ in this slice, so a non-portable Project workspace resolved onto a paired
 Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
 offers — paired-Station selections.
+
+### `delegateTask(apiBase, input, options?)` with files
+
+The canonical client accepts optional `attachmentRefs` from
+`prepareAttachmentStage` and `uploadAttachmentStage`. It checks that the
+selected host advertises `delegationFiles: true` on its attachment-staging
+capability before posting references, so an older host cannot silently strip
+them. References carry metadata and digest, never upload grants or local paths.
+The authenticated route binds them to server-owned task/turn identities and
+writes validated bytes into a fresh directory inside the resolved workspace.
+A definite pre-effect refusal releases the staged references and removes its
+workspace directory, so an API caller can resend the same references. A possibly
+invoked start or turn retains the binding and files; inspect the existing work
+before retrying. The CLI additionally cancels its upload objects after a failed
+request. `DelegationApiError.code` preserves the server's `stage_*` refusals and
+`delegation_files_*` codes; see the [CLI refusal reference](cli.md#delegate).
+The SDK's unsupported-capability refusal is also coded
+`delegation_files_unsupported`.
+
+This supports new current-host tasks with a shared workspace only; no
+saved-Environment forwarding,
+portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
+the [CLI delegate reference](cli.md#delegate).
 
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
@@ -4312,8 +4365,8 @@ continue to govern resolution.
 `respondToRequest` from `@kontourai/station-sdk/client` accepts form
 `content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
 `expectedRequestEventId`, for a harness question or a tool server's form.
-The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
-0.10.0.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and remains
+accepted in 0.10.0 for compatibility. New callers should send `content`.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
@@ -4572,3 +4625,19 @@ updates that exact cache and invalidates the personal Layout inventory.
 scope and read the existing authorized projections. They do not persist rows in
 the Board. The dashboard uses the scoped Task and Project queries alongside
 them. See [Personal Boards](../user/personal-boards.md) for the user journey.
+
+### Pull request guide client
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestGuide` and
+`writePullRequestGuide`. Both accept `(apiBase, target, options?)` using the
+same `PullRequestReviewTarget` and request authority as the review client.
+They return `{ enabled: false }` or `{ enabled: true, guide, run,
+currentHeadSha, excerptContents }`. Writing starts asynchronous generation;
+read again to observe completion. Obsolete guides retain their original SHA
+and prose, with excerpts and line notes removed. See the
+[pull request guide](../user/pull-request-guides.md) for settings and limits.
+
+`getPullRequestGuideStatus(apiBase, target, options?)` returns only the enabled
+state and process-local run status without a forge snapshot.
+`writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
+or false reuses a completed guide for the current head.

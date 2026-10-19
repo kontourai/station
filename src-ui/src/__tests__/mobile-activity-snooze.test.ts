@@ -26,6 +26,28 @@ const membersOf = (
   id: string,
 ): HomeWorkItem[] => groups.find((g) => g.id === id)?.items ?? [];
 
+describe('delegated family order', () => {
+  it('keeps a family at its earliest member position in its destination lane', () => {
+    const entries = [
+      item({ id: 'child', lifecycleLabel: 'Needs attention' }),
+      item({ id: 'older', lifecycleLabel: 'Needs attention' }),
+      item({ id: 'oldest', lifecycleLabel: 'Needs attention' }),
+      item({ id: 'parent', lifecycleLabel: 'Completed' }),
+    ];
+    const groups = groupMobileActivity(
+      entries,
+      1_000_000,
+      {},
+      new Map([['child', { runRootId: 'parent' }]]),
+    );
+    expect(membersOf(groups, 'needsYou').map((entry) => entry.id)).toEqual([
+      'parent',
+      'older',
+      'oldest',
+    ]);
+  });
+});
+
 describe('groupMobileActivity snooze', () => {
   const NOW = 1_000_000;
   it('a live snooze wins over an otherwise-active item', () => {

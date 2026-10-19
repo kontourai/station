@@ -1150,18 +1150,20 @@ Two consequences worth stating plainly:
   own commit that changes nothing else. A regeneration on a developer machine
   bakes in that machine's fonts along with whatever upstream drift has
   accumulated, under whoever happens to be holding the branch.
-- **Bump the container in lockstep with `@playwright/test`**, and expect a
-  re-baseline to be part of that change. A rebuilt base image published under
-  the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.63.0-noble`.
+- **Bump the container in lockstep with `@playwright/test`** and review renderer
+  differences separately. Baseline changes need a reviewed commit of their own.
+  A rebuilt base image published under the same tag is a different renderer
+  wearing the same name, which is why the pin is a digest rather than
+  `v1.64.1-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
   resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
-  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
-  not checked and cannot be — nothing in this repository derives it. A digest
-  that no longer matches its tag's contents therefore surfaces as a Playwright
-  launch error in the nightly, not as a silent renderer change.
+  `package.json`, so a resolved minor bump cannot slip past). The local test
+  checks the **digest** syntax, not its registry contents. Before updating the
+  pin, verify the published tag's OCI index and selected platform manifest and
+  config against their content digests. That registry check is separate from
+  an actual container/browser run and Gallery pixel review.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -1364,6 +1366,34 @@ Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Choosing the compiler
+
+`scripts/tsc-slot.mjs` runs one of three compilers through the same slots:
+
+| Name | Compiler | Notes |
+| --- | --- | --- |
+| `tsc` | TypeScript 7.0.2 | The reference compiler. |
+| `tsc-ts` | [tsc-ts](https://github.com/vercel-labs/tsc-ts), an experimental TypeScript 7.0.2 port | Same flags and incremental mode as `tsc`, with faster cold and edit-after-change checks. Diagnostics matched `tsc` on Station's projects but are not guaranteed to (for example, `--target es5` reports differently). |
+| `bun` | Bun's checker | Cold project checks only; see below. |
+
+The `DEFAULT_COMPILERS` constant in that file sets the default: currently
+`tsc-ts` locally and `tsc` when `CI` is set, so hosted checks stay on the
+reference compiler. Change it there to move the default. Override it for a
+shell or a single run:
+
+```sh
+STATION_TYPECHECK_COMPILER=tsc npm run typecheck:ui
+node scripts/tsc-slot.mjs --compiler=tsc-ts -p src-ui/tsconfig.json --noEmit
+```
+
+An explicit choice that cannot run fails. A default that cannot run here
+(tsc-ts has no build for the platform or is not installed, or Bun does not
+accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
+own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
+authoritative and report the difference upstream. A test fails when the
+installed `tsc-ts` and `typescript` report different versions, so update them
+together.
 
 #### Optional Bun diagnostics
 

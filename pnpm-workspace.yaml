@@ -9,6 +9,7 @@ packages:
   - packages/telemetry-broker
   - packages/monument
   - packages/agent-runtime
+  - packages/supervisor
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
 linkWorkspacePackages: true
@@ -38,8 +39,12 @@ pmOnFail: ignore
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 overrides:
-  '@modelcontextprotocol/client': 2.2.0
-  '@modelcontextprotocol/sdk': 1.31.0
+  http-cache-semantics: 4.3.0
+  '@modelcontextprotocol/client': 2.3.1
+  '@modelcontextprotocol/sdk': 1.32.1
+  '@modelcontextprotocol/client>zod': ^4.6.6
+  '@modelcontextprotocol/core>zod': ^4.6.6
+  '@modelcontextprotocol/server>zod': ^4.6.6
   shell-quote: 1.11.0
   '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
@@ -75,20 +80,12 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
+  "http-cache-semantics@4.3.0": patches/http-cache-semantics-4.3.0.patch
   "node-forge@1.4.0": patches/node-forge-1.4.0.patch
   "js-yaml@3.15.2": patches/js-yaml-3.15.2-argparse2-cli.patch
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
-# Veritas 1.11 declares an optional @kontourai/survey >=8.2 <9 peer that only its
-# lazily imported `governance review` Survey transport loads. Station does not
-# run that transport, and its own product pin is Survey 3.0.0, so the hoisted
-# tree resolves 3.0.0 for Veritas with or without this rule. The exact 3.0.0
-# value makes a Survey bump fail the lockfile sync gate until this is revisited;
-# a Veritas bump does not, so re-read the peer range when bumping Veritas.
-peerDependencyRules:
-  allowedVersions:
-    "@kontourai/veritas>@kontourai/survey": 3.0.0
 enableGlobalVirtualStore: false
 # flow-agents 6.5.1 hosts dispatch 0.3, whose optional datum peer requires 0.7.
 # Give that parent its own datum instead of inheriting contracts' 0.8.

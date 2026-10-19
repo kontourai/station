@@ -37,6 +37,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.newChat.lastModelByBinding', // Derived per-agent last-choice memory.
   'station.newChat.lastAgentByContext', // Derived authority-and-project last-choice memory; not a device setting.
   'station.usage-telemetry-disclosure.snoozed', // Revision-bound disclosure deferral, not acknowledgement or a preference.
+  'station.usage-telemetry-disclosure.dnt-decisions', // Revision-bound DNT decision reminder, not acknowledgement or a preference.
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
   'station:chat-drafts:v1', // Draft message content, not a setting.

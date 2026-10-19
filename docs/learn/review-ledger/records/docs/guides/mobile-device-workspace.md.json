@@ -112,7 +112,15 @@
 
     "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
 
-    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx"
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+
+    "src-server/routes/device-agent.ts",
+
+    "src-server/services/devices/device-agent-authority.ts",
+
+    "src-server/services/devices/device-automation.ts",
+
+    "src-server/tools/station-control-device-tools.ts"
   ],
 
   "checks": [

@@ -74,7 +74,11 @@
 
     "src-server/domain/settings-environment.ts",
 
-    "src-server/domain/telemetry-bootstrap-config.ts"
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "esbuild.config.mjs"
   ],
 
   "checks": [

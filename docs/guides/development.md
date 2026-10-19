@@ -233,6 +233,7 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
 | `@kontourai/agent-runtime` | `packages/agent-runtime/` | Private experimental Tier 1 boundary; source workspace exports | Model-only request journal, retained stream replay and guarded VoltAgent/Strands consumers over public Monument contracts; Station chat/boot adoption and package release remain unqualified |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Other packages import its protocol from `@kontourai/station-supervisor/protocol` |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
 The contracts, SDK, and shared packages ship raw TypeScript source, so their
@@ -507,7 +508,7 @@ against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
-Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
+Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The required `fast-checks` result combines job outcomes with exact-plan shard

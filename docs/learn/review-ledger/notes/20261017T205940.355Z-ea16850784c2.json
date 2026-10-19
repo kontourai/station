@@ -1,0 +1,19 @@
+{
+  "revision": "d9a2cbfceacde8b00847deb172a6b64deeac959c",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed this branch telemetry changes through contracts/shared inventories, the policy and real app.json migration, live operator service gate, monthly identity helper, disclosure route and CLI. Regenerated the exact Full and Lite catalogs. Separates inactive Lite/author/new-event producers and future receiver/outbox/release work from the existing operator sender. Preserves unrelated review limits; no live receiver, UI or deployment qualification.","inputs":["docs/reference/usage-telemetry.md","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts","src-server/domain/telemetry-configuration.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/routes/system/config.ts","src-server/services/persisted-random-identifier.ts","src-server/services/usage-telemetry-service.ts","src-server/domain/config-loader-app.ts","src-server/domain/telemetry-build-constants.ts","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed per-publisher tier storage, merge and legacy migration, DNT and environment precedence, the empty build-time author endpoint, and operator-only config mutation authority. Product and OTLP configuration remain distinct; no endpoint or release was enabled.","inputs":["docs/reference/config.md","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","src-server/domain/config-loader-app.ts","src-server/domain/telemetry-configuration.ts","src-server/routes/system/config.ts","src-server/services/usage-telemetry-service.ts","src-server/domain/telemetry-build-constants.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed new telemetry status/set command dispatch, help, authenticated JSON requests, effective-reason output and partial publisher-map writes. The CLI request tests exercise the real command and existing transport helper. Outbox remains explicitly future work.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Regenerated from privacy-inventory.ts and reviewed this branch Full tier admission, monthly pseudonymous ID, DNT, per-publisher defaults and inactive future senders. Existing store classifications and broader collection completeness remain declarations requiring owner review; no publication performed.","inputs":["docs/privacy-policy.md","src-server/domain/telemetry-configuration.ts","src-server/services/privacy-inventory.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Regenerated from the privacy inventory. Reviewed the telemetry-only condition and destination changes; preserved declared store classifications and owner approval boundary. No store submission or deployed-flow proof.","inputs":["docs/reference/play-data-safety.md","src-server/domain/telemetry-configuration.ts","src-server/services/privacy-inventory.ts","src-server/services/usage-telemetry-service.ts"]},
+
+    {"path":"docs/strategy/constitution.md","note":"Applied the owner-requested principle 5 wording for identifier-free aggregates with notice/off switch, explicit identifying consent, and DO_NOT_TRACK. This is program policy, not a claim that Lite sending is deployed.","inputs":["docs/strategy/constitution.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the telemetry-default implementation table against the new AppConfig.telemetryTier foundation. Distribution manifest policy consumption remains designed and kernel consent UI remains outside distribution ownership; no manifest implementation claimed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

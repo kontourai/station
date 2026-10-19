@@ -56,8 +56,8 @@ export interface NotificationDeliveryWiringDeps {
     sessionId: string,
     authority: SessionReadAuthority,
   ): boolean;
-  /** The store's records; the escalation re-check reads one back. */
-  listNotifications(): Promise<Notification[]>;
+  /** Reads the current record for an escalation re-check. */
+  getNotification(id: string): Promise<Notification | undefined>;
   /**
    * #2589 iOS alerts through the push gateway: absent when the gateway URL
    * is invalid. The channel lists only registrations with an alert token,
@@ -138,12 +138,7 @@ export function wireNotificationDelivery(
     logger: deps.logger,
     ...(deps.focus ? { focus: deps.focus } : {}),
     ...(deps.inAppLiveness ? { inAppLiveness: deps.inAppLiveness } : {}),
-    // The store has no by-id read; escalations are rare (one per deferred
-    // attention/failed notification), so a whole-store read is acceptable.
-    readNotification: async (id) =>
-      (await deps.listNotifications()).find(
-        (notification) => notification.id === id,
-      ),
+    readNotification: (id) => deps.getNotification(id),
   });
   return { preferences, router, desktopHostChannel, isFeedDevice };
 }

@@ -24,6 +24,14 @@ on:
       release_label:
         required: true
         type: string
+      web_build_version:
+        description: >-
+          The web bundle's build identity (STATION_BUILD_VERSION) when it is
+          more than Apple's bare marketing version: a Nightly's or Beta's full
+          version, which a client compares with its server (#2675). Defaults
+          to marketing_version.
+        required: false
+        type: string
       mobile_endpoint:
         required: true
         type: string
@@ -83,7 +91,7 @@ jobs:
       APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
@@ -147,10 +155,10 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
           node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -569,7 +577,7 @@ jobs:
           cp "$ipa" "release-assets/station-${{ inputs.release_label }}-ios-device.ipa"
           echo "ipa=release-assets/station-${{ inputs.release_label }}-ios-device.ipa" >> "$GITHUB_OUTPUT"
       - name: Retain the audited IPA and receipts as the staged run artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
           path: |
@@ -581,7 +589,7 @@ jobs:
           retention-days: 14
       - name: Retain the built IPA when package verification fails
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-${{ inputs.channel }}-ios-verification-failure-${{ inputs.bundle_version }}
           path: src-desktop/gen/apple/build/arm64/*.ipa
@@ -612,7 +620,7 @@ jobs:
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
@@ -638,13 +646,13 @@ jobs:
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
           path: staged
@@ -698,7 +706,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
       - name: Upload a previously unobserved IPA to TestFlight
         if: steps.reconcile.outputs.upload == 'true'
-        uses: apple-actions/upload-testflight-build@14df18fee5a4ff3b76971dd382f033494a0194e9 # v5.5.0
+        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5.6.0
         with:
           app-path: ${{ steps.staged.outputs.ipa }}
           app-type: ios
@@ -737,7 +745,7 @@ jobs:
           node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name "$internal_group" --output provider-receipts/testflight-internal-group-assignment.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: station-${{ inputs.channel }}-ios-testflight-${{ inputs.bundle_version }}

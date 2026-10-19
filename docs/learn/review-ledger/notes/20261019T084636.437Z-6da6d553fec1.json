@@ -1,0 +1,9 @@
+{
+  "revision": "5e80345b74c7ffe8b3beb142bd8fbda76e91c483",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"PR #3832 docs-path correction: reproduced CI run 39224417098 locally (docs-reference live-doc assertion named scripts/probe.mjs). Reworded the two bare repo-looking mentions as the generated skill package's probe.mjs and its scripts subdirectory. Kept the runtime <cwd> materialization example; no repository gate exception or implementation change. Inspected SOURCE_ROOTS normalization in docs-reference-gate; the corrected filename is explicitly package-relative prose. The same 14-test suite now passes. Delivery proof and cleanup limits are unchanged.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"PR #3832 docs-path correction review: searched this conformance guide for the reported bare scripts/probe.mjs reference and found none. The correction belongs to agent-smoke-confidence; this guide's delivery/fixture and native-policy limitations remain accurate without a prose change. Local docs-reference coverage passes 14 tests after qualifying the generated skill script in the reference guide. No gate exception or implementation change.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "afde747410e9d04f76673dca97b745b96911555e",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Delta-only merged-source review of the historical rollback decision: pull-request-guides is explicitly product state in the home registry, included in snapshot/restore rather than live/external. The pre-existing unknown-root data-safe state fallback is unchanged. Incoming confined-homes classification and all lifecycle/live roots are retained. Train/channel pointers and update transaction ownership are unchanged; no ADR prose was edited. The exact home-root source scan passes, and deleting the guide classification reproduces its intended failure. Not a new live rollback or release qualification.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Delta-only settings merge review: retained main’s TelemetryTierSettings composition, telemetryTier key and publisher-status props, alongside the three guide settings in the separate agent-runs section. The guide merge does not change telemetry consent, collection, disclosure acknowledgement, endpoint credentials or publisher status. Generated registry retains all main rows; settings UI, scalar/schema and registry tests pass within the 476-test merged selection. This is scoped source/fixture evidence, not a new live telemetry receipt or full-document audit.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/views/settings/StationConfigSection.tsx"]}
+  ]
+}

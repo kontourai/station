@@ -86,7 +86,7 @@ jobs:
             echo "macos_bundle_version=$macos_bundle_version"
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - name: Create one immutable native client provenance artifact
         env:
@@ -97,7 +97,7 @@ jobs:
           node scripts/release-client-build-provenance.mjs create \
             --source-sha "$RELEASE_SHA" \
             --source-ref "refs/tags/$RELEASE_TAG"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: src-desktop/station-client-build.json
@@ -153,14 +153,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.sha }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
         # #2675: pnpm v11 ships no working native binary for Intel macOS.
         if: runner.os != 'macOS' || runner.arch != 'X64'
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
       - name: Setup pinned pnpm from its JS package (Intel macOS)
         if: runner.os == 'macOS' && runner.arch == 'X64'
@@ -181,7 +181,7 @@ jobs:
           ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
@@ -227,6 +227,8 @@ jobs:
       - name: Build an unsigned macOS staging candidate
         working-directory: src-desktop
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
@@ -277,7 +279,7 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: "${{ matrix.artifact }}", path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-windows:
@@ -296,15 +298,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
@@ -346,8 +348,11 @@ jobs:
           if (-not $imported.Thumbprint) { throw 'Windows signing certificate import failed' }
           $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
           $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+      - name: Build signed Windows staging candidate
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
@@ -380,7 +385,7 @@ jobs:
           cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-desktop-windows-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-linux:
@@ -399,15 +404,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-unknown-linux-gnu }
@@ -434,14 +439,19 @@ jobs:
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+      - name: Build Linux deb and rpm packages
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
       - name: Build signed AppImage with the contained runtime overlay
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
@@ -486,7 +496,7 @@ jobs:
           cp src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-desktop-linux-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   portable:
@@ -500,12 +510,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc }
       - run: scripts/package-portable-release.sh --output-dir release-assets --ref "${{ needs.preflight.outputs.tag }}" --sha "${{ needs.preflight.outputs.sha }}" --created-at "${{ needs.preflight.outputs.created_at }}"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-portable, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   android:
@@ -574,21 +584,21 @@ jobs:
           echo "STATION_FIREBASE_APP_ID=$app_id" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - name: Install dependencies before resolving the native update feed
         run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: 17 }
       # `packages` defaults to `tools platform-tools`, and `tools` is the
       # obsolete SDK Tools package Google removed from the repository — the
@@ -763,7 +773,7 @@ jobs:
           fi
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-android, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Upload to Play internal testing track
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
@@ -790,10 +800,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios-sim }
@@ -816,7 +826,7 @@ jobs:
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-${RELEASE_TAG}-ios-simulator.app.tar.gz" "$(basename "$simulator_app")"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-ios-simulator-verification, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
 
@@ -833,6 +843,7 @@ jobs:
       source_sha: ${{ needs.preflight.outputs.sha }}
       source_ref: refs/tags/${{ needs.preflight.outputs.tag }}
       marketing_version: ${{ needs.preflight.outputs.ios_marketing_version }}
+      web_build_version: ${{ needs.preflight.outputs.version }}
       bundle_version: ${{ needs.preflight.outputs.ios_bundle_version }}
       release_label: ${{ needs.preflight.outputs.tag }}
       mobile_endpoint: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
@@ -937,10 +948,10 @@ jobs:
           push-to-registry: true
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/station-container-release.json }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-container-release, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Transfer scanner inventory through scratch only
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-container-sbom-source
           path: ${{ runner.temp }}/station-container-sbom-source
@@ -985,11 +996,11 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: station-server-*
           path: ${{ runner.temp }}/archives
@@ -1036,7 +1047,7 @@ jobs:
           cp "$RUNNER_TEMP/host-publication/payload.json" release-assets/station-server-manifest-payload.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: station-host-stream, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   assemble-draft:
@@ -1071,17 +1082,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - run: npm run dependencies:ci
       - name: Install pinned Rust SBOM generator
         run: cargo install cargo-cyclonedx --version 0.5.9 --locked
       - name: Download producing release assets into scratch
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: ${{ runner.temp }}/station-release-producer-artifacts
       - name: Admit only producer release assets, never scanner scratch
@@ -1090,7 +1101,7 @@ jobs:
           node scripts/release-admit-producer-assets.mjs --artifacts-root "$RUNNER_TEMP/station-release-producer-artifacts" --output-dir release-assets --channel "$RELEASE_CHANNEL" --ios-bundle-version "$IOS_BUNDLE_VERSION"
           test ! -e release-assets/station-container-source.json
       - name: Download the descriptor-bound scanner inventory into scratch
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-container-sbom-source
           path: ${{ runner.temp }}/station-container-sbom-source

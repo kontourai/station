@@ -18,6 +18,16 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
   `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
+### Delegation file refusals
+
+`@kontourai/station-contracts/attachment-staging` owns
+`DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
+`@kontourai/station-shared/delegation-files` supplies the runtime refusal class
+and batch name/size/data validation used by CLI preflight and the server
+materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
+remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
+references describe cleanup and uncertain delivery outcomes.
+
 ## Modules
 
 The authored `@kontourai/station-contracts/usage-export` module defines the
@@ -59,9 +69,10 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
+| `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
-| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
-| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
+| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -124,6 +135,10 @@ See the [provider contract](../../packages/contracts/src/provider.ts),
 [Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
 
+Session inventory preserves Surface's `not-chosen` reviewed-source state and
+`reviewed-source-review-not-chosen` gap when a review selected another candidate.
+The row remains `contributed-to`; that state does not establish support for the answer.
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
@@ -168,7 +183,9 @@ child-work report for that row; clients retain their existing state.
 ## Product telemetry observations
 
 `@kontourai/station-contracts/product-telemetry` declares the content-free event
-inventory and version1 batch, observation and build shapes. Stable event IDs,
+inventory and version1 batch, observation and build shapes.
+`TelemetryPublisherStatus` includes the effective tier and reason alongside the
+optional saved `userChoice`; a DNT override does not replace that saved choice. Stable event IDs,
 producer occurrence/admission time, inventory revision and allowlisted build
 provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
@@ -942,3 +959,12 @@ This profile does not replace existing continuity capabilities or migrate existi
 provider-specific execution paths. Durable inbox placement, accepted-through
 context delivery and crash-durable model/tool steps have separate implementation
 owners. Profile claims must change with their adapter behavior and proof.
+
+### Pull request review guides
+
+`@kontourai/station-contracts/pull-request-review-guide` owns the guide,
+stop, excerpt, run, and result shapes. Completed guides name `headSha`,
+`generatedAt`, `modelSelection`, and ordered `stops`. Runs are `Running` or
+`Failed`. Results carry `currentHeadSha` independently of the guide head and
+validated `excerptContents` for rendering. Stale results omit line anchors.
+The [user guide](../user/pull-request-guides.md) describes generation and limits.

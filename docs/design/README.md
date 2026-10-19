@@ -79,6 +79,7 @@ category.
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
+- [process-supervisor.md](process-supervisor.md) — Station process supervisor
 - [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
@@ -98,5 +99,6 @@ category.
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
 - [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
+- [terminal.md](terminal.md) — Integrated terminal
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

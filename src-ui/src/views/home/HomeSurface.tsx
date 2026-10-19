@@ -62,7 +62,7 @@ export function HomeSurface({
   // derive its own; a second `useHomeWorkLanes` instance carries its own
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
-  const lanes = useHomeWorkLanes(model.workItems);
+  const lanes = useHomeWorkLanes(model.workItems, model.workFacts);
   // #928: Activity is a region surface with no standalone placement. "View
   // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
   // same verb as the sidebar row — rather than docking it beside Home.
@@ -128,6 +128,7 @@ export function HomeSurface({
     !model.actionsLoading && model.primaryWorkItem ? (
       <HomeContinueCard
         model={model}
+        childrenById={lanes.childrenById}
         id={CONTINUE_SECTION_ID}
         onViewActivity={
           listEmpty ? () => showSurfacePage('activity') : undefined

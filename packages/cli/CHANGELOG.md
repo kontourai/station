@@ -1,5 +1,25 @@
 # @kontourai/station-cli
 
+## 0.9.0
+
+### Minor Changes
+
+- 9e16733: Add explicit source-version requirements to portable delegation with
+  `--portable-project`, `--resource`, `--source-commit` and `--attempt-id`.
+  Add receiver-local `delegate attempt` lookup for existing grant-bound claims.
+  These operations do not transfer files, install dependencies, protect a checkout
+  against later writers or retry uncertain execution.
+
+### Patch Changes
+
+- 64d458b: Update the published dependency contracts together. Preserve Surface's reviewed-source `not-chosen` state and gap in Session inventory without inferring answer support, and use the MCP Apps 2 protocol packages in bundled consumers.
+
+  Also update dependency consumers in the private `@kontourai/station-basis-pane` and `@kontourai/station-board-pane` packages. These changes do not request private-package version bumps or tags.
+- b7d8c21: Environment-only product telemetry opt-in (`STATION_PRODUCT_TELEMETRY_ENABLED=true`, legacy `STATION_TELEMETRY_ENABLED=true`, or `STATION_TELEMETRY_TIER=full`) now supplies at most a Lite default, even with a disclosure receipt. Full delivery stops until the operator explicitly chooses Full in config and acknowledges the current disclosure in Settings. Lite sending is not implemented in this foundation. `station telemetry status` and Settings report the environment reason and migration guidance. Existing explicit stored choices still take precedence; DO_NOT_TRACK still forces Off.
+- b7d8c21: Reset Full telemetry acknowledgements because the earlier disclosure wording overstated anonymity. Full telemetry is pseudonymous, with a monthly installation hash. Disclosure wording revision 2 participates in the Full acknowledgement hash independently of the data inventory revision used by batches and probes, so existing receipts are stale and saved operator Full choices require acknowledgement of the accurate disclosure before sending resumes.
+
+  Under DO_NOT_TRACK, the disclosure offers Off, Lite, and Full operator choices without acknowledging. Nothing is sent while DNT is active; saving Full leaves it pending and requires confirmation after DNT is removed. Correct the legacy telemetryEnabled schema description and restrict operator Full migration guidance to the operator CLI status line.
+
 ## 0.8.0
 
 ### Minor Changes

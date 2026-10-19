@@ -15,6 +15,8 @@ row that matches the job you are doing.
 | Maintainers and agents | [../AGENTS.md](../AGENTS.md), [strategy/README.md](strategy/README.md), [glossary.md](glossary.md) | Repository only |
 | API and CLI consumers | [reference/api.md](reference/api.md), [reference/cli.md](reference/cli.md), [reference/contracts.md](reference/contracts.md) | Repository only |
 
+Read [Pull request guides](user/pull-request-guides.md) for shared AI-written review tours.
+
 ## Choose a path
 
 ### Learn the whole application
@@ -174,3 +176,5 @@ text cannot change without falsifying them. All three run
 inside `docs:truth:gate`. `npm run
 examples:conformance -- --build` validates every example manifest and README
 command contract, then builds every example that declares a build script.
+
+- [Cedar policy foundation](reference/cedar-policy.md) — server-local evaluator contract, bounds and packaged probe.

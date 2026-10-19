@@ -70,7 +70,9 @@
 
     "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
 
-    "src-ui/src/contexts/AccountPreferencesProvider.tsx"
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-ui/src/views/settings/composite-editors.tsx"
   ],
 
   "checks": [

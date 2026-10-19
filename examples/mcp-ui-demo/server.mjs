@@ -16,9 +16,9 @@ import {
   registerAppResource,
   registerAppTool,
 } from '@modelcontextprotocol/ext-apps/server';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod/v3';
+import { McpServer } from '@modelcontextprotocol/server';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { z } from 'zod';
 
 const RESOURCE_URI = 'ui://mcp-ui-demo/status-panel';
 
@@ -69,7 +69,7 @@ registerAppTool(
   {
     description: 'Render the Station MCP-UI demo status panel.',
     _meta: { ui: { resourceUri: RESOURCE_URI, visibility: ['model', 'app'] } },
-    inputSchema: { label: z.string().optional() },
+    inputSchema: z.object({ label: z.string().optional() }),
   },
   async ({ label }) => ({
     content: [

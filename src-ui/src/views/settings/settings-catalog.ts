@@ -338,7 +338,7 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'usage-telemetry',
     title: 'Usage telemetry',
     section: 'telemetry',
-    configKeys: ['telemetryEnabled'],
+    configKeys: ['telemetryTier'],
   },
   {
     id: 'telemetry-destination',
@@ -481,6 +481,24 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Resume after usage limits',
     section: 'agent-runs',
     configKeys: ['usageLimitAutoResume'],
+  },
+  {
+    id: 'review-guides',
+    title: 'Review guides',
+    section: 'agent-runs',
+    configKeys: ['reviewGuidesEnabled'],
+  },
+  {
+    id: 'review-guide-model',
+    title: 'Review guide model',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideModel'],
+  },
+  {
+    id: 'review-guide-instructions',
+    title: 'Review guide instructions',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideInstructions'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every

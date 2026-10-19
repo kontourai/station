@@ -723,6 +723,7 @@ describe('runCoreCommand', () => {
       'station',
       'hello there',
       '--session=thread-1',
+      '--client-turn-id=cli-stream-turn',
     ]);
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -739,6 +740,7 @@ describe('runCoreCommand', () => {
         body: JSON.stringify({
           environment: { kind: 'current' },
           message: 'hello there',
+          clientTurnId: 'cli-stream-turn',
         }),
       }),
     );
@@ -782,6 +784,7 @@ describe('runCoreCommand', () => {
       'station',
       'hello there',
       '--session=thread-1',
+      '--client-turn-id=cli-agents-chat-turn',
     ]);
 
     // The agent slug must not leak into the message body.
@@ -799,6 +802,7 @@ describe('runCoreCommand', () => {
         body: JSON.stringify({
           environment: { kind: 'current' },
           message: 'hello there',
+          clientTurnId: 'cli-agents-chat-turn',
         }),
       }),
     );

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import nodePath from 'node:path';
 import {
   deleteSession,
@@ -22,6 +22,11 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  type ConfinementFallbackReason,
+  type ConfinementPlan,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type { InputRequestForm } from '@kontourai/station-contracts/input-request';
 import type {
   CapabilityDeliveryChannelReport,
@@ -36,6 +41,7 @@ import {
   modelSelectionReceipt,
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
+  readApprovalMode,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -69,6 +75,18 @@ import {
   isAutoApprovedExternalTool,
 } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
+import {
+  assertRequiredConfinementObserved,
+  type ConfinementProvider,
+  ConfinementRefusedError,
+  fallbackConfinementRecord,
+  observedConfinementRecord,
+} from '../../security/confinement/confinement-provider.js';
+import {
+  canonicalPath,
+  type SeatbeltEvidence,
+  seatbeltConfinementProvider,
+} from '../../security/confinement/seatbelt.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
@@ -85,6 +103,7 @@ import {
   scrubBootInternalSecrets,
 } from '../../utils/child-process-environment.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
@@ -193,6 +212,15 @@ import {
   withdrawQueuedClaudeTurn,
 } from './claude-sdk-turns.js';
 import {
+  CONFINED_CLAUDE_CREDENTIAL_SETUP,
+  type ConfinedClaudeLaunch,
+  confinedClaudeConfigDir,
+  confinedClaudeCredential,
+  confinedClaudeDecision,
+  confinedClaudeSpawn,
+  prepareConfinedClaudeLaunch,
+} from './claude-seatbelt.js';
+import {
   cleanupMaterializedSkills,
   defaultClaudeGlobalConfigDirs,
   materializeSkills,
@@ -229,6 +257,9 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+/** #2494: id of the confined-credential readiness entry (macOS only). */
+const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
+
 /** Id of the prerequisite `buildCliRuntimePrerequisites` emits for that command. */
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
@@ -645,6 +676,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
   promptQueue: AsyncUserMessageQueue;
@@ -735,6 +767,13 @@ type ClaudeSessionRecord = {
   attemptedResumeCursor?: string;
   requireNativeResumeIdentity?: true;
   engineProcess?: ClaudeEngineProcess;
+  /** #2494: removes a Seatbelt-confined session's Station temp directory. */
+  confinementCleanup?: () => void;
+  /**
+   * #2494: set while a confined start waits for its posture to be observed;
+   * a turn is refused until it is, so none runs before the profile is known.
+   */
+  confinementPending?: true;
   nativeOwnershipBindingKey?: string;
   nativeOwnershipClaimed?: true;
 };
@@ -969,8 +1008,97 @@ export interface ClaudeAdapterOptions {
    * a test that spends the real 1 s to do it is a test nobody runs.
    */
   streamStopGraceMs?: number;
+  /**
+   * #2494: the Seatbelt provider a start whose plan names `seatbelt` is
+   * confined through. Defaults to the server's own; injected by tests.
+   */
+  seatbeltProvider?: ConfinementProvider<SeatbeltEvidence>;
+  /** #2494: Station's runtime home for confined sessions; injected by tests. */
+  confinedStationHome?: string;
+  /**
+   * #2494: how long a confined start waits for the engine's startup
+   * handshake before it is refused as not observed. Default 60 s.
+   */
+  confinementHandshakeTimeoutMs?: number;
   logger?: ClaudeAdapterLogger;
 }
+
+/** #2494: a start confined by Seatbelt, prepared before its spawn. */
+interface SeatbeltStart {
+  plan: ConfinementPlan;
+  provider: ConfinementProvider<SeatbeltEvidence>;
+  launch: ConfinedClaudeLaunch;
+  /** The app-home layer pointing the engine at its Station-owned home. */
+  appHomeEnv: Record<string, string>;
+  /** Variables the operator configured for this engine; they pass as set. */
+  configuredKeys: ReadonlySet<string>;
+}
+
+/** #2494: the warning a start that fell back to Auto publishes. */
+const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
+  'confined_full_access_unavailable';
+
+const DEFAULT_CONFINEMENT_HANDSHAKE_TIMEOUT_MS = 60_000;
+
+/**
+ * #2494: `input` run without the Seatbelt its plan asked for, for `reason`:
+ * full access is applied as Auto (the `never` → `auto` downgrade the
+ * approval posture used to make for every Claude workspace session), the
+ * plan is dropped, and the record says why.
+ */
+function withConfinementFallback<T extends ProviderSessionStartInput>(
+  input: T,
+  plan: ConfinementPlan,
+  reason: ConfinementFallbackReason,
+): T {
+  const next: T = {
+    ...input,
+    ...(readApprovalMode(input.modelOptions) === 'never'
+      ? { modelOptions: { ...input.modelOptions, approvalMode: 'auto' } }
+      : {}),
+    metadata: {
+      ...input.metadata,
+      [STATION_CONFINEMENT_RECORD_METADATA_KEY]: fallbackConfinementRecord(
+        plan,
+        reason,
+      ),
+    },
+  };
+  // The plan is removed, not left as `undefined`: no fallback start carries one.
+  delete next.confinementPlan;
+  return next;
+}
+
+/**
+ * #2494: defence in depth. A start the server marked `workspace` runs full
+ * access only under a Seatbelt plan, which the adapter applies only once it
+ * observes the profile; without one (a start path that skipped resolving
+ * its confinement) full access is applied as Auto here, never spawned
+ * unconfined. An absent confinement is `workspace`, by contract.
+ */
+function withoutUnconfinedFullAccess<T extends ProviderSessionStartInput>(
+  input: T,
+): T {
+  return (input.confinement ?? 'workspace') === 'workspace' &&
+    input.confinementPlan?.mechanism !== 'seatbelt' &&
+    readApprovalMode(input.modelOptions) === 'never'
+    ? {
+        ...input,
+        modelOptions: { ...input.modelOptions, approvalMode: 'auto' },
+      }
+    : input;
+}
+
+const CONFINEMENT_FALLBACK_MESSAGES: Record<ConfinementFallbackReason, string> =
+  {
+    'confined-credential-unavailable': `Full access runs as Auto: no credential a confined Claude session can use was found. ${CONFINED_CLAUDE_CREDENTIAL_SETUP}`,
+    'config-root-pinned':
+      'Full access runs as Auto: this session continues a conversation kept in your own Claude configuration, which a confined session may not write.',
+    'resume-bound-elsewhere':
+      'Full access runs as Auto: this session resumes a conversation recorded under another Claude configuration home.',
+    'workspace-too-broad':
+      "Full access runs as Auto: this session's folder is or contains your home folder or Station's data, so confining it to that folder would confine nothing.",
+  };
 
 const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
 
@@ -1293,6 +1421,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    input = withoutUnconfinedFullAccess(input);
     if (
       input.requireNativeResumeIdentity &&
       !claudeResumeSessionId(input.resumeCursor)
@@ -1332,21 +1461,233 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const claudeExecutable = launchedClaudeExecutable(
       await this.resolveClaudeExecutable(),
     );
-    return this.startTrackedSession(
-      input,
-      input.persistSession === true,
-      skillsReport,
+    const usageAccountKey = resolvedHome
+      ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+      : undefined;
+    // #2494: a plan that engages Seatbelt confines this start, or (for a
+    // reason a check derives) runs it at Auto with nothing engaged. Every
+    // other start takes the same synchronous path as before.
+    if (input.confinementPlan?.mechanism !== 'seatbelt')
+      return this.startTrackedSession(
+        input,
+        input.persistSession === true,
+        skillsReport,
+        appHomeEnv,
+        connectionEnv,
+        overlayDir,
+        augmentedEnv,
+        preToolPolicy,
+        claudeExecutable,
+        usageAccountKey,
+        connectionLaunch?.route,
+      );
+    const seatbelt = await this.prepareSeatbeltStart(input, {
       appHomeEnv,
+      connectionEnv,
+      augmentedEnv,
+      globalConfigPinned: Boolean(sourceCursor),
+      usageAccountKey,
+    });
+    const session = await this.startTrackedSession(
+      seatbelt.input,
+      seatbelt.input.persistSession === true,
+      skillsReport,
+      seatbelt.confined?.appHomeEnv ?? appHomeEnv,
       connectionEnv,
       overlayDir,
       augmentedEnv,
       preToolPolicy,
       claudeExecutable,
-      resolvedHome
-        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
-        : undefined,
+      usageAccountKey,
       connectionLaunch?.route,
+      seatbelt.confined,
     );
+    if (seatbelt.fallback)
+      this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+    return session;
+  }
+
+  /**
+   * #2494: what a start whose plan names `seatbelt` runs as. In order, a
+   * start pinned to the global configuration root, a workspace too broad to
+   * confine, a missing confined credential, or a resume recorded under
+   * another configuration home falls back to Auto with nothing engaged and
+   * the reason recorded. Otherwise its Station-owned directories and grants
+   * are prepared, for `startTrackedSession` to spawn through the provider.
+   */
+  private async prepareSeatbeltStart(
+    input: ProviderSessionStartInput,
+    context: {
+      appHomeEnv: Record<string, string> | undefined;
+      connectionEnv: Record<string, string> | undefined;
+      augmentedEnv: Record<string, string | undefined> | undefined;
+      globalConfigPinned: boolean;
+      usageAccountKey: string | undefined;
+    },
+  ): Promise<{
+    input: ProviderSessionStartInput;
+    confined?: SeatbeltStart;
+    fallback?: ConfinementFallbackReason;
+  }> {
+    const plan = input.confinementPlan;
+    if (plan?.mechanism !== 'seatbelt') return { input };
+    const stationHome = canonicalPath(
+      this.options.confinedStationHome ?? resolveHomeDir(),
+    );
+    const decision = confinedClaudeDecision({
+      cwd: input.cwd,
+      appHomeEnv: context.appHomeEnv,
+      env: {
+        ...(context.augmentedEnv ?? process.env),
+        ...context.connectionEnv,
+        ...context.appHomeEnv,
+      },
+      globalConfigPinned: context.globalConfigPinned,
+      stationHome,
+    });
+    let fallback = 'fallback' in decision ? decision.fallback : undefined;
+    if (
+      !fallback &&
+      'configDir' in decision &&
+      input.nativeResumeBindingKey &&
+      input.nativeResumeBindingKey !==
+        nativeResumeBindingKey(
+          this.provider,
+          decision.configDir,
+          context.usageAccountKey ?? null,
+        )
+    )
+      fallback = 'resume-bound-elsewhere';
+    if (fallback || !('configDir' in decision))
+      return {
+        input: withConfinementFallback(
+          input,
+          plan,
+          fallback ?? 'workspace-too-broad',
+        ),
+        fallback: fallback ?? 'workspace-too-broad',
+      };
+    const launch = await prepareConfinedClaudeLaunch({
+      workspace: decision.workspace,
+      configDir: decision.configDir,
+      stationHome,
+    });
+    // The secure-store override is dropped by the spawn wrapper, from
+    // whichever layer it comes, not here.
+    return {
+      input,
+      confined: {
+        plan,
+        provider: this.options.seatbeltProvider ?? seatbeltConfinementProvider,
+        launch,
+        appHomeEnv: {
+          ...context.appHomeEnv,
+          CLAUDE_CONFIG_DIR: launch.configDir,
+        },
+        configuredKeys: new Set([
+          ...Object.keys(context.connectionEnv ?? {}),
+          ...Object.keys(context.appHomeEnv ?? {}),
+        ]),
+      },
+    };
+  }
+
+  /**
+   * #2494: the posture of a Seatbelt-confined start, from the provider's own
+   * `pending.observe` over what the spawn seam recorded and whether the
+   * engine answered its handshake. Anything but `confined` stops the engine
+   * and refuses the start (a `ConfinementRefusedError`, so the thread can
+   * start again): never an unconfined fallback.
+   */
+  private async observeSeatbeltStart(
+    record: ClaudeSessionRecord,
+    sdkQuery: Query,
+    engineProcess: ClaudeEngineProcess,
+    seatbelt: SeatbeltStart,
+    pending: ReturnType<ReturnType<typeof confinedClaudeSpawn>['pending']>,
+  ) {
+    let handshake: 'completed' | 'failed' = 'failed';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        sdkQuery.initializationResult(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('handshake timed out')),
+            this.options.confinementHandshakeTimeoutMs ??
+              DEFAULT_CONFINEMENT_HANDSHAKE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      handshake = 'completed';
+    } catch {
+      handshake = 'failed';
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    const posture = pending
+      ? pending.observe({
+          spawned: engineProcess.spawned(),
+          handshake,
+          bounds: seatbelt.launch.bounds,
+        })
+      : 'configured-but-failed';
+    const confinementRecord = observedConfinementRecord(
+      seatbelt.plan,
+      posture,
+      seatbelt.launch.writeGrants,
+    );
+    if (posture === 'confined') return confinementRecord;
+    await this.abandonSeatbeltStart(record, sdkQuery, engineProcess, seatbelt);
+    const stderr = engineProcess.stderrTail();
+    throw new ConfinementRefusedError(
+      'confinement_not_observed',
+      `This claude session requires ${seatbelt.plan.level} confinement, but the started engine was not observed inside its Seatbelt profile (${posture}). ${
+        handshake === 'failed'
+          ? `The engine did not answer its startup handshake${stderr ? `: ${stderr}` : ''}.`
+          : 'The engine was not spawned through the profile Station built.'
+      } The session was not started.`,
+    );
+  }
+
+  /**
+   * #2494: undoes a confined start that will not be announced: the record
+   * leaves the session map, the engine is stopped, the session's temp
+   * directory is removed and its caller credential revoked.
+   */
+  private async abandonSeatbeltStart(
+    record: ClaudeSessionRecord,
+    sdkQuery: Query,
+    engineProcess: ClaudeEngineProcess,
+    seatbelt: SeatbeltStart,
+  ): Promise<void> {
+    const threadId = record.session.threadId;
+    if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
+    record.promptQueue.close();
+    sdkQuery.close();
+    await engineProcess.terminate();
+    seatbelt.launch.cleanup();
+    this.options.revokeStationControlCallerToken?.(threadId);
+    if (record.nativeOwnershipClaimed)
+      this.options.nativeSessionOwnership?.retired(threadId);
+  }
+
+  /** #2494: says, once per start, that full access ran as Auto and why. */
+  private publishConfinementFallback(
+    threadId: string,
+    reason: ConfinementFallbackReason,
+  ): void {
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      message: CONFINEMENT_FALLBACK_MESSAGES[reason],
+      code: CONFINED_FULL_ACCESS_UNAVAILABLE_CODE,
+      details: { reason },
+    });
   }
 
   async adoptSession(
@@ -1361,8 +1702,22 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (this.sessions.has(input.threadId)) {
       throw new Error(`Claude session already exists: ${input.threadId}`);
     }
+    input = withoutUnconfinedFullAccess(input);
     if (input.sourceBoundary)
       throw new Error('Claude does not support a completed-turn fork cutoff.');
+    // #2494: adoption deliberately pins the global configuration root
+    // (archive#896 decision 2), which a confined engine may not write, so a
+    // plan for Seatbelt runs at Auto here instead.
+    const adoptionFallback =
+      input.confinementPlan?.mechanism === 'seatbelt'
+        ? ('config-root-pinned' as const)
+        : undefined;
+    if (adoptionFallback && input.confinementPlan)
+      input = withConfinementFallback(
+        input,
+        input.confinementPlan,
+        adoptionFallback,
+      );
     if (input.sourceAffinity || this.options.resolveSourceHome) {
       this.requireSourceHome(input.sourceAffinity);
       input = {
@@ -1419,7 +1774,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const claudeExecutable = launchedClaudeExecutable(
         await this.resolveClaudeExecutable(),
       );
-      return this.startTrackedSession(
+      if (!adoptionFallback)
+        return this.startTrackedSession(
+          { ...input, resumeCursor, persistSession: true },
+          true,
+          skillsReport,
+          undefined,
+          connectionEnv,
+          overlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+          undefined,
+          connectionLaunch?.route,
+        );
+      const session = await this.startTrackedSession(
         { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
@@ -1432,6 +1801,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         undefined,
         connectionLaunch?.route,
       );
+      this.publishConfinementFallback(input.threadId, adoptionFallback);
+      return session;
     } catch (error) {
       // With lifecycle reporting, the durable owner has the child cursor (or
       // the reservation marker) and owns cleanup. Deleting here too would
@@ -1543,10 +1914,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     claudeExecutable?: string | null,
     usageAccountKey?: string,
     modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
-  ): ProviderSession {
+    seatbelt?: SeatbeltStart,
+  ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
-    const permissionMode = this.resolvePermissionMode(input.modelOptions);
+    const requestedPermissionMode = this.resolvePermissionMode(
+      input.modelOptions,
+    );
+    // #2494: a confined start spawns at Auto (acceptEdits) with the bypass
+    // grant the SDK only takes at spawn, and is lifted to full access only
+    // once the provider has observed the profile applied (below). A grant
+    // reaching out of bounds is refused before anything is spawned.
+    let permissionMode =
+      seatbelt && requestedPermissionMode === 'bypassPermissions'
+        ? ('acceptEdits' as const)
+        : requestedPermissionMode;
+    if (seatbelt && !seatbelt.launch.writeGrants) {
+      seatbelt.launch.cleanup();
+      assertRequiredConfinementObserved(
+        observedConfinementRecord(seatbelt.plan, 'configured-but-failed'),
+        this.provider,
+        'Its Seatbelt profile would grant writes past the workspace, its git subset and the Station-owned directories.',
+      );
+    }
+    const seatbeltSpawn = seatbelt
+      ? confinedClaudeSpawn(
+          seatbelt.provider,
+          seatbelt.launch,
+          seatbelt.configuredKeys,
+        )
+      : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
@@ -1583,8 +1980,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
       );
     // #2932: Station owns the engine spawn so it can read the permission
-    // asks on the engine's stdout (see claude-code-spawn.ts).
-    const engineProcess = createClaudeEngineProcess();
+    // asks on the engine's stdout (see claude-code-spawn.ts). #2494: a
+    // confined start's spawn goes through the provider's `confine`.
+    const engineProcess = seatbeltSpawn
+      ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
+      : createClaudeEngineProcess();
     let sdkQuery: ReturnType<typeof query>;
     try {
       assertExecutionOverrideDelivery(input.metadata, [
@@ -1608,10 +2008,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           preToolPolicy,
           claudeExecutable,
           builtinServers,
+          Boolean(seatbelt) || permissionMode === 'bypassPermissions',
         ),
       });
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
+      seatbelt?.launch.cleanup();
       throw error;
     }
 
@@ -1629,8 +2031,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
 
+    const probeSuffix = /^delivery-([a-f0-9]{32})$/.exec(
+      input.agent?.slug ?? '',
+    )?.[1];
+    const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      deliveryProbeServerId:
+        probeServer &&
+        input.agent?.toolServers?.some((server) => server.id === probeServer)
+          ? probeServer
+          : undefined,
       attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
       requireNativeResumeIdentity:
         input.requireNativeResumeIdentity ||
@@ -1646,6 +2057,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
+      ...(seatbelt ? { confinementCleanup: seatbelt.launch.cleanup } : {}),
       // #3163: where this session's subagent transcripts are written, so a
       // later read (even after a restart) opens the same config home.
       claudeConfigHome: claudeSpawnConfigHome(
@@ -1667,129 +2079,184 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.cancelPendingRequests(record, input.threadId, {
         agentId: taskId,
       });
-    record.streamTask = this.consumeMessages(record);
-    this.sessions.set(input.threadId, record);
+    // #2494: announces the started session; for a confined start, only
+    // once the provider has observed the engine inside its profile.
+    const announce = (
+      confinementRecord?: ReturnType<typeof observedConfinementRecord>,
+    ): ProviderSession => {
+      record.streamTask = this.consumeMessages(record);
+      this.sessions.set(input.threadId, record);
 
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      createdAt: now,
-      method: 'session.started',
-      sessionId: input.threadId,
-      initialState: 'created',
-      metadata: {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: {
+          ...input.metadata,
+          [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
+          [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
+          cwd: input.cwd,
+          usageAccountKey,
+          // station#3320: a resumed query() continues the cost total its
+          // transcript saved, so the usage fold must not add this process's
+          // figures to the previous one's. Set from the same cursor that
+          // `buildOptions` passes as the SDK `resume` option, and written
+          // after the caller's metadata so a copied marker cannot claim a
+          // resume this process did not make.
+          [NATIVE_SESSION_RESUMED_METADATA_KEY]: record.attemptedResumeCursor
+            ? true
+            : undefined,
+          ...(confinementRecord
+            ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
+            : {}),
+        },
+      });
+      const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
         [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
         [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
-        cwd: input.cwd,
+        modelRoute,
         usageAccountKey,
-        // station#3320: a resumed query() continues the cost total its
-        // transcript saved, so the usage fold must not add this process's
-        // figures to the previous one's. Set from the same cursor that
-        // `buildOptions` passes as the SDK `resume` option, and written
-        // after the caller's metadata so a copied marker cannot claim a
-        // resume this process did not make.
-        [NATIVE_SESSION_RESUMED_METADATA_KEY]: record.attemptedResumeCursor
-          ? true
-          : undefined,
-      },
-    });
-    const baseConfiguredMetadata: Record<string, unknown> = {
-      ...input.metadata,
-      [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
-      [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
-      modelRoute,
-      usageAccountKey,
-      ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
-      // Explicit resolved values (not just the raw modelOptions spread
-      // above) so the durable record reflects what the adapter actually
-      // applied — including the 'plan' escape hatch and the
-      // allowDangerouslySkipPermissions grant (archive#727 review item 5).
-      ...(permissionMode ? { permissionMode } : {}),
-      allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
-      // Lets the client track a durable lastAppliedApprovalMode baseline at
-      // session start (archive#727 review round 3, item 1 — the pending-apply chip
-      // state). Omitted when Station sent no override so the chip does not
-      // claim Ask while Claude's own `defaultMode` still applies (#1950).
-      ...(mapPermissionModeToApprovalMode(permissionMode)
-        ? {
-            approvalMode: mapPermissionModeToApprovalMode(permissionMode),
-            // #2493: a confined session's `never` arrives here already
-            // applied as `auto` (approval-posture.ts); say which it is.
-            confinement: input.confinement ?? 'workspace',
-          }
-        : {}),
-      // archive#896: whether this session's SDK spawn env was layered with the
-      // claude app-home profile, or left at the global config
-      // (opted out, adoption, or a degraded lookup).
-      appHome,
-    };
-    let configuredMetadata: Record<string, unknown> = skillsReport
-      ? mergeCapabilityDeliveryMetadata(
-          baseConfiguredMetadata,
-          'skills',
-          skillsReport,
-        )
-      : baseConfiguredMetadata;
-    // archive#1157: chained over the skills merge above, same composition
-    // rationale as the systemPrompt merge below — mergeCapabilityDeliveryMetadata
-    // prepends any resolution-stage undelivered entries already present in
-    // inputMetadata (session-agent-resolution.ts's engine-unsupported/
-    // not-found/secret-boundary-env receipts), so passing the previous
-    // call's output as inputMetadata preserves every channel report.
-    if (toolServers.report) {
-      configuredMetadata = mergeCapabilityDeliveryMetadata(
-        configuredMetadata,
-        'toolServers',
-        toolServers.report,
-      );
-    }
-    // archive#895 wave B: chained over the skills merge above —
-    // mergeCapabilityDeliveryMetadata composes (it prepends any
-    // resolution-stage undelivered entries already present in
-    // inputMetadata), so passing the previous call's output as
-    // inputMetadata here preserves both channel reports.
-    if (input.agent?.systemPrompt) {
-      configuredMetadata = mergeCapabilityDeliveryMetadata(
-        configuredMetadata,
-        'systemPrompt',
-        {
-          source: 'agent',
-          requested: [SYSTEM_PROMPT_CAPABILITY_ID],
-          delivered: [SYSTEM_PROMPT_CAPABILITY_ID],
-          undelivered: [],
-        },
-      );
-      agentSystemPromptSessions.add(1, {
+        ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
+        // Explicit resolved values (not just the raw modelOptions spread
+        // above) so the durable record reflects what the adapter actually
+        // applied — including the 'plan' escape hatch and the
+        // allowDangerouslySkipPermissions grant (archive#727 review item 5).
+        ...(permissionMode ? { permissionMode } : {}),
+        allowDangerouslySkipPermissions: record.allowsBypassPermissions,
+        // Lets the client track a durable lastAppliedApprovalMode baseline at
+        // session start (archive#727 review round 3, item 1 — the pending-apply chip
+        // state). Omitted when Station sent no override so the chip does not
+        // claim Ask while Claude's own `defaultMode` still applies (#1950).
+        ...(mapPermissionModeToApprovalMode(permissionMode)
+          ? {
+              approvalMode: mapPermissionModeToApprovalMode(permissionMode),
+              // #2493/#2494: a `workspace` session's `never` runs here only
+              // inside an observed Seatbelt profile; otherwise it arrives as
+              // `auto` (approval-posture.ts, or a confinement fallback).
+              confinement: input.confinement ?? 'workspace',
+            }
+          : {}),
+        // archive#896: whether this session's SDK spawn env was layered with the
+        // claude app-home profile, or left at the global config
+        // (opted out, adoption, or a degraded lookup).
+        appHome,
+      };
+      let configuredMetadata: Record<string, unknown> = skillsReport
+        ? mergeCapabilityDeliveryMetadata(
+            baseConfiguredMetadata,
+            'skills',
+            skillsReport,
+          )
+        : baseConfiguredMetadata;
+      // archive#1157: chained over the skills merge above, same composition
+      // rationale as the systemPrompt merge below — mergeCapabilityDeliveryMetadata
+      // prepends any resolution-stage undelivered entries already present in
+      // inputMetadata (session-agent-resolution.ts's engine-unsupported/
+      // not-found/secret-boundary-env receipts), so passing the previous
+      // call's output as inputMetadata preserves every channel report.
+      if (toolServers.report) {
+        configuredMetadata = mergeCapabilityDeliveryMetadata(
+          configuredMetadata,
+          'toolServers',
+          toolServers.report,
+        );
+      }
+      // archive#895 wave B: chained over the skills merge above —
+      // mergeCapabilityDeliveryMetadata composes (it prepends any
+      // resolution-stage undelivered entries already present in
+      // inputMetadata), so passing the previous call's output as
+      // inputMetadata here preserves both channel reports.
+      if (input.agent?.systemPrompt) {
+        configuredMetadata = mergeCapabilityDeliveryMetadata(
+          configuredMetadata,
+          'systemPrompt',
+          {
+            source: 'agent',
+            requested: [SYSTEM_PROMPT_CAPABILITY_ID],
+            delivered: [SYSTEM_PROMPT_CAPABILITY_ID],
+            undelivered: [],
+          },
+        );
+        agentSystemPromptSessions.add(1, {
+          provider: this.provider,
+          channel: 'flag',
+        });
+      }
+
+      configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
+        modelSelectionReceipt(input.modelId, record.session.model);
+
+      this.publish({
+        eventId: crypto.randomUUID(),
         provider: this.provider,
-        channel: 'flag',
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.configured',
+        sessionId: input.threadId,
+        model: input.modelId,
+        cwd: input.cwd,
+        metadata: configuredMetadata,
       });
+      providerOps.add(1, {
+        operation: 'adapter-session-start',
+        provider: this.provider,
+        model_options:
+          Object.keys(record.currentModelOptions).length > 0
+            ? 'applied'
+            : 'none',
+      });
+      appHomeSessions.add(1, { provider: this.provider, applied: appHome });
+
+      return session;
+    };
+    if (seatbelt && seatbeltSpawn) {
+      // #2494: nothing is consumed or announced until the provider has
+      // observed the started engine. The SDK sends `initialize` as the query
+      // is created; its answer arriving over the stdout of the process
+      // spawned through `sandbox-exec` is the evidence.
+      record.confinementPending = true;
+      this.sessions.set(input.threadId, record);
+      return (async () => {
+        const confinementRecord = await this.observeSeatbeltStart(
+          record,
+          sdkQuery,
+          engineProcess,
+          seatbelt,
+          seatbeltSpawn.pending(),
+        );
+        try {
+          if (requestedPermissionMode === 'bypassPermissions') {
+            await sdkQuery.setPermissionMode('bypassPermissions');
+            permissionMode = 'bypassPermissions';
+            record.currentPermissionMode = permissionMode;
+            record.requestedPermissionMode = permissionMode;
+          }
+        } catch (error) {
+          // Observed, but the lift never applied (the engine exited, say):
+          // the same teardown as a refusal, so the start settles and the
+          // thread can start again.
+          await this.abandonSeatbeltStart(
+            record,
+            sdkQuery,
+            engineProcess,
+            seatbelt,
+          );
+          throw new ConfinementRefusedError(
+            'confinement_not_observed',
+            `This claude session was observed inside its Seatbelt profile, but full access could not be applied there (${errorMessage(error)}). The session was not started.`,
+          );
+        }
+        record.allowsBypassPermissions = true;
+        delete record.confinementPending;
+        return announce(confinementRecord);
+      })();
     }
-
-    configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
-      modelSelectionReceipt(input.modelId, record.session.model);
-
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      createdAt: now,
-      method: 'session.configured',
-      sessionId: input.threadId,
-      model: input.modelId,
-      cwd: input.cwd,
-      metadata: configuredMetadata,
-    });
-    providerOps.add(1, {
-      operation: 'adapter-session-start',
-      provider: this.provider,
-      model_options:
-        Object.keys(record.currentModelOptions).length > 0 ? 'applied' : 'none',
-    });
-    appHomeSessions.add(1, { provider: this.provider, applied: appHome });
-
-    return session;
+    return announce();
   }
 
   async sendTurn(
@@ -1800,6 +2267,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
     }
+    // #2494: no turn runs before a confined start's posture is observed.
+    if (record.confinementPending)
+      throw new SendTurnRefusedError(
+        'This Claude session is still starting inside its confinement.',
+      );
     this.refuseSendWhileTurnOwed(record);
     return this.dispatchTurn(record, input, crypto.randomUUID());
   }
@@ -2441,6 +2913,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
+    record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
     if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
     // station#1558: the session is ending, so any `tool_use` still open can
@@ -2648,16 +3121,65 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       signal: options?.signal,
     });
     const sentence = claudeExecutableSentence(executable);
-    return prerequisites.map((prerequisite) =>
-      prerequisite.id === CLAUDE_CLI_PREREQUISITE_ID
-        ? {
-            ...prerequisite,
-            description: prerequisite.description
-              ? `${prerequisite.description} ${sentence}`
-              : sentence,
-          }
-        : prerequisite,
+    const confined = await this.confinedCredentialPrerequisite();
+    return [
+      ...prerequisites.map((prerequisite) =>
+        prerequisite.id === CLAUDE_CLI_PREREQUISITE_ID
+          ? {
+              ...prerequisite,
+              description: prerequisite.description
+                ? `${prerequisite.description} ${sentence}`
+                : sentence,
+            }
+          : prerequisite,
+      ),
+      ...(confined ? [confined] : []),
+    ];
+  }
+
+  /**
+   * #2494: whether a confined (Seatbelt) Claude session could authenticate,
+   * on macOS, where that confinement exists. The same read-only check a
+   * start makes (`confinedClaudeCredential`): a credential variable in the
+   * connection's environment, or a credential file in Station's default
+   * confined Claude home. No login is attempted and nothing is created. A
+   * selected credential profile is not modelled, as for the login check
+   * above.
+   */
+  private async confinedCredentialPrerequisite(): Promise<
+    Prerequisite | undefined
+  > {
+    if (platform() !== 'darwin') return undefined;
+    let configDir: string;
+    try {
+      configDir = confinedClaudeConfigDir(
+        undefined,
+        canonicalPath(this.options.confinedStationHome ?? resolveHomeDir()),
+      );
+    } catch {
+      return undefined;
+    }
+    const connectionEnv = claudeConnectionEnvForSpawn(
+      await this.resolveConnectionEnv(),
+      true,
     );
+    const credential = confinedClaudeCredential(
+      { ...process.env, ...connectionEnv },
+      configDir,
+    );
+    return {
+      id: CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID,
+      name: 'Confined Claude credential',
+      description: credential.available
+        ? `Workspace full-access Claude sessions run inside Station's Seatbelt profile, authenticated by ${credential.source === 'environment' ? 'a credential in their environment' : 'the credential in their Station-owned configuration'}.`
+        : `No credential a confined Claude session can use was found, so workspace full-access Claude sessions run at Auto. ${CONFINED_CLAUDE_CREDENTIAL_SETUP}`,
+      status: credential.available ? 'installed' : 'missing',
+      category: 'optional',
+      installGuide: {
+        steps: [CONFINED_CLAUDE_CREDENTIAL_SETUP],
+        commands: ['claude setup-token'],
+      },
+    };
   }
 
   async listModelCatalog(options?: {
@@ -2982,6 +3504,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
     builtinServers?: Record<string, McpServerConfig>,
+    grantBypassPermissions = permissionMode === 'bypassPermissions',
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3527,8 +4050,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // no mid-session equivalent, which is why sendTurn below refuses a
       // mid-session escalation into 'bypassPermissions' instead of pretending
       // it applied.
-      allowDangerouslySkipPermissions:
-        permissionMode === 'bypassPermissions' ? true : undefined,
+      // #2494: a Seatbelt-confined start is granted it at spawn while it
+      // runs at Auto, and lifted to full access only once the profile is
+      // observed applied.
+      allowDangerouslySkipPermissions: grantBypassPermissions
+        ? true
+        : undefined,
       thinking:
         modelOptions.thinking === false
           ? { type: 'disabled' }

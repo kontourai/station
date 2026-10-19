@@ -1,0 +1,13 @@
+{
+  "revision": "01b55be0fddfed8f38e2d9ed3da5ed486d532a9f",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed the final migration-reopen correction: PgProductRepository.migrate now accepts four supported version rows, matching migration 4 and assertSchema. The real bundled entrypoint diagnosed the stale three-row ceiling. The /48, suppression, erasure, admission and publication contracts are unchanged from the preceding reviewed source; no prose change needed.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the final migration-reopen correction: PgProductRepository.migrate now accepts four supported version rows, matching migration 4 and assertSchema. The real bundled entrypoint diagnosed the stale three-row ceiling. The /48, suppression, erasure, admission and publication contracts are unchanged from the preceding reviewed source; no prose change needed.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the final migration-reopen correction: PgProductRepository.migrate now accepts four supported version rows, matching migration 4 and assertSchema. The real bundled entrypoint diagnosed the stale three-row ceiling. The /48, suppression, erasure, admission and publication contracts are unchanged from the preceding reviewed source; no prose change needed.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/src/store.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final migration-reopen correction: PgProductRepository.migrate now accepts four supported version rows, matching migration 4 and assertSchema. The real bundled entrypoint diagnosed the stale three-row ceiling. The /48, suppression, erasure, admission and publication contracts are unchanged from the preceding reviewed source; no prose change needed.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/src/store.ts"]}
+  ]
+}

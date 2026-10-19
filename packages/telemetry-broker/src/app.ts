@@ -1,13 +1,17 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { HttpBindings } from '@hono/node-server';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
   parseProductTelemetryProbeRequest,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { BrokerError, type ProductRepository } from './store.js';
+import { receiverAdmission } from './admission.js';
+import { BrokerError } from './broker-error.js';
+import { registerLiteRoutes } from './lite-routes.js';
+import type { ProductRepository } from './store.js';
 
 export function createProductBroker(
   store: ProductRepository,
@@ -16,27 +20,77 @@ export function createProductBroker(
   if (!/^sto_[A-Za-z0-9_-]{43}$/.test(operatorKey))
     throw new Error('A private product operator credential is required');
   const operatorHash = createHash('sha256').update(operatorKey).digest();
-  const app = new Hono();
-  let active = 0;
-  let tokens = 60;
-  let replenishedAt = performance.now();
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
+  const fullAdmission = receiverAdmission();
+  const preAuthAdmission = receiverAdmission();
+  const credentials = new Map<string, ReturnType<typeof receiverAdmission>>();
+  const liteAdmission = receiverAdmission();
+  const publicPageAdmission = receiverAdmission();
   app.use('*', async (c, next) => {
-    if (c.req.method === 'GET' && c.req.path === '/health/live') return next();
-    const now = performance.now();
-    tokens = Math.min(60, tokens + (now - replenishedAt) / 1000);
-    replenishedAt = now;
-    if (tokens < 1) {
-      c.header('Retry-After', '1');
-      return c.json({ error: 'receiver_rate_limit' }, 429);
+    if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
+      return next();
+    if (
+      (c.req.method === 'POST' &&
+        ['/v1/product/events', '/v1/product/probes'].includes(c.req.path)) ||
+      (c.req.method === 'GET' &&
+        /^\/v1\/product\/receipts\/[^/]+$/.test(c.req.path))
+    ) {
+      const key = c.req.header('x-api-key') ?? '';
+      // Cache lookup only. Unknown keys enter pre-auth admission before any DB work.
+      if (!store.hasCredential(key))
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, async () => {
+        await store.authenticate(key);
+        await next();
+      });
     }
-    if (active >= 8) return c.json({ error: 'receiver_busy' }, 503);
-    tokens--;
-    active++;
-    try {
-      await next();
-    } finally {
-      active--;
+    const publisherMatch =
+      c.req.method === 'GET' &&
+      /^\/v1\/publishers\/([^/]+)\/aggregates$/.exec(c.req.path);
+    if (publisherMatch) {
+      const key =
+        /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
+          c.req.header('authorization') ?? '',
+        )?.[1] ?? '';
+      let publisher: string;
+      try {
+        publisher = decodeURIComponent(publisherMatch[1]);
+      } catch {
+        return c.json({ error: 'invalid_publisher' }, 400);
+      }
+      if (!store.lite?.hasCredential(publisher, key))
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, next);
     }
+    return (
+      c.req.path.startsWith('/v1/lite/')
+        ? liteAdmission
+        : c.req.path.startsWith('/public/')
+          ? publicPageAdmission
+          : c.req.path.startsWith('/v1/operator/') &&
+              c.req.header('authorization') === `Bearer ${operatorKey}`
+            ? fullAdmission
+            : preAuthAdmission
+    )(c, next);
   });
   app.use(
     '*',
@@ -50,7 +104,7 @@ export function createProductBroker(
       state: 'alive',
       scope: 'process',
       productProtocol: 1,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     }),
   );
   app.use('/v1/operator/*', async (c, next) => {
@@ -149,6 +203,7 @@ export function createProductBroker(
       ? c.json({ receipt })
       : c.json({ error: 'receipt_unavailable' }, 404);
   });
+  if (store.lite) registerLiteRoutes(app, store.lite);
   app.onError((error, c) => {
     if (error instanceof BrokerError) {
       const status =
@@ -160,7 +215,9 @@ export function createProductBroker(
               ? 507
               : error.code === 'query_limit'
                 ? 422
-                : error.code === 'invalid_source'
+                : error.code === 'invalid_cursor' ||
+                    error.code === 'invalid_source' ||
+                    error.code === 'invalid_daily_ping'
                   ? 400
                   : 503;
       return c.json({ error: error.code }, status);

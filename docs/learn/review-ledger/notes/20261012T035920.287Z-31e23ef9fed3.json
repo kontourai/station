@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Added the section When the server is older than the app; checked each claim against ServerOlderLaunchCheck.tsx (same-origin, embedded-sidecar, stamped-build gates; service-update apply and progress following), serverOlderThanClient.ts (offer and remedies) and release-version-order.ts (nightly day*100+build bridge).","inputs":["docs/guides/nightly.md"]}
+  ]
+}

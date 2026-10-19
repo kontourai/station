@@ -196,19 +196,31 @@ const terminalSubprocessState = readRequiredSource(
   '../src-server/services/terminal/terminal-subprocess-state.ts',
 );
 for (const requiredTerminalHelper of [
-  'export function pollTerminalSubprocessActivity',
+  'export async function pollTerminalSubprocessActivity',
   'function detectWindowsSubprocesses',
   'function detectUnixSubprocesses',
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
   'Get-Process -Id ${pid}',
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
-  'pgrep -P ${pid}',
 ]) {
   if (!terminalSubprocessState.includes(requiredTerminalHelper)) {
     errors.push(
       `terminal-subprocess-state.ts must include ${requiredTerminalHelper}.`,
     );
   }
+}
+if (
+  !/\bexecFile\s*\(\s*['"]pgrep['"]\s*,\s*\[\s*['"]-P['"]\s*,\s*String\s*\(\s*pid\s*\)\s*\]/.test(
+    terminalSubprocessState,
+  )
+) {
+  errors.push(
+    "terminal-subprocess-state.ts must probe Unix children asynchronously with execFile('pgrep', ['-P', String(pid)]).",
+  );
+}
+if (/\bexecSync\s*\(\s*['"`]\s*pgrep\b/.test(terminalSubprocessState)) {
+  errors.push(
+    'terminal-subprocess-state.ts must not synchronously probe Unix children with execSync.',
+  );
 }
 
 const systemRuntime = readRequiredSource(

@@ -1,0 +1,7 @@
+{
+  "revision": "0f34fc04e434cfb1757ebad4b889f05d726a8c0d",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Re-reviewed the terminal WebSocket first-application-frame credential claim against the session-scoping fix in terminal-ws-server.ts. Credential delivery and admission are unchanged; the fix narrows event delivery and data/resize/cwd/close to sockets that opened the session. No prose change needed.","inputs":["docs/reference/connect.md","src-server/services/terminal/terminal-ws-server.ts"]}
+  ]
+}

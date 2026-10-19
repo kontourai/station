@@ -1,5 +1,50 @@
 # @kontourai/station-sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- 7fda30b: A follow-up sent to a busy conversation can be held by Station instead of
+  refused (#3568). `POST /api/orchestration/chat` with `whenBusy: 'queue'`
+  answers `202` with a `ConversationInboxQueuedReceipt` when the conversation's
+  turn is running, and Station sends the message itself when that turn ends,
+  across a closed app, another device or a restart. `TurnDeliveryInspection`
+  gains the `queued` outcome, and the new `ConversationInboxEntry` describes a
+  held message. The SDK adds `queueExecutionMessage`, `listConversationInbox` and
+  `cancelConversationInboxEntry`. Contracts export
+  `CONTINUATION_WORKSPACE_REFUSAL_CODES`, the codes a continuation refused for
+  its persisted workspace answers with (and a held message's `reasonCode`).
+  A refused send whose key another attempt still holds (`client_turn_in_flight`)
+  now answers `409` rather than `400` on `/chat` and `/chat/:id/continue`; the
+  code is unchanged and still means retry with the same key. A Station that predates the inbox ignores
+  `whenBusy` and refuses a busy send as before, so keep the message on that
+  refusal.
+- 9f4aab6: Add current-process product and OTel delivery status contracts, validated SDK queries and content-free connection checks. Queries and mutations retain the selected Station's request authority. Product acknowledgements require matching commit receipts; OTel callback and probe acceptance do not establish downstream storage or canonical personal usage.
+
+  Add revision-bound SDK management of explicit instance SecretBinding grants for one product or OTel destination. These grants confer no MCP, ACP, person, Project or execution authority. Older strict binding readers reject the new stored grant property; rollback requires a compatible backup and must not delete grants to make old code accept the document.
+
+  Saved product changes fence queued observations and attempts immediately after persistence, independently of Agent activation. Late startup uses a validated current configuration snapshot before restoring disclosure. Saved collector changes fence the old exporter and require a Station restart to activate the replacement.
+
+  Add the canonical usage-export request/page contract and request-authorized committed-order source reader. Pages retain token/provider-cost receipts and source coverage uncertainty; they do not issue companion grants, create durable indexes or establish deletion/restore/clone acceptance.
+
+### Patch Changes
+
+- 64d458b: Update the published dependency contracts together. Preserve Surface's reviewed-source `not-chosen` state and gap in Session inventory without inferring answer support, and use the MCP Apps 2 protocol packages in bundled consumers.
+
+  Also update dependency consumers in the private `@kontourai/station-basis-pane` and `@kontourai/station-board-pane` packages. These changes do not request private-package version bumps or tags.
+- c5a8aa3: Expose typed input-conflict and unsupported-input refusals for existing keyed orchestration sends. The server compares versioned submission digests before replay or reclaim; legacy records without original proof remain unknown. This bounded slice does not require keys on every route or record durable turn intent.
+
+  Preserve the existing queue receipt in a typed ForegroundMessageQueuedError when ordinary execution callers retry an already queued message.
+- Updated dependencies [64d458b]
+- Updated dependencies [7fda30b]
+- Updated dependencies [e1c6c47]
+- Updated dependencies [c5a8aa3]
+- Updated dependencies [9f4aab6]
+- Updated dependencies [b7d8c21]
+- Updated dependencies [5c42047]
+  - @kontourai/station-contracts@0.10.0
+  - @kontourai/station-shared@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
