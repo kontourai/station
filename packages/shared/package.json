@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -45,6 +45,7 @@
     "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
     "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
+    "./mcp-app-result": "./src/mcp-app-result.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
     "./owned-dependency-installer": "./src/owned-dependency-installer.ts",
@@ -123,7 +124,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.9.0",
+    "@kontourai/station-contracts": "^0.10.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",

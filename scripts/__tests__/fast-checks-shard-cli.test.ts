@@ -1315,3 +1315,95 @@ describe('the plan records its related-discovery cost (#2803)', () => {
     );
   });
 });
+
+describe('hosted mapped tests beside broad deferred obligations', () => {
+  test('keeps more than32 mapped tests and catches a real UI caller failure while retaining deferral', async () => {
+    const directory = makeTempDir('station-hosted-mixed-deferral-');
+    mkdirSync(join(directory, 'src-ui/src/__tests__'), { recursive: true });
+    mkdirSync(join(directory, 'src-ui/src/components'), { recursive: true });
+    mkdirSync(join(directory, 'packages/shared/src'), { recursive: true });
+    mkdirSync(join(directory, 'config'));
+    writeFileSync(
+      join(directory, 'config/product-laws.json'),
+      JSON.stringify({ schemaVersion: 1, laws: [] }),
+    );
+    symlinkSync(join(root, 'node_modules'), join(directory, 'node_modules'));
+    writeFileSync(
+      join(directory, 'vitest.config.mjs'),
+      'export default { test: { environment: "node", include: ["src-ui/src/__tests__/*.test.ts"] } };\n',
+    );
+    const uiPath = 'src-ui/src/components/mixedCaller.ts';
+    const deferredPath = 'packages/shared/src/mixed-global.ts';
+    writeFileSync(
+      join(directory, deferredPath),
+      'export const shared = true;\n',
+    );
+    writeFileSync(join(directory, uiPath), 'export const label = "broken";\n');
+    const files = Array.from(
+      { length: 33 },
+      (_, index) => `src-ui/src/__tests__/mixed-${index}.test.ts`,
+    );
+    for (const [index, file] of files.entries())
+      writeFileSync(
+        join(directory, file),
+        index === 0
+          ? 'import { test, expect } from "vitest"; import { label } from "../components/mixedCaller"; test("mapped UI caller", () => expect(label).toBe("expected"));\n'
+          : 'import { test, expect } from "vitest"; test("mapped explicit target", () => expect(true).toBe(true));\n',
+      );
+    const discoveredPaths: string[][] = [];
+    const plan = await planChangedVerificationShards('fixture-base', {
+      root: directory,
+      headSha: 'a'.repeat(40),
+      shardCount: 1,
+      assertDependencyProvenance: () => {},
+      changedPathsFn: () => ({
+        mergeBase: 'fixture-base',
+        paths: [deferredPath, uiPath, ...files],
+      }),
+      discoverRelatedFiles: async (cwd, paths, options) => {
+        discoveredPaths.push(paths);
+        return discoverRelatedTestFiles(cwd, paths, {
+          ...options,
+          deadlineAt: Date.now() + FAST_CHECKS_PLAN_BUDGET_MS,
+        });
+      },
+    });
+    const local = prepareChangedSelection('fixture-base', {
+      root: directory,
+      changedPathsFn: () => ({
+        mergeBase: 'fixture-base',
+        paths: [deferredPath, uiPath, ...files],
+      }),
+    });
+    expect(local.executionSelection.tests).toEqual([]);
+    expect(local.executionSelection.relatedPaths).toEqual([]);
+    expect(plan.fileCount).toBe(33);
+    expect(plan.groups.flatMap((group) => group.files).sort()).toEqual(
+      [...files].sort(),
+    );
+    expect(discoveredPaths).toEqual([[uiPath]]);
+    expect(
+      plan.deferredLanes.some((lane: { id: string }) => lane.id === 'ci-fast'),
+    ).toBe(true);
+    const slice = {
+      groups: plan.groups,
+      files: plan.groups.flatMap((group) => group.files),
+    };
+    const options = {
+      root: directory,
+      assertDependencyProvenance: () => {},
+      vitestPath: join(root, 'node_modules/vitest/vitest.mjs'),
+      prepareExecution: () => ({ env: { ...process.env } }),
+    };
+    const failed = await runChangedVerificationShard(plan, slice, options);
+    expect(failed.status).toBe('failed');
+    expect(failed.counts.failed).toBe(1);
+    writeFileSync(
+      join(directory, uiPath),
+      'export const label = "expected";\n',
+    );
+    const repaired = await runChangedVerificationShard(plan, slice, options);
+    expect(repaired.status).toBe('provisional');
+    expect(repaired.counts.executed).toBe(33);
+  }, 90_000);
+});

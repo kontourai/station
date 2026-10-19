@@ -1,5 +1,7 @@
 import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
 import { htmlReplyReference } from './html-reply-reference';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
+
 /**
  * The STRUCTURAL half of tool-call batching: splitting a message's content
  * parts into runs of consecutive tool-call parts vs. everything else.
@@ -94,6 +96,7 @@ function buildRun<P extends ToolCallLike>(
  */
 export function splitToolCallRuns<P extends ToolCallLike>(
   parts: P[] | undefined | null,
+  appTools: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
   if (!parts || parts.length === 0) return [];
 
@@ -107,7 +110,10 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   };
 
   parts.forEach((part, index) => {
-    if (isToolCallPart(part)) {
+    if (
+      isToolCallPart(part) &&
+      !appTools.has(transcriptMcpToolRef(part) ?? '')
+    ) {
       pending.push({ part, index });
       const name = part.toolName ?? part.name ?? part.type;
       if (
@@ -163,8 +169,9 @@ function isFoldableProse(part: ToolCallLike): boolean {
  */
 export function foldTurnWork<P extends ToolCallLike>(
   parts: P[] | undefined | null,
+  appTools: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
-  const blocks = splitToolCallRuns(parts);
+  const blocks = splitToolCallRuns(parts, appTools);
   if (!parts) return blocks;
   if (blocks.some((block) => block.type === 'html-reply')) return blocks;
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;

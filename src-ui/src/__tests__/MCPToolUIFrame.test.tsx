@@ -1,3 +1,6 @@
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { TranscriptAppTools } from '../components/chat/TranscriptAppTools';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 /**
  * @vitest-environment jsdom
  */
@@ -12,18 +15,26 @@ import {
   toWorkspacePaneStateKey,
 } from '@kontourai/station-contracts/workspace-pane';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { MessageContent } from '../components/chat/message-bubble/MessageContent';
+import { StreamingMessageView } from '../components/chat/StreamingMessage';
+import {
+  foldTurnWork,
+  splitToolCallRuns,
+} from '../components/chat/tool-call-runs';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import {
   MCPToolUIFrame,
+  type MCPToolUIFrameProps,
   mcpUiHostAppearance,
   mcpUiHostGeometry,
   sessionInventoryV2OpenLinkCapability,
 } from '../components/mcp-ui/MCPToolUIFrame';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { render } from './renderWithQueryClient';
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
@@ -81,6 +92,575 @@ afterEach(() => {
 });
 
 describe('MCPToolUIFrame', () => {
+  test('renders a definition-only MCP result inline through the hardened resource route after remount without replaying the tool', async () => {
+    mockConfig = { mcpUiHost: true };
+    const recorded = {
+      content: [{ type: 'text', text: 'Recorded chart' }],
+      structuredContent: { count: 7 },
+    };
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'apps',
+      turnId: 'turn',
+      createdAt: '2026-10-17T12:00:00.000Z',
+    };
+    const messages = projectRuntimeEventsToMessages([
+      { ...base, eventId: 'start', method: 'turn.started', prompt: 'Chart' },
+      {
+        ...base,
+        eventId: 'call',
+        method: 'tool.started',
+        itemId: 'chart-call',
+        toolCallId: 'chart-call',
+        toolName: 'demo/chart',
+        arguments: { range: 'week' },
+      },
+      {
+        ...base,
+        eventId: 'result',
+        method: 'tool.completed',
+        itemId: 'chart-call',
+        toolCallId: 'chart-call',
+        toolName: 'demo/chart',
+        status: 'success',
+        output: recorded,
+      },
+    ]);
+    const contentParts = messages
+      .filter((message) => message.role === 'assistant')
+      .flatMap((message) =>
+        message.parts.flatMap(conversationPartToContentParts),
+      );
+    const requests: string[] = [];
+    const previewHeaders: (string | null)[] = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/ui/chart') || url.endsWith('/resource'))
+        previewHeaders.push(
+          new Headers(init?.headers).get('x-station-mcp-transcript'),
+        );
+      requests.push(url);
+      if (url.endsWith('/ui-tools'))
+        return Promise.resolve(response(['chart']));
+      if (url.endsWith('/resource'))
+        return Promise.resolve(
+          response({
+            uri: 'ui://demo/chart',
+            mimeType: 'text/html;profile=mcp-app',
+            text: '<main>Chart</main>',
+          }),
+        );
+      if (url.endsWith('/ui/chart'))
+        return Promise.resolve(
+          response({
+            status: 'success',
+            ref: 'demo/chart',
+            resourceUri: 'ui://demo/chart',
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const mount = () =>
+      render(
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MessageContent
+            contentParts={JSON.parse(JSON.stringify(contentParts))}
+            textContent=""
+            chatFontSize={14}
+            showReasoning={false}
+            showToolDetails={false}
+            isStreamingMessage={false}
+            foldWork
+          />
+        </QueryClientProvider>,
+      );
+    for (let pass = 0; pass < 2; pass++) {
+      const mounted = mount();
+      const iframe = await screen.findByTitle<HTMLIFrameElement>(
+        'MCP tool UI: demo/chart',
+      );
+      expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+      expect(iframe.srcdoc).toContain('Content-Security-Policy');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Interactions are unavailable',
+      );
+      const target = iframe.contentWindow!;
+      const sent = vi.spyOn(target, 'postMessage');
+      const send = (data: unknown) =>
+        window.dispatchEvent(
+          new MessageEvent('message', { data, source: target }),
+        );
+      send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'ui/initialize',
+        params: {
+          appInfo: { name: 'Chart', version: '1' },
+          appCapabilities: {},
+          protocolVersion: '2026-01-26',
+        },
+      });
+      send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            method: 'ui/notifications/tool-result',
+            params: recorded,
+          }),
+          '*',
+        ),
+      );
+      send({
+        jsonrpc: '2.0',
+        method: 'ui/notifications/size-changed',
+        params: { height: 208 },
+      });
+      await waitFor(() => expect(iframe.style.height).toBe('208px'));
+      for (const [index, method, params] of [
+        [2, 'tools/call', { name: 'mutate', arguments: {} }],
+        [3, 'resources/read', { uri: 'file:///secret' }],
+        [
+          4,
+          'ui/message',
+          { role: 'user', content: [{ type: 'text', text: 'unapproved' }] },
+        ],
+        [5, 'ui/open-link', { url: 'https://example.com' }],
+      ] as const) {
+        send({ jsonrpc: '2.0', id: index, method, params });
+        await waitFor(() =>
+          expect(sent).toHaveBeenCalledWith(
+            expect.objectContaining({
+              id: index,
+              error: expect.any(Object),
+            }),
+            '*',
+          ),
+        );
+      }
+      mounted.unmount();
+    }
+    expect(requests.filter((url) => url.endsWith('/resource'))).toHaveLength(2);
+    expect(previewHeaders).toEqual([
+      'preview',
+      'preview',
+      'preview',
+      'preview',
+    ]);
+    expect(
+      requests.every(
+        (url) =>
+          url.endsWith('/ui-tools') ||
+          url.endsWith('/ui/chart') ||
+          url.endsWith('/resource'),
+      ),
+    ).toBe(true);
+  });
+
+  test('keeps one mounted subtree and its state while an ordinary MCP call completes and resumes', async () => {
+    fetchMock.mockResolvedValue(response([]));
+    let mounts = 0;
+    function StatefulRow() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      const [expanded, setExpanded] = useState(false);
+      return (
+        <button type="button" onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Expanded row' : 'Collapsed row'}
+        </button>
+      );
+    }
+    const client = new QueryClient();
+    const tree = (result?: unknown) => (
+      <QueryClientProvider client={client}>
+        <TranscriptAppTools
+          calls={[{ toolCallId: 'ordinary', toolName: 'demo/read', result }]}
+        >
+          {() => <StatefulRow />}
+        </TranscriptAppTools>
+      </QueryClientProvider>
+    );
+    const view = render(tree());
+    fireEvent.click(screen.getByText('Collapsed row'));
+    view.rerender(tree({ content: [] }));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    view.rerender(tree());
+    expect(screen.getByText('Expanded row')).toBeTruthy();
+    expect(mounts).toBe(1);
+  });
+
+  test('keeps completed app calls in the streaming transcript outside the batch sheet', async () => {
+    fetchMock.mockResolvedValue(response(['chart']));
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <StreamingMessageView
+          sessionId="stream"
+          agentIcon={null}
+          agentIconStyle={{}}
+          fontSize={14}
+          contentParts={[
+            {
+              type: 'tool-invocation',
+              toolCallId: 'app-call',
+              toolName: 'demo/chart',
+              result: {
+                content: [],
+                _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+              },
+            },
+          ]}
+          streamingText=""
+          hasContent
+          contentRevision={1}
+          elapsedMs={0}
+          renderToolCall={(part) => (
+            <span key={part.toolCallId}>Visible {part.toolName}</span>
+          )}
+        />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Visible demo/chart')).toBeTruthy();
+  });
+
+  test('keeps app candidates visible outside desktop batches and folded mobile work', () => {
+    const parts = [
+      {
+        type: 'tool-invocation',
+        toolCallId: 'a',
+        toolName: 'read_file',
+        result: 'a',
+      },
+      { type: 'text', content: 'Checking' },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'b',
+        toolName: 'demo/chart',
+        result: {
+          content: [],
+          _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+        },
+      },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'c',
+        toolName: 'read_file',
+        result: 'c',
+      },
+      { type: 'text', content: 'Done' },
+    ];
+    for (const split of [splitToolCallRuns, foldTurnWork]) {
+      expect(split(parts, new Set(['demo/chart']))).toContainEqual({
+        type: 'content-part',
+        index: 2,
+        part: parts[2],
+      });
+    }
+  });
+
+  test.each([false, true])(
+    'ordinary MCP calls stay plain rows on native=%s without resolving an unknown engine server',
+    async (native) => {
+      mockNativeShell = native;
+      fetchMock.mockResolvedValue(response([]));
+      await act(async () => {
+        renderTranscriptCalls([
+          {
+            type: 'tool-invocation',
+            toolCallId: 'ordinary',
+            toolName: 'engine-only/read',
+            state: 'result',
+            result: { content: [{ type: 'text', text: 'Ordinary result' }] },
+          },
+        ]);
+      });
+      expect(screen.getByText('Used engine-only/read')).toBeTruthy();
+      expect(
+        screen.queryByText(
+          /MCP UI unsupported|MCP server unavailable|MCP UI failed to load/,
+        ),
+      ).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toContain('/engine-only/ui-tools');
+    },
+  );
+
+  test('an unresolved recorded App on native leaves only its tool row', () => {
+    mockNativeShell = true;
+    renderFrame({
+      ref: 'demo/chart',
+      transcriptResult: {
+        result: {
+          content: [],
+          _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+        },
+      },
+    });
+    expect(document.querySelector('.mcp-tool-ui-frame')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'missing_server',
+    'missing_tool',
+    'missing_resource',
+    'disconnected',
+    'error',
+  ])(
+    'a recorded app with unsuccessful resolution %s adds no transcript card',
+    async (status) => {
+      fetchMock.mockImplementation(() =>
+        status === 'error'
+          ? Promise.reject(new Error('resolver offline'))
+          : Promise.resolve(response({ status, ref: 'demo/chart' })),
+      );
+      const frame = renderFrame({
+        ref: 'demo/chart',
+        transcriptResult: {
+          result: {
+            content: [],
+            _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+          },
+        },
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      await waitFor(() => expect(frame.queryClient.isFetching()).toBe(0));
+      await waitFor(() =>
+        expect(document.querySelector('.mcp-tool-ui-frame')).toBeNull(),
+      );
+    },
+  );
+
+  test('shows render revocation for a catalog-confirmed transcript App without reading its resource', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        response(
+          url.endsWith('/ui-tools')
+            ? ['chart']
+            : { status: 'render_revoked', ref: 'demo/chart' },
+        ),
+      ),
+    );
+    renderTranscriptCalls([
+      {
+        type: 'tool-invocation',
+        toolCallId: 'revoked',
+        toolName: 'demo/chart',
+        result: { content: [] },
+      },
+    ]);
+    expect(
+      await screen.findByText('Rendering disabled for this server'),
+    ).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith('/resource')),
+    ).toBe(false);
+  });
+
+  test('result UI metadata alone cannot mount an ordinary catalog tool', async () => {
+    fetchMock.mockResolvedValue(response([]));
+    const view = renderTranscriptCalls([
+      {
+        type: 'tool-invocation',
+        toolCallId: 'spoofed',
+        toolName: 'demo/read',
+        result: {
+          content: [],
+          _meta: { ui: { resourceUri: 'ui://spoofed/app' } },
+        },
+      },
+    ]);
+    await waitFor(() => expect(view.queryClient.isFetching()).toBe(0));
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://localhost:3141/integrations/demo/ui-tools',
+    ]);
+  });
+
+  test.each([false, true])(
+    'ordinary MCP calls remain collapsed with foldWork=%s',
+    async (foldWork) => {
+      fetchMock.mockResolvedValue(response([]));
+      renderTranscriptCalls(
+        Array.from({ length: 5 }, (_, index) => ({
+          type: 'tool-invocation',
+          toolCallId: `ordinary-${index}`,
+          toolName: 'demo/read',
+          state: 'result',
+          result: { content: [{ type: 'text', text: 'Ordinary result' }] },
+        })),
+        foldWork,
+      );
+      expect(await screen.findByRole('button', { name: /5/ })).toBeTruthy();
+      expect(screen.queryByText('Used demo/read')).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toContain('/demo/ui-tools');
+    },
+  );
+
+  test('does not split ambiguous provider MCP names into a different server', async () => {
+    fetchMock.mockResolvedValue(
+      response({ status: 'missing_server', ref: 'my/srv__chart' }),
+    );
+    await act(async () => {
+      renderTranscriptCalls([
+        {
+          type: 'tool-invocation',
+          toolCallId: 'ambiguous',
+          toolName: 'mcp__my__srv__chart',
+          result: {
+            content: [],
+            _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+          },
+        },
+      ]);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('.mcp-tool-ui-frame')).toBeNull();
+  });
+
+  test('uses explicit provider server identity instead of splitting its MCP name', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        response(
+          url.endsWith('/ui-tools')
+            ? ['chart']
+            : url.endsWith('/resource')
+              ? { uri: 'ui://demo/chart', text: '<main>Chart</main>' }
+              : {
+                  status: 'success',
+                  ref: 'my__srv/chart',
+                  resourceUri: 'ui://demo/chart',
+                },
+        ),
+      ),
+    );
+    renderTranscriptCalls([
+      {
+        type: 'tool-invocation',
+        toolCallId: 'explicit',
+        toolName: 'mcp__my__srv__chart',
+        server: 'my__srv',
+        originalName: 'chart',
+        result: {
+          content: [],
+          _meta: { ui: { resourceUri: 'ui://demo/chart' } },
+        },
+      },
+    ]);
+    expect(await screen.findByTitle('MCP tool UI: my__srv/chart')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.every(
+        ([url]) =>
+          String(url).includes('/my__srv/ui/chart') ||
+          String(url).endsWith('/my__srv/ui-tools'),
+      ),
+    ).toBe(true);
+  });
+
+  test.each([
+    { ref: 'demo/chart', resourceUri: 'ui://demo/chart', initialArguments: {} },
+    {
+      ref: 'station-control/get_session_inventory',
+      resourceUri: 'ui://station/basis/session-inventory/v2',
+      initialArguments: {
+        version: 'station.session-inventory-mcp/v2',
+        operation: 'open',
+        scope: { kind: 'whole-session', sessionId: 'session' },
+      },
+    },
+  ])(
+    'transcript $ref grants no forwarding capabilities and refuses tools under a non-read-only pane policy',
+    async ({ ref, resourceUri, initialArguments }) => {
+      mockRequestAuthority = { isCurrent: () => true };
+      fetchMock.mockImplementation((url: string) =>
+        Promise.resolve(
+          response(
+            url.endsWith('/resource')
+              ? { uri: resourceUri, text: '<main>Chart</main>' }
+              : {
+                  status: 'success',
+                  ref,
+                  resourceUri,
+                },
+          ),
+        ),
+      );
+      renderFrame({
+        ref,
+        approvalPolicy: 'require',
+        initialArguments,
+        transcriptResult: {
+          result: {
+            content: [],
+            _meta: { ui: { resourceUri } },
+          },
+        },
+      });
+      const iframe = await screen.findByTitle<HTMLIFrameElement>(
+        `MCP tool UI: ${ref}`,
+      );
+      const target = iframe.contentWindow!;
+      const sent = vi.spyOn(target, 'postMessage');
+      const send = (data: unknown) =>
+        window.dispatchEvent(
+          new MessageEvent('message', { data, source: target }),
+        );
+      send({
+        jsonrpc: '2.0',
+        id: 101,
+        method: 'ui/initialize',
+        params: {
+          appInfo: { name: 'Chart', version: '1' },
+          appCapabilities: {},
+          protocolVersion: '2026-01-26',
+        },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 101, result: expect.any(Object) }),
+          '*',
+        ),
+      );
+      const initialized = sent.mock.calls.find(
+        ([value]) => value.id === 101,
+      )?.[0];
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'serverTools',
+      );
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'serverResources',
+      );
+      expect(initialized.result.hostCapabilities).not.toHaveProperty(
+        'openLinks',
+      );
+      send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+      send({
+        jsonrpc: '2.0',
+        id: 102,
+        method: 'tools/call',
+        params: { name: 'mutate', arguments: {} },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 102,
+            error: expect.objectContaining({
+              message:
+                'App interactions are unavailable in transcript previews.',
+            }),
+          }),
+          '*',
+        ),
+      );
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).endsWith('/ui/call')),
+      ).toBe(false);
+    },
+  );
+
   test('reports fixed host dimensions and safe-area boundaries without granting layout authority', () => {
     document.documentElement.style.setProperty('--safe-top', '12px');
     document.documentElement.style.setProperty('--safe-bottom', '8px');
@@ -2046,8 +2626,10 @@ function renderFrame({
   basisReadSession,
   openExternalLink,
   includeThemeToggle = false,
+  transcriptResult,
 }: {
   ref: string;
+  transcriptResult?: MCPToolUIFrameProps['transcriptResult'];
   fallbackComponent?: ReactNode;
   fallbackComponentName?: string;
   approvalPolicy?: 'inherit' | 'require' | 'read-only';
@@ -2097,6 +2679,7 @@ function renderFrame({
               ? { ...initialArguments }
               : undefined,
         }}
+        transcriptResult={transcriptResult}
         fallbackComponent={fallbackComponent}
         fallbackComponentName={fallbackComponentName}
         onResolutionStatus={onResolutionStatus}
@@ -2117,6 +2700,7 @@ function renderFrame({
   const result = render(renderTree());
   return {
     ...result,
+    queryClient,
     rerenderBasisTask: (basisTaskId: string) =>
       result.rerender(renderTree({ basisTaskId })),
     rerenderDisplayMode: (displayMode: 'inline' | 'fullscreen') =>
@@ -2143,4 +2727,29 @@ function response(data: unknown, meta?: Record<string, unknown>) {
     statusText: 'OK',
     json: async () => ({ success: true, data, ...(meta ? { meta } : {}) }),
   };
+}
+
+function renderTranscriptCalls(
+  calls: NonNullable<
+    React.ComponentProps<typeof MessageContent>['contentParts']
+  >,
+  foldWork = false,
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <MessageContent
+        contentParts={calls}
+        textContent=""
+        chatFontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        isStreamingMessage={false}
+        foldWork={foldWork}
+      />
+    </QueryClientProvider>,
+  );
+  return { ...view, queryClient };
 }

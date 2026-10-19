@@ -380,7 +380,7 @@ A public or custom plugin was disabled after a crash.
 - `event`: {"domain":["station_daily"]}
 - `event_id`: {"domain":"uuid-v4"}
 - `version`: {"domain":"public-release-version-or-custom","maxLength":64}
-- `channel`: {"domain":["stable","preview","nightly","dev","source-checkout"]}
+- `channel`: {"domain":["stable","preview","nightly","dev","source-checkout","unknown"]}
 - `platform`: {"domain":["aix","android","cygwin","darwin","freebsd","haiku","linux","netbsd","openbsd","sunos","win32"]}
 - `arch`: {"domain":["arm","arm64","ia32","loong64","mips","mipsel","ppc","ppc64","riscv64","s390","s390x","x64"]}
 - `surfaces_today`: {"domain":["desktop","web","ios","android","cli"],"arrayMax":5}
@@ -389,12 +389,12 @@ A public or custom plugin was disabled after a crash.
 - `install_age_bucket`: {"domain":["0d","1-7d","8-30d","31-90d","91d+"]}
 - `paired_devices_bucket`: {"domain":["0","1","2-3","4+"]}
 - `engines_used_today`: {"domain":["station","acp","bedrock","claude","codex","muse","ollama","other"],"arrayMax":8}
-- `distribution`: {"domain":"public-registry-id-or-none-or-custom","maxLength":128}
+- `distribution`: {"domain":"public-registry-id-or-none-or-custom-or-unknown","maxLength":128}
 - `public_plugins_enabled`: {"domain":"public-registry-id","arrayMax":20,"maxLength":128}
 - `private_plugins_bucket`: {"domain":["0","1","2-3","4+"]}
 - `branding_overridden`: {"domain":"boolean"}
 - `home_replaced`: {"domain":"boolean"}
-- `layouts_customized`: {"domain":"boolean"}
+- `layouts_customized`: {"domain":"boolean-or-unknown"}
 - `setup_abandoned_step`: {"domain":["none","welcome","connection","engine","project","pairing","finish"]}
 - `engine_connect_failures`: {"domain":"engine-count-buckets","arrayMax":8}
 - `safe_mode_entered`: {"domain":"count","max":65535}

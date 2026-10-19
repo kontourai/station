@@ -112,8 +112,8 @@ export interface RespondToRequestInput {
    */
   content?: InputRequestContent;
   /**
-   * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness answer;
-   * send `content` instead.
+   * @deprecated since 0.9.0; retained for compatibility. A pre-#3390 harness
+   * answer; send `content` instead.
    */
   answers?: HarnessQuestionAnswers;
 }

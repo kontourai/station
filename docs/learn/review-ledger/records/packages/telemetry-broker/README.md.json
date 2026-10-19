@@ -62,7 +62,11 @@
 
     "packages/telemetry-broker/src/public-domain.ts",
 
-    "packages/telemetry-broker/src/__tests__/lite-weekly.test.ts"
+    "packages/telemetry-broker/src/__tests__/lite-weekly.test.ts",
+
+    "packages/telemetry-broker/src/client-address.ts",
+
+    "packages/telemetry-broker/qualify-sender.mjs"
   ],
 
   "checks": [

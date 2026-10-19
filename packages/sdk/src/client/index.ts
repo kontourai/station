@@ -21,7 +21,9 @@
  * `.kontourai/flow-agents/cli-harness/cli-coverage-audit.md`'s §3
  * triplication inventory (excluding app config, `#175`, and plugin
  * install/update/remove — genuinely different mechanisms, tracked
- * separately) — not a general-purpose HTTP client for every Station route.
+ * separately). The credential-aware `getJson` primitive is also available
+ * here so optional browser features can read catalogs without importing the
+ * SDK's React entry.
  */
 
 export * from './account-preferences';
@@ -64,6 +66,7 @@ export {
   fetchSSE,
   getClientRawEgressPolicy,
   getClientRequestTimeout,
+  getJson,
   isApiRequestScope,
   notifyCredentialChanged,
   StationCredentialConflictError,

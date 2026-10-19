@@ -618,6 +618,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
   method: 'tool.completed';
+  /** Station stamps this from an already-open tool definition, never from result metadata. */
+  mcpAppResourceUri?: string;
   itemId: string;
   toolCallId: string;
   toolName: string;

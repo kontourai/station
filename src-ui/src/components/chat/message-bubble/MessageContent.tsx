@@ -20,7 +20,12 @@ import {
   usePreloadToolCallBatch,
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
-import { foldTurnWork, splitToolCallRuns } from '../tool-call-runs';
+import { TranscriptAppTools } from '../TranscriptAppTools';
+import {
+  foldTurnWork,
+  isToolCallPart,
+  splitToolCallRuns,
+} from '../tool-call-runs';
 import { useTranscriptChildBlocks } from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 import { uiBlockIdentity } from '../ui-block-identity';
@@ -69,7 +74,8 @@ function MessageContentComponent({
   isStreamingMessage,
   foldWork = false,
   onToolApproval,
-}: MessageContentProps) {
+  appTools,
+}: MessageContentProps & { appTools: ReadonlySet<string> }) {
   // Consecutive tool-call parts collapse into one batch (`LazyToolCallBatch`);
   // any other part in between — prose, reasoning, a file, a UI block —
   // breaks the run, so the agent's words between tool calls are never
@@ -81,8 +87,10 @@ function MessageContentComponent({
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork ? foldTurnWork(parts) : splitToolCallRuns(parts);
-  }, [contentParts, textContent, foldWork]);
+    return foldWork
+      ? foldTurnWork(parts, appTools)
+      : splitToolCallRuns(parts, appTools);
+  }, [contentParts, textContent, foldWork, appTools]);
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
@@ -186,6 +194,7 @@ function MessageContentComponent({
           }
 
           const { index, part } = block;
+          if (isToolCallPart(part)) return renderToolCall(part, index);
           if (part.type === 'reasoning' && part.content) {
             // #2211: reasoning is the STREAMING row's follow-along surface.
             // Once a row settles, the reasoning record opens from the turn's
@@ -307,7 +316,12 @@ function areMessageContentPropsEqual(
   );
 }
 
-export const MessageContent = memo(
-  MessageContentComponent,
-  areMessageContentPropsEqual,
-);
+export const MessageContent = memo(function MessageContentWithApps(
+  props: MessageContentProps,
+) {
+  return (
+    <TranscriptAppTools calls={props.contentParts ?? []}>
+      {(appTools) => <MessageContentComponent {...props} appTools={appTools} />}
+    </TranscriptAppTools>
+  );
+}, areMessageContentPropsEqual);
