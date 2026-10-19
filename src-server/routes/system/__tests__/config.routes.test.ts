@@ -2015,3 +2015,112 @@ describe('first-run decisions', () => {
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
   });
 });
+
+describe('PUT /config/app refusal diagnostics', () => {
+  test.each([
+    {
+      reason: 'telemetry_choice_not_granted',
+      body: { telemetryTier: { operator: 'full' } },
+      initial: { telemetryTier: { kontour: 'off', operator: 'off' } },
+      telemetryChanges: {
+        kontour: { before: 'off', after: 'off' },
+        operator: { before: 'off', after: 'full' },
+      },
+    },
+    {
+      reason: 'telemetry_choice_not_granted',
+      body: { telemetryTier: { operator: 'off' } },
+      initial: { telemetryTier: { operator: 'full' } },
+      agentMarker: true,
+      telemetryChanges: { operator: { before: 'full', after: 'off' } },
+    },
+    {
+      reason: 'full_access_default_not_granted',
+      body: { defaultApprovalMode: 'never' },
+    },
+    {
+      reason: 'project_contribution_operator_required',
+      body: { contribution: { 'project:prj_1': { enabled: true } } },
+    },
+    {
+      reason: 'scope_command_not_granted',
+      body: { terminalShell: '/private/command' },
+    },
+    {
+      reason: 'scope_agent_command_not_granted',
+      body: { terminalShell: '/private/command' },
+      internal: true,
+    },
+    {
+      reason: 'scope_telemetry_destination_not_granted',
+      body: { productTelemetryKeyRef: 'private-key-reference' },
+    },
+    {
+      reason: 'scope_agent_telemetry_destination_not_granted',
+      body: { productTelemetryEndpoint: 'https://private.example.test' },
+      internal: true,
+    },
+    {
+      reason: 'scope_inference_contribution_not_granted',
+      body: { fleetContribution: { enabled: true } },
+      invoke: true,
+    },
+    {
+      reason: 'scope_inference_contribution_not_granted',
+      body: { contribution: { 'project:prj_1': { enabled: true } } },
+      invoke: true,
+    },
+  ])('logs one value-free $reason refusal ($body)', async (scenario) => {
+    mockLogger.warn.mockClear();
+    const loader = createMockConfigLoader({
+      defaultModel: 'private-model',
+      defaultApprovalMode: 'safer',
+      ...scenario.initial,
+    });
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: scenario.internal ? 'internal' : 'credential',
+        credential: 'private-credential',
+        authority: scenario.internal
+          ? 'operator-credential'
+          : 'device-credential',
+        ...(scenario.internal
+          ? {}
+          : { deviceKind: 'device', deviceId: 'private-device-id' }),
+        source: 'bearer',
+      });
+      setGrantedPairingScope(
+        c as never,
+        `orchestration:read orchestration:operate${scenario.invoke ? ' inference:invoke' : ''}`,
+      );
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as never, mockLogger));
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        ...(scenario.agentMarker
+          ? { 'x-station-control-origin': 'agent-tool' }
+          : {}),
+      },
+      body: JSON.stringify(scenario.body),
+    });
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    expect(mockLogger.warn.mock.calls).toEqual([
+      [
+        'App config update refused',
+        {
+          reason: scenario.reason,
+          principalKind: scenario.internal ? 'internal' : 'credential',
+          deviceKind: scenario.internal ? 'none' : 'device',
+          ...(scenario.telemetryChanges
+            ? { telemetryChanges: scenario.telemetryChanges }
+            : {}),
+        },
+      ],
+    ]);
+  });
+});

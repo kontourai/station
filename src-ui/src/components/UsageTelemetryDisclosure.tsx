@@ -273,13 +273,17 @@ async function responseData(response: Response): Promise<Disclosure> {
       'Update this app to acknowledge the current usage telemetry inventory.',
     );
   if (response.status === 503) throw new UsageTelemetryNotReadyError();
+  if (!response.ok)
+    throw new Error('Usage telemetry disclosure could not be loaded.');
+  return (await response.json()).data;
+}
+
+async function acknowledgementData(response: Response): Promise<Disclosure> {
   if (response.status === 403)
     throw new UsageTelemetryAcknowledgementForbiddenError(
       'This device cannot acknowledge Full usage telemetry. The operator can review it in Settings.',
     );
-  if (!response.ok)
-    throw new Error('Usage telemetry disclosure could not be loaded.');
-  return (await response.json()).data;
+  return responseData(response);
 }
 
 /**
@@ -416,7 +420,7 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
             inventoryRevision,
           }),
         },
-      ).then(responseData),
+      ).then(acknowledgementData),
     onSuccess: (data) => {
       queryClient.setQueryData(['usage-telemetry-disclosure', apiBase], data);
       onAcknowledged?.();
@@ -766,7 +770,7 @@ function useUsageTelemetryDecision(
           inventoryRevision: target.inventoryRevision,
         },
       );
-      return responseData(response);
+      return acknowledgementData(response);
     },
     onSuccess: (ackData, target) => {
       queryClient.setQueryData(

@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
-import { expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { saveAppConfigFile } from '../../../domain/config-loader-app.js';
 import { ensureStationHomeSchemaSync } from '../../../domain/home-schema-gate.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -18,23 +19,40 @@ import { createConfigRoutes } from '../config.js';
 
 const makeTempDir = trackTempDirs();
 
-test.each([false, true])(
-  'a real standard paired credential keeps migrated legacy Off, lowers Full, and cannot raise or acknowledge (agent marker: %s)',
-  async (agentMarker) => {
+afterEach(() => vi.unstubAllEnvs());
+
+test.each([
+  { tier: undefined, legacy: undefined, dnt: '' },
+  { tier: 'off', legacy: undefined, dnt: '' },
+  { tier: 'lite', legacy: undefined, dnt: '' },
+  { tier: 'full', legacy: undefined, dnt: '' },
+  { tier: undefined, legacy: 'false', dnt: '' },
+  { tier: undefined, legacy: 'true', dnt: '' },
+  { tier: 'lite', legacy: 'true', dnt: '1' },
+])(
+  'a real STANDARD paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
+  async ({ tier, legacy, dnt }) => {
+    vi.stubEnv('STATION_CHANNEL', 'nightly');
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
+    vi.stubEnv('STATION_TELEMETRY_TIER', tier);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', legacy);
+    vi.stubEnv('STATION_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('DO_NOT_TRACK', dnt);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENDPOINT', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
     const home = makeTempDir('station-paired-telemetry-');
     ensureStationHomeSchemaSync(home);
     mkdirSync(join(home, 'config'), { recursive: true });
     const configPath = join(home, 'config', 'app.json');
     const receiptPath = join(home, 'config', 'usage-telemetry-disclosure.json');
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        defaultModel: '',
-        invokeModel: '',
-        structureModel: '',
-        telemetryEnabled: false,
-      }),
-    );
+    const legacyConfig = {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      telemetryEnabled: false,
+    };
+    await saveAppConfigFile(home, legacyConfig);
+    expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(legacyConfig);
     const staleReceipt = JSON.stringify({
       acknowledgedAt: '2026-01-01T00:00:00.000Z',
       inventoryRevision: 'stale',
@@ -93,7 +111,7 @@ test.each([false, true])(
       appConfig: config,
       logger,
       version: '1.2.3',
-      env: {},
+      env: process.env,
     });
     app.route('/config', createConfigRoutes(loader, logger));
     app.route(
@@ -108,9 +126,6 @@ test.each([false, true])(
           headers: {
             Authorization: `Bearer ${paired.credential}`,
             'content-type': 'application/json',
-            ...(agentMarker
-              ? { 'x-station-control-origin': 'agent-tool' }
-              : {}),
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
@@ -128,14 +143,19 @@ test.each([false, true])(
         endpointConfigured: false,
         publishers: { operator: { tier: 'off' } },
       });
-      const keep = await call('/config/app', 'PUT', {
-        telemetryTier: { operator: 'off' },
-      });
-      expect(await keep.json()).toMatchObject({
-        success: true,
-        data: { telemetryTier: { kontour: 'off', operator: 'off' } },
-      });
-      expect(keep.status).toBe(200);
+      // Reintroduce the old writer's file after the disclosure read as well:
+      // mutation must compare the freshly migrated serialized current value.
+      await saveAppConfigFile(home, legacyConfig);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const keep = await call('/config/app', 'PUT', {
+          telemetryTier: { operator: 'off' },
+        });
+        expect(keep.status).toBe(200);
+        expect(await keep.json()).toMatchObject({
+          success: true,
+          data: { telemetryTier: { kontour: 'off', operator: 'off' } },
+        });
+      }
       for (const tier of ['lite', 'full'])
         expect(
           (

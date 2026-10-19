@@ -39,6 +39,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -586,5 +587,151 @@ describe('paired-device disclosure decisions', () => {
       ),
     ).toEqual([]);
     view.unmount();
+  });
+});
+
+describe('protected Settings disclosure decisions (real SDK)', () => {
+  function renderProtectedTree() {
+    client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    return render(
+      <ApiBaseProvider>
+        <ConnectionsProbe />
+        <QueryClientProvider client={client}>
+          <UsageTelemetryDisclosure />
+          <UsageTelemetryDisclosure firstRun />
+        </QueryClientProvider>
+      </ApiBaseProvider>,
+    );
+  }
+
+  it('Settings saves Off and persists a revision-bound decision after a forbidden acknowledgement without inventing a receipt', async () => {
+    harness = createHarness();
+    installFetchDouble(harness);
+    let disclosure = {
+      ...DISCLOSURE_BODY,
+      endpointConfigured: true,
+      telemetryEnabled: false,
+      publishers: offPublishers,
+    };
+    harness.plan.set('', async () => {
+      const request = harness.fetchLog.at(-1)!;
+      if (request.url.endsWith('/config/app'))
+        return okResponse({
+          success: true,
+          data: { telemetryTier: { kontour: 'off', operator: 'off' } },
+        });
+      if (request.url.endsWith('/disclosure/acknowledgements'))
+        return Response.json(
+          { error: { code: 'insufficient_scope' } },
+          { status: 403 },
+        );
+      if (request.url.endsWith('/disclosure'))
+        return okResponse(disclosureEnvelope(disclosure));
+      throw new Error(`Unexpected Settings request: ${request.url}`);
+    });
+    const view = renderProtectedTree();
+    const home = await addHome('protected-consent');
+    await switchTo(home.id);
+    const settings = await screen.findByRole('region', {
+      name: 'Usage telemetry disclosure',
+    });
+    await screen.findByRole('dialog');
+    fireEvent.click(
+      within(settings).getByRole('button', {
+        name: 'Keep usage telemetry off',
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const writes = harness.fetchLog.filter((entry) => entry.method !== 'GET');
+    expect(writes.map(({ url, method }) => ({ url, method }))).toEqual([
+      { url: `${home.url}/config/app`, method: 'PUT' },
+      {
+        url: `${home.url}/api/usage-telemetry/disclosure/acknowledgements`,
+        method: 'POST',
+      },
+    ]);
+    expect(JSON.parse(String(writes[0].body))).toEqual({
+      telemetryTier: { operator: 'off' },
+    });
+    expect(
+      client.getQueryData(['usage-telemetry-disclosure', home.url]),
+    ).toMatchObject({ acknowledged: false });
+    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
+    const persisted = localStorage.getItem(
+      'station.usage-telemetry-disclosure.dnt-decisions',
+    );
+    expect(JSON.parse(persisted!)).toEqual({
+      [home.url]: DISCLOSURE_BODY.inventoryRevision,
+    });
+    view.unmount();
+    client.clear();
+    resetUsageTelemetryDisclosureDismissal();
+    localStorage.setItem(
+      'station.usage-telemetry-disclosure.dnt-decisions',
+      persisted!,
+    );
+    const reload = renderProtectedTree();
+    await screen.findByRole('region', { name: 'Usage telemetry disclosure' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
+    disclosure = {
+      ...disclosure,
+      inventoryRevision: 'next-protected-revision',
+    };
+    await act(async () => {
+      await client.invalidateQueries({
+        queryKey: ['usage-telemetry-disclosure', home.url],
+      });
+    });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    reload.unmount();
+    client.clear();
+  });
+
+  it('a forbidden disclosure read sends no mutation and records no local decision', async () => {
+    harness = createHarness();
+    installFetchDouble(harness);
+    harness.plan.set('', async () => {
+      const request = harness.fetchLog.at(-1)!;
+      if (request.url.endsWith('/config/app'))
+        return okResponse({
+          success: true,
+          data: { telemetryTier: { operator: 'off' } },
+        });
+      if (request.url.endsWith('/disclosure'))
+        return Response.json(
+          { error: { code: 'insufficient_scope' } },
+          { status: 403 },
+        );
+      throw new Error(`Unexpected Settings request: ${request.url}`);
+    });
+    const view = renderProtectedTree();
+    const home = await addHome('protected-forbidden-read');
+    await switchTo(home.id);
+    await waitFor(() =>
+      expect(
+        client.getQueryState(['usage-telemetry-disclosure', home.url])?.status,
+      ).toBe('error'),
+    );
+    expect(
+      client.getQueryState(['usage-telemetry-disclosure', home.url])?.error,
+    ).toMatchObject({
+      name: 'Error',
+      message: 'Usage telemetry disclosure could not be loaded.',
+    });
+    expect(
+      localStorage.getItem('station.usage-telemetry-disclosure.dnt-decisions'),
+    ).toBeNull();
+    expect(harness.fetchLog.filter((entry) => entry.method !== 'GET')).toEqual(
+      [],
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.unmount();
+    client.clear();
   });
 });

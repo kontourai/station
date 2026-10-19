@@ -25,10 +25,9 @@ disclosure revision across reloads. It does not create a server receipt or
 authorize Full; a changed revision or a saved Full choice prompts again.
 Setting-save failures show the server's refusal message.
 
-A standard paired device may lower or keep tiers, including requests carrying
-an agent-origin marker; that marker never grants a raise. Only the operator or
-a device with `access:manage` may raise tiers. Internal agent callers cannot
-change telemetry choices; agent-originated requests cannot acknowledge the
+A standard paired device may lower or keep tiers. Only the operator or
+a device with `access:manage` may raise tiers. Agent-originated requests cannot
+change telemetry choices or acknowledge the
 disclosure, even with `access:manage`.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously

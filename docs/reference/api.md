@@ -1182,12 +1182,16 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
 preserved. Raising a tier requires the operator or `access:manage`; a standard
-paired device may lower or keep it, even with an agent-origin marker. Internal
-agent callers are refused; the marker never grants a raise. `telemetryTier` must be an object
+paired device may lower or keep it. Agent-originated requests cannot change
+telemetry choices. `telemetryTier` must be an object
 with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. Full without a current
 publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+Handler refusals from `PUT /config/app` log `App config update refused` with a
+stable `reason`, `principalKind`, and `deviceKind`. Telemetry choice refusals
+also include `telemetryChanges` with per-publisher `before`/`after` tier names;
+no credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
 Only the existing operator Full stream has a sender in this foundation. The
