@@ -10,6 +10,18 @@
  * written by the child) and `service-state.json` (everything after the
  * launcher accepted it, written by the launcher). Both the CLI and the server
  * read and write these through this module.
+ *
+ * Stage and apply (#3851 slice 4). A request's `mode` splits the one update
+ * into two steps the server asks for separately: `stage` downloads and
+ * verifies a version into the install and ends `staged` (written to the
+ * result file) with the running server untouched; `apply` hands a staged
+ * version to the launcher's trial and never downloads. A request without a
+ * mode does both, as it always has: install.sh (`station upgrade`) and
+ * clients older than #3851 write those. The launcher itself is unchanged:
+ * it is frozen at `service install`, so the split lives entirely in the
+ * versioned child and these files, and an already installed launcher keeps
+ * working. While staging, the child records the installer's reported step
+ * and the bytes downloaded so far in `update-stage-progress.json`.
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -23,6 +35,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type {
+  ServiceStagePhase,
+  ServiceUpdateIntent,
   ServiceUpdatePhase,
   ServiceUpdateProgress,
 } from '@kontourai/station-contracts/system-status';
@@ -71,19 +85,28 @@ export function serviceUpdatePaths(installRoot: string) {
     request: join(runtime, 'update-request.json'),
     processing: join(runtime, 'update-request.processing.json'),
     result: join(runtime, 'update-request-result.json'),
+    stageProgress: join(runtime, 'update-stage-progress.json'),
     state: join(runtime, 'service-state.json'),
   };
 }
 
+/** What a request asks for; absent is the combined update (see the header). */
+export type ServiceUpdateRequestMode = 'stage' | 'apply';
+
 export interface ServiceUpdateRequest {
   id: string;
   requestedAt: string;
-  /** An exact version, or absent for the newest the install's manifest names. */
+  /**
+   * An exact version, or absent for the newest the install's manifest names.
+   * Required for `apply`: an apply names the staged version it was offered.
+   */
   targetVersion?: string;
+  mode?: ServiceUpdateRequestMode;
 }
 
 export type ServiceUpdateRequestResult =
   | { requestId: string; status: 'up-to-date'; version: string; at: string }
+  | { requestId: string; status: 'staged'; version: string; at: string }
   | {
       requestId: string;
       status: 'failed' | 'rejected';
@@ -151,9 +174,12 @@ export class ServiceUpdateAlreadyRequestedError extends Error {
 export function writeServiceUpdateRequest(
   installRoot: string,
   targetVersion?: string,
+  options: { mode?: ServiceUpdateRequestMode } = {},
 ): ServiceUpdateRequest {
   if (targetVersion !== undefined && !VERSION.test(targetVersion))
     throw new Error(`Not an exact Station version: ${targetVersion}`);
+  if (options.mode === 'apply' && targetVersion === undefined)
+    throw new Error('An apply request names the staged version it applies.');
   const paths = serviceUpdatePaths(installRoot);
   if (existsSync(paths.request) || existsSync(paths.processing)) {
     throw new ServiceUpdateAlreadyRequestedError();
@@ -163,6 +189,7 @@ export function writeServiceUpdateRequest(
     id: randomUUID(),
     requestedAt: new Date().toISOString(),
     ...(targetVersion ? { targetVersion } : {}),
+    ...(options.mode ? { mode: options.mode } : {}),
   };
   const temp = temporaryPath(paths.request);
   writeTemporaryFile(temp, `${JSON.stringify(request)}\n`);
@@ -189,12 +216,105 @@ export function parseServiceUpdateRequest(
       typeof value.requestedAt !== 'string' ||
       (value.targetVersion !== undefined &&
         (typeof value.targetVersion !== 'string' ||
-          !VERSION.test(value.targetVersion)))
+          !VERSION.test(value.targetVersion))) ||
+      (value.mode !== undefined &&
+        value.mode !== 'stage' &&
+        value.mode !== 'apply') ||
+      (value.mode === 'apply' && value.targetVersion === undefined)
     )
       return null;
     return value as ServiceUpdateRequest;
   } catch {
     return null;
+  }
+}
+
+/**
+ * The staging step the child last observed for `requestId` (#3851): the
+ * installer's reported phase and, while downloading, the archive's size on
+ * disk against the signed manifest's size. Written by the child only.
+ */
+export interface ServiceStageProgress {
+  requestId: string;
+  phase: ServiceStagePhase;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  at: string;
+}
+
+const STAGE_PHASES: readonly ServiceStagePhase[] = [
+  'downloading',
+  'verifying',
+  'installing',
+];
+
+export function isServiceStagePhase(
+  value: unknown,
+): value is ServiceStagePhase {
+  return STAGE_PHASES.includes(value as ServiceStagePhase);
+}
+
+export function writeServiceStageProgress(
+  installRoot: string,
+  progress: ServiceStageProgress,
+): void {
+  writeJsonAtomically(serviceUpdatePaths(installRoot).stageProgress, progress);
+}
+
+function isByteCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+/** The recorded stage step, when it belongs to `requestId` and is well formed. */
+function stageProgressFor(
+  installRoot: string,
+  requestId: string,
+): Pick<
+  Extract<ServiceUpdateProgress, { state: 'staging' }>,
+  'stagePhase' | 'downloadedBytes' | 'totalBytes'
+> {
+  const file = readJson(serviceUpdatePaths(installRoot).stageProgress);
+  if (file.kind !== 'ok') return {};
+  const value = record(file.value);
+  if (
+    !value ||
+    value.requestId !== requestId ||
+    !isServiceStagePhase(value.phase)
+  )
+    return {};
+  const bytes =
+    value.phase === 'downloading' &&
+    isByteCount(value.downloadedBytes) &&
+    isByteCount(value.totalBytes) &&
+    value.totalBytes > 0
+      ? {
+          // Never more than the signed size: the installer refuses a larger
+          // archive, so a larger count is not progress toward this one.
+          downloadedBytes: Math.min(value.downloadedBytes, value.totalBytes),
+          totalBytes: value.totalBytes,
+        }
+      : {};
+  return { stagePhase: value.phase, ...bytes };
+}
+
+function requestIntent(request: ServiceUpdateRequest): ServiceUpdateIntent {
+  return request.mode ?? 'update';
+}
+
+/** The same completion check the launcher makes before a trial. */
+export function serviceVersionIsStaged(
+  installRoot: string,
+  version: string,
+): boolean {
+  if (!VERSION.test(version)) return false;
+  const dir = join(installRoot, 'versions', version);
+  try {
+    return (
+      readFileSync(join(dir, '.station-install-complete'), 'utf8').trim() !==
+        '' && existsSync(join(dir, 'bin', 'station.mjs'))
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -247,6 +367,13 @@ function requestResultProgress(value: unknown): ServiceUpdateProgress | null {
     !isTimestamp(result.at)
   )
     return null;
+  if (result.status === 'staged' && isVersion(result.version))
+    return {
+      state: 'staged',
+      requestId: result.requestId,
+      version: result.version,
+      stagedAt: result.at,
+    };
   if (result.status === 'up-to-date' && isVersion(result.version))
     return {
       state: 'up-to-date',
@@ -359,7 +486,14 @@ export function readServiceUpdateProgress(
         : null;
     // An unreadable request is still one the service will claim (and drop).
     if (!request) return { state: 'unavailable' };
-    return { state, requestId: request.id };
+    const intent = requestIntent(request);
+    if (state === 'queued') return { state, requestId: request.id, intent };
+    return {
+      state,
+      requestId: request.id,
+      intent,
+      ...stageProgressFor(installRoot, request.id),
+    };
   }
   const stateFile = readJson(paths.state);
   let launcher: ServiceUpdateProgress | null | undefined;
@@ -370,8 +504,17 @@ export function readServiceUpdateProgress(
     if (launcher?.state === 'updating') return launcher;
   }
   const resultFile = readJson(paths.result);
-  const result =
+  let result =
     resultFile.kind === 'ok' ? requestResultProgress(resultFile.value) : null;
+  // `staged` is a fact about the disk, not only a record: a version pruned
+  // since, or the one the service now runs, is no longer staged.
+  if (
+    result?.state === 'staged' &&
+    (!serviceVersionIsStaged(installRoot, result.version) ||
+      (stateFile.kind === 'ok' &&
+        record(stateFile.value)?.activeVersion === result.version))
+  )
+    result = null;
   const finished = (progress: ServiceUpdateProgress | null | undefined) =>
     progress && 'finishedAt' in progress ? Date.parse(progress.finishedAt) : -1;
   // An update the operator must recover outranks any later request result.

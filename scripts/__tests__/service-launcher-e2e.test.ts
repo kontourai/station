@@ -5,15 +5,22 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { writeServiceUpdateRequest } from '../../packages/cli/src/commands/service-launcher-link.js';
+import {
+  type StageProgressReport,
+  stageServiceUpdate,
+  writeServiceUpdateRequest,
+} from '../../packages/cli/src/commands/service-launcher-link.js';
 import { upsertInstance } from '../../packages/shared/src/instance-registry.js';
+import { readServiceUpdateProgress } from '../../packages/shared/src/service-launcher-protocol.js';
 import { ensureStationHomeSchemaSync } from '../../packages/shared/src/station-home-schema.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -286,6 +293,161 @@ describe('a service updates itself across two real archives (#2675 D)', {
     expect(realpathSync(join(install.installRoot, 'current'))).toBe(
       realpathSync(join(install.installRoot, 'versions', '1.1.0')),
     );
+  });
+
+  it('a stage request downloads N+1 with N’s own installer while N keeps serving; a later apply trials and commits it (#3851)', async () => {
+    const { install, launcher } = await twoArchiveInstall('prepare');
+    const stage = writeServiceUpdateRequest(install.installRoot, undefined, {
+      mode: 'stage',
+    });
+    const staged = await waitFor(
+      'the stage to finish',
+      () => {
+        const progress = readServiceUpdateProgress(install.installRoot);
+        if (progress.state === 'staging-failed')
+          throw new Error(`staging failed: ${progress.reason}`);
+        return progress.state === 'staged' ? progress : undefined;
+      },
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(staged).toMatchObject({ requestId: stage.id, version: '1.1.0' });
+    const version = join(install.installRoot, 'versions', '1.1.0');
+    expect(
+      readFileSync(join(version, '.station-install-complete'), 'utf8'),
+    ).toMatch(/^[0-9a-f]{64}\n$/);
+    // Nothing restarted: N was never stopped, no trial ran, the launcher
+    // recorded no update, and `current` still names N.
+    expect(launcher.process.exitCode).toBeNull();
+    expect(fixtureLog(install)).not.toContain('1.0.0 term');
+    expect(fixtureLog(install)).not.toContain('1.1.0 run trial');
+    expect(
+      fixtureLog(install).filter((line) => line === '1.0.0 ready'),
+    ).toHaveLength(1);
+    expect(readState(install)?.update).toBeUndefined();
+    expect(realpathSync(join(install.installRoot, 'current'))).toBe(
+      realpathSync(join(install.installRoot, 'versions', '1.0.0')),
+    );
+
+    const apply = writeServiceUpdateRequest(install.installRoot, '1.1.0', {
+      mode: 'apply',
+    });
+    const update = await waitFor(
+      'the apply to finish',
+      () => finished(install),
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(update).toMatchObject({
+      status: 'committed',
+      fromVersion: '1.0.0',
+      targetVersion: '1.1.0',
+      requestId: apply.id,
+    });
+    expect(homeSchemaVersion(install)).toBe(3);
+  });
+
+  it('an apply of a staged N+1 that crashes its trial is still rolled back, and N serves the restored home (#3851)', async () => {
+    const { install, launcher } = await twoArchiveInstall('exit');
+    writeServiceUpdateRequest(install.installRoot, undefined, {
+      mode: 'stage',
+    });
+    await waitFor(
+      'the stage to finish',
+      () => readServiceUpdateProgress(install.installRoot).state === 'staged',
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0', { mode: 'apply' });
+    const update = await waitFor(
+      'the apply to finish',
+      () => finished(install),
+      120_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(update).toMatchObject({
+      status: 'rolled-back',
+      reason: 'candidate-exited:3',
+    });
+    await waitFor(
+      'N serving again',
+      () =>
+        fixtureLog(install).filter((line) => line === '1.0.0 ready').length ===
+        2,
+    );
+    expect(homeSchemaVersion(install)).toBe(2);
+    expect(realpathSync(join(install.installRoot, 'current'))).toBe(
+      realpathSync(join(install.installRoot, 'versions', '1.0.0')),
+    );
+  });
+
+  it('install.sh stage-only reports its steps and the archive’s bytes on disk against its signed size (#3851)', async () => {
+    const { install, launcher, env } = await twoArchiveInstall('prepare');
+    // The service is not needed: staging only writes versions/<v>.
+    launcher.process.kill('SIGTERM');
+    await launcher.exited;
+    const {
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: _url,
+      STATION_ROOT: _root,
+      STATION_HOME: _home,
+      STATION_INSTALL_ROOT: _installRoot,
+      ...stagingEnv
+    } = env;
+    const reports: StageProgressReport[] = [];
+    await expect(
+      stageServiceUpdate({
+        installRoot: install.installRoot,
+        version: '1.0.0',
+        env: stagingEnv as NodeJS.ProcessEnv,
+        onProgress: (report) => reports.push(report),
+      }),
+    ).resolves.toBe('1.1.0');
+    const phases = reports.map((report) => report.phase);
+    expect(phases[0]).toBe('downloading');
+    expect([...new Set(phases)]).toEqual([
+      'downloading',
+      'verifying',
+      'installing',
+    ]);
+    const downloads = reports.filter(
+      (report) => report.phase === 'downloading',
+    );
+    // buildPrebuiltArchive's output for N+1, the file the manifest signs.
+    const archives = join(install.root, 'archives', '1.1.0');
+    const archive = readdirSync(archives)
+      .filter((name) => name.endsWith('.tar.gz'))
+      .map((name) => statSync(join(archives, name)).size);
+    expect(archive).toHaveLength(1);
+    for (const report of downloads) expect(report.totalBytes).toBe(archive[0]);
+    // A local file:// download can finish before the first sample; the
+    // sample after it always reads the whole archive.
+    expect(downloads.at(-1)?.downloadedBytes).toBe(archive[0]);
+  });
+
+  it('an apply of a version that was never staged downloads nothing and N keeps serving (#3851)', async () => {
+    const { install, launcher } = await twoArchiveInstall('prepare');
+    const apply = writeServiceUpdateRequest(install.installRoot, '1.1.0', {
+      mode: 'apply',
+    });
+    const outcome = await waitFor(
+      'the apply to be refused',
+      () => {
+        const progress = readServiceUpdateProgress(install.installRoot);
+        return progress.state === 'staging-failed' ? progress : undefined;
+      },
+      60_000,
+      () => `${fixtureLog(install).join('\n')}\n${launcher.output()}`,
+    );
+    expect(outcome).toMatchObject({
+      requestId: apply.id,
+      reason: expect.stringContaining('not downloaded and verified'),
+    });
+    expect(existsSync(join(install.installRoot, 'versions', '1.1.0'))).toBe(
+      false,
+    );
+    expect(readState(install)?.update).toBeUndefined();
+    expect(launcher.process.exitCode).toBeNull();
+    expect(fixtureLog(install)).not.toContain('1.0.0 term');
   });
 
   it.each([

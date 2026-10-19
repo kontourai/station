@@ -4,6 +4,7 @@ import {
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
+import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
@@ -319,6 +320,197 @@ describe('the versioned child of the service launcher (#2675 D)', () => {
         },
       ),
     ).rejects.toThrow('--backup-dir must be an absolute path');
+  });
+});
+
+function stageVersion(installRoot: string, version: string): void {
+  const dir = join(installRoot, 'versions', version);
+  mkdirSync(join(dir, 'bin'), { recursive: true });
+  writeFileSync(join(dir, 'bin', 'station.mjs'), '');
+  writeFileSync(join(dir, '.station-install-complete'), 'abc\n');
+}
+
+describe('stage and apply as separate requests (#3851)', () => {
+  test('a stage request stages and records staged, and never asks the launcher for a trial', async () => {
+    const harness = linkHarness('active');
+    const request = writeServiceUpdateRequest(harness.installRoot, undefined, {
+      mode: 'stage',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({
+        requestId: request.id,
+        status: 'staged',
+        version: '1.1.0',
+      }),
+    );
+    expect(harness.stage).toHaveBeenCalledTimes(1);
+    // The running version keeps running: nothing was sent to the launcher.
+    expect(harness.sent).toEqual([]);
+    expect(existsSync(serviceUpdatePaths(harness.installRoot).processing)).toBe(
+      false,
+    );
+  });
+
+  test('a stage request that finds nothing newer reports up-to-date', async () => {
+    const harness = linkHarness(
+      'active',
+      vi.fn(async () => '1.0.0'),
+    );
+    writeServiceUpdateRequest(harness.installRoot, undefined, {
+      mode: 'stage',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({ status: 'up-to-date' }),
+    );
+    expect(harness.sent).toEqual([]);
+  });
+
+  test('an apply request trials a staged version without staging anything', async () => {
+    const harness = linkHarness('active');
+    stageVersion(harness.installRoot, '1.1.0');
+    const request = writeServiceUpdateRequest(harness.installRoot, '1.1.0', {
+      mode: 'apply',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.sent).toEqual([
+        {
+          type: 'request-update',
+          targetVersion: '1.1.0',
+          requestId: request.id,
+        },
+      ]),
+    );
+    expect(harness.stage).not.toHaveBeenCalled();
+  });
+
+  test('an apply request for a version that is not staged fails and downloads nothing', async () => {
+    const harness = linkHarness('active');
+    const request = writeServiceUpdateRequest(harness.installRoot, '1.1.0', {
+      mode: 'apply',
+    });
+    harness.link.tick();
+    await vi.waitFor(() =>
+      expect(harness.result()).toMatchObject({
+        requestId: request.id,
+        status: 'failed',
+        reason: expect.stringContaining('not downloaded and verified'),
+      }),
+    );
+    expect(harness.stage).not.toHaveBeenCalled();
+    expect(harness.sent).toEqual([]);
+  });
+
+  test('an apply request must name its version', () => {
+    const installRoot = makeTempDir('station-link-apply-');
+    expect(() =>
+      writeServiceUpdateRequest(installRoot, undefined, { mode: 'apply' }),
+    ).toThrow(/names the staged version/);
+  });
+
+  test('staging records the installer’s phases and the bytes downloaded so far', async () => {
+    const installRoot = makeTempDir('station-stage-progress-');
+    const versionDir = join(installRoot, 'versions', '1.0.0');
+    mkdirSync(versionDir, { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({ channel: 'stable', manifestUrl: 'https://x.invalid/m' }),
+    );
+    const archive = join(installRoot, 'download.tgz');
+    // install.sh's stage-only protocol, with the download grown in two steps
+    // the sampler can observe.
+    writeFileSync(
+      join(versionDir, 'install.sh'),
+      [
+        'echo "Downloading..."',
+        'echo STATION_STAGE_DOWNLOAD_SIZE=1000',
+        `echo "STATION_STAGE_DOWNLOAD_FILE=${archive}"`,
+        'echo STATION_STAGE_PHASE=downloading',
+        `head -c 400 /dev/zero > '${archive}'`,
+        'sleep 1.2',
+        `head -c 1000 /dev/zero > '${archive}'`,
+        'sleep 1.2',
+        'echo STATION_STAGE_PHASE=verifying',
+        'echo STATION_STAGE_PHASE=installing',
+        'echo STATION_STAGED_VERSION=1.1.0',
+        '',
+      ].join('\n'),
+    );
+    const reports: unknown[] = [];
+    await expect(
+      stageServiceUpdate({
+        installRoot,
+        version: '1.0.0',
+        env: { PATH: process.env.PATH },
+        onProgress: (report) => reports.push(report),
+      }),
+    ).resolves.toBe('1.1.0');
+    const downloads = reports.filter(
+      (report) => (report as { phase: string }).phase === 'downloading',
+    );
+    expect(downloads).toContainEqual({
+      phase: 'downloading',
+      downloadedBytes: 400,
+      totalBytes: 1000,
+    });
+    expect(downloads).toContainEqual({
+      phase: 'downloading',
+      downloadedBytes: 1000,
+      totalBytes: 1000,
+    });
+    expect(reports.slice(-2)).toEqual([
+      { phase: 'verifying' },
+      { phase: 'installing' },
+    ]);
+  });
+
+  test('while staging the server reads the step the child recorded, then staged', async () => {
+    let finish: (version: string) => void = () => undefined;
+    let report:
+      | ((value: {
+          phase: 'downloading';
+          downloadedBytes: number;
+          totalBytes: number;
+        }) => void)
+      | undefined;
+    const harness = linkHarness(
+      'active',
+      vi.fn(
+        (input: { onProgress?: (value: never) => void }) =>
+          new Promise<string>((resolve) => {
+            report = input.onProgress as typeof report;
+            finish = resolve;
+          }),
+      ) as never,
+    );
+    stageVersion(harness.installRoot, '1.1.0');
+    const request = writeServiceUpdateRequest(harness.installRoot, undefined, {
+      mode: 'stage',
+    });
+    harness.link.tick();
+    await vi.waitFor(() => expect(report).toBeDefined());
+    report?.({ phase: 'downloading', downloadedBytes: 250, totalBytes: 1000 });
+    expect(readServiceUpdateProgress(harness.installRoot)).toEqual({
+      state: 'staging',
+      requestId: request.id,
+      intent: 'stage',
+      stagePhase: 'downloading',
+      downloadedBytes: 250,
+      totalBytes: 1000,
+    });
+    finish('1.1.0');
+    await vi.waitFor(() =>
+      expect(readServiceUpdateProgress(harness.installRoot)).toMatchObject({
+        state: 'staged',
+        requestId: request.id,
+        version: '1.1.0',
+      }),
+    );
+    expect(
+      existsSync(serviceUpdatePaths(harness.installRoot).stageProgress),
+    ).toBe(false);
   });
 });
 
