@@ -189,7 +189,6 @@ async function main() {
   });
   try {
     await runtime.initialize();
-    runtime.markServerUpdateReady();
     let shuttingDown = false;
 
     // The read side of archive#1903: a self-update that never confirmed the

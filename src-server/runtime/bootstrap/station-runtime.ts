@@ -3426,6 +3426,9 @@ export class StationRuntime {
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
       this.recordRuntimeLifecycle('ready');
+      // #3851: listening, and turn recovery has run: a persisted update
+      // when idle may now read the running turns.
+      this.serverUpdate?.markReady();
       void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
@@ -4883,14 +4886,6 @@ export class StationRuntime {
   /**
    * Shutdown the runtime
    */
-  /**
-   * #3851: the server listens and `initialize` (turn recovery included) has
-   * finished, so a persisted apply-when-idle may now read the running turns.
-   */
-  markServerUpdateReady(): void {
-    this.serverUpdate?.markReady();
-  }
-
   async shutdown(): Promise<void> {
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
