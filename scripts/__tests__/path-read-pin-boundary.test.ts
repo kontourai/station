@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Delivery suites read captured CLI data under fixtures/ (excluded from
+  // source pins); the scenario suite also reads files it creates in its isolated
+  // workspace. Direct scenario/mapper imports provide behavior-selection edges.
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'src-server/providers/__tests__/claude-adapter-events.test.ts',
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
