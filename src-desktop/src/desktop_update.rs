@@ -1051,7 +1051,7 @@ where
 
 /// The first thing the periodic thread does, off the setup thread: restore
 /// a cached package (reading and verifying it can take seconds for a large
-/// package; the state reads `idle` meanwhile), then confirm the feed still
+/// package; the state reads `checking` meanwhile), then confirm the feed still
 /// offers it.
 pub async fn restore_on_startup<H, R, C, CF>(updater: &DesktopUpdater<H>, restore: R, check: C)
 where
