@@ -1876,7 +1876,10 @@ server read beyond the pull request links Chat details already reads.
   composer queue's pending count; opens Background tasks through the dock's
   own router, so a desktop dock reveals the Agents pane), Pull requests
   (only when links exist or the read failed; opens Chat details). The footer
-  presses the dock's one Chat inventory host. A row whose fact is absent is
+  presses the dock's one Chat inventory host and appears only once that host
+  has registered, so a host that never arrives (no authority yet, a chunk
+  that failed) leaves no footer rather than a standing "loading" label. A
+  row whose fact is absent is
   omitted rather than worded as a state. There is no Kept row: no inventory
   read runs for the active chat until the inventory opens, and adding one per
   open chat to prefill a row is not cheap.
@@ -1895,8 +1898,13 @@ server read beyond the pull request links Chat details already reads.
   body — and both must read one derivation. A phone never shows it inline.
   By the inbox's own width rule a full-width bottom dock keeps it from about
   1211px with the inbox open (920px without); a side dock folds it.
-- **One copy of each fact.** While the card shows, the header's branch badge
-  and the More trigger's running-count badge stand down. While it is folded,
+- **One copy of each fact.** While the card shows, the header's branch badge,
+  its "This chat: <project>" lead-in and the More trigger's running-count
+  badge stand down. "Shows" is the card's own report that it has mounted,
+  not the width answer alone: while its lazy chunk loads, or if it fails to
+  load, the header keeps all three. The card's props are memoised on the
+  facts they show, so the dock's resize frames and stream renders do not
+  re-render it. While it is folded,
   a chip after the project context names the ladder word and opens the same
   rows as a popover anchored under it. On a phone the bar's edge reserve
   (96px) holds exactly its two 44px controls, and a third wrapped the bar
