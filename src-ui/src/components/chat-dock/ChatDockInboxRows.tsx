@@ -18,6 +18,7 @@ import {
   olderDraftsLabel,
   splitDraftsByAge,
 } from '../../views/home/draft-lane';
+import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
@@ -45,6 +46,7 @@ import {
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
+import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -1068,12 +1070,18 @@ export function InboxGroupList({
   const detailsRowRendered =
     detailsFor !== null &&
     groups.some((group) =>
-      renderedItems(group).some((item) => item.id === detailsFor),
+      renderedItems(group).some(
+        (item) =>
+          item.id === detailsFor ||
+          group.childrenById
+            ?.get(item.id)
+            ?.some((child) => child.id === detailsFor),
+      ),
     );
   useEffect(() => {
     if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
   }, [detailsFor, detailsRowRendered]);
-  const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
+  const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) => (
     <InboxRow
       key={item.id}
       item={item}
@@ -1100,6 +1108,16 @@ export function InboxGroupList({
         ) ?? undefined
       }
       {...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
+    />
+  );
+  const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
+    <WorkItemFamily
+      key={item.id}
+      root={item}
+      members={group.childrenById?.get(item.id)}
+      now={now}
+      forceExpanded={group.childrenById?.get(item.id)?.some(isCurrent)}
+      renderRow={(member) => renderItem(group, member)}
     />
   );
   // #2312: Drafts untouched for a day fold under one disclosure. Nothing is
@@ -1138,7 +1156,9 @@ export function InboxGroupList({
         const count =
           (collapsible && group.id === 'snoozed') ||
           (!collapsibleId && showGroupCounts)
-            ? group.items.length
+            ? group.id === 'needsYou'
+              ? workAttentionCount(group.items, now, group.childrenById)
+              : group.items.length
             : undefined;
         const label = <WorkGroupLabel label={group.label} count={count} />;
         const labelId = `${idPrefix}-${group.id}`;

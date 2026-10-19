@@ -10,10 +10,15 @@
  * trusting that two files that look alike stay alike.
  */
 
+import type {
+  OrchestrationSessionSummary,
+  TaskRecord,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
   InboxRow,
@@ -22,6 +27,8 @@ import {
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildHomeWorkItems } from '../views/home/home-view-model';
+import { buildWorkFacts } from '../views/home/work-facts';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const NOW = Date.parse('2026-08-18T12:00:00Z');
@@ -132,6 +139,225 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
   });
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s keeps scope after remount and discloses attention outside it',
+    (host) => {
+      const items = [
+        workItem({
+          id: 'local',
+          title: 'Local project work',
+          projectSlug: 'alpha',
+          projectLabel: 'Alpha',
+          chatSessionId: 'local',
+        }),
+        workItem({
+          id: 'remote',
+          title: 'Remote approval',
+          kind: 'remote-session',
+          chatSessionId: undefined,
+          environmentId: 'remote-station',
+          environmentLabel: 'Build server',
+          lifecycleLabel: 'Needs attention',
+        }),
+      ];
+      const mount = () =>
+        host === 'desktop'
+          ? render(
+              <ChatDockInboxPanel
+                items={items}
+                activeChatSessionId={null}
+                openChatSessionIds={['local']}
+                onFocusChat={vi.fn()}
+                onOpenConversation={vi.fn()}
+                onOpenSession={vi.fn()}
+                onCloseChat={vi.fn()}
+                onOpenHistory={vi.fn()}
+                now={NOW}
+              />,
+            )
+          : render(
+              <MobileTaskSwitcher
+                open
+                tasks={items}
+                activeChatSessionId={null}
+                openChatSessionIds={['local']}
+                onFocusChat={vi.fn()}
+                onOpenConversation={vi.fn()}
+                onOpenSession={vi.fn()}
+                onClose={vi.fn()}
+                triggerRef={createRef<HTMLButtonElement>()}
+                visualViewportStyle={{}}
+                now={NOW}
+              />,
+            );
+      const first = mount();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
+        target: { value: 'project:["station:local","alpha"]' },
+      });
+      expect(screen.queryByText('Remote approval')).toBeNull();
+      expect(screen.getByText('Local project work')).toBeTruthy();
+      first.unmount();
+      deviceSettingsStore.reloadFromStorage();
+      mount();
+      expect(
+        (
+          screen.getByRole('combobox', {
+            name: 'Inbox scope',
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe('project:["station:local","alpha"]');
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: '1 need you outside this filter · Show all',
+        }),
+      );
+      expect(screen.getByText('Remote approval')).toBeTruthy();
+    },
+  );
+
+  it('keeps a Task-owned chat reachable under its Task and opens the Task destination', () => {
+    const tasks: TaskRecord[] = [
+      {
+        id: 'task-1',
+        projectId: 'alpha',
+        title: 'Ship release',
+        description: '',
+        createdBy: 'user',
+        priority: 'normal',
+        status: 'in_progress',
+        sessionId: 'linked-chat',
+        createdAt: '2026-08-18T11:00:00Z',
+        updatedAt: '2026-08-18T11:59:00Z',
+      },
+    ];
+    const chat = workItem({
+      id: 'linked-chat',
+      chatSessionId: 'linked-chat',
+      title: 'Release conversation',
+      lifecycleLabel: 'Needs attention',
+    });
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks,
+      chatItems: [chat],
+      retainTaskChildren: true,
+    });
+    const onFocusChat = vi.fn();
+    render(
+      <ChatDockInboxPanel
+        items={items}
+        workFacts={buildWorkFacts({ items, tasks })}
+        activeChatSessionId={null}
+        openChatSessionIds={['linked-chat']}
+        onFocusChat={onFocusChat}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+      />,
+    );
+    const lane = screen
+      .getByRole('heading', { name: 'Needs you' })
+      .closest('section')!;
+    expect(within(lane).getByText('Ship release')).toBeTruthy();
+    fireEvent.click(
+      within(lane).getByRole('button', {
+        name: 'Release conversation, Shared project',
+      }),
+    );
+    expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
+    fireEvent.click(
+      within(lane).getByRole('button', { name: 'Ship release, alpha' }),
+    );
+    expect(window.location.pathname).toBe('/tasks/task-1');
+    window.history.replaceState(null, '', '/');
+  });
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s groups delegated work with its root and opens the child needing approval',
+    async (host) => {
+      const sessions: OrchestrationSessionSummary[] = [
+        {
+          threadId: 'root',
+          displayTitle: 'Release review',
+          fixture: 'turnCompleted' as const,
+        },
+        {
+          threadId: 'child',
+          displayTitle: 'Security review',
+          fixture: 'approvalInOpenTurn' as const,
+        },
+      ].map(({ fixture, ...identity }) => ({
+        provider: 'claude',
+        status: 'running',
+        controlMode: 'station-owned',
+        answerability: { answerable: true },
+        isLoaded: true,
+        isPersisted: true,
+        eventCount: 2,
+        createdAt: '2026-08-18T11:59:00Z',
+        updatedAt: '2026-08-18T11:59:30Z',
+        ...FOLD_FIXTURES[fixture].summary,
+        ...identity,
+        ...(identity.threadId === 'child'
+          ? {
+              delegation: { taskId: 'security-task', parentTaskId: 'root' },
+            }
+          : {}),
+      }));
+      const items = buildHomeWorkItems({ chats: {}, sessions, agents: [] });
+      const onOpenSession = vi.fn();
+      const common = {
+        activeChatSessionId: null,
+        openChatSessionIds: [],
+        now: NOW,
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession,
+        onCloseChat: vi.fn(),
+        workFacts: buildWorkFacts({ items, sessions }),
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...common}
+            items={items}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...common}
+            open
+            tasks={items}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      const needsYou = screen
+        .getByRole('heading', { name: /^Needs you/ })
+        .closest('section')!;
+      expect(within(needsYou).getByText('Release review')).toBeTruthy();
+      expect(
+        within(needsYou).getByText('1 subtask · 1 needs you'),
+      ).toBeTruthy();
+      fireEvent.click(
+        within(needsYou).getByRole('button', {
+          name: 'Security review, No project',
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(onOpenSession).toHaveBeenCalledWith('child'),
+      );
+    },
+  );
 
   it.each(['desktop', 'mobile'] as const)(
     '%s pages Earlier history through the real host',

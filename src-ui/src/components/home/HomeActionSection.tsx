@@ -11,6 +11,7 @@ import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
+import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -159,8 +160,10 @@ export function HomeContinueCard({
   model,
   id,
   onViewActivity,
+  childrenById,
 }: {
   model: HomeViewModel;
+  childrenById?: HomeWorkLanes['childrenById'];
   id?: string;
   /**
    * Given when Recent work is not shown (Continue holds the only item), so
@@ -202,10 +205,11 @@ export function HomeContinueCard({
           task: { ...primary, stableId: `continue:${primary.id}` },
           isWoken: false,
           agents: model.agents,
-          onOpen: () => model.continueWork(primary),
+          onOpen: model.continueWork,
           context: {
             now: Date.now(),
             workFacts: model.workFacts,
+            childrenById,
             detailsFor,
             setDetailsFor,
             chrome: coarsePointer ? 'touch' : 'hover',

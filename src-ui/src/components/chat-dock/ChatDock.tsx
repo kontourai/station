@@ -11,6 +11,8 @@ import {
   useGenerateSessionSummaryMutation,
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
+  useRemoteSessionsQuery,
+  useTasksQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
@@ -628,10 +630,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // archive#3391: the inboxes name models through the catalog, as Home does.
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
+  const durableTasks = useTasksQuery();
+  const remoteInboxSessions = useRemoteSessionsQuery();
   const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
     resolveModelLabel,
+    durableTasks.data,
+    remoteInboxSessions.data?.environments,
   );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
@@ -642,10 +648,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
+    durableTasks.isPending ||
     inventory.isPending ||
     !agentsLoaded;
-  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
+  const taskItemsFailed =
+    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
   const refetchInventory = inventory.refetch;
+  const refetchTasks = durableTasks.refetch;
+  const refetchRemote = remoteInboxSessions.refetch;
   // Only the user's own resync shows as "Refreshing": the background reads a
   // busy Station triggers every second must not flicker the control.
   const [inboxResyncPending, setInboxResyncPending] = useState(false);
@@ -658,8 +668,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     void Promise.allSettled([
       refetchOrchestrationSessions(),
       refetchInventory(),
+      refetchTasks(),
+      refetchRemote(),
     ]).then(() => setInboxResyncPending(false));
-  }, [apiBase, refetchOrchestrationSessions, refetchInventory]);
+  }, [
+    apiBase,
+    refetchOrchestrationSessions,
+    refetchInventory,
+    refetchTasks,
+    refetchRemote,
+  ]);
   const inboxSync = useMemo(
     () => ({
       failed: taskItemsFailed,
@@ -873,7 +891,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
   // (never carried on them).
-  const workFacts = useWorkFacts(taskItems, orchestrationSessions);
+  const workFactSources = useMemo(
+    () => ({ tasks: durableTasks.data ?? [] }),
+    [durableTasks.data],
+  );
+  const workFacts = useWorkFacts(
+    taskItems,
+    orchestrationSessions,
+    workFactSources,
+  );
 
   const rehydrateSessions = useRehydrateSessions(apiBase);
   const {

@@ -1,4 +1,5 @@
 import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
+import type { WorkFactsById } from './work-facts';
 import { type LiveLaneId, workStatus } from './work-status';
 
 export type { LiveLaneId };
@@ -185,10 +186,12 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   snoozedUntil: ReadonlyMap<string, number>;
   /** item id -> epoch ms of the first observed terminal transition. */
   terminalSince: ReadonlyMap<string, number>;
+  workFacts?: WorkFactsById;
 }
 
 interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
   /** Live lanes — see `workStatus`. Always present, possibly empty. */
+  childrenById: ReadonlyMap<string, readonly T[]>;
   needsYou: T[];
   running: T[];
   idle: T[];
@@ -211,6 +214,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   now,
   snoozedUntil,
   terminalSince,
+  workFacts,
 }: LaneInputs<T>): LanePartition<T> {
   const live: Record<LiveLaneId, T[]> = {
     needsYou: [],
@@ -274,7 +278,54 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     live[lane].push(item);
   }
 
+  const lanes = [
+    live.needsYou,
+    live.running,
+    live.idle,
+    drafts,
+    recentlyFinished,
+    snoozed,
+    settled,
+    external,
+  ];
+  const locations = new Map(
+    lanes.flatMap((lane, index) =>
+      lane.map((item) => [item.id, index] as const),
+    ),
+  );
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const childrenById = new Map<string, T[]>();
+  for (const item of items) {
+    let rootId = item.id;
+    const visited = new Set<string>();
+    while (workFacts?.get(rootId)?.runRootId && !visited.has(rootId)) {
+      visited.add(rootId);
+      rootId = workFacts.get(rootId)!.runRootId!;
+    }
+    if (visited.has(rootId) || rootId === item.id || !byId.has(rootId))
+      continue;
+    // A snoozed member keeps its own shelf and wake control. In particular,
+    // snoozing a parent must never conceal an unsnoozed child's approval.
+    if (locations.get(item.id) === 5 || locations.get(rootId) === 5) continue;
+    const children = childrenById.get(rootId) ?? [];
+    children.push(item);
+    childrenById.set(rootId, children);
+  }
+  for (const [rootId, children] of childrenById) {
+    const root = byId.get(rootId)!;
+    const memberIds = new Set([rootId, ...children.map((child) => child.id)]);
+    const destination = Math.min(
+      ...[...memberIds].map((id) => locations.get(id)!),
+    );
+    for (const lane of lanes) {
+      for (let index = lane.length - 1; index >= 0; index--) {
+        if (memberIds.has(lane[index].id)) lane.splice(index, 1);
+      }
+    }
+    lanes[destination].push(root);
+  }
   return {
+    childrenById,
     needsYou: live.needsYou,
     running: live.running,
     idle: live.idle,
@@ -401,3 +452,19 @@ export function formatWakeTime(wakeAt: number, now: number): string {
 // the lazily-loaded `SnoozeMenu` needs it (this module is imported
 // eagerly by `useHomeWorkLanes`, so keeping the preset-menu-only code out of
 // it keeps that code out of the entry bundle too).
+
+/** Count actionable members, not only folded roots. */
+export function workAttentionCount(
+  items: readonly HomeWorkItem[],
+  now: number,
+  childrenById?: ReadonlyMap<string, readonly HomeWorkItem[]>,
+): number {
+  return items.reduce(
+    (count, item) =>
+      count +
+      [item, ...(childrenById?.get(item.id) ?? [])].filter(
+        (member) => workStatus(member, now).lane === 'needsYou',
+      ).length,
+    0,
+  );
+}

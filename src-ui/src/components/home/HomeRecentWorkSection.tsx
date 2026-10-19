@@ -14,6 +14,7 @@ import {
   type HomeLaneItem,
   LIVE_LANE_LABELS,
   type LiveLaneId,
+  workAttentionCount,
 } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
@@ -100,7 +101,13 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
       ...(lanes.external ?? []),
       ...(lanes.drafts ?? []),
       ...lanes.settled.slice(0, settledVisibleCount),
-    ].some((item) => item.id === detailsFor);
+    ].some(
+      (item) =>
+        item.id === detailsFor ||
+        lanes.childrenById
+          ?.get(item.id)
+          ?.some((child) => child.id === detailsFor),
+    );
   useEffect(() => {
     if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
   }, [detailsFor, detailsRowRendered]);
@@ -227,6 +234,7 @@ function HomeWorkContent({
         context={{
           now: controller.lanes.now,
           workFacts,
+          childrenById: controller.lanes.childrenById,
           detailsFor: controller.detailsFor,
           setDetailsFor: controller.setDetailsFor,
           chrome: coarsePointer ? 'touch' : 'hover',
@@ -452,7 +460,18 @@ function HomeLiveLane({
           that only scrolls leaves a keyboard reader's focus parked where it
           was. */}
       <h3 id={lane.headingId} className="home-view__group-label" tabIndex={-1}>
-        <WorkGroupLabel label={lane.label} count={items.length} />
+        <WorkGroupLabel
+          label={lane.label}
+          count={
+            lane.id === 'needsYou'
+              ? workAttentionCount(
+                  items,
+                  context.now,
+                  controller.lanes.childrenById,
+                )
+              : items.length
+          }
+        />
       </h3>
       <ul className="home-view__task-list">
         {items.map((task) =>
