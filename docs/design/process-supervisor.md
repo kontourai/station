@@ -122,8 +122,9 @@ product decisions.
 
   On the core server's side, a generation started with
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
-  home schema gate, its log sink, and telemetry start-up, all of which touch
-  the home or the live generation's processes. Its four listeners (API,
+  home schema gate, and its log sink, which touch the home or the live
+  generation's processes. Telemetry registers at import as usual, but its
+  home writes (schema gate, installation identity) wait for promotion. Its four listeners (API,
   terminal, voice, consent) bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
