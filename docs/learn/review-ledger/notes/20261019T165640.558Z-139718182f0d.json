@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added the dock-width measurement note for the session context card and why it is not a container query (header slots sit outside the dock body), plus the phone actions-sheet entry; inventories updated (responsive-surfaces.json SessionContextSheet, responsive-action-surfaces.txt SessionContextCard and ChatDockMobileOverflowSheet) and npm run responsive-surface:ratchet passes. Other claims unchanged: no shared primitive changed.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}
