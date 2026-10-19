@@ -155,15 +155,20 @@ function useProtected<T>(
   // screen: lost authority tombstones it (`null`, above), and a merely failed
   // refresh leaves it beside `error`, for the surface to mark as not refreshed.
   const queryHash = JSON.stringify(queryKey);
-  // A key switch is a new mount for this rule, but TanStack fetches a switched
-  // key only when its cached entry is stale. Read it whenever the switch did
-  // not already start a fetch.
+  // A key switch, and becoming enabled, are each a new mount for this rule,
+  // but TanStack fetches on either only when the cached entry is stale. So the
+  // hook remembers which key it has read while enabled, and reads whenever it
+  // is enabled on a key it has not (unless that already started a fetch). The
+  // first enabled render's read is TanStack's own `refetchOnMount`.
   const enabled = config?.enabled ?? true;
-  const readKey = useRef(queryHash);
+  const readKey = useRef<string | null>(enabled ? queryHash : null);
   useEffect(() => {
+    if (!enabled) {
+      readKey.current = null;
+      return;
+    }
     if (readKey.current === queryHash) return;
     readKey.current = queryHash;
-    if (!enabled) return;
     const cached = client.getQueryCache().find({ queryKey, exact: true });
     if (cached?.state.fetchStatus !== 'fetching') void query.refetch();
   }, [client, enabled, query, queryHash, queryKey]);

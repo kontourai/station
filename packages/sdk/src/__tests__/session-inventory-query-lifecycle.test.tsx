@@ -363,6 +363,35 @@ describe('session inventory query lifecycle', () => {
       ).toBe(true);
     });
 
+    test('becoming enabled on a key with a fresh cached entry reads once and shows it', async () => {
+      const fetchMock = routedFetch();
+      vi.stubGlobal('fetch', fetchMock);
+      const scope = { kind: 'whole-session' as const, sessionId: SESSION };
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      client.setQueryData(
+        sessionInventoryQueries.projection(scope).queryKey,
+        wholeSession(),
+      );
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client }, children);
+      const observer = renderHook(
+        ({ enabled }) => useSessionInventoryQuery(scope, { enabled }),
+        { wrapper, initialProps: { enabled: false } },
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(observer.result.current.data).toBeUndefined();
+
+      observer.rerender({ enabled: true });
+
+      await waitFor(() => expect(observer.result.current.data).toBeTruthy());
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     test('a caller asking not to refetch on mount still reads before showing', async () => {
       const fetchMock = routedFetch();
       vi.stubGlobal('fetch', fetchMock);
