@@ -92,7 +92,9 @@
 
     "packages/agent-runtime/src/__tests__/r3-ready.test.ts",
 
-    "packages/agent-runtime/src/__tests__/r4-replay.test.ts"
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "packages/agent-runtime/package.json#/dependencies/zod"
   ],
 
   "checks": []
