@@ -433,9 +433,9 @@ policy probe is unsupported; it receives an unrestricted fixture for the MCP
 use check. Muse and unknown engines without server delivery are skipped.
 
 The temporary Agent binds the selected connection, integration, Station Control
-and supported skill through Station's APIs. The skill's
-nonce appears only in `scripts/probe.mjs`, never its `SKILL.md` or a prompt. The
-script generates a fresh runtime input and writes `{ input, proof }`, where
+and supported skill through Station's APIs. The nonce appears only in the skill
+package's `probe.mjs`, never its `SKILL.md` or a prompt. The script generates a
+fresh runtime input and writes `{ input, proof }`, where
 `proof = HMAC-SHA256(nonce, input)`. The receipt must appear in the answer and
 its contents must verify through the existing identity-bound artifact inspection
 API. Echoing the embedded nonce or declaring a known filename is insufficient.
@@ -447,8 +447,8 @@ so this diagnostic adds the script directly to the API-created package after
 checking its path and body locally. Run it on the same host/filesystem as Station;
 a remote-only client cannot perform this step.
 
-The script lives at the API-returned skill package directory plus
-`scripts/probe.mjs`. Claude may materialize it under
+The script lives in the API-returned skill package's scripts subdirectory as
+`probe.mjs`. Claude may materialize it under
 `<cwd>/.claude/skills/<skill-id>/scripts/probe.mjs`. Finding this file is not skill
 invocation. The skill verdict additionally requires the exact turn's recorded
 `Skill` tool call with `arguments.skill` equal to the probe's unique name and a
