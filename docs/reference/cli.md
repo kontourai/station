@@ -2248,7 +2248,7 @@ back:
    restore --backup-dir="<backup>" --base="<home>"`. That is
    `bin\station.cmd` on Windows, and `station` at the root of a source
    checkout, whose version is its commit. A checkout has only that bash
-   script, so on Windows it runs through Git Bash
+   script, so on Windows run it in Git Bash, not WSL
    (`bash "<root>/station" …`). Skip this when the home already belongs to
    the release being started.
 3. Remove `update-restore.json` (`rm`, or `del` on Windows).

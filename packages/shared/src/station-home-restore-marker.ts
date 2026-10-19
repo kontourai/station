@@ -365,9 +365,12 @@ export function stationHomeRestoreRecovery(
     : windows
       ? `bash "${marker.fromRelease.root}/station"`
       : `"${join(marker.fromRelease.root, 'station')}"`;
+  // WSL's bash, first on PATH on some hosts, does not take these Windows
+  // paths (round 4 item 5).
+  const where = windows && !archiveEntry ? ' (in Git Bash, not WSL)' : '';
   return [
     stop,
-    `  2. Restore the home from ${marker.backupDir} with ${marker.fromRelease.version}'s own CLI:`,
+    `  2. Restore the home from ${marker.backupDir} with ${marker.fromRelease.version}'s own CLI${where}:`,
     `     ${entry} service update-home restore --backup-dir="${marker.backupDir}" --base="${homeDir}"`,
     `     (If the home is right for the release you are starting, ${marker.targetRelease.version}, skip this.)`,
     `  3. Remove the marker: ${remove}`,

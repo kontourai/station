@@ -186,9 +186,11 @@ describe('the Station home update restore marker (#3851)', () => {
       `station service start --instance=stable --base="${home}"`,
     );
     // On Windows a checkout's bash script runs through Git Bash.
-    expect(refusal('win32')).toContain(
+    const windowsCheckout = refusal('win32');
+    expect(windowsCheckout).toContain(
       `bash "${from.root}/station" service update-home restore`,
     );
+    expect(windowsCheckout).toContain('in Git Bash, not WSL');
     // An archive version: its bin/station; on Windows bin\station.cmd and del.
     mkdirSync(join(from.root, 'bin'), { recursive: true });
     writeFileSync(join(from.root, 'bin', 'station.mjs'), '');
@@ -265,5 +267,32 @@ describe('the Station home update restore marker (#3851)', () => {
       }),
     ).toThrow(StationHomeRestoreRefusedError);
     expect(existsSync(stationHomeRestoreMarkerPath(home))).toBe(false);
+  });
+
+  it('a failed restore is not recorded onto a different marker that replaced it (round 4 M8)', () => {
+    const { home, from, target, backupDir } = handedOff();
+    expect(() =>
+      consumeStationHomeRestoreMarker({
+        homeDir: home,
+        running: () => from,
+        restore: () => {
+          // A new handoff replaced the marker while this boot restored.
+          rmSync(stationHomeRestoreMarkerPath(home));
+          writeStationHomeRestoreMarker(home, {
+            fromRelease: from,
+            targetRelease: target,
+            backupDir,
+            createdAt: '2030-01-01T00:00:00.000Z',
+          });
+          throw new Error('EACCES: permission denied');
+        },
+      }),
+    ).toThrow(StationHomeRestoreRefusedError);
+    const read = readStationHomeRestoreMarker(home);
+    expect(read).toMatchObject({
+      kind: 'present',
+      marker: { createdAt: '2030-01-01T00:00:00.000Z' },
+    });
+    expect(read.kind === 'present' && read.marker.restoreFailed).toBeFalsy();
   });
 });
