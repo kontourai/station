@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { Session } from 'node:inspector/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -111,20 +112,82 @@ describe('EventStore high-cardinality batched projection', () => {
   // archive#4466 review remediation: id/thread/pair lists are chunked at 500.
   // The complete seed, batched read, and comparisons retain the original 10s
   // product-law bound; isolation moves no setup into a wider hook allowance.
-  test('a population crossing the 500-id chunk boundary is folded completely and correctly', () => {
-    const totalThreads = 1200;
-    const threadIds = Array.from(
-      { length: totalThreads },
-      (_, index) => `batch-equiv-chunk-${index}`,
+  test('a population crossing the 500-id chunk boundary is folded completely and correctly', async () => {
+    const startedAt = performance.now();
+    let phase = 'profiler';
+    const trace = (
+      event: string,
+      details: Record<string, string | number> = {},
+    ): void => {
+      writeSync(
+        1,
+        `@@LARGE_PROJECTION_DIAGNOSTIC@@${JSON.stringify({
+          phase,
+          event,
+          elapsedMs: performance.now() - startedAt,
+          ...details,
+        })}@@END_LARGE_PROJECTION_DIAGNOSTIC@@\n`,
+      );
+    };
+    const profiler = new Session();
+    const profilePath = join(
+      mkdtempSync(join(tmpdir(), 'station-large-projection-profile-')),
+      'projection.cpuprofile',
     );
-    threadIds.forEach((threadId) => {
-      seedProjectionThread(threadId);
-    });
+    let profiling = false;
+    try {
+      trace('entry');
+      profiler.connect();
+      await profiler.post('Profiler.enable');
+      await profiler.post('Profiler.start');
+      profiling = true;
+      trace('exit');
+      phase = 'seed';
+      trace('entry');
+      const totalThreads = 1200;
+      const threadIds = Array.from(
+        { length: totalThreads },
+        (_, index) => `batch-equiv-chunk-${index}`,
+      );
+      threadIds.forEach((threadId, index) => {
+        seedProjectionThread(threadId);
+        if ((index + 1) % 200 === 0) {
+          trace('progress', { completedSessions: index + 1 });
+        }
+      });
+      trace('exit', { completedSessions: threadIds.length });
 
-    const batched = store.listSessionProjectionEventsForThreads(threadIds);
-    expect(batched.size).toBe(totalThreads);
-    for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-      expectBatchedMatchesIndividual(threadIds[index]!);
+      phase = 'batched-read';
+      trace('entry');
+      const batched = store.listSessionProjectionEventsForThreads(threadIds);
+      trace('exit', { resultSize: batched.size });
+      expect(batched.size).toBe(totalThreads);
+      phase = 'comparisons';
+      trace('entry');
+      for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
+        trace('sample-entry', { index });
+        expectBatchedMatchesIndividual(threadIds[index]!);
+        trace('sample-exit', { index });
+      }
+      trace('exit');
+    } catch (error) {
+      trace('error', {
+        error: String(error).slice(0, 2000),
+        stack: error instanceof Error ? (error.stack ?? '').slice(0, 4000) : '',
+      });
+      throw error;
+    } finally {
+      phase = 'profile-retention';
+      trace('entry');
+      try {
+        if (profiling) {
+          const { profile } = await profiler.post('Profiler.stop');
+          writeFileSync(profilePath, JSON.stringify(profile));
+          trace('exit', { profilePath });
+        }
+      } finally {
+        profiler.disconnect();
+      }
     }
   }, 10_000);
 });
