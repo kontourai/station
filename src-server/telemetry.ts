@@ -53,6 +53,13 @@ export interface InitializeTelemetryOptions {
     endpoint: string,
   ) => TelemetrySdk;
   log?: (message: string) => void;
+  /**
+   * Holds the home writes (schema gate, installation identity) until this
+   * settles; providers still register synchronously. A supervised generation
+   * passes its promotion, since it loads while another generation owns the
+   * home.
+   */
+  homeWritesAllowed?: Promise<void>;
 }
 
 function createSdk(
@@ -259,18 +266,27 @@ export async function initializeTelemetry(
       throw new TelemetryRequestError('credential_unavailable');
     }
   };
-  try {
-    assertHostedPersistenceBeforeSchemaSync(homeDir, env);
-    ensureStationHomeSchemaSync(homeDir);
-  } catch (error) {
-    delivery.status.phase = 'failed';
-    delivery.status.identity = 'failed';
-    throw error;
+  const admitHome = () => {
+    try {
+      assertHostedPersistenceBeforeSchemaSync(homeDir, env);
+      ensureStationHomeSchemaSync(homeDir);
+    } catch (error) {
+      delivery.status.phase = 'failed';
+      delivery.status.identity = 'failed';
+      throw error;
+    }
+  };
+  // Exports already wait for the identity, so holding it holds every export.
+  let identity: Promise<string>;
+  if (options.homeWritesAllowed) {
+    identity = options.homeWritesAllowed.then(() => {
+      admitHome();
+      return persistedRandomIdentifierHash(homeDir, 'otel-installation-id');
+    });
+  } else {
+    admitHome();
+    identity = persistedRandomIdentifierHash(homeDir, 'otel-installation-id');
   }
-  const identity = persistedRandomIdentifierHash(
-    homeDir,
-    'otel-installation-id',
-  );
   // Handle rejection even if SDK construction/start fails before the await.
   void identity.then(
     () => {
@@ -368,21 +384,17 @@ export function configuredTelemetryShutdownTask():
 // deliberately deserves to know it did not take.
 //
 // A supervised generation is loaded while the previous one still owns the
-// home, and initialization runs the schema gate and writes an installation
-// identity when an endpoint is configured. So under a supervisor it waits
-// until this generation is promoted.
-function warnTelemetryNotStarted(error: unknown): void {
+// home, so its home writes wait for promotion. Registration does not: it
+// stays synchronous with this module's evaluation in every mode, so the
+// providers exist before the modules imported after this one create
+// instruments.
+void initializeTelemetry(
+  isSupervisedEnvironment()
+    ? { homeWritesAllowed: whenHomeAccessAllowed() }
+    : {},
+).catch((error) => {
   console.warn(
     '[telemetry] OTel did not start; Station continues without it:',
     error instanceof Error ? error.message : String(error),
   );
-}
-// Unsupervised, initialization stays synchronous with this module's
-// evaluation, so the SDK starts before the modules imported after it.
-if (isSupervisedEnvironment()) {
-  void whenHomeAccessAllowed()
-    .then(() => initializeTelemetry())
-    .catch(warnTelemetryNotStarted);
-} else {
-  void initializeTelemetry().catch(warnTelemetryNotStarted);
-}
+});
