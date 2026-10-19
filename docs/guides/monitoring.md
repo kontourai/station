@@ -925,7 +925,7 @@ contract a producer implements:
    holds one `sti_…` token and has mode `0600`. Station keeps only its hash.
 2. **Configuration.** The producer is given the full URL of the ingest route,
    for example `http://127.0.0.1:3141/v1/agent-events` on this machine, or
-   `https://<host>.<tailnet>.ts.net/v1/agent-events` through Tailscale Serve in
+   `https://<serve-host>/v1/agent-events` (the Tailscale Serve HTTPS address) in
    front of the UI port for a remote producer, and the token file's path. It
    does not guess Station's port.
 3. **Request.** One event per `POST`, with `Authorization: Bearer <token>`,

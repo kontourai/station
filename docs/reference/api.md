@@ -1865,7 +1865,7 @@ verified ingress identity, or when Station's UI proxy relays a loopback
 client that addressed a loopback host. The UI proxy forwards these `POST`s
 (it does not forward a `GET` to `/v1`), so a producer may use either the API
 port or the UI port; a remote producer reaches Station through Tailscale Serve
-in front of the UI port (`https://<host>.<tailnet>.ts.net/v1/agent-events`).
+in front of the UI port (`https://<serve-host>/v1/agent-events`).
 Serve connects from loopback, but the proxy reports its forwarding headers and
 the browser-visible host, so its requests are remote. A
 plain SSH local forward is indistinguishable from a local sender.
