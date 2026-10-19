@@ -297,7 +297,7 @@ function makeWritable(dir: string): void {
  * version, and every older one (the launcher's rollback target among them),
  * are never touched, nor are installer stages (dot entries). Best effort.
  */
-export function pruneSupersededStagedVersions(
+function pruneSupersededStagedVersions(
   installRoot: string,
   running: string,
   keep: string,

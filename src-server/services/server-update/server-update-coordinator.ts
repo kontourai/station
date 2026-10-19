@@ -66,9 +66,9 @@ import type { InstallProvenance } from '../../routes/system/install-provenance.j
 type ArchiveProvenance = Extract<InstallProvenance, { installKind: 'archive' }>;
 
 /** A cached check answers repeated triggers for this long. */
-export const SERVER_UPDATE_CHECK_TTL_MS = 30 * 60_000;
+const SERVER_UPDATE_CHECK_TTL_MS = 30 * 60_000;
 /** The boot check waits this long, so it never competes with startup. */
-export const SERVER_UPDATE_BOOT_CHECK_DELAY_MS = 60_000;
+const SERVER_UPDATE_BOOT_CHECK_DELAY_MS = 60_000;
 /** `after-24h`'s delay, from the first check that saw the version. */
 export const SERVER_UPDATE_DOWNLOAD_DELAY_MS = 24 * 60 * 60_000;
 const PROGRESS_POLL_MS = 1_000;
@@ -82,11 +82,7 @@ export const MAX_TIMER_MS = 6 * 60 * 60_000;
  * that could not verify the manifest, and a policy download that failed
  * (review round 2). The last one repeats.
  */
-export const RETRY_BACKOFF_MS = [
-  60 * 60_000,
-  6 * 60 * 60_000,
-  24 * 60 * 60_000,
-];
+const RETRY_BACKOFF_MS = [60 * 60_000, 6 * 60 * 60_000, 24 * 60 * 60_000];
 
 function backoff(attempt: number): number {
   return RETRY_BACKOFF_MS[
@@ -107,9 +103,9 @@ export interface RunningTurnSummary {
  * route; every listener gets only that the request failed. Launcher outcome
  * reasons are codes already (`prepared-timeout`, `candidate-exited:1`).
  */
-export const BROADCAST_WITHHELD_REASON = 'withheld';
+const BROADCAST_WITHHELD_REASON = 'withheld';
 
-export function broadcastServerUpdateState(
+function broadcastServerUpdateState(
   state: ServerUpdateState,
 ): ServerUpdateState {
   const { progress } = state;
@@ -267,15 +263,13 @@ function readIntentFile(path: string): PersistedIntent | null {
  * `X.Y.Z[-ring.N]` out of a client's reported build (`<version>+<commit>`),
  * in the host's version order; null when it is not a release version.
  */
-export function clientReleaseVersion(build: string | null): string | null {
+function clientReleaseVersion(build: string | null): string | null {
   if (!build) return null;
   const version = build.split('+', 1)[0] ?? '';
   return clientVersionInHostOrder(version);
 }
 
-export function normalizeDownloadPolicy(
-  value: unknown,
-): ServerUpdateDownloadPolicy {
+function normalizeDownloadPolicy(value: unknown): ServerUpdateDownloadPolicy {
   return SERVER_UPDATE_DOWNLOAD_POLICIES.includes(
     value as ServerUpdateDownloadPolicy,
   )
