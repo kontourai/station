@@ -47,6 +47,10 @@ const fixture = vi.hoisted(() => ({
   surfaceWidth: 0,
   authority: undefined as unknown,
   pullRequests: [] as unknown[],
+  // The card chunk's state: `ready` renders the real card; `loading`
+  // suspends forever (a chunk still in flight); `failed` throws (a chunk
+  // that did not load).
+  cardChunk: 'ready' as 'ready' | 'loading' | 'failed',
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -282,6 +286,28 @@ vi.mock('../components/chat-dock/SessionInventoryEntryPoint', async () => {
   };
 });
 
+// The card's module stands as itself unless a test holds its chunk back.
+vi.mock(
+  '../components/chat-dock/SessionContextCard',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/SessionContextCard')
+      >();
+    const never = new Promise<never>(() => {});
+    return {
+      ...actual,
+      SessionContextCard: (
+        props: Parameters<typeof actual.SessionContextCard>[0],
+      ) => {
+        if (fixture.cardChunk === 'loading') throw never;
+        if (fixture.cardChunk === 'failed') throw new Error('chunk failed');
+        return <actual.SessionContextCard {...props} />;
+      },
+    };
+  },
+);
+
 vi.mock('../workspace-panes/RegionPaneHost', () => ({
   RegionPaneHost: () => null,
 }));
@@ -372,6 +398,7 @@ beforeEach(() => {
   fixture.surfaceWidth = 1200;
   fixture.authority = undefined;
   fixture.pullRequests = [];
+  fixture.cardChunk = 'ready';
   // The one layout fact the fit reads: the conversation surface's width.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const rect = realRect.call(this);
@@ -456,6 +483,28 @@ describe('session context card visibility follows the dock body width', () => {
     expect(moreBadge()?.textContent).toBe('2');
     expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
+
+  test.each([
+    ['still loading', 'loading'],
+    ['failed to load', 'failed'],
+  ] as const)(
+    'while the card chunk is %s the header keeps its facts',
+    async (_, state) => {
+      fixture.cardChunk = state;
+      fixture.surfaceWidth = 1200;
+      renderDock();
+      if (state === 'failed')
+        await screen.findByText('Unable to load this part of Station.');
+      else
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+      expect(card()).toBeNull();
+      expect(branchBadge()?.textContent).toContain('feature/parser');
+      expect(moreBadge()?.textContent).toBe('2');
+      expect(mismatchLabel()).not.toBeNull();
+    },
+  );
 
   test('the threshold is the transcript floor plus the card column', async () => {
     fixture.surfaceWidth = 920;

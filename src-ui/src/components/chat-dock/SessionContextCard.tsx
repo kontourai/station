@@ -1,5 +1,5 @@
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import type { ReactNode } from 'react';
+import { memo, type ReactNode, useLayoutEffect } from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
@@ -293,8 +293,22 @@ export function SessionContextRows({
   );
 }
 
-/** The inline card: a column at the dock's right edge when the dock has room. */
-export function SessionContextCard(props: SessionContextCardProps) {
+/**
+ * The inline card: a column at the dock's right edge when the dock has room.
+ * `onPresentChange` reports that it is actually on screen: the header keeps
+ * the facts the card repeats until then, so a chunk still loading (or one
+ * that failed to load) never leaves them shown nowhere.
+ */
+function SessionContextCardImpl({
+  onPresentChange,
+  ...props
+}: SessionContextCardProps & {
+  onPresentChange?: (present: boolean) => void;
+}) {
+  useLayoutEffect(() => {
+    onPresentChange?.(true);
+    return () => onPresentChange?.(false);
+  }, [onPresentChange]);
   return (
     <aside
       className="session-context-card"
@@ -306,3 +320,6 @@ export function SessionContextCard(props: SessionContextCardProps) {
     </aside>
   );
 }
+
+/** Memoised: the dock re-renders on every resize frame and stream event. */
+export const SessionContextCard = memo(SessionContextCardImpl);

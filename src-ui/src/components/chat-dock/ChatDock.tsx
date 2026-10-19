@@ -1624,6 +1624,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     conversationSurfaceRef,
     sessionContextAvailable && !isMobile && isPaneOpen,
   );
+  // Whether the card is actually on screen, as it reports itself: its chunk
+  // may still be loading, or have failed to. The header's repeated facts
+  // stand down only once it is.
+  const [sessionContextCardPresent, setSessionContextCardPresent] =
+    useState(false);
+  const sessionContextCardShown =
+    sessionContextCardVisible && sessionContextCardPresent;
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
@@ -2793,14 +2800,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     gitStatus={
                       importedSessionId ||
                       scopedProjectSlug ||
-                      sessionContextCardVisible
+                      sessionContextCardShown
                         ? undefined
                         : gitStatus
                     }
                     // The card's Workspace row names this chat's project, so
                     // the header's "This chat: <project>" stands down too.
                     sessionProjectMismatchLabel={
-                      sessionContextCardVisible
+                      sessionContextCardShown
                         ? null
                         : visibleSessionProjectMismatchLabel
                     }
@@ -2831,7 +2838,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // While the card is beside the transcript it carries the
               // running count, so the More trigger's badge stands down; while
               // it is folded away, the chip is the way to it.
-              backgroundTasksBadgeHidden={sessionContextCardVisible}
+              backgroundTasksBadgeHidden={sessionContextCardShown}
               sessionContextChip={
                 sessionContextAvailable &&
                 !sessionContextCardVisible &&
@@ -3167,7 +3174,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 {sessionContextCardVisible && sessionContextCardProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}
-                    componentProps={sessionContextCardProps}
+                    componentProps={{
+                      ...sessionContextCardProps,
+                      onPresentChange: setSessionContextCardPresent,
+                    }}
                     pending={null}
                   />
                 ) : null}
