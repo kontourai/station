@@ -208,7 +208,8 @@ export function HomeContinueCard({
           task: { ...primary, stableId: `continue:${primary.id}` },
           isWoken: false,
           agents: model.agents,
-          onOpen: model.continueWork,
+          onOpen: (item) =>
+            model.continueWork(item.id === primary.id ? primary : item),
           context: {
             now: Date.now(),
             workFacts: model.workFacts,
