@@ -6,15 +6,27 @@
  *
  * Nothing here runs on a schedule (owner preference: no standing product
  * loops). Every action follows an event:
- * - a check: once, shortly after boot; when a client newer than this server
- *   connects; when a client checks (`recordCheck`). A cached result younger
- *   than `checkTtlMs` answers a repeated trigger without refetching.
- * - an automatic download: evaluated after each check against the download
- *   policy. When the policy's delay has not passed yet, ONE timer is armed
- *   for the moment it does, and it runs one more check; a later check
- *   replaces it. That is a deadline for a known event, not a poll.
- * - apply-when-idle: evaluated when the intent is set and whenever a turn
- *   ends (the event bus's canonical runtime events).
+ * - a check: once, shortly after boot, and when a client newer than this
+ *   server connects. A cached result younger than `checkTtlMs` answers a
+ *   repeated trigger without refetching. A client's own check (`GET
+ *   /core-update`, which always fetches) refreshes the cache and the
+ *   availability record but never runs the policy.
+ * - an automatic download: evaluated after the coordinator's own checks and
+ *   when the policy setting itself changes. When the policy's delay has not
+ *   passed yet, ONE timer is armed for the moment it does (at most
+ *   `MAX_TIMER_MS` ahead, then re-armed), and it runs one more check. That is
+ *   a deadline for a known event, not a poll. The policy downloads a given
+ *   version once: a version whose download it already started, or whose
+ *   update was rolled back or failed, is left to a person's Download until a
+ *   newer one appears. Nor does it download while an apply-when-idle intent
+ *   waits for the staged version.
+ * - apply-when-idle: evaluated once the server is ready
+ *   (`markReady`, after listening and turn recovery), when the intent is
+ *   set, and while it is set, at most every `idleDebounceMs` while runtime
+ *   events flow. The decision reads every session's active-turn state
+ *   (ephemeral ones included). Accepted gap: a turn that starts between that
+ *   read and the launcher stopping the server is interrupted; nothing gates
+ *   new turns while the restart is being requested.
  * - progress: while a request this server can see is queued or staging, the
  *   runtime files the service child writes are read once a second and every
  *   change is pushed; it stops as soon as the request leaves those states.
@@ -60,6 +72,11 @@ export const SERVER_UPDATE_BOOT_CHECK_DELAY_MS = 60_000;
 /** `after-24h`'s delay, from the first check that saw the version. */
 export const SERVER_UPDATE_DOWNLOAD_DELAY_MS = 24 * 60 * 60_000;
 const PROGRESS_POLL_MS = 1_000;
+/**
+ * The longest timer armed for a download deadline. Node clamps a delay past
+ * 2^31-1 ms to 1 ms (review F3); a far deadline is reached by re-arming.
+ */
+export const MAX_TIMER_MS = 6 * 60 * 60_000;
 /** Turns end in bursts (a turn and its children); one evaluation per burst. */
 const IDLE_DEBOUNCE_MS = 2_000;
 
@@ -68,13 +85,36 @@ export interface RunningTurnSummary {
   sessionId: string;
 }
 
+/**
+ * The broadcast copy of the state (review F12): a staging installer's last
+ * error line, and a launcher refusal's text, stay on the authenticated state
+ * route; every listener gets only that the request failed. Launcher outcome
+ * reasons are codes already (`prepared-timeout`, `candidate-exited:1`).
+ */
+export const BROADCAST_WITHHELD_REASON = 'withheld';
+
+export function broadcastServerUpdateState(
+  state: ServerUpdateState,
+): ServerUpdateState {
+  const { progress } = state;
+  if (progress.state !== 'staging-failed' && progress.state !== 'rejected')
+    return state;
+  return {
+    ...state,
+    progress: { ...progress, reason: BROADCAST_WITHHELD_REASON },
+  };
+}
+
 export interface ServerUpdateCoordinatorDeps {
   /** This server's install provenance. */
   provenance: () => InstallProvenance;
   options?: ArchiveUpdateOptions;
   /** The stored policy; undefined when the setting is absent. */
   readDownloadPolicy: () => Promise<unknown>;
-  /** Every running turn on this server, whoever owns it. */
+  /**
+   * Every session with an active turn on this server, whoever owns it and
+   * ephemeral ones included (webhooks, delegations): what a restart stops.
+   */
   listRunningTurns: () => Promise<readonly RunningTurnSummary[]>;
   /** The server event bus; the coordinator listens for turns ending. */
   subscribe?: (
@@ -100,6 +140,8 @@ export interface ServerUpdateCoordinatorDeps {
 interface PersistedIntent {
   availableSince?: { version: string; at: string };
   applyWhenIdle?: { version: string; requestedAt: string };
+  /** The version the policy last started downloading (review F4). */
+  autoStaged?: { version: string; at: string };
 }
 
 interface CachedCheck {
@@ -110,12 +152,6 @@ interface CachedCheck {
 export type ServerUpdateActionResult =
   | { ok: true; state: ServerUpdateState; requestId?: string }
   | { ok: false; status: 409 | 500; error: string };
-
-const TURN_END_METHODS = new Set([
-  'turn.completed',
-  'turn.aborted',
-  'session.exited',
-]);
 
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
 
@@ -158,6 +194,14 @@ function readIntentFile(path: string): PersistedIntent {
       version: idle.version,
       requestedAt: idle.requestedAt,
     };
+  const auto = raw.autoStaged;
+  if (
+    auto &&
+    typeof auto.version === 'string' &&
+    VERSION.test(auto.version) &&
+    isTimestamp(auto.at)
+  )
+    intent.autoStaged = { version: auto.version, at: auto.at };
   return intent;
 }
 
@@ -193,7 +237,13 @@ export class ServerUpdateCoordinator {
   private progressFollow: { cancel: () => void } | null = null;
   private lastPublishedProgress = '';
   private idleTimer: { cancel: () => void } | null = null;
-  private evaluatingIdle = false;
+  /** Serializes the apply-when-idle intent's readers and writers (F2). */
+  private intentLock: Promise<unknown> = Promise.resolve();
+  private idleEvaluationQueued = false;
+  /** Set by `markReady`: apply-when-idle waits for a listening server. */
+  private ready = false;
+  /** The policy the last evaluation used, to tell its own setting changed. */
+  private lastPolicy: ServerUpdateDownloadPolicy | null = null;
   private unsubscribe: (() => void) | null = null;
   private stopped = false;
 
@@ -231,7 +281,7 @@ export class ServerUpdateCoordinator {
 
   private writeIntent(installRoot: string, intent: PersistedIntent): void {
     const path = this.intentPath(installRoot);
-    if (!intent.availableSince && !intent.applyWhenIdle) {
+    if (!intent.availableSince && !intent.applyWhenIdle && !intent.autoStaged) {
       rmSync(path, { force: true });
       return;
     }
@@ -292,6 +342,7 @@ export class ServerUpdateCoordinator {
         status,
         availableSince,
         progress,
+        intent,
       ),
       applyWhenIdle: intent.applyWhenIdle ?? null,
     };
@@ -303,6 +354,7 @@ export class ServerUpdateCoordinator {
     status: ArchiveUpdateStatus | null,
     availableSince: string | null,
     progress: ServiceUpdateProgress,
+    intent: PersistedIntent,
   ): string | null {
     if (
       policy === 'never' ||
@@ -310,6 +362,20 @@ export class ServerUpdateCoordinator {
       !this.downloadable(status, progress)
     )
       return null;
+    const latest = status?.latestVersion;
+    // Once per version (F4): a download the policy already started, or a
+    // version whose update rolled back or failed, waits for a person or a
+    // newer release. And never under a pending apply-when-idle (F6): it
+    // waits for the staged version, which a newer stage would replace.
+    if (intent.autoStaged?.version === latest) return null;
+    if (
+      (progress.state === 'rolled-back' ||
+        progress.state === 'failed' ||
+        progress.state === 'needs-operator') &&
+      progress.targetVersion === latest
+    )
+      return null;
+    if (intent.applyWhenIdle) return null;
     if (policy === 'immediately') return availableSince;
     return new Date(
       Date.parse(availableSince) + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
@@ -345,7 +411,7 @@ export class ServerUpdateCoordinator {
     try {
       const state = await this.state();
       this.lastPublishedProgress = JSON.stringify(state.progress);
-      this.deps.publish(state);
+      this.deps.publish(broadcastServerUpdateState(state));
     } catch (error) {
       this.deps.logger.warn('Server update: could not publish its state', {
         error: (error as Error).message,
@@ -367,9 +433,19 @@ export class ServerUpdateCoordinator {
     this.unsubscribe =
       this.deps.subscribe?.((message) => this.onBusEvent(message)) ?? null;
     this.followProgress();
-    if (this.readIntent(archive.installRoot).applyWhenIdle)
-      void this.evaluateIdle();
     return () => this.stop();
+  }
+
+  /**
+   * The server listens and its turn recovery has run (F8): only now can the
+   * active-turn reads say a persisted apply-when-idle may restart it.
+   */
+  markReady(): void {
+    if (this.ready || this.stopped) return;
+    this.ready = true;
+    const archive = this.archive();
+    if (archive && this.readIntent(archive.installRoot).applyWhenIdle)
+      void this.evaluateIdle();
   }
 
   stop(): void {
@@ -467,7 +543,7 @@ export class ServerUpdateCoordinator {
           latestVersion: status.latestVersion ?? null,
           updateAvailable: status.updateAvailable,
         });
-        await this.recordCheck(status);
+        await this.recordCheck(status, { applyPolicy: true });
         return status;
       } catch (error) {
         this.deps.logger.warn('Server update check failed', {
@@ -483,14 +559,33 @@ export class ServerUpdateCoordinator {
   }
 
   /**
-   * Records a check's result (this coordinator's own, or a client's fresh
-   * `GET /core-update`), then lets the download policy act on it.
+   * Records a check's result. Only the coordinator's own checks
+   * (`applyPolicy`) let the download policy act on it; a client's fresh
+   * `GET /core-update` only refreshes what the state reports (F4).
    */
-  async recordCheck(status: ArchiveUpdateStatus): Promise<void> {
+  async recordCheck(
+    status: ArchiveUpdateStatus,
+    options: { applyPolicy?: boolean } = {},
+  ): Promise<void> {
     const archive = this.archive();
     if (!archive || this.stopped) return;
     this.cached = { at: this.now(), status };
-    const intent = this.readIntent(archive.installRoot);
+    let intent = this.readIntent(archive.installRoot);
+    // A first sighting recorded in the future (a clock that ran ahead) would
+    // put the download beyond any sane timer: it counts from now (F3).
+    if (
+      intent.availableSince &&
+      Date.parse(intent.availableSince.at) > this.now()
+    ) {
+      intent = {
+        ...intent,
+        availableSince: {
+          ...intent.availableSince,
+          at: new Date(this.now()).toISOString(),
+        },
+      };
+      this.tryWriteIntent(archive.installRoot, intent);
+    }
     // Only a verified answer changes the record: an unreachable manifest says
     // nothing about whether the version stopped being available.
     if (status.releaseCheck === 'verified') {
@@ -503,14 +598,12 @@ export class ServerUpdateCoordinator {
             at: new Date(this.now()).toISOString(),
           },
         });
-      else if (!latest && intent.availableSince)
-        this.tryWriteIntent(archive.installRoot, {
-          ...(intent.applyWhenIdle
-            ? { applyWhenIdle: intent.applyWhenIdle }
-            : {}),
-        });
+      else if (!latest && intent.availableSince) {
+        const { availableSince: _gone, ...rest } = intent;
+        this.tryWriteIntent(archive.installRoot, rest);
+      }
     }
-    await this.applyDownloadPolicy();
+    if (options.applyPolicy) await this.applyDownloadPolicy();
     await this.publish();
   }
 
@@ -521,22 +614,34 @@ export class ServerUpdateCoordinator {
     const archive = this.archive();
     if (!archive) return;
     const state = await this.state();
+    this.lastPolicy = state.downloadPolicy;
     if (!state.autoDownloadAt || state.downloadPolicy === 'never') return;
     const due = Date.parse(state.autoDownloadAt);
     const wait = due - this.now();
     if (wait > 0) {
-      const timer = this.setTimer(() => {
-        this.downloadDue = null;
-        void this.check('download-due', { force: true });
-      }, wait);
+      const timer = this.setTimer(
+        () => {
+          this.downloadDue = null;
+          void this.check('download-due', { force: true });
+        },
+        Math.min(wait, MAX_TIMER_MS),
+      );
       this.downloadDue = { at: due, ...timer };
       return;
     }
+    const version = state.availability?.latestVersion ?? null;
+    // Recorded before the request, so even a download that fails at once is
+    // not started again by the next trigger (F4).
+    if (version)
+      this.tryWriteIntent(archive.installRoot, {
+        ...this.readIntent(archive.installRoot),
+        autoStaged: { version, at: new Date(this.now()).toISOString() },
+      });
     const result = await this.request('stage');
     if (result.ok)
       this.deps.logger.info('Server update: downloading by policy', {
         policy: state.downloadPolicy,
-        version: state.availability?.latestVersion ?? null,
+        version,
       });
     else
       this.deps.logger.warn('Server update: the policy download was refused', {
@@ -544,10 +649,16 @@ export class ServerUpdateCoordinator {
       });
   }
 
-  /** The policy setting changed: re-evaluate against the last check. */
-  async policyChanged(): Promise<void> {
+  /**
+   * Some setting changed. Only a change of the download policy itself
+   * re-evaluates it (F4): saving any other setting downloads nothing.
+   */
+  async settingsChanged(): Promise<void> {
     if (!this.archive() || this.stopped) return;
-    await this.applyDownloadPolicy();
+    const policy = await this.policy();
+    if (policy === this.lastPolicy) return;
+    if (this.cached) await this.applyDownloadPolicy();
+    else this.lastPolicy = policy;
     await this.publish();
   }
 
@@ -597,8 +708,23 @@ export class ServerUpdateCoordinator {
     return { ok: true, state: await this.state(), requestId: result.requestId };
   }
 
+  /** Runs `operation` after every earlier intent operation finished. */
+  private exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.intentLock.then(operation, operation);
+    this.intentLock = run.catch(() => undefined);
+    return run;
+  }
+
   /** Apply the staged `version` once no agent turn is running. */
   async setApplyWhenIdle(version: string): Promise<ServerUpdateActionResult> {
+    const result = await this.exclusive(() => this.writeApplyWhenIdle(version));
+    if (result.ok) void this.evaluateIdle();
+    return result;
+  }
+
+  private async writeApplyWhenIdle(
+    version: string,
+  ): Promise<ServerUpdateActionResult> {
     const archive = this.archive();
     if (!archive)
       return {
@@ -633,14 +759,42 @@ export class ServerUpdateCoordinator {
         error: 'Station could not record the request to update when idle.',
       };
     await this.publish();
-    void this.evaluateIdle();
     return { ok: true, state: await this.state() };
   }
 
-  async cancelApplyWhenIdle(): Promise<ServerUpdateActionResult> {
+  /**
+   * Cancels the intent (review F2). It does not queue behind an evaluation
+   * waiting on the running turns: that would let the evaluation apply first.
+   * Its read and write are synchronous (nothing is awaited before the intent
+   * is gone), and the evaluation re-reads the intent after its only wait and
+   * writes the apply request in the same synchronous stretch, so either the
+   * cancel lands first and nothing restarts, or the restart was already
+   * requested, which the cancel then reports instead of claiming.
+   */
+  cancelApplyWhenIdle(): Promise<ServerUpdateActionResult> {
+    return this.removeApplyWhenIdle();
+  }
+
+  private async removeApplyWhenIdle(): Promise<ServerUpdateActionResult> {
     const archive = this.archive();
     if (archive) {
       const intent = this.readIntent(archive.installRoot);
+      const progress = readServiceUpdateProgress(archive.installRoot);
+      if (
+        (progress.state === 'queued' || progress.state === 'staging') &&
+        progress.intent === 'apply'
+      ) {
+        // The restart is already requested; the intent it fulfilled goes.
+        if (intent.applyWhenIdle) {
+          const { applyWhenIdle: _fulfilled, ...rest } = intent;
+          this.tryWriteIntent(archive.installRoot, rest);
+        }
+        return {
+          ok: false,
+          status: 409,
+          error: 'The server is already restarting into the update.',
+        };
+      }
       if (intent.applyWhenIdle) {
         const { applyWhenIdle: _cancelled, ...rest } = intent;
         if (!this.tryWriteIntent(archive.installRoot, rest))
@@ -661,13 +815,14 @@ export class ServerUpdateCoordinator {
     event: string;
     data?: Record<string, unknown>;
   }): void {
-    if (message.event !== 'orchestration:event') return;
-    const method = (message.data?.event as { method?: unknown } | undefined)
-      ?.method;
-    if (typeof method !== 'string' || !TURN_END_METHODS.has(method)) return;
+    // Any runtime event may be the end of the last turn (a completion, an
+    // abort, an exit, a runtime error, a stop settling): rather than name
+    // them all, every one re-evaluates, at most once per interval (F5). The
+    // timer is not reset by later events, so a busy stream cannot starve it.
+    if (message.event !== 'orchestration:event' || this.idleTimer) return;
+    if (!this.ready) return;
     const archive = this.archive();
     if (!archive || !this.readIntent(archive.installRoot).applyWhenIdle) return;
-    this.idleTimer?.cancel();
     this.idleTimer = this.setTimer(() => {
       this.idleTimer = null;
       void this.evaluateIdle();
@@ -679,11 +834,18 @@ export class ServerUpdateCoordinator {
    * is no longer the staged one is dropped: it promised that version only.
    */
   async evaluateIdle(): Promise<void> {
-    if (this.evaluatingIdle || this.stopped) return;
+    if (this.idleEvaluationQueued || this.stopped || !this.ready) return;
+    this.idleEvaluationQueued = true;
+    await this.exclusive(async () => {
+      this.idleEvaluationQueued = false;
+      await this.evaluateIdleNow();
+    });
+  }
+
+  private async evaluateIdleNow(): Promise<void> {
     const archive = this.archive();
-    if (!archive) return;
-    this.evaluatingIdle = true;
-    try {
+    if (!archive || this.stopped) return;
+    {
       const intent = this.readIntent(archive.installRoot).applyWhenIdle;
       if (!intent) return;
       const progress = readServiceUpdateProgress(archive.installRoot);
@@ -714,6 +876,10 @@ export class ServerUpdateCoordinator {
         return;
       }
       if (running.length > 0) return;
+      // The intent is read again after the wait: only the version it still
+      // names, if it still names one, is applied.
+      const current = this.readIntent(archive.installRoot).applyWhenIdle;
+      if (current?.version !== intent.version) return;
       this.deps.logger.info('Server update: applying when idle', {
         version: intent.version,
       });
@@ -722,8 +888,6 @@ export class ServerUpdateCoordinator {
         this.deps.logger.warn('Server update: the idle apply was refused', {
           error: result.error,
         });
-    } finally {
-      this.evaluatingIdle = false;
     }
   }
 

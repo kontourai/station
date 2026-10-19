@@ -30,8 +30,13 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { createSystemUpdateRoutes } = await import('../system-update-routes.js');
-const { ServerUpdateCoordinator, SERVER_UPDATE_DOWNLOAD_DELAY_MS } =
-  await import('../../../services/server-update/server-update-coordinator.js');
+const {
+  MAX_TIMER_MS,
+  ServerUpdateCoordinator,
+  SERVER_UPDATE_DOWNLOAD_DELAY_MS,
+} = await import(
+  '../../../services/server-update/server-update-coordinator.js'
+);
 const { resolveInstallProvenance } = await import('../install-provenance.js');
 
 const makeTempDir = trackTempDirs();
@@ -1130,7 +1135,9 @@ function coordinatorFor(
   install: Install,
   options: {
     policy?: string;
-    running?: () => Array<{ sessionId: string }>;
+    running?: () =>
+      | Array<{ sessionId: string }>
+      | Promise<Array<{ sessionId: string }>>;
     clock?: { now: number };
   } = {},
 ) {
@@ -1151,7 +1158,7 @@ function coordinatorFor(
       arch: 'x64',
     },
     readDownloadPolicy: async () => policy,
-    listRunningTurns: async () => options.running?.() ?? [],
+    listRunningTurns: async () => (await options.running?.()) ?? [],
     subscribe: (listener) => {
       busListener = listener;
       return () => {
@@ -1173,10 +1180,10 @@ function coordinatorFor(
     setPolicy: (next: string) => {
       policy = next;
     },
-    turnEnded: () =>
+    turnEnded: (method = 'turn.completed') =>
       busListener?.({
         event: 'orchestration:event',
-        data: { event: { method: 'turn.completed' } },
+        data: { event: { method } },
       }),
     request: () => {
       const path = serviceUpdatePaths(install.installRoot).request;
@@ -1262,9 +1269,9 @@ describe('the server update coordinator (#3851)', () => {
     expect(state.autoDownloadAt).toBe(
       new Date(seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS).toISOString(),
     );
-    // One timer, for that moment.
+    // One timer, toward that moment: at most MAX_TIMER_MS ahead (review F3).
     expect(first.timers.live().map((timer) => timer.due)).toEqual([
-      seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS,
+      Math.min(seen + SERVER_UPDATE_DOWNLOAD_DELAY_MS, seen + MAX_TIMER_MS),
     ]);
     first.coordinator.stop();
 
@@ -1295,7 +1302,7 @@ describe('the server update coordinator (#3851)', () => {
     await coordinator.check('boot');
     expect(request()).toBeNull();
     setPolicy('immediately');
-    await coordinator.policyChanged();
+    await coordinator.settingsChanged();
     expect(request()).toMatchObject({ mode: 'stage' });
   });
 
@@ -1322,6 +1329,7 @@ describe('the server update coordinator (#3851)', () => {
       { policy: 'never', running: () => running },
     );
     coordinator.start();
+    coordinator.markReady();
     const set = await coordinator.setApplyWhenIdle(NEWER);
     expect(set).toMatchObject({
       ok: true,
@@ -1356,6 +1364,7 @@ describe('the server update coordinator (#3851)', () => {
       { policy: 'never', running: () => running },
     );
     coordinator.start();
+    coordinator.markReady();
     await coordinator.setApplyWhenIdle(NEWER);
     await coordinator.cancelApplyWhenIdle();
     running = [];
@@ -1549,5 +1558,317 @@ describe('the update state, apply-when-idle and running-turns routes (#3851)', (
       headers: { 'content-type': 'application/json' },
     });
     expect(set.status).toBe(409);
+  });
+});
+
+/** What a request file asks, and that the request is gone (the child took it). */
+function settleRequest(install: Install, result: Record<string, unknown>) {
+  const paths = serviceUpdatePaths(install.installRoot);
+  const request = parseServiceUpdateRequest(
+    readFileSync(paths.request, 'utf8'),
+  );
+  rmSync(paths.request);
+  writeFileSync(
+    paths.result,
+    JSON.stringify({
+      requestId: request?.id,
+      at: '2026-10-19T10:30:00.000Z',
+      ...result,
+    }),
+  );
+  return request;
+}
+
+describe('the coordinator after review (#3851 F2-F8, F12)', () => {
+  test('F2: a cancel while the idle check waits on the running turns restarts nothing', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    let answer: (turns: Array<{ sessionId: string }>) => void = () => undefined;
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'never',
+      running: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await vi.waitFor(() => expect(answer).not.toBe(undefined));
+    // The evaluation is waiting; the person cancels.
+    expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({ ok: true });
+    answer([]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(request()).toBeNull();
+    coordinator.stop();
+  });
+
+  test('F2: a cancel after the restart was requested says so instead of claiming it', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await vi.waitFor(() => expect(request()).toMatchObject({ mode: 'apply' }));
+    expect(await coordinator.cancelApplyWhenIdle()).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    coordinator.stop();
+  });
+
+  test('F3: a first sighting in the future counts from now, and no timer exceeds the cap', async () => {
+    const install = makeInstall();
+    const runtime = serviceUpdatePaths(install.installRoot).runtime;
+    mkdirSync(runtime, { recursive: true });
+    const clock = { now: Date.parse('2026-10-19T10:00:00Z') };
+    writeFileSync(
+      join(runtime, 'server-update.json'),
+      JSON.stringify({
+        availableSince: {
+          version: NEWER,
+          at: new Date(clock.now + 60 * 24 * 60 * 60_000).toISOString(),
+        },
+      }),
+    );
+    const { coordinator, timers } = coordinatorFor(install, { clock });
+    await coordinator.check('boot');
+    const state = await coordinator.state();
+    expect(state.availability?.availableSince).toBe(
+      new Date(clock.now).toISOString(),
+    );
+    for (const timer of timers.live())
+      expect(timer.due - clock.now).toBeLessThanOrEqual(MAX_TIMER_MS);
+    expect(timers.live()).toHaveLength(1);
+  });
+
+  test('F3: a deadline past the cap is reached by re-arming, not by a 1 ms timer', async () => {
+    const install = makeInstall();
+    const { coordinator, timers, clock, request } = coordinatorFor(install);
+    await coordinator.check('boot');
+    const [first] = timers.live();
+    expect(first?.due).toBe(clock.now + MAX_TIMER_MS);
+    clock.now += MAX_TIMER_MS;
+    await timers.fireDue();
+    await vi.waitFor(() => expect(timers.live()).toHaveLength(1));
+    expect(request()).toBeNull();
+  });
+
+  test('F4: the policy downloads a version once; a failed download waits for a person or a newer release', async () => {
+    const install = makeInstall();
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    expect(request()).toMatchObject({ mode: 'stage', targetVersion: NEWER });
+    settleRequest(install, { status: 'failed', reason: 'curl: (22) 404' });
+    await coordinator.check('newer-client', { force: true });
+    expect(request()).toBeNull();
+    expect((await coordinator.state()).autoDownloadAt).toBeNull();
+    // A person's Download still works.
+    expect(await coordinator.stage()).toMatchObject({ ok: true });
+    settleRequest(install, { status: 'failed', reason: 'again' });
+    // A newer release is downloaded by the policy again.
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    await coordinator.check('newer-client', { force: true });
+    expect(request()).toMatchObject({
+      mode: 'stage',
+      targetVersion: '0.8.0-preview.3',
+    });
+  });
+
+  test('F4: a version whose update rolled back is not downloaded again by the policy', async () => {
+    const install = makeInstall();
+    const paths = serviceUpdatePaths(install.installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    writeFileSync(
+      paths.state,
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: RUNNING,
+        update: {
+          id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+          fromVersion: RUNNING,
+          targetVersion: NEWER,
+          status: 'rolled-back',
+          reason: 'prepared-timeout',
+          attempts: 2,
+          finishedAt: '2026-10-19T09:00:00.000Z',
+        },
+      }),
+    );
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    expect(request()).toBeNull();
+  });
+
+  test('F4: a client’s check (GET /core-update) never runs the policy', async () => {
+    const install = makeInstall();
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    const app = createApp(install, {
+      extraDeps: { serverUpdate: coordinator },
+    });
+    expect((await app.request('/core-update')).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(request()).toBeNull();
+    // It still refreshed what the state reports.
+    expect((await coordinator.state()).availability).toMatchObject({
+      latestVersion: NEWER,
+    });
+  });
+
+  test('F4: saving another setting re-runs nothing; changing the policy does', async () => {
+    const install = makeInstall();
+    const { coordinator, request, setPolicy } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    await coordinator.check('boot');
+    await coordinator.settingsChanged();
+    expect(request()).toBeNull();
+    setPolicy('immediately');
+    await coordinator.settingsChanged();
+    expect(request()).toMatchObject({ mode: 'stage' });
+  });
+
+  test('F5: any runtime event re-evaluates apply-when-idle, a runtime error included', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    let running = [{ sessionId: 'webhook' }];
+    const { coordinator, timers, clock, turnEnded, request } = coordinatorFor(
+      install,
+      { policy: 'never', running: () => running },
+    );
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(request()).toBeNull();
+    running = [];
+    turnEnded('runtime.error');
+    clock.now += 2_000;
+    await timers.fireDue();
+    await vi.waitFor(() => expect(request()).toMatchObject({ mode: 'apply' }));
+    coordinator.stop();
+  });
+
+  test('F6: the policy does not download a newer release while an apply-when-idle waits', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+      running: () => [{ sessionId: 's-1' }],
+    });
+    coordinator.start();
+    coordinator.markReady();
+    await coordinator.setApplyWhenIdle(NEWER);
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    await coordinator.check('newer-client', { force: true });
+    expect(request()).toBeNull();
+    expect((await coordinator.state()).applyWhenIdle).toMatchObject({
+      version: NEWER,
+    });
+    coordinator.stop();
+  });
+
+  test('F8: a persisted apply-when-idle waits for the server to be ready', async () => {
+    const install = makeInstall();
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const runtime = serviceUpdatePaths(install.installRoot).runtime;
+    writeFileSync(
+      join(runtime, 'server-update.json'),
+      JSON.stringify({
+        applyWhenIdle: { version: NEWER, requestedAt: '2026-10-19T09:00:00Z' },
+      }),
+    );
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    coordinator.start();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(request()).toBeNull();
+    coordinator.markReady();
+    await vi.waitFor(() => expect(request()).toMatchObject({ mode: 'apply' }));
+    coordinator.stop();
+  });
+
+  test('F12: the broadcast withholds a failed download’s detail; the state route keeps it', async () => {
+    const install = makeInstall();
+    const { coordinator, published } = coordinatorFor(install, {
+      policy: 'never',
+    });
+    await coordinator.stage();
+    settleRequest(install, {
+      status: 'failed',
+      reason: 'could not download /home/me/.station/tmp/x.tgz',
+    });
+    await coordinator.publish();
+    expect(published.at(-1)).toMatchObject({
+      progress: { state: 'staging-failed', reason: 'withheld' },
+    });
+    expect((await coordinator.state()).progress).toMatchObject({
+      reason: 'could not download /home/me/.station/tmp/x.tgz',
+    });
+  });
+});
+
+describe('stage and apply on an install that has updated before (#3851 review F1)', () => {
+  /** service-state.json as station-launcher.mjs `onPrepared` leaves it. */
+  function committedEarlier(install: Install) {
+    const paths = serviceUpdatePaths(install.installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    writeFileSync(
+      paths.state,
+      `${JSON.stringify(
+        {
+          protocol: 1,
+          activeVersion: RUNNING,
+          update: {
+            id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+            fromVersion: '0.8.0-preview.0',
+            targetVersion: RUNNING,
+            requestId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+            status: 'committed',
+            attempts: 1,
+            finishedAt: '2026-10-18T09:00:00.000Z',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+
+  test('a later stage reads staged and can be applied, past the old committed record', async () => {
+    const install = makeInstall();
+    committedEarlier(install);
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const app = createApp(install);
+    expect(
+      await json(await app.request('/core-update/service-update?staged=1')),
+    ).toMatchObject({ state: 'staged', version: NEWER });
+    const applied = await app.request('/core-update', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'apply', version: NEWER }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(applied.status).toBe(202);
+  });
+
+  test('the policy does not stage again what is staged past an old committed record', async () => {
+    const install = makeInstall();
+    committedEarlier(install);
+    stageOnDisk(install, NEWER, STAGE_REQUEST);
+    const { coordinator, request } = coordinatorFor(install, {
+      policy: 'immediately',
+    });
+    await coordinator.check('boot');
+    expect(request()).toBeNull();
   });
 });

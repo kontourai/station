@@ -91,7 +91,31 @@ async function main() {
   // #3851: a rolled-back update handoff restores the home it left BEFORE the
   // schema gate reads it (the target may have migrated it); a marker this
   // release cannot account for refuses boot. No marker: nothing happens.
-  consumeHomeRestoreMarkerAtBoot(projectHomeDir);
+  try {
+    consumeHomeRestoreMarkerAtBoot(projectHomeDir);
+  } catch (error) {
+    // The normal fatal path (review F9). The durable log sink is installed
+    // only now: a marked home is not a fresh one, and `logs` is a live root
+    // the restore never touches.
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(1);
+    console.error('Failed to start Station:', error);
+    try {
+      installServerLogSink({
+        directory: join(projectHomeDir, 'logs', 'server'),
+      });
+    } catch {
+      // The console line above is all that can be recorded.
+    }
+    logFatalAndFlush(
+      createLogger({ name: 'station', level: resolveLogLevel() }),
+      'Failed to start Station',
+      { err: error },
+      flushLogSink,
+      buildProvenanceSnapshot,
+    );
+    process.exit(1);
+  }
 
   // The schema gate must own the first write to a Station home. In
   // particular, installing the durable log sink first creates logs/server in
@@ -165,6 +189,7 @@ async function main() {
   });
   try {
     await runtime.initialize();
+    runtime.markServerUpdateReady();
     let shuttingDown = false;
 
     // The read side of archive#1903: a self-update that never confirmed the

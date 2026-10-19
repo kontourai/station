@@ -212,6 +212,11 @@ export class SessionExecutionCoordinator {
     this.deleteEmptyState(event.threadId, state);
   }
 
+  /** Threads this coordinator holds turn state for (#3851 idle check). */
+  threadIdsWithTurnState(): string[] {
+    return [...this.states.keys()];
+  }
+
   hasActiveTurn(threadId: string): boolean {
     if ((this.states.get(threadId)?.activeTurnIds.size ?? 0) > 0) return true;
     const durable = this.boundaries.hasPossibleEffect(threadId);

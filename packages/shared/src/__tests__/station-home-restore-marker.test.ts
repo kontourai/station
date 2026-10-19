@@ -3,7 +3,13 @@
  * backed up by the real update backup, then consumed the way a booting
  * release consumes it.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
@@ -143,5 +149,47 @@ describe('the Station home update restore marker (#3851)', () => {
         return result;
       },
     });
+  });
+
+  it('a refusal names the backup, the exact restore command and removing the marker (review F9)', () => {
+    const { root, home, from, backupDir } = handedOff();
+    const other = { version: '1.2.0', root: join(root, 'versions', '1.2.0') };
+    let message = '';
+    try {
+      consumeStationHomeRestoreMarker({ homeDir: home, running: () => other });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain(backupDir);
+    expect(message).toContain(
+      `"${join(from.root, 'bin', 'station')}" service update-home restore --backup-dir="${backupDir}" --base="${home}"`,
+    );
+    expect(message).toContain(`rm "${stationHomeRestoreMarkerPath(home)}"`);
+  });
+
+  it('a rollback boot whose backup is gone refuses with the same way back, and keeps the home', () => {
+    const { home, from, backupDir } = handedOff();
+    rmSync(backupDir, { recursive: true, force: true });
+    expect(() =>
+      consumeStationHomeRestoreMarker({ homeDir: home, running: () => from }),
+    ).toThrow(/backup .* is missing[\s\S]*service update-home restore/);
+    expect(appJson(home)).toBe('{"model":"migrated"}\n');
+    expect(readStationHomeRestoreMarker(home).kind).toBe('present');
+  });
+
+  it('a restore that fails refuses with the way back and keeps the marker for the next boot', () => {
+    const { home, from } = handedOff();
+    expect(() =>
+      consumeStationHomeRestoreMarker({
+        homeDir: home,
+        running: () => from,
+        restore: () => {
+          throw new Error('EACCES: permission denied');
+        },
+      }),
+    ).toThrow(
+      /restoring the home .* failed \(EACCES[\s\S]*update-home restore/,
+    );
+    expect(readStationHomeRestoreMarker(home).kind).toBe('present');
   });
 });

@@ -552,7 +552,9 @@ export async function applyArchiveUpdate(
  * run by the process supervisor (packages/supervisor) will later hand off
  * through `requestSupervisorHandoff()` instead of writing
  * `update-request.json` for the fixed launcher. Today it only does the
- * latter.
+ * latter. It writes the request before its first await: the coordinator's
+ * apply-when-idle cancel relies on the re-read of the intent and this write
+ * happening in one synchronous stretch.
  */
 export function applyStagedServerUpdate(
   provenance: ArchiveProvenance,
