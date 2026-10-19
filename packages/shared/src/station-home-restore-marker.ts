@@ -234,6 +234,14 @@ export function markStationHomeRestoreFailed(
   error: string,
 ): void {
   const path = stationHomeRestoreMarkerPath(homeDir);
+  // Only onto the marker that failed (round 3 item 6): an operator who
+  // removed it, or a new handoff's marker, is not overwritten.
+  const current = readStationHomeRestoreMarker(homeDir);
+  if (
+    current.kind !== 'present' ||
+    current.marker.createdAt !== marker.createdAt
+  )
+    return;
   const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(
     temp,
@@ -333,8 +341,11 @@ export function stationHomeRestoreRecovery(
   const markerPath = stationHomeRestoreMarkerPath(homeDir);
   const instance = options.instance ?? '<instance>';
   const remove = windows ? `del "${markerPath}"` : `rm "${markerPath}"`;
-  const stop = `  1. Stop the service so it does not start Station again meanwhile: station service stop --instance=${instance}`;
-  const start = `Start it again: station service start --instance=${instance}`;
+  // `--base` names the home, where a service installed with --home or
+  // --base keeps its manifest (round 3 item 4).
+  const service = `--instance=${instance} --base="${homeDir}"`;
+  const stop = `  1. Stop the service so it does not start Station again meanwhile: station service stop ${service}`;
+  const start = `Start it again: station service start ${service}`;
   if (!marker)
     return [
       stop,
@@ -345,17 +356,19 @@ export function stationHomeRestoreRecovery(
   const archiveEntry = existsSync(
     join(marker.fromRelease.root, 'bin', 'station.mjs'),
   );
+  // A source checkout ships only its bash `station` script, which Windows
+  // runs through Git Bash (round 3 item 5).
   const entry = archiveEntry
     ? windows
-      ? `${marker.fromRelease.root}\\bin\\station.cmd`
-      : join(marker.fromRelease.root, 'bin', 'station')
+      ? `"${marker.fromRelease.root}\\bin\\station.cmd"`
+      : `"${join(marker.fromRelease.root, 'bin', 'station')}"`
     : windows
-      ? `${marker.fromRelease.root}\\station.cmd`
-      : join(marker.fromRelease.root, 'station');
+      ? `bash "${marker.fromRelease.root}/station"`
+      : `"${join(marker.fromRelease.root, 'station')}"`;
   return [
     stop,
     `  2. Restore the home from ${marker.backupDir} with ${marker.fromRelease.version}'s own CLI:`,
-    `     "${entry}" service update-home restore --backup-dir="${marker.backupDir}" --base="${homeDir}"`,
+    `     ${entry} service update-home restore --backup-dir="${marker.backupDir}" --base="${homeDir}"`,
     `     (If the home is right for the release you are starting, ${marker.targetRelease.version}, skip this.)`,
     `  3. Remove the marker: ${remove}`,
     `  4. ${start}`,

@@ -179,7 +179,16 @@ describe('the Station home update restore marker (#3851)', () => {
       `"${join(from.root, 'station')}" service update-home restore --backup-dir="${backupDir}" --base="${home}"`,
     );
     expect(checkout).toContain(`rm "${stationHomeRestoreMarkerPath(home)}"`);
-    expect(checkout).toContain('station service start --instance=stable');
+    expect(checkout).toContain(
+      `station service stop --instance=stable --base="${home}"`,
+    );
+    expect(checkout).toContain(
+      `station service start --instance=stable --base="${home}"`,
+    );
+    // On Windows a checkout's bash script runs through Git Bash.
+    expect(refusal('win32')).toContain(
+      `bash "${from.root}/station" service update-home restore`,
+    );
     // An archive version: its bin/station; on Windows bin\station.cmd and del.
     mkdirSync(join(from.root, 'bin'), { recursive: true });
     writeFileSync(join(from.root, 'bin', 'station.mjs'), '');
@@ -240,5 +249,21 @@ describe('the Station home update restore marker (#3851)', () => {
     ).toThrow(/could not restore the home .* not tried again automatically/);
     expect(restore).toHaveBeenCalledTimes(1);
     expect(appJson(home)).toBe('{"model":"migrated"}\n');
+  });
+
+  it('a failed restore is not recorded onto a marker the operator removed meanwhile (round 3 item 6)', () => {
+    const { home, from } = handedOff();
+    expect(() =>
+      consumeStationHomeRestoreMarker({
+        homeDir: home,
+        running: () => from,
+        restore: () => {
+          // The operator removes the marker while this boot restores.
+          rmSync(stationHomeRestoreMarkerPath(home));
+          throw new Error('EACCES: permission denied');
+        },
+      }),
+    ).toThrow(StationHomeRestoreRefusedError);
+    expect(existsSync(stationHomeRestoreMarkerPath(home))).toBe(false);
   });
 });
