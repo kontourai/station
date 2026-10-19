@@ -6,7 +6,10 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { SettingsScopeBadge } from './SettingsScopeBadge';
 import { SETTINGS_CATALOG } from './settings-catalog';
 
-export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
+export function SettingsPageRow({
+  resetHandledByControl = false,
+  ...props
+}: ComponentProps<typeof PageRow> & { resetHandledByControl?: boolean }) {
   const account = useAccountPreferences();
   const entry = SETTINGS_CATALOG.find(
     (row) => row.id === props['data-catalog-id'],
@@ -18,10 +21,11 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
     key !== undefined && Object.hasOwn(account.data?.values ?? {}, key);
   const isAnswerDelivery = entry?.id === 'smooth-answer-reveal';
   const canReset =
-    hasAccountValue ||
-    (isAnswerDelivery &&
-      (account.data?.values.smoothReveal !== undefined ||
-        account.data?.values.bufferedDelivery !== undefined));
+    !resetHandledByControl &&
+    (hasAccountValue ||
+      (isAnswerDelivery &&
+        (account.data?.values.smoothReveal !== undefined ||
+          account.data?.values.bufferedDelivery !== undefined)));
   const label =
     entry?.section === 'account-preferences'
       ? undefined

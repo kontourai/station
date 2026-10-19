@@ -16,6 +16,7 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
 import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
@@ -2012,19 +2013,50 @@ describe('settings catalog completeness', () => {
   });
 
   /**
-   * The Appearance slider writes a DEVICE value that then shadows the
-   * Station default for this browser alone. "Use Station default" is the
-   * only way back, and it is meaningless before a device value exists — so
-   * the row offers it only then.
+   * Clearing the personal override resumes the shared Station font default.
    */
-  describe('Use Station default', () => {
+  describe('Reset Chat font size to default', () => {
+    test('an account font override offers one reset action', async () => {
+      deviceChatFontSize = 18;
+      const { SettingsView } = await import('../views/SettingsView');
+      const view = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <AccountPreferencesContext.Provider
+            value={{
+              status: 'account',
+              saving: false,
+              waitingForConnection: false,
+              error: false,
+              conflict: false,
+              data: { schemaVersion: 1, values: { chatFontSize: 18 } },
+              save: vi.fn(),
+              retry: vi.fn(),
+            }}
+          >
+            <SettingsView onBack={vi.fn()} />
+          </AccountPreferencesContext.Provider>
+        </QueryClientProvider>,
+      );
+      const slider = await screen.findByRole('slider', {
+        name: 'Chat font size',
+      });
+      const row = slider.closest<HTMLElement>('[data-catalog-id]')!;
+      const resetActions = within(row).getAllByRole('button');
+      expect(resetActions).toHaveLength(1);
+      fireEvent.click(resetActions[0]!);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      view.unmount();
+    });
+
     test('is absent while this device follows the Station default', async () => {
       deviceChatFontSize = null;
       const { container } = await renderSettings();
 
       expect(container.querySelector('#chatFontSize')).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Use Station default' }),
+        screen.queryByRole('button', {
+          name: 'Reset Chat font size to default',
+        }),
       ).toBeNull();
     });
 
@@ -2033,7 +2065,7 @@ describe('settings catalog completeness', () => {
       await renderSettings();
 
       const button = screen.getByRole('button', {
-        name: 'Use Station default',
+        name: 'Reset Chat font size to default',
       });
       fireEvent.click(button);
 

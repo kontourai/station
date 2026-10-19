@@ -1317,12 +1317,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               for decoration. A speech bubble would have. */}
                 {sectionVisible('chat') && (
                   <Section icon="◇" title="Chat" id="section-chat">
-                    {/* This slider writes the DEVICE key only. The Station
-                  default it falls back to (`defaultChatFontSize`) has its own
-                  row, immediately below — the catalog entry used to
-                  claim both keys while nothing here wrote the Station one. */}
+                    {/* The personal override falls back to the saved Station default below. */}
                     <PageRow
                       {...settingsRow('chat-font-size')}
+                      resetHandledByControl
                       // `savedConfig`, not `config`, in all three places below: this
                       // row reports what this device falls back to, which is the
                       // STORED Station default. An unsaved draft of
@@ -1354,13 +1352,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
                           </span>
                           {chatFontSize != null && (
-                            <button
-                              type="button"
-                              className="settings__secondary-btn"
+                            <Button
+                              size="sm"
+                              variant="link"
+                              aria-label="Reset Chat font size to default"
+                              title="Use the Station’s default chat font size."
                               onClick={() => resetDeviceSetting('chatFontSize')}
                             >
-                              Use Station default
-                            </button>
+                              Reset
+                            </Button>
                           )}
                         </div>
                       }

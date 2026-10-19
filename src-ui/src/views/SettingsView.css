@@ -1447,6 +1447,7 @@
 }
 .settings__row-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-2);
   min-width: 0;
@@ -1457,4 +1458,10 @@
 }
 .settings__experimental-features > h3 {
   margin: 0;
+}
+
+.settings__row-controls > :not(button) {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
 }

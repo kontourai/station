@@ -66,7 +66,8 @@ Scope indicators use short **Account**, **This device**, and **Station** pills.
 Account and Station pills use quiet theme tints; the written label carries the
 meaning. Account means this person’s preferences on the connected Station, not
 cross-Station cloud sync. Scope details are available on hover. Reset actions
-sit with their controls, separate from the scope label. The mixed personal/device
+sit with their controls, separate from the scope label. Font size uses its own
+single reset in both account and device modes. The mixed personal/device
 group no longer repeats a paragraph explaining storage. Experimental switches
 have their own **Experimental features** heading and spacing.
 
