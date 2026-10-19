@@ -20,6 +20,7 @@ import {
   findModelProviderError,
   MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderErrorStatus,
+  modelProviderFailureKind,
   modelProviderFailureMessage,
 } from '../../providers/model-provider-failure.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -462,7 +463,11 @@ function outwardFailureStatus(error: unknown): {
 export function outwardTurnFailureText(error: unknown): string {
   const { statusCode, statusInferred } = outwardFailureStatus(error);
   if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
-  if (statusCode !== undefined) return modelProviderFailureMessage(statusCode);
+  if (statusCode !== undefined)
+    return modelProviderFailureMessage(
+      statusCode,
+      modelProviderFailureKind(error),
+    );
   if (error instanceof Error && error.message === STREAM_ABORTED_BY_CLIENT) {
     return STREAM_ABORTED_BY_CLIENT;
   }
@@ -490,6 +495,9 @@ export async function writeSSEError(
       type: 'error',
       errorText: outwardTransportError('sse'),
       statusCode,
+      ...(statusCode === 429
+        ? { failureKind: modelProviderFailureKind(error) }
+        : {}),
       ...(statusInferred ? { statusInferred } : {}),
     })}\n\n`,
   );

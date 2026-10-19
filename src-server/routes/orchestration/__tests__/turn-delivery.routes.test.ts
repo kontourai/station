@@ -99,7 +99,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
     const next = this.nextTurn;
     this.nextTurn = undefined;
     if (next === 'refuse')
-      throw new SendTurnRefusedError('The engine refused this turn.');
+      throw new SendTurnRefusedError('The engine refused this turn.', 'busy');
     if (next === 'fail') throw new Error('The engine connection dropped.');
     this.turns.push(input);
     if (this.turnGate) await this.turnGate;
@@ -437,6 +437,11 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     adapter.nextTurn = 'refuse';
     const refused = await send('conversation:refused', 'key-refused');
     expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(await refused.json()).toMatchObject({
+      kind: 'busy',
+      retryable: true,
+      failurePhase: 'refused',
+    });
     expect(await lookup('conversation:refused', 'key-refused')).toEqual({
       outcome: 'not-received',
       conversationId: 'conversation:refused',

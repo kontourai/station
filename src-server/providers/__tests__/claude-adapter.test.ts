@@ -1892,9 +1892,13 @@ describe('ClaudeAdapter', () => {
       const threadId = 'steer-queued';
       const { adapter } = await lifecycleSession(threadId);
       const u = await adapter.sendTurn({ threadId, input: 'second' });
-      await expect(
-        adapter.steerTurn(threadId, 'more', u.turnId),
-      ).rejects.toBeInstanceOf(SendTurnRefusedError);
+      const refusal = adapter.steerTurn(threadId, 'more', u.turnId);
+      await expect(refusal).rejects.toBeInstanceOf(SendTurnRefusedError);
+      await expect(refusal).rejects.toMatchObject({
+        kind: 'conflict',
+        retryable: false,
+        failurePhase: 'refused',
+      });
       await adapter.stopSession(threadId);
     });
 
