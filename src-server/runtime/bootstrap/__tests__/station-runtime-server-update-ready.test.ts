@@ -83,4 +83,34 @@ describe('StationRuntime initialize and the server update coordinator', () => {
       { error: 'boom' },
     );
   });
+
+  test('a recovery that settles before 5 minutes warns nothing (round 5 item 4)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, settle } = runtimeDouble(async () => {});
+      await runtime.initialize();
+      await vi.advanceTimersByTimeAsync(60_000);
+      settle();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(runtime.logger.warn).not.toHaveBeenCalled();
+      expect(runtime.serverUpdate.markReady).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('shutdown clears the recovery warning (round 5 item 4)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime } = runtimeDouble(async () => {});
+      await runtime.initialize();
+      await runtime.shutdown().catch(() => {});
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(runtime.logger.warn).not.toHaveBeenCalledWith(
+        expect.stringMatching(/has not settled/),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

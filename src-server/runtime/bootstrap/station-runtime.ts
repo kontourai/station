@@ -535,13 +535,13 @@ export interface StationRuntimeOptions {
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
 }
 
+/** How long session recovery may take before update readiness warns. */
+const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
+
 /**
  * Main runtime for Station system
  * Manages VoltAgent instances with dynamic agent loading
  */
-/** How long session recovery may take before update readiness warns. */
-const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
-
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
@@ -741,6 +741,8 @@ export class StationRuntime {
   private agentActivityPublisher?: AgentActivityPublisher;
   /** #3851: the server's own update lifecycle. */
   private serverUpdate?: ServerUpdateCoordinator;
+  /** #3851: the warning for a session recovery that does not settle. */
+  private recoveryWarningTimer?: ReturnType<typeof setTimeout>;
   private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
@@ -3447,6 +3449,8 @@ export class StationRuntime {
           SESSION_RECOVERY_WARNING_MS,
         );
         slow.unref?.();
+        // Shutdown clears it too (round 5 item 4).
+        this.recoveryWarningTimer = slow;
         void recovery
           .then(() => {
             clearTimeout(slow);
@@ -5048,6 +5052,8 @@ export class StationRuntime {
       this.notificationDeliveryRouter = undefined;
       this.serverUpdate?.stop();
       this.serverUpdate = undefined;
+      clearTimeout(this.recoveryWarningTimer);
+      this.recoveryWarningTimer = undefined;
     } catch (error) {
       failures.push(error);
     }
