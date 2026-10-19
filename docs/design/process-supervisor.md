@@ -4,8 +4,10 @@
 > supervisor package ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
 > implements the control channel, listener handoff, sequential generation
 > handoff with rollback, and crash restart, verified against a fixture core
-> server. No launch mode runs it yet, and the core server has no supervised
-> mode. The [process supervisor decision](../decisions/process-supervisor.md)
+> server. The core server also runs as a supervised generation
+> ([`supervisor-link.ts`](../../src-server/runtime/bootstrap/supervisor-link.ts)),
+> verified by running the built supervisor and core bundles together. No
+> launch mode runs it yet. The [process supervisor decision](../decisions/process-supervisor.md)
 > records the ownership change. Until adoption, the
 > current lifecycle is owned by the Desktop sidecar supervisor
 > (`run_sidecar_supervisor` in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs)),
@@ -117,6 +119,19 @@ product decisions.
   whose next request is already in flight: the fixture saw every
   connection reset on every handoff until the grace was added. SSE and
   terminal clients reconnect and resume.
+
+  On the core server's side, a generation started with
+  `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
+  home schema gate, its log sink, and telemetry start-up, all of which touch
+  the home or the live generation's processes. Its four listeners (API,
+  terminal, voice, consent) bind through one link: adopted handles when the
+  supervisor holds them, otherwise a normal bind reported with
+  `listener.bound`. A later generation takes its base port from the held API
+  socket, so `PORT=0` keeps one block across generations. `ready` carries a
+  boot id generated per generation; `STATION_BOOT_ID` is inherited unchanged
+  by every generation. Draining reports live voice calls, waits for them to
+  end, then runs the ordinary graceful shutdown. Terminal and engine
+  processes it starts do not inherit the supervisor's generation variables.
 
   Overlapping generations, where N+1 boots while N still serves, need a
   home-writer lease that hands the home from one generation to the next. That
@@ -248,7 +263,10 @@ product decisions.
 - **Control channel.** A versioned protocol on a local socket in the Station
   home (mode 0600 on Unix), or a named pipe on Windows. The core server, the CLI, and
   the tray are its clients.
-  - The socket is `<home>/run/supervisor-<instance>.sock`. When that path
+  - The socket is `<home>/run/supervisor-<instance>.sock`. The supervisor
+    creates `<home>/run` before the first generation boots, so the home
+    schema gate treats a real `run` directory as bootstrap scaffolding: a
+    fresh supervised home bootstraps instead of asking for a reset. When that path
     exceeds the platform's socket path limit (104 bytes on macOS), a hashed
     path in a private temporary directory is used instead. Clients derive the
     same path.
@@ -466,9 +484,10 @@ verification, and fault injection.
 
 1. **Supervisor core:** package, control protocol, listener handle passing,
    sequential generation handoff with rollback, crash restart. The package is
-   implemented; a supervised mode in the core server and adoption by
+   implemented, and so is the core server's supervised mode; adoption by
    `station start`, `service run`, and containers follow in their own pull
-   requests. Handle passing must be verified on a real Windows host before
+   requests. The core's `handoff.request` sender exists but nothing calls it
+   yet: the in-app update still refuses under supervision. Handle passing must be verified on a real Windows host before
    adoption.
 2. **Workloads and terminals:** workload host and journals, then the terminal
    redesign on top of it (see [terminal.md](terminal.md)).
@@ -500,4 +519,10 @@ verification, and fault injection.
   server that speaks the IPC protocol. Under keep-alive HTTP load and an SSE
   client, repeated handoffs, rollbacks, and crash restarts produce no refused
   connection, and handoffs produce no reset connection, on one port
-  throughout. They do not yet cover the real core server or Windows.
+  throughout. A journey of the built supervisor and core server bundles
+  ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
+  hands generation 1 to 2 under keep-alive and fresh-connection HTTP load
+  with no refused or reset connection, on the same four ports, and checks the
+  terminal, voice, and consent listeners on the new generation. It also
+  checks that a parked generation leaves the home untouched. Neither covers
+  Windows, nor a drain held open by a live voice call.
