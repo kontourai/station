@@ -201,7 +201,7 @@ interface TranscriptTurnRailProps {
  * history exists, the first loaded turn is not the conversation's first, so
  * the position is named as one among the loaded turns.
  */
-export function turnPosition(
+function turnPosition(
   index: number,
   count: number,
   olderHistory: boolean,
